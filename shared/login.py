@@ -158,7 +158,7 @@ class LoginUX:
 
                     self.show_pin(True)
                 else:
-                    # not confirming the words on Q, they see them and continue or not
+                    # Q: not confirming the words, they see them and continue or not
                     self.pin_prefix = self.pin
                     self.pin = ''
                     self.show_pin(False)
