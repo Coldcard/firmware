@@ -20,6 +20,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
   seed without master secret
 - Bugfix: Saving passphrase on SD Card caused a freeze that required reboot
 - Bugfix: Properly verify signed armored message with regtest address
+- Bugfix: Create ownership file when generating addresses export CSV
 - Recovery SD Card image building moved into its own repo:
   [github.com/Coldcard/recovery-images](https://github.com/Coldcard/recovery-images)
 

@@ -31,20 +31,6 @@ def mk_common_derivations():
         ]
     return doit
 
-@pytest.fixture
-def goto_address_explorer(goto_home, pick_menu_item, need_keypress,
-                          cap_story):
-    def doit():
-        goto_home()
-        pick_menu_item('Address Explorer')
-
-        _, story = cap_story()
-        # axi - below msg can be disabled
-        if "menu lists the first payment address" in story:
-            need_keypress('4') # click into stub menu
-            time.sleep(0.01)
-
-    return doit
 
 @pytest.fixture
 def parse_display_screen(cap_story, is_mark3):
