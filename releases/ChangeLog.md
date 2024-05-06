@@ -27,7 +27,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 
 # Mk4 Specific Changes
 
-## 5.3.0 - 2024-05-02
+## 5.3.0 - 2024-05-06
 
 - Enhancement: When providing 12 or 18 word seed phrase, valid final word choices
   are presented in a new menu.
@@ -51,7 +51,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 
 # Q Specific Changes
 
-## 1.2.0Q - 2024-05-02
+## 1.2.0Q - 2024-05-06
 
 - Enhancement: Allow export of multisig XPUBs via BBQr
 - Enhancement: Import multisig via QR/BBQr - both legacy COLDCARD export and descriptors supported
