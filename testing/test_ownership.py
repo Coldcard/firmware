@@ -2,9 +2,7 @@
 #
 # Address ownership tests.
 #
-import pytest, time, random
-from helpers import prandom
-from binascii import a2b_hex
+import pytest, time, io, csv
 from txn import fake_address
 from constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 from constants import simulator_fixed_xprv, simulator_fixed_tprv, addr_fmt_names
@@ -222,5 +220,71 @@ def test_ux(valid, testnet, method,
         assert 'Searched ' in story
         assert 'candidates without finding a match' in story
 
+@pytest.mark.parametrize("af", ["P2SH-Segwit", "Segwit P2WPKH", "Classic P2PKH", "ms0"])
+def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explorer,
+                                pick_menu_item, need_keypress, sim_exec, clear_ms,
+                                import_ms_wallet, press_select, goto_home, nfc_write,
+                                load_shared_mod, load_export_and_verify_signature,
+                                cap_story):
+    goto_home()
+    wipe_cache()
+    settings_set('accts', [])
+
+    if af == "ms0":
+        clear_ms()
+        import_ms_wallet(2,3, name=af)
+        press_select()  # accept ms import
+
+    goto_address_explorer()
+    pick_menu_item(af)
+    need_keypress("1")  # save to SD
+
+    cmd = f'import os; RV.write(repr([i for i in os.listdir() if ".own" in i]))'
+    lst = sim_exec(cmd)
+    assert 'Traceback' not in lst, lst
+    lst = eval(lst)
+    assert lst
+
+    if af == "ms0":
+        return  # multisig addresses are blanked
+
+    title, body = cap_story()
+    contents, sig_addr = load_export_and_verify_signature(body, "sd", label="Address summary")
+    addr_dump = io.StringIO(contents)
+    cc = csv.reader(addr_dump)
+    hdr = next(cc)
+    assert hdr == ['Index', 'Payment Address', 'Derivation']
+    addr = None
+    for n, (idx, addr, deriv) in enumerate(cc, start=0):
+        assert int(idx) == n
+        if idx == 200:
+            addr = addr
+
+    cc_ndef = load_shared_mod('cc_ndef', '../shared/ndef.py')
+    n = cc_ndef.ndefMaker()
+    n.add_text(addr)
+    ccfile = n.bytes()
+
+    # run simulator w/ --set nfc=1 --eff
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('NFC Tools')
+    pick_menu_item('Verify Address')
+    open('debug/nfc-addr.ndef', 'wb').write(ccfile)
+    nfc_write(ccfile)
+
+    time.sleep(1)
+    title, story = cap_story()
+
+    assert addr in story
+    assert title == 'Verified Address'
+    assert 'Found in wallet' in story
+    assert 'Derivation path' in story
+    if af == "P2SH-Segwit":
+        assert "P2WPKH-in-P2SH" in story
+    elif af == "Segwit P2WPKH":
+        assert " P2WPKH " in story
+    else:
+        assert af in story
 
 # EOF

@@ -97,6 +97,7 @@ class AddressCacheFile:
             self.fd = open(self.fname, 'ab')
         else:
             # Start new file
+            assert start_idx == 0
             self.fd = open(self.fname, 'wb')
             self.hdr = OwnershipFileHdr(OWNERSHIP_MAGIC, self.change_idx, 0x0)
             hdr = struct.pack(OWNERSHIP_FILE_HDR, *self.hdr)
@@ -137,7 +138,7 @@ class AddressCacheFile:
     def check_match(self, want_addr, subpath):
         # need to double-check matches, to get rid of false positives.
         got = self.wallet.render_address(*subpath)
-        chg, idx = subpath
+        # chg, idx = subpath
         #print('(%d, %d) => %s ?= %s' % (chg, idx, got, want_addr))
         return want_addr == got
 
@@ -193,8 +194,8 @@ class OwnershipCache:
             return None
 
         try:
-            file.setup(start_idx)
-        except Exception as exc:
+            file.setup(change_idx, start_idx)
+        except:
             # in some cases we don't want to save anything, not an error
             return None
 

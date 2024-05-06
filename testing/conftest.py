@@ -2060,6 +2060,21 @@ def go_to_passphrase(cap_story, press_select, goto_home, pick_menu_item):
 
     return doit
 
+@pytest.fixture
+def goto_address_explorer(goto_home, pick_menu_item, need_keypress,
+                          cap_story):
+    def doit():
+        goto_home()
+        pick_menu_item('Address Explorer')
+
+        _, story = cap_story()
+        # axi - below msg can be disabled
+        if "menu lists the first payment address" in story:
+            need_keypress('4') # click into stub menu
+            time.sleep(0.01)
+
+    return doit
+
 
 # useful fixtures
 from test_backup import backup_system
