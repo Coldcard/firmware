@@ -525,6 +525,7 @@ async def new_from_dice(menu, label, item):
 
 async def any_active_duress_ux():
     from trick_pins import tp
+    tp.reload()
     if any(tp.get_duress_pins()):
         await ux_show_story('You have one or more duress wallets defined '
                             'under Trick PINs. Please empty them, and clear '
@@ -767,7 +768,6 @@ async def start_login_sequence():
     #
     from ux import idle_logout, ux_login_countdown
     from glob import dis
-    import callgate
     from imptask import IMPT
 
     if pa.is_blank():
@@ -910,6 +910,7 @@ async def start_login_sequence():
     if not settings.get('du', 0):
         from usb import enable_usb
         enable_usb()
+
 
 async def restore_main_secret(*a):
     from glob import dis
