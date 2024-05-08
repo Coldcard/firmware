@@ -5,6 +5,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 # Shared Improvements - Both Mk4 and Q
 
 - Bugfix: Handle NMI caused by flash ECC failures.
+- Bugfix: Migrate already saved multisig wallet derivation paths from "'" to "h".
 
 
 # Mk4 Specific Changes

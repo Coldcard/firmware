@@ -2787,4 +2787,66 @@ def test_multisig_name_validation(microsd_path, offer_ms_import):
         offer_ms_import(c0, allow_non_ascii=True)
     assert "must be ascii" in e.value.args[0]
 
+
+def test_multisig_deriv_path_migration(settings_set, clear_ms, import_ms_wallet,
+                                       press_select, settings_get, make_multisig,
+                                       goto_home, start_sign, cap_story, end_sign,
+                                       pick_menu_item, cap_menu, press_cancel):
+    # this test case simulates multisig wallets imported to CC before 5.3.0
+    # release; these wallets, saved in user settings, still have "'" in derivation
+    # paths; 5.3.1 firmware implements migration to "h" in MultisigWallet.deserialize
+
+    clear_ms()
+
+    deriv, text_a_fmt = ("m/48h/1h/0h/2h/{idx}", 'p2wsh')
+    keys = make_multisig(2, 3, unique=1, deriv=deriv)
+    derivs = [deriv.format(idx=i) for i in range(3)]
+    import_ms_wallet(2, 3, accept=1, keys=keys, name="ms1",
+                     derivs=derivs, addr_fmt=text_a_fmt)
+    press_select()
+    import_ms_wallet(3, 5, name="ms2")
+    press_select()
+    ms = settings_get("multisig")
+
+    pths0 = ms[0][3]["d"]
+    new_pths0 = [p.replace("h", "'") for p in pths0]
+    ms[0][3]["d"] = new_pths0
+
+    ms[1][3]["pp"] = ms[1][3]["pp"].replace("h", "'")
+
+    # this matches data/PSBT
+    ms.append(
+        (
+            'ms',
+            (2, 2),
+            [(2285969762, 0, 'tpubDEy2hd2VTrqbBS8cS2svq12UmjGM2j7FHmocjHzAXfVhmJdhBFVVbmAi13humi49esaAuSmz36NEJ6GL3u58RzNuUkExP9vL4d81PM3s8u6'),
+             (1130956047, 1, 'tpubDEFX3QojMWh7x4vSAHN17wpsywpP78aSs2t6nyELHuq1k34gub9mQ7QiaHNCBAYjSQ4UCMMpfBkf5np1cTQaStrvvRCxwxZ7kZaGHqYxUv3')],
+            {'ch': 'XTN', 'ft': 14, 'd': ["m/48'/0'/99'/2'", "m/48'/0'/33'/2'"]}
+        )
+    )
+    settings_set("multisig", ms)
+
+    # psbt from nunchuk, with global xpubs belonging to above ms wallet
+    b64_psbt = "cHNidP8BAF4CAAAAAfkDjXlS32gzOjVhSRArKxvkAecMTnp1g8wwMJTtq74/AAAAAAD9////AekaAAAAAAAAIgAgzs2e4h4vctbFvvauK+QVFAPzCFnMi1H9hTacH7498P8AAAAATwEENYfPBC7g3O2AAAACLvzTgnL7V0DNOnISJdvOgq/6Pw6DAtkPflmZ+Hc04qwC5CShG0rDIlh8gu7gH2NMBLfrIzYSzoSomnVHeMxtxVQUDwVpQzAAAIAAAACAIQAAgAIAAIBPAQQ1h88EkEB8moAAAALv/1L+Cfeg2EPc01pS00f18DIdU5BOeExlGsXyEFOKGwL71tcAiRuL4Bs+uT1JJjU6AbR3j3X60/rI+rTMJmnOgRRiIUGIMAAAgAAAAIBjAACAAgAAgAABAIkCAAAAAZ5Im3CxbYDyByyrr4luss5vr+s0r7Vt8pK+OvicPLO7AAAAAAD9////AnM2AAAAAAAAIgAgvZi0zfKCeBasTet1hNKm73GA4MEkwiSVwCB9cN0/EnTmvqUXAAAAACJRIJF/VcIeZ3E4f+ZEjwiUl5AUUxBJgoaEaPaHHJecq18lq+4qAAEBK3M2AAAAAAAAIgAgvZi0zfKCeBasTet1hNKm73GA4MEkwiSVwCB9cN0/EnQiAgNRdmGxEwsP88xu9rl/tGAXq7kPm/730yTyQ6XHQL/D3kcwRAIgHNmbk4J9wu4ljq6UouY132eX1i/2jWvJjuuWWyLRFScCIBPyPCuZ/Hmd06h9KtVkSropBonIuqIc/BK8JZ50YKp/AQEDBAEAAAABBUdSIQMBr34TVHrqSk8K6505//5YTOkHmHqF83J8iUURtL/ptCEDUXZhsRMLD/PMbva5f7RgF6u5D5v+99Mk8kOlx0C/w95SriIGAwGvfhNUeupKTwrrnTn//lhM6QeYeoXzcnyJRRG0v+m0HA8FaUMwAACAAAAAgCEAAIACAACAAAAAAAAAAAAiBgNRdmGxEwsP88xu9rl/tGAXq7kPm/730yTyQ6XHQL/D3hxiIUGIMAAAgAAAAIBjAACAAgAAgAAAAAAAAAAAAAEBR1IhAscIZVvBcy3Q0GKO4UqR3gDB3pm/tWas8siH3Ej8MmuCIQN8lTj0MMTpT+Dlk2MbMdAaL93hezzNP3WDsRn/gwlVQlKuIgICxwhlW8FzLdDQYo7hSpHeAMHemb+1ZqzyyIfcSPwya4IcYiFBiDAAAIAAAACAYwAAgAIAAIAAAAAAAQAAACICA3yVOPQwxOlP4OWTYxsx0Bov3eF7PM0/dYOxGf+DCVVCHA8FaUMwAACAAAAAgCEAAIACAACAAAAAAAEAAAAA"
+
+    goto_home()
+    # in time of creatin of PSBT, lopp was making testnet3 unusable...
+    settings_set("fee_limit", -1)
+    start_sign(base64.b64decode(b64_psbt))
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    end_sign()
+    settings_set("fee_limit", 10)  # rollback
+    pick_menu_item("Settings")
+    pick_menu_item("Multisig Wallets")
+    m = cap_menu()
+    for msi in m[:3]:  # three wallets imported
+        pick_menu_item(msi)
+        pick_menu_item("View Details")
+        time.sleep(.1)
+        _, story = cap_story()
+        assert "'" not in story
+        press_cancel()
+        press_cancel()
+
 # EOF
