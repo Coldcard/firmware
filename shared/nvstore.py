@@ -34,6 +34,7 @@ from utils import call_later_ms
 #   tested = selftest has been completed successfully
 #   multisig = list of defined multisig wallets (complex)
 #   pms = trust/import/distrust xpubs found in PSBT files
+#   fee_limit = (int) percentage of tx value allowed as max fee
 #   axi = index of last selected address in explorer
 #   lgto = (minutes) how long to wait for Login Countdown feature [pre v4.0.2]
 #   usr = (dict) map from username to their secret, as base32

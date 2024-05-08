@@ -212,11 +212,12 @@ class MultisigWallet(WalletABC):
             if not common_prefix:
                 # TODO: this should raise a warning, not supported anymore
                 common_prefix = 'm'
+            common_prefix = common_prefix.replace("'", "h")
             xpubs = [(a, common_prefix, b) for a,b in xpubs]
         else:
             # new format decompression
             if 'd' in opts:
-                derivs = opts.get('d', None)
+                derivs = [p.replace("'", "h") for p in opts.get('d')]
                 xpubs = [(a, derivs[b], c) for a,b,c in xpubs]
 
         rv = cls(name, m_of_n, xpubs, addr_fmt=opts.get('ft', AF_P2SH),
