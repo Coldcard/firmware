@@ -15,7 +15,7 @@ def make_flash_fs():
     os.mkdir('/flash/settings')
 
 def make_psram_fs():
-    # Filesystem is wiped and rebuild on each boot before this point, but
+    # Filesystem is wiped and rebuilt on each boot before this point, but
     # add some more files.
     ps = ckcc.PSRAM()
     os.mount(ps, '/psram')
