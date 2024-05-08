@@ -20,6 +20,7 @@
 #include "softtimer.h"
 #include "ulight.h"
 #include "uart.h"
+#include "spi.h"
 
 #include "storage.h"
 #include "usb.h"
@@ -155,7 +156,7 @@ MP_DEFINE_CONST_FUN_OBJ_3(sec_gate_obj, sec_gate);
 
 
 // Since we cache state of green light, need a way for us
-// to be reset, altho has no bearing on real operation of 508a.
+// to be reset, altho has no bearing on real operation of SE1.
 STATIC mp_obj_t presume_green(void)
 {
     presumably_green_light = true;
@@ -248,7 +249,7 @@ STATIC mp_obj_t watchpoint(volatile mp_obj_t arg1)
 }
 MP_DEFINE_CONST_FUN_OBJ_1(watchpoint_obj, watchpoint);
 
-// See psramdisk.c
+// See psram.c
 extern const mp_obj_type_t psram_type;
 
 STATIC const mp_rom_map_elem_t ckcc_module_globals_table[] = {
@@ -354,6 +355,14 @@ void free(void *ptr)
 void *realloc(void *ptr, size_t size)
 {
     return m_realloc(ptr, size);
+}
+
+void led_state_OMIT(int led, int state)
+{
+    // A number of files in ports/stm32 include leds.h and then
+    // call led_state() directly. This prevents us from using that LED
+    // for LCD backlight control, which we want because they've figured out
+    // the PWM nicely... so see mpconfigboard.mk where we hack in this no-op.
 }
 
 // EOF
