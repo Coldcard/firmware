@@ -2,8 +2,7 @@
 #
 # decoders.py - Convert QR (or text) values into useful bitcoin-related objects.
 #
-import uasyncio as asyncio
-import ngu, bip39
+import ngu, bip39, ure
 from ubinascii import unhexlify as a2b_hex
 from exceptions import QRDecodeExplained
 from bbqr import TYPE_LABELS
@@ -170,6 +169,11 @@ def decode_short_text(got):
         except UnicodeError:
             raise QRDecodeExplained('UTF-8 decode failed')
 
+    # [0-9a-fA-F]{8}\s*:\s*[xtyYzZuUvV]pub[1-9A-HJ-NP-Za-km-z]{107}
+    # above is more precise BUT counted repetitions not supported in mpy
+    cc_ms_pat = r"[0-9a-fA-F]+\s*:\s*[xtyYzZuUvV]pub[1-9A-HJ-NP-Za-km-z]+"
+    if ("sortedmulti(" in got) or ure.search(cc_ms_pat, got):
+        return 'multi', (got,)
 
     # might be a PSBT?
     if len(got) > 100:
@@ -194,9 +198,6 @@ def decode_short_text(got):
     # - might be a story in text, etc.
     if (len(got) > 4096) or ('\n' in got):
         return 'text', (got,)
-
-    if "sortedmulti(" in got:
-        return 'multi', (got,)
 
     # Might be an address or pubkey?
     try:

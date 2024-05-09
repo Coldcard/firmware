@@ -662,6 +662,7 @@ class MultisigWallet(WalletABC):
                 is_mine = cls.check_xpub(xfp, value, deriv, chains.current_chain().ctype, my_xfp, xpubs)
                 if is_mine:
                     has_mine += 1
+
         return name, addr_fmt, xpubs, has_mine, M, N
 
     @classmethod

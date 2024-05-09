@@ -584,7 +584,7 @@ def test_zero_depth(clear_ms, use_regtest, addr_fmt, import_ms_wallet
 
     try:
         keys = import_ms_wallet(M, N, accept=1, keys=keys,
-                            addr_fmt=addr_fmt, derivs=["m", "m/45'"])
+                                addr_fmt=addr_fmt, derivs=["m", "m/45'"])
         def pm(i):
             return [] if i == 0 else [HARD(45), i, 0,0]
 
@@ -1086,7 +1086,8 @@ def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, M=1, N=
     from subprocess import check_output
 
     clear_ms()
-    keys = import_ms_wallet(M, N, name='cli-test', accept=1)
+    keys = import_ms_wallet(M, N, name='cli-test', accept=1,
+                            addr_fmt=addr_fmt_names[addr_fmt])
 
     pmapper = lambda i: [HARD(45), i, 0,3]
 
@@ -1331,7 +1332,8 @@ def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, impor
     settings_set('pms', 2 if (incl_xpubs == 'no-import') else 0)
 
     clear_ms()
-    keys = import_ms_wallet(M, N, name='cli-test', accept=1, do_import=(incl_xpubs != 'no-import'))
+    keys = import_ms_wallet(M, N, name='cli-test', accept=1, addr_fmt=out_style,
+                            do_import=(incl_xpubs != 'no-import'))
 
     psbt = fake_ms_txn(num_ins, num_outs, M, keys, incl_xpubs=incl_xpubs,
                 outstyles=[out_style], change_outputs=[1] if has_change else [])
@@ -1612,7 +1614,8 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
     M,N=2,2
 
     clear_ms()
-    import_ms_wallet(M, N, keys=keys, accept=1, name="core-cosign", derivs=[bc_deriv, "m/45h"])
+    import_ms_wallet(M, N, keys=keys, accept=1, name="core-cosign",
+                     addr_fmt=addr_fmt_names[addr_fmt], derivs=[bc_deriv, "m/45h"])
 
     cc_deriv = "m/45h/55"
     cc_pubkey = B2A(BIP32Node.from_hwif(simulator_fixed_tprv).subkey_for_path(cc_deriv).sec())
@@ -1715,7 +1718,7 @@ def test_ms_sign_bitrot(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_
     num_outs = 2
 
     clear_ms()
-    keys = import_ms_wallet(M, N, accept=1)
+    keys = import_ms_wallet(M, N, accept=1, addr_fmt=out_style)
 
     # given script, corrupt it a little or a lot
     def rotten(track, bitrot, scr):
@@ -1946,7 +1949,7 @@ def test_danger_warning(request, descriptor, clear_ms, import_ms_wallet, cap_sto
 
     clear_ms()
     M,N = 2,3
-    keys = import_ms_wallet(M, N, accept=1, descriptor=descriptor)
+    keys = import_ms_wallet(M, N, accept=1, descriptor=descriptor, addr_fmt="p2wsh")
     psbt = fake_ms_txn(1, 1, M, keys, incl_xpubs=True)
 
     open('debug/last.psbt', 'wb').write(psbt)
@@ -2307,12 +2310,12 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, m
     addr_type = "legacy"
     multi_addr = ms.getnewaddress("", addr_type)
     bitcoind.supply_wallet.sendtoaddress(address=multi_addr, amount=49)
-    bitcoind.supply_wallet.generatetoaddress(101, bitcoind.supply_wallet.getnewaddress())  # mining
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())  # mining
     dest_addr = ms.getnewaddress("", addr_type)
     assert all([addr.startswith("2") for addr in [multi_addr, dest_addr]])
     # create funded PSBT
     psbt_resp = ms.walletcreatefundedpsbt(
-        [], [{dest_addr: 5}], 0, {"fee_rate": 20, "change_type": addr_type, "subtractFeeFromOutputs": [0]}
+        [], [{dest_addr: 5}], 0, {"fee_rate": 1, "change_type": addr_type, "subtractFeeFromOutputs": [0]}
     )
     psbt = psbt_resp.get("psbt")
     import base64
@@ -2604,8 +2607,8 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     ("M must be <= N", "wsh(sortedmulti(3,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0/*))#uueddtsy"),
 ])
 def test_exotic_descriptors(desc, clear_ms, goto_home, need_keypress, pick_menu_item, cap_menu,
-                            cap_story, make_multisig, import_ms_wallet, microsd_path,
-                            bitcoind_d_wallet_w_sk, use_regtest, is_q1, press_select):
+                            cap_story, make_multisig, microsd_path, use_regtest, is_q1,
+                            press_select):
     use_regtest()
     clear_ms()
     msg, desc = desc
@@ -2667,13 +2670,16 @@ def test_ms_xpub_ordering(descriptor, m_n, clear_ms, make_multisig, import_ms_wa
     keys = make_multisig(M, N)
     all_options = list(itertools.combinations(keys, len(keys)))
     for opt in all_options:
-        import_ms_wallet(M, N, keys=opt, name=name, accept=1, do_import=True, addr_fmt="p2wsh", descriptor=descriptor)
-        psbt = fake_ms_txn(5, 5, M, opt, outstyles=all_out_styles, segwit_in=True, incl_xpubs=True)
+        import_ms_wallet(M, N, keys=opt, name=name, accept=1, do_import=True,
+                         addr_fmt="p2wsh", descriptor=descriptor)
+        psbt = fake_ms_txn(5, 5, M, opt, outstyles=all_out_styles,
+                           segwit_in=True, incl_xpubs=True)
         open('debug/last.psbt', 'wb').write(psbt)
         try_sign_microsd(psbt, encoding='base64')
         for opt_1 in all_options:
             # create PSBT with original keys order
-            psbt = fake_ms_txn(5, 5, M, opt_1, outstyles=all_out_styles, segwit_in=True, incl_xpubs=True)
+            psbt = fake_ms_txn(5, 5, M, opt_1, outstyles=all_out_styles,
+                               segwit_in=True, incl_xpubs=True)
             open('debug/last.psbt', 'wb').write(psbt)
             try_sign_microsd(psbt, encoding='base64')
 
@@ -2801,7 +2807,7 @@ def test_multisig_deriv_path_migration(settings_set, clear_ms, import_ms_wallet,
     import_ms_wallet(2, 3, accept=1, keys=keys, name="ms1",
                      derivs=derivs, addr_fmt=text_a_fmt)
     press_select()
-    import_ms_wallet(3, 5, name="ms2")
+    import_ms_wallet(3, 5, name="ms2", addr_fmt='p2wsh-p2sh')
     press_select()
     ms = settings_get("multisig")
 
@@ -2845,5 +2851,86 @@ def test_multisig_deriv_path_migration(settings_set, clear_ms, import_ms_wallet,
         assert "'" not in story
         press_cancel()
         press_cancel()
+
+
+@pytest.mark.parametrize("fpath", [
+    # CC export format
+    "data/multisig/export-p2sh-myself.txt",
+    "data/multisig/export-p2sh-p2wsh-myself.txt",
+    "data/multisig/export-p2wsh-myself.txt",
+    # descriptors
+    "data/multisig/desc-p2sh-myself.txt",
+    "data/multisig/desc-p2sh-p2wsh-myself.txt",
+    "data/multisig/desc-p2wsh-myself.txt",
+])
+def test_scan_any_qr(fpath, is_q1, scan_a_qr, clear_ms, goto_home,
+                     pick_menu_item, cap_story, press_cancel):
+    if not is_q1:
+        pytest.skip("No QR support for Mk4")
+
+    clear_ms()
+    goto_home()
+    pick_menu_item("Scan Any QR Code")
+
+    with open(fpath, "r") as f:
+        config = f.read()
+
+    actual_vers, parts = split_qrs(config, 'U', max_version=20)
+    random.shuffle(parts)
+
+    for p in parts:
+        scan_a_qr(p)
+        time.sleep(2.0 / len(parts))
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Create new multisig wallet?" in story
+    press_cancel()
+
+
+@pytest.mark.parametrize("N", [3, 15])
+def test_bare_cc_ms_qr_import(N, make_multisig, scan_a_qr, clear_ms, goto_home,
+                              pick_menu_item, cap_story, press_cancel, is_q1):
+    # bare:
+    # - no fingerprints
+    # - no xfps
+    # - no meta data
+
+    if not is_q1:
+        raise pytest.skip("No QR support for Mk4")
+
+    keys = make_multisig(N, N)
+    config = '\n'.join(sk.hwif(as_private=False) for xfp,m,sk in keys)
+    actual_vers, parts = split_qrs(config, 'U', max_version=20)
+    random.shuffle(parts)
+
+    # will not work in scan any qr in main menu (no xfp)
+    clear_ms()
+    goto_home()
+    pick_menu_item("Scan Any QR Code")
+
+    for p in parts:
+        scan_a_qr(p)
+        time.sleep(2.0 / len(parts))
+
+    title, story = cap_story()
+    assert title == 'Simple Text'
+    assert "We can't do any more with it." in story
+
+    press_cancel()
+
+    # if someone uses this bare format with keys of depth 1
+    # multisig import path needs to be used
+    pick_menu_item("Settings")
+    pick_menu_item("Multisig Wallets")
+    pick_menu_item("Import from QR")
+    for p in parts:
+        scan_a_qr(p)
+        time.sleep(2.0 / len(parts))
+
+    title, story = cap_story()
+    assert "Create new multisig wallet?" in story
+    assert f"{N}-of-{N}" in story
+    press_cancel()
 
 # EOF
