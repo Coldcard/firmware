@@ -4,6 +4,10 @@ This lists the changes in the most recent firmware, for each hardware platform.
 
 # Shared Improvements - Both Mk4 and Q
 
+**5.3.1 (Mk4) and 1.2.1Q is a hotfix to address multisig signing issue. No functional changes.**
+
+- _Important Bugfix_: Already imported multisig wallets would show errors when signing. This
+  was caused by our internal change in key path notation from `84'` (prime) to `84h` (hardened).
 - Enhancement: Add `Nunchuk` and `Zeus` options to `Export Wallet`
 - Enhancement: `View Identity` shows temporary seed active at the top
 - Enhancement: Can specify start index for address explorer export and browsing
@@ -23,11 +27,12 @@ This lists the changes in the most recent firmware, for each hardware platform.
 - Bugfix: Create ownership file when generating addresses export CSV
 - Recovery SD Card image building moved into its own repo:
   [github.com/Coldcard/recovery-images](https://github.com/Coldcard/recovery-images)
+- Bugfix: Reload trick pins before checking for active duress wallet.
 
 
 # Mk4 Specific Changes
 
-## 5.3.0 - 2024-05-06
+## 5.3.1 - 2024-05-09
 
 - Enhancement: When providing 12 or 18 word seed phrase, valid final word choices
   are presented in a new menu.
@@ -51,7 +56,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 
 # Q Specific Changes
 
-## 1.2.0Q - 2024-05-06
+## 1.2.1Q - 2024-05-09
 
 - Enhancement: Allow export of multisig XPUBs via BBQr
 - Enhancement: Import multisig via QR/BBQr - both legacy COLDCARD export and descriptors supported

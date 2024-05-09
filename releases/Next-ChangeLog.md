@@ -1,24 +1,21 @@
 # Change Log
 
-This lists the changes in the most recent firmware, for each hardware platform.
+This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk4 and Q
-
-- Bugfix: Migrate already saved multisig wallet derivation paths from "'" to "h".
-- Bugfix: Reload trick pins before checking for active duress wallet.
 
 
 # Mk4 Specific Changes
 
 ## 5.3.1 - 2024-05-09
 
-- none
+- none, just above fixes
 
 
 # Q Specific Changes
 
 ## 1.2.1Q - 2024-05-09
 
-- none
+- none, just above fixes
 
 
