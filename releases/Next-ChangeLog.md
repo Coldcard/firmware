@@ -21,6 +21,6 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 1.2.2Q - 2024-06-XX
 
-- none, just above fixes
+- Enhancement: Coldcard multisg export/import format detected in `Scan Any QR Code`
 
 

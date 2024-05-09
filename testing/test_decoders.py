@@ -144,15 +144,24 @@ def test_urldecode(url, sim_exec):
     assert result == unquote_plus(url)
 
 
-@pytest.mark.parametrize('desc', [
+@pytest.mark.parametrize('config', [
     'wsh(sortedmulti(2,[0f056943/48h/1h/0h/2h]tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[6ba6cfd0/48h/1h/0h/2h]tpubDFcrvj5n7gyaxWQkoX69k2Zij4vthiAwvN2uhYjDrE6wktKoQaE7gKVZRiTbYdrAYH1UFPGdzdtWJc6WfR2gFMq6XpxA12gCdQmoQNU9mgm/0/*,[747b698e/48h/1h/0h/2h]tpubDExj5FnaUnPAn7sHGUeBqD3buoNH5dqmjAT6884vbDpH1iDYWigb7kFo2cA97dc8EHb54u13TRcZxC4kgRS9gc3Ey2xc8c5urytEzTcp3ac/0/*,[7bb026be/48h/1h/0h/2h]tpubDFiuHYSJhNbHcbLJoxWdbjtUcbKR6PvLq53qC1Xq6t93CrRx78W3wcng8vJyQnY3giMJZEgNCRVzTojLb8RqPFpW5Ms2dYpjcJYofN1joyu/0/*))#al5z7mcj',
+    '0f056943: tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP\n6ba6cfd0: tpubDFcrvj5n7gyaxWQkoX69k2Zij4vthiAwvN2uhYjDrE6wktKoQaE7gKVZRiTbYdrAYH1UFPGdzdtWJc6WfR2gFMq6XpxA12gCdQmoQNU9mgm',
+    '0f056943: xpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP\n6ba6cfd0: tpubDFcrvj5n7gyaxWQkoX69k2Zij4vthiAwvN2uhYjDrE6wktKoQaE7gKVZRiTbYdrAYH1UFPGdzdtWJc6WfR2gFMq6XpxA12gCdQmoQNU9mgm',
+    '   0F056943   : tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP\n   6BA6CFD0  : tpubDFcrvj5n7gyaxWQkoX69k2Zij4vthiAwvN2uhYjDrE6wktKoQaE7gKVZRiTbYdrAYH1UFPGdzdtWJc6WfR2gFMq6XpxA12gCdQmoQNU9mgm',
+    ' 0AA5684E:ypub6URBiWBdvF4h7SSjejyy1Wmabo2RvKvoqHzD3sJXqbX8gGcdGvkofMSCuwThopEPZzaczYwSLVg2AMoS6hW8YNuwxYMtLhYokuqA2LHeiD7',
+    '00000000:zpub6oFT2ArZ4vcAxjdrV6mbDbs5mmAsrwvJkQWRqGCRDbu1jNRrXavNHR6Lw9RHoitJydhRk2XzoA2a3eQzpPv9LcbYpt4JvcNJ2dtoQxConEW',
+    ' afafafaf: Zpub6z9Y9QazdtAYPJoERmEa3gCtVZD95Jbu4gA6kXTxbNjRMYzmHzJeNXxGjrNmNA7DD6mQccY7gNR5Ap2m7d56V6iDfMAiL1qHvNAfzo3Qaun',
+    '11111111:Ypub6fKGqjv5VCd4Y1c7bQSwqb7PKb4h8gcQ9Zdsy8a5DNMYJTBY3L95kUJ8ieRBNFTHoTebs8wZDi4XHXRCPvf5gs2co1UHk71oee72cFcNrrt',
+    'a0a0a0a0:  Upub5MzDd5EQtUT98pqeFyJT1EjNdiUuNCeQV7YzqYzXhLr263vd2hUqGDfadpaqNcqcAuBNsEZKP4eKkNxwX912VvJDKegbQTjrZjrT3zJRqB4',
+    '7BB026BE:  Vpub5gpUvjuL39zcz82m6L65DKpsogdMJpduQE5DcwtR5MDu99jrHMePtHKif2YRNXVXaYJBci9sqizsdfaWEqR3J9ypBzP1zNZLqTv6SXYWTR8',
 ])
-def test_multisig_descriptors(desc, try_decode):
+def test_multisig(config, try_decode):
 
-    ft, vals = try_decode(desc)
+    ft, vals = try_decode(config)
 
     assert ft == "multi"
-    assert vals[0] == desc
+    assert vals[0] == config
 
 @pytest.mark.parametrize('data', [
     ('5J9Gfy2FNTw2EpkkQu41S9CTBBVij123kYPkbYAnaQkUHtMuv2Q', False, False),
