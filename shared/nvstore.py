@@ -358,9 +358,6 @@ class SettingsObject:
                 assert self.current['_age'] > 0
                 self._wipe_slot(pos)
 
-        # 4k is a large object, sigh, for us right now. cleanup
-        gc.collect()
-
         # done, if we found something
         if self.my_pos is not None:
             return
@@ -445,7 +442,6 @@ class SettingsObject:
 
         # Was sometimes running low on memory in this area: recover
         try:
-            gc.collect()
             self.save()
         except MemoryError:
             call_later_ms(250, self.write_out)
