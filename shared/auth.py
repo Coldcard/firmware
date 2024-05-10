@@ -731,6 +731,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
                 return
 
+            ux_clear_keys(True)
             dis.progress_bar_show(1)  # finish the Validating...
             if not hsm_active:
                 msg.write("Press OK to approve and sign transaction.")
