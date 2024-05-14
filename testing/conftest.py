@@ -862,7 +862,7 @@ def use_mainnet(settings_set):
 
 @pytest.fixture(scope="function")
 def use_testnet(settings_set):
-    def doit(do_testnet):
+    def doit(do_testnet=True):
         settings_set('chain', 'XTN' if do_testnet else 'BTC')
     yield doit
     settings_set('chain', 'XTN')

@@ -2880,4 +2880,36 @@ def test_bas64_psbt_qr(in_out, partial, segwit, scan_a_qr, readback_bbqr,
 
     press_cancel()      # back to menu
 
+
+def test_sorting_outputs_by_size(fake_txn, start_sign, cap_story, use_testnet,
+                                 press_cancel):
+    use_testnet()
+    out_vals = [1000000, 2000000, 3000000, 4000000, 5000000, 6000000, 7000000, 8000000,
+                9000000, 179989995, 11000000, 12000000, 13000000, 14000000, 15000000]
+    max_display_num = 10
+    rest_num = len(out_vals) - max_display_num
+    psbt = fake_txn(3, 15, segwit_in=True, outstyles=ADDR_STYLES_SINGLE,
+                    outvals=out_vals)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    rest_sum = 0
+    for i, ov in enumerate(sorted(out_vals, reverse=True)):
+        str_ov = f'{ov / 100000000:.8f} XTN'
+        if i < 10:
+            # these must be in story
+            assert str_ov in story
+        else:
+            # these are not covered in story, instead their vals are summed and
+            # provided just as rest sum
+            assert str_ov not in story
+            rest_sum += ov
+
+    # check rest sum is correct
+    rest_story = f"plus {rest_num} smaller output(s), not shown here, which total: "
+    rest_story += f'{rest_sum / 100000000:.8f} XTN'
+    assert rest_story in story
+    press_cancel()
+
 # EOF
