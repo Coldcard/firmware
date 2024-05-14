@@ -253,16 +253,25 @@ def test_bbqr_psbt(size, encoding, max_ver, partial, segwit, scan_a_qr, readback
     if file_type == 'T':
         assert not partial
         decoded = decode_with_bitcoind(rb)
-    elif file_type == 'P':
+        ic, oc = len(decoded['vin']), len(decoded['vout'])
+    else:
+        assert file_type == 'P'
         assert partial
         assert rb[0:4] == b'psbt'
         decoded = decode_psbt_with_bitcoind(rb)
         assert not decoded['unknown']
-        decoded = decoded['tx']
+        if 'tx' in decoded:
+            # psbt v0
+            decoded = decoded['tx']
+            ic, oc = len(decoded['vin']), len(decoded['vout'])
+        else:
+            # expect psbt v2
+            ic = decoded["input_count"]
+            oc = decoded["output_count"]
 
     # just smoke test; syntax not content
-    assert len(decoded['vin']) == num_in
-    assert len(decoded['vout']) == num_out
+    assert ic == num_in
+    assert oc == num_out
 
     press_cancel()      # back to menu
 

@@ -1518,7 +1518,7 @@ def test_priv_over_ux(quick_start_hsm, hsm_status, load_hsm_users):
 @pytest.mark.parametrize("allow_op_return", [False, True])
 def test_op_return_output_local(op_return_data, start_hsm, attempt_psbt, fake_txn, allow_op_return):
     dests = []
-    psbt = fake_txn(2, 2, op_return=(0, op_return_data), capture_scripts=dests)
+    psbt = fake_txn(2, 2, op_return=[(0, op_return_data)], capture_scripts=dests)
     if allow_op_return:
         policy = DICT(rules=[dict(whitelist=[render_address(d) for d in dests[0:2]],
             whitelist_opts=dict(allow_zeroval_outs=True))])

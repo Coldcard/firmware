@@ -3,7 +3,7 @@
 # Transaction Signing. Important.
 #
 
-import time, pytest, os, random, pdb, struct, base64, binascii, itertools, datetime
+import time, pytest, os, random, pdb, struct, base64, binascii, itertools, datetime, math
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from binascii import b2a_hex, a2b_hex
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
@@ -20,7 +20,7 @@ from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP
 from txn import *
 from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint
 from ckcc_protocol.constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
-from charcodes import KEY_QR
+from charcodes import KEY_QR, KEY_RIGHT
 
 
 SEQUENCE_LOCKTIME_TYPE_FLAG = (1 << 22)
@@ -2089,7 +2089,9 @@ def test_no_outputs_tx(fake_txn, microsd_path, goto_home, press_select, pick_men
 
     pick_menu_item('Ready To Sign')
     time.sleep(0.1)
-    pick_menu_item(fname)
+    try:
+        pick_menu_item(fname)
+    except KeyError: pass
     time.sleep(0.1)
     title, story = cap_story()
 
@@ -2820,10 +2822,10 @@ def test_timelocks_visualize(start_sign, end_sign, dev, bitcoind, use_regtest,
 @pytest.mark.parametrize('in_out', [(4,1),(2,2),(2,1)])
 @pytest.mark.parametrize('partial', [False, True])
 @pytest.mark.parametrize('segwit', [True, False])
-def test_bas64_psbt_qr(in_out, partial, segwit, scan_a_qr, readback_bbqr,
-                       goto_home, use_regtest, cap_story, fake_txn, dev,
-                       decode_psbt_with_bitcoind, decode_with_bitcoind,
-                       press_cancel, press_select, need_keypress):
+def test_base64_psbt_qr(in_out, partial, segwit, scan_a_qr, readback_bbqr,
+                        goto_home, use_regtest, cap_story, fake_txn, dev,
+                        decode_psbt_with_bitcoind, decode_with_bitcoind,
+                        press_cancel, press_select, need_keypress):
     def hack(psbt):
         if partial:
             # change first input to not be ours
@@ -2867,16 +2869,25 @@ def test_bas64_psbt_qr(in_out, partial, segwit, scan_a_qr, readback_bbqr,
     if file_type == 'T':
         assert not partial
         decoded = decode_with_bitcoind(rb)
-    elif file_type == 'P':
+        ic, oc = len(decoded['vin']), len(decoded['vout'])
+    else:
+        assert file_type == 'P'
         assert partial
         assert rb[0:4] == b'psbt'
         decoded = decode_psbt_with_bitcoind(rb)
         assert not decoded['unknown']
-        decoded = decoded['tx']
+        if 'tx' in decoded:
+            # psbt v0
+            decoded = decoded['tx']
+            ic, oc = len(decoded['vin']), len(decoded['vout'])
+        else:
+            # expect psbt v2
+            ic = decoded["input_count"]
+            oc = decoded["output_count"]
 
     # just smoke test; syntax not content
-    assert len(decoded['vin']) == num_in
-    assert len(decoded['vout']) == num_out
+    assert ic == num_in
+    assert oc == num_out
 
     press_cancel()      # back to menu
 
@@ -2910,6 +2921,74 @@ def test_sorting_outputs_by_size(fake_txn, start_sign, cap_story, use_testnet,
     rest_story = f"plus {rest_num} smaller output(s), not shown here, which total: "
     rest_story += f'{rest_sum / 100000000:.8f} XTN'
     assert rest_story in story
+    press_cancel()
+
+
+@pytest.mark.parametrize("psbtv2", [True, False])
+@pytest.mark.parametrize("chain", ["BTC", "XTN"])
+@pytest.mark.parametrize("data", [
+    # (out_style, amount, is_change)
+    [("p2pkh", 1000000, 0)] * 99,
+    [("p2wpkh", 1000000, 1)] * 11,
+    [("p2pkh", 1000000, 1)] * 11 + [("p2wpkh", 50000000, 0)] * 16,
+    [("p2pkh", 1000000, 1), ("p2wpkh", 50000000, 0), ("p2wpkh-p2sh", 800000, 1)] * 11,
+])
+def test_txout_explorer(psbtv2, chain, data, fake_txn, start_sign,
+                        settings_set, txout_explorer):
+    settings_set("chain", chain)
+    outstyles = []
+    outvals = []
+    change_outputs = []
+    for i in range(len(data)):
+        os, ov, is_change = data[i]
+        outstyles.append(os)
+        outvals.append(ov)
+        if is_change:
+            change_outputs.append(i)
+
+    inp_amount = sum(outvals) + 100000  # 100k sat fee
+    psbt = fake_txn(1, len(data), segwit_in=True, outstyles=outstyles,
+                    outvals=outvals, change_outputs=change_outputs,
+                    psbt_v2=psbtv2, input_amount=inp_amount)
+
+    start_sign(psbt)
+    txout_explorer(data, chain)
+
+
+def test_txout_explorer_op_return(fake_txn, start_sign, cap_story, is_q1,
+                                  need_keypress, press_cancel):
+    d = [
+        (1, b"Coinkite"),
+        (0, b"Mk1 Mk2 Mk3 Mk4 Q"),
+        (100, b"binarywatch.org"),
+        (100, b"a" * 75),
+    ]
+    psbt = fake_txn(1, 20, segwit_in=False, op_return=d)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    assert "Press (2) to explore txn" in story
+    need_keypress("2")
+    time.sleep(.1)
+    # OP_RETURN is put at the end of output list (fake_txn)
+    # 20 normal outputs, all OP_RETURN on last page
+    for _ in range(2):
+        need_keypress(KEY_RIGHT if is_q1 else "9")
+
+    time.sleep(.1)
+    _, story = cap_story()
+    ss = story.split("\n\n")
+    for i, (sa, sb, (amount, data)) in enumerate(zip(ss[:-1:2], ss[1::2], d), start=20):
+        assert f"Output {i}:" == sa
+        val, name, dd = sb.split("\n")
+        assert "OP_RETURN" in name
+        assert f'{amount / 100000000:.8f} XTN' == val
+        hex_str, ascii_str = dd.split(" ", 1)
+        assert f"(ascii: {data.decode()})" == ascii_str
+        assert data.hex() == hex_str
+
+    press_cancel()
     press_cancel()
 
 # EOF
