@@ -938,7 +938,10 @@ class ApproveTransaction(UserAuthorizedAction):
                 continue
 
             if len(largest) < MAX_VISIBLE_OUTPUTS:
-                largest.append( (tx_out.nValue, self.render_output(tx_out)) )
+                largest.append((tx_out.nValue, self.render_output(tx_out)))
+                if len(largest) == MAX_VISIBLE_OUTPUTS:
+                    # descending sort from the biggest value to lowest (sort on out.nValue)
+                    largest = sorted(largest, key=lambda x: x[0], reverse=True)
                 continue
 
             # insertion sort

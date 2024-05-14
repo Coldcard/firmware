@@ -9,6 +9,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Decrypting Tapsigner backup failed even for correct key
 - Bugfix: Clear any pending keystrokes before PSBT approval screen.
 - Enhancement: UX mention need to remove old duress wallets before locking down temporary seed
+- Bugfix: UX show only 10 outputs with the biggest value on screen
 
 # Mk4 Specific Changes
 
