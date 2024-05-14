@@ -1,6 +1,6 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, io, pdb
+import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, io, math, pdb
 from subprocess import check_output
 from ckcc.protocol import CCProtocolPacker
 from helpers import B2A, U2SAT, hash160
@@ -2070,6 +2070,84 @@ def goto_address_explorer(goto_home, pick_menu_item, need_keypress,
         if "menu lists the first payment address" in story:
             need_keypress('4') # click into stub menu
             time.sleep(0.01)
+
+    return doit
+
+@pytest.fixture
+def txout_explorer(cap_story, press_cancel, need_keypress, is_q1):
+    def doit(data, chain="XTN"):
+        time.sleep(.1)
+        title, story = cap_story()
+        assert title == 'OK TO SEND?'
+        assert "Press (2) to explore txn" in story
+        need_keypress("2")
+        time.sleep(.1)
+
+        n = 10
+        for i in range(0, len(data), n):
+            d = data[i:i + n]
+            time.sleep(.1)
+            _, story = cap_story()
+            ss = story.split("\n\n")
+            assert len(ss) == (len(d) * 2) + 1
+            assert "Press RIGHT to see next group, LEFT to go back." in ss[-1]
+
+            for i, (sa, sb, (af, amount, change)) in enumerate(zip(ss[:-1:2], ss[1::2], d), start=i):
+                if change:
+                    assert f"Output {i} (change):" == sa
+                else:
+                    assert f"Output {i}:" == sa
+
+                txt_amount, _, addr = sb.split("\n")
+                assert txt_amount == f'{amount / 100000000:.8f} {chain}'
+                if af == "p2pkh":
+                    if chain == "BTC":
+                        assert addr.startswith("1")
+                    else:
+                        assert addr[0] in "mn"
+                elif af in ("p2wpkh", "p2wsh"):
+                    target = "bc1q" if chain == "BTC" else "tb1q"
+                    assert addr.startswith(target)
+                elif af in ("p2sh", "p2wpkh-p2sh", "p2wsh-p2sh"):
+                    target = "3" if chain == "BTC" else "2"
+                    assert addr.startswith(target)
+                else:
+                    raise ValueError(f"'{af}' not implemented")
+
+            need_keypress(KEY_RIGHT if is_q1 else "9")
+
+        # 10 outputs per story
+        # currently sitting at the last story in explorer
+        # try to go further (must not work and story is unchanged)
+        for _ in range(2):
+            need_keypress(KEY_RIGHT if is_q1 else "9")
+            time.sleep(.1)
+            _, xstory = cap_story()
+            assert story == xstory
+
+        # go back to first explorer story
+        story_nums = math.ceil(len(data) / 10)
+        for _ in range(story_nums):
+            need_keypress(KEY_LEFT if is_q1 else "7")
+            time.sleep(.1)
+
+        _, story = cap_story()
+        assert "Output 0" in story.split("\n\n")[0]
+
+        # currently sitting at the first story in explorer
+        # try to go further (must not work and story is unchanged)
+        for _ in range(2):
+            need_keypress(KEY_LEFT if is_q1 else "7")
+            time.sleep(.1)
+            _, xstory = cap_story()
+            assert story == xstory
+
+        # leave explorer - will return back to sign story
+        press_cancel()
+        time.sleep(.1)
+        title, _ = cap_story()
+        assert title == 'OK TO SEND?'
+        press_cancel()
 
     return doit
 

@@ -24,7 +24,7 @@ def fake_txn(dev, pytestconfig):
              invals=None, outvals=None, segwit_in=False, wrapped=False,
              outstyles=['p2pkh'],  psbt_hacker=None, change_outputs=[],
              capture_scripts=None, add_xpub=None, op_return=None,
-             psbt_v2=None):
+             psbt_v2=None, input_amount=1E8):
 
         psbt = BasicPSBT()
 
@@ -83,7 +83,7 @@ def fake_txn(dev, pytestconfig):
                 # p2pkh
                 scr = bytes([0x76, 0xa9, 0x14]) + subkey.hash160() + bytes([0x88, 0xac])
 
-            supply.vout.append(CTxOut(int(1E8 if not invals else invals[i]), scr))
+            supply.vout.append(CTxOut(int(input_amount if not invals else invals[i]), scr))
 
             if segwit_in:
                 # just utxo for segwit
@@ -101,13 +101,15 @@ def fake_txn(dev, pytestconfig):
                 # TODO height timelock
                 # TODO time timelock
 
-            spendable = CTxIn(COutPoint(uint256_from_str(supply.hash), 0), nSequence=0xffffffff)
+            spendable = CTxIn(COutPoint(supply.sha256, 0), nSequence=0xffffffff)
             txn.vin.append(spendable)
 
         for i in range(num_outs):
             # random P2PKH
             if not outstyles:
                 style = ADDR_STYLES[i % len(ADDR_STYLES)]
+            elif len(outstyles) == num_outs:
+                style = outstyles[i]
             else:
                 style = outstyles[i % len(outstyles)]
 
@@ -133,10 +135,10 @@ def fake_txn(dev, pytestconfig):
 
             if psbt_v2:
                 psbt.outputs[i].script = act_scr
-                psbt.outputs[i].amount = int(outvals[i] if outvals else round(((1E8*num_ins)-fee) / num_outs, 4))
+                psbt.outputs[i].amount = int(outvals[i] if outvals else round(((input_amount*num_ins)-fee) / num_outs, 4))
 
             if not outvals:
-                h = CTxOut(int(round(((1E8*num_ins)-fee) / num_outs, 4)), act_scr)
+                h = CTxOut(int(round(((input_amount*num_ins)-fee) / num_outs, 4)), act_scr)
             else:
                 h = CTxOut(int(outvals[i]), act_scr)
 
@@ -147,26 +149,27 @@ def fake_txn(dev, pytestconfig):
 
         # op_return is a tuple of (amount, data)
         if op_return:
-            amount, data = op_return
-            op_return_size = len(data)
-            if op_return_size < 76:
-                script = bytes([106, op_return_size]) + data
-            else:
-                script = bytes([106, 76, op_return_size]) + data
+            for op_ret in op_return:
+                amount, data = op_ret
+                op_return_size = len(data)
+                if op_return_size < 76:
+                    script = bytes([106, op_return_size]) + data
+                else:
+                    script = bytes([106, 76, op_return_size]) + data
 
-            op_ret_o = BasicPSBTOutput(idx=len(psbt.outputs))
-            if psbt_v2:
-                op_ret_o.script = script
-                op_ret_o.amount = amount
-                psbt.output_count += 1
-            else:
-                op_return_out = CTxOut(amount, script)
-                txn.vout.append(op_return_out)
+                op_ret_o = BasicPSBTOutput(idx=len(psbt.outputs))
+                if psbt_v2:
+                    op_ret_o.script = script
+                    op_ret_o.amount = amount
+                    psbt.output_count += 1
+                else:
+                    op_return_out = CTxOut(amount, script)
+                    txn.vout.append(op_return_out)
 
-            psbt.outputs.append(op_ret_o)
+                psbt.outputs.append(op_ret_o)
 
-            if capture_scripts is not None:
-                capture_scripts.append(script)
+                if capture_scripts is not None:
+                    capture_scripts.append(script)
 
         if not psbt_v2:
             psbt.txn = txn.serialize_with_witness()
