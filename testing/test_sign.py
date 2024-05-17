@@ -2185,6 +2185,23 @@ def test_psbt_v2(outstyle, segwit_in, wrapped_segwit_in, fake_txn , start_sign, 
 
     assert resp["complete"] is True
 
+def test_psbt_v2_tx_modifiable_parse(fake_txn, start_sign, end_sign):
+    psbt = fake_txn(2, 2, segwit_in=True, wrapped=True,
+                    change_outputs=[0], psbt_v2=True)
+    p = BasicPSBT().parse(psbt)
+    # 3 = both inputs and outputs are modifiable
+    # need just some value instead of None, in that case flag is ommited
+    p.txn_modifiable = 3
+    with BytesIO() as fd:
+        p.serialize(fd)
+        mod_psbt = fd.getvalue()
+
+    start_sign(mod_psbt)
+    signed = end_sign(accept=True, finalize=False)
+    assert signed
+    po = BasicPSBT().parse(signed)
+    # signed with sighash ALL - meaning nothing is modifiable now
+    assert po.txn_modifiable == 0
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("way", ["i+", "i-", "o+", "o-"])
