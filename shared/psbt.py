@@ -947,7 +947,7 @@ class psbtInputProxy(psbtProxy):
 
 class psbtObject(psbtProxy):
     "Just? parse and store"
-
+    short_values = { PSBT_GLOBAL_TX_MODIFIABLE }
     no_keys = { PSBT_GLOBAL_UNSIGNED_TX }
 
     def __init__(self):
@@ -1029,6 +1029,8 @@ class psbtObject(psbtProxy):
             self.num_outputs = deser_compact_size(BytesIO(self.get(val)))
             self.has_goc = True
         elif kt == PSBT_GLOBAL_TX_MODIFIABLE:
+            # bytes of length 1 (tx modifiable in short_values)
+            assert len(val) == 1
             self.txn_modifiable = val[0]
         else:
             self.unknown = self.unknown or {}
