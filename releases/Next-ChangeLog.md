@@ -5,6 +5,7 @@ This lists the new changes that have not yet been published in a normal release.
 # Shared Improvements - Both Mk4 and Q
 
 - Bugfix: Fix PSBTv2 PSBT_GLOBAL_TX_MODIFIABLE parsing
+- Bugfix: Decrypting Tapsigner backup failed even for correct key
 
 # Mk4 Specific Changes
 

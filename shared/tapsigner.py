@@ -2,7 +2,7 @@
 #
 # tapsigner.py - TAPSIGNER backup file support
 #
-import ustruct, ngu, ure, aes256ctr
+import ngu
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import a2b_base64
 from ux import ux_show_story
@@ -14,7 +14,8 @@ from actions import file_picker, import_extended_key_as_secret
 def decrypt_tapsigner_backup(backup_key, data):
     try:
         backup_key = a2b_hex(backup_key)
-        decrypt = aes256ctr.new(backup_key, bytes(16))  # IV 0
+        # AES-128-CTR (ARM assembly module only supports AES-256-CTR)
+        decrypt = ngu.aes.CTR(backup_key, bytes(16))  # IV 0
         decrypted = decrypt.cipher(data).decode().strip()
         # format of TAPSIGNER backup is known in advance
         # extended private key is expected at the beginning of the first line
