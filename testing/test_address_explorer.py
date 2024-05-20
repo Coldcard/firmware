@@ -4,12 +4,11 @@
 #
 # Only single-sig here. Multisig cases are elsewhere.
 #
-import pytest, time, os, io, csv, hashlib
+import pytest, time, io, csv, bech32
 from ckcc_protocol.constants import *
-from pycoin.key.BIP32Node import BIP32Node
-from pycoin.contrib.segwit_addr import encode as sw_encode
-from pycoin.encoding import a2b_hashed_base58, hash160
-from helpers import detruncate_address
+from bip32 import BIP32Node
+from base58 import decode_base58_checksum
+from helpers import detruncate_address, hash160
 from charcodes import KEY_QR, KEY_LEFT, KEY_RIGHT
 from constants import MAX_BIP32_IDX
 
@@ -63,16 +62,16 @@ def validate_address():
     # Check whether an address is covered by the given subkey
     def doit(addr, sk):
         if addr[0] in '1mn':
-            assert addr == sk.address(False)
+            assert addr == sk.address()
         elif addr[0:3] in { 'bc1', 'tb1' }:
             h20 = sk.hash160()
-            assert addr == sw_encode(addr[0:2], 0, h20)
+            assert addr == bech32.encode(addr[0:2], 0, h20)
         elif addr[0:5] == "bcrt1":
             h20 = sk.hash160()
-            assert addr == sw_encode(addr[0:4], 0, h20)
+            assert addr == bech32.encode(addr[0:4], 0, h20)
         elif addr[0] in '23':
             h20 = hash160(b'\x00\x14' + sk.hash160())
-            assert h20 == a2b_hashed_base58(addr)[1:]
+            assert h20 == decode_base58_checksum(addr)[1:]
         else:
             raise ValueError(addr)
     return doit
@@ -160,7 +159,7 @@ def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress,
         # derive index=0 address
         _id = next(gap) + idx
         subpath = path.format(account=0, change=0, idx=start_idx) # e.g. "m/44h/1h/0h/0/0"
-        sk = node_prv.subkey_for_path(subpath[2:].replace("h", "'"))
+        sk = node_prv.subkey_for_path(subpath)
 
         # capture full index=0 address from display screen & validate it
         mi = m[_id]
@@ -218,7 +217,7 @@ def test_applications_samourai(chain, change, option, goto_address_explorer, cap
         assert f_addr == addr
         assert subpath.startswith(f"m/84h/{coin_type}/{account_num}/{1 if change else 0}")
         # derive the subkey and validate the corresponding address
-        sk = node_prv.subkey_for_path(subpath[2:].replace("h", "'"))
+        sk = node_prv.subkey_for_path(subpath)
         validate_address(addr, sk)
 
 @pytest.mark.parametrize('start_idx, press_seq, expected_start, expected_n', [
@@ -268,7 +267,7 @@ def test_address_display(goto_address_explorer, parse_display_screen, mk_common_
         # validate each address on screen
         addr_dict = parse_display_screen(expected_start, expected_n)
         for subpath, given_addr in addr_dict.items():
-            sk = node_prv.subkey_for_path(subpath[2:].replace("h", "'"))
+            sk = node_prv.subkey_for_path(subpath)
             validate_address(given_addr, sk)
 
         press_cancel()  # back
@@ -293,7 +292,7 @@ def test_dump_addresses(way, change, generate_addresses_file, mk_common_derivati
     for subpath, addr in generate_addresses_file(way=way, start_idx=start_idx, change=change):
         # derive the subkey and validate the corresponding address
         assert subpath.split("/")[-2] == "1" if change else "0"
-        sk = node_prv.subkey_for_path(subpath[2:].replace("h", "'"))
+        sk = node_prv.subkey_for_path(subpath)
         validate_address(addr, sk)
 
 @pytest.mark.parametrize('account_num', [ 34, 9999, 1])
@@ -338,7 +337,7 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item,
         assert '{account}' in path
 
         subpath = path.format(account=account_num, change=0, idx=start_idx) # e.g. "m/44'/1'/X'/0/0"
-        sk = node_prv.subkey_for_path(subpath[2:].replace("h", "'"))
+        sk = node_prv.subkey_for_path(subpath)
 
         # capture full index=0 address from display screen & validate it
 
@@ -360,7 +359,7 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item,
 
         for subpath, addr in generate_addresses_file(way=way, start_idx=start_idx):
             assert subpath.split('/')[-3] == str(account_num)+"h"
-            sk = node_prv.subkey_for_path(subpath[2:].replace("h", "'"))
+            sk = node_prv.subkey_for_path(subpath)
             validate_address(addr, sk)
 
         press_cancel()

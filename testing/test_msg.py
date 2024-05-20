@@ -3,9 +3,8 @@
 # Message signing.
 #
 import pytest, time, os, itertools, hashlib
-from pycoin.contrib.msg_signing import parse_signed_message
-from pycoin.key.BIP32Node import BIP32Node
-from msg import verify_message, RFC_SIGNATURE_TEMPLATE, sign_message
+from bip32 import BIP32Node
+from msg import verify_message, RFC_SIGNATURE_TEMPLATE, sign_message, parse_signed_message
 from base64 import b64encode, b64decode
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
@@ -558,8 +557,8 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
         files.append((fname, digest, fpath, mode, c))
 
     wallet = BIP32Node.from_master_secret(os.urandom(32))
-    addr = wallet.address(False)
-    sk = wallet._secret_exponent_bytes
+    addr = wallet.address()
+    sk = bytes(wallet.node.private_key)
     sig = sign_message(sk, msg.strip().encode())
     armored = RFC_SIGNATURE_TEMPLATE.format(addr=addr, sig=sig, msg=msg)
     sig_name = "sigs.sig"

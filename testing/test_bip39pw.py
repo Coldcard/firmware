@@ -4,7 +4,7 @@
 #
 
 import pytest, time, struct, pdb
-from pycoin.key.BIP32Node import BIP32Node
+from bip32 import BIP32Node
 from binascii import a2b_hex
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
@@ -40,7 +40,7 @@ def test_b9p_vectors(dev, set_seed_words, press_select, vector, pw='RoZert'[::-1
     got = BIP32Node.from_wallet_key(xpub)
     exp = BIP32Node.from_wallet_key(xprv)
 
-    assert got.public_pair() == exp.public_pair()
+    assert got.sec() == exp.sec()
 
 @pytest.mark.parametrize('pw', ['test 2', 'with some spaces',
                                 '123 12l3kj1l2k3j 1l2k3j 1l2k3j ',
@@ -130,7 +130,7 @@ def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story,
         seed = Mnemonic.to_seed(words, passphrase=pw)
         expect = BIP32Node.from_master_secret(seed)
 
-        assert got.public_pair() == expect.public_pair()
+        assert got.sec() == expect.sec()
 
         xfp, = struct.unpack('I', expect.fingerprint())
 

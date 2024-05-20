@@ -104,17 +104,16 @@ p=PassphraseSaver(); p._calc_key(cs); RV.write(b2a_hex(p.key)); cs.__exit__()'''
     assert len(key) == 64
 
     # recalc what it should be
-    from pycoin.key.BIP32Node import BIP32Node
-    from pycoin.encoding import to_bytes_32
+    from bip32 import BIP32Node
     from hashlib import sha256
 
     mk = BIP32Node.from_wallet_key(simulator_fixed_tprv)
 
-    sk = mk.subkey_for_path('2147431408p/0p')
+    sk = mk.subkey_for_path('2147431408h/0h')
 
     md = sha256()
     md.update(salt)
-    md.update(to_bytes_32(sk.secret_exponent()))
+    md.update(bytes(sk.node.private_key))
     md.update(salt)
 
     expect = sha256(md.digest()).hexdigest()

@@ -1,13 +1,13 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # stuff I need sometimes
-import random
-from io import BytesIO
+import random, hashlib
 from binascii import b2a_hex, a2b_hex
 from decimal import Decimal
 from pysecp256k1 import tagged_sha256
 from pysecp256k1.extrakeys import xonly_pubkey_serialize, xonly_pubkey_tweak_add, xonly_pubkey_from_pubkey
 from pysecp256k1.extrakeys import xonly_pubkey_parse
+from ripemd import ripemd160
 
 
 def B2A(s):
@@ -16,39 +16,8 @@ def B2A(s):
 def U2SAT(v):
     return int(v * Decimal('1E8'))
 
-# use like this:
-#
-#       with into_hex() as a:
-#           a.write('sdlkfjsdflkj')
-#
-# ... will print hex of whatever was streamed.
-#
-class into_hex(BytesIO):
-    def __exit__(self, *a):
-        print('hex: %s' % str(b2a_hex(self.getvalue()), 'ascii'))
-        return super().__exit__(*a)
-
-'''
-    >>> from binascii import *
-    >>> from helpers import into_hex
-    >>> from pycoin.tx.Tx import Tx
-    >>> t = Tx.from_hex('010000....')
-    >>> with into_hex() as fd:
-    >>>     t.txs_out[0].stream(fd)
-'''
-
-def dump_txos(hx, out_num=0):
-    from binascii import b2a_hex
-    from helpers import into_hex
-    from pycoin.tx.Tx import Tx
-
-    t = Tx.from_hex(hx)
-    with into_hex() as fd:
-        t.txs_out[out_num].stream(fd)
-
-    print('hash160: %s' % b2a_hex(t.txs_out[out_num].hash160()))
-
-    return t
+def hash160(data):
+    return ripemd160(hashlib.sha256(data).digest())
 
 def prandom(count):
     # make some bytes, randomly, but not: deterministic
@@ -91,7 +60,6 @@ def fake_dest_addr(style='p2pkh'):
 def make_change_addr(wallet, style):
     # provide script, pubkey and xpath for a legit-looking change output
     import struct, random
-    from pycoin.encoding import hash160
 
     redeem_scr, actual_scr = None, None
     deriv = [12, 34, random.randint(0, 1000)]
@@ -158,9 +126,6 @@ def path_to_str(bin_path, prefix='m/', skip=1):
 def str_to_path(path):
     # Take string derivation path, and make a list of numbers,
     # - no syntax checking here
-
-    assert path[0:2] == 'm/'
-
     rv = []
     for p in path.split('/'):
         if p == 'm': continue
@@ -173,7 +138,7 @@ def str_to_path(path):
 
         rv.append(here)
 
-    assert path == path_to_str(rv, skip=0)
+    # assert path == path_to_str(rv, skip=0)
 
     return rv
 
@@ -181,7 +146,7 @@ def slip132undo(orig):
     # take a SLIP-132 xpub/ypub/z/U/?pub/prv and convert into BIP-32 style
     # - preserve testnet vs. mainnet
     # - return addr fmt info
-    from pycoin.encoding import a2b_hashed_base58, b2a_hashed_base58
+    from base58 import decode_base58_checksum, encode_base58_checksum
     from ckcc_protocol.constants import AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH, AF_CLASSIC
     from ckcc_protocol.constants import AF_P2WPKH
 
@@ -204,53 +169,19 @@ def slip132undo(orig):
         (True, AF_P2WSH, '02575483', '02575048', 'V'),
     ]
 
-    raw = a2b_hashed_base58(orig)
+    raw = decode_base58_checksum(orig)
 
     for testnet, addr_fmt, pub, priv, hint in variants:
 
         if raw[0:4] == a2b_hex(pub):
-            return b2a_hashed_base58((tpub if testnet else xpub) + raw[4:]), \
+            return encode_base58_checksum((tpub if testnet else xpub) + raw[4:]), \
                         testnet, addr_fmt, False
 
         if raw[0:4] == a2b_hex(priv):
-            return b2a_hashed_base58((tprv if testnet else xprv) + raw[4:]), \
+            return encode_base58_checksum((tprv if testnet else xprv) + raw[4:]), \
                         testnet, addr_fmt, True
 
     raise RuntimeError("unknown prefix")
-
-def sign_msg(key, msg, addr_fmt, b64 = False):
-    from ckcc_protocol.constants import AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2WPKH
-
-    # signs some bytes Bitcoin style using pycoin
-    from pycoin.contrib.msg_signing import sign_message
-    from pycoin.key.key_from_text import key_from_text
-    from pycoin.encoding import from_bytes_32, double_sha256
-    from base64 import b64decode, b64encode
-    from psbt import ser_compact_size
-
-    preimage = b'\x18Bitcoin Signed Message:\n' + ser_compact_size(len(msg)) + msg
-    md = double_sha256(preimage)
-    md = from_bytes_32(md)
-    sig = sign_message(key_from_text(key), msg_hash=md)
-    sig = b64decode(sig)
-
-    # pycoin doesn't support segwit signing so we have to adjust the header
-    if addr_fmt == AF_CLASSIC:
-        adjust = 0
-    elif addr_fmt == AF_P2WPKH_P2SH:
-        adjust = 4
-    elif addr_fmt == AF_P2WPKH:
-        adjust = 8
-    else:
-        raise ValueError('unsupported address format for signing')
-
-    if adjust:
-        sig = bytes([sig[0] + adjust]) + sig[1:]
-
-    if b64:
-        return b64encode(sig)
-    else:
-        return sig
 
 def detruncate_address(s):
     try:

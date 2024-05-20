@@ -15,10 +15,10 @@ def test_codecs(sim_execfile):
 
 def test_public(sim_execfile):
     "verify contents of public 'dump' file"
-    from pycoin.key.BIP32Node import BIP32Node
-    from pycoin.contrib.segwit_addr import encode as sw_encode
-    from pycoin.contrib.segwit_addr import decode as sw_decode
-    from pycoin.encoding import a2b_hashed_base58, hash160
+    import bech32
+    from bip32 import BIP32Node
+    from base58 import decode_base58_checksum
+    from helpers import hash160
 
     pub = sim_execfile('devtest/dump_public.py')
     assert 'Error' not in pub
@@ -48,7 +48,7 @@ def test_public(sim_execfile):
         if ln[0:1] == 'm' and '=>' in ln:
             subpath, result = ln.split(' => ', 1)
 
-            sk = node_prv.subkey_for_path(subpath[2:].replace("h", "'"))
+            sk = node_prv.subkey_for_path(subpath)
 
             if result[1:4] == 'pub' and result[0] not in 'xt':
                 # SLIP-132 garbage
@@ -56,27 +56,27 @@ def test_public(sim_execfile):
                 result = result.split('#', 1)[0].strip()
 
                 # just base58/checksum check
-                assert a2b_hashed_base58(result)
+                assert decode_base58_checksum(result)
 
             elif result[1:4] == 'pub':
                 try:
                     expect = BIP32Node.from_wallet_key(result)
                 except Exception as e:
                     if 'unknown prefix' in str(e):
-                        # pycoin not yet ready for SLIP-132
+                        # BIP32Node not yet ready for SLIP-132
                         assert result[0] != 'x'
                         print("SKIP: " + ln)
                         continue
                     raise
-                assert sk.hwif(as_private=False) == result
+                assert sk.hwif() == result
             elif result[0] in '1mn':
-                assert result == sk.address(False)
+                assert result == sk.address()
             elif result[0:3] in { 'bc1', 'tb1' }:
                 h20 = sk.hash160()
-                assert result == sw_encode(result[0:2], 0, h20)
+                assert result == bech32.encode(result[0:2], 0, h20)
             elif result[0] in '23':
                 h20 = hash160(b'\x00\x14' + sk.hash160())
-                assert h20 == a2b_hashed_base58(result)[1:]
+                assert h20 == decode_base58_checksum(result)[1:]
             else:
                 raise ValueError(result)
 

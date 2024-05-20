@@ -2,20 +2,9 @@
 #
 # unit test for address decoding from various types of CTxOuts
 from h import a2b_hex, b2a_hex
-from psbt import psbtObject
 from serializations import CTxOut
 from uio import BytesIO
-from sffile import SFFile
 
-'''
-    >>> from binascii import *
-    >>> from helpers import into_hex
-    >>> from pycoin.tx.Tx import Tx
-    >>> t = Tx.from_hex('010000....')
-    >>> with into_hex() as fd:
-    >>>     t.txs_out[0].stream(fd)
-
-'''
 
 cases = [
     # TxOut, type, is_segwit, hash160/pubkey, 

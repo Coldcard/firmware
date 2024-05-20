@@ -2,7 +2,8 @@
 #
 # Mk4 Virtual Disk related tests.
 #
-import pytest, glob, re, time
+
+import pytest, glob, re, time, io, os
 from binascii import b2a_hex, a2b_hex
 import ndef
 from hashlib import sha256
@@ -146,15 +147,16 @@ def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, pre
 
         # validate what we got
         if got_txn:
-            from pycoin.tx.Tx import Tx
+            from ctransaction import CTransaction
             # parse it a little
             assert got_txn[0:4] != b'psbt'
-            t = Tx.from_bin(got_txn)
-            assert t.version in [1, 2]
+            t = CTransaction()
+            t.deserialize(io.BytesIO(got_txn))
+            assert t.nVersion in [1, 2]
             if txid:
-                assert t.id() == txid
+                assert t.txid().hex() == txid
             else:
-                txid = t.id()
+                txid = t.txid().hex()
 
         if got_psbt:
             assert got_psbt[0:5] == b'psbt\xff'
@@ -272,7 +274,7 @@ def test_import_prv_virtdisk(testnet, pick_menu_item, cap_story, need_keypress,
     fname = 'test-%d.txt' % os.getpid()
     path = virtdisk_path(fname)
 
-    from pycoin.key.BIP32Node import BIP32Node
+    from bip32 import BIP32Node
     node = BIP32Node.from_master_secret(os.urandom(32), netcode=netcode)
     prv = node.hwif(as_private=True) + '\n'
     if testnet:

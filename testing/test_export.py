@@ -8,12 +8,11 @@ import sys
 sys.path.append("../shared")
 from descriptor import Descriptor
 from mnemonic import Mnemonic
-import pytest, time, os, json, io
-from pycoin.key.BIP32Node import BIP32Node
-from pycoin.contrib.segwit_addr import encode as sw_encode
+import pytest, time, os, json, io, bech32
+from bip32 import BIP32Node
 from ckcc_protocol.constants import *
 from helpers import xfp2str, slip132undo
-from conftest import simulator_fixed_xfp, simulator_fixed_tprv, simulator_fixed_words
+from conftest import simulator_fixed_xfp, simulator_fixed_tprv, simulator_fixed_words, simulator_fixed_xprv
 from ckcc_protocol.constants import AF_CLASSIC, AF_P2WPKH
 from pprint import pprint
 from charcodes import KEY_NFC, KEY_QR
@@ -37,7 +36,6 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
                      mk4_qr_not_allowed):
     mk4_qr_not_allowed(way)
     # test UX and operation of the 'bitcoin core' wallet export
-    from pycoin.contrib.segwit_addr import encode as sw_encode
     use_regtest()
     goto_home()
     pick_menu_item('Advanced/Tools')
@@ -82,9 +80,9 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
             path, addr = ln.strip().split(' => ', 1)
             assert path.startswith(f"m/84h/1h/{acct_num}h/0")
             assert addr.startswith('bcrt1q') # TODO here we should differentiate if testnet or smthg
-            sk = BIP32Node.from_wallet_key(simulator_fixed_tprv).subkey_for_path(path[2:].replace("h", "'"))
+            sk = BIP32Node.from_wallet_key(simulator_fixed_tprv).subkey_for_path(path)
             h20 = sk.hash160()
-            assert addr == sw_encode(addr[0:4], 0, h20) # TODO here we should differentiate if testnet or smthg
+            assert addr == bech32.encode(addr[0:4], 0, h20) # TODO here we should differentiate if testnet or smthg
             addrs.append(addr)
 
     assert len(addrs) == 3
@@ -106,7 +104,7 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
             assert desc.startswith(f'wpkh([{xfp}/84h/1h/{acct_num}h]')
 
             expect = BIP32Node.from_wallet_key(simulator_fixed_tprv)\
-                        .subkey_for_path(f"84'/1'/{acct_num}'.pub").hwif()
+                        .subkey_for_path(f"84'/1'/{acct_num}'").hwif()
 
             assert expect in desc
             assert expect+f'/{n}/*' in desc
@@ -144,7 +142,7 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
         assert desc.startswith(f'wpkh([{xfp}/84h/1h/{acct_num}h]')
 
         expect = BIP32Node.from_wallet_key(simulator_fixed_tprv)\
-                    .subkey_for_path(f"84'/1'/{acct_num}'.pub").hwif()
+                    .subkey_for_path(f"84'/1'/{acct_num}'").hwif()
 
         assert expect in desc
         assert expect+f'/{n}/*' in desc
@@ -203,7 +201,7 @@ def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, press_sel
     assert obj['MasterFingerprint'] == xfp2str(simulator_fixed_xfp)
 
     got = BIP32Node.from_wallet_key(xpub)
-    expect = BIP32Node.from_wallet_key(simulator_fixed_tprv).subkey_for_path(f"84'/{int(testnet)}'/0'.pub")
+    expect = BIP32Node.from_wallet_key(simulator_fixed_tprv).subkey_for_path(f"84'/{int(testnet)}'/0'")
 
     assert got.sec() == expect.sec()
 
@@ -272,7 +270,7 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
         # no slip132 here
 
         got = BIP32Node.from_wallet_key(xpub)
-        expect = BIP32Node.from_wallet_key(simulator_fixed_tprv).subkey_for_path(deriv[2:].replace("h", "'"))
+        expect = BIP32Node.from_wallet_key(simulator_fixed_tprv).subkey_for_path(deriv)
 
         assert got.sec() == expect.sec()
 
@@ -340,12 +338,12 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
             assert v['deriv'].endswith(f"h/{acct_num}h/{b48n}h")
 
         node = BIP32Node.from_wallet_key(v['xpub'])
-        assert v['xpub'] == node.hwif(as_private=False)
+        assert v['xpub'] == node.hwif()
         first = node.subkey_for_path('0/0')
         addr = v.get('first', None)
 
         if fn == 'bip44':
-            assert first.address() == v['first']
+            assert first.address(netcode="XTN" if testnet else "BTC") == v['first']
             addr_vs_path(addr, v['deriv'] + '/0/0', AF_CLASSIC, testnet=testnet)
         elif ('bip48_' in fn) or (fn == 'bip45'):
             # multisig: cant do addrs
@@ -356,13 +354,12 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
 
             h20 = first.hash160()
             if fn == 'bip84':
-                assert addr == sw_encode(addr[0:2], 0, h20)
+                assert addr == bech32.encode(addr[0:2], 0, h20)
                 addr_vs_path(addr, v['deriv'] + '/0/0', AF_P2WPKH, testnet=testnet)
             elif fn == 'bip49':
                 # don't have test logic for verifying these addrs
                 # - need to make script, and bleh
-                assert addr[0] in '23'
-                #addr_vs_path(addr, v['deriv'] + '/0/0', AF_P2WSH_P2SH, script=)
+                assert first.address(addr_fmt="p2sh-p2wpkh", netcode="XTN" if testnet else "BTC") == v['first']
             else:
                 assert False
 
@@ -399,9 +396,9 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
 
     obj = load_export(way, label="Unchained", is_json=True, sig_check=False)
 
-    root = BIP32Node.from_wallet_key(simulator_fixed_tprv)
-    if not testnet:
-        root._netcode = "BTC"
+    ek = simulator_fixed_tprv if testnet else simulator_fixed_xprv
+    root = BIP32Node.from_wallet_key(ek)
+
     assert obj['xfp'] == xfp2str(simulator_fixed_xfp)
     assert obj['account'] == int(acct_num)
     if acct_num == "0":
@@ -414,8 +411,8 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
     for k in addr_formats:
         xpub = slip132undo(obj[k])[0] if k != 'p2sh' else obj[k]
         node = BIP32Node.from_wallet_key(xpub)
-        assert xpub == node.hwif(as_private=False)
-        sk = root.subkey_for_path(obj[f'{k}_deriv'][2:].replace("h", "'") + '.pub')
+        assert xpub == node.hwif()
+        sk = root.subkey_for_path(obj[f'{k}_deriv'])
         #assert node.chain_code() == sk.chain_code()
         assert node.hwif() == sk.hwif()
 
@@ -447,9 +444,9 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, mi
 
     xfp = xfp2str(simulator_fixed_xfp).upper()
 
-    root = BIP32Node.from_wallet_key(simulator_fixed_tprv)
-    if not testnet:
-        root._netcode = "BTC"
+    ek = simulator_fixed_tprv if testnet else simulator_fixed_xprv
+    root = BIP32Node.from_wallet_key(ek)
+
     for ln in fp:
         if 'fingerprint' in ln:
             assert ln.strip().endswith(xfp)
@@ -467,8 +464,8 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, mi
             f = None
 
         if rhs[1:4] == 'pub':
-            expect = root.subkey_for_path(lhs[2:].replace("h", "'"))
-            assert expect.hwif(as_private=False) == rhs
+            expect = root.subkey_for_path(lhs)
+            assert expect.hwif() == rhs
             continue
 
         if not f:
@@ -639,7 +636,7 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, setting
     seed = Mnemonic.to_seed(simulator_fixed_words)
     node = BIP32Node.from_master_secret(
         seed, netcode="BTC" if chain == "BTC" else "XTN"
-    ).subkey_for_path(derive[2:].replace("h", "H"))
+    ).subkey_for_path(derive)
     xpub_target = node.hwif()
     assert xpub_target in xpub
 
@@ -722,7 +719,7 @@ def test_zeus_descriptor_export(addr_fmt, acct_num, goto_home, need_keypress, pi
     seed = Mnemonic.to_seed(simulator_fixed_words)
     node = BIP32Node.from_master_secret(
         seed, netcode="BTC" if chain == "BTC" else "XTN"
-    ).subkey_for_path(derive[2:].replace("h", "H"))
+    ).subkey_for_path(derive)
     xpub_target = node.hwif()
     assert xpub_target in xpub
 

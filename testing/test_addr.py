@@ -44,7 +44,6 @@ def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt,
         assert path.replace("'", "h") in story
     else:
         assert path in story
-        path = path.replace("h", "'")  # needed for pycoin
 
     assert addr in story
     assert addr in story.split('\n')
@@ -130,10 +129,9 @@ def test_show_addr_nfc(path, str_addr_fmt, nfc_write_text, nfc_read_text, pick_m
 
     if "'" in path:
         assert path != story_path  # normalized to h
-        assert story_path.replace("'", "h") == story_path
+        assert path.replace("'", "h") == story_path
     else:
         assert story_path == path
-        path = path.replace("h", "'")  # pycoin
 
     press_nfc()  # share over NFC
     addr = nfc_read_text()

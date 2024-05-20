@@ -11,11 +11,14 @@ from io import BytesIO
 from pprint import pprint, pformat
 from decimal import Decimal
 from base64 import b64encode, b64decode
+from base58 import encode_base58_checksum
 from helpers import B2A, U2SAT, prandom, fake_dest_addr, make_change_addr, parse_change_back
 from helpers import xfp2str, seconds2human_readable
-from pycoin.key.BIP32Node import BIP32Node
+from msg import verify_message
+from bip32 import BIP32Node
 from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP
 from txn import *
+from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint
 from ckcc_protocol.constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from charcodes import KEY_QR
 
@@ -634,9 +637,6 @@ def test_change_fraud_path(start_sign, use_regtest, end_sign, case, check_agains
 @pytest.mark.bitcoind
 def test_change_fraud_addr(start_sign, end_sign, use_regtest, check_against_bitcoind, cap_story):
     # fraud: BIP-32 path of output doesn't match TXO address
-    from pycoin.tx.Tx import Tx
-    from pycoin.tx.TxOut import TxOut
-
     # NOTE: out#1 is change:
     #chg_addr = 'mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'
 
@@ -644,13 +644,14 @@ def test_change_fraud_addr(start_sign, end_sign, use_regtest, check_against_bitc
     b4 = BasicPSBT().parse(psbt)
 
     # tweak output addr to garbage
-    t = Tx.parse(BytesIO(b4.txn))
-    chg = t.txs_out[1]          # pycoin.tx.TxOut.TxOut
-    b = bytearray(chg.script)
+    t = CTransaction()
+    t.deserialize(BytesIO(b4.txn))
+    chg = t.vout[1]          # tx.CTxOut
+    b = bytearray(chg.scriptPubKey)
     b[-5] ^= 0x55
-    chg.script = bytes(b)
+    chg.scriptPubKey = bytes(b)
 
-    b4.txn = t.as_bin()
+    b4.txn = t.serialize_with_witness()
 
     with BytesIO() as fd:
         b4.serialize(fd)
@@ -664,11 +665,11 @@ def test_change_fraud_addr(start_sign, end_sign, use_regtest, check_against_bitc
     assert 'Change output is fraud' in str(ee)
 
 
-@pytest.mark.parametrize('case', [ 'p2wpkh', 'p2sh'])
+@pytest.mark.parametrize('case', ['p2wpkh', 'p2sh-p2wpkh'])
 @pytest.mark.bitcoind
-def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, use_regtest, cap_story, case):
+def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, use_regtest,
+                            cap_story, case):
     # not fraud: output address encoded in various equiv forms
-    from pycoin.tx.Tx import Tx
     use_regtest()
     # NOTE: out#1 is change:
     #chg_addr = 'mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'
@@ -676,26 +677,39 @@ def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, use_re
     psbt = open('data/example-change.psbt', 'rb').read()
     b4 = BasicPSBT().parse(psbt)
 
-    t = Tx.parse(BytesIO(b4.txn))
+    t = CTransaction()
+    t.deserialize(BytesIO(b4.txn))
 
-    pkh = t.txs_out[1].hash160()
+    scpk = t.vout[1].scriptPubKey
+    assert scpk[:3] == bytes.fromhex("76a914")  # OP_DUP OP_HASH160 OP_PUSH20
+    assert scpk[-2:] == bytes.fromhex("88ac")  # OP_EQUALVERIFY OP_CHECKSIG
+    pkh = scpk[3:-2]
 
     if case == 'p2wpkh':
-        t.txs_out[1].script = bytes([0, 20]) + bytes(pkh)
+        t.vout[1].scriptPubKey = bytes([0, 20]) + pkh
 
         from bech32 import encode
         expect_addr = encode('bcrt', 0, pkh)
 
-    elif case == 'p2sh':
+    elif case == 'p2sh-p2wpkh':
+        redeem_scr = bytes([0, 20]) + pkh
+        h160_redeem_scr = hash160(redeem_scr)
+        spk = bytes([0xa9, 0x14]) + h160_redeem_scr + bytes([0x87])
 
-        spk = bytes([0xa9, 0x14]) + pkh + bytes([0x87])
+        b4.outputs[1].redeem_script = redeem_scr
+        t.vout[1].scriptPubKey = spk
+        expect_addr = encode_base58_checksum(b"\xc4" + h160_redeem_scr)
 
-        b4.outputs[1].redeem_script = bytes([0, 20]) + bytes(pkh)
-        t.txs_out[1].script = spk
+    # we do not understand below script - good as it is stupid
+    # elif case == 'p2sh-p2pkh':
+    #     redeem_scr = scpk
+    #     h160_redeem_scr = hash160(redeem_scr)
+    #     spk = bytes([0xa9, 0x14]) + h160_redeem_scr + bytes([0x87])
+    #     b4.outputs[1].redeem_script = redeem_scr
+    #     t.vout[1].scriptPubKey = spk
+    #     expect_addr = encode_base58_checksum(b"\xc4" + h160_redeem_scr)
 
-        expect_addr = t.txs_out[1].address('XTN')
-
-    b4.txn = t.as_bin()
+    b4.txn = t.serialize_with_witness()
 
     with BytesIO() as fd:
         b4.serialize(fd)
@@ -860,16 +874,11 @@ def test_change_outs(fake_txn, start_sign, end_sign, cap_story, dev, num_outs, m
 
         if (visualized & STXN_SIGNED):
             # last line should be signature, using 'm' over the rest
-            from pycoin.contrib.msg_signing import verify_message
-            from pycoin.key.BIP32Node import BIP32Node
-
-            #def verify_message(key_or_address, signature, message=None, msg_hash=None, netcode=None):
-
             assert story[-1] == '\n'
             last_nl = story[:-1].rindex('\n')
             msg, sig = story[0:last_nl+1], story[last_nl:]
             wallet = BIP32Node.from_wallet_key(master_xpub)
-            assert verify_message(wallet, sig, message=msg) == True
+            assert verify_message(wallet.address(), sig, message=msg) is True
             story = msg
 
     assert 'Network fee' in story
@@ -1024,18 +1033,6 @@ def test_change_troublesome(dev, start_sign, cap_story, try_path, expect):
     psbt = open('data/example-change.psbt', 'rb').read()
     b4 = BasicPSBT().parse(psbt)
 
-    if 0:
-        #from pycoin.tx.Tx import Tx
-        #from pycoin.tx.TxOut import TxOut
-        # tweak output addr to garbage
-        t = Tx.parse(BytesIO(b4.txn))
-        chg = t.txs_out[1]          # pycoin.tx.TxOut.TxOut
-        b = bytearray(chg.script)
-        b[-5] ^= 0x55
-        chg.script = bytes(b)
-
-        b4.txn = t.as_bin()
-
     pubkey = a2b_hex('03c80814536f8e801859fc7c2e5129895b261153f519d4f3418ffb322884a7d7e1')
     path = [int(p) if ("'" not in p) else 0x80000000+int(p[:-1]) 
                         for p in try_path.split('/')]
@@ -1090,15 +1087,15 @@ def test_bip143_attack(try_sign, sim_exec, set_xfp, settings_set, settings_get):
 def spend_outputs(funding_psbt, finalized_txn, tweaker=None):
     # take details from PSBT that created a finalized txn (also provided)
     # and build a new PSBT that spends those change outputs.
-    from pycoin.tx.Tx import Tx
-    from pycoin.tx.TxOut import TxOut
-    from pycoin.tx.TxIn import TxIn
-    funding = Tx.from_bin(finalized_txn)
+    funding = CTransaction()
+    funding.deserialize(BytesIO(finalized_txn))
+    funding.calc_sha256()
     b4 = BasicPSBT().parse(funding_psbt)
 
     # segwit change outputs only
-    spendables = [(n,i) for n,i in enumerate(funding.tx_outs_as_spendable()) 
-                        if i.script[0:2] == b'\x00\x14' and b4.outputs[n].bip32_paths]
+    spendables = [(n,o)
+                   for n, o in enumerate(funding.vout)
+                   if o.scriptPubKey[:2] == b"\x00\x14" and b4.outputs[n].bip32_paths]
 
     #spendables = list(reversed(spendables))
     random.shuffle(spendables)
@@ -1114,20 +1111,20 @@ def spend_outputs(funding_psbt, finalized_txn, tweaker=None):
     for p_in, (f_out, sp) in zip(nn.inputs, [(b4.outputs[x], s) for x,s in spendables]):
         p_in.bip32_paths = f_out.bip32_paths
         p_in.witness_script = f_out.redeem_script
-        with BytesIO() as fd:
-            sp.stream(fd)
-            p_in.witness_utxo = fd.getvalue()
+        p_in.witness_utxo = sp.serialize()
 
     # build new txn: single output, no change, no miner fee
     act_scr = fake_dest_addr('p2wpkh')
-    dest_out = TxOut(sum(s.coin_value for n,s in spendables), act_scr)
+    dest_out = CTxOut(sum(s.nValue for _,s in spendables), act_scr)
 
-    txn = Tx(2, [s.tx_in() for _,s in spendables], [dest_out])
+    txn = CTransaction()
+    txn.nVersion = 2
+    txn.vin = [CTxIn(COutPoint(funding.sha256, i), nSequence=0xffffffff)
+               for i,s in spendables]
+    txn.vout = [dest_out]
 
     # put unsigned TXN into PSBT
-    with BytesIO() as b:
-        txn.stream(b)
-        nn.txn = b.getvalue()
+    nn.txn = txn.serialize_with_witness()
 
     with BytesIO() as rv:
         nn.serialize(rv)
@@ -1170,10 +1167,9 @@ def test_bip143_attack_data_capture(num_utxo, segwit_in, try_sign, fake_txn, set
 
     assert hist_count() in {128, hist_b4+num_utxo+num_inp_utxo}
 
-    # compare to PyCoin
-    from pycoin.tx.Tx import Tx
-    t = Tx.from_bin(txn)
-    assert t.id() == txid
+    t = CTransaction()
+    t.deserialize(BytesIO(txn))
+    assert t.txid().hex() == txid
 
     # expect all of new "change outputs" to be recorded (none of the non-segwit change tho)
     # plus the one input we "revealed"
@@ -1182,7 +1178,6 @@ def test_bip143_attack_data_capture(num_utxo, segwit_in, try_sign, fake_txn, set
 
     all_utxo = hist_count()
     assert all_utxo == hist_b4+num_utxo+num_inp_utxo
-
     # build a new PSBT based on those change outputs
     psbt2, raw = spend_outputs(psbt, txn)
 
@@ -1197,7 +1192,7 @@ def test_bip143_attack_data_capture(num_utxo, segwit_in, try_sign, fake_txn, set
     for amt in [int(1E6), 1]:
         def value_tweak(spendables):
             assert len(spendables) > 2
-            spendables[0][1].coin_value += amt
+            spendables[0][1].nValue += amt
 
         psbt3, raw = spend_outputs(psbt, txn, tweaker=value_tweak)
         with pytest.raises(CCProtoError) as ee:
@@ -1225,10 +1220,9 @@ def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoin
     txid = story.strip().split()[0]
 
     if 1:
-        # compare to PyCoin
-        from pycoin.tx.Tx import Tx
-        t = Tx.from_bin(txn)
-        assert t.id() == txid
+        t = CTransaction()
+        t.deserialize(BytesIO(txn))
+        assert t.txid().hex() == txid
 
     if 1:
         # compare to bitcoin core
@@ -1244,7 +1238,7 @@ def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoin
 @pytest.mark.unfinalized            # iff partial=1
 @pytest.mark.parametrize('encoding', ['binary', 'hex', 'base64'])
 #@pytest.mark.parametrize('num_outs', [1,2,3,4,5,6,7,8])
-@pytest.mark.parametrize('num_outs', [1,2])
+@pytest.mark.parametrize('num_outs', [1,15])
 @pytest.mark.parametrize('del_after', [1, 0])
 @pytest.mark.parametrize('partial', [1, 0])
 def test_sdcard_signing(encoding, num_outs, del_after, partial, try_sign_microsd, fake_txn, try_sign, dev, settings_set):
@@ -1367,7 +1361,7 @@ def test_render_outs(out_style, segwit, outval, fake_txn, start_sign, end_sign, 
     xp = dev.master_xpub
     oi = int(Decimal(outval) * int(1E8))
 
-    psbt = fake_txn(1, 2, dev.master_xpub, segwit_in=segwit, outvals=[oi, 1E8-oi],
+    psbt = fake_txn(1, 2, dev.master_xpub, segwit_in=segwit, outvals=[oi, int(1E8-oi)],
                         outstyles=[out_style], change_outputs=[1])
 
     open('debug/render.psbt', 'wb').write(psbt)
@@ -1477,9 +1471,9 @@ def test_qr_txn(num_in, num_out, request, fake_txn, try_sign, dev, cap_screen_qr
 
         qr = cap_screen_qr().decode()
 
-        from pycoin.tx.Tx import Tx
-        t = Tx.from_bin(txn)
-        assert t.id() == qr.lower()
+        t = CTransaction()
+        t.deserialize(BytesIO(txn))
+        assert t.txid().hex() == qr.lower()
 
     else:
         # TODO: QR for txn itself yet

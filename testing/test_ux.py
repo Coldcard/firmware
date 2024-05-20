@@ -5,7 +5,7 @@ from helpers import xfp2str, prandom
 from charcodes import KEY_DOWN, KEY_QR, KEY_NFC
 from constants import AF_CLASSIC, simulator_fixed_words, simulator_fixed_xfp
 from mnemonic import Mnemonic
-from pycoin.key.BIP32Node import BIP32Node
+from bip32 import BIP32Node
 
 
 def test_get_secrets(get_secrets, master_xpub):

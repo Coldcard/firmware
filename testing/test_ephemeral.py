@@ -9,7 +9,7 @@ from constants import simulator_fixed_words, simulator_fixed_tprv
 from ckcc.protocol import CCProtocolPacker
 from txn import fake_txn
 from test_ux import word_menu_entry
-from pycoin.key.BIP32Node import BIP32Node
+from bip32 import BIP32Node
 from helpers import xfp2str, a2b_hex
 from charcodes import KEY_CLEAR, KEY_NFC
 
@@ -406,7 +406,6 @@ def import_ephemeral_xprv(microsd_path, virtdisk_path, goto_eph_seed_menu,
                           nfc_write_text, ephemeral_seed_disabled_ui, confirm_tmp_seed,
                           press_nfc, press_select, is_q1):
     def doit(way, extended_key=None, testnet=True, seed_vault=False, from_main=False):
-        from pycoin.key.BIP32Node import BIP32Node
         if testnet:
             netcode = "XTN"
         else:
@@ -875,7 +874,7 @@ def test_seed_vault_menus(dev, data, settings_set, master_settings_get, pick_men
         node = BIP32Node.from_hwif(active)
         ch, pk = entropy_bytes[1:33], entropy_bytes[33:65]
         assert node.chain_code() == ch
-        assert node.secret_exponent() == int(pk.hex(), 16)
+        assert bytes(node.node.private_key) == pk
 
     istory, parsed_ident = get_identity_story()
     assert parsed_ident["tmp"] and not parsed_ident["pass"]
@@ -1175,7 +1174,7 @@ def test_xfp_collision(reset_seed_words, settings_set, import_ephemeral_xprv,
     k0 = node.hwif(as_private=True)
 
     # change chain code but presevre public key
-    node._chain_code = hashlib.sha256(node._chain_code).digest()
+    node.node.chain_code = hashlib.sha256(node.node.chain_code).digest()
     k1 = node.hwif(as_private=True)
     assert k1 != k0
 

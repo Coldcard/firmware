@@ -6,6 +6,10 @@ None of this code ships on the product itself, but it does get used for testing 
 ## Dependencies
 * 7z
 
+#### Crypto Backend
+* requires compiled `secp256k1`
+* native [secp256k1](https://github.com/bitcoin-core/secp256k1) wrapped via [python-secp256k1](https://github.com/scgbckbone/python-secp256k1) - compile secp and export path to .so file as described [here](https://github.com/scgbckbone/python-secp256k1?tab=readme-ov-file#installation-and-dependencies) 
+
 ## Background
 
 - pytest is used to track test cases and fixtures, etc

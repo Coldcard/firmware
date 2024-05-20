@@ -1,9 +1,11 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, pdb
+import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, io, pdb
 from subprocess import check_output
 from ckcc.protocol import CCProtocolPacker
-from helpers import B2A, U2SAT
+from helpers import B2A, U2SAT, hash160
+from base58 import decode_base58_checksum
+from bip32 import BIP32Node
 from msg import verify_message
 from api import bitcoind, match_key
 from api import bitcoind_wallet, bitcoind_d_wallet, bitcoind_d_wallet_w_sk, bitcoind_d_sim_sign
@@ -241,11 +243,10 @@ def master_xpub(dev):
         assert r == dev.master_xpub
     elif dev.master_xpub:
         # testnet vs. mainnet difference
-        from pycoin.key.BIP32Node import BIP32Node
         a = BIP32Node.from_wallet_key(r)
         b = BIP32Node.from_wallet_key(dev.master_xpub)
 
-        assert a.secret_exponent() == b.secret_exponent()
+        assert a.node == b.node
 
     return r
 
@@ -281,17 +282,13 @@ def get_setting(sim_execfile, sim_exec):
 
 @pytest.fixture(scope='module')
 def addr_vs_path(master_xpub):
-    from pycoin.key.BIP32Node import BIP32Node
+    from bip32 import BIP32Node
     from ckcc_protocol.constants import AF_CLASSIC, AFC_PUBKEY, AF_P2WPKH, AFC_SCRIPT
     from ckcc_protocol.constants import AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH
     from bech32 import bech32_decode, convertbits, Encoding
-    from pycoin.encoding import a2b_hashed_base58, hash160
-    from pycoin.key.BIP32Node import PublicPrivateMismatchError
     from hashlib import sha256
 
     def doit(given_addr, path=None, addr_fmt=None, script=None, testnet=True):
-        if path:
-            path = path.replace("h", "'")
         if not script:
             try:
                 # prefer using xpub if we can
@@ -299,7 +296,7 @@ def addr_vs_path(master_xpub):
                 if not testnet:
                     mk._netcode = "BTC"
                 sk = mk.subkey_for_path(path[2:])
-            except PublicPrivateMismatchError:
+            except:
                 mk = BIP32Node.from_wallet_key(simulator_fixed_tprv)
                 if not testnet:
                     mk._netcode = "BTC"
@@ -307,11 +304,11 @@ def addr_vs_path(master_xpub):
 
         if addr_fmt in {None,  AF_CLASSIC}:
             # easy
-            assert sk.address() == given_addr
+            assert sk.address(netcode="XTN" if testnet else "BTC") == given_addr
 
         elif addr_fmt & AFC_PUBKEY:
 
-            pkh = sk.hash160(use_uncompressed=False)
+            pkh = sk.hash160()
 
             if addr_fmt == AF_P2WPKH:
                 hrp, data, enc = bech32_decode(given_addr)
@@ -322,7 +319,7 @@ def addr_vs_path(master_xpub):
             else:
                 assert addr_fmt == AF_P2WPKH_P2SH
                 assert given_addr[0] in '23'
-                expect = a2b_hashed_base58(given_addr)[1:]
+                expect = decode_base58_checksum(given_addr)[1:]
                 assert len(expect) == 20
                 assert hash160(b'\x00\x14' + pkh) == expect
 
@@ -330,7 +327,7 @@ def addr_vs_path(master_xpub):
             assert script, 'need a redeem/witness script'
             if addr_fmt == AF_P2SH:
                 assert given_addr[0] in '23'
-                expect = a2b_hashed_base58(given_addr)[1:]
+                expect = decode_base58_checksum(given_addr)[1:]
                 assert hash160(script) == expect
 
             elif addr_fmt == AF_P2WSH:
@@ -342,7 +339,7 @@ def addr_vs_path(master_xpub):
 
             elif addr_fmt == AF_P2WSH_P2SH:
                 assert given_addr[0] in '23'
-                expect = a2b_hashed_base58(given_addr)[1:]
+                expect = decode_base58_checksum(given_addr)[1:]
                 assert hash160(b'\x00\x20' + sha256(script).digest()) == expect
 
             else:
@@ -1271,12 +1268,13 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
                 assert 'final' in result_fname
                 assert os.path.exists(in_file)
 
-            from pycoin.tx.Tx import Tx
+            from ctransaction import CTransaction
             # parse it a little
             assert result[0:4] != b'psbt', 'still a PSBT, but asked for finalize'
-            t = Tx.from_bin(result)
-            assert t.version in [1, 2]
-            assert t.id() == txid
+            t = CTransaction()
+            t.deserialize(io.BytesIO(result))
+            assert t.nVersion in [1, 2]
+            assert t.txid().hex() == txid
 
         else:
             assert result[0:5] == b'psbt\xff'
@@ -1375,14 +1373,15 @@ def end_sign(dev, need_keypress):
             for i in tp.inputs:
                 sigs.extend(i.part_sigs.values())
         else:
-            from pycoin.tx.Tx import Tx
+            from ctransaction import CTransaction
             # parse it
             res = psbt_out
             assert res[0:4] != b'psbt', 'still a PSBT, but asked for finalize'
-            t = Tx.from_bin(res)
-            assert t.version in [1, 2]
+            t = CTransaction()
+            t.deserialize(io.BytesIO(res))
+            assert t.nVersion in [1, 2]
 
-            # TODO: pull out signatures from signed txn, but pycoin not helpful on that
+            # TODO: pull out signatures from signed txn
                     
         for sig in sigs:
             assert len(sig) <= 71, "overly long signature observed"
@@ -1855,7 +1854,6 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
 def tapsigner_encrypted_backup(microsd_path, virtdisk_path):
     def doit(way, testnet=True):
         # create backup
-        from pycoin.key.BIP32Node import BIP32Node
         node = BIP32Node.from_master_secret(os.urandom(32), netcode="XTN" if testnet else "BTC")
         plaintext = node.hwif(as_private=True) + '\n' + random.choice(["m", "m/84h/0h/0h", "m/44'/0'/0'/0'"])
         if testnet:
