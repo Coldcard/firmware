@@ -274,24 +274,12 @@ def test_cancel_on_empty_added_numbers(pick_menu_item, is_q1, cap_menu,
     assert "Ready To Sign" in m[:3]
 
 
-@pytest.mark.parametrize("has_duress", [True, False])
 @pytest.mark.parametrize('stype', ["bip39pw", "words", "xprv", None])
 def test_lockdown_ux(stype, pick_menu_item, set_bip39_pw, goto_home,
                      press_cancel, get_setting, reset_seed_words,
                      generate_ephemeral_words, import_ephemeral_xprv,
-                     press_select, is_q1, cap_story, has_duress,
-                     goto_trick_menu, new_trick_pin, new_pin_confirmed,
-                     clear_all_tricks):
+                     press_select, is_q1, cap_story, cap_menu):
     # test UX and operation of the 'seed lockdown' option
-    if has_duress:
-        goto_trick_menu()
-        pin = '123-254'
-        new_trick_pin(pin, 'Duress Wallet', None)
-        item = 'BIP-85 Wallet #1'
-        pick_menu_item(item)
-        press_select()
-        new_pin_confirmed(pin, item, None, None)
-        goto_home()
 
     if stype:
         if stype == "bip39pw":
@@ -308,41 +296,25 @@ def test_lockdown_ux(stype, pick_menu_item, set_bip39_pw, goto_home,
     pick_menu_item('Advanced/Tools')
     pick_menu_item('Danger Zone')
     pick_menu_item('Seed Functions')
+    if not stype:
+        assert 'Lock Down Seed' not in cap_menu()
+        return
     pick_menu_item('Lock Down Seed')
 
     time.sleep(0.1)
     title, story = cap_story()
 
-    if stype:
-        where = title if is_q1 else story
-        assert 'Are you SURE' in where
-        assert "erased forever" in story
-        assert "Saved temporary seed settings and Seed Vault are lost" in story
-        if stype == "bip39pw":
-            assert "Convert currently used BIP-39 passphrase to master seed" in story
-            assert "but the passphrase itself is erased" in story
-    else:
-        assert 'do not have an active temporary seed' in story
+    where = title if is_q1 else story
+    assert 'Are you SURE' in where
+    assert "erased forever" in story
+    assert "Saved temporary seed settings and Seed Vault are lost" in story
+    assert 'Make sure all duress wallets associated with previous seed are deleted' in story
+    assert 'carried forward without being properly generated from new master seed.' in story
+    if stype == "bip39pw":
+        assert "Convert currently used BIP-39 passphrase to master seed" in story
+        assert "but the passphrase itself is erased" in story
 
-    if has_duress and stype:
-        press_select() # confirm to get error
-        time.sleep(.1)
-        title, story = cap_story()
-        assert "You have one or more duress wallets defined" in story
-        assert "Please empty them" in story
-        press_select()
-
-        if stype:
-            # need to restore master to be able to see trick pin menu
-            goto_home()
-            pick_menu_item("Restore Master")
-            press_select()
-            time.sleep(.1)
-
-        clear_all_tricks()
-    else:
-        press_cancel()
-
+    press_cancel()
     reset_seed_words()
     # real code does reboot, which is poorly simulated; avoid that
     # this needs to be tested with real HW !!!
