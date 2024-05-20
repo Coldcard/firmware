@@ -5,6 +5,8 @@
 # - many test "sync" issues here; case is right but gets outs of sync with DUT
 # - use `./simulator.py --eff --set nfc=1`
 #
+import io
+
 import pytest, time
 from binascii import b2a_hex, a2b_hex
 from struct import pack, unpack
@@ -303,12 +305,13 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
 
         # read back final product
         if got_txn:
-            from pycoin.tx.Tx import Tx
+            from ctransaction import CTransaction
             # parse it a little
             assert result[0:4] != b'psbt'
-            t = Tx.from_bin(got_txn)
-            assert t.version in [1, 2]
-            #XXX#assert t.id() == txid          # XXX why fail intermittently? sync.
+            t = CTransaction()
+            t.deserialize(io.BytesIO(got_txn))
+            assert t.nVersion in [1, 2]
+            assert t.txid().hex() == txid
 
         if got_psbt:
             assert got_psbt[0:5] == b'psbt\xff'

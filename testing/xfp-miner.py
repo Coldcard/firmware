@@ -6,10 +6,8 @@
 #
 import os, hmac, hashlib
 from pycoin.key.BIP32Node import BIP32Node
-from pycoin.encoding import from_bytes_32, to_bytes_32
 from pycoin.serialize import b2h_rev, h2b_rev
 from pycoin.encoding import public_pair_to_hash160_sec
-from binascii import b2a_hex, a2b_hex
 from pycoin import ecdsa
 
 def search(target_xfp):

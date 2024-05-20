@@ -5,15 +5,12 @@
 # Paper wallet features MUST work on both device with and without secrets.
 # This module can and should be run with `-l` and without it.
 #
-import random
 
-import pytest, time, os, shutil, re
-from pycoin.key.Key import Key
-from pycoin.encoding import from_bytes_32
+import pytest, time, os, shutil, re, random
 from binascii import a2b_hex
 from hashlib import sha256
+from bip32 import PrivateKey
 from ckcc_protocol.constants import *
-from bech32 import bech32_decode, convertbits, Encoding
 
 
 @pytest.mark.parametrize('mode', ["classic", 'segwit'])
@@ -102,21 +99,14 @@ def test_generate(mode, pdf, netcode, dev, cap_menu, pick_menu_item, goto_home, 
             if 'Deposit address' in hdr:
                 assert val == fname.split('.', 1)[0].split('-', 1)[0]
                 txt_addr = val
-                if mode != 'segwit':
-                    addr = Key.from_text(val)
-                else:
-                    hrp, data, enc = bech32_decode(val)
-                    assert hrp in {'tb', 'bc', 'bcrt'}
-                    assert enc == Encoding.BECH32
-                    decoded = convertbits(data[1:], 5, 8, False)[-20:]
-                    addr = Key(hash160=bytes(decoded), is_compressed=True, netcode=netcode)
+                addr = val
             elif hdr == 'Private key:':         # for QR case
                 assert val == wif
             elif 'Private key' in hdr and 'WIF=Wallet' in hdr:
                 wif = val
-                k1 = Key.from_text(val)
+                k1 = PrivateKey.from_wif(val)
             elif 'Private key' in hdr and 'Hex, 32 bytes' in hdr:
-                k2 = Key(secret_exponent=from_bytes_32(a2b_hex(val)), is_compressed=True)
+                k2 = PrivateKey(sec_exp=a2b_hex(val))
             elif 'Bitcoin Core command':
                 assert wif in val
                 assert 'importmulti' in val or 'importprivkey' in val
@@ -124,9 +114,9 @@ def test_generate(mode, pdf, netcode, dev, cap_menu, pick_menu_item, goto_home, 
                 print(f'{hdr} => {val}')
                 raise ValueError(hdr)
 
-        assert k1.sec() == k2.sec()
-        assert k1.public_pair() == k2.public_pair()
-        assert addr.address() == k1.address()
+        assert k1.K.sec() == k2.K.sec()
+        assert addr == k1.K.address(addr_fmt="p2wpkh" if mode == "segwit" else "p2pkh",
+                                    testnet=True if netcode == "XTN" else False)
 
         os.unlink(path)
 
@@ -217,13 +207,13 @@ def test_dice_generate_failure_distribution(rolls, dev, cap_menu, pick_menu_item
     "".join([str(random.SystemRandom().randint(1,6)) for _ in range(99)]),
     "".join([str(random.SystemRandom().randint(1,6)) for _ in range(99)]),
 ])
-@pytest.mark.parametrize('netcode', ["XTN", "BTC"])
-def test_dice_generate(rolls, netcode, dev, cap_menu, pick_menu_item, goto_home,
+@pytest.mark.parametrize('testnet', [True, False])
+def test_dice_generate(rolls, testnet, dev, cap_menu, pick_menu_item, goto_home,
                        cap_story, need_keypress, microsd_path, press_select,
                        verify_detached_signature_file, settings_set):
     # verify the math for dice rolling method
 
-    settings_set("chain", netcode)
+    settings_set("chain", "XTN" if testnet else "BTC")
 
     goto_home()
     pick_menu_item('Advanced/Tools')
@@ -285,8 +275,8 @@ def test_dice_generate(rolls, netcode, dev, cap_menu, pick_menu_item, goto_home,
         assert len(hx) == 1
         val, = hx
 
-        k2 = Key(secret_exponent=from_bytes_32(a2b_hex(val)), is_compressed=True, netcode=netcode)
-        assert addr == k2.address()
+        k2 = PrivateKey(sec_exp=a2b_hex(val))
+        assert addr == k2.K.address(testnet=testnet, addr_fmt="p2pkh")
 
         assert val == sha256(rolls.encode('ascii')).hexdigest()
 

@@ -5,7 +5,7 @@
 import pytest, time, json, os, shutil
 from constants import simulator_fixed_words, simulator_fixed_tprv
 from charcodes import KEY_QR
-from pycoin.key.BIP32Node import BIP32Node
+from bip32 import BIP32Node
 from mnemonic import Mnemonic
 
 

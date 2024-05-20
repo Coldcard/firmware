@@ -579,7 +579,7 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs, words12,
     time.sleep(.1)
     _, story = cap_story()
 
-    from pycoin.key.BIP32Node import BIP32Node
+    from bip32 import BIP32Node
 
     if story[1:4] == 'prv':
         assert TC_XPRV_WALLET & xflags

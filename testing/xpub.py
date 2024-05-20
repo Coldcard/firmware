@@ -4,19 +4,19 @@
 #
 # Dump a few tihngs about random xpub. Can't handle SLIP-132 yet.
 #
-import os, sys
-from pycoin.key.BIP32Node import BIP32Node
+import sys
+from bip32 import BIP32Node
 
 kk = BIP32Node.from_wallet_key(sys.argv[-1])
 
 pfp = kk.parent_fingerprint()
 print(f'parent = {pfp.hex().upper()}')
 
-print(f'depth = {kk.tree_depth()}')
+print(f'depth = {kk.node.depth}')
 
 fp = kk.fingerprint()
 print(f'fingerprint = {fp.hex().upper()}')
 
 print(f'chain = {kk.chain_code().hex()}')
-print(f'pub pair = {kk.public_pair()}')
+print(f'sec = {kk.sec().hex()}')
 

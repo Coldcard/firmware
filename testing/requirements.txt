@@ -2,8 +2,8 @@
 
 # for testing (only)
 pytest==6.2.5
-pycoin==0.80
 pyserial
+ecdsa  # already required by ckcc-protocol
 python-secp256k1==0.2.0
 mnemonic==0.18
 onetimepass==1.0.1

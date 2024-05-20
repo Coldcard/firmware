@@ -9,17 +9,18 @@
 import sys
 sys.path.append("../shared")
 from descriptor import MultisigDescriptor, append_checksum, MULTI_FMT_TO_SCRIPT, parse_desc_str
-import time, pytest, os, random, json, shutil, pdb, io, base64, struct
+import time, pytest, os, random, json, shutil, pdb, io, base64, struct, bech32
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from ckcc.protocol import CCProtocolPacker, MAX_TXN_LEN
 from pprint import pprint
 from base64 import b64encode, b64decode
+from base58 import encode_base58_checksum
 from helpers import B2A, fake_dest_addr, xfp2str, detruncate_address
-from helpers import path_to_str, str_to_path, slip132undo, swab32
+from helpers import path_to_str, str_to_path, slip132undo, swab32, hash160
 from struct import unpack, pack
 from constants import *
-from pycoin.key.BIP32Node import BIP32Node
-from pycoin.tx import Tx
+from bip32 import BIP32Node
+from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint, uint256_from_str
 from io import BytesIO
 from hashlib import sha256
 from bbqr import split_qrs
@@ -107,11 +108,11 @@ def make_multisig(dev, sim_execfile):
             xfp = unpack("<I", pk.fingerprint())[0]
 
             if not deriv:
-                sub = pk.subkey(45, is_hardened=True, as_private=True)
+                sub = pk.subkey_for_path("m/45h")
             else:
-                path = deriv.format(idx=i).replace('m/', '')
+                path = deriv.format(idx=i)
                 try:
-                    sub = pk.subkey_for_path(path.replace("h", "'"))
+                    sub = pk.subkey_for_path(path)
                 except IndexError:
                     # some test cases are using bogus paths
                     sub = pk
@@ -128,11 +129,11 @@ def make_multisig(dev, sim_execfile):
             xfp = simulator_fixed_xfp
 
         if not deriv:
-            sub = pk.subkey(45, is_hardened=True, as_private=True)
+            sub = pk.subkey_for_path("m/45h")
         else:
-            path = deriv.format(idx=N-1).replace('m/', '')
+            path = deriv.format(idx=N-1)
             try:
-                sub = pk.subkey_for_path(path.replace("h", "'"))
+                sub = pk.subkey_for_path(path)
             except IndexError:
                 # some test cases are using bogus paths
                 sub = pk
@@ -380,16 +381,15 @@ def make_redeem(M, keys, path_mapper=None,
 
         if not node:
             # use xpubkey, otherwise master
-            dpath = path[sk.tree_depth():]
+            dpath = path[sk.node.depth:]
             assert not dpath or max(dpath) < 1000
             node = sk
         else:
             dpath = path
 
-        for p in dpath:
-            node = node.subkey(p & ~0x80000000, is_hardened=bool(p & 0x80000000))
+        node = node.subkey_for_path(path_to_str(dpath, skip=0))
 
-        pk = node.sec(use_uncompressed=False)
+        pk = node.sec()
         data.append( (pk, xfp, path))
 
         #print("path: %s => pubkey %s" % (path_to_str(path, skip=0), B2A(pk)))
@@ -432,9 +432,6 @@ def make_redeem(M, keys, path_mapper=None,
 
 def make_ms_address(M, keys, idx=0, is_change=0, addr_fmt=AF_P2SH, testnet=1, **make_redeem_args):
     # Construct addr and script need to represent a p2sh address
-    import bech32
-    from pycoin.encoding import b2a_hashed_base58, hash160
-
     if 'path_mapper' not in make_redeem_args:
         make_redeem_args['path_mapper'] = lambda cosigner: [HARD(45), cosigner, is_change, idx]
 
@@ -455,7 +452,7 @@ def make_ms_address(M, keys, idx=0, is_change=0, addr_fmt=AF_P2SH, testnet=1, **
             raise ValueError(addr_fmt)
 
         prefix = bytes([196]) if testnet else bytes([5])
-        addr = b2a_hashed_base58(prefix + digest)
+        addr = encode_base58_checksum(prefix + digest)
 
         scriptPubKey = bytes([0xa9, 0x14]) + digest + bytes([0x87])
 
@@ -578,10 +575,11 @@ def test_zero_depth(clear_ms, use_regtest, addr_fmt, import_ms_wallet
     keys = make_multisig(M, N, unique=99)
 
     # censor first co-signer to look like a master key
-    kk = keys[0][1].public_copy()
-    kk._depth = 0
-    kk._child_index = 0
-    kk._parent_fingerprint = b'\0\0\0\0'
+    from copy import deepcopy
+    kk = deepcopy(keys[0][1])
+    kk.node.depth = 0
+    kk.node.index = 0
+    kk.node.parsed_parent_fingerprint = None
     keys[0] = (keys[0][0], keys[0][1], kk)
 
     try:
@@ -719,38 +717,34 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
     assert 'xfp' in rv
     assert len(rv) >= 6
 
-    e = BIP32Node.from_wallet_key(simulator_fixed_tprv)
-    if not testnet:
-        e._netcode = "BTC"
+    e = BIP32Node.from_wallet_key(simulator_fixed_tprv if testnet else simulator_fixed_xprv)
 
     if 'p2sh' in rv:
         # perhaps obsolete, but not removed
         assert acct_num == 0
 
         n = BIP32Node.from_wallet_key(rv['p2sh'])
-        assert n.tree_depth() == 1
-        assert n.child_index() == 45 | (1<<31)
+        assert n.node.depth == 1
+        assert n.node.index == 45 | (1<<31)
         mxfp = unpack("<I", n.parent_fingerprint())[0]
         assert hex(mxfp) == hex(simulator_fixed_xfp)
 
-        expect = e.subkey_for_path("45'.pub") 
+        expect = e.subkey_for_path("m/45'")
         assert expect.hwif() == n.hwif()
 
     for name, deriv in [ 
         ('p2sh_p2wsh', f"m/48h/{int(testnet)}h/{acct_num}h/1h"),
         ('p2wsh', f"m/48h/{int(testnet)}h/{acct_num}h/2h"),
     ]:
-        e = BIP32Node.from_wallet_key(simulator_fixed_tprv)
-        if not testnet:
-            e._netcode = "BTC"
+        e = BIP32Node.from_wallet_key(simulator_fixed_tprv if testnet else simulator_fixed_xprv)
         xpub, *_ = slip132undo(rv[name])
         n = BIP32Node.from_wallet_key(xpub)
         assert rv[name+'_deriv'] == deriv
         assert n.hwif() == xpub
-        assert n.tree_depth() == 4
-        assert n.child_index() & (1<<31)
-        assert n.child_index() & 0xff == int(deriv[-2])
-        expect = e.subkey_for_path(deriv[2:].replace("h", "'") + ".pub")
+        assert n.node.depth == 4
+        assert n.node.index & (1<<31)
+        assert n.node.index & 0xff == int(deriv[-2])
+        expect = e.subkey_for_path(deriv)
         assert expect.hwif() == n.hwif()
 
         # TODO add tests for descriptor template
@@ -1039,9 +1033,11 @@ def test_import_dup_diff_xpub(N, clear_ms, make_multisig, offer_ms_import,
         lines = []
         for idx, (xfp,m,sk) in enumerate(keys):
             if idx == 1 and tweaked:
-                a,b = sk._public_pair
-                sk._public_pair = (a,b^23847239847)
-            hwif = sk.hwif(as_private=False)
+                x = bytearray(sk.node.key)
+                x[9] = 254
+                sk.node.key = bytes(x)
+
+            hwif = sk.hwif()
             lines.append('%s: %s' % (xfp2str(xfp), hwif) )
         config += '\n'.join(lines)
         return config
@@ -1072,8 +1068,9 @@ def test_import_dup_xfp_fails(m_of_n, use_regtest, addr_fmt, clear_ms,
     keys = make_multisig(M, N)
 
     pk = BIP32Node.from_master_secret(b'example', 'XTN')
-    sub = pk.subkey(45, is_hardened=True, as_private=True)
-    sub._parent_fingerprint = keys[-1][2]._parent_fingerprint
+    sub = pk.subkey_for_path("m/45h")
+    sub.node.parent = None
+    sub.node.parsed_parent_fingerprint = keys[-1][2].parent_fingerprint()
     keys[-1] = (simulator_fixed_xfp, pk, sub)
 
     with pytest.raises(Exception) as ee:
@@ -1207,18 +1204,14 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, press_select, clear_m
 def fake_ms_txn():
     # make various size MULTISIG txn's ... completely fake and pointless values
     # - but has UTXO's to match needs
-    from pycoin.tx.Tx import Tx
-    from pycoin.tx.TxIn import TxIn
-    from pycoin.tx.TxOut import TxOut
-    from pycoin.serialize import h2b_rev
-    from pycoin.encoding import hash160
     from struct import pack
 
     def doit(num_ins, num_outs, M, keys, fee=10000,
                 outvals=None, segwit_in=False, outstyles=['p2pkh'], change_outputs=[],
                 incl_xpubs=False, hack_change_out=False, hack_psbt=None):
         psbt = BasicPSBT()
-        txn = Tx(2,[],[])
+        txn = CTransaction()
+        txn.nVersion = 2
 
         if incl_xpubs:
             # add global header with XPUB's
@@ -1228,7 +1221,7 @@ def fake_ms_txn():
                     psbt.xpubs.append( incl_xpubs(idx, xfp, m, sk) )
                 else:
                     kk = pack('<II', xfp, 45|0x80000000)
-                    psbt.xpubs.append( (sk.serialize(as_private=False), kk) )
+                    psbt.xpubs.append((sk.node.serialize_public(), kk))
 
         psbt.inputs = [BasicPSBTInput(idx=i) for i in range(num_ins)]
         psbt.outputs = [BasicPSBTOutput(idx=i) for i in range(num_outs)]
@@ -1250,21 +1243,24 @@ def fake_ms_txn():
                 psbt.inputs[i].bip32_paths[pubkey] = b''.join(pack('<I', j) for j in xfp_path)
 
             # UTXO that provides the funding for to-be-signed txn
-            supply = Tx(2,[TxIn(pack('4Q', 0xdead, 0xbeef, 0, 0), 73)],[])
+            supply = CTransaction()
+            supply.nVersion = 2
+            out_point = COutPoint(
+                uint256_from_str(struct.pack('4Q', 0xdead, 0xbeef, 0, 0)),
+                73
+            )
+            supply.vin = [CTxIn(out_point, nSequence=0xffffffff)]
 
-            supply.txs_out.append(TxOut(1E8, scriptPubKey))
+            supply.vout.append(CTxOut(int(1E8), scriptPubKey))
 
-            with BytesIO() as fd:
-                if not segwit_in:
-                    supply.stream(fd)
-                    psbt.inputs[i].utxo = fd.getvalue()
-                else:
-                    supply.txs_out[-1].stream(fd)
-                    psbt.inputs[i].witness_utxo = fd.getvalue()
+            if not segwit_in:
+                psbt.inputs[i].utxo = supply.serialize_with_witness()
+            else:
+                psbt.inputs[i].witness_utxo = supply.vout[-1].serialize()
 
-            spendable = TxIn(supply.hash(), 0)
-            txn.txs_in.append(spendable)
-
+            supply.calc_sha256()
+            spendable = CTxIn(COutPoint(supply.sha256, 0), nSequence=0xffffffff)
+            txn.vin.append(spendable)
 
         for i in range(num_outs):
             # random P2PKH
@@ -1292,23 +1288,21 @@ def fake_ms_txn():
                 elif style.endswith('sh'):
                     psbt.outputs[i].redeem_script = scr
             else:
-                scr = fake_dest_addr(style)
+                scriptPubKey = fake_dest_addr(style)
 
-            assert scr
+            assert scriptPubKey
 
             if not outvals:
-                h = TxOut(round(((1E8*num_ins)-fee) / num_outs, 4), scriptPubKey)
+                h = CTxOut(int(round(((1E8*num_ins)-fee) / num_outs, 4)), scriptPubKey)
             else:
-                h = TxOut(outvals[i], scriptPubKey)
+                h = CTxOut(int(outvals[i]), scriptPubKey)
 
-            txn.txs_out.append(h)
+            txn.vout.append(h)
 
         if hack_psbt:
             hack_psbt(psbt)
 
-        with BytesIO() as b:
-            txn.stream(b)
-            psbt.txn = b.getvalue()
+        psbt.txn = txn.serialize_with_witness()
 
         rv = BytesIO()
         psbt.serialize(rv)
@@ -1581,8 +1575,9 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
         # addmultisigaddress not supported by descriptor wallets
         pytest.skip("Needs BDB legacy wallet")
 
-    from pycoin.encoding import sec_to_public_pair
+    from bip32 import PubKeyNode
     from binascii import a2b_hex
+
     use_regtest()
     if addr_style == 'legacy':
         addr_fmt = AF_P2SH
@@ -1590,7 +1585,6 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
         addr_fmt = AF_P2WSH_P2SH
     elif addr_style == 'bech32':
         addr_fmt = AF_P2WSH
-
 
     addr = bitcoind.supply_wallet.getnewaddress("sim-cosign")
 
@@ -1601,13 +1595,15 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
     bc_deriv = info['hdkeypath']        # example: "m/0'/0'/3'"
     bc_pubkey = info['pubkey']          # 02f75ae81199559c4aa...
 
-    pp = sec_to_public_pair(a2b_hex(bc_pubkey))
-
+    node = BIP32Node(PubKeyNode(
+        key=a2b_hex(bc_pubkey),
+        chain_code=b'\x23'*32,
+        depth=len(bc_deriv.split('/'))-1,
+        parent_fingerprint=a2b_hex('%08x' % bc_xfp),
+        testnet=True
+    ))
     # No means to export XPUB from bitcoind! Still. In 2019.
     # - this fake will only work for one pubkey value, the first/topmost
-    node = BIP32Node('XTN', b'\x23'*32, depth=len(bc_deriv.split('/'))-1,
-                        parent_fingerprint=a2b_hex('%08x' % bc_xfp), public_pair=pp)
-
     keys = [
         (bc_xfp, None, node),
         (simulator_fixed_xfp, None, BIP32Node.from_hwif('tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n')),     # simulator: m/45'
@@ -1619,9 +1615,7 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
     import_ms_wallet(M, N, keys=keys, accept=1, name="core-cosign", derivs=[bc_deriv, "m/45h"])
 
     cc_deriv = "m/45h/55"
-    cc_pubkey = B2A(BIP32Node.from_hwif(simulator_fixed_tprv).subkey_for_path(
-        cc_deriv[2:].replace("h", "'")
-    ).sec())
+    cc_pubkey = B2A(BIP32Node.from_hwif(simulator_fixed_tprv).subkey_for_path(cc_deriv).sec())
 
     # NOTE: bitcoind doesn't seem to implement pubkey sorting. We have to do it.
     resp = bitcoind.supply_wallet.addmultisigaddress(M, list(sorted([cc_pubkey, bc_pubkey])),
@@ -1845,8 +1839,7 @@ def test_iss6743(repeat, set_seed_words, sim_execfile, try_sign):
     # verify psbt globals section
     tp = BasicPSBT().parse(psbt_b4)
     (hdr_xpub, hdr_path), = [(v,k) for v,k in tp.xpubs if k[0:4] == pack('<I', expect_xfp)]
-    from pycoin.encoding import b2a_hashed_base58
-    assert expect_xpub == b2a_hashed_base58(hdr_xpub)
+    assert expect_xpub == encode_base58_checksum(hdr_xpub)
     assert derivation == path_to_str(unpack('<%dI' % (len(hdr_path) // 4),hdr_path))
 
     # sign a multisig, with xpubs in globals
@@ -1898,8 +1891,8 @@ def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_impo
             dp = derivs[idx % len(derivs)]
             config += 'Derivation: %s\n' % dp
             print('%s => %s   was %d, gonna be %d' % (
-                    xfp2str(xfp), dp, sk._depth, dp.count('/')))
-            sk._depth = dp.count('/')
+                    xfp2str(xfp), dp, sk.node.depth, dp.count('/')))
+            sk.node.depth = dp.count('/')
         config += '%s: %s\n' % (xfp2str(xfp), sk.hwif(as_private=False))
 
     title, story = offer_ms_import(config)
@@ -2327,12 +2320,15 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, m
     assert len(o.inputs) == 1
     non_witness_utxo = o.inputs[0].utxo
     from io import BytesIO
-    parsed_tx = Tx.Tx.parse(BytesIO(non_witness_utxo))
-    witness_utxo = BytesIO()
-    for oo in parsed_tx.txs_out:
-        if oo.coin_value == 4900000000:
-            parsed_tx.txs_out[0].stream(witness_utxo)
-    o.inputs[0].witness_utxo = witness_utxo.getvalue()
+    parsed_tx = CTransaction()
+    parsed_tx.deserialize(BytesIO(non_witness_utxo))
+    witness_utxo = None
+    for oo in parsed_tx.vout:
+        if oo.nValue == 4900000000:
+            witness_utxo = oo.serialize()
+
+    assert witness_utxo is not None
+    o.inputs[0].witness_utxo = witness_utxo
     updated = o.as_bytes()
     try_sign(updated)
 
@@ -2607,8 +2603,9 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     ("Unsupported descriptor", "pkh([d34db33f/44'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/*)#ml40v0wf"),
     ("M must be <= N", "wsh(sortedmulti(3,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0/*))#uueddtsy"),
 ])
-def test_exotic_descriptors(desc, clear_ms, goto_home, need_keypress, pick_menu_item, cap_menu, cap_story, make_multisig,
-                            import_ms_wallet, microsd_path, bitcoind_d_wallet_w_sk, use_regtest, is_q1, press_select):
+def test_exotic_descriptors(desc, clear_ms, goto_home, need_keypress, pick_menu_item, cap_menu,
+                            cap_story, make_multisig, import_ms_wallet, microsd_path,
+                            bitcoind_d_wallet_w_sk, use_regtest, is_q1, press_select):
     use_regtest()
     clear_ms()
     msg, desc = desc
@@ -2623,15 +2620,15 @@ def test_exotic_descriptors(desc, clear_ms, goto_home, need_keypress, pick_menu_
     pick_menu_item('Import from File')
     time.sleep(0.1)
     _, story = cap_story()
-    if "Pick multisig wallet file to import" not in story:
-        assert "Press (1) to import multisig wallet file from SD Card" in story
+    if "Press (1) to import multisig wallet file from SD Card" in story:
         need_keypress("1")
+        time.sleep(0.1)
 
-    time.sleep(0.1)
     pick_menu_item(name)
     _, story = cap_story()
     assert "Failed to import" in story
     assert msg in story
+    press_select()
 
 def test_ms_wallet_ordering(clear_ms, import_ms_wallet, try_sign_microsd, fake_ms_txn):
     clear_ms()

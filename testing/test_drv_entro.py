@@ -4,9 +4,7 @@
 #
 import pytest, time, re
 from binascii import a2b_hex, b2a_hex
-from helpers import B2A
-from pycoin.key.BIP32Node import BIP32Node
-from pycoin.key.Key import Key
+from bip32 import BIP32Node, PrivateKey
 from mnemonic import Mnemonic
 from charcodes import KEY_QR
 
@@ -144,7 +142,7 @@ def activate_bip85_ephemeral(need_keypress, cap_story, sim_exec, reset_seed_word
                     node = BIP32Node.from_hwif(expect)
                     ch, pk = encoded[1:33], encoded[33:65]
                     assert node.chain_code() == ch
-                    assert node.secret_exponent() == int(B2A(pk), 16)
+                    assert bytes(node.node.private_key) == pk
 
         finally:
             # required cleanup
@@ -294,10 +292,10 @@ def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr, seed_sto
     elif 'XPRV' in mode:
         node = BIP32Node.from_hwif(got)
         assert str(b2a_hex(node.chain_code()), 'ascii') in story
-        assert hex(node.secret_exponent())[2:] in story
+        assert bytes(node.node.private_key).hex() in story
     elif 'WIF' in mode:
-        key = Key.from_text(got)
-        assert hex(key.secret_exponent())[2:] in story
+        key = PrivateKey.from_wif(got)
+        assert bytes(key).hex() in story
 
     if index == 0:
         assert 'show QR code' in story

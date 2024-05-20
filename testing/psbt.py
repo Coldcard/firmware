@@ -4,10 +4,10 @@
 #
 import io, struct
 from binascii import b2a_hex as _b2a_hex
-from pycoin.tx.Tx import Tx, TxIn, TxOut
-from pycoin.tx.script.check_signature import parse_signature_blob
 from binascii import a2b_hex
 from base64 import b64decode, b64encode
+from serialize import ser_compact_size, deser_compact_size
+from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint, uint256_from_str, ser_uint256
 
 b2a_hex = lambda a: str(_b2a_hex(a), 'ascii')
 
@@ -68,35 +68,6 @@ PSBT_OUT_TAP_TREE                = 0x06
 PSBT_OUT_TAP_BIP32_DERIVATION    = 0x07
 
 PSBT_PROP_CK_ID = b"COINKITE"
-
-
-# Serialization/deserialization tools
-def ser_compact_size(l):
-    r = b""
-    if l < 253:
-        r = struct.pack("B", l)
-    elif l < 0x10000:
-        r = struct.pack("<BH", 253, l)
-    elif l < 0x100000000:
-        r = struct.pack("<BI", 254, l)
-    else:
-        r = struct.pack("<BQ", 255, l)
-    return r
-
-
-def deser_compact_size(f):
-    try:
-        nit = f.read(1)[0]
-    except IndexError:
-        return None  # end of file
-
-    if nit == 253:
-        nit = struct.unpack("<H", f.read(2))[0]
-    elif nit == 254:
-        nit = struct.unpack("<I", f.read(4))[0]
-    elif nit == 255:
-        nit = struct.unpack("<Q", f.read(8))[0]
-    return nit
 
 
 def ser_prop_key(identifier, subtype, keydata=b''):
@@ -186,8 +157,7 @@ class BasicPSBTInput(PSBTSection):
         if rv:
             # NOTE: equality test on signatures requires parsing DER stupidness
             #       and some maybe understanding of R/S values on curve that I don't have.
-            assert all(parse_signature_blob(a.part_sigs[k])
-                       == parse_signature_blob(b.part_sigs[k]) for k in a.part_sigs)
+            assert all(a.part_sigs[k] == b.part_sigs[k] for k in a.part_sigs)
         return rv
 
     def parse_kv(self, kt, key, val):
@@ -425,10 +395,11 @@ class BasicPSBT:
                 if kt == PSBT_GLOBAL_UNSIGNED_TX:
                     self.txn = val
 
-                    t = Tx.parse(io.BytesIO(val))
+                    t = CTransaction()
+                    t.deserialize(io.BytesIO(val))
                     self.parsed_txn = t
-                    num_ins = len(t.txs_in)
-                    num_outs = len(t.txs_out)
+                    num_ins = len(t.vin)
+                    num_outs = len(t.vout)
                 elif kt == PSBT_GLOBAL_XPUB:
                     # key=(xpub) => val=(path)
                     # ignore PSBT_GLOBAL_XPUB on 0th index (should not be part of parsed key)
@@ -539,18 +510,18 @@ class BasicPSBT:
             self.version = 2
             self.txn_version = 2
             self.txn = None
-            self.input_count = len(self.parsed_txn.txs_in)
-            self.output_count = len(self.parsed_txn.txs_out)
-            self.fallback_locktime = self.parsed_txn.lock_time
-            for idx, inp in enumerate(self.parsed_txn.txs_in):
+            self.input_count = len(self.parsed_txn.vin)
+            self.output_count = len(self.parsed_txn.vout)
+            self.fallback_locktime = self.parsed_txn.nLockTime
+            for idx, inp in enumerate(self.parsed_txn.vin):
                 i = self.inputs[idx]
-                i.previous_txid = inp.previous_hash
-                i.prevout_idx = inp.previous_index
-                i.sequence = inp.sequence
-            for idx, out in enumerate(self.parsed_txn.txs_out):
+                i.previous_txid = ser_uint256(inp.prevout.hash)
+                i.prevout_idx = inp.prevout.n
+                i.sequence = inp.nSequence
+            for idx, out in enumerate(self.parsed_txn.vout):
                 o = self.outputs[idx]
-                o.script = out.script
-                o.amount = out.coin_value
+                o.script = out.scriptPubKey
+                o.amount = out.nValue
 
         return self.as_bytes()
 
@@ -558,8 +529,8 @@ class BasicPSBT:
         if self.version == 2:
             tx_ins = []
             for inp in self.inputs:
-                tx_ins.append(TxIn(inp.previous_txid, inp.prevout_idx,
-                                   sequence=inp.sequence or 0xffffffff))
+                tx_ins.append(CTxIn(COutPoint(uint256_from_str(inp.previous_txid), inp.prevout_idx),
+                                   nSequence=inp.sequence or 0xffffffff))
                 inp.prevout_idx = None
                 inp.previous_txid = None
                 inp.sequence = None
@@ -568,19 +539,22 @@ class BasicPSBT:
 
             tx_outs = []
             for out in self.outputs:
-                tx_outs.append(TxOut(coin_value=out.amount, script=out.script))
+                tx_outs.append(CTxOut(out.amount, out.script))
                 out.amount = None
                 out.script = None
 
-            t = Tx(version=self.txn_version, txs_in=tx_ins, txs_out=tx_outs,
-                   lock_time=self.fallback_locktime or 0)
+            t = CTransaction()
+            t.nVersion = self.txn_version
+            t.vin = tx_ins
+            t.vout = tx_outs
+            t.nLockTime = self.fallback_locktime or 0
             self.txn_version = None
             self.input_count = None
             self.output_count = None
             self.txn_modifiable = None
             self.version = None
             self.parsed_txn = t
-            self.txn = self.parsed_txn.as_bin()
+            self.txn = self.parsed_txn.serialize_with_witness()
 
         return self.as_bytes()
 

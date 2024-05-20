@@ -4,6 +4,9 @@
 #
 import pytest, time, io, csv
 from txn import fake_address
+from base58 import encode_base58_checksum
+from helpers import hash160
+from bip32 import BIP32Node
 from constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 from constants import simulator_fixed_xprv, simulator_fixed_tprv, addr_fmt_names
 
@@ -54,9 +57,7 @@ def test_positive(addr_fmt, offset, subaccount, testnet, from_empty, change_idx,
     sim_exec, wipe_cache, make_myself_wallet, use_testnet, goto_home, pick_menu_item,
     enter_number, press_cancel, settings_set, import_ms_wallet, clear_ms
 ):
-    from pycoin.key.BIP32Node import BIP32Node
     from bech32 import encode as bech32_encode
-    from pycoin.encoding import b2a_hashed_base58, hash160
 
     # API/Unit test, limited UX
 
@@ -110,13 +111,13 @@ def test_positive(addr_fmt, offset, subaccount, testnet, from_empty, change_idx,
         sk = mk.subkey_for_path(path[2:].replace('h', "'"))
 
         if addr_fmt == AF_CLASSIC:
-            addr = sk.address()
+            addr = sk.address(netcode="XTN" if testnet else "BTC")
         elif addr_fmt == AF_P2WPKH_P2SH:
-            pkh = sk.hash160(use_uncompressed=False)
+            pkh = sk.hash160()
             digest = hash160(b'\x00\x14' + pkh)
-            addr = b2a_hashed_base58( bytes([196 if testnet else 5]) + digest)
+            addr = encode_base58_checksum(bytes([196 if testnet else 5]) + digest)
         else:
-            pkh = sk.hash160(use_uncompressed=False)
+            pkh = sk.hash160()
             addr = bech32_encode('tb' if testnet else 'bc', 0, pkh)
     
         if subaccount:
@@ -158,15 +159,14 @@ def test_ux(valid, testnet, method,
     press_cancel, press_select, settings_set, is_q1, nfc_write, need_keypress,
     cap_screen, cap_story, load_shared_mod, scan_a_qr
 ):
-    from pycoin.key.BIP32Node import BIP32Node
 
     addr_fmt = AF_CLASSIC
 
     if valid:
         mk = BIP32Node.from_wallet_key(simulator_fixed_tprv if testnet else simulator_fixed_xprv)
         path = "m/44h/{ct}h/{acc}h/0/3".format(acc=0, ct=(1 if testnet else 0))
-        sk = mk.subkey_for_path(path[2:].replace('h', "'"))
-        addr = sk.address()
+        sk = mk.subkey_for_path(path)
+        addr = sk.address(netcode="XTN" if testnet else "BTC")
     else:
         addr = fake_address(addr_fmt, testnet) 
 

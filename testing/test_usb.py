@@ -5,7 +5,7 @@
 # - not working well on simulator right now, but that's not key
 #
 import pytest, struct
-from pycoin.key.BIP32Node import BIP32Node
+from bip32 import BIP32Node
 from binascii import b2a_hex
 from constants import simulator_fixed_tprv
 from ckcc_protocol.protocol import MAX_MSG_LEN, CCProtocolPacker, CCProtoError
@@ -80,7 +80,6 @@ def test_xpub_good(dev, master_xpub, path):
     assert xpub[1:4] == 'pub'
     assert len(xpub) > 100
 
-    # check the derive using pycoin
     k = BIP32Node.from_wallet_key(xpub)
 
     assert k.hwif() == xpub
@@ -88,7 +87,7 @@ def test_xpub_good(dev, master_xpub, path):
     is_hard = ("'" in path) or ("h" in path)
     if not is_hard or dev.is_simulator:
         mk = BIP32Node.from_wallet_key(simulator_fixed_tprv if is_hard else master_xpub)
-        sk = mk.subkey_for_path(path[2:].replace("h", "'"))
+        sk = mk.subkey_for_path(path)
         assert sk.hwif() == xpub
 
     if len(path) <= 2:

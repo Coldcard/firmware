@@ -12,10 +12,9 @@
 # - create development firmware via `make dev`
 # - enable HSM commands in `Advanced/Tools -> Enable HSM -> Enable`
 #
-import pytest, time, itertools, base64, re, json, struct
+import pytest, time, itertools, base64, re, json, struct, io
 from collections import OrderedDict
 from binascii import b2a_hex, a2b_base64
-from io import BytesIO
 from base64 import b32encode
 from hashlib import pbkdf2_hmac, sha256
 from hmac import HMAC
@@ -23,13 +22,14 @@ from onetimepass import get_hotp
 from objstruct import ObjectStruct as DICT
 from txn import render_address, fake_txn
 from psbt import ser_prop_key
-from helpers import sign_msg, prandom, xfp2str
+from helpers import prandom, xfp2str
+from msg import sign_message
+from bip32 import PrivateKey
 from ckcc_protocol.constants import *
 from ckcc_protocol.protocol import CCProtocolPacker
 from ckcc_protocol.protocol import CCUserRefused, CCProtoError
 from ckcc_protocol.utils import calc_local_pincode
-from pycoin.tx.Tx import Tx
-from pycoin.tx.TxOut import TxOut
+from ctransaction import CTransaction, CTxOut
 
 
 TEST_USERS = { 
@@ -685,18 +685,16 @@ def test_whitelist_valid_attestation(start_hsm, attempt_psbt, fake_txn):
 
         if psbt.txn is None:
             assert psbt.version == 2
-            tx_outs = [TxOut(out.amount, out.script) for out in psbt.outputs]
+            tx_outs = [CTxOut(out.amount, out.script) for out in psbt.outputs]
         else:
-            txn = Tx.from_bin(psbt.txn)
-            tx_outs = txn.txs_out
+            txn = CTransaction()
+            txn.deserialize(io.BytesIO(psbt.txn))
+            tx_outs = txn.vout
 
         for idx, txout in enumerate(tx_outs):
-            fd = BytesIO()
-            txout.stream(fd)
-            fd.seek(0)
-            msg = fd.read()
+            msg = txout.serialize()
             for key, addr_fmt in privkeys:
-                sig = sign_msg(key, msg, addr_fmt)
+                sig = sign_message(bytes(PrivateKey.from_wif(key)), msg, addr_fmt, b64=False)
                 psbt.outputs[idx].proprietary[(ser_prop_key(CK_ID, ATTESTATION_SUBTYPE))] = sig
 
     # we are testing signing with the following address types: legacy, wrapped segwit, native segwit
