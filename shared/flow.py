@@ -80,6 +80,10 @@ def is_not_tmp():
     from pincodes import pa
     return not bool(pa.tmp_value)
 
+def is_tmp():
+    from pincodes import pa
+    return bool(pa.tmp_value)
+
 def has_real_secret():
     from pincodes import pa
     return (not pa.is_secret_blank()) and (not pa.tmp_value)
@@ -258,7 +262,7 @@ SeedFunctionsMenu = [
     MenuItem('View Seed Words', f=view_seed_words),     # text is a little wrong sometimes, rare
     MenuItem('Seed XOR', menu=SeedXORMenu),
     MenuItem("Destroy Seed", f=clear_seed, predicate=has_real_secret),
-    MenuItem('Lock Down Seed', f=convert_ephemeral_to_master),
+    MenuItem('Lock Down Seed', f=convert_ephemeral_to_master, predicate=is_tmp),
     MenuItem('Export SeedQR', f=export_seedqr, predicate=word_based_seed),
 ]
 

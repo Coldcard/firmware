@@ -535,14 +535,7 @@ async def any_active_duress_ux():
 
 async def convert_ephemeral_to_master(*a):
     import seed
-    from pincodes import pa
     from stash import bip39_passphrase
-
-    if not pa.tmp_value:
-        await ux_show_story('You do not have an active temporary seed (including BIP-39 passphrase)'
-                            ' right now, so this command does little except forget the seed words.'
-                            ' It does not enhance security in any way.')
-        return
 
     words = settings.get("words", True)
     _type = 'BIP-39 passphrase' if bip39_passphrase else 'temporary seed'
@@ -554,6 +547,9 @@ async def convert_ephemeral_to_master(*a):
 
     msg += ('and its settings blanked. This action is destructive '
             'and may affect funds, if any, on old master seed. '
+            'Make sure all duress wallets associated with previous '
+            'seed are deleted, otherwise they will be carried forward '
+            'without being properly generated from new master seed. '
             'Saved temporary seed settings and Seed Vault are lost. ')
 
     if bip39_passphrase:
@@ -567,9 +563,6 @@ async def convert_ephemeral_to_master(*a):
     msg += 'A reboot is part of this process. '
     msg += 'PIN code, and %s funds are not affected.' % _type
     if not await ux_confirm(msg):
-        return await ux_aborted()
-
-    if await any_active_duress_ux():
         return await ux_aborted()
 
     # settings.save is part of re-building fs
