@@ -433,18 +433,24 @@ class psbtOutputProxy(psbtProxy):
             redeem_script = self.get(self.redeem_script) if self.redeem_script else None
             witness_script = self.get(self.witness_script) if self.witness_script else None
 
-            if not redeem_script and not witness_script:
-                # Perhaps an omission, so let's not call fraud on it
-                # But definately required, else we don't know what script we're sending to.
-                raise FatalPSBTIssue("Missing redeem/witness script for output #%d" % out_idx)
+            if expect_pubkey:
+                # num_ours == 1 and len(subpaths) == 1, single sig, we only allow p2sh-p2wpkh
+                if not redeem_script:
+                    # Perhaps an omission, so let's not call fraud on it
+                    # But definately required, else we don't know what script we're sending to.
+                    raise FatalPSBTIssue("Missing redeem script for output #%d" % out_idx)
 
-            if not is_segwit and redeem_script and \
-                    len(redeem_script) == 22 and \
-                    redeem_script[0] == 0 and redeem_script[1] == 20:
-
-                # it's actually segwit p2pkh inside p2sh
-                pkh = redeem_script[2:22]
-                expect_pkh = hash160(expect_pubkey)
+                target_spk = bytes([0xa9, 0x14]) + hash160(redeem_script) + bytes([0x87])
+                if not is_segwit and len(redeem_script) == 22 and \
+                        redeem_script[0] == 0 and redeem_script[1] == 20 and \
+                        txo.scriptPubKey == target_spk:
+                    # it's actually segwit p2wpkh inside p2sh
+                    pkh = redeem_script[2:22]
+                    expect_pkh = hash160(expect_pubkey)
+                else:
+                    # unknown or wrong script
+                    # p2sh-p2pkh also fall into this category
+                    expect_pkh = None
 
             else:
                 # Multisig change output, for wallet we're supposed to be a part of.
@@ -453,6 +459,12 @@ class psbtOutputProxy(psbtProxy):
                 # - assert M/N structure of output to match any inputs we have signed in PSBT!
                 # - assert all provided pubkeys are in redeem script, not just ours
                 # - we get all of that by re-constructing the script from our wallet details
+                if not redeem_script and not witness_script:
+                    # Perhaps an omission, so let's not call fraud on it
+                    # But definately required, else we don't know what script we're sending to.
+                    raise FatalPSBTIssue(
+                        "Missing redeem/witness script for multisig output #%d" % out_idx
+                    )
 
                 # it cannot be change if it doesn't precisely match our multisig setup
                 if not active_multisig:

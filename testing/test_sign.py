@@ -13,7 +13,7 @@ from decimal import Decimal
 from base64 import b64encode, b64decode
 from base58 import encode_base58_checksum
 from helpers import B2A, U2SAT, prandom, fake_dest_addr, make_change_addr, parse_change_back
-from helpers import xfp2str, seconds2human_readable
+from helpers import xfp2str, seconds2human_readable, hash160
 from msg import verify_message
 from bip32 import BIP32Node
 from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP
@@ -665,7 +665,7 @@ def test_change_fraud_addr(start_sign, end_sign, use_regtest, check_against_bitc
     assert 'Change output is fraud' in str(ee)
 
 
-@pytest.mark.parametrize('case', ['p2wpkh', 'p2sh-p2wpkh'])
+@pytest.mark.parametrize('case', ['p2sh-p2wpkh', 'p2wpkh', 'p2sh', 'p2sh-p2pkh'])
 @pytest.mark.bitcoind
 def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, use_regtest,
                             cap_story, case):
@@ -700,14 +700,23 @@ def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, use_re
         t.vout[1].scriptPubKey = spk
         expect_addr = encode_base58_checksum(b"\xc4" + h160_redeem_scr)
 
-    # we do not understand below script - good as it is stupid
-    # elif case == 'p2sh-p2pkh':
-    #     redeem_scr = scpk
-    #     h160_redeem_scr = hash160(redeem_scr)
-    #     spk = bytes([0xa9, 0x14]) + h160_redeem_scr + bytes([0x87])
-    #     b4.outputs[1].redeem_script = redeem_scr
-    #     t.vout[1].scriptPubKey = spk
-    #     expect_addr = encode_base58_checksum(b"\xc4" + h160_redeem_scr)
+    elif case == 'p2sh-p2pkh':
+        # not supported
+        redeem_scr = scpk
+        h160_redeem_scr = hash160(redeem_scr)
+        spk = bytes([0xa9, 0x14]) + h160_redeem_scr + bytes([0x87])
+        b4.outputs[1].redeem_script = redeem_scr
+        t.vout[1].scriptPubKey = spk
+        expect_addr = encode_base58_checksum(b"\xc4" + h160_redeem_scr)
+
+    elif case == 'p2sh':
+        # plain wrong for p2sh-p2wpkh (check for case == 'p2sh-p2wpkh' for correct)
+        # scriptPubKey for p2sh-p2wpkh uses hash of the script not hash of pubkey
+        # also check 'test_wrong_p2sh_p2wpkh' below
+        spk = bytes([0xa9, 0x14]) + pkh + bytes([0x87])
+        b4.outputs[1].redeem_script = bytes([0, 20]) + pkh
+        t.vout[1].scriptPubKey = spk
+        expect_addr = encode_base58_checksum(b"\xc4" + scpk)
 
     b4.txn = t.serialize_with_witness()
 
@@ -722,13 +731,77 @@ def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, use_re
     time.sleep(.1)
     _, story = cap_story()
 
+    if case in ["p2sh", "p2sh-p2pkh"]:
+        assert "Output#1: Change output is fraudulent" == story
+        return
+
     check_against_bitcoind(B2A(b4.txn), Decimal('0.00000294'), change_outs=[1,],
             dests=[(1, expect_addr)])
 
-    #print(story)
     assert expect_addr in story
     assert parse_change_back(story) == (Decimal('1.09997082'), [expect_addr])
+
     end_sign(True)
+
+
+def test_wrong_p2sh_p2wpkh(bitcoind, start_sign, end_sign, bitcoind_d_sim_watch, cap_story):
+    sim = bitcoind_d_sim_watch
+    sim_addr = sim.getnewaddress("", "bech32")
+    bitcoind.supply_wallet.sendtoaddress(sim_addr, 2)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    utxos = sim.listunspent()
+    assert len(utxos) == 1
+    conso_addr = sim.getnewaddress("", "legacy")
+    psbt_resp = sim.walletcreatefundedpsbt([], [{conso_addr: 1}], 0, {"fee_rate": 2, "change_type": "bech32"})
+    psbt = psbt_resp.get("psbt")
+    b4 = BasicPSBT().parse(base64.b64decode(psbt))
+    t = CTransaction()
+    t.deserialize(BytesIO(b4.txn))
+
+    if t.vout[0].scriptPubKey[:2] == b"\x00\x14":
+        target_out_idx = 1
+    else:
+        target_out_idx = 0
+
+    # looking for p2pkh output
+    scpk = t.vout[target_out_idx].scriptPubKey
+    assert scpk[:3] == bytes.fromhex("76a914")  # OP_DUP OP_HASH160 OP_PUSH20
+    assert scpk[-2:] == bytes.fromhex("88ac")  # OP_EQUALVERIFY OP_CHECKSIG
+    pkh = scpk[3:-2]
+
+    # below is wrong - but that is the point of this test
+    spk = bytes([0xa9, 0x14]) + pkh + bytes([0x87])
+    b4.outputs[target_out_idx].redeem_script = bytes([0, 20]) + bytes(pkh)
+    t.vout[target_out_idx].scriptPubKey = spk
+
+    b4.txn = t.serialize_with_witness()
+
+    with BytesIO() as fd:
+        b4.serialize(fd)
+        mod_psbt = fd.getvalue()
+
+    start_sign(mod_psbt)
+    try:
+        fin = end_sign(True)
+    except Exception as e:
+        assert "Change output is fraudulent" in e.args[0]
+        # this is the correct ending
+        return
+
+    # for people with un-patched psbt.py (proof)
+    res = sim.finalizepsbt(base64.b64encode(fin).decode())
+    # sure core allows you to send your money wherever you please
+    assert res["complete"]
+    assert sim.testmempoolaccept([res['hex']])[0]["allowed"] is True
+    tx_id = sim.sendrawtransaction(res['hex'])
+    assert isinstance(tx_id, str) and len(tx_id) == 64
+
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    utxos = sim.listunspent()
+    # but now not even core can spot the utxo as ours, so money send to limbo
+    # would need to find a script that hash160 == hash160(pubkey)
+    assert len(utxos) == 2
+
 
 def test_sign_multisig_partial_fail(start_sign, end_sign):
 
