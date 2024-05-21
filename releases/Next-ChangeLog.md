@@ -4,6 +4,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk4 and Q
 
+- Enhancement: Stricter p2sh-p2wpkh validation 
 - Bugfix: Fix PSBTv2 PSBT_GLOBAL_TX_MODIFIABLE parsing
 - Bugfix: Decrypting Tapsigner backup failed even for correct key
 - Bugfix: Clear any pending keystrokes before PSBT approval screen. 
