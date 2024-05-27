@@ -391,7 +391,7 @@ def export_prompt_builder(what_it_is, no_qr=False, no_nfc=False, key0=None):
 
     prompt, escape = None, KEY_CANCEL+"x"
 
-    if (NFC or VD) or num_sd_slots>1 or key0:
+    if (NFC or VD) or (num_sd_slots>1) or key0:
         # no need to spam with another prompt, only option is SD card
 
         prompt = "Press (1) to save %s to SD Card" % what_it_is

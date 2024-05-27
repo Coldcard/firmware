@@ -9,14 +9,14 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Mk4 Specific Changes
 
-## 5.3.1 - 2024-05-09
+## 5.3.2 - 2024-06-XX
 
-- none, just above fixes
+- Bugfix: Displaying change address in Address Explorer fails if NFC and Vdisk not enabled
 
 
 # Q Specific Changes
 
-## 1.2.1Q - 2024-05-09
+## 1.2.2Q - 2024-06-XX
 
 - none, just above fixes
 

@@ -332,7 +332,7 @@ Press (3) if you really understand and accept these risks.
             else:
                 escape += "79"
 
-            if start == self.start:
+            if export_msg and start == self.start:
                 # Show CTA about export at bottom, and only for first page -- it can be huge!
                 msg += export_msg
                 if n:
