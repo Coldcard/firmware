@@ -9,13 +9,15 @@ This lists the new changes that have not yet been published in a normal release.
   the blockchain. See `Tools > NFC Push Tx` to enable and select service provider, or your
   own webpage. More at <https://pushtx.org>. You can also use this to broadcast on any
   transaction on the MicroSD card (See `Tools > NFC Tools > Push Transaction`)
-- New Feature: Transaction output explorer: allows view output details of larger (10+ output)
+- New Feature: Transaction output explorer: allows view all output details of larger txn (10+ output)
   transactions before signing.
 - New Feature: New setting to enable always showing XFP as first item in home menu.
 - Enhancement: Add `Sign PSBT` shortcut to `NFC Tools` menu
 - Enhancement: Stricter p2sh-p2wpkh validation checks.
 - Enhancement: Mention the need to remove old duress wallets before locking down temporary seed.
 - Enhancement: Add `Theya` option to `Export Wallet`
+- Enhancement: Signing UX - show sum of outgoing value on top. Always show number of inputs/outputs.
+- Bugfix: Display max 20 change outputs in main signing story. Use Transaction output explorer.
 - Bugfix: Fix PSBTv2 `PSBT_GLOBAL_TX_MODIFIABLE` parsing.
 - Bugfix: Decrypting Tapsigner backup failed even for correct key.
 - Bugfix: Clear any pending keystrokes before PSBT approval screen.
