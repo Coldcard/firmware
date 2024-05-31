@@ -714,15 +714,26 @@ class ApproveTransaction(UserAuthorizedAction):
             elif wl >= 2:
                 msg.write('(%d warnings below)\n\n' % wl)
 
-            self.output_summary_text(msg)
-            gc.collect()
+            if self.psbt.consolidation_tx:
+                # consolidating txn that doesn't change balance of account.
+                msg.write("Consolidating %s %s\nwithin wallet.\n\n" %
+                          self.chain.render_value(self.psbt.total_value_out))
+            else:
+                msg.write("Sending %s %s\n" % self.chain.render_value(
+                    self.psbt.total_value_out - self.psbt.total_change_value))
 
             fee = self.psbt.calculate_fee()
             if fee is not None:
-                msg.write("Network fee:\n%s %s\n\n" % self.chain.render_value(fee))
+                msg.write("Network fee %s %s\n\n" % self.chain.render_value(fee))
 
-            # NEW: show where all the change outputs are going
-            self.output_change_text(msg)
+            msg.write(" %d %s\n %d %s\n\n" % (
+                self.psbt.num_inputs,
+                "input" if self.psbt.num_inputs == 1 else "inputs",
+                self.psbt.num_outputs,
+                "output" if self.psbt.num_outputs == 1 else "outputs",
+            ))
+            # outputs + change story created here
+            allow_txn_explorer = self.output_summary_text(msg)
             gc.collect()
 
             if self.psbt.ux_notes:
@@ -749,16 +760,15 @@ class ApproveTransaction(UserAuthorizedAction):
             ux_clear_keys(True)
             dis.progress_bar_show(1)  # finish the Validating...
             if not hsm_active:
-                explore = self.psbt.num_outputs > 10
                 msg.write("\nPress OK to approve and sign transaction.")
-                if explore:
+                if allow_txn_explorer:
                     msg.write(" Press (2) to explore txn.")
                 if self.is_sd and CardSlot.both_inserted():
                     msg.write(" (B) to write to lower SD slot.")
                 msg.write(" X to abort.")
                 while True:
                     ch = await ux_show_story(msg, title="OK TO SEND?", escape="2b")
-                    if ch == "2" and explore:
+                    if ch == "2" and allow_txn_explorer:
                         await self.txn_explorer()
                         continue
                     else:
@@ -930,115 +940,96 @@ class ApproveTransaction(UserAuthorizedAction):
 
             return (fd.tell(), fd.checksum.digest())
 
-    def output_change_text(self, msg):
-        # Produce text report of what the "change" outputs are (based on our opinion).
-        # - we don't really expect all users to verify these outputs, but just in case.
-        # - show the total amount, and list addresses
-        chain = chains.current_chain()
-        total = 0
-        addrs = []
-        for idx, txo in self.psbt.output_iter():
-            outp = self.psbt.outputs[idx]
-            if not outp.is_change:
-                continue
-            total += txo.nValue
-            try:
-                addrs.append(chain.render_address(txo.scriptPubKey))
-            except ValueError:
-                pass
-
-        if not addrs:
-            return
-
-        total_val = ' '.join(self.chain.render_value(total))
-
-        msg.write("Change back:\n%s\n" % total_val)
-
-        if len(addrs) == 1:
-            msg.write(' - to address -\n%s\n' % addrs[0])
-        else:
-            msg.write(' - to addresses -\n')
-            for a in addrs:
-                msg.write('%s\n' % a)
-
-        msg.write("\n")
-
     def output_summary_text(self, msg):
         # Produce text report of where their cash is going. This is what
         # they use to decide if correct transaction is being signed.
-        # - does not show change outputs, by design.
+
+        # Produce text report of what the "change" outputs are (based on our opinion).
+        # - we don't really expect all users to verify these outputs, but just in case.
+        # - show the total amount, and list addresses
         MAX_VISIBLE_OUTPUTS = const(10)
+        MAX_VISIBLE_CHANGE = const(20)
+        allow_txn_explorer = False
 
-        if self.psbt.consolidation_tx:
-            # consolidating txn that doesn't change balance of account.
-            msg.write("Consolidating\n%s %s\nwithin wallet.\n\n" %
-                            self.chain.render_value(self.psbt.total_value_out))
-            msg.write("%d ins - fee\n = %d outs\n\n" % (
-                        self.psbt.num_inputs, self.psbt.num_outputs))
-
-            return
-
-        if (self.psbt.num_outputs - self.psbt.num_change_outputs) <= MAX_VISIBLE_OUTPUTS:
-            # simple, common case: don't sort outputs, and do show all of them
-            first = True
-            for idx, tx_out in self.psbt.output_iter():
-                outp = self.psbt.outputs[idx]
-                if outp.is_change:
-                    continue
-
-                if first:
-                    first = False
-                else:
-                    msg.write('\n')
-
-                msg.write(self.render_output(tx_out))
-
-            msg.write("\n")
-            return
-
-        # Too many to show them all, so
-        # find largest N outputs, and track total amount
-        largest = []
+        largest_outs = []
+        largest_change = []
+        total_change = 0
         for idx, tx_out in self.psbt.output_iter():
             outp = self.psbt.outputs[idx]
             if outp.is_change:
-                continue
+                total_change += tx_out.nValue
+                if len(largest_change) < MAX_VISIBLE_CHANGE:
+                    largest_change.append((tx_out.nValue, self.chain.render_address(tx_out.scriptPubKey)))
+                    if len(largest_change) == MAX_VISIBLE_CHANGE:
+                        largest_change = sorted(largest_change, key=lambda x: x[0], reverse=True)
+                    continue
 
-            if len(largest) < MAX_VISIBLE_OUTPUTS:
-                largest.append((tx_out.nValue, self.render_output(tx_out)))
-                if len(largest) == MAX_VISIBLE_OUTPUTS:
-                    # descending sort from the biggest value to lowest (sort on out.nValue)
-                    largest = sorted(largest, key=lambda x: x[0], reverse=True)
-                continue
+            else:
+                if len(largest_outs) < MAX_VISIBLE_OUTPUTS:
+                    largest_outs.append((tx_out.nValue, self.render_output(tx_out)))
+                    if len(largest_outs) == MAX_VISIBLE_OUTPUTS:
+                        # descending sort from the biggest value to lowest (sort on out.nValue)
+                        largest_outs = sorted(largest_outs, key=lambda x: x[0], reverse=True)
+                    continue
 
             # insertion sort
             here = tx_out.nValue
+            largest = largest_change if outp.is_change else largest_outs
             for li, (nv, txt) in enumerate(largest):
                 if here > nv:
                     keep = li
                     break
             else:
-                continue        # too small 
+                continue        # too small
 
             largest.pop(-1)
-            largest.insert(keep, (here, self.render_output(tx_out)))
+            if outp.is_change:
+                ret = (here, self.chain.render_address(tx_out.scriptPubKey))
+            else:
+                ret = (here, self.render_output(tx_out))
+            largest.insert(keep, ret)
 
-        for val, txt in largest:
-            msg.write(txt)
+        # foreign outputs
+        visible_out_sum = 0
+        for val, txt in largest_outs:
+            visible_out_sum += val
+            msg.write(txt)  # txt is result of render_output
             msg.write('\n')
 
-        left = self.psbt.num_outputs - len(largest) - self.psbt.num_change_outputs
+        left = self.psbt.num_outputs - len(largest_outs) - self.psbt.num_change_outputs
         if left > 0:
+            allow_txn_explorer = True
             msg.write('.. plus %d smaller output(s), not shown here, which total: ' % left)
 
             # calculate left over value
-            mtot = self.psbt.total_value_out - sum(v for v,t in largest)
-            mtot -= sum(o.nValue for i, o in self.psbt.output_iter() 
-                                        if self.psbt.outputs[i].is_change)
+            msg.write('%s %s\n' % self.chain.render_value(
+                self.psbt.total_value_out - total_change - visible_out_sum))
 
-            msg.write('%s %s\n' % self.chain.render_value(mtot))
+            msg.write("\n")
 
-        msg.write("\n")
+        # change
+        if total_change > 0:
+            msg.write("Change back:\n%s %s\n" % self.chain.render_value(total_change))
+            visible_change_sum = 0
+            if len(largest_change) == 1:
+                visible_change_sum += largest_change[0][0]
+                msg.write(' - to address -\n%s\n' % largest_change[0][1])
+            else:
+                msg.write(' - to addresses -\n')
+                for val, addr in largest_change:
+                    visible_change_sum += val
+                    msg.write(addr)
+                    msg.write('\n')
+
+            left_c = self.psbt.num_change_outputs - len(largest_change)
+            if left_c:
+                allow_txn_explorer = True
+                msg.write('.. plus %d smaller change output(s), not shown here, which total: ' % left_c)
+                msg.write('%s %s\n' % self.chain.render_value(total_change - visible_change_sum))
+
+            msg.write("\n")
+
+        return allow_txn_explorer
 
 
 def sign_transaction(psbt_len, flags=0x0, psbt_sha=None):

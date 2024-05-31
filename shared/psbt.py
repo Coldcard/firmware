@@ -992,6 +992,7 @@ class psbtObject(psbtProxy):
         self.consolidation_tx = False
         # number of change outputs
         self.num_change_outputs = None
+        self.total_change_value = None
 
         # when signing segwit stuff, there is some re-use of hashes
         # only if SIGHASH_ALL
@@ -1084,13 +1085,6 @@ class psbtObject(psbtProxy):
                 yield idx, tx_out
 
                 fd.seek(cont)
-
-        if start == 0 and stop == self.num_outputs:
-            if self.total_value_out is None:
-                self.total_value_out = total_out
-            else:
-                assert self.total_value_out == total_out, \
-                    '%s != %s' % (self.total_value_out, total_out)
 
     def parse_txn(self):
         # Need to semi-parse in unsigned transaction.
@@ -1476,19 +1470,30 @@ class psbtObject(psbtProxy):
         # scan ouputs:
         # - is it a change address, defined by redeem script (p2sh) or key we know is ours
         # - mark change outputs, so perhaps we don't show them to users
-
+        total_out = 0
+        total_change = 0
         self.num_change_outputs = 0
+
         for idx, txo in self.output_iter():
             output = self.outputs[idx]
             # perform output validation
             output.validate(idx, txo, self.my_xfp, self.active_multisig, self)
+            total_out += txo.nValue
             if output.is_change:
                 self.num_change_outputs += 1
+                total_change += txo.nValue
 
         if self.total_value_out is None:
-            # this happens, but would expect this to have done already?
-            for out_idx, txo in self.output_iter():
-                pass
+            self.total_value_out = total_out
+        else:
+            assert self.total_value_out == total_out, \
+                '%s != %s' % (self.total_value_out, total_out)
+
+        if self.total_change_value is None:
+            self.total_change_value = total_change
+        else:
+            assert self.total_change_value == total_change, \
+                '%s != %s' % (self.total_change_value, total_change)
 
         # check fee is reasonable
         if self.total_value_out == 0:

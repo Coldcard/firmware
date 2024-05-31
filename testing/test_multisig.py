@@ -2967,7 +2967,7 @@ def test_bare_cc_ms_qr_import(N, make_multisig, scan_a_qr, clear_ms, goto_home,
 @pytest.mark.parametrize("data", [
     # (out_style, amount, is_change)
     [("p2wsh", 1000000, 0)] * 99,
-    [("p2sh", 1000000, 1)] * 11,
+    [("p2sh", 1000000, 1)] * 33,
     [("p2wsh-p2sh", 1000000, 1)] * 18 + [("p2wsh", 50000000, 0)] * 12,
     [("p2sh", 1000000, 1), ("p2wsh-p2sh", 50000000, 0), ("p2wsh", 800000, 1)] * 14,
 ])

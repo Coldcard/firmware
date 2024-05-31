@@ -2929,12 +2929,12 @@ def test_sorting_outputs_by_size(fake_txn, start_sign, cap_story, use_testnet,
 @pytest.mark.parametrize("data", [
     # (out_style, amount, is_change)
     [("p2pkh", 1000000, 0)] * 99,
-    [("p2wpkh", 1000000, 1)] * 11,
+    [("p2wpkh", 1000000, 1),("p2wpkh-p2sh", 800000, 1)] * 27,
     [("p2pkh", 1000000, 1)] * 11 + [("p2wpkh", 50000000, 0)] * 16,
     [("p2pkh", 1000000, 1), ("p2wpkh", 50000000, 0), ("p2wpkh-p2sh", 800000, 1)] * 11,
 ])
 def test_txout_explorer(psbtv2, chain, data, fake_txn, start_sign,
-                        settings_set, txout_explorer):
+                        settings_set, txout_explorer, cap_story):
     settings_set("chain", chain)
     outstyles = []
     outvals = []
