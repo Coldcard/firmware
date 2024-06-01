@@ -183,7 +183,14 @@ git clone --recursive https://github.com/Coldcard/firmware.git
 cd firmware
 
 # Apply address patch
-git apply unix/linux_addr.patch 
+git apply unix/linux_addr.patch
+
+#  * below is needed for ubuntu 24.04
+pushd ../external/micropython
+git apply ../../ubuntu24_mpy.patch
+popd
+#  * 
+
 
 # Create Python virtual environment and activate it
 python3 -m venv ENV  # or virtualenv -p python3 ENV
