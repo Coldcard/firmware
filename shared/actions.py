@@ -1728,7 +1728,7 @@ from your desktop wallet software or command line tools.\n\n'''
                                         **opt)
             if not choices:
                 await ux_show_story('Unable to find any suitable files for this operation.'
-                                    ' The filename must end in psbt".')
+                                    ' The filename must end in psbt.')
                 return
         else:
             if NFC and picked == KEY_NFC:
