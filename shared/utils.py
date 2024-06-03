@@ -178,6 +178,10 @@ class Base64Writer:
             assert tmp[-2:-1] != b'=', tmp
             self.fd.write(tmp[:-1])
 
+def b2a_base64url(s):
+    # see <https://datatracker.ietf.org/doc/html/rfc4648#section-5>
+    return b2a_base64(s).rstrip(b'=\n').replace(b'+', b'-').replace(b'/', b'_')
+
 def swab32(n):
     # endian swap: 32 bits
     return ustruct.unpack('>I', ustruct.pack('<I', n))[0]
