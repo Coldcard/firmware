@@ -2139,7 +2139,6 @@ async def keyboard_test(*a):
 #
 # Q wrappers; these will be present, but are very short on mk4
 #
-
 async def reflash_gpu(*a):
     from glob import dis
     await dis.gpu.reflash_gpu_ux()
@@ -2152,5 +2151,99 @@ async def _scan_any_qr(expect_secret=False, tmp=False):
     from ux_q1 import QRScannerInteraction
     x = QRScannerInteraction()
     await x.scan_anything(expect_secret=expect_secret, tmp=tmp)
+
+
+PUSHTX_SUPPLIERS = [
+    # (label, URL)
+    ('coldcard.com', 'https://coldcard.com/pushtx?' ),
+    ('mempool.space', 'https://mempool.space/tx/push?tx=' ),
+]
+
+async def pushtx_setup_menu(*a):
+    # let them pick a URL from menu to enable "pushtx" feature, and provide
+    # some background, and even let them enter a custom URL.
+
+    if not settings.get("ptxurl", False):
+        # force a warning on them, unless they are already doing it.
+        ch = await ux_show_story(
+            "When this is enabled, immediately after transaction signing, you can "
+            "tap any NFC-enabled phone on the COLDCARD and your newly-signed "
+            "transaction will be immediately broadcast on the public network.\n\n"
+            "You must choose a provider by URL here, or give your own URL. "
+            "\n\nYour phone's IP address vs. transaction details could be linked by the service. "
+            "Requires NFC.",
+            title="PUSH TX",
+        )
+        if ch != "y":
+            return
+
+    if not settings.get('nfc'):
+        # force on NFC, so it works... but they can still turn it off later, etc.
+        if not await ux_confirm("This feature requires NFC to be enabled. OK to enable."):
+            return
+        settings.set("nfc", 1)
+        await change_nfc_enable(1)
+
+    async def doit(menu, picked, xx_self):
+        # using stock values, or Disable 
+        val = xx_self.arg[0]
+
+        if val:
+            settings.set('ptxurl', val)
+        else:
+            settings.remove_key('ptxurl')
+
+        menu.chosen = picked
+        menu.show()
+        await sleep_ms(100)     # visual feedback that we changed it
+        the_ux.pop()
+
+    async def edit_custom(menu, picked, xx_self):
+        val = xx_self.arg[0]
+        while 1:
+            nv = await ux_input_text(val, confirm_exit=True, scan_ok=True, prompt="Enter URL")
+            # cleanup? URL validation? 
+            if nv and ('http://' not in nv and 'https://' not in nv) or len(nv) < 12:
+                await ux_show_story("Must start with http:// or https://. Try again")
+                val = nv
+                continue
+            break
+
+        if nv:
+            settings.set('ptxurl', nv)
+            # force menu redraw
+            m = await pushtx_setup_menu()
+            the_ux.replace(m)
+        else:
+            settings.remove_key('ptxurl')
+            the_ux.pop()
+    
+
+    was = settings.get("ptxurl", None)
+    try:
+        cur = [n for n, (l, u) in enumerate(PUSHTX_SUPPLIERS) if u == was][0]
+    except IndexError:
+        cur = None
+
+    choices = [MenuItem(l, f=doit, arg=(u,)) for l,u in PUSHTX_SUPPLIERS]
+
+    if was and cur is None:
+        # they have a non-standard choice
+        # - support http and https for custom
+        if was.startswith('https://'):
+            label = was[8:]
+        elif was.startswith('http://'):
+            label = was[7:]
+        else:
+            label = was
+        
+        choices.append(MenuItem(label, f=edit_custom, arg=(was,)))
+        cur = len(choices)-1
+    else:
+        choices.append(MenuItem("Custom URL...", f=edit_custom, arg=('http',)))
+
+    choices.append(MenuItem("Disable", f=doit, arg=(None,)))
+
+    return MenuSystem(choices, chosen=cur)
 
 # EOF

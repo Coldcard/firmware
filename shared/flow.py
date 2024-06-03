@@ -343,6 +343,7 @@ AdvancedNormalMenu = [
                             f=drv_entro_start),
     MenuItem("View Identity", f=view_ident),
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
+    NonDefaultMenuItem('NFC PushTx', 'ptxurl', menu=pushtx_setup_menu),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     ToggleMenuItem('Enable HSM', 'hsmcmd', ['Default Off', 'Enable'],
                    story=("Enable HSM? Enables all user management commands, and other HSM-only USB commands. "

@@ -60,6 +60,7 @@ from utils import call_later_ms
 #   accts = (list of tuples: (addr_fmt, account#)) Single-sig wallets we've seen them use
 #   aei   = (bool) allow changing start index in Address Explorer
 #   b85max = (bool) allow max BIP-32 int value in BIP-85 derivations
+#   ptxurl = (str) URL for PushTx feature, clear to disable feature
 
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
