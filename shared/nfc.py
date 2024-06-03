@@ -239,6 +239,39 @@ class NFCHandler:
         
         return await self.share_start(n)
 
+    async def share_push_tx(self, url, txid, file_offset, txn_len, txn_sha):
+        # Given a signed TXN, we convert to URL which a web backend can broadcast directly
+        # - using base64url encoding
+        # - just appends to provided URL
+        # - keeps showing it until they press CANCEL
+        #
+        if (txn_len * 1.4) >= MAX_NFC_SIZE:
+            raise ValueError('too big')
+
+        from glob import PSRAM
+        from utils import b2a_base64url
+        from chains import current_chain
+
+        is_https = url.startswith('https://')
+        if is_https:
+            url = url[8:]
+
+        url += 't=' + b2a_base64url(PSRAM.read_at(file_offset, txn_len)) \
+                + '&c=' + b2a_base64url(txn_sha[-8:])
+
+        ch = current_chain()
+        if ch.ctype != 'BTC':
+            url += '&n=' + ch.ctype         # XTN or XRT
+
+        n = ndef.ndefMaker()
+        n.add_url(url, https=is_https)
+
+        while 1:
+            done = await self.share_start(n, prompt="Tap to broadcast, CANCEL when done", 
+                line2="Signed TXID: %s⋯%s" % (txid[0:8], txid[-8:]))
+
+            if done: break
+
     async def share_psbt(self, file_offset, psbt_len, psbt_sha, label=None):
         # we just signed something, share it over NFC
         if psbt_len >= MAX_NFC_SIZE:
@@ -297,7 +330,7 @@ class NFCHandler:
         self.write_dyn(GPO_CTRL_Dyn, 0x01)      # GPO_EN
         self.read_dyn(IT_STS_Dyn)               # clear interrupt
 
-    async def ux_animation(self, write_mode, allow_enter=True):
+    async def ux_animation(self, write_mode, allow_enter=True, prompt=None, line2=None):
         # Run the pretty animation, and detect both when we are written, and/or key to exit/abort.
         # - similar when "read" and then removed from field
         # - return T if aborted by user
@@ -309,7 +342,9 @@ class NFCHandler:
 
         if dis.has_lcd:
             dis.real_clear()        # bugfix
-            dis.text(None, -2, 'Tap phone to screen, or CANCEL.', dark=True)
+            dis.text(None, -2, prompt or 'Tap phone to screen, or CANCEL.', dark=True)
+            if line2:
+                dis.text(None, -3, line2)
         else:
             from graphics_mk4 import Graphics
             frames = [getattr(Graphics, 'mk4_nfc_%d'%i) for i in range(1, 5)]

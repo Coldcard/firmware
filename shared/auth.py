@@ -806,9 +806,20 @@ class ApproveTransaction(UserAuthorizedAction):
         except BaseException as exc:
             return await self.failure("PSBT output failed", exc)
 
-        from glob import NFC
+        from glob import NFC, settings
 
         if self.do_finalize and txid and not hsm_active:
+
+            # if NFC PushTx is enabled, do that w/o questions.
+            url = settings.get('ptxurl', False)
+            if NFC and url:
+                try:
+                    await NFC.share_push_tx(url, txid, TXN_OUTPUT_OFFSET, self.result[0], self.result[1])
+                    return
+                except:
+                    # continue normally if it fails, perhaps too big?
+                    pass
+
             kq, kn = "(1)", "(3)"
             if version.has_qwerty:
                 kq, kn = KEY_QR, KEY_NFC

@@ -4,6 +4,8 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk4 and Q
 
+- New Feature: PushTX: when enabled with a service provider's URL, you can tap the COLDCARD
+  after signing with your phone and the transaction will be broadcast directly.
 - Enhancement: Stricter p2sh-p2wpkh validation 
 - Enhancement: mention the need to remove old duress wallets before locking down temporary seed
 - Bugfix: Fix PSBTv2 `PSBT_GLOBAL_TX_MODIFIABLE` parsing

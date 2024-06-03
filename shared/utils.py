@@ -180,7 +180,7 @@ class Base64Writer:
 
 def b2a_base64url(s):
     # see <https://datatracker.ietf.org/doc/html/rfc4648#section-5>
-    return b2a_base64(s).rstrip(b'=\n').replace(b'+', b'-').replace(b'/', b'_')
+    return b2a_base64(s).rstrip(b'=\n').replace(b'+', b'-').replace(b'/', b'_').decode()
 
 def swab32(n):
     # endian swap: 32 bits

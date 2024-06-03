@@ -235,7 +235,7 @@ class Display:
         ch = (h+CELL_H) // CELL_H
         #print('pixel %dx%d @ (%d,%d) => %dx%d @ (%d,%d)' % (w, h, px,py,  cw, ch, cx,cy))
 
-        for y in range(cy, cy+ch+1):
+        for y in range(cy, cy+ch):
             for x in range(cx, cx+cw+1):
                 try:
                     self.last_buf[y][x] = self.next_buf[y][x] = 0xfffe

@@ -2155,8 +2155,8 @@ async def _scan_any_qr(expect_secret=False, tmp=False):
 
 PUSHTX_SUPPLIERS = [
     # (label, URL)
-    ('coldcard.com', 'https://coldcard.com/pushtx?' ),
-    ('mempool.space', 'https://mempool.space/tx/push?tx=' ),
+    ('coldcard.com', 'https://coldcard.com/pushtx#' ),
+    ('mempool.space', 'https://mempool.space/tx/push?' ),
 ]
 
 async def pushtx_setup_menu(*a):
@@ -2203,8 +2203,14 @@ async def pushtx_setup_menu(*a):
         while 1:
             nv = await ux_input_text(val, confirm_exit=True, scan_ok=True, prompt="Enter URL")
             # cleanup? URL validation? 
-            if nv and ('http://' not in nv and 'https://' not in nv) or len(nv) < 12:
-                await ux_show_story("Must start with http:// or https://. Try again")
+            if nv:
+                if ('http://' not in nv and 'https://' not in nv):
+                    prob = "Must start with http:// or https://."
+                elif len(nv) < 12:
+                    prob = "Too short."
+                if nv[-1] not in '#?&':
+                    prob = "Final char must be # or ? or &."
+                await ux_show_story(prob + " Try again.")
                 val = nv
                 continue
             break
