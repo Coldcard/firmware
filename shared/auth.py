@@ -832,10 +832,6 @@ class ApproveTransaction(UserAuthorizedAction):
                     continue
                 break
 
-        # TODO ofter to share / or auto-share over NFC if that seems appropraite
-        #if NFC:
-            #NFC.share_signed_psbt(TXN_OUTPUT_OFFSET, self.result[0], self.result[1])
-
     async def save_visualization(self, msg, sign_text=False):
         # write text into spi flash, maybe signing it as we go
         # - return length and checksum
