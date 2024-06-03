@@ -191,7 +191,7 @@ def decode_short_text(got):
     if ("sortedmulti(" in got):
         return 'multi', (got,)
 
-    if "\n" in got:
+    if ("\n" in got) and ('pub' in got):
         # legacy multisig import/export format
         # [0-9a-fA-F]{8}\s*:\s*[xtyYzZuUvV]pub[1-9A-HJ-NP-Za-km-z]{107}
         # above is more precise BUT counted repetitions not supported in mpy
