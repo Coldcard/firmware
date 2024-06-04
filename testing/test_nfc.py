@@ -218,13 +218,13 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
         title, story = cap_story()
         assert title == 'OK TO SEND?'
 
-        if accept != None:
+        if accept is not None:
             if accept:
                 press_select()
             else:
                 press_cancel()
 
-        if accept == False:
+        if not accept:
             time.sleep(0.050)
 
             # look for "Aborting..." ??
@@ -324,7 +324,7 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
 
         return ip, (got_psbt or got_txn), txid
 
-    yield  doit
+    yield doit
 
     # cleanup / restore
     sim_exec('from pyb import SDCard; SDCard.ejected = False')

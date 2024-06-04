@@ -1417,7 +1417,10 @@ async def nfc_share_file(*A):
     try:
         await NFC.share_file()
     except Exception as e:
-        await ux_show_story(title="ERROR", msg="Failed to share file. %s" % str(e))
+        await ux_show_story(
+            title="ERROR",
+            msg="Failed to share file.\n\n%s\n%s" % (e, problem_file_line(e))
+        )
 
 async def nfc_pushtx_file(*A):
     # Share a signed txn over NFC using PushTx technology
@@ -1434,7 +1437,10 @@ async def nfc_show_address(*A):
     try:
         await NFC.address_show_and_share()
     except Exception as e:
-        await ux_show_story(title="ERROR", msg="Failed to show address. %s" % str(e))
+        await ux_show_story(
+            title="ERROR",
+            msg="Failed to show address.\n\n%s\n%s" % (e, problem_file_line(e))
+        )
 
 
 async def nfc_sign_msg(*A):
@@ -1445,7 +1451,10 @@ async def nfc_sign_msg(*A):
     try:
         await NFC.start_msg_sign()
     except Exception as e:
-        await ux_show_story(title="ERROR", msg="Failed to sign message. %s" % str(e))
+        await ux_show_story(
+            title="ERROR",
+            msg="Failed to sign message.\n\n%s\n%s" % (e, problem_file_line(e))
+        )
 
 async def nfc_sign_verify(*A):
     # Receive armored data over NFC
@@ -1453,12 +1462,21 @@ async def nfc_sign_verify(*A):
     try:
         await NFC.verify_sig_nfc()
     except Exception as e:
-        await ux_show_story(title="ERROR", msg="Failed to verify signed message. %s" % str(e))
+        await ux_show_story(
+            title="ERROR",
+            msg="Failed to verify signed message.\n\n%s\n%s" % (e, problem_file_line(e))
+        )
 
 async def nfc_address_verify(*A):
     # Receive any random address (just the address) and find out if we own it.
     from glob import NFC
-    await NFC.verify_address_nfc()
+    try:
+        await NFC.verify_address_nfc()
+    except Exception as e:
+        await ux_show_story(
+            title="ERROR",
+            msg='Address verification failed.\n\n%s\n%s' % (e, problem_file_line(e))
+        )
 
 async def nfc_recv_ephemeral(*A):
     # Mk4: Share txt, txn and PSBT files over NFC.
@@ -1466,8 +1484,20 @@ async def nfc_recv_ephemeral(*A):
     try:
         await NFC.import_ephemeral_seed_words_nfc()
     except Exception as e:
-        await ux_show_story(title="ERROR", msg="Failed to import temporary seed via NFC. %s" % str(e))
+        await ux_show_story(
+            title="ERROR",
+            msg="Failed to import temporary seed via NFC.\n\n%s\n%s" % (e, problem_file_line(e))
+        )
 
+async def nfc_sign_psbt(*A):
+    from glob import NFC
+    try:
+        await NFC.start_psbt_rx()
+    except Exception as e:
+        await ux_show_story(
+            title="ERROR",
+            msg='Failed to sign PSBT.\n\n%s\n%s' % (e, problem_file_line(e))
+        )
 
 async def list_files(*A):
     fn = await file_picker(min_size=0)

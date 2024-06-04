@@ -323,6 +323,7 @@ BackupStuffMenu = [
 ]
 
 NFCToolsMenu = [
+    MenuItem('Sign PSBT', f=nfc_sign_psbt),
     MenuItem('Show Address', f=nfc_show_address),
     MenuItem('Sign Message', f=nfc_sign_msg),
     MenuItem('Verify Sig File', f=nfc_sign_verify),
