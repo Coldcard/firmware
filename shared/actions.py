@@ -2156,7 +2156,8 @@ async def _scan_any_qr(expect_secret=False, tmp=False):
 PUSHTX_SUPPLIERS = [
     # (label, URL)
     ('coldcard.com', 'https://coldcard.com/pushtx#' ),
-    ('mempool.space', 'https://mempool.space/tx/push?' ),
+    # from https://github.com/mempool/mempool/pull/5132
+    ('mempool.space', 'https://mempool.space/pushtx#' ),
 ]
 
 async def pushtx_setup_menu(*a):
