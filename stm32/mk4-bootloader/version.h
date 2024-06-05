@@ -6,7 +6,7 @@
 
 // Public version number for humans. Lots more version data added by Makefile.
 // - update ../MK4-Makefile BOOTLOADER_VERSION once this is qualified version
-#define RELEASE_VERSION     "3.2.0"
+#define RELEASE_VERSION     "3.3.0"
 
 extern const char version_string[];
 
