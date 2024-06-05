@@ -13,3 +13,4 @@ Github is nearly free, so why not capture all the actual bits!
 - V1.0.2 - bugfix w/ power btn release
 - V1.0.3 - bugfix to allow (mpy) version numbers < 3.0.0
 - V1.0.4 - cleanups and such; final version for first-run of boards.
+- V1.1.0 - enable omitted if wrong PIN options

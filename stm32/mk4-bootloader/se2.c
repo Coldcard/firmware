@@ -875,14 +875,24 @@ se2_handle_bad_pin(int num_fails)
         if(slot.tc_flags & TC_WIPE) {
             // Wipe keys and stop. They can power cycle and keep trying
             // so only do this if a valid key currently exists.
-            bool valid;
-            const mcu_key_t *cur = mcu_key_get(&valid);
+            if(slot.tc_flags & TC_BRICK) {
+                // special case TC_WIPE|TC_BRICK
+                bool valid;
+                const mcu_key_t *cur = mcu_key_get(&valid);
+                if(valid) {
+                    mcu_key_clear(cur);
+                    oled_show(screen_wiped);
+                    LOCKUP_FOREVER();
+                }
+                // else fall-thru if no keys to wipe and WIPE|BRICK mode, will now brick
+                // used in "Last Chance" mode
 
-            if(valid) {
-                mcu_key_clear(cur);
-                oled_show(screen_wiped);
-
-                LOCKUP_FOREVER();
+            } else {
+                mcu_key_clear(NULL);  // does valid key check
+                if(slot.tc_flags == TC_WIPE) {
+                    oled_show(screen_wiped);
+                    LOCKUP_FOREVER();
+                }
             }
         }
 
@@ -893,6 +903,13 @@ se2_handle_bad_pin(int num_fails)
             // brick code will happen.
             fast_brick();
         }
+
+        if(slot.tc_flags & TC_REBOOT) {
+            NVIC_SystemReset();
+        }
+        //if(slot.tc_flags & TC_FAKE_OUT) {//nothing to do here - Silent Wipe}
+        //     only used together with TC_WIPE. At this point we are already wiped
+        //     EPIN_AUTH_FAIL handled by caller
     }
 }
 
