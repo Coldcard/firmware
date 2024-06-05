@@ -30,8 +30,8 @@ The COLDCARD needs a URL prefix. To that it appends some values:
     - when RegTest is enabled, the value will be `XRT`
 
 We provide a few default URL values to our customers, including one backend we
-will operate. The URL can also be directly entered by the customer. On the Q, 
-it can be scanned from a QR code.
+will operate on `colcard.com`. The URL can also be directly entered by the
+customer. On the Q, it can be scanned from a QR code.
 
 For COLDCARD backend, the url used is:
 
@@ -71,6 +71,18 @@ it is now waiting in the mempool.
   4k bytes and the NFC implementation of the phone may also have limits.
 - The service URL provided must end in `?` or `#` or `&`.
 - `base64url` values from COLDCARD will not have padding (`=` bytes) at end.
+- POST cannot be used directly because the expect the phone to do a GET on the URL provided.
+- Mempool.space's [implementation of this feature](https://github.com/mempool/mempool/pull/5132)
 - Honest backends will not log the IP address of incoming transactions, but there is
   no way to enforce that, and CloudFlare sees all.
+
+## Example URL
+
+```
+https://mempool.space/pushtx#t=AgAAAAOHqK3w3hC6PSC0buthnJA5R9Y88WAlEvm9cifNVUPhIwAAAABqRzBEAiB-M9YprNYoohqHdQHg4wY_qcEMwDmyIQH8prykk8-0KwIgARxcojKrtixicouiUxhk4jQq_MAl11ptIgHDlRjgk5ABIQM4bgMAVDbDSr_9CvLjbg5nxrWnDGI-kVmkfL81GXZtCf____8OaH0RxW7DjZKdIF6rvbHvvyFGCBQ0PTgpx20nA_wbLgAAAABqRzBEAiBwUFigORJDPK8ptnYPAntjV-RUn1jAuzphicQstwVv-QIgEbMC8FWXQ5Jve5DaAqKJsqoj3peK83iub_oOkmbiYg4BIQO5Ehn2t0oUG3hnK4cBnwCwMc33DcdJ8aSMWzRQ_wjZL_____-UG6M-eBeAun-EZp6EbVypvVJ3mXCQrN_fUDn-kwoEnQAAAABqRzBEAiAgFAtVTpQYTKplc9NuV7Ws7ZFYeNO8BCS4ozgWrgd2ogIgGTTcw98xQdcGWeWQhVfVm_vZorBIOYovQPQeK0Lg9t8BIQLPWPioVWvj1z4NMHBCkeirYOUalCa83wbSH0CREnGZvv____8CjM_wCAAAAAAZdqkUIJA8_yqzaj0NzhvYVEIBno5gETGIrIzP8AgAAAAAGXapFEaV7xTyleuEX9OejdlUlsz7RTr0iKwAAAAA&c=hre47vyMC78&n=XTN
+```
+
+- this transaction doesn't have valid inputs, and will cause an error
+- mempool.space will redirect this to a testnet endpoint (because ends with `n=XTN`)
+
 
