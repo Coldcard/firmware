@@ -2,12 +2,14 @@
 #
 # utils.py - Misc utils. My favourite kind of source file.
 #
-import gc, sys, ustruct, ngu, chains, ure, time
+import gc, sys, ustruct, ngu, chains, ure, time, version, uos, uio
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
 from uhashlib import sha256
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR, MAX_PATH_DEPTH
+from public_constants import AF_P2WSH, AF_P2WSH_P2SH
+
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
 
@@ -91,7 +93,6 @@ def pop_count(i):
 
 def get_filesize(fn):
     # like os.path.getsize()
-    import uos
     try:
         return uos.stat(fn)[6]
     except OSError:
@@ -220,8 +221,6 @@ def to_ascii_printable(s, strip=False):
 def problem_file_line(exc):
     # return a string of just the filename.py and line number where
     # an exception occured. Best used on AssertionError.
-    import uio, sys, ure
-
     tmp = uio.StringIO()
     sys.print_exception(exc, tmp)
     lines = tmp.getvalue().split('\n')[-3:]
@@ -251,7 +250,6 @@ def cleanup_deriv_path(bin_path, allow_star=False):
     # - assume 'm' prefix, so '34' becomes 'm/34', etc
     # - do not assume /// is m/0/0/0
     # - if allow_star, then final position can be * or *h (wildcard)
-    import ure
     from public_constants import MAX_PATH_DEPTH
 
     s = to_ascii_printable(bin_path, strip=True).lower()
@@ -345,6 +343,13 @@ def match_deriv_path(patterns, path):
 
     return False
 
+def validate_derivation_path_length(length, allow_master=False):
+    # force them to use a derived key, never the master
+    if not allow_master:
+        assert length >= 4, 'too short key path'
+    assert (length % 4) == 0, 'corrupt key path'
+    assert (length // 4) <= MAX_PATH_DEPTH, 'too deep'
+
 class DecodeStreamer:
     def __init__(self):
         self.runt = bytearray()
@@ -431,7 +436,7 @@ def clean_shutdown(style=0):
     # wipe SPI flash and shutdown (wiping main memory)
     # - mk4: SPI flash not used, but NFC may hold data (PSRAM cleared by bootrom)
     # - bootrom wipes every byte of SRAM, so no need to repeat here
-    import callgate, version, uasyncio
+    import callgate, uasyncio
 
     # save if anything pending
     from glob import settings
@@ -507,9 +512,7 @@ def word_wrap(ln, w):
 
 def parse_addr_fmt_str(addr_fmt):
     # accepts strings and also integers if already parsed
-    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
-
-    if addr_fmt in [AF_P2WPKH_P2SH, AF_P2WPKH, AF_CLASSIC]:
+    if addr_fmt in [AF_P2WPKH_P2SH, AF_P2WPKH, AF_CLASSIC, AF_P2TR]:
         return addr_fmt
 
     addr_fmt = addr_fmt.lower()
@@ -519,9 +522,10 @@ def parse_addr_fmt_str(addr_fmt):
         return AF_CLASSIC
     elif addr_fmt == "p2wpkh":
         return AF_P2WPKH
+    elif addr_fmt == "p2tr":
+        return AF_P2TR
     else:
-        raise ValueError("Invalid address format: '%s'\n\n"
-                           "Choose from p2pkh, p2wpkh, p2sh-p2wpkh." % addr_fmt)
+        raise ValueError("Unsupported address format: '%s'" % addr_fmt)
 
 def parse_extended_key(ln, private=False):
     # read an xpub/ypub/etc and return BIP-32 node and what chain it's on.
@@ -563,7 +567,10 @@ def addr_fmt_label(addr_fmt):
     return {
         AF_CLASSIC: "Classic P2PKH",
         AF_P2WPKH_P2SH: "P2SH-Segwit",
-        AF_P2WPKH: "Segwit P2WPKH"
+        AF_P2WPKH: "Segwit P2WPKH",
+        AF_P2TR: "Taproot P2TR",
+        AF_P2WSH: "Segwit P2WSH",
+        AF_P2WSH_P2SH: "P2SH-P2WSH"
     }[addr_fmt]
 
 
@@ -620,8 +627,6 @@ def url_decode(u):
     # - equiv to urllib.parse.unquote_plus
     # - ure.sub is missing, so not being clever here.
     # - give up on syntax errors, and return unchanged
-    import ure
-
     u = u.replace('+', ' ')
     while 1:
         pos = u.find('%')

@@ -6,7 +6,7 @@ import pytest, struct
 from ckcc_protocol.protocol import MAX_TXN_LEN
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from io import BytesIO
-from helpers import fake_dest_addr, make_change_addr, hash160
+from helpers import fake_dest_addr, make_change_addr, hash160, taptweak
 from base58 import decode_base58
 from bip32 import BIP32Node
 from constants import ADDR_STYLES, simulator_fixed_tprv
@@ -24,7 +24,7 @@ def fake_txn(dev, pytestconfig):
              invals=None, outvals=None, segwit_in=False, wrapped=False,
              outstyles=['p2pkh'],  psbt_hacker=None, change_outputs=[],
              capture_scripts=None, add_xpub=None, op_return=None,
-             psbt_v2=None, input_amount=1E8):
+             psbt_v2=None, input_amount=1E8, taproot_in=False):
 
         psbt = BasicPSBT()
 
@@ -61,7 +61,40 @@ def fake_txn(dev, pytestconfig):
             assert len(sec) == 33, "expect compressed"
             assert subpath[0:2] == '0/'
 
-            psbt.inputs[i].bip32_paths[sec] = xfp + struct.pack('<II', 0, i)
+            if taproot_in:
+                tweaked_xonly = taptweak(sec[1:])
+
+            if segwit_in and taproot_in:
+                # if both specified:
+                # even is segwit v0
+                # odd is segvit v1 (taproot)
+                if i % 2 == 0:
+                    psbt.inputs[i].bip32_paths[sec] = xfp + struct.pack('<II', 0, i)
+                    scr = bytes([0x00, 0x14]) + subkey.hash160()
+                    if wrapped:
+                        # p2sh-p2wpkh
+                        psbt.inputs[i].redeem_script = scr
+                        scr = bytes([0xa9, 0x14]) + hash160(scr) + bytes([0x87])
+                else:
+                    psbt.inputs[i].taproot_bip32_paths[sec[1:]] = b"\x00" + xfp + struct.pack('<II', 0, i)
+                    scr = bytes([81, 32]) + tweaked_xonly
+
+                # UTXO that provides the funding for to-be-signed txn
+            elif taproot_in:
+                psbt.inputs[i].taproot_bip32_paths[sec[1:]] = b"\x00" + xfp + struct.pack('<II', 0, i)
+                scr = bytes([81, 32]) + tweaked_xonly
+            else:
+                psbt.inputs[i].bip32_paths[sec] = xfp + struct.pack('<II', 0, i)
+                if segwit_in:
+                    # p2wpkh
+                    scr = bytes([0x00, 0x14]) + subkey.hash160()
+                    if wrapped:
+                        # p2sh-p2wpkh
+                        psbt.inputs[i].redeem_script = scr
+                        scr = bytes([0xa9, 0x14]) + hash160(scr) + bytes([0x87])
+                else:
+                    # p2pkh
+                    scr = bytes([0x76, 0xa9, 0x14]) + subkey.hash160() + bytes([0x88, 0xac])
 
             # UTXO that provides the funding for to-be-signed txn
             supply = CTransaction()
@@ -71,17 +104,6 @@ def fake_txn(dev, pytestconfig):
                 73
             )
             supply.vin = [CTxIn(out_point, nSequence=0xffffffff)]
-
-            if segwit_in:
-                # p2wpkh
-                scr = bytes([0x00, 0x14]) + subkey.hash160()
-                if wrapped:
-                    # p2sh-p2wpkh
-                    psbt.inputs[i].redeem_script = scr
-                    scr = bytes([0xa9, 0x14]) + hash160(scr) + bytes([0x87])
-            else:
-                # p2pkh
-                scr = bytes([0x76, 0xa9, 0x14]) + subkey.hash160() + bytes([0x88, 0xac])
 
             supply.vout.append(CTxOut(int(input_amount if not invals else invals[i]), scr))
 

@@ -4,7 +4,7 @@
 #
 import chains
 from descriptor import Descriptor
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from stash import SensitiveValues
 
 MAX_BIP32_IDX = (2 ** 31) - 1
@@ -40,8 +40,10 @@ class MasterSingleSigWallet(WalletABC):
         # Construct a wallet based on current master secret, and chain.
         # - path is optional, and then we use standard path for addr_fmt
         # - path can be overriden when we come here via address explorer
-
-        if addr_fmt == AF_P2WPKH:
+        if addr_fmt == AF_P2TR:
+            n = 'Taproot P2TR'
+            prefix = path or 'm/86h/{coin_type}h/{account}h'
+        elif addr_fmt == AF_P2WPKH:
             n = 'Segwit P2WPKH'
             prefix = path or 'm/84h/{coin_type}h/{account}h'
         elif addr_fmt == AF_CLASSIC:
@@ -66,7 +68,6 @@ class MasterSingleSigWallet(WalletABC):
         if self.chain.ctype == 'XRT':
             n += ' (Regtest)'
 
-
         self.name = n
         self.addr_fmt = addr_fmt
 
@@ -81,7 +82,6 @@ class MasterSingleSigWallet(WalletABC):
             p = p[:-2]
 
         self._path = p
-
 
     def yield_addresses(self, start_idx, count, change_idx=None):
         # Render a range of addresses. Slow to start, since accesses SE in general

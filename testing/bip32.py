@@ -6,8 +6,9 @@ from io import BytesIO
 try:
     from pysecp256k1 import (
         ec_seckey_verify, ec_pubkey_create, ec_pubkey_serialize, ec_pubkey_parse,
-        ec_seckey_tweak_add, ec_pubkey_tweak_add,
+        ec_seckey_tweak_add, ec_pubkey_tweak_add, tagged_sha256
     )
+    from pysecp256k1.extrakeys import xonly_pubkey_from_pubkey, xonly_pubkey_serialize, xonly_pubkey_tweak_add
 except ImportError:
     import ecdsa
     SECP256k1 = ecdsa.curves.SECP256k1
@@ -119,6 +120,10 @@ class PrivateKey(object):
         tweaked = ec_seckey_tweak_add(self.k, tweak32)
         return PrivateKey(sec_exp=tweaked)
 
+    def address(self, compressed: bool = True, chain: str = "BTC",
+                addr_fmt: str = "p2wpkh") -> str:
+        return self.K.address(compressed, chain, addr_fmt)
+
     @classmethod
     def from_wif(cls, wif_str: str) -> "PrivateKey":
         """
@@ -193,7 +198,16 @@ class PublicKey(object):
             return self.K.to_string(encoding="compressed" if compressed else "uncompressed")
 
     def tweak_add(self, tweak32: bytes) -> "PublicKey":
+        assert len(tweak32) == 32
         return PublicKey(pub_key=ec_pubkey_tweak_add(self.K, tweak32))
+
+    def taptweak(self, tweak32: bytes = None) -> "bytes":
+        xonly_key, _ = xonly_pubkey_from_pubkey(self.K)
+        tweak = tweak32 or xonly_pubkey_serialize(xonly_key)
+        tweak = tagged_sha256(b"TapTweak", tweak)
+        tweaked_pubkey = xonly_pubkey_tweak_add(xonly_key, tweak)
+        tweaked_xonly_pubkey, parity = xonly_pubkey_from_pubkey(tweaked_pubkey)
+        return xonly_pubkey_serialize(tweaked_xonly_pubkey)
 
     @classmethod
     def parse(cls, key_bytes: bytes) -> "PublicKey":
@@ -227,7 +241,7 @@ class PublicKey(object):
         """
         return hash160(self.sec(compressed=compressed))
 
-    def address(self, compressed: bool = True, testnet: bool = False,
+    def address(self, compressed: bool = True, chain: str = "BTC",
                 addr_fmt: str = "p2wpkh") -> str:
         """
         Generates bitcoin address from public key.
@@ -240,18 +254,33 @@ class PublicKey(object):
                             3. p2wpkh (default)
         :return: bitcoin address
         """
+        if chain == "BTC":
+            hrp = "bc"
+            pkh_prefix = b"\x00"
+            sh_prefix = b"\x05"
+        else:
+            pkh_prefix = b"\x6f"
+            sh_prefix = b"\xc4"
+            if chain == "XRT":
+                hrp = "bcrt"
+            elif chain == "XTN":
+                hrp = "tb"
+            else:
+                assert False
+
+        if addr_fmt == "p2tr":
+            tweaked_xonly = self.taptweak()
+            return bech32.encode(hrp=hrp, witver=1, witprog=tweaked_xonly)
+
         h160 = self.h160(compressed=compressed)
         if addr_fmt == "p2pkh":
-            prefix = b"\x6f" if testnet else b"\x00"
-            return encode_base58_checksum(prefix + h160)
+            return encode_base58_checksum(pkh_prefix + h160)
         elif addr_fmt == "p2wpkh":
-            hrp = "tb" if testnet else "bc"
             return bech32.encode(hrp=hrp, witver=0, witprog=h160)
         elif addr_fmt == "p2sh-p2wpkh":
             scr = b"\x00\x14" + h160  # witversion 0 + pubkey hash
             h160 = hash160(scr)
-            prefix = b"\xc4" if testnet else b"\x05"
-            return encode_base58_checksum(prefix + h160)
+            return encode_base58_checksum(sh_prefix + h160)
 
         raise ValueError("Unsupported address type.")
 
@@ -730,9 +759,9 @@ class BIP32Node:
     def hash160(self, compressed=True):
         return self.node.public_key.h160(compressed)
 
-    def address(self, compressed=True, netcode="XTN", addr_fmt="p2pkh"):
+    def address(self, compressed=True, chain="XTN", addr_fmt="p2pkh"):
         return self.node.public_key.address(compressed, addr_fmt=addr_fmt,
-                                            testnet=False if netcode == "BTC" else True)
+                                            chain=chain)
 
     def sec(self, compressed=True):
         return self.node.public_key.sec(compressed)
