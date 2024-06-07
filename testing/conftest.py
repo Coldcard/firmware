@@ -1,9 +1,9 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, io, math, pdb
+import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, io, math, bech32, pdb
 from subprocess import check_output
 from ckcc.protocol import CCProtocolPacker
-from helpers import B2A, U2SAT, hash160
+from helpers import B2A, U2SAT, hash160, taptweak
 from base58 import decode_base58_checksum
 from bip32 import BIP32Node
 from msg import verify_message
@@ -293,26 +293,30 @@ def addr_vs_path(master_xpub):
     from bip32 import BIP32Node
     from ckcc_protocol.constants import AF_CLASSIC, AFC_PUBKEY, AF_P2WPKH, AFC_SCRIPT
     from ckcc_protocol.constants import AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH
-    from bech32 import bech32_decode, convertbits, Encoding
+    from bech32 import bech32_decode, convertbits, decode, Encoding
     from hashlib import sha256
 
-    def doit(given_addr, path=None, addr_fmt=None, script=None, testnet=True):
+    def doit(given_addr, path=None, addr_fmt=None, script=None, chain="XTN"):
         if not script:
             try:
                 # prefer using xpub if we can
                 mk = BIP32Node.from_wallet_key(master_xpub)
-                if not testnet:
-                    mk._netcode = "BTC"
-                sk = mk.subkey_for_path(path[2:])
+                mk._netcode = chain
+                sk = mk.subkey_for_path(path)
             except:
                 mk = BIP32Node.from_wallet_key(simulator_fixed_tprv)
-                if not testnet:
-                    mk._netcode = "BTC"
-                sk = mk.subkey_for_path(path[2:])
+                mk._netcode = chain
+                sk = mk.subkey_for_path(path)
 
-        if addr_fmt in {None,  AF_CLASSIC}:
+        if addr_fmt == AF_P2TR:
+            tweaked_xonly = taptweak(sk.sec()[1:])
+            decoded = decode(given_addr[:2], given_addr)
+            assert not given_addr.startswith("bcrt")  # regtest
+            assert tweaked_xonly == bytes(decoded[1])
+
+        elif addr_fmt in {None,  AF_CLASSIC}:
             # easy
-            assert sk.address(netcode="XTN" if testnet else "BTC") == given_addr
+            assert sk.address(chain=chain) == given_addr
 
         elif addr_fmt & AFC_PUBKEY:
 
@@ -358,7 +362,6 @@ def addr_vs_path(master_xpub):
         return sk if not script else None
 
     return doit
-
 
 
 @pytest.fixture(scope='module')
@@ -2192,6 +2195,30 @@ def txout_explorer(cap_story, press_cancel, need_keypress, is_q1):
         assert title == 'OK TO SEND?'
         press_cancel()
 
+    return doit
+
+@pytest.fixture
+def validate_address():
+    # Check whether an address is covered by the given subkey
+    def doit(addr, sk):
+        if addr[0] in '1mn':
+            chain = "XTN" if addr[0] != "1" else "BTC"
+            assert addr == sk.address(addr_fmt="p2pkh", chain=chain)
+        elif addr[0:4] in {'bc1q', 'tb1q'}:
+            chain = "XTN" if addr[0:4] != 'bc1q' else "BTC"
+            assert addr == sk.address(addr_fmt="p2wpkh", chain=chain)
+        elif addr[0:6] == "bcrt1q":
+            assert addr == sk.address(addr_fmt="p2wpkh", chain="XRT")
+        elif addr[0:4] in {'bc1p', 'tb1p'}:
+            chain = "XTN" if addr[0:4] != 'bc1p' else "BTC"
+            assert addr == sk.address(addr_fmt="p2tr", chain=chain)
+        elif addr[0:6] == "bcrt1p":
+            assert addr == sk.address(addr_fmt="p2tr", chain="XRT")
+        elif addr[0] in '23':
+            chain = "XTN" if addr[0] != '3' else "BTC"
+            assert addr == sk.address(addr_fmt="p2sh-p2wpkh", chain=chain)
+        else:
+            raise ValueError(addr)
     return doit
 
 

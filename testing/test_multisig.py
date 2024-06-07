@@ -391,6 +391,7 @@ def test_ms_import_variations(N, make_multisig, offer_ms_import, press_cancel, i
 
     # the different addr formats
     for af in unmap_addr_fmt.keys():
+        if af == "p2tr": continue
         config = f'format: {af}\n'
         config += '\n'.join(sk.hwif(as_private=False) for xfp,m,sk in keys)
         title, story = offer_ms_import(config)
@@ -1484,7 +1485,7 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
 
     # IMPORTANT: wont work if you start simulator with --ms flag. Use no args
 
-    all_out_styles = list(unmap_addr_fmt.keys())
+    all_out_styles = [af for af in unmap_addr_fmt.keys() if af != "p2tr"]
     num_outs = len(all_out_styles)
 
     clear_ms()

@@ -305,7 +305,7 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
 
 @pytest.mark.parametrize('acct_num', [ None, '99', '1236'])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
-@pytest.mark.parametrize('testnet', [True, False])
+@pytest.mark.parametrize('chain', ["BTC", "XTN"])
 @pytest.mark.parametrize('app', [
     # no need to run them all - just name check differs
     ("Generic JSON", "Generic Export"),
@@ -317,12 +317,12 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
 ])
 def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap_story, need_keypress,
                          microsd_path, nfc_read_json, virtdisk_path, addr_vs_path, enter_number,
-                         load_export, testnet, use_mainnet, press_select,
+                         load_export, chain, use_mainnet, press_select,
                          skip_if_useless_way, expect_acctnum_captured):
 
     skip_if_useless_way(way)
 
-    if not testnet:
+    if chain == "BTC":
         use_mainnet()
 
     export_mi, app_f_name = app
@@ -377,8 +377,8 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
         addr = v.get('first', None)
 
         if fn == 'bip44':
-            assert first.address(netcode="XTN" if testnet else "BTC") == v['first']
-            addr_vs_path(addr, v['deriv'] + '/0/0', AF_CLASSIC, testnet=testnet)
+            assert first.address(chain=chain) == v['first']
+            addr_vs_path(addr, v['deriv'] + '/0/0', AF_CLASSIC, chain=chain)
         elif ('bip48_' in fn) or (fn == 'bip45'):
             # multisig: cant do addrs
             assert addr == None
@@ -389,11 +389,11 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
             h20 = first.hash160()
             if fn == 'bip84':
                 assert addr == bech32.encode(addr[0:2], 0, h20)
-                addr_vs_path(addr, v['deriv'] + '/0/0', AF_P2WPKH, testnet=testnet)
+                addr_vs_path(addr, v['deriv'] + '/0/0', AF_P2WPKH, chain=chain)
             elif fn == 'bip49':
                 # don't have test logic for verifying these addrs
                 # - need to make script, and bleh
-                assert first.address(addr_fmt="p2sh-p2wpkh", netcode="XTN" if testnet else "BTC") == v['first']
+                assert first.address(addr_fmt="p2sh-p2wpkh", chain=chain) == v['first']
             else:
                 assert False
 
@@ -455,15 +455,14 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
 
 
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
-@pytest.mark.parametrize('testnet', [True, False])
+@pytest.mark.parametrize('chain', ["BTC", "XTN"])
 def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, microsd_path,
-                           addr_vs_path, virtdisk_path, nfc_read_text, cap_story, use_mainnet,
-                           load_export, testnet, skip_if_useless_way):
+                           addr_vs_path, virtdisk_path, nfc_read_text, cap_story, use_testnet,
+                           load_export, chain, skip_if_useless_way):
     # test UX and values produced.
     skip_if_useless_way(way)
 
-    if not testnet:
-        use_mainnet()
+    use_testnet(chain == "XTN")
     goto_home()
     pick_menu_item('Advanced/Tools')
     pick_menu_item('File Management')
@@ -481,7 +480,7 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, mi
 
     xfp = xfp2str(simulator_fixed_xfp).upper()
 
-    ek = simulator_fixed_tprv if testnet else simulator_fixed_xprv
+    ek = simulator_fixed_tprv if chain == "XTN" else simulator_fixed_xprv
     root = BIP32Node.from_wallet_key(ek)
 
     for ln in fp:
@@ -508,14 +507,16 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, mi
         if not f:
             if rhs[0] in '1mn':
                 f = AF_CLASSIC
-            elif rhs[0:3] in ['tb1', "bc1"]:
+            elif rhs[0:4] in ['tb1q', "bc1q"]:
                 f = AF_P2WPKH
+            elif rhs[0:4] in ['tb1p', "bc1p"]:
+                f = AF_P2TR
             elif rhs[0] in '23':
                 f = AF_P2WPKH_P2SH
             else:
                 raise ValueError(rhs)
 
-        addr_vs_path(rhs, path=lhs, addr_fmt=f, testnet=testnet)
+        addr_vs_path(rhs, path=lhs, addr_fmt=f, chain=chain)
 
 
 @pytest.mark.qrcode
@@ -538,6 +539,8 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
         is_xfp = False
         if '-84' in m:
             expect = "m/84h/0h/{acct}h"
+        elif '86' in m and 'P2TR' in m:
+            expect = "m/86h/0h/{acct}h"
         elif '-44' in m:
             expect = "m/44h/0h/{acct}h"
         elif '49' in m:
@@ -603,7 +606,7 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
 
 @pytest.mark.parametrize("chain", ["BTC", "XTN", "XRT"])
 @pytest.mark.parametrize("way", ["sd", "vdisk", "nfc", "qr"])
-@pytest.mark.parametrize("addr_fmt", [AF_P2WPKH, AF_P2WPKH_P2SH, AF_CLASSIC])
+@pytest.mark.parametrize("addr_fmt", [AF_P2WPKH, AF_P2WPKH_P2SH, AF_CLASSIC, AF_P2TR])
 @pytest.mark.parametrize("acct_num", [None, 0,  1, (2 ** 31) - 1])
 @pytest.mark.parametrize("int_ext", [True, False])
 def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home,
@@ -651,6 +654,10 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home,
         menu_item = "P2SH-Segwit"
         desc_prefix = "sh(wpkh("
         bip44_purpose = 49
+    elif addr_fmt == AF_P2TR:
+        menu_item = "Taproot P2TR"
+        desc_prefix = "tr("
+        bip44_purpose = 86
     else:
         # addr_fmt == AF_CLASSIC:
         menu_item = "Classic P2PKH"
@@ -662,7 +669,11 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home,
 
     expect_acctnum_captured(acct_num)
 
-    contents = load_export(way, label="Descriptor", is_json=False, addr_fmt=addr_fmt)
+    sig_check = True
+    if addr_fmt == AF_P2TR:
+        sig_check = False
+    contents = load_export(way, label="Descriptor", is_json=False, addr_fmt=addr_fmt,
+                           sig_check=sig_check)
     descriptor = contents.strip()
 
     if int_ext is False:

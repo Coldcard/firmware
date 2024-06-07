@@ -123,6 +123,9 @@ class BasicPSBTInput(PSBTSection):
         self.taproot_bip32_paths = {}
         self.taproot_internal_key = None
         self.taproot_key_sig = None
+        self.taproot_merkle_root = None
+        self.taproot_scripts = {}
+        self.taproot_script_sigs = {}
         self.redeem_script = None
         self.witness_script = None
         self.previous_txid = None        # v2
@@ -147,6 +150,9 @@ class BasicPSBTInput(PSBTSection):
              a.taproot_key_sig == b.taproot_key_sig and \
              a.taproot_bip32_paths == b.taproot_bip32_paths and \
              a.taproot_internal_key == b.taproot_internal_key and \
+             a.taproot_merkle_root == b.taproot_merkle_root and \
+             a.taproot_scripts == b.taproot_scripts and \
+             a.taproot_script_sigs == b.taproot_script_sigs and \
              sorted(a.part_sigs.keys()) == sorted(b.part_sigs.keys()) and \
              a.previous_txid == b.previous_txid and \
              a.prevout_idx == b.prevout_idx and \
@@ -189,7 +195,7 @@ class BasicPSBTInput(PSBTSection):
             self.others[kt] = val
         elif kt == PSBT_IN_TAP_BIP32_DERIVATION:
             self.taproot_bip32_paths[key] = val
-        elif kt == PSBT_OUT_TAP_INTERNAL_KEY:
+        elif kt == PSBT_IN_TAP_INTERNAL_KEY:
             self.taproot_internal_key = val
         elif kt == PSBT_IN_TAP_KEY_SIG:
             self.taproot_key_sig = val
@@ -203,6 +209,21 @@ class BasicPSBTInput(PSBTSection):
             self.req_time_locktime = struct.unpack("<I", val)[0]
         elif kt == PSBT_IN_REQUIRED_HEIGHT_LOCKTIME:
             self.req_height_locktime = struct.unpack("<I", val)[0]
+        elif kt == PSBT_IN_TAP_SCRIPT_SIG:
+            assert len(key) == 64, "PSBT_IN_TAP_SCRIPT_SIG key length != 64"
+            assert len(val) in (64, 65), "PSBT_IN_TAP_SCRIPT_SIG signature length != 64 or 65"
+            xonly_pubkey, script_hash = key[:32], key[32:]
+            self.taproot_script_sigs[(xonly_pubkey, script_hash)] = val
+        elif kt == PSBT_IN_TAP_LEAF_SCRIPT:
+            assert len(key) > 32, "PSBT_IN_TAP_LEAF_SCRIPT control block is too short"
+            assert (len(key) - 1) % 32 == 0, "PSBT_IN_TAP_LEAF_SCRIPT control block is not valid"
+            assert len(val) != 0, "PSBT_IN_TAP_LEAF_SCRIPT cannot be empty"
+            leaf_script = (val[:-1], int(val[-1]))
+            if leaf_script not in self.taproot_scripts:
+                self.taproot_scripts[leaf_script] = set()
+            self.taproot_scripts[leaf_script].add(key)
+        elif kt == PSBT_IN_TAP_MERKLE_ROOT:
+            self.taproot_merkle_root = val
         else:
             self.unknown[bytes([kt]) + key] = val
 
@@ -236,6 +257,16 @@ class BasicPSBTInput(PSBTSection):
         if self.taproot_key_sig:
             wr(PSBT_IN_TAP_KEY_SIG, self.taproot_key_sig)
 
+        if self.taproot_merkle_root:
+            wr(PSBT_IN_TAP_MERKLE_ROOT, self.taproot_merkle_root)
+        if self.taproot_scripts:
+            for (script, leaf_ver), control_blocks in self.taproot_scripts.items():
+                for control_block in control_blocks:
+                    wr(PSBT_IN_TAP_LEAF_SCRIPT, script + struct.pack("B", leaf_ver), control_block)
+        if self.taproot_script_sigs:
+            for (xonly, leaf_hash), sig in self.taproot_script_sigs.items():
+                wr(PSBT_IN_TAP_SCRIPT_SIG, sig, xonly + leaf_hash)
+
         if v2:
             if self.previous_txid is not None:
                 wr(PSBT_IN_PREVIOUS_TXID, self.previous_txid)
@@ -267,6 +298,7 @@ class BasicPSBTOutput(PSBTSection):
         self.bip32_paths = {}
         self.taproot_bip32_paths = {}
         self.taproot_internal_key = None
+        self.taproot_tree = None
         self.script = None  # v2
         self.amount = None  # v2
         self.proprietary = {}
@@ -282,6 +314,7 @@ class BasicPSBTOutput(PSBTSection):
             a.taproot_bip32_paths == b.taproot_bip32_paths and \
             a.taproot_internal_key == b.taproot_internal_key and \
             a.proprietary == b.proprietary and \
+            a.taproot_tree == b.taproot_tree and \
             a.unknown == b.unknown
 
     def parse_kv(self, kt, key, val):
@@ -297,6 +330,18 @@ class BasicPSBTOutput(PSBTSection):
             self.taproot_bip32_paths[key] = val
         elif kt == PSBT_OUT_TAP_INTERNAL_KEY:
             self.taproot_internal_key = val
+        elif kt == PSBT_OUT_TAP_TREE:
+            res = []
+            reader = io.BytesIO(val)
+            while True:
+                depth = reader.read(1)
+                if not depth:
+                    break
+                leaf_version = reader.read(1)[0]
+                script_len = deser_compact_size(reader)
+                script = reader.read(script_len)
+                res.append((depth[0], leaf_version, script))
+            self.taproot_tree = res
         elif kt == PSBT_OUT_SCRIPT:
             self.script = val
         elif kt == PSBT_OUT_AMOUNT:
@@ -319,6 +364,11 @@ class BasicPSBTOutput(PSBTSection):
                 wr(PSBT_OUT_TAP_BIP32_DERIVATION, self.taproot_bip32_paths[k], k)
         if self.taproot_internal_key:
             wr(PSBT_OUT_TAP_INTERNAL_KEY, self.taproot_internal_key)
+        if self.taproot_tree:
+            res = b''
+            for depth, leaf_version, script in self.taproot_tree:
+                res += bytes([depth, leaf_version]) + ser_compact_size(len(script)) + script
+            wr(PSBT_OUT_TAP_TREE, res)
         if v2 and self.script is not None:
             wr(PSBT_OUT_SCRIPT, self.script)
         if v2 and self.amount is not None:

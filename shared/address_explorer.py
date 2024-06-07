@@ -8,7 +8,7 @@ import chains, stash, version
 from ux import ux_show_story, the_ux, ux_enter_bip32_index
 from ux import export_prompt_builder, import_export_prompt_decode
 from menu import MenuSystem, MenuItem
-from public_constants import AFC_BECH32, AFC_BECH32M, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+from public_constants import AFC_BECH32, AFC_BECH32M, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from multisig import MultisigWallet
 from uasyncio import sleep_ms
 from uhashlib import sha256
@@ -41,6 +41,7 @@ class KeypathMenu(MenuSystem):
                 MenuItem("m/44h/⋯", f=self.deeper),
                 MenuItem("m/49h/⋯", f=self.deeper),
                 MenuItem("m/84h/⋯", f=self.deeper),
+                MenuItem("m/86h/⋯", f=self.deeper),
                 MenuItem("m/0/{idx}", menu=self.done),
                 MenuItem("m/{idx}", menu=self.done),
                 MenuItem("m", f=self.done),
@@ -67,7 +68,7 @@ class KeypathMenu(MenuSystem):
                 pl = p[0:p.rfind('/')].rfind('/')
             else:
                 self.prefix = p         # displayed on mk4 only
-                pl = len(p)-2 
+                pl = len(p)-2
             for mi in items:
                 mi.arg = mi.label
                 mi.label = '⋯'+mi.label[pl:]
@@ -112,9 +113,8 @@ class PickAddrFmtMenu(MenuSystem):
     def __init__(self, path, parent):
         self.parent = parent
         items = [
-            MenuItem(addr_fmt_label(AF_CLASSIC), f=self.done, arg=(path, AF_CLASSIC)),
-            MenuItem(addr_fmt_label(AF_P2WPKH), f=self.done, arg=(path, AF_P2WPKH)),
-            MenuItem(addr_fmt_label(AF_P2WPKH_P2SH), f=self.done, arg=(path, AF_P2WPKH_P2SH)),
+            MenuItem(addr_fmt_label(af), f=self.done, arg=(path, af))
+            for af in [AF_CLASSIC, AF_P2WPKH, AF_P2TR, AF_P2WPKH_P2SH]
         ]
         super().__init__(items)
         if path.startswith("m/84h"):
@@ -496,7 +496,7 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
                     dis.progress_sofar(idx, count or 1)
 
             sig_nice = None
-            if not ms_wallet:
+            if not ms_wallet and addr_fmt != AF_P2TR:
                 derive = path.format(account=account_num, change=change, idx=start)  # first addr
                 sig_nice = write_sig_file([(h.digest(), fname)], derive, addr_fmt)
 

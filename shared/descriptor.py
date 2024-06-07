@@ -4,7 +4,7 @@
 #
 # Based on: https://github.com/bitcoin/bitcoin/blob/master/src/script/descriptor.cpp
 #
-from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH
+from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2TR
 
 MULTI_FMT_TO_SCRIPT = {
     AF_P2SH: "sh(%s)",
@@ -19,6 +19,7 @@ MULTI_FMT_TO_SCRIPT = {
 }
 
 SINGLE_FMT_TO_SCRIPT = {
+    AF_P2TR: "tr(%s)",
     AF_P2WPKH: "wpkh(%s)",
     AF_CLASSIC: "pkh(%s)",
     AF_P2WPKH_P2SH: "sh(wpkh(%s))",
@@ -229,6 +230,11 @@ class Descriptor:
             tmp_desc = desc.replace("wpkh(", "")
             tmp_desc = tmp_desc.rstrip(")")
 
+        elif desc.startswith("tr("):
+            addr_fmt = AF_P2TR
+            tmp_desc = desc.replace("tr(", "")
+            tmp_desc = tmp_desc.rstrip(")")
+
         # wrapped segwit
         elif desc.startswith("sh(wpkh("):
             addr_fmt = AF_P2WPKH_P2SH
@@ -236,7 +242,7 @@ class Descriptor:
             tmp_desc = tmp_desc.rstrip("))")
 
         else:
-            raise ValueError("Unsupported descriptor. Supported: pkh(), wpkh(), sh(wpkh()).")
+            raise ValueError("Unsupported descriptor. Supported: pkh(, wpkh(, sh(wpkh( and tr(.")
 
         koi, key = cls.parse_key_orig_info(tmp_desc)
         if key[0:4] not in ["tpub", "xpub"]:

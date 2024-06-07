@@ -8,6 +8,8 @@ from ubinascii import hexlify as b2a_hex
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2TR
 from public_constants import AF_P2SH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH
 from public_constants import AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32, AFC_SCRIPT
+from public_constants import TAPROOT_LEAF_TAPSCRIPT, TAPROOT_LEAF_MASK
+from serializations import hash160, ser_compact_size, disassemble, ser_string
 from serializations import hash160, ser_compact_size, disassemble
 from ucollections import namedtuple
 from opcodes import OP_RETURN, OP_1, OP_16
@@ -25,6 +27,27 @@ Slip132Version = namedtuple('Slip132Version', ('pub', 'priv', 'hint'))
 #   - mailing list post proposed ypub, etc.
 #   - from <https://github.com/Bit-Wasp/bitcoin-php/issues/576>
 # - also electrum source: electrum/lib/constants.py
+
+def taptweak(internal_key, tweak=None):
+    # BIP 341 states: "If the spending conditions do not require a script path,
+    # the output key should commit to an unspendable script path instead of having no script path.
+    # This can be achieved by computing the output key point as:
+    # Q = P + int(hashTapTweak(bytes(P)))G."
+    actual_tweak = internal_key if tweak is None else internal_key + tweak
+    tweak = ngu.secp256k1.tagged_sha256(b"TapTweak", actual_tweak)
+    xo_pubkey = ngu.secp256k1.xonly_pubkey(internal_key)
+    xo_pubkey_tweaked = xo_pubkey.tweak_add(tweak)
+    return xo_pubkey_tweaked.to_bytes()
+
+def tapscript_serialize(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
+    # leaf version is only 7 msb
+    lv = leaf_version % TAPROOT_LEAF_MASK
+    return bytes([lv]) + ser_string(script)
+
+def tapleaf_hash(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
+    return ngu.secp256k1.tagged_sha256(b"TapLeaf",
+                                       tapscript_serialize(script, leaf_version))
+
 
 class ChainsBase:
 
@@ -110,23 +133,30 @@ class ChainsBase:
         # - works only with single-key addresses
         assert not addr_fmt & AFC_SCRIPT
 
-        keyhash = ngu.hash.hash160(pubkey)
-        if addr_fmt == AF_CLASSIC:
-            script =  b'\x76\xA9\x14' + keyhash + b'\x88\xAC'
-        elif addr_fmt == AF_P2WPKH_P2SH:
-            redeem_script = b'\x00\x14' + keyhash
-            scripthash = ngu.hash.hash160(redeem_script)
-            script = b'\xA9\x14' + scripthash + b'\x87'
-        elif addr_fmt == AF_P2WPKH:
-            script = b'\x00\x14' + keyhash
+        if addr_fmt == AF_P2TR:
+            assert len(pubkey) == 32  # internal
+            script = b'\x51\x20' + taptweak(pubkey)
         else:
-            raise ValueError('bad address template: %s' % addr_fmt)
+            keyhash = ngu.hash.hash160(pubkey)
+            if addr_fmt == AF_CLASSIC:
+                script =  b'\x76\xA9\x14' + keyhash + b'\x88\xAC'
+            elif addr_fmt == AF_P2WPKH_P2SH:
+                redeem_script = b'\x00\x14' + keyhash
+                scripthash = ngu.hash.hash160(redeem_script)
+                script = b'\xA9\x14' + scripthash + b'\x87'
+            elif addr_fmt == AF_P2WPKH:
+                script = b'\x00\x14' + keyhash
+            else:
+                raise ValueError('bad address template: %s' % addr_fmt)
 
         return cls.render_address(script)
 
     @classmethod
     def address(cls, node, addr_fmt):
         # return a human-readable, properly formatted address
+        if addr_fmt == AF_P2TR:
+            xo_pk = node.pubkey()[1:]
+            return ngu.codecs.segwit_encode(cls.bech32_hrp, 1, taptweak(xo_pk))
 
         if addr_fmt == AF_CLASSIC:
             # olde fashioned P2PKH
@@ -299,6 +329,7 @@ class BitcoinMain(ChainsBase):
         AF_P2WPKH:      Slip132Version(0x04b24746, 0x04b2430c, 'z'),
         AF_P2WSH_P2SH:  Slip132Version(0x0295b43f, 0x0295b005, 'Y'),
         AF_P2WSH:       Slip132Version(0x02aa7ed3, 0x02aa7a99, 'Z'),
+        AF_P2TR:        Slip132Version(0x0488B21E, 0x0488ADE4, 'x'),
     }
 
     bech32_hrp = 'bc'
@@ -320,6 +351,7 @@ class BitcoinTestnet(BitcoinMain):
         AF_P2WPKH:      Slip132Version(0x045f1cf6, 0x045f18bc, 'v'),
         AF_P2WSH_P2SH:  Slip132Version(0x024289ef, 0x024285b5, 'U'),
         AF_P2WSH:       Slip132Version(0x02575483, 0x02575048, 'V'),
+        AF_P2TR:        Slip132Version(0x043587cf, 0x04358394, 't'),
     }
 
     bech32_hrp = 'tb'
@@ -342,6 +374,7 @@ class BitcoinRegtest(BitcoinMain):
         AF_P2WPKH:      Slip132Version(0x045f1cf6, 0x045f18bc, 'v'),
         AF_P2WSH_P2SH:  Slip132Version(0x024289ef, 0x024285b5, 'U'),
         AF_P2WSH:       Slip132Version(0x02575483, 0x02575048, 'V'),
+        AF_P2TR:        Slip132Version(0x043587cf, 0x04358394, 't'),
     }
 
     bech32_hrp = 'bcrt'
@@ -403,6 +436,8 @@ CommonDerivations = [
             AF_P2WPKH_P2SH ),   # generates 3xxx/2xxx p2sh-looking addresses
     ( 'BIP-84 (Native Segwit P2WPKH)', "m/84h/{coin_type}h/{account}h/{change}/{idx}",
             AF_P2WPKH ),           # generates bc1 bech32 addresses
+    ('BIP-86 (Taproot Segwit P2TR)', "m/86h/{coin_type}h/{account}h/{change}/{idx}",
+            AF_P2TR),  # generates bc1p bech32m addresses
 ]
 
 

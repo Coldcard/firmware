@@ -16,7 +16,7 @@ from export import make_json_wallet, make_summary_file, make_descriptor_wallet_e
 from export import make_bitcoin_core_wallet, generate_wasabi_wallet, generate_generic_export
 from export import generate_unchained_export, generate_electrum_wallet
 from files import CardSlot, CardMissingError, needs_microsd
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, MAX_TXN_LEN_MK4
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR, MAX_TXN_LEN_MK4
 from glob import settings
 from pincodes import pa
 from menu import start_chooser, MenuSystem, MenuItem
@@ -1014,7 +1014,7 @@ async def export_xpub(label, _2, item):
         path = "m"
         addr_fmt = AF_CLASSIC
     else:
-        remap = {44:0, 49:1, 84:2}[mode]
+        remap = {44:0, 49:1, 84:2,86:3}[mode]
         _, path, addr_fmt = chains.CommonDerivations[remap]
         path = path.format(account='{acct}', coin_type=chain.b44_cointype, change=0, idx=0)[:-4]
 
@@ -1095,7 +1095,7 @@ def ss_descriptor_export_story(addition="", background="", acct=True):
 async def ss_descriptor_skeleton(_0, _1, item):
     # Export of descriptor data (wallet)
     int_ext, addition, f_pattern = None, "", "descriptor.txt"
-    allowed_af = [AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH]
+    allowed_af = [AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2TR]
     if item.arg:
         int_ext, allowed_af, ll, f_pattern = item.arg
         addition = " for " + ll

@@ -9,7 +9,7 @@ from utils import xfp2str, swab32, chunk_writer
 from ux import ux_show_story
 from glob import settings
 from auth import write_sig_file
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR
 from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
 from ownership import OWNERSHIP
 
@@ -103,7 +103,7 @@ be needed for different systems.
 
                     node = sv.derive_path(hard_sub, register=False)
                     yield ("%s => %s\n" % (hard_sub, chain.serialize_public(node)))
-                    if show_slip132 and addr_fmt != AF_CLASSIC and (addr_fmt in chain.slip132):
+                    if show_slip132 and addr_fmt not in (AF_CLASSIC, AF_P2TR) and (addr_fmt in chain.slip132):
                         yield ("%s => %s   ##SLIP-132##\n" % (
                                     hard_sub, chain.serialize_public(node, addr_fmt)))
 
@@ -160,8 +160,10 @@ async def write_text_file(fname_pattern, body, title, derive, addr_fmt):
             with open(fname, 'wb') as fd:
                 chunk_writer(fd, body)
 
-            h = ngu.hash.sha256s(body.encode())
-            sig_nice = write_sig_file([(h, fname)], derive, addr_fmt)
+            sig_nice = None
+            if addr_fmt != AF_P2TR:
+                h = ngu.hash.sha256s(body.encode())
+                sig_nice = write_sig_file([(h, fname)], derive, addr_fmt)
 
     except CardMissingError:
         await needs_microsd()
@@ -170,8 +172,9 @@ async def write_text_file(fname_pattern, body, title, derive, addr_fmt):
         await ux_show_story('Failed to write!\n\n\n'+str(e))
         return
 
-    msg = '%s file written:\n\n%s\n\n%s signature file written:\n\n%s' % (title, nice, title,
-                                                                          sig_nice)
+    msg = '%s file written:\n\n%s' % (title, nice)
+    if sig_nice:
+        msg += '\n\n%s signature file written:\n\n%s' % (title, sig_nice)
     await ux_show_story(msg)
 
 async def make_summary_file(fname_pattern='public.txt'):
@@ -364,8 +367,10 @@ def generate_generic_export(account_num=0):
             ( 'bip44', "m/44h/{ct}h/{acc}h", AF_CLASSIC, 'p2pkh', False ),
             ( 'bip49', "m/49h/{ct}h/{acc}h", AF_P2WPKH_P2SH, 'p2sh-p2wpkh', False ),   # was "p2wpkh-p2sh"
             ( 'bip84', "m/84h/{ct}h/{acc}h", AF_P2WPKH, 'p2wpkh', False ),
+            ('bip86', "m/86h/{ct}h/{acc}h", AF_P2TR, 'p2tr', False),
             ( 'bip48_1', "m/48h/{ct}h/{acc}h/1h", AF_P2WSH_P2SH, 'p2sh-p2wsh', True ),
             ( 'bip48_2', "m/48h/{ct}h/{acc}h/2h", AF_P2WSH, 'p2wsh', True ),
+            ('bip48_3', "m/48h/{ct}h/{acc}h/3h", AF_P2TR, 'p2tr', True ),
             ( 'bip45', "m/45h", AF_P2SH, 'p2sh', True ),
         ]:
             if fmt == AF_P2SH and account_num:
@@ -375,7 +380,7 @@ def generate_generic_export(account_num=0):
             node = sv.derive_path(dd)
             xfp = xfp2str(swab32(node.my_fp()))
             xp = chain.serialize_public(node, AF_CLASSIC)
-            zp = chain.serialize_public(node, fmt) if fmt != AF_CLASSIC else None
+            zp = chain.serialize_public(node, fmt) if fmt not in (AF_CLASSIC, AF_P2TR) else None
             if is_ms:
                 desc = multisig_descriptor_template(xp, dd, master_xfp_str, fmt)
             else:
@@ -520,13 +525,16 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
             mode = 84
         elif addr_type == AF_P2WPKH_P2SH:
             mode = 49
+        elif addr_type == AF_P2TR:
+            mode = 86
         else:
             raise ValueError(addr_type)
 
     OWNERSHIP.note_wallet_used(addr_type, account_num)
 
-    derive = "m/{mode}h/{coin_type}h/{account}h".format(mode=mode,
-                                    account=account_num, coin_type=chain.b44_cointype)
+    derive = "m/{mode}h/{coin_type}h/{account}h".format(
+        mode=mode, account=account_num, coin_type=chain.b44_cointype
+    )
     dis.progress_bar_show(0.2)
     with stash.SensitiveValues() as sv:
         dis.progress_bar_show(0.3)

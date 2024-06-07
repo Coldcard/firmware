@@ -128,7 +128,8 @@ We will summarize transaction outputs as "change" back into same wallet, however
     - `p2wsh-p2sh`: _redeemScript_ (which is: `0x00 + 0x20 + sha256(witnessScript)`), and
       _witnessScript_ (which contains the multisig script)
     - `p2wsh`: only _witnessScript_ (which contains the actual multisig script)
-
+    - `p2tr`(keypath singlesig): no _redeemScript_, no _witnessScript_ and output key MUST commit to an unspendable script path as follows `Q = P + int(hashTapTweak(bytes(P)))G`
+    - `p2tr`(scriptpath multisig): _taproot_merkle_root_ and _leaf_script_ more info in docs/taproot.md
 
 # Derivation Paths
 
