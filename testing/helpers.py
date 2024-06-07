@@ -24,13 +24,15 @@ def prandom(count):
     return bytes(random.randint(0, 255) for i in range(count))
 
 def taptweak(internal_key, tweak=None):
-    tweak = internal_key if tweak is None else internal_key + tweak
     assert len(internal_key) == 32, "not xonly-pubkey (len!=32)"
+    if tweak is not None:
+        assert len(tweak) == 32, "tweak (len!=32)"
+    tweak = internal_key if tweak is None else internal_key + tweak
     xonly_pubkey = xonly_pubkey_parse(internal_key)
     tweak = tagged_sha256(b"TapTweak", tweak)
     tweaked_pubkey = xonly_pubkey_tweak_add(xonly_pubkey, tweak)
-    tweaked_xonnly_pubkey, parity = xonly_pubkey_from_pubkey(tweaked_pubkey)
-    return xonly_pubkey_serialize(tweaked_xonnly_pubkey)
+    tweaked_xonly_pubkey, parity = xonly_pubkey_from_pubkey(tweaked_pubkey)
+    return xonly_pubkey_serialize(tweaked_xonly_pubkey)
 
 def fake_dest_addr(style='p2pkh'):
     # Make a plausible output address, but it's random garbage. Cant use for change outs

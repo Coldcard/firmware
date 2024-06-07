@@ -16,7 +16,6 @@ ser_*, deser_*: functions that handle serialization/deserialization
 """
 
 from ubinascii import hexlify as b2a_hex
-from ubinascii import unhexlify as a2b_hex
 import ustruct as struct
 import ngu
 from opcodes import *
@@ -30,6 +29,7 @@ hash160 = ngu.hash.hash160
 def bytes_to_hex_str(s):
     return str(b2a_hex(s), 'ascii')
 
+SIGHASH_DEFAULT = const(0) # in taproot meaning same as SIGHASH_ALL (over whole TX)
 SIGHASH_ALL = const(1)
 SIGHASH_NONE = const(2)
 SIGHASH_SINGLE = const(3)
@@ -37,6 +37,7 @@ SIGHASH_ANYONECANPAY = const(0x80)
 
 # list containing all flags that we support signing for
 ALL_SIGHASH_FLAGS = [
+    SIGHASH_DEFAULT,
     SIGHASH_ALL,
     SIGHASH_NONE,
     SIGHASH_SINGLE,
@@ -366,6 +367,11 @@ class CTxOut(object):
                 self.scriptPubKey[0] == 0 and self.scriptPubKey[1] == 20:
             # aka. P2WPKH
             return 'p2pkh', self.scriptPubKey[2:2+20], True
+
+        if len(self.scriptPubKey) == 34 and \
+                self.scriptPubKey[0] == 81 and self.scriptPubKey[1] == 32:
+            # aka. P2TR
+            return 'p2tr', self.scriptPubKey[2:2+32], True
 
         if len(self.scriptPubKey) == 34 and \
                 self.scriptPubKey[0] == 0 and self.scriptPubKey[1] == 32:
