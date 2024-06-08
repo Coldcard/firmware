@@ -2,6 +2,6 @@
 #
 #   brew install sdl2
 #
-PySDL2
+git+https://github.com/py-sdl/py-sdl2.git#c21d4f8db601b732b181d4e0712f0951b1173cbb
 Pillow
 
