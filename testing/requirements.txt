@@ -15,7 +15,7 @@ zbar-py==1.0.4
 nfcpy==1.0.3
 
 # optional, and only helpful if you have a desktop NFC-V capable reader
-pyscard==2.0.2
+pyscard==2.0.10
 
 # BSMS library
 git+https://github.com/coinkite/bsms-bitcoin-secure-multisig-setup.git@master#egg=bsms-bitcoin-secure-multisig-setup
