@@ -28,17 +28,31 @@ has been automated using Docker. Steps are as follows:
 
     ```shell
     git clone https://github.com/Coldcard/firmware.git
-    git checkout 2023-12-21T1526-v5.2.2
-    # get a copy of that binary into ./releases/2023-12-21T1526-v5.2.2-mk4-coldcard.dfu
+    git fetch --all --tags
+    git tags
+    ```
+
+4. [Download](https://coldcard.com/downloads/all) copy to --> ./releases/2024-05-09T1527-v5.3.1-mk4-coldcard.dfu (for example)
+
+    ```shell
     cd firmware/stm32
     make -f MK4-Makefile repro
     ```
 
-4. At the end of the process a clear confirmation message is shown, or the differences.
-5. Build products can be found `firmware/stm32/built`.
-6. If you do not trust the results of `make repro` refer to `docs/notes-on-repro.md`
+5. At the end of the process a clear confirmation message is shown, or the differences.
+
+6. Build products can be found `firmware/stm32/built`.
+
+7. If you do not trust the results of `make repro` refer to `docs/notes-on-repro.md`
    which breaks down the process.
-7. Process for Q firmware is the same, but change `MK4-Makefile` in last step to `Q1-Makefile`
+
+8. [Download](https://coldcard.com/downloads/all) --> ./releases/2024-05-09T1529-v1.2.1Q-q1-coldcard.dfu (for example)
+
+9. Process for Q firmware is the same, but change `MK4-Makefile` in last step to `Q1-Makefile`
+
+    ```shell
+    make -f Q1-Makefile repro
+    ```
 
 ## Long-Lived Branches
 
@@ -158,7 +172,7 @@ source ENV/bin/activate && cd unix && ./simulator.py
 Which looks like this:
 
 ```shell
-[ENV] [firmware/stm32 42] ckcc upgrade firmware-signed.dfu  
+[ENV] [firmware/stm32 42] ckcc upgrade firmware-signed.dfu
 675328 bytes (start @ 293) to send from 'firmware-signed.dfu'
 Uploading  [##########--------------------------]   29%  0d 00:01:04
 ```
@@ -183,7 +197,7 @@ git clone --recursive https://github.com/Coldcard/firmware.git
 cd firmware
 
 # Apply address patch
-git apply unix/linux_addr.patch 
+git apply unix/linux_addr.patch
 
 # Create Python virtual environment and activate it
 python3 -m venv ENV  # or virtualenv -p python3 ENV
