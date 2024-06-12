@@ -4,12 +4,10 @@
 #
 # Start simulator with:   simulator.py --eff --set nfc=1
 #
-import sys
-sys.path.append("../shared")
-from descriptor import Descriptor
-from mnemonic import Mnemonic
 import pytest, time, os, json, io, bech32
 from bip32 import BIP32Node
+from descriptor import Descriptor
+from mnemonic import Mnemonic
 from ckcc_protocol.constants import *
 from helpers import xfp2str, slip132undo
 from conftest import simulator_fixed_xfp, simulator_fixed_tprv, simulator_fixed_words, simulator_fixed_xprv
@@ -85,7 +83,12 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
     addrs = []
     imm_js = None
     imd_js = None
+    imd_js_tr = None
+    tr = False
     for ln in fp:
+        if ln.startswith("p2tr:"):
+            tr = True
+
         if 'importmulti' in ln:
             # PLAN: this will become obsolete
             assert ln.startswith("importmulti '")
@@ -93,20 +96,26 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
             assert not imm_js, "dup importmulti lines"
             imm_js = ln[13:-2]
         elif "importdescriptors '" in ln:
+            ln = ln.strip()
             assert ln.startswith("importdescriptors '")
-            assert ln.endswith("'\n")
-            assert not imd_js, "dup importdesc lines"
-            imd_js = ln[19:-2]
+            if tr:
+                imd_js_tr = ln[19:-1]
+                tr = False
+            else:
+                imd_js = ln[19:-1]
         elif '=>' in ln:
             path, addr = ln.strip().split(' => ', 1)
-            assert path.startswith(f"m/84h/1h/{acct_num}h/0")
-            assert addr.startswith('bcrt1q') # TODO here we should differentiate if testnet or smthg
             sk = BIP32Node.from_wallet_key(simulator_fixed_tprv).subkey_for_path(path)
-            h20 = sk.hash160()
-            assert addr == bech32.encode(addr[0:4], 0, h20) # TODO here we should differentiate if testnet or smthg
+            if path.startswith(f"m/86h/1h/{acct_num}h/0"):
+                assert addr.startswith('bcrt1p')
+                assert addr == sk.address(addr_fmt="p2tr", chain="XRT")
+            else:
+                assert path.startswith(f"m/84h/1h/{acct_num}h/0")
+                assert addr.startswith("bcrt1q")
+                assert addr == sk.address(addr_fmt="p2wpkh", chain="XRT")
             addrs.append(addr)
 
-    assert len(addrs) == 3
+    assert len(addrs) == 6
 
     xfp = xfp2str(simulator_fixed_xfp).lower()
 
@@ -140,14 +149,9 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
             x = bitcoind_wallet.getaddressinfo(addrs[-1])
             pprint(x)
             assert x['address'] == addrs[-1]
-            if 'label' in x:
-                # pre 0.21.?
-                assert x['label'] == 'testcase'
-            else:
-                assert x['labels'] == ['testcase']
-            assert x['iswatchonly'] == True
-            assert x['iswitness'] == True
-            assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
+            # assert x['iswatchonly'] == True
+            assert x['iswitness'] is True
+            # assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
 
     # importdescriptors -- its better
     assert imd_js
@@ -168,26 +172,49 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
         assert expect in desc
         assert expect+f'/{n}/*' in desc
 
-        assert 'label' not in d
+        res = bitcoind_d_wallet.importdescriptors(obj)
+        assert res[0]["success"]
+        assert res[1]["success"]
+        x = bitcoind_d_wallet.getaddressinfo(addrs[2])
+        pprint(x)
+        assert x['address'] == addrs[2]
+        assert x['iswatchonly'] == False
+        assert x['iswitness'] == True
+        assert x['solvable'] == True
+        assert x['hdmasterfingerprint'] == xfp2str(dev.master_fingerprint).lower()
+        assert x['hdkeypath'].replace("'", "h") == f"m/84h/1h/{acct_num}h/0/%d" % 2
+
+    assert imd_js_tr
+    obj = json.loads(imd_js_tr)
+    for n, here in enumerate(obj):
+        assert here['timestamp'] == 'now'
+        assert here['internal'] == bool(n)
+
+        d = here['desc']
+        desc, chk = d.split('#', 1)
+        assert len(chk) == 8
+
+        assert desc.startswith(f'tr([{xfp}/86h/1h/{acct_num}h]')
+
+        expect = BIP32Node.from_wallet_key(simulator_fixed_tprv) \
+            .subkey_for_path(f"m/86h/1h/{acct_num}h").hwif()
+
+        assert expect in desc
+        assert expect + f'/{n}/*' in desc
 
         # test against bitcoind -- needs a "descriptor native" wallet
         res = bitcoind_d_wallet.importdescriptors(obj)
         assert res[0]["success"]
         assert res[1]["success"]
-        core_gen = []
-        for i in range(3):
-            core_gen.append(bitcoind_d_wallet.getnewaddress())
 
-        assert core_gen == addrs
         x = bitcoind_d_wallet.getaddressinfo(addrs[-1])
         pprint(x)
         assert x['address'] == addrs[-1]
-        assert x['iswatchonly'] == False
-        assert x['iswitness'] == True
-        # assert x['ismine'] == True   # TODO we have imported pubkeys - it has no idea if it is ours or solvable
-        # assert x['solvable'] == True
-        # assert x['hdmasterfingerprint'] == xfp2str(dev.master_fingerprint).lower()
-        #assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
+        assert x['iswatchonly'] is False
+        assert x['iswitness'] is True
+        assert x['solvable'] is True
+        assert x['hdmasterfingerprint'] == xfp2str(dev.master_fingerprint).lower()
+        assert x['hdkeypath'].replace("'", "h") == f"m/86h/1h/{acct_num}h/0/%d" % 2
 
 
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])

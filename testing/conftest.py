@@ -617,6 +617,12 @@ def get_secrets(sim_execfile):
 
     return doit
 
+@pytest.fixture
+def clear_miniscript(unit_test):
+    def doit():
+        unit_test('devtest/wipe_miniscript.py')
+    return doit
+
 @pytest.fixture(scope='module')
 def press_select(dev, has_qwerty):
     f = functools.partial(_press_select, dev, has_qwerty)
@@ -1336,18 +1342,22 @@ def start_sign(dev):
     return doit
 
 @pytest.fixture
-def end_sign(dev, need_keypress):
+def end_sign(dev, press_select, press_cancel):
     from ckcc_protocol.protocol import CCUserRefused
 
     def doit(accept=True, in_psbt=None, finalize=False, accept_ms_import=False, expect_txn=True):
 
         if accept_ms_import:
             # XXX would be better to do cap_story here, but that would limit test to simulator
-            need_keypress('y', timeout=None)
+            press_select(timeout=None)
             time.sleep(0.050)
 
         if accept != None:
-            need_keypress('y' if accept else 'x', timeout=None)
+            time.sleep(.1)
+            if accept:
+                press_select(timeout=None)
+            else:
+                press_cancel(timeout=None)
 
         if accept == False:
             with pytest.raises(CCUserRefused):
@@ -1569,6 +1579,9 @@ def nfc_read(request, needs_nfc):
 def nfc_write(request, needs_nfc, is_q1):
     # WRITE data into NFC "chip"
     def doit_usb(ccfile):
+        from ckcc.constants import MAX_MSG_LEN
+        if len(ccfile) >= MAX_MSG_LEN:
+            pytest.xfail("MAX_MSG_LEN")
         sim_exec = request.getfixturevalue('sim_exec')
         press_select = request.getfixturevalue('press_select')
         rv = sim_exec('list(glob.NFC.big_write(%r))' % ccfile)
@@ -1772,7 +1785,7 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 cap_screen_qr):
     def doit(way, label, is_json, sig_check=True, addr_fmt=AF_CLASSIC, ret_sig_addr=False,
              tail_check=None, sd_key=None, vdisk_key=None, nfc_key=None, ret_fname=False,
-             fpattern=None, qr_key=None):
+             fpattern=None, qr_key=None, skip_query=False):
         
         s_label = None
         if label == "Address summary":
@@ -1784,54 +1797,55 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
             "nfc": nfc_key or (KEY_NFC if is_q1 else "3"),
             "qr": qr_key or (KEY_QR if is_q1 else "4"),
         }
-        time.sleep(0.2)
-        title, story = cap_story()
-        if way == "sd":
-            if f"({key_map['sd']}) to save {s_label if s_label else label} file to SD Card" in story:
-                need_keypress(key_map['sd'])
+        if not skip_query:
+            time.sleep(0.2)
+            title, story = cap_story()
+            if way == "sd":
+                if f"({key_map['sd']}) to save {s_label if s_label else label} file to SD Card" in story:
+                    need_keypress(key_map['sd'])
 
-        elif way == "nfc":
-            if f"{key_map['nfc'] if is_q1 else '(3)'} to share via NFC" not in story:
-                pytest.skip("NFC disabled")
-            else:
-                need_keypress(key_map['nfc'])
-                time.sleep(0.2)
-                if is_json:
-                    nfc_export = nfc_read_json()
+            elif way == "nfc":
+                if f"{key_map['nfc'] if is_q1 else '(3)'} to share via NFC" not in story:
+                    pytest.skip("NFC disabled")
                 else:
-                    nfc_export = nfc_read_text()
+                    need_keypress(key_map['nfc'])
+                    time.sleep(0.2)
+                    if is_json:
+                        nfc_export = nfc_read_json()
+                    else:
+                        nfc_export = nfc_read_text()
+                    time.sleep(0.3)
+                    press_cancel()  # exit NFC animation
+                    return nfc_export
+            elif way == "qr":
+                if 'file written' in story:
+                    assert not is_q1
+                    # mk4 only does QR if fits in normal QR, becaise it can't do BBQr
+                    pytest.skip('no BBQr on Mk4')
+
+                need_keypress(key_map["qr"])
                 time.sleep(0.3)
-                press_cancel()  # exit NFC animation
-                return nfc_export
-        elif way == "qr":
-            if 'file written' in story:
-                assert not is_q1
-                # mk4 only does QR if fits in normal QR, becaise it can't do BBQr
-                pytest.skip('no BBQr on Mk4')
-
-            need_keypress(key_map["qr"])
-            time.sleep(0.3)
-            try:
-                file_type, data = readback_bbqr()
-                if file_type == "J":
-                    return json.loads(data)
-                elif file_type == "U":
-                    return data.decode('utf-8') if not isinstance(data, str) else data
-                else:
-                    raise NotImplementedError
-            except:
-                raise
-                res = cap_screen_qr().decode('ascii')
                 try:
-                    return json.loads(res)
+                    file_type, data = readback_bbqr()
+                    if file_type == "J":
+                        return json.loads(data)
+                    elif file_type == "U":
+                        return data.decode('utf-8') if not isinstance(data, str) else data
+                    else:
+                        raise NotImplementedError
                 except:
-                    return res
-        else:
-            # virtual disk
-            if f"({key_map['vdisk']}) to save to Virtual Disk" not in story:
-                pytest.skip("Vdisk disabled")
+                    raise
+                    res = cap_screen_qr().decode('ascii')
+                    try:
+                        return json.loads(res)
+                    except:
+                        return res
             else:
-                need_keypress(key_map['vdisk'])
+                # virtual disk
+                if f"({key_map['vdisk']}) to save to Virtual Disk" not in story:
+                    pytest.skip("Vdisk disabled")
+                else:
+                    need_keypress(key_map['vdisk'])
 
         time.sleep(0.2)
         title, story = cap_story()
@@ -1904,7 +1918,7 @@ def tapsigner_encrypted_backup(microsd_path, virtdisk_path):
     return doit
 
 @pytest.fixture
-def choose_by_word_length(need_keypress):
+def choose_by_word_length(need_keypress, press_select):
     # for use in seed XOR menu system
     def doit(num_words):
         if num_words == 12:
@@ -1912,7 +1926,7 @@ def choose_by_word_length(need_keypress):
         elif num_words == 18:
             need_keypress("2")
         else:
-            need_keypress("y")
+            press_select()
     return doit
 
 # workaround: need these fixtures to be global so I can call test from a test
@@ -2225,6 +2239,7 @@ from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed, confir
 from test_ephemeral import verify_ephemeral_secret_ui, get_identity_story, get_seed_value_ux, seed_vault_enable
 from test_multisig import import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn
 from test_multisig import make_ms_address, clear_ms, make_myself_wallet
+from test_miniscript import offer_minsc_import
 from test_se2 import goto_trick_menu, clear_all_tricks, new_trick_pin, se2_gate, new_pin_confirmed
 from test_seed_xor import restore_seed_xor
 from test_ux import pass_word_quiz, word_menu_entry

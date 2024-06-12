@@ -206,7 +206,7 @@ def hsm_reset(dev, sim_exec):
 
     # wallets
     (DICT(rules=[dict(wallet='1')]),
-        '(non multisig)'),
+        '(singlesig only)'),
 
     # users
     (DICT(rules=[dict(users=USERS)]),
@@ -570,7 +570,7 @@ def test_named_wallets(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_statu
     # simple p2pkh should fail
 
     psbt = fake_txn(1, 2, dev.master_xpub, outvals=[amount, 1E8-amount], change_outputs=[1], fee=0)
-    attempt_psbt(psbt, "not multisig")
+    attempt_psbt(psbt, "singlesig only")
 
     # but txn w/ multisig wallet should work
     psbt = fake_ms_txn(1, 2, M, keys, fee=0, outvals=[amount, 1E8-amount], outstyles=['p2wsh'],
@@ -579,7 +579,119 @@ def test_named_wallets(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_statu
 
     # check ms txn not accepted when rule spec's a single signer
     tweak_rule(0, dict(wallet='1'))
-    attempt_psbt(psbt, 'wrong wallet')
+    attempt_psbt(psbt, 'wrong multisig wallet')
+
+@pytest.mark.bitcoind
+def test_named_wallets_miniscript(dev, start_hsm, tweak_rule, make_myself_wallet,
+                                  hsm_status, attempt_psbt, fake_txn, bitcoind,
+                                  offer_minsc_import, need_keypress, pick_menu_item,
+                                  load_export, goto_home):
+    stat = hsm_status()
+    assert not stat.active
+
+    from test_miniscript import CHANGE_BASED_DESCS
+    for i, desc in enumerate(CHANGE_BASED_DESCS):
+        name = f"hsm_msc{i}"
+        xd = json.dumps({"name": name, "desc": desc})
+        title, story = offer_minsc_import(xd)
+        assert "Create new miniscript wallet?" in story
+        assert name in story
+        need_keypress("y")
+        time.sleep(.2)
+
+    core_wallets = []
+    for i in range(len(CHANGE_BASED_DESCS)):
+        name = f"hsm_msc{i}"
+        wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
+                                    passphrase=None, avoid_reuse=False, descriptors=True)
+        goto_home()
+        pick_menu_item("Settings")
+        pick_menu_item("Miniscript")
+        pick_menu_item(name)
+        pick_menu_item("Descriptors")
+        pick_menu_item("Bitcoin Core")
+        text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
+        text = text.replace("importdescriptors ", "").strip()
+        # remove junk
+        r1 = text.find("[")
+        r2 = text.find("]", -1, 0)
+        text = text[r1: r2]
+        core_desc_object = json.loads(text)
+        res = wo.importdescriptors(core_desc_object)
+        for obj in res:
+            assert obj["success"]
+
+        af = "bech32"
+        if i > 1:
+            af = "bech32m"
+
+        addr = wo.getnewaddress("", af)
+        bitcoind.supply_wallet.sendtoaddress(addr, 1.0)
+        core_wallets.append(wo)
+
+    # mine above txns
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    for w in core_wallets:
+        assert len(w.listunspent()) > 0, "nu funds"
+
+    stat = hsm_status()
+    for i in range(len(CHANGE_BASED_DESCS)):
+        assert f"hsm_msc{i}" in stat.wallets
+
+    # policy: only allow miniscript 0
+    wname = "hsm_msc0"
+    policy = DICT(share_addrs=["any"], rules=[dict(wallet=wname)])
+
+    stat = start_hsm(policy)
+    assert 'Any amount from miniscript wallet' in stat.summary
+    assert wname in stat.summary
+    assert 'wallets' not in stat
+
+    # simple p2pkh should fail
+    psbt = fake_txn(1, 2, outvals=[5E6, 1E8-5E6], change_outputs=[1], fee=0)
+    attempt_psbt(psbt, "singlesig only")
+
+    # but txn from target miniscript wallet 0 must work
+    wal0 = core_wallets[0]
+    psbt_res = wal0.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 0.2}], 0, {"fee_rate": 20})
+    attempt_psbt(base64.b64decode(psbt_res["psbt"]))
+
+    # WRONG
+    wal2 = core_wallets[2]
+    psbt_res = wal2.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 0.2}], 0, {"fee_rate": 18})
+    attempt_psbt(base64.b64decode(psbt_res["psbt"]), 'wrong miniscript wallet')
+
+    wal1 = core_wallets[1]
+    psbt_res = wal1.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 0.2}], 0, {"fee_rate": 12})
+    attempt_psbt(base64.b64decode(psbt_res["psbt"]), 'wrong miniscript wallet')
+
+    # works
+    psbt_res = wal0.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 0.3}], 0, {"fee_rate": 15})
+    attempt_psbt(base64.b64decode(psbt_res["psbt"]))
+
+    wname = "hsm_msc3"
+    tweak_rule(0, dict(wallet=wname))
+
+    # this worked before but now, after tweak, it does not
+    psbt_res = wal0.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 0.1}], 0, {"fee_rate": 13})
+    attempt_psbt(base64.b64decode(psbt_res["psbt"]), 'wrong miniscript wallet')
+
+    # correct wallet 3
+    wal3 = core_wallets[3]
+    psbt_res = wal3.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 0.6}], 0, {"fee_rate": 10})
+    attempt_psbt(base64.b64decode(psbt_res["psbt"]))
+
+    psbt_res = wal3.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 0.15}], 0, {"fee_rate": 15})
+    last_correct = base64.b64decode(psbt_res["psbt"])
+    attempt_psbt(last_correct)
+
+    # check ms txn not accepted when rule spec's a single signer
+    tweak_rule(0, dict(wallet='1'))
+    attempt_psbt(last_correct, 'wrong miniscript wallet')
+
+    stat = hsm_status()
+    assert stat.approvals == 4
+    assert stat.refusals == 5
 
 @pytest.mark.parametrize('with_whitelist_opts', [ False, True])
 def test_whitelist_single(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, with_whitelist_opts, amount=5E6):
@@ -1156,6 +1268,31 @@ def test_show_p2sh_addr(dev, hsm_reset, start_hsm, change_hsm, make_myself_walle
             got_addr = dev.send_recv(CCProtocolPacker.show_p2sh_address(
                                     M, xfp_paths, scr, addr_fmt=AF_P2WSH))
         assert 'Not allowed in HSM mode' in str(ee)
+
+def test_show_miniscript_addr(dev, offer_minsc_import, start_hsm,
+                              change_hsm, need_keypress, clear_miniscript):
+    clear_miniscript()
+    from test_miniscript import CHANGE_BASED_DESCS
+    name = "hsm_msc_msas"
+    xd = json.dumps({"name": name, "desc": CHANGE_BASED_DESCS[0]})
+    title, story = offer_minsc_import(xd)
+    assert "Create new miniscript wallet?" in story
+    assert name in story
+    need_keypress("y")
+    time.sleep(.2)
+
+    policy = DICT(share_addrs=["any", "p2sh"], rules=[dict(wallet=name)])
+    start_hsm(policy)
+
+    with pytest.raises(CCProtoError) as ee:
+        dev.send_recv(CCProtocolPacker.miniscript_address(name, False, 0))
+    assert "Not allowed in HSM mode" in ee.value.args[0]
+
+    # change policy to allow miniscript address show
+    policy = DICT(share_addrs=["any", "p2sh", "msas"], rules=[dict(wallet=name)])
+    change_hsm(policy)
+    addr = dev.send_recv(CCProtocolPacker.miniscript_address(name, False, 0))
+    assert addr[2:4] == "1q"
 
 def test_xpub_sharing(dev, start_hsm, change_hsm, addr_fmt=AF_CLASSIC):
     # xpub sharing, but only at certain derivations

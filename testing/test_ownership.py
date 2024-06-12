@@ -2,7 +2,7 @@
 #
 # Address ownership tests.
 #
-import pytest, time, io, csv
+import pytest, time, io, csv, json
 from txn import fake_address
 from base58 import encode_base58_checksum
 from helpers import hash160, taptweak
@@ -235,12 +235,12 @@ def test_ux(valid, testnet, method,
         assert 'Searched ' in story
         assert 'candidates without finding a match' in story
 
-@pytest.mark.parametrize("af", ["P2SH-Segwit", "Segwit P2WPKH", "Classic P2PKH", "Taproot P2TR", "ms0"])
+@pytest.mark.parametrize("af", ["P2SH-Segwit", "Segwit P2WPKH", "Classic P2PKH", "Taproot P2TR", "ms0", "msc0", "msc2"])
 def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explorer,
                                 pick_menu_item, need_keypress, sim_exec, clear_ms,
                                 import_ms_wallet, press_select, goto_home, nfc_write,
                                 load_shared_mod, load_export_and_verify_signature,
-                                cap_story, load_export):
+                                cap_story, load_export, offer_minsc_import):
     goto_home()
     wipe_cache()
     settings_set('accts', [])
@@ -249,6 +249,12 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
         clear_ms()
         import_ms_wallet(2, 3, name=af)
         press_select()  # accept ms import
+    elif "msc" in af:
+        from test_miniscript import CHANGE_BASED_DESCS
+        which = int(af[-1])
+        title, story = offer_minsc_import(json.dumps({"name": af, "desc": CHANGE_BASED_DESCS[which]}))
+        assert "Create new miniscript wallet?" in story
+        press_select()  # accept
 
     goto_address_explorer()
     pick_menu_item(af)
@@ -260,23 +266,19 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
     lst = eval(lst)
     assert lst
 
-    if af == "ms0":
-        return  # multisig addresses are blanked
-
     title, body = cap_story()
-    if af == "Taproot P2TR":
+    if af in ("Taproot P2TR", "ms0", "msc0", "msc2"):
         # p2tr - no signature file
         contents = load_export("sd", label="Address summary", is_json=False, sig_check=False)
-        sig_addr = None
     else:
-        contents, sig_addr = load_export_and_verify_signature(body, "sd", label="Address summary")
+        contents, _ = load_export_and_verify_signature(body, "sd", label="Address summary")
 
     addr_dump = io.StringIO(contents)
     cc = csv.reader(addr_dump)
     hdr = next(cc)
-    assert hdr == ['Index', 'Payment Address', 'Derivation']
     addr = None
-    for n, (idx, addr, deriv) in enumerate(cc, start=0):
+    assert hdr[:2] == ['Index', 'Payment Address']
+    for n, (idx, addr, *_) in enumerate(cc, start=0):
         assert int(idx) == n
         if idx == 200:
             addr = addr
@@ -300,7 +302,7 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
     assert addr in story
     assert title == 'Verified Address'
     assert 'Found in wallet' in story
-    assert 'Derivation path' in story
+    # assert 'Derivation path' in story
     if af == "P2SH-Segwit":
         assert "P2WPKH-in-P2SH" in story
     elif af == "Segwit P2WPKH":

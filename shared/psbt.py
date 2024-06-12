@@ -11,6 +11,7 @@ from uhashlib import sha256
 from uio import BytesIO
 from sffile import SizerFile
 from chains import taptweak, tapleaf_hash
+from miniscript import MiniScriptWallet
 from multisig import MultisigWallet, disassemble_multisig_mn
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160
@@ -479,7 +480,7 @@ class psbtOutputProxy(psbtProxy):
             for k, v in self.unknown.items():
                 wr(k[0], v, k[1:])
 
-    def validate(self, out_idx, txo, my_xfp, active_multisig, parent):
+    def validate(self, out_idx, txo, my_xfp, active_multisig, active_miniscript, parent):
         # Do things make sense for this output?
     
         # NOTE: We might think it's a change output just because the PSBT
@@ -552,43 +553,66 @@ class psbtOutputProxy(psbtProxy):
                     expect_pkh = None
 
             else:
-                # Multisig change output, for wallet we're supposed to be a part of.
-                # - our key must be part of it
-                # - must look like input side redeem script (same fingerprints)
-                # - assert M/N structure of output to match any inputs we have signed in PSBT!
-                # - assert all provided pubkeys are in redeem script, not just ours
-                # - we get all of that by re-constructing the script from our wallet details
                 if not redeem_script and not witness_script:
-                    # Perhaps an omission, so let's not call fraud on it
-                    # But definately required, else we don't know what script we're sending to.
-                    raise FatalPSBTIssue(
-                        "Missing redeem/witness script for multisig output #%d" % out_idx
-                    )
+                    if active_miniscript:
+                        # TODO
+                        # this should be also acceptable for any other script type, we do not need
+                        # redeem/witness script
+                        # scriptPubkey can be compared against script that we build - if exact match change
+                        # if not not change - definitely not FatalPSBTIssue
+                        #
+                        # without this I cannot sign with liana as they do not provide witness/redeem
+                        try:
+                            active_miniscript.validate_script_pubkey(txo.scriptPubKey,
+                                                                     list(self.subpaths.values()))
+                            self.is_change = True
+                            return
+                        except Exception as e:
+                            raise FraudulentChangeOutput(out_idx, "Change output scriptPubkey: %s" % e)
+                    else:
+                        # Perhaps an omission, so let's not call fraud on it
+                        # But definately required, else we don't know what script we're sending to.
+                        raise FatalPSBTIssue("Missing redeem/witness script for output #%d" % out_idx)
 
                 # it cannot be change if it doesn't precisely match our multisig setup
-                if not active_multisig:
+                if not active_multisig and not active_miniscript:
                     # - might be a p2sh output for another wallet that isn't us
                     # - not fraud, just an output with more details than we need.
                     self.is_change = False
                     return
 
-                if MultisigWallet.disable_checks:
-                    # Without validation, we have to assume all outputs
-                    # will be taken from us, and are not really change.
-                    self.is_change = False
-                    return
-
-                # redeem script must be exactly what we expect
-                # - pubkeys will be reconstructed from derived paths here
-                # - BIP-45, BIP-67 rules applied
-                # - p2sh-p2wsh needs witness script here, not redeem script value
-                # - if details provided in output section, must our match multisig wallet
-                try:
-                    active_multisig.validate_script(witness_script or redeem_script,
-                                                            subpaths=self.subpaths)
-                except BaseException as exc:
-                    raise FraudulentChangeOutput(out_idx, 
-                                "P2WSH or P2SH change output script: %s" % exc)
+                if active_multisig:
+                    # Multisig change output, for wallet we're supposed to be a part of.
+                    # - our key must be part of it
+                    # - must look like input side redeem script (same fingerprints)
+                    # - assert M/N structure of output to match any inputs we have signed in PSBT!
+                    # - assert all provided pubkeys are in redeem script, not just ours
+                    # - we get all of that by re-constructing the script from our wallet details
+                    if MultisigWallet.disable_checks:
+                        # Without validation, we have to assume all outputs
+                        # will be taken from us, and are not really change.
+                        self.is_change = False
+                        return
+                    # redeem script must be exactly what we expect
+                    # - pubkeys will be reconstructed from derived paths here
+                    # - BIP-45, BIP-67 rules applied
+                    # - p2sh-p2wsh needs witness script here, not redeem script value
+                    # - if details provided in output section, must our match multisig wallet
+                    try:
+                        active_multisig.validate_script(witness_script or redeem_script,
+                                                        subpaths=self.subpaths)
+                    except BaseException as exc:
+                        raise FraudulentChangeOutput(out_idx,
+                                                     "P2WSH or P2SH change output script: %s" % exc)
+                else:
+                    # active miniscript
+                    try:
+                        active_miniscript.validate_script(witness_script or redeem_script,
+                                                          list(self.subpaths.values()),
+                                                          script_pubkey=txo.scriptPubKey)
+                    except BaseException as exc:
+                        raise FraudulentChangeOutput(out_idx,
+                                                     "P2WSH or P2SH change output script: %s" % exc)
 
                 if is_segwit:
                     # p2wsh case
@@ -622,6 +646,16 @@ class psbtOutputProxy(psbtProxy):
             expect_pkh = hash160(expect_pubkey)
         elif addr_type == "p2tr":
             if expect_pubkey is None and len(self.taproot_subpaths) > 1:
+                if active_miniscript:
+                    try:
+                        active_miniscript.validate_script_pubkey(
+                            b"\x51\x20" + pkh,
+                            [v[1:] for v in self.taproot_subpaths.values() if len(v[1:]) > 1]
+                        )
+                        self.is_change = True
+                        return
+                    except Exception as e:
+                        raise FraudulentChangeOutput(out_idx, "Change output scriptPubkey: %s" % e)
                 expect_pkh = None
             else:
                 expect_pkh = taptweak(expect_pubkey)
@@ -873,6 +907,7 @@ class psbtInputProxy(psbtProxy):
         # - which pubkey needed
         # - scriptSig value
         # - also validates redeem_script when present
+        merkle_root = None
         self.amount = utxo.nValue
 
         if (not self.subpaths and not self.taproot_subpaths) or self.fully_signed:
@@ -883,6 +918,7 @@ class psbtInputProxy(psbtProxy):
             return
 
         self.is_multisig = False
+        self.is_miniscript = False
         self.is_p2sh = False
         which_key = None
 
@@ -931,9 +967,13 @@ class psbtInputProxy(psbtProxy):
                 self.is_segwit = True
             else:
                 # multiple keys involved, we probably can't do the finalize step
-                self.is_multisig = True
+                M, N = disassemble_multisig_mn(redeem_script)
+                if M is None and N is None:
+                    self.is_miniscript = True
+                else:
+                    self.is_multisig = True
 
-            if self.witness_script and not self.is_segwit and self.is_multisig:
+            if self.witness_script and not self.is_segwit and (self.is_miniscript or self.is_multisig):
                 # bugfix
                 addr_type = 'p2sh-p2wsh'
                 self.is_segwit = True
@@ -965,7 +1005,28 @@ class psbtInputProxy(psbtProxy):
                     if output_key == pubkey:
                         which_key = xonly_pubkey
             else:
-                which_key = None
+                # tapscript (is always miniscript wallet)
+                self.is_miniscript = True
+                for xonly_pubkey, lhs_path in self.taproot_subpaths.items():
+                    lhs, path = lhs_path[0], lhs_path[1:]  # meh - should be a tuple
+                    # ignore keys that does not have correct xfp specified in PSBT
+                    if path[0] == my_xfp:
+                        assert merkle_root is not None, "Merkle root not defined"
+                        if not lhs:
+                            output_key = taptweak(xonly_pubkey, merkle_root)
+                            if output_key == pubkey:
+                                which_key = xonly_pubkey
+                                # if we find a possibiity to spend keypath (internal_key) - we do keypath
+                                # even though script path is available
+                                self.use_keypath = True
+                                break
+                        else:
+                            internal_key = self.get(self.taproot_internal_key)
+                            output_pubkey = taptweak(internal_key, merkle_root)
+                            if not which_key:
+                                which_key = set()
+                            if pubkey == output_pubkey:
+                                which_key.add(xonly_pubkey)
 
         elif addr_type == 'p2pk':
             # input is single public key (less common)
@@ -988,7 +1049,6 @@ class psbtInputProxy(psbtProxy):
             # - check it's the right M/N to match redeem script
 
             #print("redeem: %s" % b2a_hex(redeem_script))
-            M, N = disassemble_multisig_mn(redeem_script)
             xfp_paths = list(self.subpaths.values())
             xfp_paths.sort()
 
@@ -1009,6 +1069,27 @@ class psbtInputProxy(psbtProxy):
             except BaseException as exc:
                 sys.print_exception(exc)
                 raise FatalPSBTIssue('Input #%d: %s' % (my_idx, exc))
+
+        if self.is_miniscript and which_key:
+            try:
+                xfp_paths = [item[1:] for item in self.taproot_subpaths.values() if len(item[1:]) > 1]
+            except AttributeError:
+                xfp_paths = list(self.subpaths.values())
+
+            xfp_paths.sort()
+            if not psbt.active_miniscript:
+                wal = MiniScriptWallet.find_match(xfp_paths)
+                if not wal:
+                    raise FatalPSBTIssue('Unknown miniscript wallet')
+                psbt.active_miniscript = wal
+
+            assert psbt.active_miniscript
+            try:
+                # contains PSBT merkle root verification
+                psbt.active_miniscript.validate_script_pubkey(utxo.scriptPubKey,
+                                                              xfp_paths, merkle_root)
+            except BaseException as e:
+                raise FatalPSBTIssue('Input #%d: %s\n\n' % (my_idx, e) + problem_file_line(e))
 
         if not which_key and DEBUG:
             print("no key: input #%d: type=%s segwit=%d a_or_pk=%s scriptPubKey=%s" % (
@@ -1215,6 +1296,7 @@ class psbtObject(psbtProxy):
         # this points to a MS wallet, during operation
         # - we are only supporting a single multisig wallet during signing
         self.active_multisig = None
+        self.active_miniscript = None
 
         self.warnings = []
         # not a warning just more info about tx
@@ -1689,7 +1771,7 @@ class psbtObject(psbtProxy):
         for idx, txo in self.output_iter():
             output = self.outputs[idx]
             # perform output validation
-            output.validate(idx, txo, self.my_xfp, self.active_multisig, self)
+            output.validate(idx, txo, self.my_xfp, self.active_multisig, self.active_miniscript, self)
             total_out += txo.nValue
             if output.is_change:
                 self.num_change_outputs += 1
@@ -1824,8 +1906,8 @@ class psbtObject(psbtProxy):
                 iss = "has different hardening pattern"
             elif path[0:len(path_prefix)] != path_prefix:
                 iss = "goes to diff path prefix"
-            elif (path[-2] & 0x7fffffff) not in {0, 1}:
-                iss = "2nd last component not 0 or 1"
+            # elif (path[-2] & 0x7fffffff) not in {0, 1}:
+            #     iss = "2nd last component not 0 or 1"
             elif (path[-1] & 0x7fffffff) > idx_max:
                 iss = "last component beyond reasonable gap"
             else:
@@ -2632,8 +2714,8 @@ class psbtObject(psbtProxy):
 
         # plus we added some signatures
         for inp in self.inputs:
-            if inp.is_multisig:
-                # but we can't combine/finalize multisig stuff, so will never't be 'final'
+            if inp.is_multisig or (inp.is_miniscript and not inp.use_keypath):
+                # but we can't combine/finalize multisig/miniscript stuff, so will never't be 'final'
                 return False
             if inp.part_sig and len(inp.part_sig) == len(inp.subpaths):
                 signed += 1

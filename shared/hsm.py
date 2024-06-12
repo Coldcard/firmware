@@ -4,16 +4,15 @@
 #
 # Unattended signing of transactions and messages, subject to a set of rules.
 #
-import stash, ustruct, chains, sys, gc, uio, ujson, uos, utime, ckcc, ngu, version
-from sffile import SFFile
+import ustruct, chains, sys, gc, uio, ujson, uos, utime, ckcc, ngu
 from utils import problem_file_line, cleanup_deriv_path, match_deriv_path
 from pincodes import AE_LONG_SECRET_LEN
 from stash import blank_object
 from users import Users, MAX_NUMBER_USERS, calc_local_pincode
 from public_constants import MAX_USERNAME_LEN
 from multisig import MultisigWallet
+from miniscript import MiniScriptWallet
 from ubinascii import hexlify as b2a_hex
-from ubinascii import unhexlify as a2b_hex
 from uhashlib import sha256
 from ucollections import OrderedDict
 from files import CardSlot, CardMissingError
@@ -88,13 +87,13 @@ def pop_list(j, fld_name, cleanup_fcn=None):
     else:
         return []
 
-def pop_deriv_list(j, fld_name, extra_val=None):
+def pop_deriv_list(j, fld_name, extra_vals=None):
     # expect a list of derivation paths, but also 'any' meaning accept all
     # - maybe also 'p2sh' as special value
     # - also, path can have n
     def cu(s):
-        if s.lower() == 'any': return s.lower()
-        if extra_val and s.lower() == extra_val: return s.lower()
+        if extra_vals and s.lower() in extra_vals:
+            return s.lower()
         try:
             return cleanup_deriv_path(s, allow_star=True)
         except:
@@ -195,7 +194,7 @@ class ApprovalRule:
     # - users: list of authorized users
     # - min_users: how many of those are needed to approve
     # - local_conf: local user must also confirm w/ code
-    # - wallet: which multisig wallet to restrict to, or '1' for single signer only
+    # - wallet: which multisig/miniscript wallet to restrict to, or '1' for single signer only
     # - min_pct_self_transfer: minimum percentage of own input value that must go back to self
     # - patterns: list of transaction patterns to check for. Valid values:
     #       * EQ_NUM_INS_OUTS:      the number of inputs and outputs must be equal
@@ -212,6 +211,7 @@ class ApprovalRule:
             return u
 
         self.index = idx+1
+        self.ms_type = "multisig"
         self.per_period = pop_int(j, 'per_period', 0, MAX_SATS)
         self.max_amount = pop_int(j, 'max_amount', 0, MAX_SATS)
         self.users = pop_list(j, 'users', check_user)
@@ -238,8 +238,11 @@ class ApprovalRule:
 
         # if specified, 'wallet' must be an existing multisig wallet's name
         if self.wallet and self.wallet != '1':
-            names = [ms.name for ms in MultisigWallet.get_all()]
-            assert self.wallet in names, "unknown MS wallet: "+self.wallet
+            ms_names = [ms.name for ms in MultisigWallet.get_all()]
+            msc_names = [msc.name for msc in MiniScriptWallet.get_all()]
+            assert self.wallet in (ms_names+msc_names), "unknown wallet: "+self.wallet
+            if self.wallet in msc_names:
+                self.ms_type = "miniscript"
 
         # patterns must be valid
         for p in self.patterns:
@@ -283,9 +286,9 @@ class ApprovalRule:
             rv = 'Any amount'
 
         if self.wallet == '1':
-            rv += ' (non multisig)'
+            rv += ' (singlesig only)'
         elif self.wallet:
-            rv += ' from multisig wallet "%s"' % self.wallet
+            rv += ' from %s wallet "%s"' % (self.ms_type, self.wallet)
 
         if self.users:
             rv += ' may be authorized by '
@@ -328,10 +331,12 @@ class ApprovalRule:
             # rule limited to one wallet
             if psbt.active_multisig:
                 # if multisig signing, might need to match specific wallet name
-                assert self.wallet == psbt.active_multisig.name, 'wrong wallet'
+                assert self.wallet == psbt.active_multisig.name, 'wrong multisig wallet'
+            elif psbt.active_miniscript:
+                assert self.wallet == psbt.active_miniscript.name, 'wrong miniscript wallet'
             else:
                 # non multisig, but does this rule apply to all wallets or single-singers
-                assert self.wallet == '1', 'not multisig'
+                assert self.wallet == '1', 'singlesig only'
 
         if self.max_amount is not None:
             assert total_out <= self.max_amount, 'amount exceeded'
@@ -504,9 +509,9 @@ class HSMPolicy:
         self.warnings_ok = pop_bool(j, 'warnings_ok')
 
         # a list of paths we can accept for signing
-        self.msg_paths = pop_deriv_list(j, 'msg_paths')
-        self.share_xpubs = pop_deriv_list(j, 'share_xpubs')
-        self.share_addrs = pop_deriv_list(j, 'share_addrs', 'p2sh')
+        self.msg_paths = pop_deriv_list(j, 'msg_paths', ['any'])
+        self.share_xpubs = pop_deriv_list(j, 'share_xpubs', ['any'])
+        self.share_addrs = pop_deriv_list(j, 'share_addrs', ['p2sh', 'any', 'msas'])
 
         # free text shown at top
         self.notes = pop_string(j, 'notes', 1, 80)
@@ -814,11 +819,15 @@ class HSMPolicy:
 
         return match_deriv_path(self.share_xpubs, subpath)
 
-    def approve_address_share(self, subpath=None, is_p2sh=False):
+    def approve_address_share(self, subpath=None, is_p2sh=False, miniscript=False):
         # Are we allowing "show address" requests over USB?
 
         if not self.share_addrs:
             return False
+
+        if miniscript:
+            print("self.share_addrs", self.share_addrs)
+            return ('msas' in self.share_addrs)
 
         if is_p2sh:
             return ('p2sh' in self.share_addrs)
@@ -894,6 +903,7 @@ class HSMPolicy:
 
                 # reject anything with warning, probably
                 if psbt.warnings:
+                    print(psbt.warnings)
                     if self.warnings_ok:
                         log.info("Txn has warnings, but policy is to accept anyway.")
                     else:
@@ -994,7 +1004,8 @@ def hsm_status_report():
             rv['approval_wait'] = True
 
         rv['users'] = Users.list()
-        rv['wallets'] = [ms.name for ms in MultisigWallet.get_all()]
+        rv['wallets'] = [ms.name for ms in MultisigWallet.get_all()] \
+                        + [msc.name for msc in MiniScriptWallet.get_all()]
 
     rv['chain'] = settings.get('chain', 'BTC')
 

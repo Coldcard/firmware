@@ -872,6 +872,14 @@ async def start_login_sequence():
             # is early in boot process
             print("XFP save failed: %s" % exc)
 
+    # Version warning before HSM is offered
+    if version.is_edge and not ckcc.is_simulator():
+        await ux_show_story(
+             "This preview version of firmware has not yet been qualified and "
+             "tested to the same standard as normal Coinkite products."
+             "\n\nIt is recommended only for developers and early adopters for experimental use. "
+             "DO NOT use for large Bitcoin amounts.", title="Edge Version")
+
     dis.draw_status(xfp=settings.get('xfp'))
 
     # If HSM policy file is available, offer to start that,

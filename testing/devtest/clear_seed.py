@@ -23,6 +23,7 @@ if not pa.is_secret_blank():
     pa.login()
 
     assert pa.is_secret_blank()
+    settings.blank()
 
 SettingsObject.master_sv_data = {}
 SettingsObject.master_nvram_key = None
