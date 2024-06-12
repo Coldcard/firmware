@@ -220,12 +220,6 @@ class OwnershipCache:
 
         possibles = []
 
-        if addr_fmt == AF_P2SH and not MultisigWallet.exists():
-            # Might be single-sig p2wpkh wrapped in p2sh ... but that was a transition
-            # thing that hopefully is going away, so if they have any multisig wallets, 
-            # defined, assume that that's the only p2sh address source.
-            addr_fmt = AF_P2WPKH_P2SH
-
         if addr_fmt & AFC_SCRIPT:
             # multisig or script at least.. must exist already
             possibles.extend(MultisigWallet.iter_wallets(addr_fmt=addr_fmt))
@@ -234,9 +228,14 @@ class OwnershipCache:
                 # might look like P2SH but actually be AF_P2WSH_P2SH
                 possibles.extend(MultisigWallet.iter_wallets(addr_fmt=AF_P2WSH_P2SH))
 
+                # Might be single-sig p2wpkh wrapped in p2sh ... but that was a transition
+                # thing that hopefully is going away, so if they have any multisig wallets,
+                # defined, assume that that's the only p2sh address source.
+                addr_fmt = AF_P2WPKH_P2SH
+
             # TODO: add tapscript and such fancy stuff here
 
-        else:
+        try:
             # Construct possible single-signer wallets, always at least account=0 case
             from wallet import MasterSingleSigWallet
             w = MasterSingleSigWallet(addr_fmt, account_idx=0)
@@ -248,6 +247,7 @@ class OwnershipCache:
                 if af == addr_fmt and acct_num:
                     w = MasterSingleSigWallet(addr_fmt, account_idx=acct_num)
                     possibles.append(w)
+        except ValueError: pass  # if not single sig address format
 
         if not possibles:
             # can only happen w/ scripts; for single-signer we have things to check

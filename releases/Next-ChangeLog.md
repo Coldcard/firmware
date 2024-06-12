@@ -21,6 +21,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: UX shows only 10 outputs with the biggest value on screen, other values available
   after a keypress.
 - Bugfix: Calculate progress bar correctly in Address Explorer after first page.
+- Bugfix: Search also Wrapped Segwit single sig addresses if P2SH address provided, not just multisig (multisig has precedence for P2SH addresses)
 
 # Mk4 Specific Changes
 
