@@ -2,6 +2,8 @@
 
 This feature allows single-tap broadcast of the freshly-signed transaction.
 
+`PSBT ==[SD|QR|NFC]==> COLDCARD signed TXN ==[NFC tap]==> Phone Browser ==> Server TXN Broadcast`
+
 Once enabled with a URL, the COLDCARD will show the NFC animation
 after signing the transaction. When the user taps their phone, the
 phone will see an NFC tag with URL inside. That URL contains the
