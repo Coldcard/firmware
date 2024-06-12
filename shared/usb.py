@@ -53,7 +53,7 @@ HSM_WHITELIST = frozenset({
     'blkc', 'hsts',             # report status values
     'stok', 'smok',             # completion check: sign txn or msg
     'xpub', 'msck',             # quick status checks
-    'p2sh', 'show',             # limited by HSM policy
+    'p2sh', 'show', 'msas',     # limited by HSM policy
     'user',                     # auth HSM user, other user cmds not allowed
     'gslr',                     # read storage locker; hsm mode only, limited usage
 })
@@ -483,13 +483,89 @@ class USBHandler:
             file_len, file_sha = unpack_from('<I32s', args)
             if file_sha != self.file_checksum.digest():
                 return b'err_Checksum'
-            assert 100 < file_len <= (20*200), "badlen"
+            assert 100 < file_len <= (32*200), "badlen"
 
             # Start an UX interaction, return immediately here
             from auth import maybe_enroll_xpub
             maybe_enroll_xpub(sf_len=file_len, ux_reset=True)
 
             return None
+
+        if cmd == 'mins':
+            # Enroll new xpubkey to be involved in miniscript.
+            # - descriptor text config file must already be uploaded
+
+            file_len, file_sha = unpack_from('<I32s', args)
+            if file_sha != self.file_checksum.digest():
+                return b'err_Checksum'
+            assert 100 < file_len <= (100 * 200), "badlen"
+
+            # Start an UX interaction, return immediately here
+            from auth import maybe_enroll_xpub
+            maybe_enroll_xpub(sf_len=file_len, ux_reset=True, miniscript=True)
+
+            return None
+
+        if cmd == "msls":
+            # list all registered miniscript wallet names
+            assert self.encrypted_req, 'must encrypt'
+            from miniscript import MiniScriptWallet
+            wallets = [w.name for w in MiniScriptWallet.iter_wallets()]
+            import ujson
+            return b'asci' + ujson.dumps(wallets)
+
+        if cmd == "msdl":
+            # delete miniscript wallet by its name (unique id)
+            assert self.encrypted_req, 'must encrypt'
+            from miniscript import MiniScriptWallet
+
+            assert len(args) < 40, "len args"
+            for w in MiniScriptWallet.iter_wallets():
+                if w.name == str(args, 'ascii'):
+                    break
+            else:
+                return b'err_Miniscript wallet not found'
+
+            from auth import maybe_delete_miniscript
+            maybe_delete_miniscript(w)
+            return None
+
+        if cmd == "msgt":
+            # takes name and returns descriptor + name json
+            assert self.encrypted_req, 'must encrypt'
+            from miniscript import MiniScriptWallet
+
+            assert len(args) < 40, "len args"
+            for w in MiniScriptWallet.iter_wallets():
+                if w.name == str(args, 'ascii'):
+                    import ujson
+                    return b'asci' + ujson.dumps({"name": w.name, "desc": w.to_string()})
+            return b'err_Miniscript wallet not found'
+
+        if cmd == "msas":
+            # get miniscript address based on int/ext index
+            assert self.encrypted_req, 'must encrypt'
+            if hsm_active and not hsm_active.approve_address_share(miniscript=True):
+                raise HSMDenied
+
+            from miniscript import MiniScriptWallet
+
+            change, idx, = unpack_from('<II', args)
+            assert change in (0, 1), "change not bool"
+            assert 0 <= idx < (2 ** 31), "child idx"
+
+            name = args[8:]
+
+            msc = None
+            for w in MiniScriptWallet.iter_wallets():
+                if w.name == str(name, 'ascii'):
+                    msc = w
+                    break
+            else:
+                return b'err_Miniscript wallet not found'
+
+            from auth import start_show_miniscript_address
+            return b'asci' + start_show_miniscript_address(msc, change, idx)
 
         if cmd == 'msck':
             # Quick check to test if we have a wallet already installed.

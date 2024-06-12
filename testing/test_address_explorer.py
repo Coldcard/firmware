@@ -94,14 +94,16 @@ def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, mic
             assert len(addresses.split("\n")) == expected_qty
             raise pytest.xfail("PASSED - different export format for NFC")
 
-        time.sleep(.5)  # always long enough to write the file?
-        title, body = cap_story()
         if is_p2tr:
             # p2tr - no signature file
-            contents = load_export(way, label="Address summary", is_json=False, sig_check=False)
+            contents = load_export(way, label="Address summary", is_json=False,
+                                   sig_check=False, skip_query=True)
             sig_addr = None
         else:
+            time.sleep(.5)  # always long enough to write the file?
+            title, body = cap_story()
             contents, sig_addr = load_export_and_verify_signature(body, way, label="Address summary")
+
         addr_dump = io.StringIO(contents)
         cc = csv.reader(addr_dump)
         hdr = next(cc)
