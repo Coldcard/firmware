@@ -10,25 +10,15 @@ from ux import export_prompt_builder, import_export_prompt_decode
 from menu import MenuSystem, MenuItem
 from public_constants import AFC_BECH32, AFC_BECH32M, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from multisig import MultisigWallet
+from miniscript import MiniScriptWallet
 from uasyncio import sleep_ms
 from uhashlib import sha256
-from ubinascii import hexlify as b2a_hex
 from glob import settings
 from auth import write_sig_file
-from utils import addr_fmt_label, censor_address
+from utils import addr_fmt_label, truncate_address
 from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME, KEY_LEFT, KEY_RIGHT
 from charcodes import KEY_CANCEL
 
-def truncate_address(addr):
-    # Truncates address to width of screen, replacing middle chars
-    if not version.has_qwerty:
-        # - 16 chars screen width
-        # - but 2 lost at left (menu arrow, corner arrow)
-        # - want to show not truncated on right side
-        return addr[0:6] + '⋯' + addr[-6:]
-    else:
-        # tons of space on Q1
-        return addr[0:12] + '⋯' + addr[-12:]
 
 class KeypathMenu(MenuSystem):
     def __init__(self, path=None, nl=0):
@@ -213,7 +203,11 @@ class AddressListMenu(MenuSystem):
             # if they have MS wallets, add those next
             for ms in MultisigWallet.iter_wallets():
                 if not ms.addr_fmt: continue
-                items.append(MenuItem(ms.name, f=self.pick_multisig, arg=ms))
+                items.append(MenuItem(ms.name, f=self.pick_miniscript, arg=ms))
+
+            # if they have miniscript wallets, add those next
+            for msc in MiniScriptWallet.iter_wallets():
+                items.append(MenuItem(msc.name, f=self.pick_miniscript, arg=msc))
         else:
             items.append(MenuItem("Account: %d" % self.account_num, f=self.change_account))
 
@@ -245,10 +239,10 @@ class AddressListMenu(MenuSystem):
         settings.put('axi', axi)  # update last clicked address
         await self.show_n_addresses(path, addr_fmt, None)
 
-    async def pick_multisig(self, _1, _2, item):
-        ms_wallet = item.arg
-        settings.put('axi', item.label)       # update last clicked address
-        await self.show_n_addresses(None, None, ms_wallet)
+    async def pick_miniscript(self, _1, _2, item):
+        msc_wallet = item.arg
+        settings.put('axi', item.label)  # update last clicked address
+        await self.show_n_addresses(None, msc_wallet.addr_fmt, msc_wallet)
 
     async def make_custom(self, *a):
         # picking a custom derivation path: makes a tree of menus, with chance
@@ -280,7 +274,7 @@ Press (3) if you really understand and accept these risks.
 
         start = self.start
 
-        def make_msg(change=0):
+        def make_msg(change=0, start=start, n=n):
             # Build message and CTA about export, plus the actual addresses.
             if n:
                 msg = "Addresses %d⋯%d:\n\n" % (start, min(start + n - 1, MAX_BIP32_IDX))
@@ -293,21 +287,7 @@ Press (3) if you really understand and accept these risks.
             dis.fullscreen('Wait...')
 
             if ms_wallet:
-                # IMPORTANT safety feature: never show complete address
-                # but show enough they can verify addrs shown elsewhere.
-                # - makes a redeem script
-                # - converts into addr
-                # - assumes 0/0 is first address.
-                for idx, addr, paths, script in ms_wallet.yield_addresses(start, n, change):
-                    addrs.append(censor_address(addr))
-
-                    if idx == 0 and ms_wallet.N <= 4:
-                        msg += '\n'.join(paths) + '\n =>\n'
-                    else:
-                        msg += '⋯/%d/%d =>\n' % (change, idx)
-
-                    msg += truncate_address(addr) + '\n\n'
-                    dis.progress_sofar(idx-start+1, n)
+                msg, addrs = ms_wallet.make_addresses_msg(msg, start, n, change)
 
             else:
                 # single-signer wallets
@@ -328,7 +308,7 @@ Press (3) if you really understand and accept these risks.
                                                        no_qr=bool(ms_wallet), key0=k0,
                                                        force_prompt=True)
             if version.has_qwerty:
-                escape += KEY_LEFT+KEY_RIGHT+KEY_HOME+KEY_PAGE_UP+KEY_PAGE_DOWN
+                escape += KEY_LEFT+KEY_RIGHT+KEY_HOME+KEY_PAGE_UP+KEY_PAGE_DOWN+KEY_QR
             else:
                 escape += "79"
 
@@ -342,8 +322,8 @@ Press (3) if you really understand and accept these risks.
 
             return msg, addrs, escape
 
-        msg, addrs, escape = make_msg()
         change = 0
+        msg, addrs, escape = make_msg(change, start)
         while 1:
             ch = await ux_show_story(msg, escape=escape)
 
@@ -365,14 +345,9 @@ Press (3) if you really understand and accept these risks.
 
             elif choice == KEY_QR:
                 # switch into a mode that shows them as QR codes
-                if ms_wallet:
-                    # requires not multisig
-                    continue
-
                 from ux import show_qr_codes
                 is_alnum = bool(addr_fmt & (AFC_BECH32 | AFC_BECH32M))
                 await show_qr_codes(addrs, is_alnum, start)
-
                 continue
 
             elif NFC and (choice == KEY_NFC):
@@ -408,7 +383,7 @@ Press (3) if you really understand and accept these risks.
             else:
                 continue        # 3 in non-NFC mode
 
-            msg, addrs, escape = make_msg(change)
+            msg, addrs, escape = make_msg(change, start)
 
 def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, change=0):
     # Produce CSV file contents as a generator
@@ -416,28 +391,13 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
     from ownership import OWNERSHIP
 
     if ms_wallet:
-        # For multisig, include redeem script and derivation for each signer
-        yield '"' + '","'.join(['Index', 'Payment Address', 'Redeem Script']
-                    + ['Derivation (%d of %d)' % (i+1, ms_wallet.N) for i in range(ms_wallet.N)]
-                    ) + '"\n'
-
         if (start == 0) and (n > 100) and change in (0, 1):
             saver = OWNERSHIP.saver(ms_wallet, change, start)
         else:
             saver = None
 
-        for (idx, addr, derivs, script) in ms_wallet.yield_addresses(start, n, change_idx=change):
-            if saver:
-                saver(addr)
-
-            # policy choice: never provide a complete multisig address to user.
-            addr = censor_address(addr)
-
-            ln = '%d,"%s","%s","' % (idx, addr, b2a_hex(script).decode())
-            ln += '","'.join(derivs)
-            ln += '"\n'
-
-            yield ln
+        for line in ms_wallet.generate_address_csv(start, n, change):
+            yield line
 
         if saver:
             saver(None)     # close file

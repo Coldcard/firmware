@@ -10,7 +10,6 @@ from public_constants import AF_P2SH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH
 from public_constants import AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32, AFC_SCRIPT
 from public_constants import TAPROOT_LEAF_TAPSCRIPT, TAPROOT_LEAF_MASK
 from serializations import hash160, ser_compact_size, disassemble, ser_string
-from serializations import hash160, ser_compact_size, disassemble
 from ucollections import namedtuple
 from opcodes import OP_RETURN, OP_1, OP_16
 
@@ -408,6 +407,13 @@ def current_chain():
         return BitcoinMain
 
     return get_chain(chain)
+
+def current_key_chain():
+    c = current_chain()
+    if c == BitcoinRegtest:
+        # regtest has same extended keys as testnet
+        c = BitcoinTestnet
+    return c
 
 # Overbuilt: will only be testnet and mainchain.
 AllChains = [BitcoinMain, BitcoinTestnet, BitcoinRegtest]

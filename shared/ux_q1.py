@@ -934,12 +934,13 @@ class QRScannerInteraction:
                 await ux_visualize_bip21(proto, addr, args)
                 return
 
-            if what == "multi":
+            if what in ("multi", "minisc"):
                 from auth import maybe_enroll_xpub
                 from ux import ux_show_story
                 ms_config, = vals
                 try:
-                    maybe_enroll_xpub(config=ms_config)
+                    maybe_enroll_xpub(config=ms_config,
+                                      miniscript=False if what == "multi" else None)
                 except Exception as e:
                     await ux_show_story(
                         'Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))

@@ -700,11 +700,91 @@ def decode_bip21_text(got):
 
     raise ValueError('not bip-21')
 
-def censor_address(addr):
-    # We don't like to show the user multisig addresses because we cannot be certain
-    # they are valid and could actually be signed. And yet, dont blank too many
-    # spots or else an attacker could grind out a suitable replacement.
-    return addr[0:12] + '___' + addr[12+3:]
+def check_xpub(xfp, xpub, deriv, expect_chain, my_xfp, disable_checks=False):
+    # Shared code: consider an xpub for inclusion into a wallet
+    # return T if it's our own key and parsed details in form (xfp, deriv, xpub)
+    # - deriv can be None, and in very limited cases can recover derivation path
+    # - could enforce all same depth, and/or all depth >= 1, but
+    #   seems like more restrictive than needed, so "m" is allowed
+    import stash
+    from public_constants import AF_P2SH
+    try:
+        # Note: addr fmt detected here via SLIP-132 isn't useful
+        node, chain, _ = parse_extended_key(xpub)
+    except:
+        raise AssertionError('unable to parse xpub')
+
+    try:
+        assert node.privkey() == None       # 'no privkeys plz'
+    except ValueError:
+        pass
+
+    if expect_chain == "XRT":
+        # HACK but there is no difference extended_keys - just bech32 hrp
+        assert chain.ctype == "XTN"
+    else:
+        assert chain.ctype == expect_chain, 'wrong chain'
+
+    depth = node.depth()
+
+    if depth == 1:
+        if not xfp:
+            # allow a shortcut: zero/omit xfp => use observed parent value
+            xfp = swab32(node.parent_fp())
+        else:
+            # generally cannot check fingerprint values, but if we can, do so.
+            if not disable_checks:
+                assert swab32(node.parent_fp()) == xfp, 'xfp depth=1 wrong'
+
+    assert xfp, 'need fingerprint'          # happens if bare xpub given
+
+    # In most cases, we cannot verify the derivation path because it's hardened
+    # and we know none of the private keys involved.
+    if depth == 1:
+        # but derivation is implied at depth==1
+        kn, is_hard = node.child_number()
+        if is_hard: kn |= 0x80000000
+        guess = keypath_to_str([kn], skip=0)
+
+        if deriv:
+            if not disable_checks:
+                assert guess == deriv, '%s != %s' % (guess, deriv)
+        else:
+            deriv = guess           # reachable? doubt it
+
+    assert deriv, 'empty deriv'         # or force to be 'm'?
+    assert deriv[0] == 'm'
+
+    # path length of derivation given needs to match xpub's depth
+    if not disable_checks:
+        p_len = deriv.count('/')
+        assert p_len == depth, 'deriv %d != %d xpub depth (xfp=%s)' % (
+                                    p_len, depth, xfp2str(xfp))
+
+        if xfp == my_xfp:
+            # its supposed to be my key, so I should be able to generate pubkey
+            # - might indicate collision on xfp value between co-signers,
+            #   and that's not supported
+            with stash.SensitiveValues() as sv:
+                chk_node = sv.derive_path(deriv)
+                assert node.pubkey() == chk_node.pubkey(), \
+                            "[%s/%s] wrong pubkey" % (xfp2str(xfp), deriv[2:])
+
+    # serialize xpub w/ BIP-32 standard now.
+    # - this has effect of stripping SLIP-132 confusion away
+    return xfp == my_xfp, (xfp, deriv, chain.serialize_public(node, AF_P2SH))
+
+
+def truncate_address(addr):
+    # Truncates address to width of screen, replacing middle chars
+    if not version.has_qwerty:
+        # - 16 chars screen width
+        # - but 2 lost at left (menu arrow, corner arrow)
+        # - want to show not truncated on right side
+        return addr[0:6] + '⋯' + addr[-6:]
+    else:
+        # tons of space on Q1
+        return addr[0:12] + '⋯' + addr[-12:]
 
 
 def encode_seed_qr(words):

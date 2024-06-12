@@ -319,7 +319,7 @@ def doit(keydir, outfn=None, build_dir=None, high_water=False,
                     pubkey_num=pubkey_num,
                     timestamp=timestamp(backdate) )
 
-    assert FW_MIN_LENGTH <= hdr.firmware_length <= FW_MAX_LENGTH, hdr.firmware_length
+    assert FW_MIN_LENGTH <= hdr.firmware_length <= FW_MAX_LENGTH_MK4, hdr.firmware_length
 
     if hw_compat & MK_3_OK:
         # actual file length limited by size of SPI flash area reserved to txn data/uploads

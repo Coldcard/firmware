@@ -7,6 +7,7 @@ from glob import settings
 from ucollections import namedtuple
 from ubinascii import hexlify as b2a_hex
 from exceptions import UnknownAddressExplained
+from public_constants import AFC_SCRIPT, AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH_P2SH, AF_P2TR
 
 # Track many addresses, but in compressed form
 # - map from random Bech32/Base58 payment address to (wallet) + keypath
@@ -49,7 +50,7 @@ class AddressCacheFile:
     def __init__(self, wallet, change_idx):
         self.wallet = wallet
         self.change_idx = change_idx
-        desc = wallet.to_descriptor().serialize()
+        desc = wallet.to_descriptor().to_string(internal=False)
         h = b2a_hex(ngu.hash.sha256d(wallet.chain.ctype + desc))
         self.fname = h[0:32] + '-%d.own' % change_idx
         self.salt = h[32:]
@@ -158,8 +159,8 @@ class AddressCacheFile:
 
         self.setup(self.change_idx, start_idx)
 
-        for idx,here,*_ in self.wallet.yield_addresses(start_idx, count,
-                                                            change_idx=self.change_idx):
+        # change_idx is used as flag here
+        for idx,here,*_ in self.wallet.yield_addresses(start_idx, count, self.change_idx):
 
             if here == addr:
                 # Found it! But keep going a little for next time.
@@ -207,7 +208,7 @@ class OwnershipCache:
         # - returns wallet object, and tuple2 of final 2 subpath components
         # - if you start w/ testnet, we'll follow that
         from multisig import MultisigWallet
-        from public_constants import AFC_SCRIPT, AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH_P2SH
+        from miniscript import MiniScriptWallet
         from glob import dis
 
         ch = chains.current_chain()
@@ -220,20 +221,27 @@ class OwnershipCache:
 
         possibles = []
 
+        msc_exists = MiniScriptWallet.exists()[0]
+
+        if addr_fmt == AF_P2TR and msc_exists:
+            possibles.extend([w for w in MiniScriptWallet.iter_wallets() if w.addr_fmt == AF_P2TR])
+
         if addr_fmt & AFC_SCRIPT:
             # multisig or script at least.. must exist already
             possibles.extend(MultisigWallet.iter_wallets(addr_fmt=addr_fmt))
+            msc = [w for w in MiniScriptWallet.iter_wallets() if w.addr_fmt == addr_fmt]
+            possibles.extend(msc)
 
             if addr_fmt == AF_P2SH:
                 # might look like P2SH but actually be AF_P2WSH_P2SH
                 possibles.extend(MultisigWallet.iter_wallets(addr_fmt=AF_P2WSH_P2SH))
+                msc = [w for w in MiniScriptWallet.iter_wallets() if w.addr_fmt == AF_P2WSH_P2SH]
+                possibles.extend(msc)
 
                 # Might be single-sig p2wpkh wrapped in p2sh ... but that was a transition
                 # thing that hopefully is going away, so if they have any multisig wallets,
                 # defined, assume that that's the only p2sh address source.
                 addr_fmt = AF_P2WPKH_P2SH
-
-            # TODO: add tapscript and such fancy stuff here
 
         try:
             # Construct possible single-signer wallets, always at least account=0 case
@@ -252,7 +260,7 @@ class OwnershipCache:
         if not possibles:
             # can only happen w/ scripts; for single-signer we have things to check
             raise UnknownAddressExplained(
-                        "No suitable multisig wallets are currently defined.")
+                        "No suitable multisig/miniscript wallets are currently defined.")
 
         # "quick" check first, before doing any generations
 
@@ -314,7 +322,8 @@ class OwnershipCache:
 
             msg = addr
             msg += '\n\nFound in wallet:\n  ' + wallet.name
-            msg += '\nDerivation path:\n  ' + wallet.render_path(*subpath)
+            if hasattr(wallet, "render_path"):
+                msg += '\nDerivation path:\n  ' + wallet.render_path(*subpath)
             if version.has_qwerty:
                 esc = KEY_QR
             else:
@@ -325,8 +334,9 @@ class OwnershipCache:
                 ch = await ux_show_story(msg, title="Verified Address",
                                                         escape=esc, hint_icons=KEY_QR)
                 if ch != esc: break
-                await show_qr_code(addr, is_alnum=(wallet.addr_fmt & (AFC_BECH32 | AFC_BECH32M)),
-                                                msg=addr)
+                await show_qr_code(addr,
+                                   is_alnum=(wallet.addr_fmt & (AFC_BECH32 | AFC_BECH32M)),
+                                   msg=addr)
 
         except UnknownAddressExplained as exc:
             await ux_show_story(addr + '\n\n' + str(exc), title="Unknown Address")

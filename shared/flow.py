@@ -10,6 +10,7 @@ from actions import *
 from choosers import *
 from mk4 import dev_enable_repl
 from multisig import make_multisig_menu, import_multisig_nfc
+from miniscript import make_miniscript_menu
 from seed import make_ephemeral_seed_menu, make_seed_vault_menu, start_b39_pw
 from address_explorer import address_explore
 from drv_entro import drv_entro_start, password_entry
@@ -138,6 +139,8 @@ SettingsMenu = [
     MenuItem('Hardware On/Off', menu=HWTogglesMenu),
     NonDefaultMenuItem('Multisig Wallets', 'multisig',
                        menu=make_multisig_menu, predicate=has_secrets),
+    NonDefaultMenuItem('Miniscript', 'miniscript',
+                       menu=make_miniscript_menu, predicate=has_secrets),
     NonDefaultMenuItem('NFC Push Tx', 'ptxurl', menu=pushtx_setup_menu),
     MenuItem('Display Units', chooser=value_resolution_chooser),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
@@ -176,6 +179,7 @@ XpubExportMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Segwit (BIP-84)", f=export_xpub, arg=84),
     MenuItem("Classic (BIP-44)", f=export_xpub, arg=44),
+    MenuItem("Taproot/P2TR(86)", f=export_xpub, arg=86),
     MenuItem("P2WPKH/P2SH (49)", f=export_xpub, arg=49),
     MenuItem("Master XPUB", f=export_xpub, arg=0),
     MenuItem("Current XFP", f=export_xpub, arg=-1),

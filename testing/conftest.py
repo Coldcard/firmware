@@ -625,6 +625,12 @@ def get_secrets(sim_execfile):
 
     return doit
 
+@pytest.fixture
+def clear_miniscript(unit_test):
+    def doit():
+        unit_test('devtest/wipe_miniscript.py')
+    return doit
+
 @pytest.fixture(scope='module')
 def press_select(dev, has_qwerty):
     f = functools.partial(_press_select, dev, has_qwerty)
@@ -1577,6 +1583,9 @@ def nfc_read(request, needs_nfc):
 def nfc_write(request, needs_nfc, is_q1):
     # WRITE data into NFC "chip"
     def doit_usb(ccfile):
+        from ckcc.constants import MAX_MSG_LEN
+        if len(ccfile) >= MAX_MSG_LEN:
+            pytest.xfail("MAX_MSG_LEN")
         sim_exec = request.getfixturevalue('sim_exec')
         press_select = request.getfixturevalue('press_select')
         rv = sim_exec('list(glob.NFC.big_write(%r))' % ccfile)
@@ -2247,7 +2256,8 @@ def dev_core_import_object(dev):
     ders = [
         ("m/44h/1h/0h", AF_CLASSIC),
         ("m/49h/1h/0h", AF_P2WPKH_P2SH),
-        ("m/84h/1h/0h", AF_P2WPKH)
+        ("m/84h/1h/0h", AF_P2WPKH),
+        ("m/86h/1h/0h", AF_P2TR),
     ]
     descriptors = []
     for idx, (path, addr_format) in enumerate(ders):
@@ -2275,6 +2285,7 @@ from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto
 from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed, confirm_tmp_seed
 from test_ephemeral import verify_ephemeral_secret_ui, get_identity_story, get_seed_value_ux, seed_vault_enable
 from test_multisig import import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn
+from test_miniscript import offer_minsc_import
 from test_multisig import make_ms_address, clear_ms, make_myself_wallet, import_multisig
 from test_se2 import goto_trick_menu, clear_all_tricks, new_trick_pin, se2_gate, new_pin_confirmed
 from test_seed_xor import restore_seed_xor

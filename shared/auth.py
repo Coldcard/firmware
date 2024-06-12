@@ -1435,7 +1435,7 @@ class ShowP2SHAddress(ShowAddressBase):
         # calculate all the pubkeys involved.
         self.subpath_help = ms.validate_script(witdeem_script, xfp_paths=xfp_paths)
 
-        self.address = ms.chain.p2sh_address(addr_fmt, witdeem_script)
+        self.address = chains.current_chain().p2sh_address(addr_fmt, witdeem_script)
 
     def get_msg(self):
         return '''\
@@ -1450,6 +1450,41 @@ Paths:
 
 {sp}'''.format(addr=self.address, name=self.ms.name,
                         M=self.ms.M, N=self.ms.N, sp='\n\n'.join(self.subpath_help))
+
+
+class ShowMiniscriptAddress(ShowAddressBase):
+
+    def setup(self, msc, change, idx):
+        self.msc = msc
+        self.change = change
+        self.idx = idx
+
+        d = self.msc.desc.derive(None, change=change).derive(idx)
+        self.address = chains.current_chain().render_address(d.script_pubkey())
+        self.addr_fmt = self.msc.addr_fmt
+
+    def get_msg(self):
+        return '''\
+{addr}
+Wallet:
+  {name}
+
+Index:
+  {idx}
+
+Change:
+  {change}'''.format(addr=self.address, name=self.msc.name, idx=self.idx, change=bool(self.change))
+
+
+def start_show_miniscript_address(msc, change, index):
+    UserAuthorizedAction.check_busy(ShowAddressBase)
+    UserAuthorizedAction.active_request = ShowMiniscriptAddress(msc, change, index)
+
+    # kill any menu stack, and put our thing at the top
+    abort_and_goto(UserAuthorizedAction.active_request)
+
+    # provide the value back to attached desktop
+    return UserAuthorizedAction.active_request.address
 
 def start_show_p2sh_address(M, N, addr_format, xfp_paths, witdeem_script):
     # Show P2SH address to user, also returns it.
@@ -1509,14 +1544,32 @@ def usb_show_address(addr_format, subpath):
     return active_request.address
 
 
-class NewEnrollRequest(UserAuthorizedAction):
-    def __init__(self, ms):
+class MiniscriptDeleteRequest(UserAuthorizedAction):
+    def __init__(self, msc):
         super().__init__()
-        self.wallet = ms
-        # self.result ... will be re-serialized xpub
+        self.wallet = msc
 
     async def interact(self):
-        from multisig import MultisigOutOfSpace
+        from miniscript import miniscript_delete
+        await miniscript_delete(self.wallet)
+        self.done()
+
+
+def maybe_delete_miniscript(msc):
+    UserAuthorizedAction.cleanup()
+    UserAuthorizedAction.active_request = MiniscriptDeleteRequest(msc)
+
+    # kill any menu stack, and put our thing at the top
+    abort_and_goto(UserAuthorizedAction.active_request)
+
+class NewMiniscriptEnrollRequest(UserAuthorizedAction):
+    def __init__(self, msc, bsms_index=None):
+        super().__init__()
+        self.wallet = msc
+        self.bsms_index = bsms_index
+
+    async def interact(self):
+        from wallet import WalletOutOfSpace
 
         ms = self.wallet
         try:
@@ -1527,22 +1580,42 @@ class NewEnrollRequest(UserAuthorizedAction):
                 self.refused = True
                 await ux_dramatic_pause("Refused.", 2)
 
-        except MultisigOutOfSpace:
+            if self.bsms_index is not None:
+                # remove signer round 2 from settings after multisig import is approved by user
+                from bsms import BSMSSettings
+                BSMSSettings.signer_delete(self.bsms_index)
+
+        except WalletOutOfSpace:
             return await self.failure('No space left')
         except BaseException as exc:
             self.failed = "Exception"
             sys.print_exception(exc)
         finally:
-            UserAuthorizedAction.cleanup()      # because no results to store
-            self.pop_menu()
+            UserAuthorizedAction.cleanup()  # because no results to store
+            if self.bsms_index is not None:
+                # bsms special case, get him back to multisig menu
+                from ux import the_ux, restore_menu
+                from multisig import MultisigMenu
+                while 1:
+                    top = the_ux.top_of_stack()
+                    if not top: break
+                    if not isinstance(top, MultisigMenu):
+                        the_ux.pop()
+                        continue
+                    break
+                restore_menu()
+            else:
+                self.pop_menu()
 
-def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False):
-    # Offer to import (enroll) a new multisig wallet. Allow reject by user.
+
+def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_index=None, miniscript=False):
+    # Offer to import (enroll) a new multisig/miniscript wallet. Allow reject by user.
     from glob import dis
     from multisig import MultisigWallet
+    from miniscript import MiniScriptWallet
 
     UserAuthorizedAction.cleanup()
-    dis.fullscreen('Wait...')  # needed
+    dis.fullscreen('Wait...')
     dis.busy_bar(True)
 
     try:
@@ -1564,9 +1637,19 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False):
 
         # this call will raise on parsing errors, so let them rise up
         # and be shown on screen/over usb
-        ms = MultisigWallet.from_file(config, name=name)
+        if miniscript is None:
+            # autodetect
+            try:
+                msc = MiniScriptWallet.from_file(config, name=name)
+            except AssertionError:
+                msc = MultisigWallet.from_file(config, name=name)
 
-        UserAuthorizedAction.active_request = NewEnrollRequest(ms)
+        elif miniscript:
+            msc = MiniScriptWallet.from_file(config, name=name)
+        else:
+            msc = MultisigWallet.from_file(config, name=name)
+
+        UserAuthorizedAction.active_request = NewMiniscriptEnrollRequest(msc, bsms_index=bsms_index)
 
         if ux_reset:
             # for USB case, and import from PSBT
@@ -1577,8 +1660,8 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False):
             from ux import the_ux
             the_ux.push(UserAuthorizedAction.active_request)
     finally:
-        # always finish busy bar
         dis.busy_bar(False)
+
 
 class FirmwareUpgradeRequest(UserAuthorizedAction):
     def __init__(self, hdr, length, hdr_check=False, psram_offset=None):

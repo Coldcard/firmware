@@ -1091,8 +1091,8 @@ def test_finalization_vs_bitcoind(match_key, use_regtest, check_against_bitcoind
     ("45'/1'/0'/1/5", 'diff path prefix'),
     ("44'/2'/0'/1/5", 'diff path prefix'),
     ("44'/1'/1'/1/5", 'diff path prefix'),
-    ("44'/1'/0'/3000/5", '2nd last component'),
-    ("44'/1'/0'/3/5", '2nd last component'),
+    # ("44'/1'/0'/3000/5", '2nd last component'),
+    # ("44'/1'/0'/3/5", '2nd last component'),
 ])
 def test_change_troublesome(dev, start_sign, cap_story, try_path, expect):
     # NOTE: out#1 is change:

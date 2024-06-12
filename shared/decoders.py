@@ -214,6 +214,10 @@ def decode_short_text(got):
             if c > 1:
                 return 'multi', (got,)
 
+    from descriptor import Descriptor
+    if Descriptor.is_descriptor(got):
+        return 'minisc', (got,)
+
     # Things with newlines in them are not URL's
     # - working URLs are not >4k
     # - might be a story in text, etc.

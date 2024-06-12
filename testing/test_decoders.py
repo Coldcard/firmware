@@ -14,20 +14,24 @@ wordlist = Mnemonic('english').wordlist
 
 @pytest.fixture
 def try_decode(sim_exec):
-    def doit(arg):
+    def doit(arg, ):
         cmd = "from decoders import decode_qr_result;  " + \
                     f"RV.write(repr(decode_qr_result({arg!r})))"
 
         result = sim_exec(cmd)
-
         if 'Traceback' in result:
             raise RuntimeError(result)
 
-        if '<' in result:
-            # objects, like "<HexStreamer..."
-            result = result.replace('<', "'").replace('>', "'")
+        try:
+            return eval(result)
+        except SyntaxError:
+            if '<' in result:
+                # objects, like "<HexStreamer..."
+                result = result.replace('<', "'").replace('>', "'")
+                return eval(result)
 
-        return eval(result)
+            raise
+
     return doit
 
 @pytest.mark.parametrize('fname,expect', [
@@ -145,7 +149,6 @@ def test_urldecode(url, sim_exec):
 
 
 @pytest.mark.parametrize('config', [
-    'wsh(sortedmulti(2,[0f056943/48h/1h/0h/2h]tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[6ba6cfd0/48h/1h/0h/2h]tpubDFcrvj5n7gyaxWQkoX69k2Zij4vthiAwvN2uhYjDrE6wktKoQaE7gKVZRiTbYdrAYH1UFPGdzdtWJc6WfR2gFMq6XpxA12gCdQmoQNU9mgm/0/*,[747b698e/48h/1h/0h/2h]tpubDExj5FnaUnPAn7sHGUeBqD3buoNH5dqmjAT6884vbDpH1iDYWigb7kFo2cA97dc8EHb54u13TRcZxC4kgRS9gc3Ey2xc8c5urytEzTcp3ac/0/*,[7bb026be/48h/1h/0h/2h]tpubDFiuHYSJhNbHcbLJoxWdbjtUcbKR6PvLq53qC1Xq6t93CrRx78W3wcng8vJyQnY3giMJZEgNCRVzTojLb8RqPFpW5Ms2dYpjcJYofN1joyu/0/*))#al5z7mcj',
     '0f056943: tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP\n6ba6cfd0: tpubDFcrvj5n7gyaxWQkoX69k2Zij4vthiAwvN2uhYjDrE6wktKoQaE7gKVZRiTbYdrAYH1UFPGdzdtWJc6WfR2gFMq6XpxA12gCdQmoQNU9mgm',
     '0f056943: xpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP\n6ba6cfd0: tpubDFcrvj5n7gyaxWQkoX69k2Zij4vthiAwvN2uhYjDrE6wktKoQaE7gKVZRiTbYdrAYH1UFPGdzdtWJc6WfR2gFMq6XpxA12gCdQmoQNU9mgm',
     '   0F056943   : tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP\n   6BA6CFD0  : tpubDFcrvj5n7gyaxWQkoX69k2Zij4vthiAwvN2uhYjDrE6wktKoQaE7gKVZRiTbYdrAYH1UFPGdzdtWJc6WfR2gFMq6XpxA12gCdQmoQNU9mgm',
@@ -162,6 +165,18 @@ def test_multisig(config, try_decode):
 
     assert ft == "multi"
     assert vals[0] == config
+
+@pytest.mark.parametrize('desc', [
+    'wsh(sortedmulti(2,[0f056943/48h/1h/0h/2h]tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[6ba6cfd0/48h/1h/0h/2h]tpubDFcrvj5n7gyaxWQkoX69k2Zij4vthiAwvN2uhYjDrE6wktKoQaE7gKVZRiTbYdrAYH1UFPGdzdtWJc6WfR2gFMq6XpxA12gCdQmoQNU9mgm/0/*,[747b698e/48h/1h/0h/2h]tpubDExj5FnaUnPAn7sHGUeBqD3buoNH5dqmjAT6884vbDpH1iDYWigb7kFo2cA97dc8EHb54u13TRcZxC4kgRS9gc3Ey2xc8c5urytEzTcp3ac/0/*,[7bb026be/48h/1h/0h/2h]tpubDFiuHYSJhNbHcbLJoxWdbjtUcbKR6PvLq53qC1Xq6t93CrRx78W3wcng8vJyQnY3giMJZEgNCRVzTojLb8RqPFpW5Ms2dYpjcJYofN1joyu/0/*))#al5z7mcj',
+    'wsh(or_d(pk([5155f1fa/44h/1h/0h]tpubDCtts5PqRUpJZaRegaWEGTULHp9XbFVsmrxQ38bAXf291HfmnTuDdeeXgyi59ywvRzaAmE8hiFZMVEv7KyGnH5YVBK3SDK625Huv4uoTsWZ/<0;1>/*),and_v(v:pkh([0f056943/84h/0h/0h]tpubDCx8y86cKonoPyTtj3f9NZLpBYoBNkbAzUdafMHhggjxkhF8Dny2aekWfDafywEMZEQaQjkK9Gxn7aN7usLRUQdYbvDgcnmYRf72khPEouL/<0;1>/*),older(5))))#sraf9nwn',
+    'wsh(or_d(pk([d7beb757/44h/1h/0h]tpubDCKMUppLh1DJkSgbp9dmKaMwHyBQwrmLzxgwz8J7obXnFEaWneGyMZymyLra1PBjDyqBUE9JmPVyn33QCgXwkeAniz3LCXXTpw8YFe6edjk/0/*),and_v(v:pkh([0f056943/84h/0h/0h]tpubDCx8y86cKonoPyTtj3f9NZLpBYoBNkbAzUdafMHhggjxkhF8Dny2aekWfDafywEMZEQaQjkK9Gxn7aN7usLRUQdYbvDgcnmYRf72khPEouL/<0;1>/*),older(5))))',
+    '{"name":"a","desc":"wsh(or_d(pk([d7beb757/44h/1h/0h]tpubDCKMUppLh1DJkSgbp9dmKaMwHyBQwrmLzxgwz8J7obXnFEaWneGyMZymyLra1PBjDyqBUE9JmPVyn33QCgXwkeAniz3LCXXTpw8YFe6edjk/0/*),and_v(v:pkh([0f056943/84h/0h/0h]tpubDCx8y86cKonoPyTtj3f9NZLpBYoBNkbAzUdafMHhggjxkhF8Dny2aekWfDafywEMZEQaQjkK9Gxn7aN7usLRUQdYbvDgcnmYRf72khPEouL/<0;1>/*),older(5))))"}',
+])
+def test_miniscript_descriptors(desc, try_decode):
+    # includes multisig
+    ft, vals = try_decode(desc)
+    assert ft == "minisc"
+    assert vals[0] == desc
 
 @pytest.mark.parametrize('data', [
     ('5J9Gfy2FNTw2EpkkQu41S9CTBBVij123kYPkbYAnaQkUHtMuv2Q', False, False),

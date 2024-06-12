@@ -3,19 +3,23 @@
 # multisig.py - support code for multisig signing and p2sh in general.
 #
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson, version
-from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, to_ascii_printable
-from utils import str_to_keypath, problem_file_line, parse_extended_key, get_filesize
+from ubinascii import hexlify as b2a_hex
+from utils import xfp2str, str2xfp, cleanup_deriv_path, keypath_to_str, to_ascii_printable
+from utils import str_to_keypath, problem_file_line, check_xpub, truncate_address, get_filesize
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
 from ux import import_export_prompt, ux_enter_bip32_index, show_qr_code, ux_enter_number, OK, X
 from files import CardSlot, CardMissingError, needs_microsd
-from descriptor import MultisigDescriptor, multisig_descriptor_template
-from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS
+from descriptor import Descriptor
+from miniscript import Key, Sortedmulti, Number
+from desc_utils import multisig_descriptor_template
+from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS, AF_P2TR
 from menu import MenuSystem, MenuItem, NonDefaultMenuItem
 from opcodes import OP_CHECKMULTISIG
 from exceptions import FatalPSBTIssue
 from glob import settings
 from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
-from wallet import WalletABC, MAX_BIP32_IDX
+from serializations import disassemble
+from wallet import BaseStorageWallet, MAX_BIP32_IDX
 
 # PSBT Xpub trust policies
 TRUST_VERIFY = const(0)
@@ -23,14 +27,11 @@ TRUST_OFFER = const(1)
 TRUST_PSBT = const(2)
 
 
-class MultisigOutOfSpace(RuntimeError):
-    pass
-
 def disassemble_multisig_mn(redeem_script):
     # pull out just M and N from script. Simple, faster, no memory.
 
-    assert MAX_SIGNERS == 15
-    assert redeem_script[-1] == OP_CHECKMULTISIG, 'need CHECKMULTISIG'
+    if redeem_script[-1] != OP_CHECKMULTISIG:
+        return None, None
 
     M = redeem_script[0] - 80
     N = redeem_script[-2] - 80
@@ -42,9 +43,7 @@ def disassemble_multisig(redeem_script):
     # - only for multisig scripts, not general purpose
     # - expect OP_1 (pk1) (pk2) (pk3) OP_3 OP_CHECKMULTISIG for 1 of 3 case
     # - returns M, N, (list of pubkeys)
-    # - for very unlikely/impossible asserts, dont document reason; otherwise do.
-    from serializations import disassemble
-
+    # - for very unlikely/impossible asserts, don't document reason; otherwise do.
     M, N = disassemble_multisig_mn(redeem_script)
     assert 1 <= M <= N <= MAX_SIGNERS, 'M/N range'
     assert len(redeem_script) == 1 + (N * 34) + 1 + 1, 'bad len'
@@ -107,7 +106,7 @@ def make_redeem_script(M, nodes, subkey_idx, bip67=True):
 
     return b''.join(pubkeys)
 
-class MultisigWallet(WalletABC):
+class MultisigWallet(BaseStorageWallet):
     # Capture the info we need to store long-term in order to participate in a
     # multisig wallet as a co-signer.
     # - can be saved to nvram
@@ -122,19 +121,20 @@ class MultisigWallet(WalletABC):
         (AF_P2SH, 'p2sh'),
         (AF_P2WSH, 'p2wsh'),
         (AF_P2WSH_P2SH, 'p2sh-p2wsh'),      # preferred
+        (AF_P2TR, 'p2tr'),
         (AF_P2WSH_P2SH, 'p2wsh-p2sh'),      # obsolete (now an alias)
     ]
 
     # optional: user can short-circuit many checks (system wide, one power-cycle only)
     disable_checks = False
+    key_name = "multisig"
 
-    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type='BTC', bip67=True):
-        self.storage_idx = -1
+    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type=None, bip67=True):
+        super().__init__(chain_type=chain_type)
 
         self.name = name
         assert len(m_of_n) == 2
         self.M, self.N = m_of_n
-        self.chain_type = chain_type or 'BTC'
         assert len(xpubs[0]) == 3
         self.xpubs = xpubs                  # list of (xfp(int), deriv, xpub(str))
         self.addr_fmt = addr_fmt            # address format for wallet
@@ -163,17 +163,13 @@ class MultisigWallet(WalletABC):
             deriv = derivs[0]
         return deriv + '/%d/%d' % (change_idx, idx)
 
-    @property
-    def chain(self):
-        return chains.get_chain(self.chain_type)
-
     @classmethod
     def get_trust_policy(cls):
 
         which = settings.get('pms', None)
-
+        exists, _ = cls.exists()
         if which is None:
-            which = TRUST_VERIFY if cls.exists() else TRUST_OFFER
+            which = TRUST_VERIFY if exists else TRUST_OFFER
 
         return which
 
@@ -239,14 +235,26 @@ class MultisigWallet(WalletABC):
         return rv
 
     @classmethod
-    def iter_wallets(cls, M=None, N=None, not_idx=None, addr_fmt=None):
+    def is_correct_chain(cls, o, curr_chain):
+        if "ch" not in o[-1]:
+            # mainnet
+            ch = "BTC"
+        else:
+            ch = o[-1]["ch"]
+
+        if ch == curr_chain.ctype:
+            return True
+        return False
+
+    @classmethod
+    def iter_wallets(cls, M=None, N=None, addr_fmt=None):
         # yield MS wallets we know about, that match at least right M,N if known.
         # - this is only place we should be searching this list, please!!
-        lst = settings.get('multisig', [])
+        lst = settings.get(cls.key_name, [])
+        c = chains.current_key_chain()
 
         for idx, rec in enumerate(lst):
-            if idx == not_idx:
-                # ignore one by index
+            if not cls.is_correct_chain(rec, c):
                 continue
 
             if M or N:
@@ -343,57 +351,6 @@ class MultisigWallet(WalletABC):
 
         return False
 
-    @classmethod
-    def get_all(cls):
-        # return them all, as a generator
-        return cls.iter_wallets()
-
-    @classmethod
-    def exists(cls):
-        # are there any wallets defined?
-        return bool(settings.get('multisig', False))
-
-    @classmethod
-    def get_by_idx(cls, nth):
-        # instance from index number (used in menu)
-        lst = settings.get('multisig', [])
-        try:
-            obj = lst[nth]
-        except IndexError:
-            return None
-
-        return cls.deserialize(obj, nth)
-
-    def commit(self):
-        # data to save
-        # - important that this fails immediately when nvram overflows
-        obj = self.serialize()
-
-        v = settings.get('multisig', [])
-        orig = v.copy()
-        if not v or self.storage_idx == -1:
-            # create
-            self.storage_idx = len(v)
-            v.append(obj)
-        else:
-            # update in place
-            v[self.storage_idx] = obj
-
-        settings.set('multisig', v)
-
-        # save now, rather than in background, so we can recover
-        # from out-of-space situation
-        try:
-            settings.save()
-        except:
-            # back out change; no longer sure of NVRAM state
-            try:
-                settings.set('multisig', orig)
-                settings.save()
-            except: pass        # give up on recovery
-
-            raise MultisigOutOfSpace
-
     def has_similar(self):
         # check if we already have a saved duplicate to this proposed wallet
         # - return (name_change, diff_items, count_similar) where:
@@ -454,12 +411,12 @@ class MultisigWallet(WalletABC):
         else:
             raise IndexError        # consistency bug
 
-        lst = settings.get('multisig', [])
+        lst = settings.get(self.key_name, [])
         del lst[self.storage_idx]
         if lst:
-            settings.set('multisig', lst)
+            settings.set(self.key_name, lst)
         else:
-            settings.remove_key('multisig')
+            settings.remove_key(self.key_name)
         settings.save()
 
         self.storage_idx = -1
@@ -472,7 +429,7 @@ class MultisigWallet(WalletABC):
     def yield_addresses(self, start_idx, count, change_idx=0):
         # Assuming a suffix of /0/0 on the defined prefix's, yield
         # possible deposit addresses for this wallet.
-        ch = self.chain
+        ch = chains.current_chain()
 
         assert self.addr_fmt, 'no addr fmt known'
 
@@ -500,6 +457,35 @@ class MultisigWallet(WalletABC):
 
             idx += 1
             count -= 1
+
+    def make_addresses_msg(self, msg, start, n, change=0):
+        from glob import dis
+
+        addrs = []
+
+        for idx, addr, paths, script in self.yield_addresses(start, n, change):
+            if idx == 0 and self.N <= 4:
+                msg += '\n'.join(paths) + '\n =>\n'
+            else:
+                msg += '.../%d/%d =>\n' % (change, idx)
+
+            addrs.append(addr)
+            msg += truncate_address(addr) + '\n\n'
+            dis.progress_sofar(idx - start + 1, n)
+
+        return msg, addrs
+
+    def generate_address_csv(self, start, n, change):
+        yield '"' + '","'.join(['Index', 'Payment Address',
+                                'Redeem Script (%d of %d)' % (self.M, self.N)]
+                                + (['Derivation'] * self.N)) + '"\n'
+
+        for (idx, addr, derivs, script) in self.yield_addresses(start, n, change_idx=change):
+            ln = '%d,"%s","%s","' % (idx, addr, b2a_hex(script).decode())
+            ln += '","'.join(derivs)
+            ln += '"\n'
+
+            yield ln
 
     def validate_script(self, redeem_script, subpaths=None, xfp_paths=None):
         # Check we can generate all pubkeys in the redeem script, raise on errors.
@@ -572,7 +558,7 @@ class MultisigWallet(WalletABC):
                 found_pk = node.pubkey()
 
                 # Document path(s) used. Not sure this is useful info to user tho.
-                # - Do not show what we can't verify: we don't really know the hardeneded
+                # - Do not show what we can't verify: we don't really know the hardened
                 #   part of the path from fingerprint to here.
                 here = '[%s]' % xfp2str(xfp)
                 if dp != len(path):
@@ -683,7 +669,9 @@ class MultisigWallet(WalletABC):
                     continue
 
                 # deserialize, update list and lots of checks
-                is_mine = cls.check_xpub(xfp, value, deriv, chains.current_chain().ctype, my_xfp, xpubs)
+                is_mine, item = check_xpub(xfp, value, deriv, chains.current_key_chain().ctype,
+                                           my_xfp, cls.disable_checks)
+                xpubs.append(item)
                 if is_mine:
                     has_mine += 1
 
@@ -696,21 +684,35 @@ class MultisigWallet(WalletABC):
         my_xfp = settings.get('xfp')
         xpubs = []
 
-        desc = MultisigDescriptor.parse(descriptor)
-        for xfp, deriv, xpub in desc.keys:
+        descriptor = Descriptor.from_string(descriptor)
+        descriptor.legacy_ms_compat()  # raises
+        addr_fmt = descriptor.addr_fmt
+
+        M, N = descriptor.miniscript.m_n()
+        for key in descriptor.miniscript.keys:
+            assert key.derivation.is_external, "Invalid subderivation path - only 0/* or <0;1>/* allowed"
+            xfp = key.origin.cc_fp
+            deriv = key.origin.str_derivation()
+            xpub = key.extended_public_key()
             deriv = cleanup_deriv_path(deriv)
-            is_mine = cls.check_xpub(xfp, xpub, deriv, chains.current_chain().ctype, my_xfp, xpubs)
+            is_mine, item = check_xpub(xfp, xpub, deriv, chains.current_key_chain().ctype,
+                                       my_xfp, cls.disable_checks)
+            xpubs.append(item)
             if is_mine:
                 has_mine += 1
-        return None, desc.addr_fmt, xpubs, has_mine, desc.M, desc.N, desc.is_sorted
+
+        return None, addr_fmt, xpubs, has_mine, M, N, # TODO multi/sortedmulti
 
     def to_descriptor(self):
-        return MultisigDescriptor(
-            M=self.M, N=self.N,
-            keys=self.xpubs,
-            addr_fmt=self.addr_fmt,
-            is_sorted=self.bip67,
-        )
+        keys = [
+            Key.from_cc_data(xfp, deriv, xpub)
+            for xfp, deriv, xpub in self.xpubs
+        ]
+        # TODO does not need to be sorted multi now
+        miniscript = Sortedmulti(Number(self.M), *keys)
+        desc = Descriptor(miniscript=miniscript)
+        desc.set_from_addr_fmt(self.addr_fmt)
+        return desc
 
     @classmethod
     def from_file(cls, config, name=None):
@@ -731,8 +733,10 @@ class MultisigWallet(WalletABC):
         # - M of N line (assume N of N if not spec'd)
         # - xpub: any bip32 serialization we understand, but be consistent
         #
-        expect_chain = chains.current_chain().ctype
-        if MultisigDescriptor.is_descriptor(config):
+        expect_chain = chains.current_key_chain().ctype
+        if Descriptor.is_descriptor(config):
+            # assume descriptor, classic config should not contain sertedmulti( and check for checksum separator
+            # ignore name
             _, addr_fmt, xpubs, has_mine, M, N, bip67 = cls.from_descriptor(config)
             if not bip67 and not settings.get("unsort_ms", 0):
                 # BIP-67 disabled, but unsort_ms not allowed - raise
@@ -774,83 +778,6 @@ class MultisigWallet(WalletABC):
         # done. have all the parts
         return cls(name, (M, N), xpubs, addr_fmt=addr_fmt,
                    chain_type=expect_chain, bip67=bip67)
-
-    @classmethod
-    def check_xpub(cls, xfp, xpub, deriv, expect_chain, my_xfp, xpubs):
-        # Shared code: consider an xpub for inclusion into a wallet, if ok, append
-        # to list: xpubs with a tuple: (xfp, deriv, xpub)
-        # return T if it's our own key
-        # - deriv can be None, and in very limited cases can recover derivation path
-        # - could enforce all same depth, and/or all depth >= 1, but
-        #   seems like more restrictive than needed, so "m" is allowed
-
-        try:
-            # Note: addr fmt detected here via SLIP-132 isn't useful
-            node, chain, _ = parse_extended_key(xpub)
-        except:
-            raise AssertionError('unable to parse xpub')
-
-        try:
-            assert node.privkey() == None       # 'no privkeys plz'
-        except ValueError:
-            pass
-
-        if expect_chain == "XRT":
-            # HACK but there is no difference extended_keys - just bech32 hrp
-            assert chain.ctype == "XTN"
-        else:
-            assert chain.ctype == expect_chain, 'wrong chain'
-
-        depth = node.depth()
-
-        if depth == 1:
-            if not xfp:
-                # allow a shortcut: zero/omit xfp => use observed parent value
-                xfp = swab32(node.parent_fp())
-            else:
-                # generally cannot check fingerprint values, but if we can, do so.
-                if not cls.disable_checks:
-                    assert swab32(node.parent_fp()) == xfp, 'xfp depth=1 wrong'
-
-        assert xfp, 'need fingerprint'          # happens if bare xpub given
-
-        # In most cases, we cannot verify the derivation path because it's hardened
-        # and we know none of the private keys involved.
-        if depth == 1:
-            # but derivation is implied at depth==1
-            kn, is_hard = node.child_number()
-            if is_hard: kn |= 0x80000000
-            guess = keypath_to_str([kn], skip=0)
-
-            if deriv:
-                if not cls.disable_checks:
-                    assert guess == deriv, '%s != %s' % (guess, deriv)
-            else:
-                deriv = guess           # reachable? doubt it
-
-        assert deriv, 'empty deriv'         # or force to be 'm'?
-        assert deriv[0] == 'm'
-
-        # path length of derivation given needs to match xpub's depth
-        if not cls.disable_checks:
-            p_len = deriv.count('/')
-            assert p_len == depth, 'deriv %d != %d xpub depth (xfp=%s)' % (
-                                        p_len, depth, xfp2str(xfp))
-
-            if xfp == my_xfp:
-                # its supposed to be my key, so I should be able to generate pubkey
-                # - might indicate collision on xfp value between co-signers,
-                #   and that's not supported
-                with stash.SensitiveValues() as sv:
-                    chk_node = sv.derive_path(deriv)
-                    assert node.pubkey() == chk_node.pubkey(), \
-                                "[%s/%s] wrong pubkey" % (xfp2str(xfp), deriv[2:])
-
-        # serialize xpub w/ BIP-32 standard now.
-        # - this has effect of stripping SLIP-132 confusion away
-        xpubs.append((xfp, deriv, chain.serialize_public(node, AF_P2SH)))
-
-        return (xfp == my_xfp)
 
     def make_fname(self, prefix, suffix='txt'):
         rv = '%s-%s.%s' % (prefix, self.name, suffix)
@@ -956,7 +883,7 @@ class MultisigWallet(WalletABC):
             await needs_microsd()
             return
         except Exception as e:
-            await ux_show_story('Failed to write!\n\n\n'+str(e))
+            await ux_show_story('Failed to write!\n\n%s\n%s' % (e, problem_file_line(e)))
             return
 
     def render_export(self, fp, hdr_comment=None, descriptor=False, core=False, desc_pretty=True):
@@ -969,9 +896,10 @@ class MultisigWallet(WalletABC):
                 print("importdescriptors '%s'\n" % core_str, file=fp)
             else:
                 if desc_pretty:
-                    desc = desc_obj.pretty_serialize()
+                    # TODO pretty serialize
+                    desc = desc_obj.to_string(internal=False)
                 else:
-                    desc = desc_obj.serialize()
+                    desc = desc_obj.to_string(internal=False)
                 print("%s\n" % desc, file=fp)
         else:
             if hdr_comment:
@@ -1043,8 +971,9 @@ class MultisigWallet(WalletABC):
         for k, v in xpubs_list:
             xfp, *path = ustruct.unpack_from('<%dI' % (len(k)//4), k, 0)
             xpub = ngu.codecs.b58_encode(v)
-            is_mine = cls.check_xpub(xfp, xpub, keypath_to_str(path, skip=0),
-                                                        expect_chain, my_xfp, xpubs)
+            is_mine, item = check_xpub(xfp, xpub, keypath_to_str(path, skip=0),
+                                       expect_chain, my_xfp, cls.disable_checks)
+            xpubs.append(item)
             if is_mine:
                 has_mine += 1
                 addr_fmt = cls.guess_addr_fmt(path)
@@ -1054,7 +983,7 @@ class MultisigWallet(WalletABC):
         name = 'PSBT-%d-of-%d' % (M, N)
         # this will always create sortedmulti multisig (BIP-67)
         # because BIP-174 came years after wide spread acceptance of BIP-67 policy
-        ms = cls(name, (M, N), xpubs, chain_type=expect_chain, addr_fmt=addr_fmt or AF_P2SH)
+        ms = cls(name, (M, N), xpubs, chain_type=expect_chain, addr_fmt=addr_fmt or AF_P2SH) # TODO why legacy
 
         # may just keep in-memory version, no approval required, if we are
         # trusting PSBT's today, otherwise caller will need to handle UX w.r.t new wallet
@@ -1078,7 +1007,9 @@ class MultisigWallet(WalletABC):
 
             # cleanup and normalize xpub
             tmp = []
-            self.check_xpub(xfp, xpub, keypath_to_str(path, skip=0), self.chain_type, 0, tmp)
+            is_mine, item = check_xpub(xfp, xpub, keypath_to_str(path, skip=0),
+                                       self.chain_type, 0, self.disable_checks)
+            tmp.append(item)
             (_, deriv, xpub_reserialized) = tmp[0]
             assert deriv            # because given as arg
 
@@ -1182,7 +1113,7 @@ Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=
                 continue
 
             if ch == 'y' and not is_dup:
-                # save to nvram, may raise MultisigOutOfSpace
+                # save to nvram, may raise WalletOutOfSpace
                 if name_change:
                     name_change.delete()
 
@@ -1215,7 +1146,7 @@ Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=
 
             msg.write('%s:\n  %s\n\n%s\n' % (xfp2str(xfp), deriv, xpub))
 
-            if self.addr_fmt != AF_P2SH:
+            if self.addr_fmt not in (AF_P2SH, AF_P2TR):
                 # SLIP-132 format [yz]pubs here when not p2sh mode.
                 # - has same info as proper bitcoin serialization, but looks much different
                 node = self.chain.deserialize_node(xpub, AF_P2SH)
@@ -1343,8 +1274,11 @@ class MultisigMenu(MenuSystem):
     def construct(cls):
         # Dynamic menu with user-defined names of wallets shown
 
-        if not MultisigWallet.exists():
-            rv = [MenuItem('(none setup yet)', f=no_ms_yet)]
+        from bsms import make_ms_wallet_bsms_menu
+
+        exists, exists_other_chain = MultisigWallet.exists()
+        if not exists:
+            rv = [MenuItem(MultisigWallet.none_setup_yet(exists_other_chain), f=no_ms_yet)]
         else:
             rv = []
             for ms in MultisigWallet.get_all():
@@ -1357,6 +1291,7 @@ class MultisigMenu(MenuSystem):
         rv.append(MenuItem('Import via NFC', f=import_multisig_nfc,
                            predicate=bool(NFC), shortcut=KEY_NFC))
         rv.append(MenuItem('Export XPUB', f=export_multisig_xpubs))
+        rv.append(MenuItem('BSMS (BIP-129)', menu=make_ms_wallet_bsms_menu))
         rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
         rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
         rv.append(MenuItem('Skip Checks?', f=disable_checks_menu))
@@ -1451,7 +1386,7 @@ async def ms_wallet_show_descriptor(menu, label, item):
     dis.fullscreen("Wait...")
     ms = item.arg
     desc = ms.to_descriptor()
-    desc_str = desc.serialize()
+    desc_str = desc.to_string(internal=False)
     ch = await ux_show_story("Press (1) to export in pretty human readable format.\n\n" + desc_str, escape="1")
     if ch == "1":
         await ms.export_wallet_file(descriptor=True, desc_pretty=True)
@@ -1516,6 +1451,8 @@ P2SH-P2WSH:
    m/48h/{coin}h/{{acct}}h/1h
 P2WSH:
    m/48h/{coin}h/{{acct}}h/2h
+P2TR:
+   m/48h/{coin}h/{{acct}}h/3h
 
 {ok} to continue. {x} to abort.'''.format(coin=chain.b44_cointype, ok=OK, x=X)
 
@@ -1534,9 +1471,10 @@ P2WSH:
     dis.fullscreen('Generating...')
 
     todo = [
-        ( "m/45h", 'p2sh', AF_P2SH),       # iff acct_num == 0
-        ( "m/48h/{coin}h/{acct_num}h/1h", 'p2sh_p2wsh', AF_P2WSH_P2SH ),
-        ( "m/48h/{coin}h/{acct_num}h/2h", 'p2wsh', AF_P2WSH ),
+        ("m/45h", 'p2sh', AF_P2SH),       # iff acct_num == 0
+        ("m/48h/{coin}h/{acct_num}h/1h", 'p2sh_p2wsh', AF_P2WSH_P2SH),
+        ("m/48h/{coin}h/{acct_num}h/2h", 'p2wsh', AF_P2WSH),
+        ("m/48h/{coin}h/{acct_num}h/3h", 'p2tr', AF_P2TR),
     ]
 
     def render(fp):
@@ -1663,7 +1601,7 @@ async def ms_coordinator_file(af_str, my_xfp, chain, slot_b=None):
                     # sigh, OS/filesystem variations
                     file_size = var[1] if len(var) == 2 else get_filesize(full_fname)
 
-                    if not (0 <= file_size <= 1100):
+                    if not (0 <= file_size <= 1500):
                         # out of range size
                         continue
 
@@ -1763,9 +1701,9 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False)
     ms = MultisigWallet(name, (M, N), xpubs, chain_type=chain.ctype, addr_fmt=addr_fmt)
 
     if num_mine:
-        from auth import NewEnrollRequest, UserAuthorizedAction
+        from auth import NewMiniscriptEnrollRequest, UserAuthorizedAction
 
-        UserAuthorizedAction.active_request = NewEnrollRequest(ms)
+        UserAuthorizedAction.active_request = NewMiniscriptEnrollRequest(ms)
 
         # menu item case: add to stack
         from ux import the_ux
@@ -1818,7 +1756,7 @@ async def import_multisig_nfc(*a):
     from glob import NFC
     # this menu option should not be available if NFC is disabled
     try:
-        return await NFC.import_multisig_nfc()
+        return await NFC.import_miniscript_nfc(legacy_multisig=True)
     except Exception as e:
         await ux_show_story(title="ERROR", msg="Failed to import multisig. %s" % str(e))
 
@@ -1865,7 +1803,7 @@ async def import_multisig(*a):
                 if 'pub' in ln:
                     return True
 
-    fn = await file_picker(suffix=['.txt', '.json'], min_size=100, max_size=20*200,
+    fn = await file_picker(suffix=['.txt', '.json'], min_size=100, max_size=350*200,
                            taster=possible, force_vdisk=force_vdisk)
     if not fn: return
 

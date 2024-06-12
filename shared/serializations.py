@@ -57,14 +57,20 @@ def ser_compact_size(l):
     else:
         return struct.pack("<BQ", 255, l)
 
-def deser_compact_size(f):
+def deser_compact_size(f, ret_num_bytes=False):
     nit = struct.unpack("<B", f.read(1))[0]
+    num_bytes = 1
     if nit == 253:
         nit = struct.unpack("<H", f.read(2))[0]
+        num_bytes += 2
     elif nit == 254:
         nit = struct.unpack("<I", f.read(4))[0]
+        num_bytes += 4
     elif nit == 255:
         nit = struct.unpack("<Q", f.read(8))[0]
+        num_bytes += 8
+    if ret_num_bytes:
+        return nit, num_bytes
     return nit
 
 def deser_string(f):
