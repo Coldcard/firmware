@@ -65,6 +65,17 @@ Next, it would make sense to either link to the TXID on a block
 explorer to provide further proof that it has been sent and that
 it is now waiting in the mempool.
 
+## Backend Implementations
+
+- Mempool.space's [implementation of this feature](https://github.com/mempool/mempool/pull/5132)
+
+- A single-file (html and javascript) file is available
+  at [coldcard.com/static/coldcard-pushtx.html](https://coldcard.com/static/coldcard-pushtx.html).
+  You can host this file anywhere your phone can reach, and then use that URL in your
+  COLDCARD settings. It uses your phone's browser to submit directly
+  to `mempool.space` and `blockstream.info` sites (both at same time). It is equivalent
+  to the page hosted at `https://coldcard.com/pushtx#`
+
 ### Notes
 
 - Complete URL might be as large as 8,000 bytes. Some web servers will not support beyond
@@ -72,7 +83,6 @@ it is now waiting in the mempool.
 - The service URL provided must end in `?` or `#` or `&`.
 - `base64url` values from COLDCARD will not have padding (`=` bytes) at end.
 - POST cannot be used directly because the expect the phone to do a GET on the URL provided.
-- Mempool.space's [implementation of this feature](https://github.com/mempool/mempool/pull/5132)
 - Honest backends will not log the IP address of incoming transactions, but there is
   no way to enforce that, and CloudFlare sees all.
 
