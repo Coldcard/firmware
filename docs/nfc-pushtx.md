@@ -67,7 +67,7 @@ it is now waiting in the mempool.
 
 ## Backend Implementations
 
-- Mempool.space's [implementation of this feature](https://github.com/mempool/mempool/pull/5132)
+- Mempool.space's [implementation of this feature](https://github.com/mempool/mempool/pull/5132).
 
 - A single-file (html and javascript) file is available
   at [coldcard.com/static/coldcard-pushtx.html](https://coldcard.com/static/coldcard-pushtx.html).
