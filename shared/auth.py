@@ -806,7 +806,7 @@ class ApproveTransaction(UserAuthorizedAction):
         except BaseException as exc:
             return await self.failure("PSBT output failed", exc)
 
-        from glob import NFC, settings
+        from glob import NFC, settings, PSRAM
 
         if self.do_finalize and txid and not hsm_active:
 
@@ -814,7 +814,8 @@ class ApproveTransaction(UserAuthorizedAction):
             url = settings.get('ptxurl', False)
             if NFC and url:
                 try:
-                    await NFC.share_push_tx(url, txid, TXN_OUTPUT_OFFSET, self.result[0], self.result[1])
+                    data = PSRAM.read_at(TXN_OUTPUT_OFFSET, self.result[0])
+                    await NFC.share_push_tx(url, txid, data, self.result[1])
                     return
                 except:
                     # continue normally if it fails, perhaps too big?

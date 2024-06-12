@@ -9,6 +9,36 @@ TAG_DATA = bytearray(8196)
 # unix/work/nfc-dump.ndef
 DATA_FILE = 'nfc-dump.ndef'
 
+def debug_dump_nfc(data):
+    import ndef, sys
+    from utils import B2A
+
+    # Debug aid: pull out URL's and maybe other things
+
+    try:
+        st, ll, *_ = ndef.ccfile_decode(data)
+
+        data = data[st:st+ll]
+
+        if not data:
+            print("sim_nfc: CCFILE is empty (ie. blank tag, no NDEF records)")
+        else:
+            for urn, msg, meta in ndef.record_parser(data):
+                try:
+                    msg = bytes(msg).decode()        # from memory view
+                except UnicodeError:
+                    msg = B2A(msg)
+
+                if urn == 'urn:nfc:wkt:U':
+                    prefix = 'https://' if meta.get('prefix') == 4 else 'http://'
+                    print("sim_nfc: NDEF URL record:\n\n%s%s\n" % (prefix, msg))
+                else:
+                    print("sim_nfc: NDEF record: %s %s  meta=%r" % (urn, msg, meta))
+
+    except Exception as exc:
+        print("sim_nfc: Failed to decode CCFILE/NDEFS contained?")
+        sys.print_exception(exc)
+
 class SimulatedNFCHandler(NFCHandler):
     def __init__(self):
         self.rf_on = False
@@ -33,6 +63,8 @@ class SimulatedNFCHandler(NFCHandler):
         self._mtime = mtime
         self._atime = atime
         print("%d bytes of NDEF written to work/nfc-dump.ndef .. Ctrl-N or touch or read that file to simulate taps" % n)
+
+        debug_dump_nfc(data)
 
     async def wipe(self, full_wipe):
         print("NFC chip wiped (full=%d)" % int(full_wipe))

@@ -239,16 +239,13 @@ class NFCHandler:
         
         return await self.share_start(n)
 
-    async def share_push_tx(self, url, txid, file_offset, txn_len, txn_sha):
+    async def share_push_tx(self, url, txid, txn, txn_sha, line2=None):
         # Given a signed TXN, we convert to URL which a web backend can broadcast directly
         # - using base64url encoding
         # - just appends to provided URL
         # - keeps showing it until they press CANCEL
+        # - may fail late if txn is too big.. not clear what limit is
         #
-        if (txn_len * 1.4) >= MAX_NFC_SIZE:
-            raise ValueError('too big')
-
-        from glob import PSRAM
         from utils import b2a_base64url
         from chains import current_chain
 
@@ -256,8 +253,7 @@ class NFCHandler:
         if is_https:
             url = url[8:]
 
-        url += 't=' + b2a_base64url(PSRAM.read_at(file_offset, txn_len)) \
-                + '&c=' + b2a_base64url(txn_sha[-8:])
+        url += 't=' + b2a_base64url(txn) + '&c=' + b2a_base64url(txn_sha[-8:])
 
         ch = current_chain()
         if ch.ctype != 'BTC':
@@ -266,11 +262,68 @@ class NFCHandler:
         n = ndef.ndefMaker()
         n.add_url(url, https=is_https)
 
+        if line2 is None:
+            line2 = "Signed TXID: %s⋯%s" % (txid[0:8], txid[-8:])
+
         while 1:
             done = await self.share_start(n, prompt="Tap to broadcast, CANCEL when done", 
-                line2="Signed TXID: %s⋯%s" % (txid[0:8], txid[-8:]))
+                                                line2=line2)
 
             if done: break
+
+    async def push_tx_from_file(self):
+        # Pick (signed txn) file from SD card and broadcast via PushTx
+        # - assumes .txn extension (required)
+        # - hex encoding or binary
+        # - txid is filename, if 64 chars long; else shown on-screen
+        # - assumes txn on same chain as this CC is; ie. not testnet typically
+        from actions import file_picker
+        from files import CardSlot, CardMissingError, needs_microsd
+        from glob import settings
+
+        def is_suitable(fname):
+            return fname.lower().endswith('.txn')
+
+        url = settings.get('ptxurl', False)
+        assert url      # or else not in menu, cant get here.
+
+        while 1:
+            fn = await file_picker(min_size=10, max_size=MAX_NFC_SIZE*2, taster=is_suitable)
+            if not fn: return
+
+            basename = fn.split('/')[-1]
+
+            try:
+                with CardSlot() as card:
+                    with open(fn, 'rb') as fp:
+                        data = fp.read(MAX_NFC_SIZE*2)
+                        assert len(data) < MAX_NFC_SIZE*2, "bad read"
+            except CardMissingError:
+                await needs_microsd()
+                return
+
+            # maybe decode
+            if data[2:6] == b'000000':
+                # it's a txn, and we wrote as hex
+                data = a2b_hex(data)
+            elif data[1:4] == bytes(3):
+                # looks like binary
+                pass
+            else:
+                raise ValueError("Doesn't look like txn?")
+
+            sha = ngu.hash.sha256s(data)
+
+            txid = basename[0:64]
+            line2 = None
+            if len(txid) != 64:
+                # assume a r random filename, and not easy to recalc txid here
+                # so show filename instead
+                line2 = 'File: ' + basename
+                if len(line2) > 34:      # CHARS_W
+                    line2 = line2[:32]+'⋯'      # 34-2=32 => because double-width char
+
+            await self.share_push_tx(url, txid, data, sha, line2=line2)
 
     async def share_psbt(self, file_offset, psbt_len, psbt_sha, label=None):
         # we just signed something, share it over NFC
@@ -562,7 +615,7 @@ class NFCHandler:
             if not fn: return
 
             basename = fn.split('/')[-1]
-            ctype = fn.split('.')[-1].lower()
+            ext = fn.split('.')[-1].lower()
 
             try:
                 with CardSlot() as card:
@@ -573,24 +626,24 @@ class NFCHandler:
                 await needs_microsd()
                 return
 
-            if data[2:6] == b'000000' and ctype == 'txn':
+            if data[2:6] == b'000000' and ext == 'txn':
                 # it's a txn, and we wrote as hex
                 data = a2b_hex(data)
 
-            if ctype == 'psbt':
+            if ext == 'psbt':
                 sha = ngu.hash.sha256s(data)
                 await self.share_psbt(data, len(data), sha, label="PSBT file: " + basename)
-            elif ctype == 'txn':
+            elif ext == 'txn':
                 sha = ngu.hash.sha256s(data)
                 txid = basename[0:64]
                 if len(txid) != 64:
                     # maybe some other txn file?
                     txid = None
                 await self.share_signed_txn(txid, data, len(data), sha)
-            elif ctype == 'txt':
+            elif ext == 'txt':
                 await self.share_text(data.decode())
             else:
-                raise ValueError(ctype)
+                raise ValueError(ext)
 
     async def import_multisig_nfc(self, *a):
         # user is pushing a file downloaded from another CC over NFC

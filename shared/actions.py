@@ -1412,10 +1412,19 @@ Erases and reformats MicroSD card. This is not a secure erase but more of a quic
 
 
 async def nfc_share_file(*A):
-    # Mk4: Share txt, txn and PSBT files over NFC.
+    # Share txt, txn and PSBT files over NFC.
     from glob import NFC
     try:
         await NFC.share_file()
+    except Exception as e:
+        await ux_show_story(title="ERROR", msg="Failed to share file. %s" % str(e))
+
+async def nfc_pushtx_file(*A):
+    # Share a signed txn over NFC using PushTx technology
+    # - requires a signed txn, perhaps from another system on SD card
+    from glob import NFC
+    try:
+        await NFC.push_tx_from_file()
     except Exception as e:
         await ux_show_story(title="ERROR", msg="Failed to share file. %s" % str(e))
 

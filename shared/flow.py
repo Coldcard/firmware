@@ -329,6 +329,7 @@ NFCToolsMenu = [
     MenuItem('Verify Address', f=nfc_address_verify),
     MenuItem('File Share', f=nfc_share_file),
     MenuItem('Import Multisig', f=import_multisig_nfc),
+    MenuItem('NFC Push Tx', f=nfc_pushtx_file, predicate=lambda: settings.get("ptxurl", False)),
 ]
 
 AdvancedNormalMenu = [
