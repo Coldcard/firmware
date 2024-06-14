@@ -419,7 +419,7 @@ def test_ndef_roundtrip(load_shared_mod):
 
 @pytest.mark.parametrize('num_outs', [2, 100, 250])
 @pytest.mark.parametrize('chain', ['BTC', 'XTN'])
-def test_nfc_pushtx(num_outs, chain, sim_exec, settings_set, settings_remove,
+def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
                     try_sign, fake_txn, nfc_block4rf, nfc_read, press_cancel,
                     cap_story, cap_screen, has_qwerty
 ):
@@ -433,7 +433,7 @@ def test_nfc_pushtx(num_outs, chain, sim_exec, settings_set, settings_remove,
 
     settings_set('chain', chain)
 
-    sim_exec('from pyb import SDCard; SDCard.ejected = True; import nfc; nfc.NFCHandler.startup()')
+    enable_nfc()
 
     prefix = 'http://10.0.0.10/pushtx#'
     settings_set('ptxurl', prefix)
