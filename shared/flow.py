@@ -329,7 +329,7 @@ NFCToolsMenu = [
     MenuItem('Verify Address', f=nfc_address_verify),
     MenuItem('File Share', f=nfc_share_file),
     MenuItem('Import Multisig', f=import_multisig_nfc),
-    MenuItem('NFC Push Tx', f=nfc_pushtx_file, predicate=lambda: settings.get("ptxurl", False)),
+    MenuItem('Push Transaction', f=nfc_pushtx_file, predicate=lambda: settings.get("ptxurl", False)),
 ]
 
 AdvancedNormalMenu = [
@@ -344,7 +344,7 @@ AdvancedNormalMenu = [
                             f=drv_entro_start),
     MenuItem("View Identity", f=view_ident),
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
-    NonDefaultMenuItem('NFC PushTx', 'ptxurl', menu=pushtx_setup_menu),
+    NonDefaultMenuItem('NFC Push Tx', 'ptxurl', menu=pushtx_setup_menu),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     ToggleMenuItem('Enable HSM', 'hsmcmd', ['Default Off', 'Enable'],
                    story=("Enable HSM? Enables all user management commands, and other HSM-only USB commands. "

@@ -1575,6 +1575,13 @@ def nfc_write(request, needs_nfc, is_q1):
         return doit_usb
 
 @pytest.fixture()
+def enable_nfc(needs_nfc, sim_exec, settings_set):
+    def doit():
+        settings_set('nfc', 1)
+        sim_exec('import nfc; nfc.NFCHandler.startup()')
+    return doit
+
+@pytest.fixture()
 def scan_a_qr(sim_exec, is_q1):
     # simulate a QR being scanned 
     # XXX limitation: our USB protocol can't send a v40 QR, limit is more like 30 or so

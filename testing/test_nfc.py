@@ -500,4 +500,47 @@ def test_nfc_pushtx(num_outs, chain, sim_exec, settings_set, settings_remove,
     settings_remove('ptxurl')
     settings_set('chain', 'XTN')
 
+
+def test_share_by_pushtx(goto_home, cap_story, pick_menu_item, settings_set, settings_remove,
+                                   microsd_path, cap_menu, has_qwerty, cap_screen,
+                                   press_cancel, enable_nfc, nfc_block4rf, nfc_read):
+
+    enable_nfc()
+
+    fake_txn = b'\x02\0\0\0\0\0\0' + (b'Ab'*500)
+
+    prefix = 'http://10.0.0.10/pushtx#'
+    settings_set('ptxurl', prefix)
+
+    fname = "fake-nfc.txn"
+    with open(microsd_path(fname), "wb") as f:
+        f.write(fake_txn)
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item('NFC Tools')
+    pick_menu_item('Push Transaction')
+    time.sleep(0.1)
+    pick_menu_item(fname)
+    time.sleep(0.1)
+
+    # expect NFC animation
+    nfc_block4rf()
+
+    if has_qwerty:
+        scr = cap_screen()
+        assert 'File:' in scr
+        assert fname in scr
+
+    contents = nfc_read()
+
+    press_cancel()
+
+    # hacky quick check
+    from base64 import urlsafe_b64encode
+
+    assert b't='+urlsafe_b64encode(fake_txn).rstrip(b'=')+b'&c=' in contents
+
+    settings_remove('ptxurl')
+
 # EOF
