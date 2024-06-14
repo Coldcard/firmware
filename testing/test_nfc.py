@@ -375,7 +375,7 @@ def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress,
 @pytest.mark.parametrize('encoding', ['binary', 'hex', 'base64'])
 @pytest.mark.parametrize('num_outs', [1,2])
 @pytest.mark.parametrize('partial', [1, 0])
-def test_nfc_signing(encoding, num_outs, partial, try_sign_nfc, fake_txn, dev, settings_set):
+def test_nfc_signing(encoding, num_outs, partial, try_sign_nfc, fake_txn, dev):
     xp = dev.master_xpub
 
     def hack(psbt):
@@ -417,5 +417,87 @@ def test_ndef_roundtrip(load_shared_mod):
     assert cc_ndef.ccfile_decode(r) == (12, 399, False, 4096)
 
 
+@pytest.mark.parametrize('num_outs', [2, 100, 250])
+@pytest.mark.parametrize('chain', ['BTC', 'XTN'])
+def test_nfc_pushtx(num_outs, chain, sim_exec, settings_set, settings_remove,
+                    try_sign, fake_txn, nfc_block4rf, nfc_read, press_cancel,
+                    cap_story, cap_screen, has_qwerty
+):
+    # check the NFC push Tx feature, validating the URL's it makes
+    # - not the UX
+    # - 100 outs => 5000 or so
+    # - 250 outs => 8800
+    # - not too many inputs so faster to sign
+    from base64 import urlsafe_b64decode
+    from urllib.parse import urlsplit, urlunsplit, parse_qsl, unquote
+
+    settings_set('chain', chain)
+
+    sim_exec('from pyb import SDCard; SDCard.ejected = True; import nfc; nfc.NFCHandler.startup()')
+
+    prefix = 'http://10.0.0.10/pushtx#'
+    settings_set('ptxurl', prefix)
+
+    psbt = fake_txn(2, num_outs)
+    _, result = try_sign(psbt, finalize=True)
+
+    print(f'len = {len(result)}')
+
+    if num_outs >= 250:
+        # NFC will not be offered (too big)
+        assert len(result) > 8000
+        title, story = cap_story()
+
+        assert title == 'Final TXID'
+        assert 'to share signed txn' in story
+
+        return
+
+    # expect NFC animation
+    nfc_block4rf()
+
+    if has_qwerty:
+        scr = cap_screen()
+        assert 'TXID:' in scr
+
+    contents = nfc_read()
+
+    print(f'nfc contents = {len(contents)}')
+
+    press_cancel()  # exit NFC animation
+
+    # expect a single record, a URL
+    got, = ndef.message_decoder(contents)
+
+    assert got.type == 'urn:nfc:wkt:U'
+    assert got.uri.startswith(prefix)
+    assert got.uri.startswith(prefix + 't')
+
+    parts = urlsplit(got.uri)
+    args = parse_qsl(unquote(parts.fragment))
+
+    assert args[0][0] == 't', 'txn must be first'
+    assert args[1][0] == 'c', 'checksum next'
+
+    if len(args) == 3:
+        assert args[2][0] == 'n', 'block chain'
+        assert chain == args[2][1]
+    else:
+        assert len(args) == 2
+        assert chain == 'BTC'
+
+    args = dict(args)
+    assert len(args['c']) == 11
+    decoded_txn = urlsafe_b64decode(args['t'] + '=====')
+    decoded_chk = urlsafe_b64decode(args['c'] + '=====')
+    assert len(decoded_chk) == 8
+
+    expect = sha256(decoded_txn).digest()[-8:]
+    assert expect == decoded_chk
+
+    assert result == decoded_txn
+
+    settings_remove('ptxurl')
+    settings_set('chain', 'XTN')
 
 # EOF
