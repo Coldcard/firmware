@@ -259,6 +259,10 @@ class NFCHandler:
         if ch.ctype != 'BTC':
             url += '&n=' + ch.ctype         # XTN or XRT
 
+        if len(url) >= MAX_NFC_SIZE:
+            # ignoring overhead, this will not fit: so fail
+            raise ValueError("too big")
+
         n = ndef.ndefMaker()
         n.add_url(url, https=is_https)
 
