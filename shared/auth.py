@@ -779,7 +779,7 @@ class ApproveTransaction(UserAuthorizedAction):
             return await self.failure("Signing failed late", exc)
 
         if self.approved_cb:
-            # for micro sd case
+            # for NFC, micro SD cases
             kws = dict(psbt=self.psbt)
             if self.is_sd and (ch == "b"):
                 kws["slot_b"] = True
