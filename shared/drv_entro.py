@@ -12,7 +12,7 @@ from menu import MenuItem, MenuSystem
 from ubinascii import hexlify as b2a_hex
 from ubinascii import b2a_base64
 from auth import write_sig_file
-from utils import chunk_writer, xfp2str
+from utils import chunk_writer, xfp2str, swab32
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 
 BIP85_PWD_LEN = 21
@@ -138,6 +138,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
     chain = chains.current_chain()
     qr = None
     qr_alnum = False
+    node = None
 
     if s_mode == "pw":
         pw = bip85_pwd(new_secret)
@@ -146,7 +147,14 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
 
     elif s_mode == 'words':
         # BIP-39 seed phrase, various lengths
-        words = bip39.b2a_words(new_secret).split(' ')
+        wstr = bip39.b2a_words(new_secret)
+        words = wstr.split(' ')
+
+        # slow: 2+ seconds
+        ms = bip39.master_secret(wstr)
+        hd = ngu.hdnode.HDNode()
+        hd.from_master(ms)
+        node = hd
 
         # encode more tightly for QR
         qr = ' '.join(w[0:4] for w in words)
@@ -173,6 +181,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
         # Raw XPRV value.
         ch, pk = new_secret[0:32], new_secret[32:64]
         master_node = ngu.hdnode.HDNode().from_chaincode_privkey(ch, pk)
+        node = master_node
 
         encoded = stash.SecretStash.encode(xprv=master_node)
         qr = chain.serialize_private(master_node)
@@ -205,9 +214,15 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
         key0 = 'to type password over USB'
     prompt, escape = export_prompt_builder('data', key0=key0,
                                            no_qr=(not qr))
+    title = None
+    if node:
+        # we can show master xfp of derived wallet in story
+        try:
+            title = "[" + xfp2str(swab32(node.my_fp())) + "]"
+        except: pass
     while 1:
-        ch = await ux_show_story(msg+'\n\n'+prompt, sensitive=True, escape=escape,
-                                 strict_escape=True)
+        ch = await ux_show_story(msg+'\n\n'+prompt, title=title, escape=escape,
+                                 strict_escape=True, sensitive=True)
         choice = import_export_prompt_decode(ch)
         if isinstance(choice, dict):
             # write to SD card or Virtual Disk: simple text file
@@ -260,6 +275,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
     stash.blank_object(msg)
     stash.blank_object(new_secret)
     stash.blank_object(encoded)
+    stash.blank_object(node)
 
 
 async def password_entry(*args, **kwargs):
