@@ -17,6 +17,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Enhancement: Mention the need to remove old duress wallets before locking down temporary seed.
 - Enhancement: Add `Theya` option to `Export Wallet`
 - Enhancement: Signing UX - show sum of outgoing value on top. Always show number of inputs/outputs.
+- Enhancement: Show master XFP of BIP-85 derived wallet in story before activation. Only words and extended private keys.
 - Bugfix: Display max 20 change outputs in main signing story. Use Transaction output explorer.
 - Bugfix: Fix PSBTv2 `PSBT_GLOBAL_TX_MODIFIABLE` parsing.
 - Bugfix: Decrypting Tapsigner backup failed even for correct key.

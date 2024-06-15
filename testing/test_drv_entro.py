@@ -74,12 +74,19 @@ def derive_bip85_secret(goto_home, press_select, pick_menu_item, cap_story, ente
                 assert ' '.join(got) == expect
             can_import = 'words'
 
+            seed = Mnemonic.to_seed(' '.join(got))
+            node = BIP32Node.from_master_secret(seed)
+            assert node.fingerprint().hex().upper() in title
+
         elif 'XPRV' in mode:
             assert 'Derived XPRV:' in story
             assert f"m/83696968h/32h/{index}h" in story
             if expect:
                 assert expect in story
             can_import = 'xprv'
+
+            node = BIP32Node.from_hwif(story.split("\n\n")[0].split("\n")[-1])
+            assert node.fingerprint().hex().upper() in title
 
         elif 'WIF' in mode:
             assert 'WIF (privkey)' in story
