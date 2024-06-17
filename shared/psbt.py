@@ -1050,11 +1050,14 @@ class psbtObject(psbtProxy):
                 raise FatalPSBTIssue("Duplicate key. Key for unknown value already provided in global namespace.")
             self.unknown[key] = val
 
-    def output_iter(self):
+    def output_iter(self, start=0, stop=None):
         # yield the txn's outputs: index, (CTxOut object) for each
+        if stop is None:
+            stop = self.num_outputs
+
         total_out = 0
         if self.is_v2:
-            for idx in range(self.num_outputs):
+            for idx in range(start, stop):
                 out = self.outputs[idx]
                 amount = unpack("<q", self.get(out.amount))[0]
                 spk = self.get(out.script)
@@ -1067,8 +1070,11 @@ class psbtObject(psbtProxy):
             fd = self.fd
             fd.seek(self.vout_start)
 
+            if start != 0:
+                _skip_n_objs(fd, start, 'CTxOut')
+
             tx_out = CTxOut()
-            for idx in range(self.num_outputs):
+            for idx in range(start, stop):
 
                 tx_out.deserialize(fd)
 
@@ -1079,11 +1085,12 @@ class psbtObject(psbtProxy):
 
                 fd.seek(cont)
 
-        if self.total_value_out is None:
-            self.total_value_out = total_out
-        else:
-            assert self.total_value_out == total_out, \
-                '%s != %s' % (self.total_value_out, total_out)
+        if start == 0 and stop == self.num_outputs:
+            if self.total_value_out is None:
+                self.total_value_out = total_out
+            else:
+                assert self.total_value_out == total_out, \
+                    '%s != %s' % (self.total_value_out, total_out)
 
     def parse_txn(self):
         # Need to semi-parse in unsigned transaction.

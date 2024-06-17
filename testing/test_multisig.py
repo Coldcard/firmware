@@ -1201,16 +1201,29 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, press_select, clear_m
     reset_seed_words()
 
 
-@pytest.fixture()
-def fake_ms_txn():
+@pytest.fixture
+def fake_ms_txn(pytestconfig):
     # make various size MULTISIG txn's ... completely fake and pointless values
     # - but has UTXO's to match needs
     from struct import pack
 
-    def doit(num_ins, num_outs, M, keys, fee=10000,
-                outvals=None, segwit_in=False, outstyles=['p2pkh'], change_outputs=[],
-                incl_xpubs=False, hack_change_out=False, hack_psbt=None):
+    def doit(num_ins, num_outs, M, keys, fee=10000, outvals=None, segwit_in=False,
+             outstyles=['p2pkh'], change_outputs=[], incl_xpubs=False, hack_psbt=None,
+             hack_change_out=False, input_amount=1E8, psbt_v2=None):
+
         psbt = BasicPSBT()
+        if psbt_v2 is None:
+            # anything passed directly to this function overrides
+            # pytest flag --psbt2 - only care about pytest flag
+            # if psbt_v2 is not specified (None)
+            psbt_v2 = pytestconfig.getoption('psbt2')
+
+        if psbt_v2:
+            psbt.version = 2
+            psbt.txn_version = 2
+            psbt.input_count = num_ins
+            psbt.output_count = num_outs
+
         txn = CTransaction()
         txn.nVersion = 2
 
@@ -1252,7 +1265,7 @@ def fake_ms_txn():
             )
             supply.vin = [CTxIn(out_point, nSequence=0xffffffff)]
 
-            supply.vout.append(CTxOut(int(1E8), scriptPubKey))
+            supply.vout.append(CTxOut(int(input_amount), scriptPubKey))
 
             if not segwit_in:
                 psbt.inputs[i].utxo = supply.serialize_with_witness()
@@ -1260,13 +1273,21 @@ def fake_ms_txn():
                 psbt.inputs[i].witness_utxo = supply.vout[-1].serialize()
 
             supply.calc_sha256()
+            if psbt_v2:
+                psbt.inputs[i].previous_txid = supply.hash
+                psbt.inputs[i].prevout_idx = 0
+                # TODO sequence
+                # TODO height timelock
+                # TODO time timelock
+
             spendable = CTxIn(COutPoint(supply.sha256, 0), nSequence=0xffffffff)
             txn.vin.append(spendable)
 
         for i in range(num_outs):
-            # random P2PKH
             if not outstyles:
                 style = ADDR_STYLES[i % len(ADDR_STYLES)]
+            elif len(outstyles) == num_outs:
+                style = outstyles[i]
             else:
                 style = outstyles[i % len(outstyles)]
 
@@ -1293,8 +1314,16 @@ def fake_ms_txn():
 
             assert scriptPubKey
 
+            if psbt_v2:
+                psbt.outputs[i].script = scriptPubKey
+                if outvals:
+                    psbt.outputs[i].amount = outvals[i]
+                else:
+                    psbt.outputs[i].amount = int(round(((input_amount * num_ins) - fee) / num_outs, 4))
+
+
             if not outvals:
-                h = CTxOut(int(round(((1E8*num_ins)-fee) / num_outs, 4)), scriptPubKey)
+                h = CTxOut(int(round(((input_amount*num_ins)-fee) / num_outs, 4)), scriptPubKey)
             else:
                 h = CTxOut(int(outvals[i]), scriptPubKey)
 
@@ -2932,5 +2961,37 @@ def test_bare_cc_ms_qr_import(N, make_multisig, scan_a_qr, clear_ms, goto_home,
     assert "Create new multisig wallet?" in story
     assert f"{N}-of-{N}" in story
     press_cancel()
+
+
+@pytest.mark.parametrize("psbtv2", [True, False])
+@pytest.mark.parametrize("data", [
+    # (out_style, amount, is_change)
+    [("p2wsh", 1000000, 0)] * 99,
+    [("p2sh", 1000000, 1)] * 11,
+    [("p2wsh-p2sh", 1000000, 1)] * 18 + [("p2wsh", 50000000, 0)] * 12,
+    [("p2sh", 1000000, 1), ("p2wsh-p2sh", 50000000, 0), ("p2wsh", 800000, 1)] * 14,
+])
+def test_txout_explorer(psbtv2, data, clear_ms, import_ms_wallet, fake_ms_txn,
+                        start_sign, txout_explorer):
+    clear_ms()
+    M, N = 2, 3
+    keys = import_ms_wallet(2, 3, name='ms-test', accept=1)
+
+    outstyles = []
+    outvals = []
+    change_outputs = []
+    for i in range(len(data)):
+        os, ov, is_change = data[i]
+        outstyles.append(os)
+        outvals.append(ov)
+        if is_change:
+            change_outputs.append(i)
+
+    inp_amount = sum(outvals) + 100000  # 100k sat fee
+    psbt = fake_ms_txn(1, len(data), M, keys, outstyles=outstyles,
+                       outvals=outvals, change_outputs=change_outputs,
+                       input_amount=inp_amount, psbt_v2=psbtv2)
+    start_sign(psbt)
+    txout_explorer(data)
 
 # EOF

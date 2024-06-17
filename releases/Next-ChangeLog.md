@@ -5,7 +5,11 @@ This lists the new changes that have not yet been published in a normal release.
 # Shared Improvements - Both Mk4 and Q
 
 - New Feature: PushTX: when enabled with a service provider's URL, you can tap the COLDCARD
-  after signing with your phone and the transaction will be broadcast directly.
+  and your phone will open a webpage that transmits your freshly-signed transaction onto
+  the blockchain. See Tools > NFC Push Tx to enable and select service provider, or your
+  own webpage. More at <https://pushtx.org>
+- New Feature: Transaction output explorer: allows view output details of larger (10+ output)
+  transactions before signing.
 - Enhancement: Stricter p2sh-p2wpkh validation 
 - Enhancement: mention the need to remove old duress wallets before locking down temporary seed
 - Bugfix: Fix PSBTv2 `PSBT_GLOBAL_TX_MODIFIABLE` parsing

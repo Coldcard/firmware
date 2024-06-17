@@ -21,7 +21,7 @@ from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from files import CardSlot
 from exceptions import HSMDenied
 from version import MAX_TXN_LEN
-from charcodes import KEY_QR, KEY_NFC, KEY_ENTER, KEY_CANCEL
+from charcodes import KEY_QR, KEY_NFC, KEY_ENTER, KEY_CANCEL, KEY_LEFT, KEY_RIGHT
 
 # Where in SPI flash/PSRAM the two PSBT files are (in and out)
 TXN_INPUT_OFFSET = 0
@@ -728,17 +728,27 @@ class ApproveTransaction(UserAuthorizedAction):
                 self.result = await self.save_visualization(msg, (self.stxn_flags & STXN_SIGNED))
                 del self.psbt
                 self.done()
-
                 return
 
             ux_clear_keys(True)
             dis.progress_bar_show(1)  # finish the Validating...
             if not hsm_active:
-                msg.write("Press OK to approve and sign transaction.")
+                explore = self.psbt.num_outputs > 10
+                msg.write("\nPress OK to approve and sign transaction.")
+                if explore:
+                    msg.write(" Press (2) to explore txn.")
                 if self.is_sd and CardSlot.both_inserted():
                     msg.write(" (B) to write to lower SD slot.")
                 msg.write(" X to abort.")
-                ch = await ux_show_story(msg, title="OK TO SEND?", escape="b")
+                while True:
+                    ch = await ux_show_story(msg, title="OK TO SEND?", escape="2b")
+                    if ch == "2" and explore:
+                        await self.txn_explorer()
+                        continue
+                    else:
+                        msg.close()
+                        del msg
+                        break
             else:
                 ch = await hsm_active.approve_transaction(self.psbt, self.psbt_sha, msg.getvalue())
                 dis.progress_bar_show(1)     # finish the Validating...
@@ -843,6 +853,51 @@ class ApproveTransaction(UserAuthorizedAction):
                                                self.result[0], self.result[1])
                     continue
                 break
+
+    async def txn_explorer(self):
+        from glob import dis
+        start = 0
+        n = 10
+
+        def make_msg(start, n):
+            dis.fullscreen('Wait...')
+            rv = ""
+            end = min(start + n, self.psbt.num_outputs)
+
+            for idx, out in self.psbt.output_iter(start, end):
+                outp = self.psbt.outputs[idx]
+                item = "Output %d%s:\n\n" % (idx, " (change)" if outp.is_change else "")
+                item += self.render_output(out)
+                item += "\n"
+                rv += item
+
+            if self.psbt.num_outputs > n:
+                rv += "Press RIGHT to see next group, LEFT to go back. X to quit."
+            return rv
+
+        msg = make_msg(start, n)
+        while True:
+            ch = await ux_show_story(msg, escape='79'+KEY_RIGHT+KEY_LEFT)
+            if ch == 'x':
+                del msg
+                return
+            elif (ch in KEY_LEFT+"7"):
+                # go backwards in explorer
+                if (start - n) < 0:
+                    continue
+                else:
+                    start -= n
+            elif (ch in KEY_RIGHT+"9"):
+                # go forwards
+                if (start + n) >= self.psbt.num_outputs:
+                    continue
+                else:
+                    start += n
+            else:
+                # nothing changed - do not recalc msg
+                continue
+
+            msg = make_msg(start, n)
 
     async def save_visualization(self, msg, sign_text=False):
         # write text into spi flash, maybe signing it as we go

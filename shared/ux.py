@@ -196,11 +196,6 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False,
             ln = q1_reword(ln)
 
             lines.extend(word_wrap(ln, CH_PER_W))
-
-        # no longer needed & rude to our caller, but let's save the memory
-        msg.close()
-        del msg
-        gc.collect()
     else:
         # simple string being shown
         msg = q1_reword(msg)
