@@ -19,6 +19,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Clear any pending keystrokes before PSBT approval screen.
 - Bugfix: UX shows only 10 outputs with the biggest value on screen, other values available
   after a keypress.
+- Bugfix: Calculate progress bar correctly in Address Explorer
 
 # Mk4 Specific Changes
 
