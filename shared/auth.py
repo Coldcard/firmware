@@ -870,6 +870,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 item += self.render_output(out)
                 item += "\n"
                 rv += item
+                dis.progress_sofar(idx-start+1, n)
 
             if self.psbt.num_outputs > n:
                 rv += "Press RIGHT to see next group, LEFT to go back. X to quit."

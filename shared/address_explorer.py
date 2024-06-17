@@ -298,16 +298,16 @@ Press (3) if you really understand and accept these risks.
                 # - makes a redeem script
                 # - converts into addr
                 # - assumes 0/0 is first address.
-                for (i, addr, paths, script) in ms_wallet.yield_addresses(start, n, change_idx=change):
+                for idx, addr, paths, script in ms_wallet.yield_addresses(start, n, change):
                     addrs.append(censor_address(addr))
 
-                    if i == 0 and ms_wallet.N <= 4:
+                    if idx == 0 and ms_wallet.N <= 4:
                         msg += '\n'.join(paths) + '\n =>\n'
                     else:
-                        msg += '⋯/%d/%d =>\n' % (change, i)
+                        msg += '⋯/%d/%d =>\n' % (change, idx)
 
                     msg += truncate_address(addr) + '\n\n'
-                    dis.progress_sofar(i, n)
+                    dis.progress_sofar(idx-start+1, n)
 
             else:
                 # single-signer wallets
@@ -317,11 +317,10 @@ Press (3) if you really understand and accept these risks.
                 from ownership import OWNERSHIP
                 OWNERSHIP.note_wallet_used(addr_fmt, self.account_num)
 
-                for (idx, addr, deriv) in main.yield_addresses(start, n,
-                                            change_idx=(change if allow_change else None)):
+                for idx, addr, deriv in main.yield_addresses(start, n, change if allow_change else None):
                     addrs.append(addr)
                     msg += "%s =>\n%s\n\n" % (deriv, addr)
-                    dis.progress_sofar(idx, n or 1)
+                    dis.progress_sofar(idx-start+1, n)
 
             # export options
             k0 = 'to show change addresses' if allow_change and change == 0 else None
