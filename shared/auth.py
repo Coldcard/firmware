@@ -624,6 +624,20 @@ class ApproveTransaction(UserAuthorizedAction):
 
         return '%s\n - to script -\n%s\n' % (val, dest)
 
+    @staticmethod
+    async def try_push_tx(data, txid, txn_sha):
+        from glob import settings, PSRAM, NFC
+        # if NFC PushTx is enabled, do that w/o questions.
+        url = settings.get('ptxurl', False)
+        if NFC and url:
+            try:
+                if isinstance(data, int):
+                    data = PSRAM.read_at(TXN_OUTPUT_OFFSET, data)
+                await NFC.share_push_tx(url, txid, data, txn_sha)
+                return True
+            except: pass  # continue normally if it fails, perhaps too big?
+        return False
+
     async def interact(self):
         # Prompt user w/ details and get approval
         from glob import dis, hsm_active
@@ -816,20 +830,12 @@ class ApproveTransaction(UserAuthorizedAction):
         except BaseException as exc:
             return await self.failure("PSBT output failed", exc)
 
-        from glob import NFC, settings, PSRAM
+        from glob import NFC
 
         if self.do_finalize and txid and not hsm_active:
 
-            # if NFC PushTx is enabled, do that w/o questions.
-            url = settings.get('ptxurl', False)
-            if NFC and url:
-                try:
-                    data = PSRAM.read_at(TXN_OUTPUT_OFFSET, self.result[0])
-                    await NFC.share_push_tx(url, txid, data, self.result[1])
-                    return
-                except:
-                    # continue normally if it fails, perhaps too big?
-                    pass
+            if await self.try_push_tx(self.result[0], txid, self.result[1]):
+                return  # success, exit
 
             kq, kn = "(1)", "(3)"
             if version.has_qwerty:
@@ -1174,16 +1180,23 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
                             out2_full, out2_fn = card.pick_filename(
                                 base+'-final.txn' if not del_after else 'tmp.txn', out_path)
 
-                            if out2_full:
-                                with HexWriter(card.open(out2_full, 'w+t')) as fd:
-                                    # save transaction, in hex
-                                    txid = psbt.finalize(fd)
+                            with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd0:
+                                txid = psbt.finalize(fd0)
+                                tx_len, tx_sha = (fd0.tell(), fd0.checksum.digest())
+                                if txid and await ApproveTransaction.try_push_tx(tx_len, txid, tx_sha):
+                                    return  # success, exit
 
-                                if del_after:
-                                    # rename it now that we know the txid
-                                    after_full, out2_fn = card.pick_filename(
-                                                            txid+'.txn', out_path, overwrite=True)
-                                    os.rename(out2_full, after_full)
+                                if out2_full:
+                                    fd0.seek(0)
+                                    with HexWriter(card.open(out2_full, 'w+t')) as fd:
+                                        # save transaction, in hex
+                                        fd.write(fd0.read())
+
+                                    if del_after:
+                                        # rename it now that we know the txid
+                                        after_full, out2_fn = card.pick_filename(
+                                                                txid+'.txn', out_path, overwrite=True)
+                                        os.rename(out2_full, after_full)
 
                         if del_after:
                             # this can do nothing if they swapped SDCard between steps, which is ok,

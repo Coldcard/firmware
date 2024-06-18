@@ -11,6 +11,7 @@ from exceptions import AbortInteraction, QRDecodeExplained
 import bip39
 from decoders import decode_qr_result
 from ubinascii import hexlify as b2a_hex
+from ubinascii import unhexlify as a2b_hex
 from utils import problem_file_line
 from glob import numpad         # may be None depending on import order, careful
 
@@ -976,12 +977,15 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
                     psbt.serialize(fd)
 
             data_len = psram.tell()
+            sha = fd.checksum.digest()
 
         UserAuthorizedAction.cleanup()
 
         # Show the result as a QR, perhaps many BBQr's
         # - note: already HEX here!
         here = PSRAM.read_at(TXN_OUTPUT_OFFSET, data_len)
+        if txid and await ApproveTransaction.try_push_tx(a2b_hex(here), txid, sha):
+            return  # success, exit
 
         try:
             await show_qr_code(here.decode(), is_alnum=True,
