@@ -300,14 +300,21 @@ class NFCHandler:
             try:
                 with CardSlot() as card:
                     with open(fn, 'rb') as fp:
-                        data = fp.read(MAX_NFC_SIZE*2)
+                        data = fp.read(MAX_NFC_SIZE*2).strip()  # newlines and carriage returns
                         assert len(data) < MAX_NFC_SIZE*2, "bad read"
             except CardMissingError:
                 await needs_microsd()
                 return
+            except Exception as e:
+                await ux_show_story(
+                    title="ERROR",
+                    msg='Read failed!\n\n%s\n%s' % (e, problem_file_line(e))
+                )
+                return
 
             # maybe decode
-            if data[2:6] == b'000000':
+            # targeting last three zero bytes of tx version
+            if data[2:8] == b'000000':
                 # it's a txn, and we wrote as hex
                 data = a2b_hex(data)
             elif data[1:4] == bytes(3):
@@ -630,7 +637,7 @@ class NFCHandler:
                 await needs_microsd()
                 return
 
-            if data[2:6] == b'000000' and ext == 'txn':
+            if data[2:8] == b'000000' and ext == 'txn':
                 # it's a txn, and we wrote as hex
                 data = a2b_hex(data)
 
@@ -834,7 +841,6 @@ class NFCHandler:
 
         from ownership import OWNERSHIP
         await OWNERSHIP.search_ux(winner)
-
 
     async def read_extended_private_key(self):
         data = await self.start_nfc_rx()
