@@ -975,7 +975,7 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
                     txid = psbt.finalize(fd)
                 else:
                     psbt.serialize(fd)
-
+            psram.close()
             data_len = psram.tell()
             sha = fd.checksum.digest()
 

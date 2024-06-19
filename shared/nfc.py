@@ -587,6 +587,7 @@ class NFCHandler:
             else:
                 psbt.serialize(fd)
 
+            fd.close()
             self.result = (fd.tell(), fd.checksum.digest())
 
         out_len, out_sha = self.result

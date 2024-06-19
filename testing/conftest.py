@@ -441,7 +441,7 @@ def cap_image(request, sim_exec, is_q1, is_headless):
             if is_headless:
                 raise pytest.skip("headless mode: QR tests disabled")
             # trigger simulator to capture a snapshot into a named file, read it.
-            fn = os.path.realpath(f'./debug/snap-{random.randint(1E6, 9E6)}.png')
+            fn = os.path.realpath(f'./debug/snap-{random.randint(int(1E6), int(9E6))}.png')
             try:
                 sim_exec(f"from glob import dis; dis.dis.save_snapshot({fn!r})")
                 for _ in range(20):
@@ -1167,11 +1167,13 @@ def check_against_bitcoind(bitcoind, use_regtest, sim_exec, sim_execfile):
     return doit
 
 @pytest.fixture
-def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_keypress, microsd_path):
+def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
+                     need_keypress, microsd_path, cap_screen):
 
     # like "try_sign" but use "air gapped" file transfer via microSD
 
-    def doit(f_or_data, accept=True, finalize=False, accept_ms_import=False, complete=False, encoding='binary', del_after=0):
+    def doit(f_or_data, accept=True, finalize=False, accept_ms_import=False,
+             complete=False, encoding='binary', del_after=0, nfc_push_tx=False):
         if f_or_data[0:5] == b'psbt\xff':
             ip = f_or_data
             filename = 'memory'
@@ -1227,6 +1229,9 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
             time.sleep(0.050)
 
             # look for "Aborting..." ??
+            return ip, None, None
+
+        if nfc_push_tx:
             return ip, None, None
 
         # wait for it to finish

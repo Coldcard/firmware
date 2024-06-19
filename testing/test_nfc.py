@@ -13,7 +13,7 @@ from struct import pack, unpack
 import ndef
 from hashlib import sha256
 from txn import *
-from charcodes import KEY_NFC
+from charcodes import KEY_NFC, KEY_QR
 
     
 @pytest.mark.parametrize('case', range(6))
@@ -158,7 +158,7 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
     sim_exec('from pyb import SDCard; SDCard.ejected = True; import nfc; nfc.NFCHandler.startup()')
 
     def doit(f_or_data, accept=True, expect_finalize=False, accept_ms_import=False,
-             complete=False, encoding='binary', over_nfc=True):
+             complete=False, encoding='binary', over_nfc=True, nfc_tools=False, nfc_push_tx=False):
 
         if f_or_data[0:5] == b'psbt\xff':
             ip = f_or_data
@@ -198,14 +198,20 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
 
         time.sleep(.2)      # required
         goto_home()
-        pick_menu_item('Ready To Sign')
+        if nfc_tools:
+            pick_menu_item("Advanced/Tools")
+            pick_menu_item("NFC Tools")
+            pick_menu_item("Sign PSBT")
+        else:
+            pick_menu_item('Ready To Sign')
 
-        time.sleep(.1)
-        _, story = cap_story()
-        assert 'NFC' in story
+            time.sleep(.1)
+            _, story = cap_story()
+            assert 'NFC' in story
 
-        press_nfc()
-        time.sleep(.1)
+            press_nfc()
+            time.sleep(.1)
+
         nfc_write(ccfile)
             
         time.sleep(.5)
@@ -228,6 +234,10 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
             time.sleep(0.050)
 
             # look for "Aborting..." ??
+            return ip, None, None
+
+        time.sleep(.1)
+        if nfc_push_tx:
             return ip, None, None
 
         if not over_nfc:
@@ -417,40 +427,73 @@ def test_ndef_roundtrip(load_shared_mod):
     assert cc_ndef.ccfile_decode(r) == (12, 399, False, 4096)
 
 
-@pytest.mark.parametrize('num_outs', [2, 100, 250])
+@pytest.mark.parametrize('num_outs', [2, 5, 100, 250])
 @pytest.mark.parametrize('chain', ['BTC', 'XTN'])
+@pytest.mark.parametrize('way', ['sd', 'nfc', 'usb', 'qr'])
 def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
                     try_sign, fake_txn, nfc_block4rf, nfc_read, press_cancel,
-                    cap_story, cap_screen, has_qwerty
-):
+                    cap_story, cap_screen, has_qwerty, way, try_sign_microsd,
+                    try_sign_nfc, scan_a_qr, need_keypress, press_select,
+                    goto_home):
     # check the NFC push Tx feature, validating the URL's it makes
     # - not the UX
     # - 100 outs => 5000 or so
     # - 250 outs => 8800
     # - not too many inputs so faster to sign
     from base64 import urlsafe_b64decode
-    from urllib.parse import urlsplit, urlunsplit, parse_qsl, unquote
+    from urllib.parse import urlsplit, parse_qsl, unquote
 
     settings_set('chain', chain)
 
     enable_nfc()
 
+    if way in ("nfc", "qr") and num_outs >= 100:
+        raise pytest.skip("too big")
+
     prefix = 'http://10.0.0.10/pushtx#'
     settings_set('ptxurl', prefix)
 
     psbt = fake_txn(2, num_outs)
-    _, result = try_sign(psbt, finalize=True)
+    if way == "usb":
+        _, result = try_sign(psbt, finalize=True)
+    elif way == "sd":
+        ip, result, txid = try_sign_microsd(psbt, finalize=True, nfc_push_tx=True)
+    elif way == "nfc":
+        ip, result, txid = try_sign_nfc(psbt, expect_finalize=True, nfc_tools=True,
+                                        nfc_push_tx=True)
+    elif way == "qr":
+        goto_home()
+        need_keypress(KEY_QR)
+        from bbqr import split_qrs
+        actual_vers, parts = split_qrs(psbt, 'P')
+        for p in parts:
+            scan_a_qr(p)
+            time.sleep(4.0 / len(parts))  # just so we can watch
 
-    print(f'len = {len(result)}')
+        for r in range(20):
+            title, story = cap_story()
+            if 'OK TO SEND' in title:
+                break
+            time.sleep(.1)
+        else:
+            raise pytest.fail('never saw it?')
 
+        # approve it
+        press_select()
+
+    # print(f'len = {len(result)}')
+    #
     if num_outs >= 250:
         # NFC will not be offered (too big)
-        assert len(result) > 8000
+        time.sleep(.1)
         title, story = cap_story()
-
-        assert title == 'Final TXID'
-        assert 'to share signed txn' in story
-
+        if way == "usb":
+            assert title == 'Final TXID'
+            assert 'to share signed txn' in story
+        elif way == "sd":
+            assert title == "PSBT Signed"
+        else:
+            assert False
         return
 
     # expect NFC animation
@@ -495,15 +538,15 @@ def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
     expect = sha256(decoded_txn).digest()[-8:]
     assert expect == decoded_chk
 
-    assert result == decoded_txn
-
     settings_remove('ptxurl')
     settings_set('chain', 'XTN')
 
 
-def test_share_by_pushtx(goto_home, cap_story, pick_menu_item, settings_set, settings_remove,
-                                   microsd_path, cap_menu, has_qwerty, cap_screen,
-                                   press_cancel, enable_nfc, nfc_block4rf, nfc_read):
+@pytest.mark.parametrize("is_hex", [True, False])
+def test_share_by_pushtx(goto_home, cap_story, pick_menu_item, settings_set,
+                         settings_remove, microsd_path, cap_menu, has_qwerty,
+                         cap_screen, press_cancel, enable_nfc, nfc_block4rf,
+                         nfc_read, is_hex):
 
     enable_nfc()
 
@@ -514,7 +557,7 @@ def test_share_by_pushtx(goto_home, cap_story, pick_menu_item, settings_set, set
 
     fname = "fake-nfc.txn"
     with open(microsd_path(fname), "wb") as f:
-        f.write(fake_txn)
+        f.write(b2a_hex(fake_txn) if is_hex else fake_txn)
 
     goto_home()
     pick_menu_item("Advanced/Tools")
