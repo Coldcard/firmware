@@ -95,6 +95,9 @@ def hsm_available():
     # contains hsm feature + can it be used (needs se2 secret and no tmp active)
     return version.supports_hsm and has_real_secret()
 
+async def goto_home(*a):
+    goto_top_menu()
+
 
 HWTogglesMenu = [
     ToggleMenuItem('USB Port', 'du', ['Default On', 'Disable USB'], invert=True,
@@ -153,6 +156,14 @@ data or filenames.'''),
     ToggleMenuItem('Menu Wrapping', 'wa', ['Default Off', 'Enable'],
            story='''When enabled, allows scrolling past menu top/bottom \
 (wrap around). By default, this is only happens in very large menus.'''),
+    ToggleMenuItem('Home Menu XFP', 'hmx', ['Only tmp', 'Always'],
+                   story=('By default, only XFP of current loaded temporary seed '
+                          'is shown as first menu item in home menu. '
+                          'By setting this to "Always", '
+                          'XFP will be shown for master seed too. '
+                          'Master seed is displayed with < >, temporary seeds with [ ].'),
+                   predicate=has_secrets,
+                   on_change=goto_home),
     ToggleMenuItem('Keyboard EMU', 'emu', ['Default Off', 'Enable'],
            on_change=usb_keyboard_emulation,
            predicate=has_secrets,  # cannot generate BIP85 passwords without secret

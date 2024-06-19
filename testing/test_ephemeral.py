@@ -1430,4 +1430,47 @@ def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
     story, parsed_ident = get_identity_story()
     assert xfp_str == parsed_ident["xfp"]
 
+def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_menu,
+                       settings_get, goto_eph_seed_menu, need_keypress):
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Home Menu XFP")
+    time.sleep(.1)
+    _, story = cap_story()
+    if "XFP will be shown for master seed too" in story:
+        press_select()
+    pick_menu_item("Always")
+    time.sleep(.1)
+    m = cap_menu()
+    assert m[1] == "Ready To Sign"
+    assert m[0] == "<" + xfp2str(settings_get("xfp")) + ">"
+    goto_eph_seed_menu()
+    pick_menu_item("Generate Words")
+    pick_menu_item(f"12 Words")
+    time.sleep(0.1)
+    need_keypress("6")  # skip words
+    press_select()
+    press_select()
+    time.sleep(.1)
+    m = cap_menu()
+    assert m[1] == "Ready To Sign"
+    assert m[0] == "[" + xfp2str(settings_get("xfp")) + "]"
+    pick_menu_item("Restore Master")
+    press_select()
+    time.sleep(.1)
+    m = cap_menu()
+    assert m[1] == "Ready To Sign"
+    assert m[0] == "<" + xfp2str(settings_get("xfp")) + ">"
+    # disable now
+    pick_menu_item("Settings")
+    pick_menu_item("Home Menu XFP")
+    time.sleep(.1)
+    _, story = cap_story()
+    if "XFP will be shown for master seed too" in story:
+        press_select()
+    pick_menu_item("Only tmp")
+    time.sleep(.1)
+    m = cap_menu()
+    assert m[0] == "Ready To Sign"
+
 # EOF
