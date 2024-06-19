@@ -687,7 +687,7 @@ def goto_home(cap_menu, press_cancel, press_select, pick_menu_item, cap_screen):
 
             if m[0] in { 'New Seed Words',  'Ready To Sign'}:
                 break
-            if len(m) > 1 and (m[1] == "Ready To Sign") and (m[0][0] == "["):
+            if len(m) > 1 and (m[1] == "Ready To Sign") and (m[0][0] in "<["):
                 # ephemeral has XFP as first menu item
                 break
         else:

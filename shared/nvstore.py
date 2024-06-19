@@ -61,6 +61,7 @@ from utils import call_later_ms
 #   aei   = (bool) allow changing start index in Address Explorer
 #   b85max = (bool) allow max BIP-32 int value in BIP-85 derivations
 #   ptxurl = (str) URL for PushTx feature, clear to disable feature
+#   hmx    = (bool) Home Menu Xfp settings
 
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)

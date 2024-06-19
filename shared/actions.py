@@ -949,11 +949,13 @@ def make_top_menu():
 
         if pa.has_secrets():
             _cls = NormalSystem[:]
-            if pa.tmp_value:
+            if pa.tmp_value or settings.get("hmx", False):
                 active_xfp = settings.get("xfp", 0)
+                sl, sr = ("[", "]") if pa.tmp_value else ("<", ">")
                 if active_xfp:
-                    ui_xfp = "[" + xfp2str(active_xfp) + "]"
+                    ui_xfp = sl + xfp2str(active_xfp) + sr
                     _cls.insert(0, MenuItem(ui_xfp, f=ready2sign))
+                if pa.tmp_value:
                     _cls.append(MenuItem("Restore Master", f=restore_main_secret, shortcut='m'))
         else:
             _cls = EmptyWallet
