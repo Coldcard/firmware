@@ -320,7 +320,7 @@ Press (3) if you really understand and accept these risks.
                 for idx, addr, deriv in main.yield_addresses(start, n, change if allow_change else None):
                     addrs.append(addr)
                     msg += "%s =>\n%s\n\n" % (deriv, addr)
-                    dis.progress_sofar(idx-start+1, n)
+                    dis.progress_sofar(idx-start+1, n or 1)
 
             # export options
             k0 = 'to show change addresses' if allow_change and change == 0 else None
