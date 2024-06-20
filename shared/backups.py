@@ -425,8 +425,6 @@ async def write_complete_backup(words, fname_pattern, write_sflash=False,
         from sffile import SFFile
 
         with SFFile(0, max_size=MAX_BACKUP_FILE_SIZE, message='Saving...') as fd:
-            await fd.erase()
-
             if zz:
                 fd.write(hdr)
                 fd.write(zz.body)

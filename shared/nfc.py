@@ -587,7 +587,6 @@ class NFCHandler:
             else:
                 psbt.serialize(fd)
 
-            # fd.flush_out()  not needed - flush is part of __exit__
             self.result = (fd.tell(), fd.checksum.digest())
 
         out_len, out_sha = self.result
