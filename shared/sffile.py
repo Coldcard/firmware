@@ -81,7 +81,7 @@ class SFFile:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
+        self.flush_out()
 
         if self.message:
             from glob import dis
@@ -89,7 +89,7 @@ class SFFile:
 
         return False
 
-    def close(self):
+    def flush_out(self):
         # PSRAM might leave a little behind
         if self.runt:
             # write final runt, might be up to 3 bytes (padding w/ zeros)

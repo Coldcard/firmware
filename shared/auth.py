@@ -824,7 +824,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 else:
                     self.psbt.serialize(fd)
 
-                fd.close()
+                #fd.flush_out() not needed - flush is part of __exit__
                 self.result = (fd.tell(), fd.checksum.digest())
 
             self.done(redraw=(not txid))
@@ -1185,7 +1185,7 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
                             with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd0:
                                 await fd0.erase()
                                 txid = psbt.finalize(fd0)
-                                fd0.close()
+                                fd0.flush_out()  # need to flush here as we are probably not gona call .read( again
                                 tx_len, tx_sha = fd0.tell(), fd0.checksum.digest()
                                 if txid and await try_push_tx(tx_len, txid, tx_sha):
                                     return  # success, exit
