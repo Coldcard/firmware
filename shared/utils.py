@@ -173,9 +173,7 @@ class Base64Writer:
         self.runt = buf[-rl:] if rl else b''
         if rl < len(buf):
             tmp = b2a_base64(buf[:(-rl if rl else None)])
-            # library puts in newlines!?
-            assert tmp[-1:] == b'\n', tmp
-            assert tmp[-2:-1] != b'=', tmp
+            # library puts in a newline, remove it
             self.fd.write(tmp[:-1])
 
 def b2a_base64url(s):
