@@ -14,6 +14,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Enhancement: Add `Sign PSBT` shortcut to `NFC Tools` menu
 - Enhancement: Stricter p2sh-p2wpkh validation checks.
 - Enhancement: Mention the need to remove old duress wallets before locking down temporary seed.
+- Enhancement: Add `Theya` option to `Export Wallet`
 - Bugfix: Fix PSBTv2 `PSBT_GLOBAL_TX_MODIFIABLE` parsing.
 - Bugfix: Decrypting Tapsigner backup failed even for correct key.
 - Bugfix: Clear any pending keystrokes before PSBT approval screen.
