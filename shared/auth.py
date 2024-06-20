@@ -582,6 +582,22 @@ async def verify_txt_sig_file(filename):
     await verify_armored_signed_msg(text)
 
 
+async def try_push_tx(data, txid, txn_sha=None):
+    from glob import settings, PSRAM, NFC
+    # if NFC PushTx is enabled, do that w/o questions.
+    url = settings.get('ptxurl', False)
+    if NFC and url:
+        try:
+            if isinstance(data, int):
+                data = PSRAM.read_at(TXN_OUTPUT_OFFSET, data)
+            if txn_sha is None:
+                txn_sha = ngu.hash.sha256s(data)[-8:]
+            await NFC.share_push_tx(url, txid, data, txn_sha)
+            return True
+        except: pass  # continue normally if it fails, perhaps too big?
+    return False
+
+
 class ApproveTransaction(UserAuthorizedAction):
     def __init__(self, psbt_len, flags=0x0, approved_cb=None, psbt_sha=None, is_sd=None):
         super().__init__()
@@ -623,22 +639,6 @@ class ApproveTransaction(UserAuthorizedAction):
         dest = B2A(o.scriptPubKey)
 
         return '%s\n - to script -\n%s\n' % (val, dest)
-
-    @staticmethod
-    async def try_push_tx(data, txid, txn_sha=None):
-        from glob import settings, PSRAM, NFC
-        # if NFC PushTx is enabled, do that w/o questions.
-        url = settings.get('ptxurl', False)
-        if NFC and url:
-            try:
-                if isinstance(data, int):
-                    data = PSRAM.read_at(TXN_OUTPUT_OFFSET, data)
-                if txn_sha is None:
-                    txn_sha = ngu.hash.sha256s(data)[-8:]
-                await NFC.share_push_tx(url, txid, data, txn_sha)
-                return True
-            except: pass  # continue normally if it fails, perhaps too big?
-        return False
 
     async def interact(self):
         # Prompt user w/ details and get approval
@@ -836,7 +836,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
         if self.do_finalize and txid and not hsm_active:
 
-            if await self.try_push_tx(self.result[0], txid, self.result[1]):
+            if await try_push_tx(self.result[0], txid, self.result[1]):
                 return  # success, exit
 
             kq, kn = "(1)", "(3)"
@@ -1187,7 +1187,7 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
                                 txid = psbt.finalize(fd0)
                                 fd0.close()
                                 tx_len, tx_sha = fd0.tell(), fd0.checksum.digest()
-                                if txid and await ApproveTransaction.try_push_tx(tx_len, txid, tx_sha):
+                                if txid and await try_push_tx(tx_len, txid, tx_sha):
                                     return  # success, exit
 
                                 if out2_full:

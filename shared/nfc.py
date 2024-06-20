@@ -571,7 +571,7 @@ class NFCHandler:
 
     async def signing_done(self, psbt):
         # User approved the PSBT, and signing worked... share result over NFC (only)
-        from auth import TXN_OUTPUT_OFFSET, ApproveTransaction
+        from auth import TXN_OUTPUT_OFFSET, try_push_tx
         from version import MAX_TXN_LEN
         from sffile import SFFile
 
@@ -593,7 +593,7 @@ class NFCHandler:
         out_len, out_sha = self.result
 
         if is_comp:
-            if txid and await ApproveTransaction.try_push_tx(out_len, txid, out_sha):
+            if txid and await try_push_tx(out_len, txid, out_sha):
                 return  # success, exit
 
             await self.share_signed_txn(txid, TXN_OUTPUT_OFFSET, out_len, out_sha)
