@@ -817,14 +817,11 @@ class ApproveTransaction(UserAuthorizedAction):
         try:
             # re-serialize the PSBT back out
             with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd:
-                await fd.erase()
-
                 if self.do_finalize:
                     txid = self.psbt.finalize(fd)
                 else:
                     self.psbt.serialize(fd)
 
-                #fd.flush_out() not needed - flush is part of __exit__
                 self.result = (fd.tell(), fd.checksum.digest())
 
             self.done(redraw=(not txid))
@@ -917,8 +914,6 @@ class ApproveTransaction(UserAuthorizedAction):
         chk = self.chain.hash_message(msg_len=txt_len) if sign_text else None
 
         with SFFile(TXN_OUTPUT_OFFSET, max_size=txt_len+300, message="Visualizing...") as fd:
-            await fd.erase()
-
             while 1:
                 blk = msg.read(256).encode('ascii')
                 if not blk: break
@@ -1103,9 +1098,6 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
 
             total = 0
             with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as out:
-                # blank flash
-                await out.erase()
-
                 while 1:
                     n = fd.readinto(tmp_buf)
                     if not n: break
@@ -1183,7 +1175,6 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
                                 base+'-final.txn' if not del_after else 'tmp.txn', out_path)
 
                             with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd0:
-                                await fd0.erase()
                                 txid = psbt.finalize(fd0)
                                 fd0.flush_out()  # need to flush here as we are probably not gona call .read( again
                                 tx_len, tx_sha = fd0.tell(), fd0.checksum.digest()

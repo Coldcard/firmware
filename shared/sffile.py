@@ -67,13 +67,6 @@ class SFFile:
         assert 0 <= offset <= self.length # "bad offset"
         self.pos = offset
 
-    async def erase(self):
-        # must be used by caller before writing any bytes
-        # - now just checks, used to be a slow erase cycle
-        assert not self.readonly
-        assert self.length == 0         # 'already wrote?'
-        return
-
     def __enter__(self):
         if self.message:
             from glob import dis
@@ -100,6 +93,8 @@ class SFFile:
 
             self.runt = None
             self.wr_pos = self.pos
+
+    close = flush_out
 
     def write(self, b):
         # immediate write, no buffering
@@ -173,9 +168,6 @@ class SizerFile(SFFile):
     # - used to measure length of an output
     def __init__(self):
         self.pos = self.length = 0
-
-    async def erase(self):
-        return
 
     def __enter__(self):
         return self

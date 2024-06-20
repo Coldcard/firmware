@@ -976,7 +976,6 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
                 else:
                     psbt.serialize(fd)
 
-            #psram.flush_out() not needed - flush is part of __exit__
             data_len, sha = psram.tell(), fd.checksum.digest()
 
         UserAuthorizedAction.cleanup()
