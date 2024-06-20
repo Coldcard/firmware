@@ -936,7 +936,7 @@ class QRScannerInteraction:
 async def qr_psbt_sign(decoder, psbt_len, raw):
     # Got a PSBT coming in from QR scanner. Sign it.
     # - similar to auth.sign_psbt_file()
-    from auth import UserAuthorizedAction, ApproveTransaction
+    from auth import UserAuthorizedAction, ApproveTransaction, try_push_tx
     from utils import CapsHexWriter
     from glob import dis, PSRAM
     from ux import show_qr_code, the_ux, ux_show_story
@@ -984,7 +984,7 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
         # Show the result as a QR, perhaps many BBQr's
         # - note: already HEX here!
         here = PSRAM.read_at(TXN_OUTPUT_OFFSET, data_len)
-        if txid and await ApproveTransaction.try_push_tx(a2b_hex(here), txid, sha):
+        if txid and await try_push_tx(a2b_hex(here), txid, sha):
             return  # success, exit
 
         try:
