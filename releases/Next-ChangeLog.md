@@ -33,5 +33,6 @@ This lists the new changes that have not yet been published in a normal release.
 ## 1.2.2Q - 2024-06-XX
 
 - Enhancement: Coldcard multisg export/import format detected in `Scan Any QR Code`.
+- Bugfix: Exporting BIP-85 derived entropy via NFC was possible even if NFC disabled - yikes 
 
 

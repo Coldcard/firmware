@@ -362,4 +362,27 @@ def test_type_passwords(dev, cap_menu, pick_menu_item, goto_home,
     menu = cap_menu()
     assert "Type Passwords" not in menu
 
+def test_export_nfc_when_disabled(pick_menu_item, goto_home, cap_story, press_select,
+                                  is_q1, derive_bip85_secret, press_nfc, cap_menu):
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Hardware On/Off")
+    pick_menu_item("NFC Sharing")
+    time.sleep(.1)
+    _, story = cap_story()
+    if "Near Field Communications" in story:
+        press_select()
+
+    pick_menu_item("Default Off")
+    time.sleep(.1)
+    goto_home()
+    _, story = derive_bip85_secret('12 words', 999)
+    assert "NFC" not in story
+    press_nfc()
+    time.sleep(.1)
+    goto_home()
+    m = cap_menu()
+    assert "Ready To Sign" in m
+
+
 # EOF
