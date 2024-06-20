@@ -6,7 +6,7 @@
 # Using the system's BIP-32 master key, safely derive seeds phrases/entropy for other
 # wallet systems, which may expect seed phrases, XPRV, or other entropy.
 #
-import stash, seed, ngu, chains, bip39, version, glob
+import stash, seed, ngu, chains, bip39
 from ux import ux_show_story, ux_enter_bip32_index, the_ux, ux_confirm, ux_dramatic_pause
 from menu import MenuItem, MenuSystem
 from ubinascii import hexlify as b2a_hex
@@ -118,7 +118,7 @@ async def pick_bip85_password():
     return await drv_entro_step2(None, 7, None, just_pick=True)
 
 async def drv_entro_step2(_1, picked, _2, just_pick=False):
-    from glob import dis, settings
+    from glob import dis, settings, NFC
     from files import CardSlot, CardMissingError, needs_microsd
     from ux import ux_render_words, export_prompt_builder, import_export_prompt_decode
 
@@ -203,13 +203,12 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
         key0 = 'to switch to derived secret'
     elif s_mode == 'pw':
         key0 = 'to type password over USB'
-    prompt, escape = export_prompt_builder('data', key0=key0, no_qr=(not qr), no_nfc=(not qr))
-
+    prompt, escape = export_prompt_builder('data', key0=key0,
+                                           no_qr=(not qr))
     while 1:
-        ch = await ux_show_story(msg+'\n\n'+prompt, sensitive=True, escape=escape)
-
+        ch = await ux_show_story(msg+'\n\n'+prompt, sensitive=True, escape=escape,
+                                 strict_escape=True)
         choice = import_export_prompt_decode(ch)
-
         if isinstance(choice, dict):
             # write to SD card or Virtual Disk: simple text file
             try:
@@ -237,33 +236,30 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
         elif choice == KEY_QR:
             from ux import show_qr_code
             await show_qr_code(qr, qr_alnum)
-        elif choice == '0' and s_mode == 'pw':
-            # gets confirmation then types it
-            await single_send_keystrokes(qr, path)
-        elif choice == KEY_NFC:
+        elif choice == '0':
+            if s_mode == 'pw':
+                # gets confirmation then types it
+                await single_send_keystrokes(qr, path)
+            elif encoded is not None:
+                # switch over to new secret!
+                dis.fullscreen("Applying...")
+                from actions import goto_top_menu
+                from glob import settings
+                xfp_str = xfp2str(settings.get("xfp", 0))
+                await seed.set_ephemeral_seed(
+                    encoded,
+                    meta='BIP85 Derived from [%s], index=%d' % (xfp_str, index)
+                )
+                goto_top_menu()
+                break
+
+        elif NFC and choice == KEY_NFC:
             # Share any of these over NFC
-            await glob.NFC.share_text(qr)
-        else:
-            break
+            await NFC.share_text(qr)
 
-    if new_secret is not None:
-        stash.blank_object(new_secret)
     stash.blank_object(msg)
-
-    if choice == '0' and (encoded is not None):
-        # switch over to new secret!
-        dis.fullscreen("Applying...")
-        from actions import goto_top_menu
-        from glob import settings
-        xfp_str = xfp2str(settings.get("xfp", 0))
-        await seed.set_ephemeral_seed(
-            encoded,
-            meta='BIP85 Derived from [%s], index=%d' % (xfp_str, index)
-        )
-        goto_top_menu()
-
-    if encoded is not None:
-        stash.blank_object(encoded)
+    stash.blank_object(new_secret)
+    stash.blank_object(encoded)
 
 
 async def password_entry(*args, **kwargs):
