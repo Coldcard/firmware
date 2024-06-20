@@ -178,6 +178,7 @@ WalletExportMenu = [
     MenuItem("Zeus", f=ss_descriptor_skeleton,
              arg=(True, [AF_P2WPKH, AF_P2WPKH_P2SH], "Zeus Wallet", "zeus-export.txt")),
     MenuItem("Electrum Wallet", f=electrum_skeleton),
+    MenuItem("Theya", f=named_generic_skeleton, arg="Theya"),
     MenuItem("Wasabi Wallet", f=wasabi_skeleton),
     MenuItem("Unchained", f=unchained_capital_export),
     MenuItem("Lily Wallet", f=named_generic_skeleton, arg="Lily"),
