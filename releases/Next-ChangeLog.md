@@ -13,13 +13,13 @@ This lists the new changes that have not yet been published in a normal release.
   transactions before signing.
 - Enhancement: Add `Sign PSBT` shortcut to `NFC Tools` menu
 - Enhancement: Stricter p2sh-p2wpkh validation checks.
-- Enhancement: mention the need to remove old duress wallets before locking down temporary seed.
+- Enhancement: Mention the need to remove old duress wallets before locking down temporary seed.
 - Bugfix: Fix PSBTv2 `PSBT_GLOBAL_TX_MODIFIABLE` parsing.
 - Bugfix: Decrypting Tapsigner backup failed even for correct key.
 - Bugfix: Clear any pending keystrokes before PSBT approval screen.
 - Bugfix: UX shows only 10 outputs with the biggest value on screen, other values available
   after a keypress.
-- Bugfix: Calculate progress bar correctly in Address Explorer
+- Bugfix: Calculate progress bar correctly in Address Explorer after first page.
 
 # Mk4 Specific Changes
 
@@ -33,6 +33,7 @@ This lists the new changes that have not yet been published in a normal release.
 ## 1.2.2Q - 2024-06-XX
 
 - Enhancement: Coldcard multisg export/import format detected in `Scan Any QR Code`.
-- Bugfix: Exporting BIP-85 derived entropy via NFC was possible even if NFC disabled - yikes 
+- Bugfix: Exporting BIP-85 derived entropy via NFC was offered even when NFC disabled,
+  leading to a Yikes error.
 
 
