@@ -185,8 +185,6 @@ We will summarize transaction outputs as "change" back into same wallet, however
 
 - only the first 1528 addresses (764 each from internal and external (change/not) paths)
   are considered
-- P2WPKH-P2SH addresses (single sig P2PWPKH wrapped in P2SH) are not searchable if you
-  have one or more multisig wallets defined, since we assume P2WPKH-P2SH is obsolete
 - if you have used an sub-account, without ever exploring it in the Address Explorer, nor
   signing a PSBT with those account numbers, we do not search it.
 - does not search Seed Vault, you'll need to load each of those and re-search
