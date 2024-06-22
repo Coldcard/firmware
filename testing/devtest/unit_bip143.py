@@ -148,7 +148,6 @@ BIP143_DATA = [
 for name, unsigned_tx, scriptCode, idx, outpoint, sighash_type, amount, sighash in BIP143_DATA:
     unsigned = a2b_hex(unsigned_tx)
     fd = SFFile(0, max_size=65536)
-    list(fd.erase())
     fd.write(b'psbt\xff\x01\x00' + ser_compact_size(len(unsigned)) + unsigned + (b'\0'*8))
     psbt_len = fd.tell()
     rfd = SFFile(0, psbt_len)

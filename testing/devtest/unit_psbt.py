@@ -20,7 +20,6 @@ is_hex = False
 tl = 0
 
 with SFFile(0, max_size=MAX_TXN_LEN) as wr_fd:
-    list(wr_fd.erase())
     with open(fname, 'rb') as orig:
         while 1:
             here = orig.read(256)
@@ -51,7 +50,6 @@ except FatalPSBTIssue as exc:
     pass
 
 with SFFile(MAX_TXN_LEN, max_size=MAX_TXN_LEN) as out_fd:
-    list(out_fd.erase())
     obj.serialize(out_fd)
     out_fd.seek(0)
     # copy back into filesystem
