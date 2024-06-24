@@ -11,7 +11,7 @@ This lists the new changes that have not yet been published in a normal release.
   transaction on the MicroSD card (See `Tools > NFC Tools > Push Transaction`)
 - New Feature: Transaction output explorer: allows view output details of larger (10+ output)
   transactions before signing.
-- New Feature: New setting to always show XFP as first item in home menu
+- New Feature: New setting to enable always showing XFP as first item in home menu.
 - Enhancement: Add `Sign PSBT` shortcut to `NFC Tools` menu
 - Enhancement: Stricter p2sh-p2wpkh validation checks.
 - Enhancement: Mention the need to remove old duress wallets before locking down temporary seed.

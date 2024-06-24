@@ -1437,9 +1437,9 @@ def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_m
     pick_menu_item("Home Menu XFP")
     time.sleep(.1)
     _, story = cap_story()
-    if "XFP will be shown for master seed too" in story:
+    if "Forces display of XFP" in story:
         press_select()
-    pick_menu_item("Always")
+    pick_menu_item("Always Show")
     time.sleep(.1)
     m = cap_menu()
     assert m[1] == "Ready To Sign"
@@ -1466,9 +1466,9 @@ def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_m
     pick_menu_item("Home Menu XFP")
     time.sleep(.1)
     _, story = cap_story()
-    if "XFP will be shown for master seed too" in story:
+    if "Forces display of XFP" in story:
         press_select()
-    pick_menu_item("Only tmp")
+    pick_menu_item("Only Tmp")
     time.sleep(.1)
     m = cap_menu()
     assert m[0] == "Ready To Sign"
