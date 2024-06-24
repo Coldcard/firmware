@@ -93,7 +93,8 @@ async def test_qr_scanner():
             break
         await sleep_ms(100)
 
-    assert SCAN and SCAN.version and SCAN.version.startswith('V2.3.'), 'QR Scanner Missing'
+    assert SCAN and SCAN.version, 'missing'
+    assert SCAN.version.startswith('V2.'), 'QR: ' + SCAN.version
 
 async def test_battery():
     from battery import get_batt_level

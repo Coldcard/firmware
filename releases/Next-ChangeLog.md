@@ -37,5 +37,6 @@ This lists the new changes that have not yet been published in a normal release.
 - Enhancement: Coldcard multisg export/import format detected in `Scan Any QR Code`.
 - Bugfix: Exporting BIP-85 derived entropy via NFC was offered even when NFC disabled,
   leading to a Yikes error.
+- Bugfix: Support newer-version QR scanner modules.
 
 
