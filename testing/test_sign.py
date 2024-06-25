@@ -191,7 +191,7 @@ if 0:
 @pytest.mark.bitcoind
 @pytest.mark.veryslow
 @pytest.mark.parametrize('segwit', [True, False])
-def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn, is_mark3, is_mark4,
+def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn,
                     start_sign, end_sign, dev, segwit, accept = True):
 
     # try a bunch of different bigger sized txns
@@ -200,21 +200,14 @@ def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn, is_mark3,
     # - simulator can do 400/400 but takes long time
     # - offical target: 20 inputs, 250 outputs (see docs/limitations.md)
     # - complete run on real hardware takes 1800.94 seconds = 30 minutes
-    # - only mk3 can do full amounts
-    # - time on mk3, v4.0.0 firmware: 13 minutes
+    # - time on Mk3, v4.0.0 firmware: 13 minutes
 
     # for this test you need to configure core `repcservertimeout` to something big
     # in bitcoin.conf `rpcservertimeout=2000` should do the trick
     use_regtest()
-    num_in = 10
-    num_out = 10
 
-    if is_mark3:
-        num_in = 20
-        num_out = 250
-    elif is_mark4:
-        num_in = 250
-        num_out = 2000
+    num_in = 250
+    num_out = 2000
 
     psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=segwit, outstyles=ADDR_STYLES)
 
