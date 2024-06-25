@@ -19,14 +19,6 @@ from charcodes import KEY_NFC, KEY_QR
 
 
 @pytest.fixture
-def mk4_qr_not_allowed(is_q1):
-    def doit(way):
-        if way == "qr" and not is_q1:
-            pytest.skip("mk4 QR not supported")
-    return doit
-
-
-@pytest.fixture
 def expect_acctnum_captured(settings_get, settings_set):
     # verify account number got captured, if non-zero; so address search covers it
     b4 = settings_get('accts', [])
@@ -58,8 +50,10 @@ def expect_acctnum_captured(settings_get, settings_set):
 def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home, cap_story,
                      need_keypress, microsd_path, virtdisk_path, bitcoind_wallet, bitcoind_d_wallet,
                      enter_number, nfc_read_text, load_export, bitcoind, press_select,
-                     mk4_qr_not_allowed, expect_acctnum_captured):
-    mk4_qr_not_allowed(way)
+                     skip_if_useless_way, expect_acctnum_captured):
+
+    skip_if_useless_way(way)
+
     # test UX and operation of the 'bitcoin core' wallet export
     use_regtest()
     goto_home()
@@ -199,7 +193,11 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize('testnet', [True, False])
 def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, press_select, microsd_path,
-                       nfc_read_json, virtdisk_path, testnet, use_mainnet, load_export):
+                       nfc_read_json, virtdisk_path, testnet, use_mainnet,
+                        load_export, skip_if_useless_way):
+
+    skip_if_useless_way(way)
+
     # test UX and operation of the 'wasabi wallet export'
     if not testnet:
         use_mainnet()
@@ -239,9 +237,10 @@ def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, press_sel
 @pytest.mark.parametrize('testnet', [True, False])
 def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, cap_story, need_keypress,
                          microsd_path, nfc_read_json, virtdisk_path, use_mainnet, testnet, load_export,
-                         press_select, mk4_qr_not_allowed, expect_acctnum_captured):
+                         press_select, skip_if_useless_way, expect_acctnum_captured):
     # lightly test electrum wallet export
-    mk4_qr_not_allowed(way)
+    skip_if_useless_way(way)
+
     if not testnet:
         use_mainnet()
     if "P2PKH" in mode:
@@ -318,8 +317,10 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
 ])
 def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap_story, need_keypress,
                          microsd_path, nfc_read_json, virtdisk_path, addr_vs_path, enter_number,
-                         load_export, testnet, use_mainnet, press_select, mk4_qr_not_allowed, expect_acctnum_captured):
-    mk4_qr_not_allowed(way)
+                         load_export, testnet, use_mainnet, press_select,
+                         skip_if_useless_way, expect_acctnum_captured):
+
+    skip_if_useless_way(way)
 
     if not testnet:
         use_mainnet()
@@ -402,10 +403,10 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
 def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_keypress, acct_num,
               microsd_path, nfc_read_json, virtdisk_path, testnet, enter_number,
               load_export, settings_set, use_mainnet, press_select,
-              mk4_qr_not_allowed, expect_acctnum_captured):
+              skip_if_useless_way, expect_acctnum_captured):
 
     # test UX and operation of the 'unchained export'
-    mk4_qr_not_allowed(way)
+    skip_if_useless_way(way)
 
     if not testnet:
         use_mainnet()
@@ -457,9 +458,9 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
 @pytest.mark.parametrize('testnet', [True, False])
 def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, microsd_path,
                            addr_vs_path, virtdisk_path, nfc_read_text, cap_story, use_mainnet,
-                           load_export, testnet, mk4_qr_not_allowed):
+                           load_export, testnet, skip_if_useless_way):
     # test UX and values produced.
-    mk4_qr_not_allowed(way)
+    skip_if_useless_way(way)
 
     if not testnet:
         use_mainnet()
@@ -608,8 +609,8 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
 def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home,
             settings_set, need_keypress, expect_acctnum_captured,
             pick_menu_item, way, cap_story, cap_menu, int_ext, settings_get,
-            virtdisk_path, load_export, press_select, mk4_qr_not_allowed):
-    mk4_qr_not_allowed(way)
+            virtdisk_path, load_export, press_select, skip_if_useless_way):
+    skip_if_useless_way(way)
 
     settings_set('chain', chain)
     chain_num = 1 if chain in ["XTN", "XRT"] else 0
@@ -688,11 +689,12 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home,
 @pytest.mark.parametrize("acct_num", [None, 55])
 def test_zeus_descriptor_export(addr_fmt, acct_num, goto_home, need_keypress, pick_menu_item,
                                 way, cap_story, cap_menu, nfc_read_text, settings_get, chain,
-                                virtdisk_path, load_export, press_select, mk4_qr_not_allowed,
+                                virtdisk_path, load_export, press_select, skip_if_useless_way,
                                 settings_set, is_q1, press_cancel, cap_screen_qr, press_nfc,
                                 expect_acctnum_captured):
 
-    mk4_qr_not_allowed(way)
+    skip_if_useless_way(way)
+
     settings_set('chain', chain)
     chain_num = 1 if chain == "XTN" else 0
 

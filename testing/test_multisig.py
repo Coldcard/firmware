@@ -685,9 +685,9 @@ def test_import_detail(clear_ms, import_ms_wallet, need_keypress,
 @pytest.mark.parametrize('testnet', [True, False])
 def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
                        need_keypress, microsd_path, load_export, use_mainnet,
-                       testnet, way, is_q1, press_select, mk4_qr_not_allowed):
+                       testnet, way, is_q1, press_select, skip_if_useless_way):
 
-    mk4_qr_not_allowed(way)
+    skip_if_useless_way(way)
 
     if not testnet:
         use_mainnet()

@@ -1587,6 +1587,12 @@ def enable_nfc(needs_nfc, sim_exec, settings_set):
     return doit
 
 @pytest.fixture()
+def nfc_disabled(needs_nfc, settings_get):
+    def doit():
+        return not bool(settings_get('nfc', 0))
+    return doit
+
+@pytest.fixture()
 def scan_a_qr(sim_exec, is_q1):
     # simulate a QR being scanned 
     # XXX limitation: our USB protocol can't send a v40 QR, limit is more like 30 or so
@@ -2168,6 +2174,20 @@ def txout_explorer(cap_story, press_cancel, need_keypress, is_q1):
     return doit
 
 
+@pytest.fixture
+def skip_if_useless_way(is_q1, nfc_disabled):
+    # when NFC is disabled, no point trying to do a PSBT via NFC
+    # - important: run_sim_tests.py will enable NFC for complete testing
+    # - similarly: the Mk4 and earlier had no QR scanner, so cannot use that as input
+    def doit(way):
+        if way == "qr" and not is_q1:
+            raise pytest.skip("mk4 QR not supported")
+        if way == 'nfc' and nfc_disabled():
+            # runner will test these cases, but fail faster otherwise
+            raise pytest.skip("NFC disabled")
+
+    return doit
+
 # useful fixtures
 from test_backup import backup_system
 from test_bbqr import readback_bbqr, render_bbqr, readback_bbqr_ll
@@ -2176,7 +2196,6 @@ from test_drv_entro import derive_bip85_secret, activate_bip85_ephemeral
 from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto_eph_seed_menu
 from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed, confirm_tmp_seed
 from test_ephemeral import verify_ephemeral_secret_ui, get_identity_story, get_seed_value_ux, seed_vault_enable
-from test_export import mk4_qr_not_allowed
 from test_multisig import import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn
 from test_multisig import make_ms_address, clear_ms, make_myself_wallet
 from test_se2 import goto_trick_menu, clear_all_tricks, new_trick_pin, se2_gate, new_pin_confirmed
