@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2020 Stepan Snigirev MIT License embit/arguments.py
 #
-import ngu, chains
+import ngu, chains, ustruct
 from io import BytesIO
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AF_CLASSIC, AF_P2TR
 from binascii import unhexlify as a2b_hex
@@ -12,7 +12,7 @@ from serializations import ser_compact_size
 
 
 WILDCARD = "*"
-PROVABLY_UNSPENDABLE = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"
+PROVABLY_UNSPENDABLE = b'\x02P\x92\x9bt\xc1\xa0IT\xb7\x8bK`5\xe9z^\x07\x8aZ\x0f(\xec\x96\xd5G\xbf\xee\x9a\xce\x80:\xc0'
 
 INPUT_CHARSET = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ "
 CHECKSUM_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
@@ -90,7 +90,7 @@ def multisig_descriptor_template(xpub, path, xfp, addr_fmt):
         descriptor_template = "sh(sortedmulti(M,%s,...))"
     elif addr_fmt == AF_P2TR:
         # provably unspendable BIP-0341
-        descriptor_template = "tr(" + PROVABLY_UNSPENDABLE + ",sortedmulti_a(M,%s,...))"
+        descriptor_template = "tr(" + b2a_hex(PROVABLY_UNSPENDABLE[1:]).decode() + ",sortedmulti_a(M,%s,...))"
     else:
         return None
     descriptor_template = descriptor_template % key_exp
@@ -249,20 +249,13 @@ class Key:
         self.derivation = derivation
         self.taproot = taproot
         self.chain_type = chain_type
-        if not isinstance(self.node, bytes):
-            assert self.origin, "Key origin info is required"
 
     def __eq__(self, other):
-        return self.origin.psbt_derivation() == other.origin.psbt_derivation() \
+        return self.origin == other.origin \
                 and self.derivation.indexes == other.derivation.indexes
 
     def __hash__(self):
-        orig = tuple(self.origin.psbt_derivation())
-        der = self.derivation.indexes.copy()
-        if self.derivation.multi_path_index is not None:
-            der[self.derivation.multi_path_index] = tuple(der[self.derivation.multi_path_index])
-        der = tuple(der)
-        return hash(orig+der)
+        return hash(self.to_string())
 
     def __len__(self):
         return 34 - int(self.taproot) # <33:sec> or <32:xonly>
@@ -282,6 +275,10 @@ class Key:
     def parse(cls, s):
         first = s.read(1)
         origin = None
+        if first == b"u":
+            s.seek(-1, 1)
+            return Unspend.parse(s)
+
         if first == b"[":
             prefix, char = read_until(s, b"]")
             if char != b"]":
@@ -324,13 +321,7 @@ class Key:
             node.deserialize(key_str)
         else:
             # only unspendable keys can be bare pubkeys - for now
-            # TODO
-            # if b"unspend(" in key_str:
-            #     node = ngu.hdnode.HDNode()
-            #     chain_code = key_str.replace(b"unspend(", b"").replace(b")", b"")
-            #     node.chaincode = a2b_hex(chain_code)
-            #     node.pubkey = a2b_hex("02" + PROVABLY_UNSPENDABLE)
-            H = a2b_hex(PROVABLY_UNSPENDABLE)
+            H = PROVABLY_UNSPENDABLE[1:]
             if b"r=" in key_str:
                 _, r = key_str.split(b"=")
                 if r == b"@":
@@ -381,9 +372,10 @@ class Key:
         if self.origin:
             origin = KeyOriginInfo(self.origin.fingerprint, self.origin.derivation + [idx])
         else:
-            origin = KeyOriginInfo(self.node.my_fp(), [idx])
-        # empty derivation
-        derivation = None
+            fp = ustruct.pack('<I', swab32(self.node.my_fp()))
+            origin = KeyOriginInfo(fp, [idx])
+
+        derivation = KeyDerivationInfo(self.derivation.indexes[1:])
         return type(self)(new_node, origin, derivation, taproot=self.taproot)
 
     @classmethod
@@ -406,6 +398,8 @@ class Key:
     @property
     def is_provably_unspendable(self):
         if isinstance(self.node, bytes):
+            return True
+        if PROVABLY_UNSPENDABLE == self.node.pubkey():
             return True
         return False
 
@@ -445,6 +439,55 @@ class Key:
         return cls.parse(s)
 
 
+class Unspend(Key):
+    def __init__(self, node, origin=None, derivation=None, taproot=True, chain_type=None):
+        super().__init__(node, origin, derivation, taproot, chain_type)
+        assert self.taproot
+
+    def __eq__(self, other):
+        return self.node.chain_code() == other.node.chain_code() \
+            and self.node.pubkey() == other.node.pubkey() \
+            and self.derivation.indexes == other.derivation.indexes
+
+    @classmethod
+    def parse(cls, s):
+        assert s.read(8) == b"unspend("
+        chain_code, c = read_until(s, b")")
+        chain_code = a2b_hex(chain_code)
+        assert len(chain_code) == 32, "chain code length"
+        assert c
+        char = s.read(1)
+        if char != b"/":
+            raise ValueError("ranged unspend required")
+        der, char = read_until(s, b"<,)")
+        if char == b"<":
+            der += b"<"
+            branch, char = read_until(s, b">")
+            if char is None:
+                raise ValueError("Failed reading the key, missing >")
+            der += branch + b">"
+            rest, char = read_until(s, b",)")
+            der += rest
+        if char is not None:
+            s.seek(-1, 1)
+
+        node = ngu.hdnode.HDNode().from_chaincode_pubkey(chain_code,
+                                                         PROVABLY_UNSPENDABLE)
+        der = KeyDerivationInfo.from_string(der.decode())
+        return cls(node, None, der, chain_type=None)
+
+    def to_string(self, external=True, internal=True, subderiv=True):
+        res = "unspend(%s)" % b2a_hex(self.node.chain_code()).decode()
+        if self.derivation and subderiv:
+            res += "/" + self.derivation.to_string(external, internal)
+
+        return res
+
+    @property
+    def is_provably_unspendable(self):
+        return True
+
+
 def fill_policy(policy, keys, external=True, internal=True):
     keys_len = len(keys)
     for i in range(keys_len - 1, -1, -1):
@@ -460,7 +503,7 @@ def fill_policy(policy, keys, external=True, internal=True):
                 # subderivation is part of the policy
                 subderiv = False
                 x = ix + ph_len
-                substr = policy[x:x+26]  # 26 is longest possible subderivation allowed "/<2147483647;2147483646>/*"
+                substr = policy[x:x+26]  # 26 is the longest possible subderivation allowed "/<2147483647;2147483646>/*"
                 mp_start = substr.find("<")
                 assert mp_start != -1
                 mp_end = substr.find(">")

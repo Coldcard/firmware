@@ -5,7 +5,7 @@
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, B2A, keypath_to_str, validate_derivation_path_length
-from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str
+from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str, problem_file_line
 import stash, gc, history, sys, ngu, ckcc, chains
 from uhashlib import sha256
 from uio import BytesIO
@@ -2243,7 +2243,9 @@ class psbtObject(psbtProxy):
                         if inp.taproot_subpaths:  # this can be set to False even if we haev script ready, but can send keypath
                             # tapscript
                             schnorrsig = True
-                            xfp_paths = [item[1:] for item in inp.taproot_subpaths.values() if item[0]]
+                            # previously internal keys would be filtered here with if item[0]
+                            # as per BIP-371 first item is leaf hashes which has to be empty for internal key
+                            xfp_paths = [item[1:] for item in inp.taproot_subpaths.values()]
                             int_path = inp.taproot_subpaths[which_key][1:]
                             skp = keypath_to_str(int_path)
                         else:

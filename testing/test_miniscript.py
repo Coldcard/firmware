@@ -6,8 +6,9 @@ import pytest, json, time, itertools, struct, random, os
 from ckcc.protocol import CCProtocolPacker
 from constants import AF_P2TR
 from psbt import BasicPSBT
-from charcodes import KEY_QR, KEY_NFC, KEY_RIGHT, KEY_CANCEL
+from charcodes import KEY_QR, KEY_RIGHT, KEY_CANCEL
 from bbqr import split_qrs
+from bip32 import BIP32Node
 
 
 H = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"  # BIP-0341
@@ -23,6 +24,14 @@ TREE = {
     # more than MAX (4) for test purposes
     9: '{{{%s{%s,%s}},{%s,%s}},{{%s,%s},{%s,%s}}}'
 }
+
+
+def ranged_unspendable_internal_key(chain_code=32 * b"\x01", subderiv="/<0;1>/*"):
+    # provide ranged provably unspendable key in serialized extended key format for core to understand it
+    # core does NOT understand 'unspend('
+    pk = b"\x02" + bytes.fromhex(H)
+    node = BIP32Node.from_chaincode_pubkey(chain_code, pk)
+    return node.hwif() + subderiv
 
 
 @pytest.fixture
@@ -43,7 +52,7 @@ def offer_minsc_import(cap_story, dev):
 
 @pytest.fixture
 def import_miniscript(goto_home, pick_menu_item, cap_story, need_keypress,
-                      nfc_write_text, press_select, scan_a_qr):
+                      nfc_write_text, press_select, scan_a_qr, press_nfc):
     def doit(fname, way="sd", data=None):
         goto_home()
         pick_menu_item('Settings')
@@ -55,7 +64,7 @@ def import_miniscript(goto_home, pick_menu_item, cap_story, need_keypress,
             if "via NFC" not in story:
                 pytest.skip("nfc disabled")
 
-            need_keypress(KEY_NFC)
+            press_nfc()
             time.sleep(.1)
             if isinstance(data, dict):
                 data = json.dumps(data)
@@ -111,6 +120,7 @@ def import_duplicate(import_miniscript, press_cancel, virtdisk_path, microsd_pat
         if way == "vdisk":
             path_f = virtdisk_path
 
+        time.sleep(.2)
         title, story = import_miniscript(fname, way, data=data)
         if "unique names" in story:
             # trying to import duplicate with same name
@@ -129,6 +139,7 @@ def import_duplicate(import_miniscript, press_cancel, virtdisk_path, microsd_pat
                     f.write(res)
 
             title, story = import_miniscript(new_fname, way, data=data)
+            time.sleep(.2)
 
         assert "duplicate of already saved wallet" in story
         assert "OK to approve" not in story
@@ -141,8 +152,11 @@ def import_duplicate(import_miniscript, press_cancel, virtdisk_path, microsd_pat
 
 @pytest.fixture
 def miniscript_descriptors(goto_home, pick_menu_item, need_keypress, cap_story,
-                           microsd_path, is_q1, readback_bbqr, cap_screen_qr):
+                           microsd_path, is_q1, readback_bbqr, cap_screen_qr,
+                           garbage_collector):
+
     def doit(minsc_name):
+        qr_external = None
         goto_home()
         pick_menu_item("Settings")
         pick_menu_item("Miniscript")
@@ -150,6 +164,7 @@ def miniscript_descriptors(goto_home, pick_menu_item, need_keypress, cap_story,
         pick_menu_item("Descriptors")
         pick_menu_item("Export")
         need_keypress("1")  # internal and external separately
+        time.sleep(.1)
         if is_q1:
             # check QR
             need_keypress(KEY_QR)
@@ -163,9 +178,10 @@ def miniscript_descriptors(goto_home, pick_menu_item, need_keypress, cap_story,
             qr_external, qr_internal = data.split("\n")
             need_keypress(KEY_CANCEL)
 
-        pick_menu_item("Export")
-        need_keypress("1")  # internal and external separately
-        time.sleep(.2)
+            pick_menu_item("Export")
+            need_keypress("1")  # internal and external separately
+            time.sleep(.2)
+
         title, story = cap_story()
         if "Press (1)" in story:
             need_keypress("1")
@@ -174,13 +190,16 @@ def miniscript_descriptors(goto_home, pick_menu_item, need_keypress, cap_story,
 
         assert "Miniscript file written" in story
         fname = story.split("\n\n")[-1]
-        with open(microsd_path(fname), "r") as f:
+        fpath = microsd_path(fname)
+        garbage_collector.append(fpath)
+        with open(fpath, "r") as f:
             cont = f.read()
         external, internal = cont.split("\n")
         if qr_external:
             assert qr_external == external
             assert qr_internal == internal
         return external, internal
+
     return doit
 
 
@@ -265,10 +284,7 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
         pick_menu_item(wal_name)
 
         title, story = cap_story()
-        if addr_fmt == "bech32m":
-            assert "Taproot internal key" in story
-        else:
-            assert "Taproot internal key" not in story
+        assert "Taproot internal key" not in story
 
         if way == "qr":
             need_keypress(KEY_QR)
@@ -281,14 +297,13 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
         else:
             contents = load_export(way, label="Address summary", is_json=False, sig_check=False)
             addr_cont = contents.strip()
-            # time.sleep(5)
 
         time.sleep(.5)
         title, story = cap_story()
         assert "(0)" in story
         assert "change addresses." in story
         need_keypress("0")
-        time.sleep(5)
+        time.sleep(.5)
         title, story = cap_story()
         assert "(0)" not in story
         assert "change addresses." not in story
@@ -320,7 +335,10 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
             cc_addrs_split_change = addr_cont_change.split("\n")
             # header is different for taproot
             if addr_fmt == "bech32m":
-                assert "Internal Key" in cc_addrs_split[0]
+                try:
+                    assert "Internal Key" in cc_addrs_split[0]
+                except AssertionError:
+                    assert "Unspendable Internal Key" in cc_addrs_split[0]
                 assert "Taptree" in cc_addrs_split[0]
             else:
                 assert "Internal Key" not in cc_addrs_split[0]
@@ -343,6 +361,26 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
 
         if export_check:
             cc_external, cc_internal = miniscript_descriptors(cc_minsc_name)
+
+            unspend = "unspend("
+            if unspend in cc_external:
+                assert "unspend(" in cc_internal
+                netcode = "XTN" if "tpub" in cc_external else "BTC"
+                # bitcoin core does not recognize unspend( - needs hack
+                # CC properly exports any imported unspend( for bitcoin core
+                # as extended key serialization xpub/<0;1>/*
+                start_idx = cc_external.find(unspend)
+                assert start_idx != -1
+                end_idx = start_idx + len(unspend) + 64 + 1
+                uns = cc_external[start_idx: end_idx]
+                chain_code = bytes.fromhex(uns[len(unspend):-1])
+                node = BIP32Node.from_chaincode_pubkey(chain_code,
+                                                       b"\x02" + bytes.fromhex(H),
+                                                       netcode=netcode)
+                ek = node.hwif()
+                cc_external = cc_external.replace(uns, ek)
+                cc_internal = cc_internal.replace(uns, ek)
+
             assert cc_external.split("#")[0] == external_desc.split("#")[0].replace("'", "h")
             assert cc_internal.split("#")[0] == internal_desc.split("#")[0].replace("'", "h")
 
@@ -400,7 +438,8 @@ def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_min
                                   use_regtest, bitcoind, microsd_wipe, load_export, dev,
                                   address_explorer_check, get_cc_key, import_miniscript,
                                   bitcoin_core_signer, import_duplicate, press_select,
-                                  virtdisk_path):
+                                  virtdisk_path, skip_if_useless_way, garbage_collector):
+    skip_if_useless_way(way)
     normal_cosign_core = False
     recovery_cosign_core = False
     if "multi(" in minisc.split("),", 1)[0]:
@@ -445,6 +484,7 @@ def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_min
 
     use_regtest()
     clear_miniscript()
+    goto_home()
     name = "core-miniscript"
     fname = f"{name}.txt"
     if way in ["qr", "nfc"]:
@@ -453,11 +493,12 @@ def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_min
         path_f = microsd_path if way == "sd" else virtdisk_path
         data = None
         fpath = path_f(fname)
+        garbage_collector.append(fpath)
         with open(fpath, "w") as f:
             f.write(desc)
 
     wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
-                                  passphrase=None, avoid_reuse=False, descriptors=True)
+                                passphrase=None, avoid_reuse=False, descriptors=True)
 
     _, story = import_miniscript(fname, way=way, data=data)
     try:
@@ -506,8 +547,10 @@ def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_min
         psbt = signer1.walletprocesspsbt(psbt, True, "ALL")["psbt"]
 
     name = f"{name}.psbt"
-    with open(microsd_path(name), "w") as f:
+    fpath = microsd_path(name)
+    with open(fpath, "w") as f:
         f.write(psbt)
+    garbage_collector.append(fpath)
     goto_home()
     pick_menu_item("Ready To Sign")
     time.sleep(.1)
@@ -527,8 +570,10 @@ def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_min
     press_select()
     fname_psbt = story.split("\n\n")[1]
     # fname_txn = story.split("\n\n")[3]
-    with open(microsd_path(fname_psbt), "r") as f:
+    fpath_psbt = microsd_path(fname_psbt)
+    with open(fpath_psbt, "r") as f:
         final_psbt = f.read().strip()
+    garbage_collector.append(fpath_psbt)
     # with open(microsd_path(fname_txn), "r") as f:
     #     final_txn = f.read().strip()
     res = wo.finalizepsbt(final_psbt)
@@ -563,9 +608,12 @@ def test_liana_miniscripts_complex(addr_fmt, minsc, bitcoind, use_regtest, clear
                                    microsd_path, pick_menu_item, cap_story,
                                    load_export, goto_home, address_explorer_check, cap_menu,
                                    get_cc_key, import_miniscript, bitcoin_core_signer,
-                                   import_duplicate, press_select, way):
+                                   import_duplicate, press_select, way, skip_if_useless_way,
+                                   garbage_collector):
+    skip_if_useless_way(way)
     use_regtest()
     clear_miniscript()
+    goto_home()
 
     minsc, to_gen = minsc
     signer_keys = minsc.count("@")
@@ -617,6 +665,8 @@ def test_liana_miniscripts_complex(addr_fmt, minsc, bitcoind, use_regtest, clear
         with open(fpath, "w") as f:
             f.write(desc)
 
+        garbage_collector.append(fpath)
+
     wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
                                   passphrase=None, avoid_reuse=False, descriptors=True)
     _, story = import_miniscript(fname, way=way, data=data)
@@ -663,8 +713,10 @@ def test_liana_miniscripts_complex(addr_fmt, minsc, bitcoind, use_regtest, clear
         psbt = s.walletprocesspsbt(psbt, True, "ALL")["psbt"]
 
     pname = f"{name}.psbt"
-    with open(microsd_path(pname), "w") as f:
+    ppath = microsd_path(pname)
+    with open(ppath, "w") as f:
         f.write(psbt)
+    garbage_collector.append(ppath)
     goto_home()
     pick_menu_item("Ready To Sign")
     time.sleep(.1)
@@ -684,8 +736,10 @@ def test_liana_miniscripts_complex(addr_fmt, minsc, bitcoind, use_regtest, clear
     press_select()
     fname_psbt = story.split("\n\n")[1]
     # fname_txn = story.split("\n\n")[3]
-    with open(microsd_path(fname_psbt), "r") as f:
+    fpath_psbt = microsd_path(fname_psbt)
+    with open(fpath_psbt, "r") as f:
         final_psbt = f.read().strip()
+    garbage_collector.append(fpath_psbt)
     # with open(microsd_path(fname_txn), "r") as f:
     #     final_txn = f.read().strip()
     res = wo.finalizepsbt(final_psbt)
@@ -714,7 +768,7 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
                         pick_menu_item, goto_home, cap_menu, microsd_path,
                         use_regtest, get_cc_key, import_miniscript,
                         bitcoin_core_signer, import_duplicate, press_select,
-                        virtdisk_path):
+                        virtdisk_path, garbage_collector):
     def doit(M, N, script_type, internal_key=None, cc_account=0, funded=True, r=None,
              tapscript_threshold=False, add_own_pk=False, same_account=False, way="sd"):
 
@@ -811,8 +865,10 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
             data = None
             fname = f"{name}.txt"
             path_f = microsd_path if way == 'sd' else virtdisk_path
-            with open(path_f(fname), "w") as f:
+            fpath = path_f(fname)
+            with open(fpath, "w") as f:
                 f.write(desc + "\n")
+            garbage_collector.append(fpath)
         else:
             data = dict(name=name, desc=desc)
 
@@ -821,7 +877,7 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
         assert name in story
         if script_type == "p2tr":
             assert "Taproot internal key" in story
-            assert "Taproot tree keys" in story
+            assert "Tapscript" in story
         assert "Press (1) to see extended public keys" in story
         if script_type == "p2wsh":
             assert "P2WSH" in story
@@ -903,18 +959,21 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("cc_first", [True, False])
 @pytest.mark.parametrize("add_pk", [True, False])
-@pytest.mark.parametrize("same_acct", [True, False])
+@pytest.mark.parametrize("same_acct", [None, True, False])
 @pytest.mark.parametrize("way", ["qr", "sd"])
 @pytest.mark.parametrize("M_N", [(3,4),(4,5),(5,6)])
 def test_tapscript(M_N, cc_first, clear_miniscript, goto_home, pick_menu_item,
                    cap_menu, cap_story, microsd_path, use_regtest, bitcoind, microsd_wipe,
                    load_export, bitcoind_miniscript, add_pk, same_acct, get_cc_key,
-                   press_select, way):
+                   press_select, way, skip_if_useless_way, garbage_collector):
+    skip_if_useless_way(way)
     M, N = M_N
     clear_miniscript()
     microsd_wipe()
     internal_key = None
-    if same_acct:
+    if same_acct is None:
+        internal_key = ranged_unspendable_internal_key()
+    elif same_acct:
         # provide internal key with same account derivation (change based derivation)
         internal_key = get_cc_key("m/86h/1h/0h", subderiv='/<10;11>/*')
 
@@ -929,8 +988,12 @@ def test_tapscript(M_N, cc_first, clear_miniscript, goto_home, pick_menu_item,
     if not cc_first:
         for s in signers[0:M-1]:
             psbt = s.walletprocesspsbt(psbt, True, "DEFAULT")["psbt"]
-    with open(microsd_path("ts_tree.psbt"), "w") as f:
+
+    psbt_fpath = microsd_path("ts_tree.psbt")
+    with open(psbt_fpath, "w") as f:
         f.write(psbt)
+
+    garbage_collector.append(psbt_fpath)
     time.sleep(2)
     goto_home()
     pick_menu_item("Ready To Sign")
@@ -947,8 +1010,10 @@ def test_tapscript(M_N, cc_first, clear_miniscript, goto_home, pick_menu_item,
     title, story = cap_story()
     assert title == "PSBT Signed"
     fname = [i for i in story.split("\n\n") if ".psbt" in i][0]
-    with open(microsd_path(fname), "r") as f:
+    fpath = microsd_path(fname)
+    with open(fpath, "r") as f:
         psbt = f.read().strip()
+    garbage_collector.append(fpath)
     if cc_first:
         # we MUST be able to finalize this without anyone else if add pk
         if not add_pk:
@@ -967,14 +1032,23 @@ def test_tapscript(M_N, cc_first, clear_miniscript, goto_home, pick_menu_item,
 @pytest.mark.parametrize("add_pk", [True, False])
 @pytest.mark.parametrize('M_N', [(3, 15), (2, 2), (3, 5)])
 @pytest.mark.parametrize('way', ["qr", "sd", "vdisk", "nfc"])
+@pytest.mark.parametrize('internal_type', ["unspend(", "xpub", "static"])
 def test_bitcoind_tapscript_address(M_N, clear_miniscript, bitcoind_miniscript,
                                     use_regtest, way, csa, address_explorer_check,
-                                    add_pk):
+                                    add_pk, internal_type, skip_if_useless_way):
+    skip_if_useless_way(way)
     use_regtest()
     clear_miniscript()
     M, N = M_N
+
+    ik = None  # default static
+    if internal_type == "unspend(":
+        ik = f"unspend({os.urandom(32).hex()})/<20;21>/*"
+    elif internal_type == "xpub":
+        ik = ranged_unspendable_internal_key(os.urandom(32))
+
     ms_wo, _ = bitcoind_miniscript(M, N, "p2tr", funded=False, tapscript_threshold=csa,
-                                   add_own_pk=add_pk, way=way)
+                                   add_own_pk=add_pk, way=way, internal_key=ik)
     address_explorer_check(way, "bech32m", ms_wo, "minisc")
 
 
@@ -982,10 +1056,19 @@ def test_bitcoind_tapscript_address(M_N, clear_miniscript, bitcoind_miniscript,
 @pytest.mark.parametrize("cc_first", [True, False])
 @pytest.mark.parametrize("m_n", [(2,2), (3, 5), (32, 32)])
 @pytest.mark.parametrize("way", ["qr", "sd"])
-@pytest.mark.parametrize("internal_key_spendable", [True, False, "77ec0c0fdb9733e6a3c753b1374c4a465cba80dff52fc196972640a26dd08b76", "@"])
+@pytest.mark.parametrize("internal_key_spendable", [
+    True,
+    False,
+    "77ec0c0fdb9733e6a3c753b1374c4a465cba80dff52fc196972640a26dd08b76",
+    "@",
+    "tpubD6NzVbkrYhZ4WhUnV3cPSoRWGf9AUdG2dvNpsXPiYzuTnxzAxemnbajrATDBWhaAVreZSzoGSe3YbbkY2K267tK3TrRmNiLH2pRBpo8yaWm/<2;3>/*",
+    "unspend(c72231504cf8c1bbefa55974db4e0cdac781049a9a81a87e7ff5beeb45b34d3d)/<0;1>/*"
+])
 def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, bitcoind, goto_home, cap_menu,
                             pick_menu_item, cap_story, microsd_path, load_export, microsd_wipe, dev, way,
-                            bitcoind_miniscript, clear_miniscript, get_cc_key, press_cancel, press_select):
+                            bitcoind_miniscript, clear_miniscript, get_cc_key, press_cancel, press_select,
+                            skip_if_useless_way, garbage_collector):
+    skip_if_useless_way(way)
     M, N = m_n
     clear_miniscript()
     microsd_wipe()
@@ -993,10 +1076,13 @@ def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, 
     r = None
     if internal_key_spendable is True:
         internal_key = get_cc_key("86h/0h/3h")
-    elif isinstance(internal_key_spendable, str) and len(internal_key_spendable) == 64:
-        r = internal_key_spendable
     elif internal_key_spendable == "@":
         r = "@"
+    elif isinstance(internal_key_spendable, str):
+        if len(internal_key_spendable) == 64:
+            r = internal_key_spendable
+        else:
+            internal_key = internal_key_spendable
 
     tapscript_wo, bitcoind_signers = bitcoind_miniscript(
         M, N, "p2tr", internal_key=internal_key, r=r,
@@ -1011,8 +1097,12 @@ def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, 
         for i in range(M - 1):
             signer = bitcoind_signers[i]
             psbt = signer.walletprocesspsbt(psbt, True, "DEFAULT", True)["psbt"]
-    with open(microsd_path(fname), "w") as f:
+
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
         f.write(psbt)
+
+    garbage_collector.append(fpath)
     goto_home()
     # bug in goto_home ?
     press_cancel()
@@ -1036,14 +1126,18 @@ def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, 
         signed_fname = split_story[1]
         signed_txn_fname = split_story[-2]
         cc_tx_id = split_story[-1].split("\n")[-1]
-        with open(microsd_path(signed_txn_fname), "r") as f:
+        txn_fpath = microsd_path(signed_txn_fname)
+        with open(txn_fpath, "r") as f:
             signed_txn = f.read().strip()
+        garbage_collector.append(txn_fpath)
     else:
         signed_fname = split_story[-1]
 
-    with open(microsd_path(signed_fname), "r") as f:
+    fpath = microsd_path(signed_fname)
+    with open(fpath, "r") as f:
         signed_psbt = f.read().strip()
 
+    garbage_collector.append(fpath)
     if cc_first:
         for signer in bitcoind_signers:
             signed_psbt = signer.walletprocesspsbt(signed_psbt, True, "DEFAULT", True)["psbt"]
@@ -1064,7 +1158,8 @@ def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, 
 def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bitcoind,
                       internal_key_spendable, dev, microsd_path, get_cc_key,
                       pick_menu_item, cap_story, goto_home, cap_menu, load_export,
-                      import_miniscript, bitcoin_core_signer, import_duplicate, press_select):
+                      import_miniscript, bitcoin_core_signer, import_duplicate,
+                      press_select, garbage_collector):
     use_regtest()
     clear_miniscript()
     microsd_wipe()
@@ -1095,13 +1190,16 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
     )
 
     fname = "ts_pk.txt"
-    with open(microsd_path(fname), "w") as f:
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
         f.write(desc + "\n")
+
+    garbage_collector.append(fpath)
     _, story = import_miniscript(fname)
     assert "Create new miniscript wallet?" in story
     assert fname.split(".")[0] in story
     assert "Taproot internal key" in story
-    assert "Taproot tree keys" in story
+    assert "Tapscript" in story
     assert "Press (1) to see extended public keys" in story
     assert "P2TR" in story
 
@@ -1133,8 +1231,11 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
     dest_addr = ts.getnewaddress("", "bech32m")  # selfspend
     psbt = ts.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 2})["psbt"]
     fname = "ts_pk.psbt"
-    with open(microsd_path(fname), "w") as f:
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
         f.write(psbt)
+
+    garbage_collector.append(fpath)
 
     goto_home()
     pick_menu_item("Ready To Sign")
@@ -1155,8 +1256,11 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
     press_select()
     fname_psbt = story.split("\n\n")[1]
     # fname_txn = story.split("\n\n")[3]
-    with open(microsd_path(fname_psbt), "r") as f:
+    fpath_psbt = microsd_path(fname_psbt)
+    with open(fpath_psbt, "r") as f:
         final_psbt = f.read().strip()
+
+    garbage_collector.append(fpath_psbt)
     # with open(microsd_path(fname_txn), "r") as f:
     #     final_txn = f.read().strip()
     res = ts.finalizepsbt(final_psbt)
@@ -1172,8 +1276,10 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
 @pytest.mark.parametrize("desc", [
     "tr(50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0,{{sortedmulti_a(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*),sortedmulti_a(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)},sortedmulti_a(2,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)})#tpm3afjn",
     "tr(50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0,{sortedmulti_a(2,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)}})",
+    "tr(tpubD6NzVbkrYhZ4XB7hZjurMYsPsgNY32QYGZ8YFVU7cy1VBRNoYpKAVuUfqfUFss6BooXRrCeYAdK9av2yFnqWXZaUMJuZdpE9Kuh6gubCVHu/<0;1>/*,{sortedmulti_a(2,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)}})",
     "tr(50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0,{{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)},sortedmulti_a(2,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)})",
     "tr(50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0,{{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)},or_d(pk([0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*),and_v(v:pkh([30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),older(500)))})",
+    "tr(unspend(b320077905d0954b01a8a328ea08c0ac3b4b066d1240f47a1b2c58651dcda4eb)/<0;1>/*,{{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)},or_d(pk([0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*),and_v(v:pkh([30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),older(500)))})",
 ])
 def test_tapscript_import_export(clear_miniscript, pick_menu_item, cap_story,
                                  import_miniscript, load_export, desc, microsd_path,
@@ -1198,8 +1304,8 @@ def test_tapscript_import_export(clear_miniscript, pick_menu_item, cap_story,
 
 
 def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe, bitcoind, dev,
-                                    goto_home, pick_menu_item, microsd_path,
-                                    cap_story, load_export, get_cc_key, import_miniscript,
+                                    goto_home, pick_menu_item, microsd_path, import_miniscript,
+                                    cap_story, load_export, get_cc_key, garbage_collector,
                                     bitcoin_core_signer, import_duplicate, press_select):
     # works in core - but some discussions are ongoing
     # https://github.com/bitcoin/bitcoin/issues/27104
@@ -1216,14 +1322,17 @@ def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe,
     tmplt = tmplt % (cc_leaf, cc_leaf)
     desc = f"tr({core_key},{tmplt})"
     fname = "dup_leafs.txt"
-    with open(microsd_path(fname), "w") as f:
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
         f.write(desc)
+
+    garbage_collector.append(fpath)
 
     _, story = import_miniscript(fname)
     assert "Create new miniscript wallet?" in story
     assert fname.split(".")[0] in story
     assert "Taproot internal key" in story
-    assert "Taproot tree keys" in story
+    assert "Tapscript" in story
     assert "Press (1) to see extended public keys" in story
     assert "P2TR" in story
 
@@ -1259,9 +1368,10 @@ def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe,
     dest_addr = ts.getnewaddress("", "bech32m")  # selfspend
     psbt = ts.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 2})["psbt"]
     fname = "ts_pk.psbt"
-    with open(microsd_path(fname), "w") as f:
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
         f.write(psbt)
-
+    garbage_collector.append(fpath)
     goto_home()
     pick_menu_item("Ready To Sign")
     time.sleep(.1)
@@ -1281,8 +1391,10 @@ def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe,
     press_select()
     fname_psbt = story.split("\n\n")[1]
     # fname_txn = story.split("\n\n")[3]
-    with open(microsd_path(fname_psbt), "r") as f:
+    fpath_psbt = microsd_path(fname_psbt)
+    with open(fpath_psbt, "r") as f:
         final_psbt = f.read().strip()
+    garbage_collector.append(fpath_psbt)
     # with open(microsd_path(fname_txn), "r") as f:
     #     final_txn = f.read().strip()
     res = ts.finalizepsbt(final_psbt)
@@ -1298,7 +1410,7 @@ def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe,
 def test_same_key_account_based_minisc(goto_home, pick_menu_item, cap_story,
                                        clear_miniscript, microsd_path, load_export, bitcoind,
                                        import_miniscript, use_regtest, import_duplicate,
-                                       press_select):
+                                       press_select, garbage_collector):
     clear_miniscript()
     use_regtest()
 
@@ -1310,8 +1422,10 @@ def test_same_key_account_based_minisc(goto_home, pick_menu_item, cap_story,
 
     name = "mini-accounts"
     fname = f"{name}.txt"
-    with open(microsd_path(fname), "w") as f:
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
         f.write(desc)
+    garbage_collector.append(fpath)
 
     _, story = import_miniscript(fname)
     assert "Create new miniscript wallet?" in story
@@ -1350,9 +1464,10 @@ def test_same_key_account_based_minisc(goto_home, pick_menu_item, cap_story,
     dest_addr = wo.getnewaddress("", "bech32")  # selfspend
     psbt = wo.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 2})["psbt"]
     fname = "multi-acct.psbt"
-    with open(microsd_path(fname), "w") as f:
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
         f.write(psbt)
-
+    garbage_collector.append(fpath)
     goto_home()
     pick_menu_item("Ready To Sign")
     time.sleep(.1)
@@ -1372,8 +1487,10 @@ def test_same_key_account_based_minisc(goto_home, pick_menu_item, cap_story,
     press_select()
     fname_psbt = story.split("\n\n")[1]
     # fname_txn = story.split("\n\n")[3]
-    with open(microsd_path(fname_psbt), "r") as f:
+    fpath_psbt = microsd_path(fname_psbt)
+    with open(fpath_psbt, "r") as f:
         final_psbt = f.read().strip()
+    garbage_collector.append(fpath_psbt)
 
     _psbt = BasicPSBT().parse(final_psbt.encode())
     assert len(_psbt.inputs[0].part_sigs) == 2
@@ -1434,7 +1551,7 @@ CHANGE_BASED_DESCS = [
 def test_same_key_change_based_minisc(goto_home, pick_menu_item, cap_story,
                                       clear_miniscript, microsd_path, load_export, bitcoind,
                                       import_miniscript, address_explorer_check, use_regtest,
-                                      desc, press_select):
+                                      desc, press_select, garbage_collector):
     clear_miniscript()
     use_regtest()
     if desc.startswith("tr("):
@@ -1444,8 +1561,10 @@ def test_same_key_change_based_minisc(goto_home, pick_menu_item, cap_story,
 
     name = "mini-change"
     fname = f"{name}.txt"
-    with open(microsd_path(fname), "w") as f:
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
         f.write(desc)
+    garbage_collector.append(fpath)
 
     _, story = import_miniscript(fname)
     assert "Create new miniscript wallet?" in story
@@ -1483,9 +1602,10 @@ def test_same_key_change_based_minisc(goto_home, pick_menu_item, cap_story,
     dest_addr = wo.getnewaddress("", af)  # selfspend
     psbt = wo.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 2})["psbt"]
     fname = "msc-change-conso.psbt"
-    with open(microsd_path(fname), "w") as f:
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
         f.write(psbt)
-
+    garbage_collector.append(fpath)
     goto_home()
     pick_menu_item("Ready To Sign")
     time.sleep(.1)
@@ -1504,8 +1624,10 @@ def test_same_key_change_based_minisc(goto_home, pick_menu_item, cap_story,
     assert "Updated PSBT is:" in story
     press_select()
     fname_psbt = story.split("\n\n")[1]
-    with open(microsd_path(fname_psbt), "r") as f:
+    fpath_psbt = microsd_path(fname_psbt)
+    with open(fpath_psbt, "r") as f:
         final_psbt = f.read().strip()
+    garbage_collector.append(fpath_psbt)
 
     res = wo.finalizepsbt(final_psbt)
     assert res["complete"]
@@ -1526,9 +1648,10 @@ def test_same_key_change_based_minisc(goto_home, pick_menu_item, cap_story,
         0, {"fee_rate": 2}
     )["psbt"]
     fname = "msc-change-send.psbt"
-    with open(microsd_path(fname), "w") as f:
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
         f.write(psbt)
-
+    garbage_collector.append(fpath)
     goto_home()
     pick_menu_item("Ready To Sign")
     time.sleep(.1)
@@ -1547,9 +1670,10 @@ def test_same_key_change_based_minisc(goto_home, pick_menu_item, cap_story,
     assert "Updated PSBT is:" in story
     press_select()
     fname_psbt = story.split("\n\n")[1]
-    with open(microsd_path(fname_psbt), "r") as f:
+    fpath_psbt = microsd_path(fname_psbt)
+    with open(fpath_psbt, "r") as f:
         final_psbt = f.read().strip()
-
+    garbage_collector.append(fpath_psbt)
     res = wo.finalizepsbt(final_psbt)
     assert res["complete"]
     tx_hex = res["hex"]
@@ -1564,7 +1688,7 @@ def test_same_key_change_based_minisc(goto_home, pick_menu_item, cap_story,
 
 def test_same_key_account_based_multisig(goto_home, pick_menu_item, cap_story,
                                          clear_miniscript, microsd_path, load_export, bitcoind,
-                                         import_miniscript):
+                                         import_miniscript, garbage_collector):
     clear_miniscript()
     desc = ("wsh(sortedmulti(2,"
             "[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*,"
@@ -1572,8 +1696,10 @@ def test_same_key_account_based_multisig(goto_home, pick_menu_item, cap_story,
             "))")
     name = "multi-accounts"
     fname = f"{name}.txt"
-    with open(microsd_path(fname), "w") as f:
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
         f.write(desc)
+    garbage_collector.append(fpath)
 
     _, story = import_miniscript(fname)
     assert "Failed to import" in story
@@ -1587,20 +1713,23 @@ def test_same_key_account_based_multisig(goto_home, pick_menu_item, cap_story,
     "tr(%s,or_d(pk(@A),and_v(v:pkh(@A),older(5))))" % H,
 ])
 def test_insane_miniscript(get_cc_key, pick_menu_item, cap_story,
-                           microsd_path, desc, import_miniscript):
+                           microsd_path, desc, import_miniscript,
+                           garbage_collector):
 
     cc_key = get_cc_key("84h/0h/0h")
     desc = desc.replace("@A", cc_key)
     fname = "insane.txt"
-    with open(microsd_path(fname), "w") as f:
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
         f.write(desc)
+    garbage_collector.append(fpath)
 
     _, story = import_miniscript(fname)
     assert "Failed to import" in story
     assert "Insane" in story
 
 def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
-                         microsd_path, import_miniscript):
+                         microsd_path, import_miniscript, garbage_collector):
     leaf_num = 9
     scripts = []
     for i in range(leaf_num):
@@ -1610,8 +1739,10 @@ def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
     tree = TREE[leaf_num] % tuple(scripts)
     desc = f"tr({H},{tree})"
     fname = "9leafs.txt"
-    with open(microsd_path(fname), "w") as f:
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
         f.write(desc)
+    garbage_collector.append(fpath)
     _, story = import_miniscript(fname)
     assert "Failed to import" in story
     assert "num_leafs > 8" in story
@@ -1621,6 +1752,7 @@ def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
 @pytest.mark.parametrize("same_acct", [True, False])
 @pytest.mark.parametrize("recovery", [True, False])
 @pytest.mark.parametrize("leaf2_mine", [True, False])
+@pytest.mark.parametrize("internal_type", ["unspend(", "xpub", "static"])
 @pytest.mark.parametrize("minisc", [
     "or_d(pk(@A),and_v(v:pkh(@B),locktime(N)))",
 
@@ -1631,10 +1763,11 @@ def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
     "or_d(pk(@A),and_v(v:multi_a(2,@B,@C),locktime(N)))",
 ])
 def test_minitapscript(leaf2_mine, recovery, lt_type, minisc, clear_miniscript, goto_home,
-                       pick_menu_item, cap_menu, cap_story, microsd_path,
+                       pick_menu_item, cap_menu, cap_story, microsd_path, internal_type,
                        use_regtest, bitcoind, microsd_wipe, load_export, dev,
                        address_explorer_check, get_cc_key, import_miniscript,
-                       bitcoin_core_signer, same_acct, import_duplicate, press_select):
+                       bitcoin_core_signer, same_acct, import_duplicate, press_select,
+                       garbage_collector):
 
     # needs bitcoind 26.0
     normal_cosign_core = False
@@ -1683,10 +1816,16 @@ def test_minitapscript(leaf2_mine, recovery, lt_type, minisc, clear_miniscript, 
     if "@C" in minisc:
         minisc = minisc.replace("@C", core_keys[1])
 
+    ik = H
+    if internal_type == "unspend(":
+        ik = f"unspend({os.urandom(32).hex()})/<2;3>/*"
+    elif internal_type == "xpub":
+        ik = ranged_unspendable_internal_key(os.urandom(32))
+
     if leaf2_mine:
-        desc = f"tr({H},{{{minisc},pk({cc_key1})}})"
+        desc = f"tr({ik},{{{minisc},pk({cc_key1})}})"
     else:
-        desc = f"tr({H},{{pk({core_keys[2]}),{minisc}}})"
+        desc = f"tr({ik},{{pk({core_keys[2]}),{minisc}}})"
 
     use_regtest()
     clear_miniscript()
@@ -1695,6 +1834,8 @@ def test_minitapscript(leaf2_mine, recovery, lt_type, minisc, clear_miniscript, 
     fpath = microsd_path(fname)
     with open(fpath, "w") as f:
         f.write(desc)
+
+    garbage_collector.append(fpath)
 
     wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
                                   passphrase=None, avoid_reuse=False, descriptors=True)
@@ -1741,8 +1882,10 @@ def test_minitapscript(leaf2_mine, recovery, lt_type, minisc, clear_miniscript, 
         psbt = signers[1].walletprocesspsbt(psbt, True, "ALL")["psbt"]
 
     name = f"{name}.psbt"
-    with open(microsd_path(name), "w") as f:
+    fpath = microsd_path(name)
+    with open(fpath, "w") as f:
         f.write(psbt)
+    garbage_collector.append(fpath)
     goto_home()
     pick_menu_item("Ready To Sign")
     time.sleep(.1)
@@ -1762,8 +1905,10 @@ def test_minitapscript(leaf2_mine, recovery, lt_type, minisc, clear_miniscript, 
     press_select()
     fname_psbt = story.split("\n\n")[1]
     # fname_txn = story.split("\n\n")[3]
+    fpath_psbt = microsd_path(fname_psbt)
     with open(microsd_path(fname_psbt), "r") as f:
         final_psbt = f.read().strip()
+    garbage_collector.append(fpath)
     # with open(microsd_path(fname_txn), "r") as f:
     #     final_txn = f.read().strip()
     res = wo.finalizepsbt(final_psbt)
@@ -1792,11 +1937,13 @@ def test_minitapscript(leaf2_mine, recovery, lt_type, minisc, clear_miniscript, 
     "sh(wsh(or_d(pk([30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*),and_v(v:multi_a(2,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*),older(500)))))",
 ])
 def test_multi_mixin(desc, clear_miniscript, microsd_path, pick_menu_item,
-                     cap_story, import_miniscript):
+                     cap_story, import_miniscript, garbage_collector):
     clear_miniscript()
     fname = "imdesc.txt"
+    fpath = microsd_path(fname)
     with open(microsd_path(fname), "w") as f:
         f.write(desc)
+    garbage_collector.append(fpath)
 
     title, story = import_miniscript(fname)
     assert "Failed to import" in story
@@ -1811,7 +1958,8 @@ def test_timelock_mixin():
 @pytest.mark.parametrize("cc_first", [True, False])
 def test_d_wrapper(addr_fmt, bitcoind, get_cc_key, goto_home, pick_menu_item, cap_story, cap_menu,
                    load_export, microsd_path, use_regtest, clear_miniscript, cc_first,
-                   address_explorer_check, import_miniscript, bitcoin_core_signer, press_select):
+                   address_explorer_check, import_miniscript, bitcoin_core_signer, press_select,
+                   garbage_collector):
 
     # check D wrapper u property for segwit v0 and v1
     # https://github.com/bitcoin/bitcoin/pull/24906/files
@@ -1838,10 +1986,10 @@ def test_d_wrapper(addr_fmt, bitcoind, get_cc_key, goto_home, pick_menu_item, ca
 
     name = "d_wrapper"
     fname = f"{name}.txt"
-
     fpath = microsd_path(fname)
     with open(fpath, "w") as f:
         f.write(desc)
+    garbage_collector.append(fpath)
 
     wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
                                   passphrase=None, avoid_reuse=False, descriptors=True)
@@ -1898,8 +2046,10 @@ def test_d_wrapper(addr_fmt, bitcoind, get_cc_key, goto_home, pick_menu_item, ca
         to_sign_psbt = psbt
 
     name = f"{name}.psbt"
-    with open(microsd_path(name), "w") as f:
+    fpath = microsd_path(name)
+    with open(fpath, "w") as f:
         f.write(to_sign_psbt)
+    garbage_collector.append(fpath)
     goto_home()
     pick_menu_item("Ready To Sign")
     time.sleep(.1)
@@ -1919,9 +2069,10 @@ def test_d_wrapper(addr_fmt, bitcoind, get_cc_key, goto_home, pick_menu_item, ca
     press_select()
     fname_psbt = story.split("\n\n")[1]
     # fname_txn = story.split("\n\n")[3]
-    with open(microsd_path(fname_psbt), "r") as f:
+    fpath_psbt = microsd_path(fname_psbt)
+    with open(fpath_psbt, "r") as f:
         final_psbt = f.read().strip()
-
+    garbage_collector.append(fpath_psbt)
     assert final_psbt != to_sign_psbt
     # with open(microsd_path(fname_txn), "r") as f:
     #     final_txn = f.read().strip()
@@ -1952,7 +2103,7 @@ def test_d_wrapper(addr_fmt, bitcoind, get_cc_key, goto_home, pick_menu_item, ca
 
 def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
                          clear_miniscript, goto_home, cap_menu, pick_menu_item,
-                         import_miniscript, microsd_path, press_select):
+                         import_miniscript, microsd_path, press_select, garbage_collector):
     clear_miniscript()
     use_regtest()
 
@@ -1965,8 +2116,10 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
     fname_xtn0 = "XTN0.txt"
 
     for desc, fname in [(x, fname_xtn), (z, fname_btc), (y, fname_xtn0)]:
-        with open(microsd_path(fname), "w") as f:
+        fpath = microsd_path(fname)
+        with open(fpath, "w") as f:
             f.write(desc)
+        garbage_collector.append(fpath)
 
     # cannot import XPUBS when testnet/regtest enabled
     _, story = import_miniscript(fname_btc)
