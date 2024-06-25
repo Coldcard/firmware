@@ -25,6 +25,8 @@ This lists the new changes that have not yet been published in a normal release.
   after a keypress.
 - Bugfix: Calculate progress bar correctly in Address Explorer after first page.
 - Bugfix: Search also Wrapped Segwit single sig addresses if P2SH address provided, not just multisig (multisig has precedence for P2SH addresses)
+- Bugfix: Address search would not find addresses for non-zero account numbers that had
+  been exported but not yet seen in a PSBT.
 
 # Mk4 Specific Changes
 

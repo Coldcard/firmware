@@ -1047,6 +1047,9 @@ async def export_xpub(label, _2, item):
             node = sv.derive_path(path) if path != 'm' else sv.node
             xpub = chain.serialize_public(node, addr_fmt)
 
+        from ownership import OWNERSHIP
+        OWNERSHIP.note_wallet_used(addr_fmt, acct)
+
         if glob.NFC and ch in '3'+KEY_NFC:
             await glob.NFC.share_text(xpub)
         else:

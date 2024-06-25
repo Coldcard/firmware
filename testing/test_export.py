@@ -22,10 +22,35 @@ from charcodes import KEY_NFC, KEY_QR
 def mk4_qr_not_allowed(is_q1):
     def doit(way):
         if way == "qr" and not is_q1:
-            pytest.skip("mk4 QR not allowed")
+            pytest.skip("mk4 QR not supported")
     return doit
 
 
+@pytest.fixture
+def expect_acctnum_captured(settings_get, settings_set):
+    # verify account number got captured, if non-zero; so address search covers it
+    b4 = settings_get('accts', [])
+    settings_set('accts', [])
+
+    def doit(expect_acctnum):
+        if isinstance(expect_acctnum, str):
+            expect_acctnum = int(expect_acctnum)
+        if not expect_acctnum:
+            # we don't store zero
+            return []
+
+        aft = settings_get('accts', [])
+        if not aft:
+            time.sleep(.1)
+            aft = settings_get('accts', [])
+        types = [a for a,b in aft if b == expect_acctnum]
+        assert len(types) >= 1, f'didnt capture account num {expect_acctnum}: {aft!r}'
+
+        return types
+
+    yield doit
+
+    settings_set('accts', b4)
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('acct_num', [None, '0', '99', '123'])
@@ -33,7 +58,7 @@ def mk4_qr_not_allowed(is_q1):
 def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home, cap_story,
                      need_keypress, microsd_path, virtdisk_path, bitcoind_wallet, bitcoind_d_wallet,
                      enter_number, nfc_read_text, load_export, bitcoind, press_select,
-                     mk4_qr_not_allowed):
+                     mk4_qr_not_allowed, expect_acctnum_captured):
     mk4_qr_not_allowed(way)
     # test UX and operation of the 'bitcoin core' wallet export
     use_regtest()
@@ -57,6 +82,8 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
     else:
         acct_num = '0'
         press_select()
+
+    expect_acctnum_captured(acct_num)
 
     export = load_export(way, label="Bitcoin Core", is_json=False, addr_fmt=AF_P2WPKH)
     fp = io.StringIO(export).readlines()
@@ -212,7 +239,7 @@ def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, press_sel
 @pytest.mark.parametrize('testnet', [True, False])
 def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, cap_story, need_keypress,
                          microsd_path, nfc_read_json, virtdisk_path, use_mainnet, testnet, load_export,
-                         press_select, mk4_qr_not_allowed):
+                         press_select, mk4_qr_not_allowed, expect_acctnum_captured):
     # lightly test electrum wallet export
     mk4_qr_not_allowed(way)
     if not testnet:
@@ -245,6 +272,8 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
 
     time.sleep(0.1)
     pick_menu_item(mode)
+
+    expect_acctnum_captured(acct_num)
 
     obj = load_export(way, label="Electrum wallet", is_json=True, addr_fmt=af)
 
@@ -281,14 +310,15 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
 @pytest.mark.parametrize('app', [
     # no need to run them all - just name check differs
     ("Generic JSON", "Generic Export"),
+    ("Nunchuk", "Nunchuk Wallet"),
+    # These differ only in the menu title. If that changes, add them back here... test latest only
     # ("Lily Wallet", "Lily Wallet"),
     # ("Sparrow Wallet", "Sparrow Wallet"),
-    ("Nunchuk", "Nunchuk Wallet"),
-    # ("Theya", "Theya Wallet"),
+    ("Theya", "Theya Wallet"),
 ])
 def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap_story, need_keypress,
                          microsd_path, nfc_read_json, virtdisk_path, addr_vs_path, enter_number,
-                         load_export, testnet, use_mainnet, press_select, mk4_qr_not_allowed):
+                         load_export, testnet, use_mainnet, press_select, mk4_qr_not_allowed, expect_acctnum_captured):
     mk4_qr_not_allowed(way)
 
     if not testnet:
@@ -315,6 +345,7 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
         acct_num = '0'
         press_select()
 
+    expect_acctnum_captured(acct_num)
     obj = load_export(way, label=app_f_name, is_json=True, addr_fmt=AF_CLASSIC)
 
     for fn in ['xfp', 'xpub', 'chain']:
@@ -369,8 +400,10 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
 @pytest.mark.parametrize('testnet', [True, False])
 @pytest.mark.parametrize('acct_num', [None, '0', '99', '123'])
 def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_keypress, acct_num,
-                          microsd_path, nfc_read_json, virtdisk_path, testnet, enter_number,
-                          load_export, settings_set, use_mainnet, press_select, mk4_qr_not_allowed):
+              microsd_path, nfc_read_json, virtdisk_path, testnet, enter_number,
+              load_export, settings_set, use_mainnet, press_select,
+              mk4_qr_not_allowed, expect_acctnum_captured):
+
     # test UX and operation of the 'unchained export'
     mk4_qr_not_allowed(way)
 
@@ -396,6 +429,7 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
         acct_num = '0'
         press_select()
 
+    expect_acctnum_captured(acct_num)
     obj = load_export(way, label="Unchained", is_json=True, sig_check=False)
 
     ek = simulator_fixed_tprv if testnet else simulator_fixed_xprv
@@ -489,7 +523,7 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, mi
 def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home,
                      cap_story, need_keypress, enter_number, cap_screen_qr,
                      use_mainnet, nfc_read_text, is_q1, press_select, press_cancel,
-                     press_nfc):
+                     press_nfc, expect_acctnum_captured):
     # XPUB's via QR
     use_mainnet()
 
@@ -555,6 +589,8 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
         if got_pub[0] not in 'xt':
             got_pub,*_ = slip132undo(got_pub)
 
+        expect_acctnum_captured(acct_num)
+
         got = BIP32Node.from_wallet_key(got_pub)
 
         wallet = BIP32Node.from_wallet_key(simulator_fixed_tprv)
@@ -569,9 +605,10 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
 @pytest.mark.parametrize("addr_fmt", [AF_P2WPKH, AF_P2WPKH_P2SH, AF_CLASSIC])
 @pytest.mark.parametrize("acct_num", [None, 0,  1, (2 ** 31) - 1])
 @pytest.mark.parametrize("int_ext", [True, False])
-def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, settings_set, need_keypress,
-                                   pick_menu_item, way, cap_story, cap_menu, int_ext, settings_get,
-                                   virtdisk_path, load_export, press_select, mk4_qr_not_allowed):
+def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home,
+            settings_set, need_keypress, expect_acctnum_captured,
+            pick_menu_item, way, cap_story, cap_menu, int_ext, settings_get,
+            virtdisk_path, load_export, press_select, mk4_qr_not_allowed):
     mk4_qr_not_allowed(way)
 
     settings_set('chain', chain)
@@ -622,6 +659,8 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, setting
     assert menu_item in menu
     pick_menu_item(menu_item)
 
+    expect_acctnum_captured(acct_num)
+
     contents = load_export(way, label="Descriptor", is_json=False, addr_fmt=addr_fmt)
     descriptor = contents.strip()
 
@@ -650,7 +689,8 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, setting
 def test_zeus_descriptor_export(addr_fmt, acct_num, goto_home, need_keypress, pick_menu_item,
                                 way, cap_story, cap_menu, nfc_read_text, settings_get, chain,
                                 virtdisk_path, load_export, press_select, mk4_qr_not_allowed,
-                                settings_set, is_q1, press_cancel, cap_screen_qr, press_nfc):
+                                settings_set, is_q1, press_cancel, cap_screen_qr, press_nfc,
+                                expect_acctnum_captured):
 
     mk4_qr_not_allowed(way)
     settings_set('chain', chain)
@@ -694,6 +734,8 @@ def test_zeus_descriptor_export(addr_fmt, acct_num, goto_home, need_keypress, pi
 
     time.sleep(.1)
     title, story = cap_story()
+
+    expect_acctnum_captured(acct_num)
 
     if way == "qr":
         assert ("%s to show QR" % (KEY_QR if is_q1 else "(4)")) in story

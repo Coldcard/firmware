@@ -11,6 +11,7 @@ from glob import settings
 from auth import write_sig_file
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH
 from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
+from ownership import OWNERSHIP
 
 async def export_by_qr(body, label, is_json=False):
     # render as QR and show on-screen
@@ -234,6 +235,8 @@ importmulti '{imp_multi}'
 
     body += '\n'
 
+    OWNERSHIP.note_wallet_used(AF_P2WPKH, account_num)
+
     ch = chains.current_chain()
     derive = "84h/{coin_type}h/{account}h".format(account=account_num, coin_type=ch.b44_cointype)
     await write_text_file(fname_pattern, body, 'Bitcoin Core', derive + "/0/0", AF_P2WPKH)
@@ -260,6 +263,8 @@ def generate_bitcoin_core_wallet(account_num, example_addrs):
 
     xfp = settings.get('xfp')
     _, vers, _ = version.get_mpy_version()
+
+    OWNERSHIP.note_wallet_used(AF_P2WPKH, account_num)
 
     desc_obj = Descriptor(keys=[(xfp, derive, xpub)], addr_fmt=AF_P2WPKH)
     # for importmulti
@@ -331,6 +336,8 @@ def generate_unchained_export(account_num=0):
             node = sv.derive_path(dd)
             xp = chain.serialize_public(node, fmt)
 
+            OWNERSHIP.note_wallet_used(fmt, account_num)
+
             rv['%s_deriv' % name] = dd
             rv[name] = xp
 
@@ -374,6 +381,8 @@ def generate_generic_export(account_num=0):
             else:
                 desc = Descriptor(keys=[(master_xfp, dd, xp)], addr_fmt=fmt).serialize(int_ext=True)
 
+                OWNERSHIP.note_wallet_used(fmt, account_num)
+
             rv[name] = OrderedDict(name=atype,
                                    xfp=xfp,
                                    deriv=dd,
@@ -411,6 +420,8 @@ def generate_electrum_wallet(addr_type, account_num):
     else:
         raise ValueError(addr_type)
 
+    OWNERSHIP.note_wallet_used(addr_type, account_num)
+
     derive = "m/{mode}h/{coin_type}h/{account}h".format(mode=mode,
                                     account=account_num, coin_type=chain.b44_cointype)
 
@@ -439,6 +450,7 @@ def generate_electrum_wallet(addr_type, account_num):
 
 async def make_json_wallet(label, func, fname_pattern='new-wallet.json'):
     # Record **public** values and helpful data into a JSON file
+    # - OWNERSHIP.note_wallet_used(..) should be called already by our caller or func
 
     from glob import dis, NFC
     from files import CardSlot, CardMissingError, needs_microsd
@@ -510,6 +522,8 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
             mode = 49
         else:
             raise ValueError(addr_type)
+
+    OWNERSHIP.note_wallet_used(addr_type, account_num)
 
     derive = "m/{mode}h/{coin_type}h/{account}h".format(mode=mode,
                                     account=account_num, coin_type=chain.b44_cointype)
