@@ -138,6 +138,7 @@ SettingsMenu = [
     MenuItem('Hardware On/Off', menu=HWTogglesMenu),
     NonDefaultMenuItem('Multisig Wallets', 'multisig',
                        menu=make_multisig_menu, predicate=has_secrets),
+    NonDefaultMenuItem('NFC Push Tx', 'ptxurl', menu=pushtx_setup_menu),
     MenuItem('Display Units', chooser=value_resolution_chooser),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
@@ -356,7 +357,6 @@ AdvancedNormalMenu = [
                             f=drv_entro_start),
     MenuItem("View Identity", f=view_ident),
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
-    NonDefaultMenuItem('NFC Push Tx', 'ptxurl', menu=pushtx_setup_menu),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     ToggleMenuItem('Enable HSM', 'hsmcmd', ['Default Off', 'Enable'],
                    story=("Enable HSM? Enables all user management commands, and other HSM-only USB commands. "

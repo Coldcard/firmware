@@ -13,7 +13,9 @@ Bitcoin node (or similar) and send the transaction on the public
 Bitcoin network.
 
 This feature is available on Q and Mk4 and requires NFC to be enabled.
-See `Advanced/Tools > NFC Push Tx`
+See `Settings > NFC Push Tx`.
+
+See the latest on our feature minisite: [PushTx.org](https://pushtx.org)
 
 ## Protocol Spec
 
@@ -76,7 +78,8 @@ it is now waiting in the mempool.
   You can host this file anywhere your phone can reach, and then use that URL in your
   COLDCARD settings. It uses your phone's browser to submit directly
   to `mempool.space` and `blockstream.info` sites (both at same time). It is equivalent
-  to the page hosted at `https://coldcard.com/pushtx#`
+  to the page hosted at `https://coldcard.com/pushtx#`. Full source code is published here:
+  [github.com/Coldcard/push-tx](https://github.com/Coldcard/push-tx)
 
 ### Notes
 

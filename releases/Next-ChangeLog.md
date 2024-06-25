@@ -6,7 +6,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 - New Feature: PushTX: once enabled with a service provider's URL, you can tap the COLDCARD
   and your phone will open a webpage that transmits your freshly-signed transaction onto
-  the blockchain. See `Tools > NFC Push Tx` to enable and select service provider, or your
+  the blockchain. See `Settings > NFC Push Tx` to enable and select service provider, or your
   own webpage. More at <https://pushtx.org>. You can also use this to broadcast on any
   transaction on the MicroSD card (See `Tools > NFC Tools > Push Transaction`)
 - New Feature: Transaction Output Explorer: allows viewing all output details for
