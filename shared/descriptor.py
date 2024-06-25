@@ -6,11 +6,11 @@ import ngu, chains
 from io import BytesIO
 from collections import OrderedDict
 from binascii import hexlify as b2a_hex
-from utils import cleanup_deriv_path, check_xpub, xfp2str
+from utils import cleanup_deriv_path, check_xpub, xfp2str, swab32
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from public_constants import AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, MAX_SIGNERS, MAX_TR_SIGNERS
 from desc_utils import parse_desc_str, append_checksum, descriptor_checksum, Key
-from desc_utils import taproot_tree_helper, fill_policy
+from desc_utils import taproot_tree_helper, fill_policy, Unspend
 from miniscript import Miniscript
 
 
@@ -232,7 +232,7 @@ class Descriptor:
         if self.tapscript:
             assert len(self.keys) <= MAX_TR_SIGNERS
             assert self.key  # internal key (would fail during parse)
-            if not isinstance(self.key.node, bytes):
+            if not self.key.is_provably_unspendable:
                 to_check += [self.key]
         else:
             assert self.key is None and self.miniscript, "not miniscript"
@@ -282,16 +282,19 @@ class Descriptor:
         return 25 # OP_DUP OP_HASH160 <20:pkh> OP_EQUALVERIFY OP_CHECKSIG
 
     def xfp_paths(self):
-        keys = self.keys
-        if self.taproot and self.key.origin:
-            # ignore provably unspendable
-            keys += [self.key]
+        res = []
+        if self.taproot:
+            if self.key.origin:
+                # spendable internal key
+                res.append(self.key.origin.psbt_derivation())
+            elif not isinstance(self.key.node, bytes):
+                if self.key.is_provably_unspendable:
+                    res.append([swab32(self.key.node.my_fp())])
 
-        return [
-            key.origin.psbt_derivation()
-            for key in keys
-            if key.origin
-        ]
+        for k in self.keys:
+            if k.origin:
+                res.append(k.origin.psbt_derivation())
+        return res
 
     @property
     def is_wrapped(self):
@@ -505,7 +508,7 @@ class Descriptor:
 
     @classmethod
     def read_from(cls, s, taproot=False):
-        start = s.read(7)
+        start = s.read(8)
         sh = False
         wsh = False
         wpkh = False
@@ -515,8 +518,8 @@ class Descriptor:
         if start.startswith(b"tr("):
             is_miniscript = False  # miniscript vs. tapscript (that can contain miniscripts in tree)
             taproot = True
-            s.seek(-4, 1)
-            internal_key = Key.parse(s)  # internal key is a must
+            s.seek(-5, 1)
+            internal_key = Key.parse(s)  # internal key is a must - also handles unspend(
             internal_key.taproot = True
             sep = s.read(1)
             if sep == b")":
@@ -527,26 +530,26 @@ class Descriptor:
         elif start.startswith(b"sh(wsh("):
             sh = True
             wsh = True
+            s.seek(-1, 1)
         elif start.startswith(b"wsh("):
             sh = False
             wsh = True
-            s.seek(-3, 1)
-        elif start.startswith(b"sh(wpkh"):
+            s.seek(-4, 1)
+        elif start.startswith(b"sh(wpkh("):
             is_miniscript = False
             sh = True
             wpkh = True
-            assert s.read(1) == b"("
         elif start.startswith(b"wpkh("):
             is_miniscript = False
             wpkh = True
-            s.seek(-2, 1)
+            s.seek(-3, 1)
         elif start.startswith(b"pkh("):
             is_miniscript = False
-            s.seek(-3, 1)
+            s.seek(-4, 1)
         elif start.startswith(b"sh("):
             sh = True
             wsh = False
-            s.seek(-4, 1)
+            s.seek(-5, 1)
         else:
             raise ValueError("Invalid descriptor")
 
@@ -603,65 +606,14 @@ class Descriptor:
         # this will become legacy one day
         # instead use <0;1> descriptor format
         res = []
-        for external, internal in [(True, False), (False, True)]:
+        for external in (True, False):
             desc_obj = {
-                "desc": self.to_string(external, internal),
+                "desc": self.to_string(external, not external),
                 "active": True,
                 "timestamp": "now",
-                "internal": internal,
+                "internal": not external,
                 "range": [0, 100],
             }
             res.append(desc_obj)
 
         return res
-
-    def pretty_serialize(self):
-        # TODO not enabled
-        """Serialize in pretty and human-readable format"""
-        inner_ident = 1
-        res = "# Coldcard descriptor export\n"
-        res += "# order of keys in the descriptor does not matter, will be sorted before creating script (BIP-67)\n"
-        if self.addr_fmt == AF_P2SH:
-            res += "# bare multisig - p2sh\n"
-            res += "sh(sortedmulti(\n%s\n))"
-        # native segwit
-        elif self.addr_fmt == AF_P2WSH:
-            res += "# native segwit - p2wsh\n"
-            res += "wsh(sortedmulti(\n%s\n))"
-
-        # wrapped segwit
-        elif self.addr_fmt == AF_P2WSH_P2SH:
-            res += "# wrapped segwit - p2sh-p2wsh\n"
-            res += "sh(wsh(sortedmulti(\n%s\n)))"
-
-        elif self.addr_fmt == AF_P2TR:
-            inner_ident = 2
-            res += "# taproot multisig - p2tr\n"
-            res += "tr(\n"
-            if isinstance(self.internal_key, str):
-                res += "\t" + "# internal key (provably unspendable)\n"
-                res += "\t" + self.internal_key + ",\n"
-                res += "\t" + "sortedmulti_a(\n%s\n))"
-            else:
-                ik_ser = self.serialize_keys(keys=[self.internal_key])[0]
-                res += "\t" + "# internal key\n"
-                res += "\t" + ik_ser + ",\n"
-                res += "\t" + "sortedmulti_a(\n%s\n))"
-        else:
-            raise ValueError("Malformed descriptor")
-
-        assert len(self.keys) == self.N
-        inner = ("\t" * inner_ident) + "# %d of %d (%s)\n" % (
-                        self.M, self.N,
-                        "requires all participants to sign" if self.M == self.N else "threshold")
-        inner += ("\t" * inner_ident) + str(self.M) + ",\n"
-        ser_keys = self.serialize_keys()
-        for i, key_str in enumerate(ser_keys, start=1):
-            if i == self.N:
-                inner += ("\t" * inner_ident) + key_str
-            else:
-                inner += ("\t" * inner_ident) + key_str + ",\n"
-
-        checksum = self.serialize().split("#")[1]
-
-        return (res % inner) + "#" + checksum

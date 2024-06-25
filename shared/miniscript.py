@@ -13,7 +13,7 @@ from wallet import BaseStorageWallet
 from menu import MenuSystem, MenuItem
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 from files import CardSlot, CardMissingError, needs_microsd
-from utils import problem_file_line, xfp2str, addr_fmt_label, truncate_address, to_ascii_printable
+from utils import problem_file_line, xfp2str, addr_fmt_label, truncate_address, to_ascii_printable, swab32
 from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC, KEY_ENTER
 
 
@@ -158,6 +158,10 @@ class MiniScriptWallet(BaseStorageWallet):
                 ik = Key.from_string(self.key)
                 if ik.origin:
                     res.append(ik.origin.psbt_derivation())
+                elif not isinstance(ik.node, bytes):
+                    if ik.is_provably_unspendable:
+                        res.append([swab32(ik.node.my_fp())])
+
             for k in self.keys:
                 k = Key.from_string(k)
                 if k.origin:
@@ -232,14 +236,14 @@ class MiniScriptWallet(BaseStorageWallet):
 
     def ux_policy(self):
         if self.taproot and self.policy:
-            return "Taproot tree keys:\n\n" + self.policy
+            return "Tapscript:\n\n" + self.policy
         return self.policy
 
-    async def _detail(self, new_wallet=False, is_duplicate=False):
+    async def _detail(self, new_wallet=False, is_duplicate=False, short=False):
 
         s = addr_fmt_label(self.addr_fmt) + "\n\n"
         if self.taproot:
-            s += self.taproot_internal_key_detail()
+            s += self.taproot_internal_key_detail(short=short)
 
         s += self.ux_policy()
 
@@ -248,7 +252,7 @@ class MiniScriptWallet(BaseStorageWallet):
             story += ", OK to approve, X to cancel."
         return story
 
-    async def show_detail(self, new_wallet=False, duplicates=None):
+    async def show_detail(self, new_wallet=False, duplicates=None, short=False):
         title = self.name
         story = ""
         if duplicates:
@@ -257,7 +261,7 @@ class MiniScriptWallet(BaseStorageWallet):
         elif new_wallet:
             title = None
             story += "Create new miniscript wallet?\n\nWallet Name:\n  %s\n\n" % self.name
-        story += await self._detail(new_wallet, is_duplicate=duplicates)
+        story += await self._detail(new_wallet, is_duplicate=duplicates, short=short)
         while True:
             ch = await ux_show_story(story, title=title, escape="1")
             if ch == "1":
@@ -268,13 +272,24 @@ class MiniScriptWallet(BaseStorageWallet):
             else:
                 return True
 
-    def taproot_internal_key_detail(self):
+    def taproot_internal_key_detail(self, short=False):
         if self.taproot:
             key = Key.from_string(self.key)
             s = "Taproot internal key:\n\n"
             if key.is_provably_unspendable:
-                unspend = b2a_hex(key.node).decode()
-                s += "%s (provably unspendable)\n\n" % unspend
+                note = "provably unspendable"
+                if short:
+                    s += note
+                else:
+                    if isinstance(key.node, bytes):
+                        s += b2a_hex(key.node).decode()
+                        s += "\n (%s)" % note
+                    else:
+                        s += self.key
+                        if type(key) is Key:
+                            # it is unspendable, BUT not unspend(
+                            s += "\n (%s)" % note
+                s += "\n\n"
             else:
                 xfp, deriv, xpub = key.to_cc_data()
                 s += '%s:\n  %s\n\n%s/%s\n\n' % (xfp2str(xfp), deriv, xpub,
@@ -373,14 +388,14 @@ class MiniScriptWallet(BaseStorageWallet):
             if d.tapscript:
                 yield (idx,
                        addr,
-                       [str(k.origin) for k in d.keys],
+                       ["[%s]" % str(k.origin) for k in d.keys],
                        script,
                        d.key.serialize(),
                        str(d.key.origin) if d.key.origin else "")
             else:
                 yield (idx,
                        addr,
-                       [str(k.origin) for k in d.keys],
+                       ["[%s]" % str(k.origin) for k in d.keys],
                        script,
                        None,
                        None)
@@ -393,40 +408,39 @@ class MiniScriptWallet(BaseStorageWallet):
 
         addrs = []
 
-        for i, addr, paths, _, ik, ikp in self.yield_addresses(start, n,
-                                                               change=bool(change),
-                                                               scripts=False):
-            if i == 0 and ik:
-                ik = b2a_hex(ik).decode()
-                msg += "Taproot internal key:\n\n"
-                if ikp:
-                    msg += ikp + "\n" + ik + "\n\n"
-                else:
-                    msg += '%s (provably unspendable)\n\n' % ik
-
-                if len(paths) <= 4:
-                    msg += "Taproot tree keys:\n\n"
-
-            if i == 0 and len(paths) <= 4 and not ik:
+        for idx, addr, paths, _, ik, _ in self.yield_addresses(start, n,
+                                                             change=bool(change),
+                                                             scripts=False):
+            if idx == 0 and len(paths) <= 4 and not ik:
                 msg += '\n'.join(paths) + '\n =>\n'
             else:
                 change_idx = set([int(p.split("/")[-2]) for p in paths])
                 if len(change_idx) == 1:
-                    msg += '.../%d/%d =>\n' % (list(change_idx)[0], i)
+                    msg += '.../%d/%d =>\n' % (list(change_idx)[0], idx)
                 else:
-                    msg += '.../%d =>\n' % i
+                    msg += '.../%d =>\n' % idx
 
             addrs.append(addr)
             msg += truncate_address(addr) + '\n\n'
-            dis.progress_bar_show(i / n)
+            dis.progress_sofar(idx - start + 1, n)
 
         return msg, addrs
 
     def generate_address_csv(self, start, n, change):
-        scr_h = "Taptree" if self.desc.taproot else "Script"
+        part = []
+        if self.taproot:
+            scr_h = "Taptree"
+            if self.desc.key.is_provably_unspendable:
+                part = ["Unspendable Internal Key"]
+            else:
+                part = ["Internal Key"]
+
+        else:
+            scr_h = "Script"
+
         yield '"' + '","'.join(
             ['Index', 'Payment Address', scr_h] + ['Derivation'] * len(self.keys)
-            + (["Internal Key"] if self.taproot else [])
+            + part
         ) + '"\n'
         for (idx, addr, derivs, script, ik, ikp) in self.yield_addresses(start, n,
                                                                          change=bool(change)):
@@ -434,7 +448,10 @@ class MiniScriptWallet(BaseStorageWallet):
             ln += '","'.join(derivs)
             if ik:
                 # internal xonly key with its derivation (if any)
-                ln += '","%s' % (ikp + b2a_hex(ik).decode())
+                if ikp:
+                    ln += '","[%s]%s' % (ikp, b2a_hex(ik).decode())
+                else:
+                    ln += '","%s' % (b2a_hex(ik).decode())
             ln += '"\n'
 
             yield ln
@@ -443,20 +460,28 @@ class MiniScriptWallet(BaseStorageWallet):
         # this will become legacy one day
         # instead use <0;1> descriptor format
         res = []
-        for external, internal in [(True, False), (False, True)]:
+        for external in (True, False):
             desc_obj = {
-                "desc": self.to_string(external, internal),
+                "desc": self.to_string(external, not external, unspend_compat=True),
                 "active": True,
                 "timestamp": "now",
-                "internal": internal,
+                "internal": not external,
                 "range": [0, 100],
             }
             res.append(desc_obj)
         return res
 
-    def to_string(self, external=True, internal=True, checksum=True):
+    def to_string(self, external=True, internal=True, checksum=True, unspend_compat=False):
         if self._key:
             key = self._key
+            if "unspend(" in key and unspend_compat:
+                # for bitcoin core that does not support 'unspend(' descriptor notation
+                # serialize 'unspend(' as classic extended key
+                k = Key.from_string(self.key)
+                key = k.extended_public_key()
+                if k.derivation:
+                    key += "/" + k.derivation.to_string(external, internal)
+
             multipath_rgx = ure.compile(r"<\d+;\d+>")
             match = multipath_rgx.search(key)
             if match:
@@ -508,7 +533,7 @@ class MiniScriptWallet(BaseStorageWallet):
         fname_pattern = fname_pattern + ".txt"
 
         if core:
-            msg = "importdescriptor cmd"
+            msg = "importdescriptors cmd"
             dis.fullscreen('Wait...')
             core_obj = self.bitcoin_core_serialize()
             core_str = ujson.dumps(core_obj)
@@ -605,7 +630,7 @@ async def miniscript_wallet_detail(menu, label, item):
 
     msc = item.arg
 
-    return await msc.show_detail()
+    return await msc.show_detail(short=True)
 
 async def import_miniscript(*a):
     # pick text file from SD card, import as multisig setup file
@@ -851,6 +876,9 @@ class Miniscript:
         # cannot have same keys in single miniscript
         forbiden = (Sortedmulti_a, Multi_a)
         keys = self.keys
+        # provably unspendable taproot internal key is not covered here
+        # all other keys (miniscript,tapscript) require key origin info
+        assert all(k.origin for k in keys), "Key origin info is required"
         assert len(keys) == len(set(keys)), "Insane"
         if taproot:
             forbiden = (Sortedmulti, Multi)

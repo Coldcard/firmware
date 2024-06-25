@@ -2969,10 +2969,11 @@ def test_sorting_outputs_by_size(fake_txn, start_sign, cap_story, use_testnet,
 @pytest.mark.parametrize("chain", ["BTC", "XTN"])
 @pytest.mark.parametrize("data", [
     # (out_style, amount, is_change)
+    [("p2tr", 999999, 1)] + [("p2tr", 888888, 0)] * 12,
     [("p2pkh", 1000000, 0)] * 99,
-    [("p2wpkh", 1000000, 1),("p2wpkh-p2sh", 800000, 1)] * 27,
+    [("p2wpkh", 1000000, 1),("p2wpkh-p2sh", 800000, 1), ("p2tr", 600000, 1)] * 27,
     [("p2pkh", 1000000, 1)] * 11 + [("p2wpkh", 50000000, 0)] * 16,
-    [("p2pkh", 1000000, 1), ("p2wpkh", 50000000, 0), ("p2wpkh-p2sh", 800000, 1)] * 11,
+    [("p2pkh", 1000000, 1), ("p2wpkh", 50000000, 0), ("p2wpkh-p2sh", 800000, 1), ("p2tr", 100000, 0)] * 11,
 ])
 def test_txout_explorer(psbtv2, chain, data, fake_txn, start_sign,
                         settings_set, txout_explorer, cap_story):
@@ -3100,8 +3101,7 @@ def test_taproot_keyspend(use_regtest, bitcoind_d_sim_watch, start_sign, end_sig
         title, story = cap_story()
     assert title == 'OK TO SEND?'
     assert "Consolidating" in story  # self-spend
-    assert "1 ins - fee" in story  # one input
-    assert "2 outs" in story  # two outputs
+    assert " 1 input\n 2 outputs" in story
     addrs = story.split("\n\n")[3].split("\n")[-2:]
     assert len(addrs) == 2
     for addr in addrs:
@@ -3162,8 +3162,7 @@ def test_taproot_keyspend(use_regtest, bitcoind_d_sim_watch, start_sign, end_sig
         title, story = cap_story()
     assert title == 'OK TO SEND?'
     assert "Consolidating" in story  # self-spend
-    assert "2 ins - fee" in story  # five inputs
-    assert "3 outs" in story  # one output
+    assert " 2 inputs\n 3 outputs" in story
     press_select()  # confirm signing
     time.sleep(0.1)
     title, story = cap_story()
@@ -3212,8 +3211,7 @@ def test_taproot_keyspend(use_regtest, bitcoind_d_sim_watch, start_sign, end_sig
         title, story = cap_story()
     assert title == 'OK TO SEND?'
     assert "Consolidating" in story  # self-spend
-    assert "3 ins - fee" in story  # five inputs
-    assert "1 outs" in story  # one output
+    assert " 3 inputs\n 1 output" in story
     press_select()  # confirm signing
     time.sleep(0.1)
     title, story = cap_story()

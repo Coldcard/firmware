@@ -1701,7 +1701,7 @@ def load_shared_mod():
     return doit
 
 @pytest.fixture
-def verify_detached_signature_file(microsd_path, virtdisk_path):
+def verify_detached_signature_file(microsd_path, virtdisk_path, garbage_collector):
     def doit(fnames, sig_fname, way, addr_fmt=None):
         fpaths = []
         for fname in fnames:
@@ -1710,6 +1710,7 @@ def verify_detached_signature_file(microsd_path, virtdisk_path):
             else:
                 path = virtdisk_path(fname)
             fpaths.append(path)
+            garbage_collector.append(path)
 
         if way == "sd":
             sig_path = microsd_path(sig_fname)
@@ -1750,9 +1751,7 @@ def verify_detached_signature_file(microsd_path, virtdisk_path):
             assert (hashlib.sha256(contents).digest().hex() + fn_addendum) in msg
 
         assert verify_message(address, sig, msg) is True
-        try:
-            os.unlink(sig_path)
-        except: pass
+        garbage_collector.append(sig_path)
         return fcontents[0], address
 
     return doit
@@ -1786,7 +1785,7 @@ def load_export_and_verify_signature(microsd_path, virtdisk_path, verify_detache
 @pytest.fixture
 def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_text, nfc_read_json,
                 load_export_and_verify_signature, is_q1, press_cancel, press_select, readback_bbqr,
-                cap_screen_qr):
+                cap_screen_qr, garbage_collector):
     def doit(way, label, is_json, sig_check=True, addr_fmt=AF_CLASSIC, ret_sig_addr=False,
              tail_check=None, sd_key=None, vdisk_key=None, nfc_key=None, ret_fname=False,
              fpattern=None, qr_key=None):
@@ -1877,6 +1876,8 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 if is_json:
                     export = json.loads(export)
 
+            garbage_collector.append(path)
+
             press_select()
 
         if ret_sig_addr and sig_addr:
@@ -1921,7 +1922,7 @@ def tapsigner_encrypted_backup(microsd_path, virtdisk_path):
     return doit
 
 @pytest.fixture
-def choose_by_word_length(need_keypress):
+def choose_by_word_length(need_keypress, press_select):
     # for use in seed XOR menu system
     def doit(num_words):
         if num_words == 12:
@@ -1929,7 +1930,7 @@ def choose_by_word_length(need_keypress):
         elif num_words == 18:
             need_keypress("2")
         else:
-            need_keypress("y")
+            press_select()
     return doit
 
 # workaround: need these fixtures to be global so I can call test from a test
@@ -2163,6 +2164,9 @@ def txout_explorer(cap_story, press_cancel, need_keypress, is_q1):
                 elif af in ("p2wpkh", "p2wsh"):
                     target = "bc1q" if chain == "BTC" else "tb1q"
                     assert addr.startswith(target)
+                elif af == "p2tr":
+                    target = "bc1p" if chain == "BTC" else "tb1p"
+                    assert addr.startswith(target)
                 elif af in ("p2sh", "p2wpkh-p2sh", "p2wsh-p2sh"):
                     target = "3" if chain == "BTC" else "2"
                     assert addr.startswith(target)
@@ -2275,6 +2279,15 @@ def dev_core_import_object(dev):
             })
     return descriptors
 
+
+@pytest.fixture
+def garbage_collector():
+    to_remove = []
+    yield to_remove
+    for pth in to_remove:
+        try:
+            os.remove(pth)
+        except: pass
 
 # useful fixtures
 from test_backup import backup_system

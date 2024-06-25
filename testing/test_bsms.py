@@ -269,11 +269,16 @@ def make_coordinator_round2(make_coordinator_round1, settings_get, settings_set,
 @pytest.mark.parametrize("encryption_type", ["1", "2", "3"])
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
-def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home, need_keypress, pick_menu_item,
-                            cap_menu, cap_story, microsd_path, settings_remove, nfc_read_text, virtdisk_path,
-                            settings_get, virtdisk_wipe, microsd_wipe, press_select, is_q1):
+def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home, need_keypress,
+                            pick_menu_item, cap_menu, cap_story, microsd_path, settings_remove,
+                            nfc_read_text, request, settings_get, microsd_wipe, press_select, is_q1):
+    if way == "vdisk":
+        virtdisk_wipe = request.getfixturevalue("virtdisk_wipe")
+        virtdisk_path = request.getfixturevalue("virtdisk_path")
+        virtdisk_wipe()
+
     M, N = M_N
-    virtdisk_wipe()
+
     microsd_wipe()
     settings_remove(BSMS_SETTINGS)  # clear bsms
     goto_home()
@@ -419,11 +424,15 @@ def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
 def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home, need_keypress, pick_menu_item, cap_menu,
-                       cap_story, microsd_path, settings_remove, nfc_read_text, virtdisk_path, settings_get,
-                       make_coordinator_round1, nfc_write_text, virtdisk_wipe, microsd_wipe, press_select,
+                       cap_story, microsd_path, settings_remove, nfc_read_text, request, settings_get,
+                       make_coordinator_round1, nfc_write_text, microsd_wipe, press_select,
                        is_q1):
+    if way == "vdisk":
+        virtdisk_wipe = request.getfixturevalue("virtdisk_wipe")
+        virtdisk_path = request.getfixturevalue("virtdisk_path")
+        virtdisk_wipe()
+
     M, N = M_N
-    virtdisk_wipe()
     microsd_wipe()
     tokens = make_coordinator_round1(M, N, addr_fmt, encryption_type, way)
     if encryption_type != "3":
@@ -572,9 +581,9 @@ def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home,
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
 @pytest.mark.parametrize("auto_collect", [True, False])
 def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, clear_ms, goto_home, need_keypress,
-                            cap_menu, cap_story, microsd_path, settings_remove, nfc_read_text, virtdisk_path,
+                            cap_menu, cap_story, microsd_path, settings_remove, nfc_read_text, request,
                             settings_get, make_coordinator_round1, make_signer_round1, nfc_write_text,
-                            virtdisk_wipe, microsd_wipe, pick_menu_item, press_select, is_q1):
+                            microsd_wipe, pick_menu_item, press_select, is_q1):
     def get_token(index):
         if len(tokens) == 1 and encryption_type == "1":
             token = tokens[0]
@@ -584,8 +593,12 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
             token = "00"
         return token
 
+    if way == "vdisk":
+        virtdisk_wipe = request.getfixturevalue("virtdisk_wipe")
+        virtdisk_path = request.getfixturevalue("virtdisk_path")
+        virtdisk_wipe()
+
     M, N = M_N
-    virtdisk_wipe()
     microsd_wipe()
     tokens = make_coordinator_round1(M, N, addr_fmt, encryption_type, way=way, tokens_only=True)
     all_data = []
@@ -793,12 +806,15 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
 def test_signer_round2(refuse, way, encryption_type, M_N, addr_fmt, clear_ms, goto_home, need_keypress, pick_menu_item,
-                       cap_menu, cap_story, microsd_path, settings_remove, nfc_read_text, virtdisk_path, settings_get,
-                       make_coordinator_round2, nfc_write_text, virtdisk_wipe, microsd_wipe, with_checksum,
+                       cap_menu, cap_story, microsd_path, settings_remove, nfc_read_text, request, settings_get,
+                       make_coordinator_round2, nfc_write_text, microsd_wipe, with_checksum,
                        press_select, press_cancel, is_q1):
+    if way == "vdisk":
+        virtdisk_wipe = request.getfixturevalue("virtdisk_wipe")
+        virtdisk_path = request.getfixturevalue("virtdisk_path")
+        virtdisk_wipe()
     M, N = M_N
     clear_ms()
-    virtdisk_wipe()
     microsd_wipe()
     desc_template, token = make_coordinator_round2(M, N, addr_fmt, encryption_type, way=way, add_checksum=with_checksum)
     goto_home()
@@ -950,9 +966,8 @@ def test_invalid_token_signer_round1(token, way, pick_menu_item, cap_story, need
 @pytest.mark.parametrize("failure", ["slip", "wrong_sig", "bsms_version"])
 @pytest.mark.parametrize("encryption_type", ["1", "2", "3"])
 def test_failure_coordinator_round2(encryption_type, make_coordinator_round1, make_signer_round1, microsd_wipe, cap_menu,
-                                    virtdisk_wipe, pick_menu_item, press_select, goto_home, cap_story, failure,
+                                    pick_menu_item, press_select, goto_home, cap_story, failure,
                                     need_keypress):
-    virtdisk_wipe()
     microsd_wipe()
 
     def get_token(index):
@@ -1025,7 +1040,7 @@ def test_failure_coordinator_round2(encryption_type, make_coordinator_round1, ma
 # TODO do this for NFC too when length requirements are lifted from 250
 @pytest.mark.parametrize("encryption_type", ["1", "2"])
 def test_wrong_encryption_coordinator_round2(encryption_type, make_coordinator_round1, make_signer_round1, microsd_wipe,
-                                             cap_menu, virtdisk_wipe, pick_menu_item, need_keypress, goto_home, cap_story,
+                                             cap_menu, pick_menu_item, need_keypress, goto_home, cap_story,
                                              press_cancel, press_select):
     def get_token(index):
         if len(tokens) == 1 and encryption_type == "1":
@@ -1036,7 +1051,6 @@ def test_wrong_encryption_coordinator_round2(encryption_type, make_coordinator_r
             token = "00"
         return token
 
-    virtdisk_wipe()
     microsd_wipe()
     tokens = make_coordinator_round1(2, 2, "p2wsh", encryption_type, way="sd", tokens_only=True)
     for i in range(2):
@@ -1103,8 +1117,7 @@ def test_wrong_encryption_coordinator_round2(encryption_type, make_coordinator_r
 @pytest.mark.parametrize("encryption_type", ["1", "2", "3"])
 def test_failure_signer_round2(encryption_type, goto_home, press_select, pick_menu_item, cap_menu, cap_story,
                                microsd_path, settings_remove, nfc_read_text, virtdisk_path, settings_get, microsd_wipe,
-                               make_coordinator_round2, virtdisk_wipe, failure, need_keypress):
-    virtdisk_wipe()
+                               make_coordinator_round2, failure, need_keypress):
     microsd_wipe()
     if failure == "wrong_address":
         kws = {failure: True}
