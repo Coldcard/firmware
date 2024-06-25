@@ -723,7 +723,7 @@ async def bsms_coordinator_round2(menu, label, item):
     prompt, escape = export_prompt_builder(title)
     if prompt:
         ch = await ux_show_story(prompt, escape=escape)
-        if ch == KEY_NFC if version_mod.has_qwerty else '3':
+        if ch == (KEY_NFC if version_mod.has_qwerty else '3'):
             if et == "2":
                 for i, token in enumerate(tokens):
                     ch = await ux_show_story("Exporting data for co-signer #%d with token %s"
@@ -922,7 +922,7 @@ async def bsms_signer_round1(*a):
     prompt, escape = export_prompt_builder(title)
     if prompt:
         ch = await ux_show_story(prompt, escape=escape)
-        if ch == KEY_NFC if version.has_qwerty else '3':
+        if ch == (KEY_NFC if version.has_qwerty else '3'):
             force_vdisk = None
             if isinstance(result_data, bytes):
                 result_data = b2a_hex(result_data).decode()
@@ -986,7 +986,7 @@ async def bsms_signer_round2(menu, label, item):
     if prompt:
         ch = await ux_show_story(prompt, escape=escape)
 
-        if ch == KEY_NFC if version.has_qwerty else '3':
+        if ch == (KEY_NFC if version.has_qwerty else '3'):
             force_vdisk = None
             desc_template_data = await NFC.read_bsms_data()
 

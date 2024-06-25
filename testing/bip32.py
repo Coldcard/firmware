@@ -737,6 +737,12 @@ class BIP32Node:
             ek = PubKeyNode.parse(extended_key, testnet)
         return cls(ek, netcode="XTN" if testnet else "BTC")
 
+    @classmethod
+    def from_chaincode_pubkey(cls, chain_code, pubkey, netcode="XTN"):
+        node = PubKeyNode(pubkey, chain_code, 0, 0,
+                          False if netcode == "BTC" else True)
+        return cls(node, netcode=netcode)
+
     def subkey_for_path(self, path):
         path_list = str_to_path(path)
         node = self.node
