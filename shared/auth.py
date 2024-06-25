@@ -624,6 +624,7 @@ class ApproveTransaction(UserAuthorizedAction):
             return '%s\n - to address -\n%s\n' % (val, dest)
         except ValueError:
             pass
+
         # check for OP_RETURN
         data = self.chain.op_return(o.scriptPubKey)
         if data:
@@ -732,8 +733,9 @@ class ApproveTransaction(UserAuthorizedAction):
                 self.psbt.num_outputs,
                 "output" if self.psbt.num_outputs == 1 else "outputs",
             ))
+
             # outputs + change story created here
-            allow_txn_explorer = self.output_summary_text(msg)
+            needs_txn_explorer = self.output_summary_text(msg)
             gc.collect()
 
             if self.psbt.ux_notes:
@@ -761,14 +763,14 @@ class ApproveTransaction(UserAuthorizedAction):
             dis.progress_bar_show(1)  # finish the Validating...
             if not hsm_active:
                 msg.write("\nPress OK to approve and sign transaction.")
-                if allow_txn_explorer:
+                if needs_txn_explorer:
                     msg.write(" Press (2) to explore txn.")
                 if self.is_sd and CardSlot.both_inserted():
                     msg.write(" (B) to write to lower SD slot.")
                 msg.write(" X to abort.")
                 while True:
                     ch = await ux_show_story(msg, title="OK TO SEND?", escape="2b")
-                    if ch == "2" and allow_txn_explorer:
+                    if ch == "2" and needs_txn_explorer:
                         await self.txn_explorer()
                         continue
                     else:
@@ -870,27 +872,32 @@ class ApproveTransaction(UserAuthorizedAction):
                 break
 
     async def txn_explorer(self):
+        # Page through unlimited-sized transaction details
+        # - shows all outputs (including change): their address and amounts.
         from glob import dis
-        start = 0
-        n = 10
 
-        def make_msg(start, n):
+        def make_msg(offset, count):
             dis.fullscreen('Wait...')
             rv = ""
-            end = min(start + n, self.psbt.num_outputs)
+            end = min(offset + count, self.psbt.num_outputs)
 
-            for idx, out in self.psbt.output_iter(start, end):
+            for idx, out in self.psbt.output_iter(offset, end):
                 outp = self.psbt.outputs[idx]
                 item = "Output %d%s:\n\n" % (idx, " (change)" if outp.is_change else "")
                 item += self.render_output(out)
                 item += "\n"
                 rv += item
-                dis.progress_sofar(idx-start+1, n)
+                dis.progress_sofar(idx-offset+1, count)
 
-            if self.psbt.num_outputs > n:
-                rv += "Press RIGHT to see next group, LEFT to go back. X to quit."
+            rv += 'Press RIGHT to see next group'
+            if offset:
+                rv += ', LEFT to go back'
+            rv += '. X to quit.'
+
             return rv
 
+        start = 0
+        n = 10
         msg = make_msg(start, n)
         while True:
             ch = await ux_show_story(msg, escape='79'+KEY_RIGHT+KEY_LEFT)
@@ -898,16 +905,16 @@ class ApproveTransaction(UserAuthorizedAction):
                 del msg
                 return
             elif (ch in KEY_LEFT+"7"):
-                # go backwards in explorer
                 if (start - n) < 0:
                     continue
                 else:
+                    # go backwards in explorer
                     start -= n
             elif (ch in KEY_RIGHT+"9"):
-                # go forwards
                 if (start + n) >= self.psbt.num_outputs:
                     continue
                 else:
+                    # go forwards
                     start += n
             else:
                 # nothing changed - do not recalc msg
@@ -944,16 +951,19 @@ class ApproveTransaction(UserAuthorizedAction):
         # Produce text report of where their cash is going. This is what
         # they use to decide if correct transaction is being signed.
 
-        # Produce text report of what the "change" outputs are (based on our opinion).
-        # - we don't really expect all users to verify these outputs, but just in case.
-        # - show the total amount, and list addresses
+        # Produce text report of where all outputs, both normal and "change" are going.
+        # - we do expect all users to verify these outputs completely; do not hide details
+        # - show larger outputs first, total-up the not-shown values if any
+        # - change shown as such, only because we've done all the check/validations already
+        # - when too much to show now, offer to page user through all the ouputs (txn explorer)
         MAX_VISIBLE_OUTPUTS = const(10)
         MAX_VISIBLE_CHANGE = const(20)
-        allow_txn_explorer = False
 
+        needs_txn_explorer = False
         largest_outs = []
         largest_change = []
         total_change = 0
+
         for idx, tx_out in self.psbt.output_iter():
             outp = self.psbt.outputs[idx]
             if outp.is_change:
@@ -989,7 +999,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 ret = (here, self.render_output(tx_out))
             largest.insert(keep, ret)
 
-        # foreign outputs
+        # foreign outputs (soon to be other people's coins)
         visible_out_sum = 0
         for val, txt in largest_outs:
             visible_out_sum += val
@@ -998,7 +1008,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
         left = self.psbt.num_outputs - len(largest_outs) - self.psbt.num_change_outputs
         if left > 0:
-            allow_txn_explorer = True
+            needs_txn_explorer = True
             msg.write('.. plus %d smaller output(s), not shown here, which total: ' % left)
 
             # calculate left over value
@@ -1007,7 +1017,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
             msg.write("\n")
 
-        # change
+        # change outputs - verified to be coming back to our wallet
         if total_change > 0:
             msg.write("Change back:\n%s %s\n" % self.chain.render_value(total_change))
             visible_change_sum = 0
@@ -1023,13 +1033,15 @@ class ApproveTransaction(UserAuthorizedAction):
 
             left_c = self.psbt.num_change_outputs - len(largest_change)
             if left_c:
-                allow_txn_explorer = True
+                needs_txn_explorer = True
                 msg.write('.. plus %d smaller change output(s), not shown here, which total: ' % left_c)
                 msg.write('%s %s\n' % self.chain.render_value(total_change - visible_change_sum))
 
             msg.write("\n")
 
-        return allow_txn_explorer
+        # if we didn't already show all outputs, then give user a chance to 
+        # view them individually
+        return needs_txn_explorer
 
 
 def sign_transaction(psbt_len, flags=0x0, psbt_sha=None):

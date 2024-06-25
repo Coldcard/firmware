@@ -2102,7 +2102,11 @@ def txout_explorer(cap_story, press_cancel, need_keypress, is_q1):
             _, story = cap_story()
             ss = story.split("\n\n")
             assert len(ss) == (len(d) * 2) + 1
-            assert "Press RIGHT to see next group, LEFT to go back." in ss[-1]
+            assert "Press RIGHT to see next group" in ss[-1]
+            if i:
+                assert " LEFT to go back." in ss[-1]
+            else:
+                assert "LEFT" not in ss[-1]
 
             for i, (sa, sb, (af, amount, change)) in enumerate(zip(ss[:-1:2], ss[1::2], d), start=i):
                 if change:
