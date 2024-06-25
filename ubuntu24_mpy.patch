@@ -1,0 +1,36 @@
+diff --git a/mpy-cross/Makefile b/mpy-cross/Makefile
+index 971f2f81a..c6a7f5c9e 100644
+--- a/mpy-cross/Makefile
++++ b/mpy-cross/Makefile
+@@ -19,6 +19,7 @@ INC += -I$(TOP)
+ # compiler settings
+ CWARN = -Wall -Werror
+ CWARN += -Wextra -Wno-unused-parameter -Wpointer-arith
++CWARN += -Wno-error=dangling-pointer -Wno-error=enum-int-mismatch
+ CFLAGS = $(INC) $(CWARN) -std=gnu99 $(CFLAGS_MOD) $(COPT) $(CFLAGS_EXTRA)
+ CFLAGS += -fdata-sections -ffunction-sections -fno-asynchronous-unwind-tables
+ 
+diff --git a/ports/stm32/Makefile b/ports/stm32/Makefile
+index 88faf70ba..ce3421a4c 100644
+--- a/ports/stm32/Makefile
++++ b/ports/stm32/Makefile
+@@ -96,6 +96,7 @@ CFLAGS_MCU_h7 = $(CFLAGS_CORTEX_M) -mtune=cortex-m7 -mcpu=cortex-m7
+ CFLAGS_MCU_wb = $(CFLAGS_CORTEX_M) -mtune=cortex-m4 -mcpu=cortex-m4
+ 
+ CFLAGS += $(INC) -Wall -Wpointer-arith -Werror -Wdouble-promotion -Wfloat-conversion -std=gnu99 -nostdlib $(CFLAGS_MOD) $(CFLAGS_EXTRA)
++CFLAGS += -Wno-error=dangling-pointer
+ CFLAGS += -D$(CMSIS_MCU)
+ CFLAGS += $(CFLAGS_MCU_$(MCU_SERIES))
+ CFLAGS += $(COPT)
+diff --git a/ports/unix/Makefile b/ports/unix/Makefile
+index 6a936a242..ae68fe11b 100644
+--- a/ports/unix/Makefile
++++ b/ports/unix/Makefile
+@@ -40,6 +40,7 @@ INC += -I$(BUILD)
+ # compiler settings
+ CWARN = -Wall -Werror
+ CWARN += -Wextra -Wno-unused-parameter -Wpointer-arith -Wdouble-promotion -Wfloat-conversion
++CWARN += -Wno-error=enum-int-mismatch
+ CFLAGS += $(INC) $(CWARN) -std=gnu99 -DUNIX $(CFLAGS_MOD) $(COPT) -I$(VARIANT_DIR) $(CFLAGS_EXTRA)
+ 
+ # Debugging/Optimization
