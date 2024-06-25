@@ -199,8 +199,8 @@ def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn,
     # - cmdline: "pytest test_sign.py -k test_io_size --dev --manual -s --durations=50"
     # - simulator can do 400/400 but takes long time
     # - offical target: 20 inputs, 250 outputs (see docs/limitations.md)
-    # - complete run on real hardware takes 1800.94 seconds = 30 minutes
-    # - time on Mk3, v4.0.0 firmware: 13 minutes
+    # - Mk4: complete run on real hardware takes 1800.94 seconds = 30 minutes
+    # - Historical: time on Mk3, v4.0.0 firmware: 13 minutes for ins/outs=20/250
 
     # for this test you need to configure core `repcservertimeout` to something big
     # in bitcoin.conf `rpcservertimeout=2000` should do the trick
