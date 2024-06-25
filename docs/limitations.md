@@ -1,12 +1,12 @@
-# BIP39 Import
+# BIP-39 Import
 
 - there must be 12, 18 or 24 words in your mnemonic
 - we have only the English word list
-- we support BIP39 passwords during import
+- we support BIP-39 passwords during import
 
 # XPRV Import
 
-- we can import a BIP32 HD-wallet root private key in XPRV format
+- we can import a BIP-32 HD-wallet root private key in XPRV format
 - it's assumed to be top-level, and we don't store the parent fingerprint or depth value
 - SLIP-132 format HD-wallet keys are also supported (xprv/yprv/zprv), but we strip
   the implied address format
@@ -32,7 +32,7 @@
 - with Electrum, we support classic payment addresses (p2pkh), Bech32 Segwit and P2SH/Segwit
     - however, each wallet must be of a single address type; cannot be mixed (their limitation)
     - the same Coldcard could be used in each of the three modes (we don't care about address format)
-- with Bitcoin Core (version 0.17?), we can do PSBT transactions, which support all address types
+- with Bitcoin Core (version 0.17+), we can do PSBT transactions, which support all address types
 - we don't support signing coinbase transactions, so don't mine directly into a Coldcard wallet
 
 # Max Transaction Size
@@ -41,7 +41,7 @@
     - we support transactions up to 384k-bytes in size when serialized into PSBT format
     - we can handle transactions with up to 20 inputs to be signed at one time.
     - a maximum of 250 outputs per transaction is supported (will attempt more if memory allows)
-- mk4:
+- mk4/Q:
     - we support PSBT files up to 2M bytes in size.
     - any number of inputs and outputs are supported, limited only by final transaction size (100k)
     - tested with: 250 inputs, 2000 outputs
@@ -66,12 +66,13 @@
 - (mk3) we have space for up to 8 M-of-3 wallets, or a single M-of-15 wallet. YMMV
 - only a single multisig wallet can be involved in a PSBT; can't sign inputs from two different
     multisig wallets at the same time.
-- we always store xpubs in BIP32 format, although we can read SLIP132 format (Ypub/Zpub/etc)
+- we always store xpubs in BIP-32 format, although we can read SLIP132 format (Ypub/Zpub/etc)
 - change outputs (indicated with paths, scripts in output section) must correspond to
   the active multisig wallet, and cannot be used to describe an unrelated (multisig) wallet.
 - derivation path for each cosigner must be known and consistent with PSBT
 - XFP values (fingerprints) MUST be unique for each of the co-signers
 - multisig wallet `name` can only contain printable ASCII characters `range(32, 127)`
+- we support only BIP-67 (sorted multisig) wallets.
 
 
 # SIGHASH types
@@ -106,7 +107,7 @@
 
 We will summarize transaction outputs as "change" back into same wallet, however:
 
-- PSBT must specify BIP32 path in corresponding output section for us to treat as change
+- PSBT must specify BIP-32 path in corresponding output section for us to treat as change
 - for p2sh-wrapped segwit outputs, redeem script must be provided when needed
 - any incorrect values here are assumed to be fraud attempts, and are highlighted to user
 - the _redeemScript_ for `p2wsh-p2sh` is optional, but if provided must be
