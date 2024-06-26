@@ -82,6 +82,7 @@ def _remap_pin(pin, key_map):
 
 def _login(device, is_Q, pin, scrambled=False, mk4_kbtn=None, num_failed=None):
     orig_pin = pin
+    time.sleep(.1)
     scr = _cap_screen(device)
     if num_failed:
         assert f"{num_failed} failures, {13-num_failed} tries left" in scr
@@ -423,7 +424,7 @@ def test_login_integration(request, nick, randomize, login_ctdwn, kill_btn, kill
         if kill_btn and is_Q:  # cannot use kbtn while nickname is show on Mk4
             # lets kill here while nickname is shown
             _need_keypress(device, kill_btn)
-
+            time.sleep(.1)
             # now we MUST be dead
             with pytest.raises(Exception):
                 _press_select(device, is_Q, timeout=1000)
@@ -436,6 +437,7 @@ def test_login_integration(request, nick, randomize, login_ctdwn, kill_btn, kill
     if kill_btn and kill_when and is_Q:
         # kill it before even trying to insert any PIN (not possible on Mk4)
         _need_keypress(device, kill_btn)
+        time.sleep(.1)
         with pytest.raises(Exception):
             _press_select(device, is_Q, timeout=1000)
         sim.stop()
@@ -457,6 +459,7 @@ def test_login_integration(request, nick, randomize, login_ctdwn, kill_btn, kill
         time.sleep(secs + 1)
         if kill_btn and not kill_when and is_Q:
             _need_keypress(device, kill_btn)
+            time.sleep(.1)
             with pytest.raises(Exception):
                 _press_select(device, is_Q, timeout=1000)
             sim.stop()

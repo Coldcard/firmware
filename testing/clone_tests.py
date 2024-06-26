@@ -101,7 +101,7 @@ def _clone(source, target):
     cmd = lambda a: f"RV.write(repr(settings.get('{a}', {None!r})))"
     nfc_val = _sim_exec(device, cmd('nfc'))
     vdisk_val = _sim_exec(device, cmd('vidsk'))
-    assert nfc_val == vdisk_val == '0'
+    assert not eval(nfc_val) and not eval(vdisk_val)
     sim_target.stop()
 
 

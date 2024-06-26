@@ -8,6 +8,30 @@ from mnemonic import Mnemonic
 from bip32 import BIP32Node
 
 
+@pytest.fixture
+def enable_hw_ux(pick_menu_item, cap_story, press_select, goto_home):
+    def doit(way):
+        pick_menu_item("Settings")
+        pick_menu_item("Hardware On/Off")
+        if way == "vdisk":
+            pick_menu_item("Virtual Disk")
+            _, story = cap_story()
+            if "emulate a virtual disk drive" in story:
+                press_select()
+            pick_menu_item("Enable")
+        elif way == "nfc":
+            pick_menu_item("NFC Sharing")
+            _, story = cap_story()
+            if "(Near Field Communications)" in story:
+                press_select()
+            pick_menu_item("Enable NFC")
+        else:
+            raise RuntimeError("TODO")
+
+        goto_home()
+
+    return doit
+
 def test_get_secrets(get_secrets, master_xpub):
     v = get_secrets()
 
@@ -395,15 +419,14 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, expect_ftux,
 def test_import_prv(way, testnet, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu,
                     word_menu_entry, get_secrets, microsd_path, multiple_runs, reset_seed_words,
                     nfc_write_text, settings_set, virtdisk_path, expect_ftux, press_select,
-                    press_nfc, is_q1):
-    if testnet:
-        netcode = "XTN"
-        settings_set('chain', 'XTN')
-    else:
-        netcode = "BTC"
-        settings_set('chain', 'XTN')
+                    press_nfc, is_q1, enable_hw_ux):
 
     unit_test('devtest/clear_seed.py')
+    netcode = "XTN" if testnet else "BTC"
+    settings_set('chain', netcode)
+
+    if way != "sd":
+        enable_hw_ux(way)
 
     node = BIP32Node.from_master_secret(os.urandom(32), netcode=netcode)
     prv = node.hwif(as_private=True)+'\n'
@@ -465,15 +488,16 @@ def test_import_prv(way, testnet, pick_menu_item, cap_story, need_keypress, unit
 def test_seed_import_tapsigner(way, retry, testnet, cap_menu, pick_menu_item, goto_home, cap_story,
                                need_keypress, reset_seed_words, dev, try_sign, enter_hex, unit_test,
                                settings_set, get_secrets, tapsigner_encrypted_backup, nfc_write_text,
-                               press_nfc, press_select, is_q1):
+                               press_nfc, press_select, is_q1, enable_hw_ux):
+    unit_test('devtest/clear_seed.py')
+    netcode = "XTN" if testnet else "BTC"
+    settings_set('chain', netcode)
+
+    if way != "sd":
+        enable_hw_ux(way)
 
     fname, backup_key_hex, node = tapsigner_encrypted_backup(way, testnet=testnet)
-    if testnet:
-        settings_set('chain', 'XTN')
-    else:
-        settings_set('chain', 'XTN')
 
-    unit_test('devtest/clear_seed.py')
     m = cap_menu()
     assert m[0] == 'New Seed Words'
     pick_menu_item('Import Existing')
