@@ -1440,7 +1440,7 @@ def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_m
     if "Forces display of XFP" in story:
         press_select()
     pick_menu_item("Always Show")
-    time.sleep(.1)
+    time.sleep(.3)
     m = cap_menu()
     assert m[1] == "Ready To Sign"
     assert m[0] == "<" + xfp2str(settings_get("xfp")) + ">"
@@ -1451,13 +1451,13 @@ def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_m
     need_keypress("6")  # skip words
     press_select()
     press_select()
-    time.sleep(.1)
+    time.sleep(.3)
     m = cap_menu()
     assert m[1] == "Ready To Sign"
     assert m[0] == "[" + xfp2str(settings_get("xfp")) + "]"
     pick_menu_item("Restore Master")
     press_select()
-    time.sleep(.1)
+    time.sleep(.3)
     m = cap_menu()
     assert m[1] == "Ready To Sign"
     assert m[0] == "<" + xfp2str(settings_get("xfp")) + ">"
@@ -1469,7 +1469,7 @@ def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_m
     if "Forces display of XFP" in story:
         press_select()
     pick_menu_item("Only Tmp")
-    time.sleep(.1)
+    time.sleep(.3)
     m = cap_menu()
     assert m[0] == "Ready To Sign"
 

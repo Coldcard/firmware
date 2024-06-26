@@ -2821,9 +2821,9 @@ def test_multisig_name_validation(microsd_path, offer_ms_import):
 
 
 def test_multisig_deriv_path_migration(settings_set, clear_ms, import_ms_wallet,
-                                       press_select, settings_get, make_multisig,
+                                       press_cancel, settings_get, make_multisig,
                                        goto_home, start_sign, cap_story, end_sign,
-                                       pick_menu_item, cap_menu, press_cancel):
+                                       pick_menu_item, cap_menu):
     # this test case simulates multisig wallets imported to CC before 5.3.0
     # release; these wallets, saved in user settings, still have "'" in derivation
     # paths; 5.3.1 firmware implements migration to "h" in MultisigWallet.deserialize
@@ -2833,13 +2833,14 @@ def test_multisig_deriv_path_migration(settings_set, clear_ms, import_ms_wallet,
     deriv, text_a_fmt = ("m/48h/1h/0h/2h/{idx}", 'p2wsh')
     keys = make_multisig(2, 3, unique=1, deriv=deriv)
     derivs = [deriv.format(idx=i) for i in range(3)]
-    import_ms_wallet(2, 3, accept=1, keys=keys, name="ms1",
+    import_ms_wallet(2, 3, accept=True, keys=keys, name="ms1",
                      derivs=derivs, addr_fmt=text_a_fmt)
-    press_select()
-    import_ms_wallet(3, 5, name="ms2", addr_fmt='p2wsh-p2sh')
-    press_select()
-    ms = settings_get("multisig")
+    time.sleep(.1)
 
+    import_ms_wallet(3, 5, name="ms2", addr_fmt='p2wsh-p2sh', accept=True)
+    time.sleep(.1)
+
+    ms = settings_get("multisig")
     pths0 = ms[0][3]["d"]
     new_pths0 = [p.replace("h", "'") for p in pths0]
     ms[0][3]["d"] = new_pths0

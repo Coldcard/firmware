@@ -832,7 +832,7 @@ def test_sign_wutxo(start_sign, set_seed_words, end_sign, cap_story, sim_exec, s
 
         #print(story)
 
-        assert 'Network fee:\n0.00000500 XTN' in story
+        assert 'Network fee 0.00000500 XTN' in story
 
         # check we understood it right
         ex = dict(  had_witness=False, num_inputs=1, num_outputs=1, sw_inputs=[None],
