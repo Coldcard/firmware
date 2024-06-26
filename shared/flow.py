@@ -162,7 +162,7 @@ data or filenames.'''),
                           'at top of main menu. Normally, XFP is shown only when '
                           'temporary seed is active.\n\n'
                           'Master seed is displayed as <XFP>, temporary seeds as [XFP].'),
-                   predicate=has_secrets,
+                   predicate=has_real_secret,
                    on_change=goto_home),
     ToggleMenuItem('Keyboard EMU', 'emu', ['Default Off', 'Enable'],
            on_change=usb_keyboard_emulation,
