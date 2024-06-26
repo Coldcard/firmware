@@ -4,69 +4,49 @@ This lists the changes in the most recent firmware, for each hardware platform.
 
 # Shared Improvements - Both Mk4 and Q
 
-**5.3.1 (Mk4) and 1.2.1Q is a hotfix to address multisig signing issue. No functional changes.**
-
-- _Important Bugfix_: Already imported multisig wallets would show errors when signing. This
-  was caused by our internal change in key path notation from `84'` (prime) to `84h` (hardened).
-- Enhancement: Add `Nunchuk` and `Zeus` options to `Export Wallet`
-- Enhancement: `View Identity` shows temporary seed active at the top
-- Enhancement: Can specify start index for address explorer export and browsing
-- Enhancement: Allow unlimited index for BIP-85 derivations. Must be enabled first in `Danger Zone` 
-- Change: `Passphrase` menu item is no longer offered if BIP39 passphrase
-  already in use. Use `Restore Master` with ability to keep or purge current
-  passphrase wallet settings.
-- Change: Removed ability to add passphrase to master seed if active temporary seed.
-- Change: Wipe LFS during `Lock Down Seed` and `Destroy Seed`
-- Bugfix: Do not allow non-ascii or ascii non-printable characters in multisig wallet name
-- Bugfix: `Brick Me` option for `If Wrong` PIN caused yikes.
-- Bugfix: Properly handle and finalize framing error response in USB protocol.
-- Bugfix: Handle ZeroSecretException for BIP39 passphrase calculation when on temporary
-  seed without master secret
-- Bugfix: Saving passphrase on SD Card caused a freeze that required reboot
-- Bugfix: Properly verify signed armored message with regtest address
-- Bugfix: Create ownership file when generating addresses export CSV
-- Recovery SD Card image building moved into its own repo:
-  [github.com/Coldcard/recovery-images](https://github.com/Coldcard/recovery-images)
-- Bugfix: Reload trick pins before checking for active duress wallet.
-
+- New Feature: PushTX: once enabled with a service provider's URL, you can tap the COLDCARD
+  and your phone will open a webpage that transmits your freshly-signed transaction onto
+  the blockchain. See `Settings > NFC Push Tx` to enable and select service provider, or your
+  own webpage. More at <https://pushtx.org>. You can also use this to broadcast any
+  transaction found on the MicroSD card (See `Tools > NFC Tools > Push Transaction`).
+- New Feature: Transaction Output Explorer: allows viewing all output details for
+  larger txn (10+ output, 20+ change) before signing. Offered for large transactions only
+  because we are already showing all the details for typical transactions.
+- New Feature: Setting to enable always showing XFP as first item in home menu.
+- Enhancement: When signing, show sum of outgoing value at top. Always show number
+  of inputs/outputs and total change value.
+- Enhancement: Add `Sign PSBT` shortcut to `NFC Tools` menu
+- Enhancement: Stricter p2sh-p2wpkh validation checks.
+- Enhancement: Show master XFP of BIP-85 derived wallet in story before activation. Only
+  words and extended private key cases.
+- Enhancement: Add `Theya` option to `Export Wallet`
+- Enhancement: Mention the need to remove old duress wallets before locking down temporary seed.
+- Bugfix: Fix PSBTv2 `PSBT_GLOBAL_TX_MODIFIABLE` parsing.
+- Bugfix: Decrypting Tapsigner backup failed even for correct key.
+- Bugfix: Clear any pending keystrokes before PSBT approval screen.
+- Bugfix: Display max 20 change outputs in when signing, and max 10 of largest outputs, and
+  offer the Transaction Output Explorer if more to be seen.
+- Bugfix: Calculate progress bar correctly in Address Explorer after first page.
+- Bugfix: Search also Wrapped Segwit single sig addresses if P2SH address provided, not just
+  multisig (multisig has precedence for P2SH addresses)
+- Bugfix: Address search would not find addresses for non-zero account numbers that had
+  been exported but not yet seen in a PSBT.
 
 # Mk4 Specific Changes
 
-## 5.3.1 - 2024-05-09
+## 5.3.2 - 2024-06-26
 
-- Enhancement: When providing 12 or 18 word seed phrase, valid final word choices
-  are presented in a new menu.
-- Enhancement: Move dice rolls (for generating master seed) to `Advanced` submenu.
-- Enhancement: Using "Verify Address" in NFC Tools menu, allows entry of a payment address
-  and reports if it is part of a wallet this Coldcard knows the key for. Includes Multisig
-  and single sig wallets.
-    - searches up to the first 1528 addresses (external and change addresses)
-    - stores data as it goes to accelerate future uses
-    - worst case, it can take up to 2 minutes to rule out an address, but after that it is fast!
-- Bugfix: Constant `AFC_BECH32M` incorrectly set `AFC_WRAPPED` and `AFC_BECH32`.
-- Bugfix: Fix inability to activate Duress Wallet as temporary seed when master seed is 12 words.
-- Bugfix: Yikes when using BIP39 passphrase with temporary seed without master seed set.
-- Bugfix: v1 and v2 QRs too small and not readable (fixed)
-- Bugfix: Show indexes for full range of addresses we are able to generate during QR display.
-- Tweak: Force default HW settings (USB,NFC,VDisk OFF) after clone/backup is restored.
-- Tweak: Cleanup in NFC code: repeated messages, "Unable to find data expectd in NDEF", removed.
-- Tweak: Function button change from (6) to (0) to view change addresses in `Address Explorer`
-- Tweak: Function button change from (2) to (0) to switch to derived secret in `Derive Seed B85`
-- Bootrom version bump: 3.2.0 released with no functional changes except those shared with Q.
+- Bugfix: Displaying change address in Address Explorer fails if NFC and Vdisk not enabled.
+
 
 # Q Specific Changes
 
-## 1.2.1Q - 2024-05-09
+## 1.2.2Q - 2024-06-26
 
-- Enhancement: Allow export of multisig XPUBs via BBQr
-- Enhancement: Import multisig via QR/BBQr - both legacy COLDCARD export and descriptors supported
-- Enhancement: Status bar text is sharper now
-- Enhancement: Added ability to write signed PSBT/txn to lower (B) SD slot when both cards inserted
-- Bugfix: Fullscreen display of v23 and v24 QRs were too dense and hard to read
-- Bugfix: Battery idle timeout also considers last progress bar update
-- Bugfix: Allow `Send Password` (keystrokes) of capital letters of alphabet
-- Bugfix: Pressing SYM+SHIFT was toggling CAPS continuously. Now toggles once only
-- Bugfix: Restrict keys that can be pressed during seed entry after final word inserted
+- Enhancement: Coldcard multisg export/import format detected in `Scan Any QR Code`.
+- Enhancement: Support newer-version QR scanner modules.
+- Bugfix: Exporting BIP-85 derived entropy via NFC was offered even when NFC disabled,
+  leading to a Yikes error.
 
 
 # Release History
