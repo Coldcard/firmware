@@ -2202,6 +2202,7 @@ PUSHTX_SUPPLIERS = [
     ('coldcard.com', 'https://coldcard.com/pushtx#' ),
     # from https://github.com/mempool/mempool/pull/5132
     ('mempool.space', 'https://mempool.space/pushtx#' ),
+    ('labelbase.space', 'https://labelbase.space/pushtx#' ),
 ]
 
 async def pushtx_setup_menu(*a):
