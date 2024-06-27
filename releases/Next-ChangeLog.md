@@ -4,7 +4,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk4 and Q
 
-- tbd
+- Bugfix: Trying to set custom URL for NFC push transaction caused yikes
 
 
 # Mk4 Specific Changes
