@@ -1,8 +1,8 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, os, re, hashlib, functools
+import pytest, time, os, re, hashlib
 from helpers import xfp2str, prandom
-from charcodes import KEY_DOWN, KEY_QR, KEY_NFC
+from charcodes import KEY_DOWN, KEY_QR, KEY_NFC, KEY_DELETE
 from constants import AF_CLASSIC, simulator_fixed_words, simulator_fixed_xfp
 from mnemonic import Mnemonic
 from bip32 import BIP32Node
@@ -843,9 +843,111 @@ def test_q1_seed_word_entry_bug(word_menu_entry, unit_test, pick_menu_item,
     sw += ["art"]
     word_menu_entry(sw, q_accept=False)
     do_keypresses("art")
-    # now we we are yikes if bug not fixed
+    # now we are yikes if bug not fixed
     press_select()
     expect_ftux()
+
+
+def test_custom_pushtx_url(goto_home, pick_menu_item, press_select, enter_complex,
+                           cap_story, cap_menu, settings_remove, need_keypress,
+                           press_cancel, is_q1, settings_get):
+    goto_home()
+    settings_remove('ptxurl')  # empty slate
+
+    pick_menu_item("Settings")
+    pick_menu_item("NFC Push Tx")
+    time.sleep(.1)
+    title, story = cap_story()
+    if title == "PUSH TX":
+        assert "immediately broadcast" in story
+        assert "tap any NFC-enabled phone on the COLDCARD" in story
+        assert "choose a provider by URL here, or give your own URL" in story
+        assert "transaction details could be linked by the service" in story
+        press_select()
+
+    time.sleep(.1)
+    title, story = cap_story()
+    if "This feature requires NFC to be enabled. OK to enable" in story:
+        press_select()
+
+    time.sleep(.3)
+    m = cap_menu()
+    assert "coldcard.com" in m
+    assert "mempool.space" in m
+    assert "Custom URL..." in m
+    assert "Disable" in m
+
+    pick_menu_item("Custom URL...")
+    time.sleep(.1)
+    if not is_q1:
+        # move to next char
+        need_keypress("9")
+        need_keypress("1")
+    enter_complex("s://selfhosted.com/pushtx#", b39pass=False)
+    time.sleep(.1)
+    m = cap_menu()
+    assert "selfhosted.com" in m
+    assert settings_get('ptxurl') == "https://selfhosted.com/pushtx#"
+
+    pick_menu_item("selfhosted.com")
+    if is_q1:
+        need_keypress(KEY_DELETE)
+    else:
+        need_keypress("1")  # get him to letters, so clean switch to symbols
+    enter_complex("?", b39pass=False)
+    time.sleep(.1)
+    m = cap_menu()
+    assert "selfhosted.com" in m
+    assert settings_get('ptxurl') == "https://selfhosted.com/pushtx?"
+
+    pick_menu_item("selfhosted.com")
+    for _ in range(len("https://selfhosted.com/pushtx?") - (0 if is_q1 else 1)):
+        need_keypress(KEY_DELETE if is_q1 else "x")
+
+    if not is_q1:
+        need_keypress("1")
+
+    enter_complex("httphttps://a.com/pushtx#", b39pass=False)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Must start with http:// or https://." in story
+    press_select()
+
+    for _ in range(len("httphttps://a.com/pushtx#") - (0 if is_q1 else 1)):
+        need_keypress(KEY_DELETE if is_q1 else "x")
+
+    if not is_q1:
+        need_keypress("1")
+
+    enter_complex("http://sh.sk/ptx%", b39pass=False)
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Final char must be # or ? or &." in story
+    press_select()
+
+    for _ in range(len("http://sh.sk/ptx%") - (0 if is_q1 else 1)):
+        need_keypress(KEY_DELETE if is_q1 else "x")
+
+    if not is_q1:
+        need_keypress("1")
+
+    enter_complex("http://s.s#", b39pass=False)
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Too short." in story
+    press_select()
+
+    for _ in range(len("http://s.s#") - (0 if is_q1 else 1)):
+        need_keypress(KEY_DELETE if is_q1 else "x")
+
+    press_cancel()
+    time.sleep(.1)
+    press_select()
+    time.sleep(.1)
+    assert settings_get('ptxurl', None) is None
+
 
 @pytest.mark.onetime
 def test_dump_menutree(sim_execfile):

@@ -2199,9 +2199,9 @@ async def _scan_any_qr(expect_secret=False, tmp=False):
 
 PUSHTX_SUPPLIERS = [
     # (label, URL)
-    ('coldcard.com', 'https://coldcard.com/pushtx#' ),
+    ('coldcard.com', 'https://coldcard.com/pushtx#'),
     # from https://github.com/mempool/mempool/pull/5132
-    ('mempool.space', 'https://mempool.space/pushtx#' ),
+    ('mempool.space', 'https://mempool.space/pushtx#'),
 ]
 
 async def pushtx_setup_menu(*a):
@@ -2249,15 +2249,18 @@ async def pushtx_setup_menu(*a):
             nv = await ux_input_text(val, confirm_exit=True, scan_ok=True, prompt="Enter URL")
             # cleanup? URL validation? 
             if nv:
-                if ('http://' not in nv and 'https://' not in nv):
+                prob = None
+                if (not nv.startswith('http://')) and (not nv.startswith('https://')):
                     prob = "Must start with http:// or https://."
                 elif len(nv) < 12:
                     prob = "Too short."
-                if nv[-1] not in '#?&':
+                elif nv[-1] not in '#?&':
                     prob = "Final char must be # or ? or &."
-                await ux_show_story(prob + " Try again.")
-                val = nv
-                continue
+
+                if prob:
+                    await ux_show_story(prob + " Try again.")
+                    val = nv
+                    continue
             break
 
         if nv:
@@ -2268,7 +2271,6 @@ async def pushtx_setup_menu(*a):
         else:
             settings.remove_key('ptxurl')
             the_ux.pop()
-    
 
     was = settings.get("ptxurl", None)
     try:
@@ -2280,14 +2282,7 @@ async def pushtx_setup_menu(*a):
 
     if was and cur is None:
         # they have a non-standard choice
-        # - support http and https for custom
-        if was.startswith('https://'):
-            label = was[8:]
-        elif was.startswith('http://'):
-            label = was[7:]
-        else:
-            label = was
-        
+        label = was.split("/")[2]  # pull out domain (netloc)
         choices.append(MenuItem(label, f=edit_custom, arg=(was,)))
         cur = len(choices)-1
     else:
