@@ -18,6 +18,6 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 1.2.3Q - 2024-08-XX
 
-- tbd
+- Bugfix: Properly clear LCD screen after simple QR code is shown
 
 

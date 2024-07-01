@@ -71,9 +71,8 @@ class QRDisplaySingle(UserInteraction):
         dis.draw_qr_display(self.qr_data, self.msg or body, self.is_alnum,
                             self.sidebar, idx_hint, self.invert)
 
-
     async def interact_bare(self):
-        from glob import NFC
+        from glob import NFC, dis
         self.redraw()
 
         while 1:
@@ -90,6 +89,8 @@ class QRDisplaySingle(UserInteraction):
                 self.redraw()
                 continue
             elif ch in 'xy'+KEY_ENTER+KEY_CANCEL:
+                if dis.has_lcd:
+                    dis.real_clear()  # bugfix
                 break
             elif len(self.addrs) == 1:
                 continue
