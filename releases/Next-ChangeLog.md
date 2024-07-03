@@ -11,7 +11,8 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 5.3.3 - 2024-08-XX
 
-- tbd
+- Bugfix: Fix yikes displaying BIP-85 WIF when both NFC and VDisk are OFF
+- Bugfix: Fix inability to export change addresses when both NFC and Vdisk id OFF
 
 
 # Q Specific Changes

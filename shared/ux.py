@@ -378,7 +378,8 @@ def _import_prompt_builder(title, no_qr, no_nfc, slot_b_only=False):
     return prompt, escape
 
 
-def export_prompt_builder(what_it_is, no_qr=False, no_nfc=False, key0=None):
+def export_prompt_builder(what_it_is, no_qr=False, no_nfc=False, key0=None,
+                          force_prompt=False):
     # Build the prompt for export
     # - key0 can be for special stuff
     from version import has_qwerty, num_sd_slots, has_qr
@@ -386,7 +387,7 @@ def export_prompt_builder(what_it_is, no_qr=False, no_nfc=False, key0=None):
 
     prompt, escape = None, KEY_CANCEL+"x"
 
-    if (NFC or VD) or (num_sd_slots>1) or key0:
+    if (NFC or VD) or (num_sd_slots>1) or key0 or force_prompt:
         # no need to spam with another prompt, only option is SD card
 
         prompt = "Press (1) to save %s to SD Card" % what_it_is

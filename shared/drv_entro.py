@@ -213,7 +213,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
     elif s_mode == 'pw':
         key0 = 'to type password over USB'
     prompt, escape = export_prompt_builder('data', key0=key0,
-                                           no_qr=(not qr))
+                                           no_qr=(not qr), force_prompt=True)
     title = None
     if node:
         # we can show master xfp of derived wallet in story

@@ -325,7 +325,8 @@ Press (3) if you really understand and accept these risks.
             # export options
             k0 = 'to show change addresses' if allow_change and change == 0 else None
             export_msg, escape = export_prompt_builder('address summary file',
-                                                    no_qr=bool(ms_wallet), key0=k0)
+                                                       no_qr=bool(ms_wallet), key0=k0,
+                                                       force_prompt=True)
             if version.has_qwerty:
                 escape += KEY_LEFT+KEY_RIGHT+KEY_HOME+KEY_PAGE_UP+KEY_PAGE_DOWN
             else:
