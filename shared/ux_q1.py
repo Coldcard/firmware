@@ -1061,8 +1061,9 @@ async def ux_visualize_bip21(proto, addr, args):
 
     if args:
         msg += 'And values for: ' + ', '.join(args)
+        msg += "\n"
 
-    msg += 'Press (1) to verify ownership.'
+    msg += '\nPress (1) to verify ownership.'
     
     ch = await ux_show_story(msg, title="Payment Address", escape='1')
 
