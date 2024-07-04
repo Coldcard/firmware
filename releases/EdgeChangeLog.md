@@ -22,7 +22,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Mk4 Specific Changes
 
-## 5.3.3X - 2024-07-04
+## 6.3.3X - 2024-07-04
 
 - Bugfix: Fix yikes displaying BIP-85 WIF when both NFC and VDisk are OFF
 - Bugfix: Fix inability to export change addresses when both NFC and Vdisk id OFF
@@ -32,7 +32,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Q Specific Changes
 
-## 1.2.3QX - 2024-07-04
+## 6.3.3QX - 2024-07-04
 
 - Enhancement: Miniscript and (BB)Qr codes
 - Bugfix: Properly clear LCD screen after simple QR code is shown
