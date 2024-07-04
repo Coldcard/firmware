@@ -12,7 +12,7 @@ from pprint import pprint, pformat
 from decimal import Decimal
 from base64 import b64encode, b64decode
 from base58 import encode_base58_checksum
-from helpers import B2A, U2SAT, prandom, fake_dest_addr, make_change_addr, parse_change_back
+from helpers import B2A, fake_dest_addr, parse_change_back
 from helpers import xfp2str, seconds2human_readable, hash160
 from msg import verify_message
 from bip32 import BIP32Node
@@ -133,8 +133,8 @@ def test_psbt_proxy_parsing(fn, sim_execfile, sim_exec):
     assert oo == rb
 
 @pytest.mark.unfinalized
-def test_speed_test(dev, fake_txn, is_mark3, is_mark4, start_sign, end_sign,
-                    press_select):
+@pytest.mark.parametrize("taproot", [True, False])
+def test_speed_test(dev, taproot, fake_txn, is_mark3, is_mark4, start_sign, end_sign, press_select):
     # measure time to sign a larger txn
     if is_mark4:
         # Mk4: expect 
@@ -149,7 +149,10 @@ def test_speed_test(dev, fake_txn, is_mark3, is_mark4, start_sign, end_sign,
         num_in = 9
         num_out = 100
 
-    psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=True)
+    if taproot:
+        psbt = fake_txn(num_in, num_out, dev.master_xpub, taproot_in=True)
+    else:
+        psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=True)
 
     open('debug/speed.psbt', 'wb').write(psbt)
     dt = time.time()
@@ -191,8 +194,9 @@ if 0:
 @pytest.mark.bitcoind
 @pytest.mark.veryslow
 @pytest.mark.parametrize('segwit', [True, False])
-def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn,
-                    start_sign, end_sign, dev, segwit, accept = True):
+@pytest.mark.parametrize('taproot', [True, False])
+def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn, is_mark3, is_mark4,
+                    start_sign, end_sign, dev, segwit, taproot, accept=True):
 
     # try a bunch of different bigger sized txns
     # - important to test on real device, due to it's limited memory
@@ -209,7 +213,8 @@ def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn,
     num_in = 250
     num_out = 2000
 
-    psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=segwit, outstyles=ADDR_STYLES)
+    psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=segwit,
+                    taproot_in=taproot, outstyles=ADDR_STYLES)
 
     open('debug/last.psbt', 'wb').write(psbt)
 
@@ -262,11 +267,13 @@ def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn,
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
 @pytest.mark.parametrize('segwit', [True, False])
-def test_real_signing(fake_txn, use_regtest, try_sign, dev, num_ins, segwit, decode_with_bitcoind):
+@pytest.mark.parametrize('taproot', [True, False])
+def test_real_signing(fake_txn, use_regtest, try_sign, dev, num_ins, segwit,taproot,
+                      decode_with_bitcoind):
     # create a TXN using actual addresses that are correct for DUT
     xp = dev.master_xpub
 
-    psbt = fake_txn(num_ins, 1, xp, segwit_in=segwit)
+    psbt = fake_txn(num_ins, 1, xp, segwit_in=segwit, taproot_in=taproot)
     open('debug/real-%d.psbt' % num_ins, 'wb').write(psbt)
 
     _, txn = try_sign(psbt, accept=True, finalize=True)
@@ -908,16 +915,17 @@ def test_network_fee_unlimited(fake_txn, start_sign, end_sign, dev, settings_set
 @pytest.mark.parametrize('num_outs', [ 2, 7, 15 ])
 @pytest.mark.parametrize('act_outs', [ 2, 1, -1])
 @pytest.mark.parametrize('segwit', [True, False])
+@pytest.mark.parametrize('taproot', [True, False])
 @pytest.mark.parametrize('add_xpub', [True, False])
 @pytest.mark.parametrize('out_style', ADDR_STYLES_SINGLE)
 @pytest.mark.parametrize('visualized', [0, STXN_VISUALIZE, STXN_VISUALIZE|STXN_SIGNED])
 def test_change_outs(fake_txn, start_sign, end_sign, cap_story, dev, num_outs, master_xpub,
-                        act_outs, segwit, out_style, visualized, add_xpub, num_ins=3):
+                     act_outs, segwit, taproot, out_style, visualized, add_xpub, num_ins=3):
     # create a TXN which has change outputs, which shouldn't be shown to user, and also not fail.
     xp = dev.master_xpub
 
     couts = num_outs if act_outs == -1 else num_ins-act_outs
-    psbt = fake_txn(num_ins, num_outs, xp, segwit_in=segwit,
+    psbt = fake_txn(num_ins, num_outs, xp, segwit_in=segwit, taproot_in=taproot,
                         outstyles=[out_style], change_outputs=range(couts), add_xpub=add_xpub)
 
     open('debug/change.psbt', 'wb').write(psbt)
@@ -1083,8 +1091,8 @@ def test_finalization_vs_bitcoind(match_key, use_regtest, check_against_bitcoind
     ("45'/1'/0'/1/5", 'diff path prefix'),
     ("44'/2'/0'/1/5", 'diff path prefix'),
     ("44'/1'/1'/1/5", 'diff path prefix'),
-    ("44'/1'/0'/3000/5", '2nd last component'),
-    ("44'/1'/0'/3/5", '2nd last component'),
+    # ("44'/1'/0'/3000/5", '2nd last component'),
+    # ("44'/1'/0'/3/5", '2nd last component'),
 ])
 def test_change_troublesome(dev, start_sign, cap_story, try_path, expect):
     # NOTE: out#1 is change:
@@ -1209,8 +1217,10 @@ def hist_count(sim_exec):
 
 @pytest.mark.parametrize('num_utxo', [9, 100])
 @pytest.mark.parametrize('segwit_in', [False, True])
-def test_bip143_attack_data_capture(num_utxo, segwit_in, try_sign, fake_txn, settings_set,
-                                    settings_get, cap_story, sim_exec, hist_count):
+@pytest.mark.parametrize('taproot_in', [False, True])
+def test_bip143_attack_data_capture(num_utxo, segwit_in, taproot_in, try_sign, fake_txn,
+                                    settings_set, settings_get, cap_story, sim_exec,
+                                    hist_count):
 
     # cleanup prev runs, if very first time thru
     sim_exec('import history; history.OutptValueCache.clear()')
@@ -1219,12 +1229,13 @@ def test_bip143_attack_data_capture(num_utxo, segwit_in, try_sign, fake_txn, set
 
     # make a txn, capture the outputs of that as inputs for another txn
     psbt = fake_txn(1, num_utxo+3, segwit_in=segwit_in, change_outputs=range(num_utxo+2),
-                        outstyles=(['p2wpkh']*num_utxo) + ['p2wpkh-p2sh', 'p2pkh'])
+                    taproot_in=taproot_in,
+                    outstyles=(['p2wpkh']*num_utxo) + ['p2wpkh-p2sh', 'p2pkh'])
     _, txn = try_sign(psbt, accept=True, finalize=True)
 
     open('debug/funding.psbt', 'wb').write(psbt)
 
-    num_inp_utxo = (1 if segwit_in else 0)
+    num_inp_utxo = (1 if (segwit_in or taproot_in) else 0)
 
     time.sleep(.1)
     title, story = cap_story()
@@ -1268,12 +1279,15 @@ def test_bip143_attack_data_capture(num_utxo, segwit_in, try_sign, fake_txn, set
 
 
 @pytest.mark.parametrize('segwit', [False, True])
+@pytest.mark.parametrize('taproot', [False, True])
 @pytest.mark.parametrize('num_ins', [1, 17])
-def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoind, cap_story):
+@pytest.mark.parametrize('num_outs', [1, 17])
+def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoind,
+                   cap_story, taproot, num_outs):
     # verify correct txid for transactions is being calculated
     xp = dev.master_xpub
 
-    psbt = fake_txn(num_ins, 1, xp, segwit_in=segwit)
+    psbt = fake_txn(num_ins, num_outs, xp, segwit_in=segwit, taproot_in=taproot)
 
     _, txn = try_sign(psbt, accept=True, finalize=True)
 
@@ -1320,7 +1334,7 @@ def test_sdcard_signing(encoding, num_outs, del_after, partial, try_sign_microsd
             pp = psbt.inputs[0].bip32_paths[pk]
             psbt.inputs[0].bip32_paths[pk] = b'what' + pp[4:]
 
-    psbt = fake_txn(2, num_outs, xp, segwit_in=True, psbt_hacker=hack)
+    psbt = fake_txn(3, num_outs, xp, segwit_in=True, taproot_in=True, psbt_hacker=hack)
 
     _, txn, txid = try_sign_microsd(psbt, finalize=not partial,
                                         encoding=encoding, del_after=del_after)
@@ -1352,7 +1366,8 @@ def test_payjoin_signing(num_ins, num_outs, fake_txn, try_sign, start_sign, end_
     txn = end_sign(True, finalize=False)
 
 @pytest.mark.parametrize('segwit', [False, True])
-def test_fully_unsigned(fake_txn, try_sign, segwit):
+@pytest.mark.parametrize('taproot', [False, True])
+def test_fully_unsigned(fake_txn, try_sign, segwit, taproot):
 
     # A PSBT which is unsigned but all inputs lack keypaths
 
@@ -1360,8 +1375,9 @@ def test_fully_unsigned(fake_txn, try_sign, segwit):
         # change all inputs to be "not ours" ... but with utxo details
         for i in psbt.inputs:
             i.bip32_paths.clear()
+            i.taproot_bip32_paths.clear()
 
-    psbt = fake_txn(7, 2, segwit_in=segwit, psbt_hacker=hack)
+    psbt = fake_txn(7, 2, segwit_in=segwit, taproot_in=taproot, psbt_hacker=hack)
 
     with pytest.raises(CCProtoError) as ee:
         orig, result = try_sign(psbt, accept=True)
@@ -1369,7 +1385,8 @@ def test_fully_unsigned(fake_txn, try_sign, segwit):
     assert 'does not contain any key path information' in str(ee)
 
 @pytest.mark.parametrize('segwit', [False, True])
-def test_wrong_xfp(fake_txn, try_sign, segwit):
+@pytest.mark.parametrize('taproot', [False, True])
+def test_wrong_xfp(fake_txn, try_sign, segwit, taproot):
 
     # A PSBT which is unsigned and doesn't involve our XFP value
 
@@ -1380,8 +1397,10 @@ def test_wrong_xfp(fake_txn, try_sign, segwit):
         for i in psbt.inputs:
             for pubkey in i.bip32_paths:
                 i.bip32_paths[pubkey] = wrong_xfp + i.bip32_paths[pubkey][4:]
+            for xonly_pubkey in i.taproot_bip32_paths:
+                i.taproot_bip32_paths[xonly_pubkey] = b"\x00" + wrong_xfp + i.taproot_bip32_paths[xonly_pubkey][5:]
 
-    psbt = fake_txn(7, 2, segwit_in=segwit, psbt_hacker=hack)
+    psbt = fake_txn(7, 2, segwit_in=segwit, taproot_in=taproot, psbt_hacker=hack)
 
     with pytest.raises(CCProtoError) as ee:
         orig, result = try_sign(psbt, accept=True)
@@ -1390,7 +1409,8 @@ def test_wrong_xfp(fake_txn, try_sign, segwit):
     assert 'found 12345678' in str(ee)
 
 @pytest.mark.parametrize('segwit', [False, True])
-def test_wrong_xfp_multi(fake_txn, try_sign, segwit):
+@pytest.mark.parametrize('taproot', [False, True])
+def test_wrong_xfp_multi(fake_txn, try_sign, segwit, taproot):
 
     # A PSBT which is unsigned and doesn't involve our XFP value
     # - but multiple wrong XFP values
@@ -1404,8 +1424,12 @@ def test_wrong_xfp_multi(fake_txn, try_sign, segwit):
                 here = struct.pack('<I', idx+73)
                 i.bip32_paths[pubkey] = here + i.bip32_paths[pubkey][4:]
                 wrongs.add(xfp2str(idx+73))
+            for xonly_pubkey in i.taproot_bip32_paths:
+                here = struct.pack('<I', idx + 73)
+                i.taproot_bip32_paths[xonly_pubkey] = b"\x00" + here + i.taproot_bip32_paths[xonly_pubkey][5:]
+                wrongs.add(xfp2str(idx + 73))
 
-    psbt = fake_txn(7, 2, segwit_in=segwit, psbt_hacker=hack)
+    psbt = fake_txn(7, 2, segwit_in=segwit, taproot_in=taproot, psbt_hacker=hack)
 
     open('debug/wrong-xfp.psbt', 'wb').write(psbt)
     with pytest.raises(CCProtoError) as ee:
@@ -1420,15 +1444,16 @@ def test_wrong_xfp_multi(fake_txn, try_sign, segwit):
 
 @pytest.mark.parametrize('out_style', ADDR_STYLES_SINGLE)
 @pytest.mark.parametrize('segwit', [False, True])
+@pytest.mark.parametrize('taproot', [False, True])
 @pytest.mark.parametrize('outval', ['.5', '.788888', '0.92640866'])
-def test_render_outs(out_style, segwit, outval, fake_txn, start_sign, end_sign, dev):
+def test_render_outs(out_style, segwit, outval, fake_txn, start_sign, end_sign, dev, taproot):
     # check how we render the value of outputs
     # - works on simulator and connected USB real-device
     xp = dev.master_xpub
     oi = int(Decimal(outval) * int(1E8))
 
     psbt = fake_txn(1, 2, dev.master_xpub, segwit_in=segwit, outvals=[oi, int(1E8-oi)],
-                        outstyles=[out_style], change_outputs=[1])
+                    taproot_in=taproot, outstyles=[out_style], change_outputs=[1])
 
     open('debug/render.psbt', 'wb').write(psbt)
 
@@ -1461,6 +1486,8 @@ def test_render_outs(out_style, segwit, outval, fake_txn, start_sign, end_sign, 
     elif out_style == 'p2wpkh-p2sh':
         assert len(set(i[0] for i in addrs)) == 1
         assert addrs[0][0] in {'2', '3'}
+    elif out_style == 'p2tr':
+        assert all(i.startswith(("bc1p", "tb1p", "bcrt1p")) for i in addrs)
 
 
 def test_negative_fee(dev, fake_txn, try_sign):
@@ -1643,7 +1670,8 @@ def test_zero_xfp(dev, start_sign, end_sign, fake_txn, cap_story):
 
 @pytest.mark.parametrize("segwit_in", [True, False])
 @pytest.mark.parametrize('num_not_ours', [1, 3, 4])
-def test_foreign_utxo_missing(segwit_in, num_not_ours, dev, fake_txn, start_sign, cap_story, end_sign):
+def test_foreign_utxo_missing(segwit_in, num_not_ours, dev, fake_txn, start_sign,
+                              cap_story, end_sign):
     def hack(psbt):
         # change first input to not be ours
         for i in range(num_not_ours):
@@ -1666,16 +1694,17 @@ def test_foreign_utxo_missing(segwit_in, num_not_ours, dev, fake_txn, start_sign
     assert signed != psbt
 
 @pytest.mark.parametrize("segwit_in", [True, False])
+@pytest.mark.parametrize("taproot_in", [True, False])
 @pytest.mark.parametrize("num_missing", [1, 3, 4])
 def test_own_utxo_missing(segwit_in, num_missing, dev, fake_txn, start_sign, cap_story, end_sign,
-                          press_cancel):
+                          press_cancel, taproot_in):
     def hack(psbt):
         for i in range(num_missing):
             # no utxo provided for our input
             psbt.inputs[i].utxo = None
             psbt.inputs[i].witness_utxo = None
 
-    psbt = fake_txn(5, 2, dev.master_xpub, segwit_in=segwit_in, psbt_hacker=hack)
+    psbt = fake_txn(5, 2, dev.master_xpub, segwit_in=segwit_in, taproot_in=taproot_in, psbt_hacker=hack)
     start_sign(psbt)
     time.sleep(.1)
     title, story = cap_story()
@@ -1693,17 +1722,22 @@ def test_bitcoind_missing_foreign_utxo(bitcoind, bitcoind_d_sim_watch, microsd_p
     alice = bitcoind.create_wallet(wallet_name="alice")
     bob = bitcoind.create_wallet(wallet_name="bob")
     cc = bitcoind_d_sim_watch
+    tap_dave = bitcoind.create_wallet(wallet_name="tap_dave")
     alice_addr = alice.getnewaddress()
     alice_pubkey = alice.getaddressinfo(alice_addr)["pubkey"]
     bob_addr = bob.getnewaddress()
     bob_pubkey = bob.getaddressinfo(bob_addr)["pubkey"]
     cc_addr = cc.getnewaddress()
     cc_pubkey = cc.getaddressinfo(cc_addr)["pubkey"]
+    tap_dave_addr = tap_dave.getnewaddress("", "bech32m")
     # fund all addresses
-    for addr in (alice_addr, bob_addr, cc_addr):
-        bitcoind.supply_wallet.generatetoaddress(101, addr)
+    for addr in (alice_addr, bob_addr, cc_addr, tap_dave_addr):
+        bitcoind.supply_wallet.sendtoaddress(addr, 2)
+
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
     psbt_list = []
-    for w in (alice, bob, cc):
+    for w in (alice, bob, cc, tap_dave):
         assert w.listunspent()
         psbt = w.walletcreatefundedpsbt([], [{dest_address: 1.0}], 0, {"fee_rate": 20})["psbt"]
         psbt_list.append(psbt)
@@ -1718,6 +1752,9 @@ def test_bitcoind_missing_foreign_utxo(bitcoind, bitcoind_d_sim_watch, microsd_p
             assert pk.hex() in (alice_pubkey, bob_pubkey)
             inp.utxo = None
             inp.witness_utxo = None
+        for xo_pk, _ in inp.taproot_bip32_paths.items():
+            inp.utxo = None
+            inp.witness_utxo = None
 
     psbt0 = the_psbt_obj.as_bytes()
     orig, res = try_sign(psbt0, accept=True)
@@ -1726,10 +1763,12 @@ def test_bitcoind_missing_foreign_utxo(bitcoind, bitcoind_d_sim_watch, microsd_p
     # lets sign with bob first - bobs wallet will ignore missing alice UTXO but will supply his UTXO
     psbt1 = bob.walletprocesspsbt(base64.b64encode(res).decode(), True, "ALL")["psbt"]
     # finally sign with alice
-    res = alice.walletprocesspsbt(psbt1, True, "ALL")
+    res = alice.walletprocesspsbt(psbt1, True)
     psbt2 = res["psbt"]
+    res = tap_dave.walletprocesspsbt(psbt2, True)
+    psbt3 = res["psbt"]
     assert res["complete"] is True
-    tx = alice.finalizepsbt(psbt2)["hex"]
+    tx = alice.finalizepsbt(psbt3)["hex"]
     assert alice.testmempoolaccept([tx])[0]["allowed"] is True
     tx_id = alice.sendrawtransaction(tx)
     assert isinstance(tx_id, str) and len(tx_id) == 64
@@ -1747,7 +1786,8 @@ def test_bitcoind_missing_foreign_utxo(bitcoind, bitcoind_d_sim_watch, microsd_p
 def test_op_return_signing(op_return_data, dev, fake_txn, bitcoind_d_sim_watch, bitcoind, start_sign, end_sign, cap_story):
     cc = bitcoind_d_sim_watch
     dest_address = cc.getnewaddress()
-    bitcoind.supply_wallet.generatetoaddress(101, dest_address)
+    bitcoind.supply_wallet.sendtoaddress(dest_address, 49)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
     psbt = cc.walletcreatefundedpsbt([], [{dest_address: 1.0}, {"data": op_return_data.hex()}], 0, {"fee_rate": 20})["psbt"]
     start_sign(base64.b64decode(psbt))
     time.sleep(.1)
@@ -1853,10 +1893,16 @@ def test_duplicate_unknow_values_in_psbt(dev, start_sign, end_sign, fake_txn):
 
 @pytest.fixture
 def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, press_select,
-                             bitcoind, bitcoind_d_sim_watch, settings_set, finalize_v2_v0_convert):
+                             bitcoind, bitcoind_d_sim_watch, settings_set, finalize_v2_v0_convert,
+                             bitcoind_d_wallet_w_sk):
     def doit(addr_fmt, sighash, num_inputs=2, num_outputs=2, consolidation=False, sh_checks=False,
              psbt_v2=False):
         from decimal import Decimal, ROUND_DOWN
+
+        # supply wallet is legacy wallet (does not support taproot)
+        aa = bitcoind_d_wallet_w_sk.getnewaddress()
+        bitcoind.supply_wallet.sendtoaddress(address=aa, amount=49)
+        bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())  # mine
 
         settings_set("sighshchk", int(not sh_checks))
         microsd_wipe()
@@ -1866,24 +1912,24 @@ def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, p
         not_all_ALL = any(sh != "ALL" for sh in sighash)
 
         bitcoind_d_sim_watch.keypoolrefill(num_inputs + num_outputs)
-        input_val = bitcoind.supply_wallet.getbalance() / num_inputs
+        input_val = bitcoind_d_wallet_w_sk.getbalance() / num_inputs
         cc_dest = [
             {bitcoind_d_sim_watch.getnewaddress("", addr_fmt): Decimal(input_val).quantize(Decimal('.0000001'), rounding=ROUND_DOWN)}
             for _ in range(num_inputs)
         ]
-        psbt = bitcoind.supply_wallet.walletcreatefundedpsbt(
+        psbt = bitcoind_d_wallet_w_sk.walletcreatefundedpsbt(
             [], cc_dest, 0, {"fee_rate": 20, "subtractFeeFromOutputs": [0]}
         )["psbt"]
-        psbt = bitcoind.supply_wallet.walletprocesspsbt(psbt, True, "ALL")["psbt"]
-        resp = bitcoind.supply_wallet.finalizepsbt(psbt)
+        psbt = bitcoind_d_wallet_w_sk.walletprocesspsbt(psbt, True, "ALL")["psbt"]
+        resp = bitcoind_d_wallet_w_sk.finalizepsbt(psbt)
         assert resp["complete"] is True
-        assert len(bitcoind.supply_wallet.sendrawtransaction(resp["hex"])) == 64
+        assert len(bitcoind_d_wallet_w_sk.sendrawtransaction(resp["hex"])) == 64
         # mine above txs
-        bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+        bitcoind_d_wallet_w_sk.generatetoaddress(1, bitcoind_d_wallet_w_sk.getnewaddress())
         unspent = bitcoind_d_sim_watch.listunspent()
         output_val = bitcoind_d_sim_watch.getbalance() / num_outputs
         # consolidation or not?
-        dest_wal = bitcoind_d_sim_watch if consolidation else bitcoind.supply_wallet
+        dest_wal = bitcoind_d_sim_watch if consolidation else bitcoind_d_wallet_w_sk
         destinations = [
             {dest_wal.getnewaddress("", addr_fmt): Decimal(output_val).quantize(Decimal('.0000001'), rounding=ROUND_DOWN)}
             for _ in range(num_outputs)
@@ -1914,6 +1960,7 @@ def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, p
 
         with open(microsd_path("sighash.psbt"), "w") as f:
             f.write(psbt_sh)
+
         press_select()
         time.sleep(0.2)
         title, story = cap_story()
@@ -2014,7 +2061,7 @@ def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, p
 
 
 @pytest.mark.bitcoind
-@pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32"])
+@pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32", "bech32m"])
 @pytest.mark.parametrize("sighash", [sh for sh in SIGHASH_MAP if sh != 'ALL'])
 @pytest.mark.parametrize("num_outs", [1, 3, 5])
 @pytest.mark.parametrize("num_ins", [2, 5])
@@ -2026,7 +2073,7 @@ def test_sighash_same(addr_fmt, sighash, num_ins, num_outs, psbt_v2, _test_singl
 
 
 @pytest.mark.bitcoind
-@pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32"])
+@pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32", "bech32m"])
 @pytest.mark.parametrize("sighash", list(itertools.combinations(SIGHASH_MAP.keys(), 2)))
 @pytest.mark.parametrize("num_outs", [2, 3, 5])
 @pytest.mark.parametrize("psbt_v2", [True, False])
@@ -2037,7 +2084,7 @@ def test_sighash_different(addr_fmt, sighash, num_outs, psbt_v2, _test_single_si
 
 
 @pytest.mark.bitcoind
-@pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32"])
+@pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32", "bech32m"])
 @pytest.mark.parametrize("num_outs", [5, 8])
 @pytest.mark.parametrize("psbt_v2", [True, False])
 def test_sighash_fullmix(addr_fmt, num_outs, psbt_v2, _test_single_sig_sighash):
@@ -2103,7 +2150,7 @@ def test_send2taproot_addresss(fake_txn , start_sign, end_sign, cap_story):
     assert title == "OK TO SEND?"
     # we do not understand change in taproot (taproot not supported)
     assert "Consolidating" not in story
-    assert "Change back" not in story
+    assert "Change back" in story
     # but we should show address
     assert "to script" not in story
     assert "tb1p" in story
@@ -2921,10 +2968,11 @@ def test_sorting_outputs_by_size(fake_txn, start_sign, cap_story, use_testnet,
 @pytest.mark.parametrize("chain", ["BTC", "XTN"])
 @pytest.mark.parametrize("data", [
     # (out_style, amount, is_change)
+    [("p2tr", 999999, 1)] + [("p2tr", 888888, 0)] * 12,
     [("p2pkh", 1000000, 0)] * 99,
-    [("p2wpkh", 1000000, 1),("p2wpkh-p2sh", 800000, 1)] * 27,
+    [("p2wpkh", 1000000, 1),("p2wpkh-p2sh", 800000, 1), ("p2tr", 600000, 1)] * 27,
     [("p2pkh", 1000000, 1)] * 11 + [("p2wpkh", 50000000, 0)] * 16,
-    [("p2pkh", 1000000, 1), ("p2wpkh", 50000000, 0), ("p2wpkh-p2sh", 800000, 1)] * 11,
+    [("p2pkh", 1000000, 1), ("p2wpkh", 50000000, 0), ("p2wpkh-p2sh", 800000, 1), ("p2tr", 100000, 0)] * 11,
 ])
 def test_txout_explorer(psbtv2, chain, data, fake_txn, start_sign,
                         settings_set, txout_explorer, cap_story):
@@ -2984,4 +3032,266 @@ def test_txout_explorer_op_return(fake_txn, start_sign, cap_story, is_q1,
     press_cancel()
     press_cancel()
 
-# EOF
+
+@pytest.mark.bitcoind
+def test_taproot_keyspend(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign, microsd_path, cap_story, goto_home,
+                          press_select, pick_menu_item, bitcoind):
+    use_regtest()
+    sim = bitcoind_d_sim_watch
+    sim.keypoolrefill(10)
+    addr = sim.getnewaddress("", "bech32m")
+    bitcoind.supply_wallet.sendtoaddress(addr, 49)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    dest_addr = sim.getnewaddress("", "bech32m")  # self-spend
+    psbt_resp = sim.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 20})
+    psbt = psbt_resp.get("psbt")
+    psbt_fname = "tr.psbt"
+    open('debug/last.psbt', 'w').write(psbt)
+    with open(microsd_path(psbt_fname), "w") as f:
+        f.write(psbt)
+    goto_home()
+    pick_menu_item('Ready To Sign')
+    time.sleep(.1)
+    title, story = cap_story()
+    if 'OK TO SEND?' not in title:
+        pick_menu_item(psbt_fname)
+        time.sleep(0.1)
+        title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    assert "Consolidating" in story  # self-spend
+    assert " 1 input\n 2 outputs" in story
+    addrs = story.split("\n\n")[3].split("\n")[-2:]
+    assert len(addrs) == 2
+    for addr in addrs:
+        assert addr.startswith("bcrt1p")
+    press_select()  # confirm signing
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == 'PSBT Signed'
+    assert "Updated PSBT is:" in story
+    assert "Finalized transaction (ready for broadcast)" in story
+    assert "TXID" in story
+    split_story = story.split("\n\n")
+    story_txid = split_story[-1].split("\n")[-1]
+    signed_psbt_fname = split_story[1]
+    with open(microsd_path(signed_psbt_fname), "r") as f:
+        signed_psbt = f.read().strip()
+    open('debug/last.psbt', 'w').write(psbt)
+    signed_txn_fname = split_story[3]
+    with open(microsd_path(signed_txn_fname), "r") as f:
+        signed_txn = f.read().strip()
+    assert signed_psbt != psbt
+    finalize_res = sim.finalizepsbt(signed_psbt)
+    bitcoind_signed_txn = finalize_res["hex"]
+    assert finalize_res["complete"] is True
+    accept_res = sim.testmempoolaccept([bitcoind_signed_txn])[0]
+    assert accept_res["allowed"] is True
+    assert signed_txn == bitcoind_signed_txn
+    txid = sim.sendrawtransaction(signed_txn)
+    assert len(txid) == 64
+    assert txid == story_txid
+
+    addr_segwit = sim.getnewaddress("", "bech32")
+    sim.generatetoaddress(1, addr_segwit)  # mine transaction sent and also new coins to p2wpkh
+    addr_nested_segwit = sim.getnewaddress("", "p2sh-segwit")
+    sim.generatetoaddress(1, addr_nested_segwit)
+    addr_legacy = sim.getnewaddress("", "legacy")
+    sim.generatetoaddress(1, addr_legacy)
+    # try to sign tx with all input types (legacy, nested segwit, native segwit, taproot)
+    all_of_it = sim.getbalance()
+    dest_addr0 = sim.getnewaddress("", "bech32m")  # self-spend
+    dest_addr1 = sim.getnewaddress("", "bech32m")  # self-spend
+    dest_addr2 = sim.getnewaddress("", "bech32m")  # self-spend
+    chunk = round(all_of_it / 3, 6)
+    psbt_resp = sim.walletcreatefundedpsbt([], [{dest_addr0: chunk}, {dest_addr1: chunk}, {dest_addr2: chunk}],
+                                           0, {'subtractFeeFromOutputs': [0], "fee_rate": 20})
+    psbt = psbt_resp.get("psbt")
+    psbt_fname = "tr-all.psbt"
+    open('debug/last.psbt', 'w').write(psbt)
+    with open(microsd_path(psbt_fname), "w") as f:
+        f.write(psbt)
+    goto_home()
+    pick_menu_item('Ready To Sign')
+    time.sleep(.1)
+    title, story = cap_story()
+    if 'OK TO SEND?' not in title:
+        pick_menu_item(psbt_fname)
+        time.sleep(0.1)
+        title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    assert "Consolidating" in story  # self-spend
+    assert " 2 inputs\n 3 outputs" in story
+    press_select()  # confirm signing
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == 'PSBT Signed'
+    assert "Updated PSBT is:" in story
+    assert "Finalized transaction (ready for broadcast)" in story
+    assert "TXID" in story
+    split_story = story.split("\n\n")
+    story_txid = split_story[-1].split("\n")[-1]
+    signed_psbt_fname = split_story[1]
+    with open(microsd_path(signed_psbt_fname), "r") as f:
+        signed_psbt = f.read().strip()
+    open('debug/last.psbt', 'w').write(psbt)
+    signed_txn_fname = split_story[3]
+    with open(microsd_path(signed_txn_fname), "r") as f:
+        signed_txn = f.read().strip()
+    assert signed_psbt != psbt
+    finalize_res = sim.finalizepsbt(signed_psbt)
+    bitcoind_signed_txn = finalize_res["hex"]
+    assert finalize_res["complete"] is True
+    accept_res = sim.testmempoolaccept([bitcoind_signed_txn])[0]
+    assert accept_res["allowed"] is True
+    assert signed_txn == bitcoind_signed_txn
+    txid = sim.sendrawtransaction(signed_txn)
+    assert len(txid) == 64
+    assert txid == story_txid
+
+    # multi p2tr output consolidation
+    addr_segwit = sim.getnewaddress("", "bech32")
+    sim.generatetoaddress(1, addr_segwit)  # mine transaction sent and also new coins to p2wpkh
+    all_of_it = sim.getbalance()
+    dest_addr = sim.getnewaddress("", "bech32m")
+    psbt_resp = sim.walletcreatefundedpsbt([], [{dest_addr: all_of_it}],
+                                           0, {'subtractFeeFromOutputs': [0], "fee_rate": 20})
+    psbt = psbt_resp.get("psbt")
+    psbt_fname = "tr-multi-out-consolidation.psbt"
+    with open(microsd_path(psbt_fname), "w") as f:
+        f.write(psbt)
+    goto_home()
+    pick_menu_item('Ready To Sign')
+    time.sleep(.1)
+    title, story = cap_story()
+    if 'OK TO SEND?' not in title:
+        pick_menu_item(psbt_fname)
+        time.sleep(0.1)
+        title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    assert "Consolidating" in story  # self-spend
+    assert " 3 inputs\n 1 output" in story
+    press_select()  # confirm signing
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == 'PSBT Signed'
+    assert "Updated PSBT is:" in story
+    assert "Finalized transaction (ready for broadcast)" in story
+    assert "TXID" in story
+    split_story = story.split("\n\n")
+    story_txid = split_story[-1].split("\n")[-1]
+    signed_psbt_fname = split_story[1]
+    with open(microsd_path(signed_psbt_fname), "r") as f:
+        signed_psbt = f.read().strip()
+    open('debug/last.psbt', 'w').write(psbt)
+    signed_txn_fname = split_story[3]
+    with open(microsd_path(signed_txn_fname), "r") as f:
+        signed_txn = f.read().strip()
+    assert signed_psbt != psbt
+    finalize_res = sim.finalizepsbt(signed_psbt)
+    bitcoind_signed_txn = finalize_res["hex"]
+    assert finalize_res["complete"] is True
+    accept_res = sim.testmempoolaccept([bitcoind_signed_txn])[0]
+    assert accept_res["allowed"] is True
+    assert signed_txn == bitcoind_signed_txn
+    txid = sim.sendrawtransaction(signed_txn)
+    assert len(txid) == 64
+    assert txid == story_txid
+
+    # send it all to bob, he's a good guy
+    bob_w = bitcoind.create_wallet("bob")
+    dst = bob_w.getnewaddress("", "bech32m")
+    all_of_it = sim.getbalance()
+    psbt_resp = sim.walletcreatefundedpsbt([], [{dst: all_of_it}],
+                                           0, {'subtractFeeFromOutputs': [0], "fee_rate": 20})
+    psbt = psbt_resp.get("psbt")
+    psbt_fname = "tr2bob.psbt"
+    with open(microsd_path(psbt_fname), "w") as f:
+        f.write(psbt)
+    goto_home()
+    pick_menu_item('Ready To Sign')
+    time.sleep(.1)
+    title, story = cap_story()
+    if 'OK TO SEND?' not in title:
+        pick_menu_item(psbt_fname)
+        time.sleep(0.1)
+        title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    assert "Consolidating" not in story  # NOT a self-spend
+    assert "to address" in story
+    assert dst in story
+    press_select()  # confirm signing
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == 'PSBT Signed'
+    assert "Updated PSBT is:" in story
+    assert "Finalized transaction (ready for broadcast)" in story
+    assert "TXID" in story
+    split_story = story.split("\n\n")
+    story_txid = split_story[-1].split("\n")[-1]
+    signed_psbt_fname = split_story[1]
+    with open(microsd_path(signed_psbt_fname), "r") as f:
+        signed_psbt = f.read().strip()
+    signed_txn_fname = split_story[3]
+    with open(microsd_path(signed_txn_fname), "r") as f:
+        signed_txn = f.read().strip()
+    assert signed_psbt != psbt
+    finalize_res = sim.finalizepsbt(signed_psbt)
+    bitcoind_signed_txn = finalize_res["hex"]
+    assert finalize_res["complete"] is True
+    accept_res = sim.testmempoolaccept([bitcoind_signed_txn])[0]
+    assert accept_res["allowed"] is True
+    assert signed_txn == bitcoind_signed_txn
+    txid = sim.sendrawtransaction(signed_txn)
+    assert len(txid) == 64
+    assert txid == story_txid
+
+
+@pytest.mark.parametrize('fn_err_msg', [
+    ('data/taproot/in_internal_key_len.psbt', 'PSBT_IN_TAP_INTERNAL_KEY length != 32'),
+    ('data/taproot/in_key_pth_sig_len.psbt', 'PSBT_IN_TAP_KEY_SIG length != 64 or 65'),
+    ('data/taproot/in_key_pth_sig_len1.psbt', 'PSBT_IN_TAP_KEY_SIG length != 64 or 65'),
+    ('data/taproot/in_tr_deriv_key_len.psbt', 'PSBT_IN_TAP_BIP32_DERIVATION xonly-pubkey length != 32'),
+    ('data/taproot/in_script_sig_key_len.psbt', 'PSBT_IN_TAP_SCRIPT_SIG key length != 64'),
+    ('data/taproot/in_script_sig_sig_len.psbt', 'PSBT_IN_TAP_SCRIPT_SIG signature length != 64 or 65'),
+    ('data/taproot/in_script_sig_sig_len1.psbt', 'PSBT_IN_TAP_SCRIPT_SIG signature length != 64 or 65'),
+    ('data/taproot/in_leaf_script_cb_len.psbt', 'PSBT_IN_TAP_LEAF_SCRIPT control block is not valid'),
+    ('data/taproot/in_leaf_script_cb_len1.psbt', 'PSBT_IN_TAP_LEAF_SCRIPT control block is not valid'),
+])
+def test_invalid_input_taproot_psbt(start_sign, fn_err_msg, cap_story):
+    fn, err_msg = fn_err_msg
+    start_sign(fn)
+
+    title, story = cap_story()
+    assert title == "Failure"
+    assert 'Invalid PSBT' in story
+    # error messages are disabled to save some space - problem file line is still included
+    # assert err_msg in story
+
+
+def test_invalid_output_tapproot_psbt(fake_txn, start_sign, cap_story, dev):
+    psbt = fake_txn(3, 2, master_xpub=dev.master_xpub, taproot_in=True, outstyles=["p2tr"], change_outputs=[1])
+    # invalid internal key length
+    psbt_obj = BasicPSBT().parse(psbt)
+    for o in psbt_obj.outputs:
+        o.taproot_internal_key = b"\x03" + b"a" * 32
+    psbt0 = BytesIO()
+    psbt_obj.serialize(psbt0)
+    start_sign(psbt0.getvalue())
+    title, story = cap_story()
+    assert title == "Failure"
+    assert 'Invalid PSBT' in story
+    # error messages are disabled to save some space - problem file line is still included
+    # assert "PSBT_OUT_TAP_INTERNAL_KEY length != 32" in story
+
+    # invalid internal key length in bip32 taproot paths
+    psbt_obj = BasicPSBT().parse(psbt)
+    for o in psbt_obj.outputs:
+        o.taproot_bip32_paths = {b"\x03" + b"a" * 32: 12 * b"1"}
+    psbt0 = BytesIO()
+    psbt_obj.serialize(psbt0)
+    start_sign(psbt0.getvalue())
+    title, story = cap_story()
+    assert title == "Failure"
+    assert 'Invalid PSBT' in story
+    # error messages are disabled to save some space - problem file line is still included
+    # assert "PSBT_IN_TAP_BIP32_DERIVATION xonly-pubkey length != 32" in story

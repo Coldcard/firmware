@@ -25,9 +25,11 @@ unmap_addr_fmt = {
     'p2wsh': AF_P2WSH,
     'p2wsh-p2sh': AF_P2WSH_P2SH,
     'p2sh-p2wsh': AF_P2WSH_P2SH,
+    "p2tr": AF_P2TR,
 }
 
 msg_sign_unmap_addr_fmt = {
+    'p2tr': AF_P2TR,  # not supported for msg signign tho
     'p2pkh': AF_CLASSIC,
     'p2wpkh': AF_P2WPKH,
     'p2sh-p2wpkh': AF_P2WPKH_P2SH,
@@ -35,6 +37,7 @@ msg_sign_unmap_addr_fmt = {
 }
 
 addr_fmt_names = {
+    AF_P2TR: 'p2tr',
     AF_CLASSIC: 'p2pkh',
     AF_P2SH: 'p2sh',
     AF_P2WPKH: 'p2wpkh',
@@ -45,10 +48,10 @@ addr_fmt_names = {
     
 
 # all possible addr types, including multisig/scripts
-ADDR_STYLES = ['p2wpkh', 'p2wsh', 'p2sh', 'p2pkh', 'p2wsh-p2sh', 'p2wpkh-p2sh']
+ADDR_STYLES = ['p2wpkh', 'p2wsh', 'p2sh', 'p2pkh', 'p2wsh-p2sh', 'p2wpkh-p2sh', 'p2tr']
 
 # single-signer
-ADDR_STYLES_SINGLE = ['p2wpkh', 'p2pkh', 'p2wpkh-p2sh']
+ADDR_STYLES_SINGLE = ['p2wpkh', 'p2pkh', 'p2wpkh-p2sh', 'p2tr']
 
 # multi signer
 ADDR_STYLES_MS = ['p2sh', 'p2wsh', 'p2wsh-p2sh']

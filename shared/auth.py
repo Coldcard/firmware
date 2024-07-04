@@ -3,12 +3,12 @@
 # Operations that require user authorization, like our core features: signing messages
 # and signing bitcoin transactions.
 #
-import stash, ure, ux, chains, sys, gc, uio, version, ngu
+import stash, ure, ux, chains, sys, gc, uio, version, ngu, ujson
 from ubinascii import b2a_base64, a2b_base64
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from uhashlib import sha256
-from public_constants import MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
+from public_constants import MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS, AF_P2TR
 from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH, AF_P2WPKH_P2SH
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
@@ -309,6 +309,10 @@ class ApproveMessageSign(UserAuthorizedAction):
         self.subpath = cleanup_deriv_path(subpath)
         self.addr_fmt = parse_addr_fmt_str(addr_fmt)
         self.approved_cb = approved_cb
+
+        # temporary - no p2tr support
+        if self.addr_fmt == AF_P2TR:
+            raise ValueError("Unsupported address format: 'p2tr'")
 
         from glob import dis
         dis.fullscreen('Wait...')
@@ -1426,7 +1430,7 @@ class ShowP2SHAddress(ShowAddressBase):
         # calculate all the pubkeys involved.
         self.subpath_help = ms.validate_script(witdeem_script, xfp_paths=xfp_paths)
 
-        self.address = ms.chain.p2sh_address(addr_fmt, witdeem_script)
+        self.address = chains.current_chain().p2sh_address(addr_fmt, witdeem_script)
 
     def get_msg(self):
         return '''\
@@ -1441,6 +1445,41 @@ Paths:
 
 {sp}'''.format(addr=self.address, name=self.ms.name,
                         M=self.ms.M, N=self.ms.N, sp='\n\n'.join(self.subpath_help))
+
+
+class ShowMiniscriptAddress(ShowAddressBase):
+
+    def setup(self, msc, change, idx):
+        self.msc = msc
+        self.change = change
+        self.idx = idx
+
+        d = self.msc.desc.derive(None, change=change).derive(idx)
+        self.address = chains.current_chain().render_address(d.script_pubkey())
+        self.addr_fmt = self.msc.addr_fmt
+
+    def get_msg(self):
+        return '''\
+{addr}
+Wallet:
+  {name}
+
+Index:
+  {idx}
+
+Change:
+  {change}'''.format(addr=self.address, name=self.msc.name, idx=self.idx, change=bool(self.change))
+
+
+def start_show_miniscript_address(msc, change, index):
+    UserAuthorizedAction.check_busy(ShowAddressBase)
+    UserAuthorizedAction.active_request = ShowMiniscriptAddress(msc, change, index)
+
+    # kill any menu stack, and put our thing at the top
+    abort_and_goto(UserAuthorizedAction.active_request)
+
+    # provide the value back to attached desktop
+    return UserAuthorizedAction.active_request.address
 
 def start_show_p2sh_address(M, N, addr_format, xfp_paths, witdeem_script):
     # Show P2SH address to user, also returns it.
@@ -1500,26 +1539,47 @@ def usb_show_address(addr_format, subpath):
     return active_request.address
 
 
-class NewEnrollRequest(UserAuthorizedAction):
-    def __init__(self, ms, auto_export=False):
+class MiniscriptDeleteRequest(UserAuthorizedAction):
+    def __init__(self, msc):
         super().__init__()
-        self.wallet = ms
-        self.auto_export = auto_export
-
-        # self.result ... will be re-serialized xpub
+        self.wallet = msc
 
     async def interact(self):
-        from multisig import MultisigOutOfSpace
+        from miniscript import miniscript_delete
+        await miniscript_delete(self.wallet)
+        self.done()
+
+
+def maybe_delete_miniscript(msc):
+    UserAuthorizedAction.cleanup()
+    UserAuthorizedAction.active_request = MiniscriptDeleteRequest(msc)
+
+    # kill any menu stack, and put our thing at the top
+    abort_and_goto(UserAuthorizedAction.active_request)
+
+class NewMiniscriptEnrollRequest(UserAuthorizedAction):
+    def __init__(self, msc, auto_export=False, bsms_index=None):
+        super().__init__()
+        self.wallet = msc
+        self.auto_export = auto_export
+        self.bsms_index = bsms_index
+
+    async def interact(self):
+        from wallet import WalletOutOfSpace
 
         ms = self.wallet
         try:
             ch = await ms.confirm_import()
 
-            if ch == 'y':
+            if ch in 'y' + KEY_ENTER:
+                if self.bsms_index is not None:
+                    # remove signer round 2 from settings after multisig import is approved by user
+                    from bsms import BSMSSettings
+                    BSMSSettings.signer_delete(self.bsms_index)
                 if self.auto_export:
-                    # save cosigner details now too 
-                    await ms.export_wallet_file('created on', 
-    "\n\nImport that file onto the other Coldcards involved with this multisig wallet.")
+                    # save cosigner details now too
+                    await ms.export_wallet_file('created on',
+                                                "\n\nImport that file onto the other Coldcards involved with this multisig wallet.")
                     await ms.export_electrum()
 
             else:
@@ -1527,39 +1587,89 @@ class NewEnrollRequest(UserAuthorizedAction):
                 self.refused = True
                 await ux_dramatic_pause("Refused.", 2)
 
-        except MultisigOutOfSpace:
+        except WalletOutOfSpace:
             return await self.failure('No space left')
         except BaseException as exc:
             self.failed = "Exception"
             sys.print_exception(exc)
         finally:
-            UserAuthorizedAction.cleanup()      # because no results to store
-            self.pop_menu()
+            UserAuthorizedAction.cleanup()  # because no results to store
+            if self.bsms_index is not None:
+                # bsms special case, get him back to multisig menu
+                from ux import the_ux, restore_menu
+                from multisig import MultisigMenu
+                while 1:
+                    top = the_ux.top_of_stack()
+                    if not top: break
+                    if not isinstance(top, MultisigMenu):
+                        the_ux.pop()
+                        continue
+                    break
+                restore_menu()
+            else:
+                self.pop_menu()
 
-def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False):
-    # Offer to import (enroll) a new multisig wallet. Allow reject by user.
+
+def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_index=None, miniscript=False):
+    # Offer to import (enroll) a new multisig/miniscript wallet. Allow reject by user.
+    from glob import dis
     from multisig import MultisigWallet
+    from miniscript import MiniScriptWallet
 
     UserAuthorizedAction.cleanup()
+    dis.fullscreen('Wait...')
+    dis.busy_bar(True)
 
-    if sf_len:
-        with SFFile(TXN_INPUT_OFFSET, length=sf_len) as fd:
-            config = fd.read(sf_len).decode()
+    try:
+        if sf_len:
+            with SFFile(TXN_INPUT_OFFSET, length=sf_len) as fd:
+                config = fd.read(sf_len).decode()
 
-    # this call will raise on parsing errors, so let them rise up
-    # and be shown on screen/over usb
-    ms = MultisigWallet.from_file(config, name=name)
+        try:
+            j_conf = ujson.loads(config)
+            assert "desc" in j_conf, "'desc' key required"
+            config = j_conf["desc"]
+            assert isinstance(config, str), "'desc' value not a str"
+            assert config, "'desc' empty"
 
-    UserAuthorizedAction.active_request = NewEnrollRequest(ms)
+            if "name" in j_conf:
+                # name from json has preference over filenames and desc checksum
+                name = j_conf["name"]
+                assert isinstance(name, str), "'name' value not a str"
+                assert len(name) >= 2, "'name' too short"
+                assert len(name) <= 40, "'name' too long (max 40)"
+        except ValueError: pass
 
-    if ux_reset:
-        # for USB case, and import from PSBT
-        # kill any menu stack, and put our thing at the top
-        abort_and_goto(UserAuthorizedAction.active_request)
-    else:
-        # menu item case: add to stack
-        from ux import the_ux
-        the_ux.push(UserAuthorizedAction.active_request)
+        # this call will raise on parsing errors, so let them rise up
+        # and be shown on screen/over usb
+        if miniscript is None:
+            # autodetect
+            try:
+                msc = MiniScriptWallet.from_file(config, name=name)
+            except AssertionError:
+                msc = MultisigWallet.from_file(config, name=name)
+
+        elif miniscript:
+            msc = MiniScriptWallet.from_file(config, name=name)
+        else:
+            msc = MultisigWallet.from_file(config, name=name)
+
+        UserAuthorizedAction.active_request = NewMiniscriptEnrollRequest(msc, bsms_index=bsms_index)
+
+        if ux_reset:
+            # for USB case, and import from PSBT
+            # kill any menu stack, and put our thing at the top
+            abort_and_goto(UserAuthorizedAction.active_request)
+        else:
+            # menu item case: add to stack
+            from ux import the_ux
+            the_ux.push(UserAuthorizedAction.active_request)
+
+    except Exception as e:
+        raise
+    finally:
+        dis.busy_bar(False)
+
 
 class FirmwareUpgradeRequest(UserAuthorizedAction):
     def __init__(self, hdr, length, hdr_check=False, psram_offset=None):

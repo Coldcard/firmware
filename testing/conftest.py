@@ -1,9 +1,9 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, io, math, pdb
+import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, io, math, bech32, pdb
 from subprocess import check_output
 from ckcc.protocol import CCProtocolPacker
-from helpers import B2A, U2SAT, hash160
+from helpers import B2A, U2SAT, hash160, taptweak
 from base58 import decode_base58_checksum
 from bip32 import BIP32Node
 from msg import verify_message
@@ -285,26 +285,30 @@ def addr_vs_path(master_xpub):
     from bip32 import BIP32Node
     from ckcc_protocol.constants import AF_CLASSIC, AFC_PUBKEY, AF_P2WPKH, AFC_SCRIPT
     from ckcc_protocol.constants import AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH
-    from bech32 import bech32_decode, convertbits, Encoding
+    from bech32 import bech32_decode, convertbits, decode, Encoding
     from hashlib import sha256
 
-    def doit(given_addr, path=None, addr_fmt=None, script=None, testnet=True):
+    def doit(given_addr, path=None, addr_fmt=None, script=None, chain="XTN"):
         if not script:
             try:
                 # prefer using xpub if we can
                 mk = BIP32Node.from_wallet_key(master_xpub)
-                if not testnet:
-                    mk._netcode = "BTC"
-                sk = mk.subkey_for_path(path[2:])
+                mk._netcode = chain
+                sk = mk.subkey_for_path(path)
             except:
                 mk = BIP32Node.from_wallet_key(simulator_fixed_tprv)
-                if not testnet:
-                    mk._netcode = "BTC"
-                sk = mk.subkey_for_path(path[2:])
+                mk._netcode = chain
+                sk = mk.subkey_for_path(path)
 
-        if addr_fmt in {None,  AF_CLASSIC}:
+        if addr_fmt == AF_P2TR:
+            tweaked_xonly = taptweak(sk.sec()[1:])
+            decoded = decode(given_addr[:2], given_addr)
+            assert not given_addr.startswith("bcrt")  # regtest
+            assert tweaked_xonly == bytes(decoded[1])
+
+        elif addr_fmt in {None,  AF_CLASSIC}:
             # easy
-            assert sk.address(netcode="XTN" if testnet else "BTC") == given_addr
+            assert sk.address(chain=chain) == given_addr
 
         elif addr_fmt & AFC_PUBKEY:
 
@@ -350,7 +354,6 @@ def addr_vs_path(master_xpub):
         return sk if not script else None
 
     return doit
-
 
 
 @pytest.fixture(scope='module')
@@ -612,6 +615,12 @@ def get_secrets(sim_execfile):
             rv[n] = loads(v)
         return rv
 
+    return doit
+
+@pytest.fixture
+def clear_miniscript(unit_test):
+    def doit():
+        unit_test('devtest/wipe_miniscript.py')
     return doit
 
 @pytest.fixture(scope='module')
@@ -1333,18 +1342,22 @@ def start_sign(dev):
     return doit
 
 @pytest.fixture
-def end_sign(dev, need_keypress):
+def end_sign(dev, press_select, press_cancel):
     from ckcc_protocol.protocol import CCUserRefused
 
     def doit(accept=True, in_psbt=None, finalize=False, accept_ms_import=False, expect_txn=True):
 
         if accept_ms_import:
             # XXX would be better to do cap_story here, but that would limit test to simulator
-            need_keypress('y', timeout=None)
+            press_select(timeout=None)
             time.sleep(0.050)
 
         if accept != None:
-            need_keypress('y' if accept else 'x', timeout=None)
+            time.sleep(.1)
+            if accept:
+                press_select(timeout=None)
+            else:
+                press_cancel(timeout=None)
 
         if accept == False:
             with pytest.raises(CCUserRefused):
@@ -1566,6 +1579,9 @@ def nfc_read(request, needs_nfc):
 def nfc_write(request, needs_nfc, is_q1):
     # WRITE data into NFC "chip"
     def doit_usb(ccfile):
+        from ckcc.constants import MAX_MSG_LEN
+        if len(ccfile) >= MAX_MSG_LEN:
+            pytest.xfail("MAX_MSG_LEN")
         sim_exec = request.getfixturevalue('sim_exec')
         press_select = request.getfixturevalue('press_select')
         rv = sim_exec('list(glob.NFC.big_write(%r))' % ccfile)
@@ -1681,7 +1697,7 @@ def load_shared_mod():
     return doit
 
 @pytest.fixture
-def verify_detached_signature_file(microsd_path, virtdisk_path):
+def verify_detached_signature_file(microsd_path, virtdisk_path, garbage_collector):
     def doit(fnames, sig_fname, way, addr_fmt=None):
         fpaths = []
         for fname in fnames:
@@ -1690,6 +1706,7 @@ def verify_detached_signature_file(microsd_path, virtdisk_path):
             else:
                 path = virtdisk_path(fname)
             fpaths.append(path)
+            garbage_collector.append(path)
 
         if way == "sd":
             sig_path = microsd_path(sig_fname)
@@ -1730,9 +1747,7 @@ def verify_detached_signature_file(microsd_path, virtdisk_path):
             assert (hashlib.sha256(contents).digest().hex() + fn_addendum) in msg
 
         assert verify_message(address, sig, msg) is True
-        try:
-            os.unlink(sig_path)
-        except: pass
+        garbage_collector.append(sig_path)
         return fcontents[0], address
 
     return doit
@@ -1766,10 +1781,10 @@ def load_export_and_verify_signature(microsd_path, virtdisk_path, verify_detache
 @pytest.fixture
 def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_text, nfc_read_json,
                 load_export_and_verify_signature, is_q1, press_cancel, press_select, readback_bbqr,
-                cap_screen_qr):
+                cap_screen_qr, garbage_collector):
     def doit(way, label, is_json, sig_check=True, addr_fmt=AF_CLASSIC, ret_sig_addr=False,
              tail_check=None, sd_key=None, vdisk_key=None, nfc_key=None, ret_fname=False,
-             fpattern=None, qr_key=None):
+             fpattern=None, qr_key=None, skip_query=False):
         
         s_label = None
         if label == "Address summary":
@@ -1781,54 +1796,55 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
             "nfc": nfc_key or (KEY_NFC if is_q1 else "3"),
             "qr": qr_key or (KEY_QR if is_q1 else "4"),
         }
-        time.sleep(0.2)
-        title, story = cap_story()
-        if way == "sd":
-            if f"({key_map['sd']}) to save {s_label if s_label else label} file to SD Card" in story:
-                need_keypress(key_map['sd'])
+        if not skip_query:
+            time.sleep(0.2)
+            title, story = cap_story()
+            if way == "sd":
+                if f"({key_map['sd']}) to save {s_label if s_label else label} file to SD Card" in story:
+                    need_keypress(key_map['sd'])
 
-        elif way == "nfc":
-            if f"{key_map['nfc'] if is_q1 else '(3)'} to share via NFC" not in story:
-                pytest.skip("NFC disabled")
-            else:
-                need_keypress(key_map['nfc'])
-                time.sleep(0.2)
-                if is_json:
-                    nfc_export = nfc_read_json()
+            elif way == "nfc":
+                if f"{key_map['nfc'] if is_q1 else '(3)'} to share via NFC" not in story:
+                    pytest.skip("NFC disabled")
                 else:
-                    nfc_export = nfc_read_text()
+                    need_keypress(key_map['nfc'])
+                    time.sleep(0.2)
+                    if is_json:
+                        nfc_export = nfc_read_json()
+                    else:
+                        nfc_export = nfc_read_text()
+                    time.sleep(0.3)
+                    press_cancel()  # exit NFC animation
+                    return nfc_export
+            elif way == "qr":
+                if 'file written' in story:
+                    assert not is_q1
+                    # mk4 only does QR if fits in normal QR, becaise it can't do BBQr
+                    pytest.skip('no BBQr on Mk4')
+
+                need_keypress(key_map["qr"])
                 time.sleep(0.3)
-                press_cancel()  # exit NFC animation
-                return nfc_export
-        elif way == "qr":
-            if 'file written' in story:
-                assert not is_q1
-                # mk4 only does QR if fits in normal QR, becaise it can't do BBQr
-                pytest.skip('no BBQr on Mk4')
-
-            need_keypress(key_map["qr"])
-            time.sleep(0.3)
-            try:
-                file_type, data = readback_bbqr()
-                if file_type == "J":
-                    return json.loads(data)
-                elif file_type == "U":
-                    return data.decode('utf-8') if not isinstance(data, str) else data
-                else:
-                    raise NotImplementedError
-            except:
-                raise
-                res = cap_screen_qr().decode('ascii')
                 try:
-                    return json.loads(res)
+                    file_type, data = readback_bbqr()
+                    if file_type == "J":
+                        return json.loads(data)
+                    elif file_type == "U":
+                        return data.decode('utf-8') if not isinstance(data, str) else data
+                    else:
+                        raise NotImplementedError
                 except:
-                    return res
-        else:
-            # virtual disk
-            if f"({key_map['vdisk']}) to save to Virtual Disk" not in story:
-                pytest.skip("Vdisk disabled")
+                    raise
+                    res = cap_screen_qr().decode('ascii')
+                    try:
+                        return json.loads(res)
+                    except:
+                        return res
             else:
-                need_keypress(key_map['vdisk'])
+                # virtual disk
+                if f"({key_map['vdisk']}) to save to Virtual Disk" not in story:
+                    pytest.skip("Vdisk disabled")
+                else:
+                    need_keypress(key_map['vdisk'])
 
         time.sleep(0.2)
         title, story = cap_story()
@@ -1856,6 +1872,8 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 export = f.read()
                 if is_json:
                     export = json.loads(export)
+
+            garbage_collector.append(path)
 
             press_select()
 
@@ -1901,7 +1919,7 @@ def tapsigner_encrypted_backup(microsd_path, virtdisk_path):
     return doit
 
 @pytest.fixture
-def choose_by_word_length(need_keypress):
+def choose_by_word_length(need_keypress, press_select):
     # for use in seed XOR menu system
     def doit(num_words):
         if num_words == 12:
@@ -1909,7 +1927,7 @@ def choose_by_word_length(need_keypress):
         elif num_words == 18:
             need_keypress("2")
         else:
-            need_keypress("y")
+            press_select()
     return doit
 
 # workaround: need these fixtures to be global so I can call test from a test
@@ -2130,6 +2148,9 @@ def txout_explorer(cap_story, press_cancel, need_keypress, is_q1):
                 elif af in ("p2wpkh", "p2wsh"):
                     target = "bc1q" if chain == "BTC" else "tb1q"
                     assert addr.startswith(target)
+                elif af == "p2tr":
+                    target = "bc1p" if chain == "BTC" else "tb1p"
+                    assert addr.startswith(target)
                 elif af in ("p2sh", "p2wpkh-p2sh", "p2wsh-p2sh"):
                     target = "3" if chain == "BTC" else "2"
                     assert addr.startswith(target)
@@ -2173,6 +2194,30 @@ def txout_explorer(cap_story, press_cancel, need_keypress, is_q1):
 
     return doit
 
+@pytest.fixture
+def validate_address():
+    # Check whether an address is covered by the given subkey
+    def doit(addr, sk):
+        if addr[0] in '1mn':
+            chain = "XTN" if addr[0] != "1" else "BTC"
+            assert addr == sk.address(addr_fmt="p2pkh", chain=chain)
+        elif addr[0:4] in {'bc1q', 'tb1q'}:
+            chain = "XTN" if addr[0:4] != 'bc1q' else "BTC"
+            assert addr == sk.address(addr_fmt="p2wpkh", chain=chain)
+        elif addr[0:6] == "bcrt1q":
+            assert addr == sk.address(addr_fmt="p2wpkh", chain="XRT")
+        elif addr[0:4] in {'bc1p', 'tb1p'}:
+            chain = "XTN" if addr[0:4] != 'bc1p' else "BTC"
+            assert addr == sk.address(addr_fmt="p2tr", chain=chain)
+        elif addr[0:6] == "bcrt1p":
+            assert addr == sk.address(addr_fmt="p2tr", chain="XRT")
+        elif addr[0] in '23':
+            chain = "XTN" if addr[0] != '3' else "BTC"
+            assert addr == sk.address(addr_fmt="p2sh-p2wpkh", chain=chain)
+        else:
+            raise ValueError(addr)
+    return doit
+
 
 @pytest.fixture
 def skip_if_useless_way(is_q1, nfc_disabled):
@@ -2188,6 +2233,15 @@ def skip_if_useless_way(is_q1, nfc_disabled):
 
     return doit
 
+@pytest.fixture
+def garbage_collector():
+    to_remove = []
+    yield to_remove
+    for pth in to_remove:
+        try:
+            os.remove(pth)
+        except: pass
+
 # useful fixtures
 from test_backup import backup_system
 from test_bbqr import readback_bbqr, render_bbqr, readback_bbqr_ll
@@ -2198,6 +2252,7 @@ from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed, confir
 from test_ephemeral import verify_ephemeral_secret_ui, get_identity_story, get_seed_value_ux, seed_vault_enable
 from test_multisig import import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn
 from test_multisig import make_ms_address, clear_ms, make_myself_wallet
+from test_miniscript import offer_minsc_import
 from test_se2 import goto_trick_menu, clear_all_tricks, new_trick_pin, se2_gate, new_pin_confirmed
 from test_seed_xor import restore_seed_xor
 from test_ux import pass_word_quiz, word_menu_entry

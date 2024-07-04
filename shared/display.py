@@ -4,7 +4,7 @@
 #
 import machine, uzlib, ckcc, utime
 from ssd1306 import SSD1306_SPI
-from version import is_devmode
+from version import is_devmode, is_edge
 import framebuf
 from graphics_mk4 import Graphics
 
@@ -146,6 +146,12 @@ class Display:
             self.text(-2, 21, 'D', font=FontTiny, invert=1)
             self.text(-2, 28, 'E', font=FontTiny, invert=1)
             self.text(-2, 35, 'V', font=FontTiny, invert=1)
+        elif is_edge:
+            self.dis.fill_rect(128 - 6, 19, 5, 26, 1)
+            self.text(-2, 20, 'E', font=FontTiny, invert=1)
+            self.text(-2, 27, 'D', font=FontTiny, invert=1)
+            self.text(-2, 33, 'G', font=FontTiny, invert=1)
+            self.text(-2, 39, 'E', font=FontTiny, invert=1)
 
     def fullscreen(self, msg, percent=None, line2=None):
         # show a simple message "fullscreen". 

@@ -613,7 +613,6 @@ class NFCHandler:
         aborted = await n.share_text("NFC is working: %s" % n.get_uid(), allow_enter=False)
         assert not aborted, "Aborted"
 
-    
     async def share_file(self):
         # Pick file from SD card and share over NFC...
         from actions import file_picker
@@ -657,32 +656,6 @@ class NFCHandler:
                 await self.share_text(data.decode())
             else:
                 raise ValueError(ext)
-
-    async def import_multisig_nfc(self, *a):
-        # user is pushing a file downloaded from another CC over NFC
-        # - would need an NFC app in between for the sneakernet step
-        # get some data
-        data = await self.start_nfc_rx()
-        if not data: return
-
-        winner = None
-        for urn, msg, meta in ndef.record_parser(data):
-            if len(msg) < 70: continue
-            msg = bytes(msg).decode()        # from memory view
-            if 'pub' in msg or 'sortedmulti(' in msg:
-                winner = msg
-                break
-
-        if not winner:
-            await ux_show_story('Unable to find multisig descriptor.')
-            return
-
-        from auth import maybe_enroll_xpub
-        try:
-            maybe_enroll_xpub(config=winner)
-        except Exception as e:
-            #import sys; sys.print_exception(e)
-            await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
     async def import_ephemeral_seed_words_nfc(self, *a):
         data = await self.start_nfc_rx()
@@ -880,5 +853,78 @@ class NFCHandler:
             return
 
         return winner
+
+    async def read_bsms_token(self):
+        data = await self.start_nfc_rx()
+        if not data:
+            await ux_show_story('Unable to find data expected in NDEF')
+            return
+
+        winner = None
+        for urn, msg, meta in ndef.record_parser(data):
+            msg = bytes(msg).decode().strip()  # from memory view
+            try:
+                int(msg, 16)
+                winner = msg
+                break
+            except:
+                pass
+
+        if not winner:
+            await ux_show_story('Unable to find BSMS token in NDEF data')
+            return
+
+        return winner
+
+    async def read_bsms_data(self):
+        data = await self.start_nfc_rx()
+        if not data:
+            await ux_show_story('Unable to find data expected in NDEF')
+            return
+
+        winner = None
+        for urn, msg, meta in ndef.record_parser(data):
+            msg = bytes(msg).decode().strip()  # from memory view
+            try:
+                if "BSMS" in msg:
+                    # unencrypted case
+                    winner = msg
+                    break
+                elif int(msg[:6], 16):
+                    # encrypted hex case
+                    winner = msg
+                    break
+                else:
+                    continue
+            except:
+                pass
+
+        if not winner:
+            await ux_show_story('Unable to find BSMS data in NDEF data')
+            return
+
+        return winner
+
+    async def import_miniscript_nfc(self, legacy_multisig=False):
+        data = await self.start_nfc_rx()
+        if not data: return
+
+        winner = None
+        for urn, msg, meta in ndef.record_parser(data):
+            if len(msg) < 70: continue
+            msg = bytes(msg).decode()  # from memory view
+            if 'pub' in msg:
+                winner = msg
+                break
+
+        if not winner:
+            await ux_show_story('Unable to find miniscript descriptor expected in NDEF')
+            return
+
+        from auth import maybe_enroll_xpub
+        try:
+            maybe_enroll_xpub(config=winner, miniscript=not legacy_multisig)
+        except Exception as e:
+            await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
 # EOF

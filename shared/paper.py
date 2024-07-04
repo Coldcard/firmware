@@ -3,14 +3,15 @@
 #
 # paper.py - generate paper wallets, based on random values (not linked to wallet)
 #
-import ujson
+import ujson, ngu, chains
 from ubinascii import hexlify as b2a_hex
 from utils import imported
-from public_constants import AF_CLASSIC, AF_P2WPKH
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2TR
 from ux import ux_show_story, ux_dramatic_pause
 from files import CardSlot, CardMissingError, needs_microsd
 from actions import file_picker
 from menu import MenuSystem, MenuItem
+from stash import blank_object
 
 background_msg = '''\
 Coldcard will pick a random private key (which has no relation to your seed words), \
@@ -28,10 +29,6 @@ can still be made. Visit the Coldcard website to get some interesting templates.
 '''
 
 SECP256K1_ORDER = b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xba\xae\xdc\xe6\xaf\x48\xa0\x3b\xbf\xd2\x5e\x8c\xd0\x36\x41\x41"
-
-# Aprox. time of this feature release (Nov 20/2019) so no need to scan
-# blockchain earlier than this during "importmulti"
-FEATURE_RELEASE_TIME = const(1574277000)
 
 # These very-specific text values are matched on the Coldcard; cannot be changed.
 class placeholders:
@@ -51,6 +48,12 @@ class PaperWalletMaker:
         self.my_menu = my_menu
         self.template_fn = None
         self.is_segwit = False
+        self.is_taproot = False
+
+    def atype(self):
+        if self.is_taproot: return 2, 'Taproot P2TR'
+        if self.is_segwit: return 1, 'Segwit P2WPKH'
+        return 0, 'Classic P2PKH'
 
     async def pick_template(self, *a):
         fn = await file_picker(suffix='.pdf', min_size=20000, taster=template_taster,
@@ -62,17 +65,17 @@ class PaperWalletMaker:
     def addr_format_chooser(self, *a):
         # simple bool choice
         def set(idx, text):
-            self.is_segwit = bool(idx)
+            self.is_segwit = idx == 1
+            self.is_taproot = idx == 2
             self.update_menu()
-        return int(self.is_segwit), ['Classic P2PKH', 'Segwit P2WPKH'], set
+        return self.atype()[0], ['Classic P2PKH', 'Segwit P2WPKH', 'Taproot P2TR'], set
 
     def update_menu(self):
         # Reconstruct the menu contents based on our state.
         self.my_menu.replace_items([
             MenuItem("Don't make PDF" if not self.template_fn else 'Making PDF',
                      f=self.pick_template),
-            MenuItem('Classic P2PKH' if not self.is_segwit else 'Segwit P2WPKH',
-                     chooser=self.addr_format_chooser),
+            MenuItem(self.atype()[1], chooser=self.addr_format_chooser),
             MenuItem('Use Dice', f=self.use_dice),
             MenuItem('GENERATE WALLET', f=self.doit),
         ], keep_position=True)
@@ -82,12 +85,6 @@ class PaperWalletMaker:
         from glob import dis, VD
 
         try:
-            import ngu
-            from auth import write_sig_file
-            from chains import current_chain
-            from serializations import hash160
-            from stash import blank_object
-
             if not have_key:
                 # get some random bytes
                 await ux_dramatic_pause("Picking key...", 2)
@@ -104,12 +101,16 @@ class PaperWalletMaker:
             dis.fullscreen("Rendering...")
 
             # make payment address
-            digest = hash160(pubkey)
-            ch = current_chain()
+            ch = chains.current_chain()
             if self.is_segwit:
-                addr = ngu.codecs.segwit_encode(ch.bech32_hrp, 0, digest)
+                af = AF_P2WPKH
+            elif self.is_taproot:
+                af = AF_P2TR
+                pubkey = pubkey[1:]
             else:
-                addr = ngu.codecs.b58_encode(ch.b58_addr + digest)
+                af = AF_CLASSIC
+
+            addr = ch.pubkey_to_address(pubkey, af)
 
             wif = ngu.codecs.b58_encode(ch.b58_privkey + privkey + b'\x01')
 
@@ -164,8 +165,11 @@ class PaperWalletMaker:
                 else:
                     nice_pdf = ''
 
-                nice_sig = write_sig_file(sig_cont, pk=privkey, sig_name=basename,
-                                          addr_fmt=AF_P2WPKH if self.is_segwit else AF_CLASSIC)
+                nice_sig = None
+                if af != AF_P2TR:
+                    from auth import write_sig_file
+                    nice_sig = write_sig_file(sig_cont, pk=privkey, sig_name=basename,
+                                              addr_fmt=AF_P2WPKH if self.is_segwit else AF_CLASSIC)
 
             # Half-hearted attempt to cleanup secrets-contaminated memory
             # - better would be force user to reboot
@@ -185,7 +189,8 @@ class PaperWalletMaker:
         story = "Done! Created file(s):\n\n%s" % nice_txt
         if nice_pdf:
             story += "\n\n%s" % nice_pdf
-        story += "\n\n%s" % nice_sig
+        if nice_sig:
+            story += "\n\n%s" % nice_sig
         await ux_show_story(story)
 
     async def use_dice(self, *a):
@@ -214,10 +219,17 @@ class PaperWalletMaker:
         fp.write('Bitcoin Core command:\n\n')
 
         # new hotness: output descriptors
-        desc = ('wpkh(%s)' if self.is_segwit else 'pkh(%s)') % wif
-        multi = ujson.dumps(dict(timestamp=FEATURE_RELEASE_TIME, desc=append_checksum(desc)))
-        fp.write("  bitcoin-cli importmulti '[%s]'\n\n" % multi)
-        fp.write('# OR (more compatible, but slower)\n\n  bitcoin-cli importprivkey "%s"\n\n' % wif)
+        if self.is_taproot:
+            desc = 'tr(%s)'
+        elif self.is_segwit:
+            desc = 'wpkh(%s)'
+        else:
+            desc = 'pkh(%s)'
+        desc = desc % wif
+        descriptor = ujson.dumps(dict(timestamp="now", desc=append_checksum(desc)))
+        fp.write("  bitcoin-cli importdescriptors '[%s]'\n\n" % descriptor)
+        if not self.is_taproot:
+            fp.write('# OR (only supported with legacy wallets)\n\n  bitcoin-cli importprivkey "%s"\n\n' % wif)
 
         if qr_addr and qr_wif:
             fp.write('\n\n--- QR Codes ---   (requires UTF-8, unicode, white background)\n\n\n\n')

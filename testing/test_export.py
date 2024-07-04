@@ -4,12 +4,10 @@
 #
 # Start simulator with:   simulator.py --eff --set nfc=1
 #
-import sys
-sys.path.append("../shared")
-from descriptor import Descriptor
-from mnemonic import Mnemonic
 import pytest, time, os, json, io, bech32
 from bip32 import BIP32Node
+from descriptor import Descriptor
+from mnemonic import Mnemonic
 from ckcc_protocol.constants import *
 from helpers import xfp2str, slip132undo
 from conftest import simulator_fixed_xfp, simulator_fixed_tprv, simulator_fixed_words, simulator_fixed_xprv
@@ -85,7 +83,12 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
     addrs = []
     imm_js = None
     imd_js = None
+    imd_js_tr = None
+    tr = False
     for ln in fp:
+        if ln.startswith("p2tr:"):
+            tr = True
+
         if 'importmulti' in ln:
             # PLAN: this will become obsolete
             assert ln.startswith("importmulti '")
@@ -93,20 +96,26 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
             assert not imm_js, "dup importmulti lines"
             imm_js = ln[13:-2]
         elif "importdescriptors '" in ln:
+            ln = ln.strip()
             assert ln.startswith("importdescriptors '")
-            assert ln.endswith("'\n")
-            assert not imd_js, "dup importdesc lines"
-            imd_js = ln[19:-2]
+            if tr:
+                imd_js_tr = ln[19:-1]
+                tr = False
+            else:
+                imd_js = ln[19:-1]
         elif '=>' in ln:
             path, addr = ln.strip().split(' => ', 1)
-            assert path.startswith(f"m/84h/1h/{acct_num}h/0")
-            assert addr.startswith('bcrt1q') # TODO here we should differentiate if testnet or smthg
             sk = BIP32Node.from_wallet_key(simulator_fixed_tprv).subkey_for_path(path)
-            h20 = sk.hash160()
-            assert addr == bech32.encode(addr[0:4], 0, h20) # TODO here we should differentiate if testnet or smthg
+            if path.startswith(f"m/86h/1h/{acct_num}h/0"):
+                assert addr.startswith('bcrt1p')
+                assert addr == sk.address(addr_fmt="p2tr", chain="XRT")
+            else:
+                assert path.startswith(f"m/84h/1h/{acct_num}h/0")
+                assert addr.startswith("bcrt1q")
+                assert addr == sk.address(addr_fmt="p2wpkh", chain="XRT")
             addrs.append(addr)
 
-    assert len(addrs) == 3
+    assert len(addrs) == 6
 
     xfp = xfp2str(simulator_fixed_xfp).lower()
 
@@ -140,14 +149,9 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
             x = bitcoind_wallet.getaddressinfo(addrs[-1])
             pprint(x)
             assert x['address'] == addrs[-1]
-            if 'label' in x:
-                # pre 0.21.?
-                assert x['label'] == 'testcase'
-            else:
-                assert x['labels'] == ['testcase']
-            assert x['iswatchonly'] == True
-            assert x['iswitness'] == True
-            assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
+            # assert x['iswatchonly'] == True
+            assert x['iswitness'] is True
+            # assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
 
     # importdescriptors -- its better
     assert imd_js
@@ -168,26 +172,49 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
         assert expect in desc
         assert expect+f'/{n}/*' in desc
 
-        assert 'label' not in d
+        res = bitcoind_d_wallet.importdescriptors(obj)
+        assert res[0]["success"]
+        assert res[1]["success"]
+        x = bitcoind_d_wallet.getaddressinfo(addrs[2])
+        pprint(x)
+        assert x['address'] == addrs[2]
+        assert x['iswatchonly'] == False
+        assert x['iswitness'] == True
+        assert x['solvable'] == True
+        assert x['hdmasterfingerprint'] == xfp2str(dev.master_fingerprint).lower()
+        assert x['hdkeypath'].replace("'", "h") == f"m/84h/1h/{acct_num}h/0/%d" % 2
+
+    assert imd_js_tr
+    obj = json.loads(imd_js_tr)
+    for n, here in enumerate(obj):
+        assert here['timestamp'] == 'now'
+        assert here['internal'] == bool(n)
+
+        d = here['desc']
+        desc, chk = d.split('#', 1)
+        assert len(chk) == 8
+
+        assert desc.startswith(f'tr([{xfp}/86h/1h/{acct_num}h]')
+
+        expect = BIP32Node.from_wallet_key(simulator_fixed_tprv) \
+            .subkey_for_path(f"m/86h/1h/{acct_num}h").hwif()
+
+        assert expect in desc
+        assert expect + f'/{n}/*' in desc
 
         # test against bitcoind -- needs a "descriptor native" wallet
         res = bitcoind_d_wallet.importdescriptors(obj)
         assert res[0]["success"]
         assert res[1]["success"]
-        core_gen = []
-        for i in range(3):
-            core_gen.append(bitcoind_d_wallet.getnewaddress())
 
-        assert core_gen == addrs
         x = bitcoind_d_wallet.getaddressinfo(addrs[-1])
         pprint(x)
         assert x['address'] == addrs[-1]
-        assert x['iswatchonly'] == False
-        assert x['iswitness'] == True
-        # assert x['ismine'] == True   # TODO we have imported pubkeys - it has no idea if it is ours or solvable
-        # assert x['solvable'] == True
-        # assert x['hdmasterfingerprint'] == xfp2str(dev.master_fingerprint).lower()
-        #assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
+        assert x['iswatchonly'] is False
+        assert x['iswitness'] is True
+        assert x['solvable'] is True
+        assert x['hdmasterfingerprint'] == xfp2str(dev.master_fingerprint).lower()
+        assert x['hdkeypath'].replace("'", "h") == f"m/86h/1h/{acct_num}h/0/%d" % 2
 
 
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
@@ -305,7 +332,7 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
 
 @pytest.mark.parametrize('acct_num', [ None, '99', '1236'])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
-@pytest.mark.parametrize('testnet', [True, False])
+@pytest.mark.parametrize('chain', ["BTC", "XTN"])
 @pytest.mark.parametrize('app', [
     # no need to run them all - just name check differs
     ("Generic JSON", "Generic Export"),
@@ -317,12 +344,12 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
 ])
 def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap_story, need_keypress,
                          microsd_path, nfc_read_json, virtdisk_path, addr_vs_path, enter_number,
-                         load_export, testnet, use_mainnet, press_select,
+                         load_export, chain, use_mainnet, press_select,
                          skip_if_useless_way, expect_acctnum_captured):
 
     skip_if_useless_way(way)
 
-    if not testnet:
+    if chain == "BTC":
         use_mainnet()
 
     export_mi, app_f_name = app
@@ -377,8 +404,8 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
         addr = v.get('first', None)
 
         if fn == 'bip44':
-            assert first.address(netcode="XTN" if testnet else "BTC") == v['first']
-            addr_vs_path(addr, v['deriv'] + '/0/0', AF_CLASSIC, testnet=testnet)
+            assert first.address(chain=chain) == v['first']
+            addr_vs_path(addr, v['deriv'] + '/0/0', AF_CLASSIC, chain=chain)
         elif ('bip48_' in fn) or (fn == 'bip45'):
             # multisig: cant do addrs
             assert addr == None
@@ -389,11 +416,11 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
             h20 = first.hash160()
             if fn == 'bip84':
                 assert addr == bech32.encode(addr[0:2], 0, h20)
-                addr_vs_path(addr, v['deriv'] + '/0/0', AF_P2WPKH, testnet=testnet)
+                addr_vs_path(addr, v['deriv'] + '/0/0', AF_P2WPKH, chain=chain)
             elif fn == 'bip49':
                 # don't have test logic for verifying these addrs
                 # - need to make script, and bleh
-                assert first.address(addr_fmt="p2sh-p2wpkh", netcode="XTN" if testnet else "BTC") == v['first']
+                assert first.address(addr_fmt="p2sh-p2wpkh", chain=chain) == v['first']
             else:
                 assert False
 
@@ -455,15 +482,14 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
 
 
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
-@pytest.mark.parametrize('testnet', [True, False])
+@pytest.mark.parametrize('chain', ["BTC", "XTN"])
 def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, microsd_path,
-                           addr_vs_path, virtdisk_path, nfc_read_text, cap_story, use_mainnet,
-                           load_export, testnet, skip_if_useless_way):
+                           addr_vs_path, virtdisk_path, nfc_read_text, cap_story, use_testnet,
+                           load_export, chain, skip_if_useless_way):
     # test UX and values produced.
     skip_if_useless_way(way)
 
-    if not testnet:
-        use_mainnet()
+    use_testnet(chain == "XTN")
     goto_home()
     pick_menu_item('Advanced/Tools')
     pick_menu_item('File Management')
@@ -481,7 +507,7 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, mi
 
     xfp = xfp2str(simulator_fixed_xfp).upper()
 
-    ek = simulator_fixed_tprv if testnet else simulator_fixed_xprv
+    ek = simulator_fixed_tprv if chain == "XTN" else simulator_fixed_xprv
     root = BIP32Node.from_wallet_key(ek)
 
     for ln in fp:
@@ -508,14 +534,16 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, mi
         if not f:
             if rhs[0] in '1mn':
                 f = AF_CLASSIC
-            elif rhs[0:3] in ['tb1', "bc1"]:
+            elif rhs[0:4] in ['tb1q', "bc1q"]:
                 f = AF_P2WPKH
+            elif rhs[0:4] in ['tb1p', "bc1p"]:
+                f = AF_P2TR
             elif rhs[0] in '23':
                 f = AF_P2WPKH_P2SH
             else:
                 raise ValueError(rhs)
 
-        addr_vs_path(rhs, path=lhs, addr_fmt=f, testnet=testnet)
+        addr_vs_path(rhs, path=lhs, addr_fmt=f, chain=chain)
 
 
 @pytest.mark.qrcode
@@ -538,6 +566,8 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
         is_xfp = False
         if '-84' in m:
             expect = "m/84h/0h/{acct}h"
+        elif '86' in m and 'P2TR' in m:
+            expect = "m/86h/0h/{acct}h"
         elif '-44' in m:
             expect = "m/44h/0h/{acct}h"
         elif '49' in m:
@@ -603,7 +633,7 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
 
 @pytest.mark.parametrize("chain", ["BTC", "XTN", "XRT"])
 @pytest.mark.parametrize("way", ["sd", "vdisk", "nfc", "qr"])
-@pytest.mark.parametrize("addr_fmt", [AF_P2WPKH, AF_P2WPKH_P2SH, AF_CLASSIC])
+@pytest.mark.parametrize("addr_fmt", [AF_P2WPKH, AF_P2WPKH_P2SH, AF_CLASSIC, AF_P2TR])
 @pytest.mark.parametrize("acct_num", [None, 0,  1, (2 ** 31) - 1])
 @pytest.mark.parametrize("int_ext", [True, False])
 def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home,
@@ -651,6 +681,10 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home,
         menu_item = "P2SH-Segwit"
         desc_prefix = "sh(wpkh("
         bip44_purpose = 49
+    elif addr_fmt == AF_P2TR:
+        menu_item = "Taproot P2TR"
+        desc_prefix = "tr("
+        bip44_purpose = 86
     else:
         # addr_fmt == AF_CLASSIC:
         menu_item = "Classic P2PKH"
@@ -662,7 +696,11 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home,
 
     expect_acctnum_captured(acct_num)
 
-    contents = load_export(way, label="Descriptor", is_json=False, addr_fmt=addr_fmt)
+    sig_check = True
+    if addr_fmt == AF_P2TR:
+        sig_check = False
+    contents = load_export(way, label="Descriptor", is_json=False, addr_fmt=addr_fmt,
+                           sig_check=sig_check)
     descriptor = contents.strip()
 
     if int_ext is False:

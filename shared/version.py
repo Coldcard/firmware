@@ -122,6 +122,9 @@ def probe_system():
     # what firmware signing key did we boot with? are we in dev mode?
     is_devmode = get_is_devmode()
 
+    # newer, edge code in effect?
+    is_edge = (get_mpy_version()[1][-1] == 'X')
+
     # increase size limits for mk4
     from public_constants import MAX_TXN_LEN_MK4, MAX_UPLOAD_LEN_MK4
     MAX_UPLOAD_LEN = MAX_UPLOAD_LEN_MK4

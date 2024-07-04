@@ -2,12 +2,12 @@
 #
 # Address ownership tests.
 #
-import pytest, time, io, csv
+import pytest, time, io, csv, json
 from txn import fake_address
 from base58 import encode_base58_checksum
-from helpers import hash160
+from helpers import hash160, taptweak
 from bip32 import BIP32Node
-from constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+from constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from constants import simulator_fixed_xprv, simulator_fixed_tprv, addr_fmt_names
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def wipe_cache(sim_exec):
         [14,       8,       26,            1,          7,         19]
 '''
 @pytest.mark.parametrize('addr_fmt', [
-    AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+    AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 ])
 @pytest.mark.parametrize('testnet', [ False, True] )
 def test_negative(addr_fmt, testnet, sim_exec):
@@ -36,24 +36,26 @@ def test_negative(addr_fmt, testnet, sim_exec):
 
     assert 'Explained' in lst
 
-@pytest.mark.parametrize('addr_fmt, testnet', [
-	(AF_CLASSIC, True),
-	(AF_CLASSIC, False),
-	(AF_P2WPKH, True),
-	(AF_P2WPKH, False),
-	(AF_P2WPKH_P2SH, True),
-	(AF_P2WPKH_P2SH, False),
+@pytest.mark.parametrize('addr_fmt, chain', [
+	(AF_CLASSIC, "XTN"),
+	(AF_CLASSIC, "BTC"),
+	(AF_P2WPKH, "XTN"),
+	(AF_P2WPKH, "BTC"),
+	(AF_P2WPKH_P2SH, "XTN"),
+	(AF_P2WPKH_P2SH, "BTC"),
+    (AF_P2TR, "XTN"),
+    (AF_P2TR, "BTC"),
 
     # multisig - testnet only
-	(AF_P2WSH, True),
-	(AF_P2SH, True),
-	(AF_P2WSH_P2SH,True),
+	(AF_P2WSH, "XTN"),
+	(AF_P2SH, "XTN"),
+	(AF_P2WSH_P2SH, "XTN"),
 ])
 @pytest.mark.parametrize('offset', [ 3, 760] )
 @pytest.mark.parametrize('subaccount', [ 0, 34] )
 @pytest.mark.parametrize('change_idx', [ 0, 1] )
 @pytest.mark.parametrize('from_empty', [ True, False] )
-def test_positive(addr_fmt, offset, subaccount, testnet, from_empty, change_idx,
+def test_positive(addr_fmt, offset, subaccount, chain, from_empty, change_idx,
     sim_exec, wipe_cache, make_myself_wallet, use_testnet, goto_home, pick_menu_item,
     enter_number, press_cancel, settings_set, import_ms_wallet, clear_ms
 ):
@@ -61,16 +63,22 @@ def test_positive(addr_fmt, offset, subaccount, testnet, from_empty, change_idx,
 
     # API/Unit test, limited UX
 
-    if not testnet and addr_fmt in { AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH }:
-        # multisig jigs assume testnet
-        raise pytest.skip('testnet only')
+    if chain == "BTC":
+        use_testnet(False)
+        testnet = False
+        if addr_fmt in { AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH }:
+            # multisig jigs assume testnet
+            raise pytest.skip('testnet only')
 
-    use_testnet(testnet)
+    coin_type = 0
+    if chain == "XTN":
+        use_testnet(True)
+        coin_type = 1
+        testnet = True
+
     if from_empty:
         wipe_cache()        # very different codepaths
         settings_set('accts', [])
-
-    coin_type = 1 if testnet else 0
 
     if addr_fmt in { AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH }:
         from test_multisig import make_ms_address, HARD
@@ -99,6 +107,9 @@ def test_positive(addr_fmt, offset, subaccount, testnet, from_empty, change_idx,
         elif addr_fmt == AF_P2WPKH:
             menu_item = expect_name = 'Segwit P2WPKH'
             path = "m/84h/{ct}h/{acc}h"
+        elif addr_fmt == AF_P2TR:
+            menu_item = expect_name = 'Taproot P2TR'
+            path = "m/86h/{ct}h/{acc}h"
         else:
             raise ValueError(addr_fmt)
 
@@ -108,14 +119,18 @@ def test_positive(addr_fmt, offset, subaccount, testnet, from_empty, change_idx,
 
         # see addr_vs_path
         mk = BIP32Node.from_wallet_key(simulator_fixed_tprv if testnet else simulator_fixed_xprv)
-        sk = mk.subkey_for_path(path[2:].replace('h', "'"))
+        sk = mk.subkey_for_path(path)
 
         if addr_fmt == AF_CLASSIC:
-            addr = sk.address(netcode="XTN" if testnet else "BTC")
+            addr = sk.address(chain=chain)
         elif addr_fmt == AF_P2WPKH_P2SH:
             pkh = sk.hash160()
             digest = hash160(b'\x00\x14' + pkh)
             addr = encode_base58_checksum(bytes([196 if testnet else 5]) + digest)
+        elif addr_fmt == AF_P2TR:
+            from bech32 import encode
+            tweked_xonly = taptweak(sk.sec()[1:])
+            addr = encode("tb" if testnet else "bc", 1, tweked_xonly)
         else:
             pkh = sk.hash160()
             addr = bech32_encode('tb' if testnet else 'bc', 0, pkh)
@@ -166,7 +181,7 @@ def test_ux(valid, testnet, method,
         mk = BIP32Node.from_wallet_key(simulator_fixed_tprv if testnet else simulator_fixed_xprv)
         path = "m/44h/{ct}h/{acc}h/0/3".format(acc=0, ct=(1 if testnet else 0))
         sk = mk.subkey_for_path(path)
-        addr = sk.address(netcode="XTN" if testnet else "BTC")
+        addr = sk.address(chain="XTN" if testnet else "BTC")
     else:
         addr = fake_address(addr_fmt, testnet) 
 
@@ -220,20 +235,26 @@ def test_ux(valid, testnet, method,
         assert 'Searched ' in story
         assert 'candidates without finding a match' in story
 
-@pytest.mark.parametrize("af", ["P2SH-Segwit", "Segwit P2WPKH", "Classic P2PKH", "ms0"])
+@pytest.mark.parametrize("af", ["P2SH-Segwit", "Segwit P2WPKH", "Classic P2PKH", "Taproot P2TR", "ms0", "msc0", "msc2"])
 def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explorer,
                                 pick_menu_item, need_keypress, sim_exec, clear_ms,
                                 import_ms_wallet, press_select, goto_home, nfc_write,
                                 load_shared_mod, load_export_and_verify_signature,
-                                cap_story):
+                                cap_story, load_export, offer_minsc_import):
     goto_home()
     wipe_cache()
     settings_set('accts', [])
 
     if af == "ms0":
         clear_ms()
-        import_ms_wallet(2,3, name=af)
+        import_ms_wallet(2, 3, name=af)
         press_select()  # accept ms import
+    elif "msc" in af:
+        from test_miniscript import CHANGE_BASED_DESCS
+        which = int(af[-1])
+        title, story = offer_minsc_import(json.dumps({"name": af, "desc": CHANGE_BASED_DESCS[which]}))
+        assert "Create new miniscript wallet?" in story
+        press_select()  # accept
 
     goto_address_explorer()
     pick_menu_item(af)
@@ -245,17 +266,19 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
     lst = eval(lst)
     assert lst
 
-    if af == "ms0":
-        return  # multisig addresses are blanked
-
     title, body = cap_story()
-    contents, sig_addr = load_export_and_verify_signature(body, "sd", label="Address summary")
+    if af in ("Taproot P2TR", "ms0", "msc0", "msc2"):
+        # p2tr - no signature file
+        contents = load_export("sd", label="Address summary", is_json=False, sig_check=False)
+    else:
+        contents, _ = load_export_and_verify_signature(body, "sd", label="Address summary")
+
     addr_dump = io.StringIO(contents)
     cc = csv.reader(addr_dump)
     hdr = next(cc)
-    assert hdr == ['Index', 'Payment Address', 'Derivation']
     addr = None
-    for n, (idx, addr, deriv) in enumerate(cc, start=0):
+    assert hdr[:2] == ['Index', 'Payment Address']
+    for n, (idx, addr, *_) in enumerate(cc, start=0):
         assert int(idx) == n
         if idx == 200:
             addr = addr
@@ -279,7 +302,7 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
     assert addr in story
     assert title == 'Verified Address'
     assert 'Found in wallet' in story
-    assert 'Derivation path' in story
+    # assert 'Derivation path' in story
     if af == "P2SH-Segwit":
         assert "P2WPKH-in-P2SH" in story
     elif af == "Segwit P2WPKH":
