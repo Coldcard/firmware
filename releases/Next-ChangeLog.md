@@ -5,6 +5,7 @@ This lists the new changes that have not yet been published in a normal release.
 # Shared Improvements - Both Mk4 and Q
 
 - Bugfix: Trying to set custom URL for NFC push transaction caused yikes
+- Edge branch reworked to support Q and Mk4 at same time (still a separate binary)
 
 
 # Mk4 Specific Changes
