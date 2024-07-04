@@ -13,6 +13,8 @@ This lists the new changes that have not yet been published in a normal release.
 
 - Bugfix: Fix yikes displaying BIP-85 WIF when both NFC and VDisk are OFF
 - Bugfix: Fix inability to export change addresses when both NFC and Vdisk id OFF
+- Bugfix: In BIP-39 words menu, show space character rather than Nokia-style placeholder
+  which could be confused for an underscore.
 
 
 # Q Specific Changes

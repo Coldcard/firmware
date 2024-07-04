@@ -269,8 +269,10 @@ class Display:
         else:
             self.text(x, y, msg)
 
-        if msg[0] == ' ' and space_indicators:
-            self.icon(x-2, y+11, 'space', invert=is_sel)
+        # LATER: removed because caused confusion w/ underscore
+        #if msg[0] == ' ' and space_indicators:
+            # see also graphics/mono/space.txt
+            #self.icon(x-2, y+9, 'space', invert=is_sel)
 
         if is_checked:
             self.icon(108, y, 'selected', invert=is_sel)
