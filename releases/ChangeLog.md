@@ -31,22 +31,28 @@ This lists the changes in the most recent firmware, for each hardware platform.
   multisig (multisig has precedence for P2SH addresses)
 - Bugfix: Address search would not find addresses for non-zero account numbers that had
   been exported but not yet seen in a PSBT.
+- (v5.3.3/1.2.3Q) Bugfix: Trying to set custom URL for NFC push transaction caused yikes error.
 
 # Mk4 Specific Changes
 
-## 5.3.2 - 2024-06-26
+## 5.3.3 - 2024-07-05
 
 - Bugfix: Displaying change address in Address Explorer fails if NFC and Vdisk not enabled.
+- Bugfix: Fix yikes displaying BIP-85 WIF when both NFC and VDisk are disabled.
+- Bugfix: Fix inability to export change addresses when both NFC and Vdisk are disabled.
+- Bugfix: In BIP-39 words menu, show space character rather than Nokia-style placeholder
+  which could be confused for an underscore (report by `tobo@600.wtf`).
 
 
 # Q Specific Changes
 
-## 1.2.2Q - 2024-06-26
+## 1.2.3Q - 2024-07-05
 
 - Enhancement: Coldcard multisg export/import format detected in `Scan Any QR Code`.
 - Enhancement: Support newer-version QR scanner modules.
 - Bugfix: Exporting BIP-85 derived entropy via NFC was offered even when NFC disabled,
   leading to a Yikes error.
+- Bugfix: Properly clear LCD screen after simple QR code is shown
 
 
 # Release History
