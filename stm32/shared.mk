@@ -91,7 +91,7 @@ production.bin: firmware-signed.bin Makefile
 SUBMAKE = $(MAKE) -f $(PARENT_MKFILE)
 
 .PHONY: release
-release: code-committed
+release: submods-match code-committed
 	$(SUBMAKE) clean
 	$(SUBMAKE) repro
 	test -f built/production.bin
@@ -141,14 +141,26 @@ dfu-latest:
 latest:
 	ckcc upgrade $(LATEST_RELEASE)
 
+# verify submodules are checked-out at the correct revision
+.PHONY: submods-match
+SUBMODULES := $(shell git config --file ../.gitmodules --name-only --get-regex path)
+SUBMODULES := $(SUBMODULES:submodule.%.path=%)
+SUBMODULES := $(filter-out stm32/mk4-bootloader/hal, $(SUBMODULES))
+submods-match:
+	@echo Submodules: $(SUBMODULES)
+	git submodule status --cached $(SUBMODULES:%=../%) > sm-want.txt
+	git submodule status $(SUBMODULES:%=../%) > sm-have.txt
+	@echo "Submodules: <WANT vs. >HAVE"
+	diff sm-want.txt sm-have.txt
+	rm sm-have.txt sm-want.txt
+	@echo "Submodules are right revisions."
+
 .PHONY: code-committed
 code-committed:
 	@echo ""
 	@echo "Are all changes commited already?"
 	git diff --stat --exit-code .
 	@echo '... yes'
-	@echo 'Submodule changes? But some of these are expected...'
-	git submodule foreach git diff --stat .
 
 # Sign a message with the contents of ../releases on the developer's machine
 .PHONY: sign-release
@@ -163,7 +175,7 @@ sign-release:
 # - update & sign signatures file
 # - and tag everything
 tag-source: PUBLIC_VERSION = $(shell $(SIGNIT) version built/production.bin)
-tag-source: sign-release code-committed
+tag-source: sign-release submods-match code-committed
 	git commit  --allow-empty -am "New release: "$(PUBLIC_VERSION)
 	echo "Tagging version: " $(PUBLIC_VERSION)
 	git tag -a $(PUBLIC_VERSION) -m "Release "$(PUBLIC_VERSION)
@@ -243,7 +255,7 @@ setup:
 DOCK_RUN_ARGS = -v $(realpath ..):/work/src:ro \
 				-v $(realpath built):/work/built:rw \
 				-u $$(id -u):$$(id -g) coldcard-build
-repro: code-committed
+repro: submods-match code-committed
 repro: 
 	docker build -t coldcard-build - < dockerfile.build
 	(cd ..; docker run $(DOCK_RUN_ARGS) sh src/stm32/repro-build.sh $(VERSION_STRING) $(HW_MODEL) $(PARENT_MKFILE))
