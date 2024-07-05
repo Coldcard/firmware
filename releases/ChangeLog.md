@@ -41,7 +41,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 - Bugfix: Fix yikes displaying BIP-85 WIF when both NFC and VDisk are disabled.
 - Bugfix: Fix inability to export change addresses when both NFC and Vdisk are disabled.
 - Bugfix: In BIP-39 words menu, show space character rather than Nokia-style placeholder
-  which could be confused for an underscore (report by `tobo@600.wtf`).
+  which could be confused for an underscore (reported by `tobo@600.wtf`).
 
 
 # Q Specific Changes
