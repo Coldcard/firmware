@@ -62,6 +62,7 @@ from utils import call_later_ms
 #   b85max = (bool) allow max BIP-32 int value in BIP-85 derivations
 #   ptxurl = (str) URL for PushTx feature, clear to disable feature
 #   hmx    = (bool) Force display of current XFP in home menu, even w/o tmp seed active
+#   legacy_ms = (bool) Allow unsorted multisig with BIP-67 disabled
 
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)

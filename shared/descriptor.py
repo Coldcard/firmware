@@ -140,7 +140,7 @@ class Descriptor:
         self.addr_fmt = addr_fmt
 
     @staticmethod
-    def checksum_check(desc_w_checksum: str):
+    def checksum_check(desc_w_checksum):
         try:
             desc, checksum = desc_w_checksum.split("#")
         except ValueError:
@@ -151,7 +151,7 @@ class Descriptor:
         return desc, checksum
 
     @staticmethod
-    def parse_key_orig_info(key: str):
+    def parse_key_orig_info(key):
         # key origin info is required for our MultisigWallet
         close_index = key.find("]")
         if key[0] != "[" or close_index == -1:
@@ -162,7 +162,7 @@ class Descriptor:
         return key_orig_info, key
 
     @staticmethod
-    def parse_key_derivation_info(key: str):
+    def parse_key_derivation_info(key):
         invalid_subderiv_msg = "Invalid subderivation path - only 0/* or <0;1>/* allowed"
         slash_split = key.split("/")
         assert len(slash_split) > 1, invalid_subderiv_msg
@@ -198,19 +198,19 @@ class Descriptor:
             result.append(key_str.replace("'", "h"))
         return result
 
-    def _serialize(self, internal=False, int_ext=False) -> str:
+    def _serialize(self, internal=False, int_ext=False):
         """Serialize without checksum"""
         assert len(self.keys) == 1      # "Multiple keys for single signature script"
         desc_base = SINGLE_FMT_TO_SCRIPT[self.addr_fmt]
         inner = self.serialize_keys(internal=internal, int_ext=int_ext)[0]
         return desc_base % (inner)
 
-    def serialize(self, internal=False, int_ext=False) -> str:
+    def serialize(self, internal=False, int_ext=False):
         """Serialize with checksum"""
         return append_checksum(self._serialize(internal=internal, int_ext=int_ext))
 
     @classmethod
-    def parse(cls, desc_w_checksum: str) -> "Descriptor":
+    def parse(cls, desc_w_checksum):
         # remove garbage
         desc_w_checksum = parse_desc_str(desc_w_checksum)
         # check correct checksum
@@ -234,7 +234,7 @@ class Descriptor:
             tmp_desc = tmp_desc.rstrip("))")
 
         else:
-            raise ValueError("Unsupported descriptor. Supported: pkh(, wpkh(, sh(wpkh(.")
+            raise ValueError("Unsupported descriptor. Supported: pkh(), wpkh(), sh(wpkh()).")
 
         koi, key = cls.parse_key_orig_info(tmp_desc)
         if key[0:4] not in ["tpub", "xpub"]:
@@ -248,15 +248,22 @@ class Descriptor:
 
     @classmethod
     def is_descriptor(cls, desc_str):
-        """Method to guess whether this can be a descriptor"""
+        # Quick method to guess whether this is a descriptor
         try:
             temp = parse_desc_str(desc_str)
-            desc, checksum = temp.split("#")
-            assert desc[-1] == ")"
-
-            return True
         except:
             return False
+
+        for prefix in ("pk(", "pkh(", "wpkh(", "tr(", "addr(", "raw(", "rawtr(", "combo(",
+                       "sh(", "wsh(", "multi(", "sortedmulti(", "multi_a(", "sortedmulti_a("):
+            if temp.startswith(prefix):
+                return True
+            if prefix in temp:
+                # weaker case - needed for JSON wrapped imports
+                # if descriptor is invalid or unsuitable for our purpose
+                # we fail later (in parsing)
+                return True
+        return False
 
     def bitcoin_core_serialize(self, external_label=None):
         # this will become legacy one day
@@ -286,39 +293,44 @@ class MultisigDescriptor(Descriptor):
         "N",
         "keys",
         "addr_fmt",
+        "is_sorted"  # whether to use sortedmulti() or multi()
     )
 
-    def __init__(self, M, N, keys, addr_fmt):
+    def __init__(self, M, N, keys, addr_fmt, is_sorted=True):
         self.M = M
         self.N = N
+        self.is_sorted = is_sorted
         super().__init__(keys, addr_fmt)
 
     @classmethod
-    def parse(cls, desc_w_checksum: str) -> "MultisigDescriptor":
+    def parse(cls, desc_w_checksum):
         # remove garbage
         desc_w_checksum = parse_desc_str(desc_w_checksum)
         # check correct checksum
         desc, checksum = cls.checksum_check(desc_w_checksum)
-        # legacy
-        if desc.startswith("sh(sortedmulti("):
-            addr_fmt = AF_P2SH
-            tmp_desc = desc.replace("sh(sortedmulti(", "")
-            tmp_desc = tmp_desc.rstrip("))")
-
-        # native segwit
-        elif desc.startswith("wsh(sortedmulti("):
-            addr_fmt = AF_P2WSH
-            tmp_desc = desc.replace("wsh(sortedmulti(", "")
-            tmp_desc = tmp_desc.rstrip("))")
+        is_sorted = "sortedmulti(" in desc
+        rplc = "sortedmulti(" if is_sorted else "multi("
 
         # wrapped segwit
-        elif desc.startswith("sh(wsh(sortedmulti("):
+        if desc.startswith("sh(wsh("+rplc):
             addr_fmt = AF_P2WSH_P2SH
-            tmp_desc = desc.replace("sh(wsh(sortedmulti(", "")
+            tmp_desc = desc.replace("sh(wsh("+rplc, "")
             tmp_desc = tmp_desc.rstrip(")))")
 
+        # native segwit
+        elif desc.startswith("wsh("+rplc):
+            addr_fmt = AF_P2WSH
+            tmp_desc = desc.replace("wsh("+rplc, "")
+            tmp_desc = tmp_desc.rstrip("))")
+
+        # legacy
+        elif desc.startswith("sh("+rplc):
+            addr_fmt = AF_P2SH
+            tmp_desc = desc.replace("sh("+rplc, "")
+            tmp_desc = tmp_desc.rstrip("))")
+
         else:
-            raise ValueError("Unsupported descriptor. Supported: sh(, sh(wsh(, wsh(. All have to be sortedmulti.")
+            raise ValueError("Unsupported descriptor. Supported: sh(), sh(wsh()), wsh().")
 
         splitted = tmp_desc.split(",")
         M, keys = int(splitted[0]), splitted[1:]
@@ -337,34 +349,41 @@ class MultisigDescriptor(Descriptor):
             origin_deriv = "m" + koi[8:]
             res_keys.append((xfp, origin_deriv, xpub))
 
-        return cls(M=M, N=N, keys=res_keys, addr_fmt=addr_fmt)
+        return cls(M=M, N=N, keys=res_keys, addr_fmt=addr_fmt, is_sorted=is_sorted)
 
-    def _serialize(self, internal=False, int_ext=False) -> str:
+    def _serialize(self, internal=False, int_ext=False):
         """Serialize without checksum"""
         desc_base = MULTI_FMT_TO_SCRIPT[self.addr_fmt]
-        desc_base = desc_base % ("sortedmulti(%s)")
+        _type = "sortedmulti" if self.is_sorted else "multi"
+        _type += "(%s)"
+        desc_base = desc_base % _type
         assert len(self.keys) == self.N
         inner = str(self.M) + "," + ",".join(
                         self.serialize_keys(internal=internal, int_ext=int_ext))
 
         return desc_base % (inner)
 
-    def pretty_serialize(self) -> str:
+    def pretty_serialize(self):
         """Serialize in pretty and human-readable format"""
+        _type = "sortedmulti" if self.is_sorted else "multi"
         res = "# Coldcard descriptor export\n"
-        res += "# order of keys in the descriptor does not matter, will be sorted before creating script (BIP-67)\n"
+        if self.is_sorted:
+            res += "# order of keys in the descriptor does not matter, will be sorted before creating script (BIP-67)\n"
+        else:
+            res += ("# !!! DANGER: order of keys in descriptor MUST be preserved. "
+                    "Correct order of keys is required to compose valid redeem/witness script.\n")
         if self.addr_fmt == AF_P2SH:
             res += "# bare multisig - p2sh\n"
-            res += "sh(sortedmulti(\n%s\n))"
+            res += "sh("+_type+"(\n%s\n))"
         # native segwit
         elif self.addr_fmt == AF_P2WSH:
             res += "# native segwit - p2wsh\n"
-            res += "wsh(sortedmulti(\n%s\n))"
+            res += "wsh("+_type+"(\n%s\n))"
 
         # wrapped segwit
         elif self.addr_fmt == AF_P2WSH_P2SH:
             res += "# wrapped segwit - p2sh-p2wsh\n"
-            res += "sh(wsh(sortedmulti(\n%s\n)))"
+            res += "sh(wsh(" + _type + "(\n%s\n)))"
         else:
             raise ValueError("Malformed descriptor")
 

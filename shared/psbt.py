@@ -481,7 +481,7 @@ class psbtOutputProxy(psbtProxy):
 
                 # redeem script must be exactly what we expect
                 # - pubkeys will be reconstructed from derived paths here
-                # - BIP-45, BIP-67 rules applied
+                # - BIP-45, BIP-67 rules applied (BIP-67 optional from now - depending on imported descriptor)
                 # - p2sh-p2wsh needs witness script here, not redeem script value
                 # - if details provided in output section, must our match multisig wallet
                 try:

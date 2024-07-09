@@ -195,7 +195,8 @@ def decode_short_text(got):
             pass
 
     # multisig descriptor
-    if ("sortedmulti(" in got):
+    # multi( catches both multi( and sortedmulti(
+    if ("multi(" in got):
         return 'multi', (got,)
 
     if ("\n" in got) and ('pub' in got):

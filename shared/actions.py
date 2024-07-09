@@ -1624,9 +1624,11 @@ async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
                             # ignore subdirs
                             continue
 
-                        if suffix and not fn.lower().endswith(suffix):
-                            # wrong suffix
-                            continue
+                        if suffix:
+                            if not isinstance(suffix, list):
+                                suffix = [suffix]
+                            if not any([fn.lower().endswith(s) for s in suffix]):
+                                continue
 
                         if fn[0] == '.': continue
 
