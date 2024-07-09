@@ -670,7 +670,8 @@ class NFCHandler:
         for urn, msg, meta in ndef.record_parser(data):
             if len(msg) < 70: continue
             msg = bytes(msg).decode()        # from memory view
-            if 'pub' in msg or 'sortedmulti(' in msg:
+            # multi( catches both multi( and sortedmulti(
+            if 'pub' in msg or "multi(" in msg:
                 winner = msg
                 break
 
