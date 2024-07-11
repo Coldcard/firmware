@@ -328,7 +328,7 @@ class MiniScriptWallet(BaseStorageWallet):
         else:
             name = to_ascii_printable(name)
             desc_obj = Descriptor.from_string(config.strip())
-        assert not desc_obj.is_basic_multisig, "Use Settings -> Multisig Wallets"
+        assert not desc_obj.is_sortedmulti, "Use Settings -> Multisig Wallets"
         wal = cls(desc_obj, name=name, chain_type=desc_obj.keys[0].chain_type)
         return wal
 
