@@ -4,7 +4,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk4 and Q
 
-- tbd
+- Enhancement: Allow JSON files in `NFC File Share`
 
 
 # Mk4 Specific Changes
@@ -18,6 +18,6 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 1.2.4Q - 2024-08-xx
 
-- tbd
+- New Feature: (BB)QR file share
 
 
