@@ -13,7 +13,7 @@ from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF
 from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
 from ownership import OWNERSHIP
 
-async def export_by_qr(body, label, is_json=False):
+async def export_by_qr(body, label, type_code):
     # render as QR and show on-screen
     from ux import show_qr_code
 
@@ -21,11 +21,11 @@ async def export_by_qr(body, label, is_json=False):
         # ignore label/title - provides no useful info
         # makes qr smaller and harder to read
         await show_qr_code(body)
-    except (ValueError, RuntimeError):
+    except (ValueError, RuntimeError, TypeError):
         if version.has_qwerty:
             # do BBQr on Q
             from ux_q1 import show_bbqr_codes
-            await show_bbqr_codes('J' if is_json else 'U', body, label)
+            await show_bbqr_codes(type_code, body, label)
 
         # on Mk4, if too big ... just do nothing (but JSON should have fit?)
 
@@ -144,7 +144,7 @@ async def write_text_file(fname_pattern, body, title, derive, addr_fmt):
     if choice == KEY_CANCEL:
         return
     elif choice == KEY_QR:
-        await export_by_qr(body, title)
+        await export_by_qr(body, title, "U")
         return
     elif choice == KEY_NFC:
         await NFC.share_text(body)
@@ -473,7 +473,7 @@ async def make_json_wallet(label, func, fname_pattern='new-wallet.json'):
         # render as QR and show on-screen
         # - on mk4, this isn't offered if more than about 300 bytes because we can't
         #   show that as a single QR
-        await export_by_qr(json_str, label, is_json=True)
+        await export_by_qr(json_str, label, "J")
         return
 
     # choose a filename and save

@@ -213,6 +213,7 @@ FileMgmtMenu = [
     MenuItem('List Files', f=list_files),
     MenuItem('Verify Sig File', f=verify_sig_file),
     MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file, shortcut=KEY_NFC),
+    MenuItem('QR File Share', predicate=version.has_qr, f=qr_share_file, shortcut=KEY_QR),
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
     MenuItem('Format SD Card', f=wipe_sd_card),
     MenuItem('Format RAM Disk', predicate=vdisk_enabled, f=wipe_vdisk),

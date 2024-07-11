@@ -9,14 +9,14 @@ from uhashlib import sha256
 from uasyncio import sleep_ms
 from ubinascii import hexlify as b2a_hex
 from utils import imported, problem_file_line, get_filesize
-from utils import xfp2str, B2A, addr_fmt_label
+from utils import xfp2str, B2A, addr_fmt_label, txid_from_fname
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
 from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt
 from export import make_json_wallet, make_summary_file, make_descriptor_wallet_export
 from export import make_bitcoin_core_wallet, generate_wasabi_wallet, generate_generic_export
 from export import generate_unchained_export, generate_electrum_wallet
 from files import CardSlot, CardMissingError, needs_microsd
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, MAX_TXN_LEN_MK4
 from glob import settings
 from pincodes import pa
 from menu import start_chooser, MenuSystem, MenuItem
@@ -1414,6 +1414,58 @@ Erases and reformats MicroSD card. This is not a secure erase but more of a quic
 
     from files import wipe_microsd_card
     wipe_microsd_card()
+
+
+async def qr_share_file(*A):
+    # Pick file from SD card and share as (BB)Qr
+    from files import CardSlot, CardMissingError, needs_microsd
+    from export import export_by_qr
+
+    def is_suitable(fname):
+        f = fname.lower()
+        return f.endswith('.psbt') or f.endswith('.txn') \
+            or f.endswith('.txt') or f.endswith(".json") or fname.endswith(".sig")
+
+    while 1:
+        txid = None
+        fn = await file_picker(min_size=10, max_size=MAX_TXN_LEN_MK4, taster=is_suitable)
+        if not fn: return
+
+        basename = fn.split('/')[-1]
+        ext = fn.split('.')[-1].lower()
+
+        try:
+            with CardSlot() as card:
+                with open(fn, 'rb') as fp:
+                    data = fp.read()
+
+        except CardMissingError:
+            await needs_microsd()
+            return
+
+        if ext == "txn":
+            tc = "T"
+            txid = txid_from_fname(basename)
+            if data[2:8] == b'000000':
+                # it's a txn, and we wrote as hex
+                data = data.decode()
+            else:
+                assert data[2:8] == bytes(6)
+                data = b2a_hex(data).decode()
+        elif data[0:5] == b'psbt\xff':
+            tc = "P"
+        elif data[0:6] in (b'cHNidP', b'707362'):
+            tc = "U"
+            data = data.decode().strip()
+        elif ext in ('txt', 'json', 'sig'):
+            tc = "U"
+            if ext == "json":
+                tc = "J"
+            data = data.decode()
+        else:
+            raise ValueError(ext)
+
+        await export_by_qr(data, txid, tc)
 
 
 async def nfc_share_file(*A):

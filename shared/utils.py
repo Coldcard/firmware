@@ -691,4 +691,13 @@ def censor_address(addr):
     # spots or else an attacker could grind out a suitable replacement.
     return addr[0:12] + '___' + addr[12+3:]
 
+def txid_from_fname(fname):
+    if len(fname) >= 64:
+        txid = fname[:64]
+        try:
+            a2b_hex(txid)
+            return txid
+        except: pass
+    return None
+
 # EOF

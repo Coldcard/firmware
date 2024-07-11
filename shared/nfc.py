@@ -15,7 +15,7 @@ from ubinascii import unhexlify as a2b_hex
 from ubinascii import b2a_base64, a2b_base64
 
 from ux import ux_show_story, ux_wait_keydown
-from utils import B2A, problem_file_line, parse_addr_fmt_str
+from utils import B2A, problem_file_line, parse_addr_fmt_str, txid_from_fname
 from public_constants import AF_CLASSIC
 from charcodes import KEY_ENTER, KEY_CANCEL
 
@@ -325,9 +325,9 @@ class NFCHandler:
 
             sha = ngu.hash.sha256s(data)
 
-            txid = basename[0:64]
+            txid = txid_from_fname(basename)
             line2 = None
-            if len(txid) != 64:
+            if not txid:
                 # assume a r random filename, and not easy to recalc txid here
                 # so show filename instead
                 line2 = 'File: ' + basename
@@ -621,7 +621,8 @@ class NFCHandler:
 
         def is_suitable(fname):
             f = fname.lower()
-            return f.endswith('.psbt') or f.endswith('.txn') or f.endswith('.txt')
+            return f.endswith('.psbt') or f.endswith('.txn') \
+                or f.endswith('.txt') or f.endswith('.json') or f.endswith('.sig')
 
         while 1:
             fn = await file_picker(min_size=10, max_size=MAX_NFC_SIZE, taster=is_suitable)
@@ -639,22 +640,22 @@ class NFCHandler:
                 await needs_microsd()
                 return
 
-            if data[2:8] == b'000000' and ext == 'txn':
-                # it's a txn, and we wrote as hex
-                data = a2b_hex(data)
-
-            if ext == 'psbt':
+            if ext == 'txn':
+                txid = txid_from_fname(basename)
+                if data[2:8] == b'000000':
+                    # it's a txn, and we wrote as hex
+                    data = a2b_hex(data)
+                else:
+                    assert data[2:8] == bytes(6)
+                sha = ngu.hash.sha256s(data)
+                await self.share_signed_txn(txid, data, len(data), sha)
+            elif ext == 'psbt':
                 sha = ngu.hash.sha256s(data)
                 await self.share_psbt(data, len(data), sha, label="PSBT file: " + basename)
-            elif ext == 'txn':
-                sha = ngu.hash.sha256s(data)
-                txid = basename[0:64]
-                if len(txid) != 64:
-                    # maybe some other txn file?
-                    txid = None
-                await self.share_signed_txn(txid, data, len(data), sha)
-            elif ext == 'txt':
+            elif ext in ('txt', 'sig'):
                 await self.share_text(data.decode())
+            elif ext == 'json':
+                await self.share_json(data.decode())
             else:
                 raise ValueError(ext)
 
