@@ -1185,7 +1185,7 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
             if ch: break
 
     # after QR drawing, we need to correct some pixels
-    dis.clear()
+    dis.real_clear()
 
 
 # EOF
