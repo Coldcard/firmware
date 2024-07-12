@@ -19,5 +19,6 @@ This lists the new changes that have not yet been published in a normal release.
 ## 1.2.4Q - 2024-08-xx
 
 - New Feature: (BB)QR file share
+- Bugfix: Properly clear LCD screen after BBQR is shown
 
 
