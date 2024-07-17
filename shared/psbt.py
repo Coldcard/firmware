@@ -1959,8 +1959,8 @@ class psbtObject(psbtProxy):
                 # We need to grind sometimes to get a positive R
                 # value that will encode (after DER) into a shorter string.
                 # - saves on miner's fee (which might be expected/required)
-                # - blends in with Bitcoin Core signatures which do this
-                for retry in range(10):
+                # - blends in with Bitcoin Core signatures which do this from 0.17.0
+                for retry in range(100):
                     result = ngu.secp256k1.sign(pk, digest, retry).to_bytes()
 
                     # convert signature to DER format
@@ -1970,7 +1970,6 @@ class psbtObject(psbtProxy):
                     der_sig = ser_sig_der(r, s, inp.sighash)
 
                     if len(der_sig) <= 71:
-                        # odds of needing retry: just under 50% I think
                         break
 
                 # private key no longer required
