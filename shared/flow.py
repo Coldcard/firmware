@@ -184,6 +184,7 @@ XpubExportMenu = [
 WalletExportMenu = [  
     #         xxxxxxxxxxxxxxxx
     MenuItem("Bitcoin Core", f=bitcoin_core_skeleton),
+    MenuItem("Fully Noded", f=named_generic_skeleton, arg="Fully Noded"),
     MenuItem("Sparrow Wallet", f=named_generic_skeleton, arg="Sparrow"),
     MenuItem("Nunchuk", f=named_generic_skeleton, arg="Nunchuk"),
     MenuItem("Zeus", f=ss_descriptor_skeleton,
