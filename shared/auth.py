@@ -1186,9 +1186,14 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
 
                                 if out2_full:
                                     fd0.seek(0)
+
                                     with HexWriter(card.open(out2_full, 'w+t')) as fd:
                                         # save transaction, in hex
-                                        fd.write(fd0.read())
+                                        tmp_buf = bytearray(4096)
+                                        while True:
+                                            rv = fd0.readinto(tmp_buf)
+                                            if not rv: break
+                                            fd.write(memoryview(tmp_buf)[:rv])
 
                                     if del_after:
                                         # rename it now that we know the txid
