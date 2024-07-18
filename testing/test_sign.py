@@ -3,7 +3,7 @@
 # Transaction Signing. Important.
 #
 
-import time, pytest, os, random, pdb, struct, base64, binascii, itertools, datetime, math
+import time, pytest, os, random, pdb, struct, base64, binascii, itertools, datetime
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from binascii import b2a_hex, a2b_hex
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
@@ -2993,5 +2993,35 @@ def test_txout_explorer_op_return(fake_txn, start_sign, cap_story, is_q1,
 
     press_cancel()
     press_cancel()
+
+
+def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_ms_import,
+                        cap_story, try_sign, reset_seed_words, clear_ms):
+    reset_seed_words()
+    clear_ms()
+    desc = "sh(sortedmulti(2,[6ba6cfd0/45h]tpubD9429UXFGCTKJ9NdiNK4rC5ygqSUkginycYHccqSg5gkmyQ7PZRHNjk99M6a6Y3NY8ctEUUJvCu6iCCui8Ju3xrHRu3Ez1CKB4ZFoRZDdP9/0/*,[747b698e/45h]tpubD97nVL37v5tWyMf9ofh5rznwhh1593WMRg6FT4o6MRJkKWANtwAMHYLrcJFsFmPfYbY1TE1LLQ4KBb84LBPt1ubvFwoosvMkcWJtMwvXgSc/0/*,[7bb026be/45h]tpubD9ArfXowvGHnuECKdGXVKDMfZVGdephVWg8fWGWStH3VKHzT4ph3A4ZcgXWqFu1F5xGTfxncmrnf3sLC86dup2a8Kx7z3xQ3AgeNTQeFxPa/0/*,[0f056943/45h]tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n/0/*))#up0sw2xp"
+    psbt_fname = "myself-72sig.psbt"
+    with open(f"data/{psbt_fname}", "r") as f:
+        b64psbt = f.read()
+
+    goto_home()
+    passphrase = "Myself"
+    dev.send_recv(CCProtocolPacker.bip39_passphrase(passphrase), timeout=None)
+    press_select()
+    time.sleep(.1)
+    title, story = cap_story()
+
+    assert "[747B698E]" in title
+    press_select()
+
+    time.sleep(.1)
+    _, story = offer_ms_import(desc)
+    assert "Create new multisig wallet?" in story
+    time.sleep(.1)
+    press_select()
+
+    # below raises for 72 bytes long signature
+    # only on firmware versions that do only 10 grinding iterations
+    try_sign(base64.b64decode(b64psbt), accept=True)
 
 # EOF
