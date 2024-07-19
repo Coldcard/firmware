@@ -59,7 +59,7 @@ def bip85_derive(picked, index):
 
     if picked in (0,1,2):
         # BIP-39 seed phrases (we only support English)
-        num_words = (12, 18, 24)[picked]
+        num_words = stash.SEED_LEN_OPTS[picked]
         width = (16, 24, 32)[picked]        # of bytes
         path = "m/83696968h/39h/0h/{num_words}h/{index}h".format(num_words=num_words, index=index)
         s_mode = 'words'
