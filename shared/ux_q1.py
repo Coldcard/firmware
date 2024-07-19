@@ -622,7 +622,8 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
     press = PressRelease()
     last_words = []
     while 1:
-        if word_num == num_words:
+        final = (word_num == num_words)
+        if final:
             # useful to show final word on screen, even tho confirm not needed
             err_msg = 'Press ENTER if all done.' if not has_checksum else \
                       'Valid words! Press ENTER.'
@@ -651,7 +652,6 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
         ch = await press.wait()
 
         commit = False
-        final = (word_num == num_words)
         if ch == KEY_QR:
             try:
                 got = await QRScannerInteraction.scan('Scan seed from a QR code')

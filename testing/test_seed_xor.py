@@ -6,9 +6,10 @@
 import pytest, time, itertools
 from mnemonic import Mnemonic
 from constants import simulator_fixed_words
-from xor import prepare_test_pairs
+from xor import prepare_test_pairs, xor
+from bip32 import BIP32Node
 from test_ux import word_menu_entry, pass_word_quiz
-from charcodes import KEY_QR, KEY_RIGHT
+from charcodes import KEY_QR, KEY_RIGHT, KEY_DOWN
 
 wordlist = Mnemonic('english').wordlist
 
@@ -91,6 +92,11 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
             assert '(1) to include this Coldcard' in body
             need_keypress('1')
         else:
+            press_select()
+
+        time.sleep(.1)
+        title, body = cap_story()
+        if "Seed Vault" in body:
             press_select()
 
         wordlist = Mnemonic('english').wordlist
@@ -307,7 +313,7 @@ def test_xor_split(num_words, qty, trng, goto_home, pick_menu_item, cap_story, n
 @pytest.mark.parametrize('num_words', [12, 18, 24])
 def test_import_zero_set(num_words, goto_home, pick_menu_item, cap_story, need_keypress,
                          get_secrets, word_menu_entry, reset_seed_words, set_seed_words,
-                         choose_by_word_length, press_select, cap_menu, OK):
+                         choose_by_word_length, press_select, cap_menu, press_cancel, OK):
 
     set_seed_words(proper[num_words])
 
@@ -347,6 +353,11 @@ def test_import_zero_set(num_words, goto_home, pick_menu_item, cap_story, need_k
 
         if n == 1:
             assert 'ZERO WARNING' in body
+            press_cancel()
+            time.sleep(.1)
+            _, story = cap_story()
+            if "Throw away" in story:
+                press_select()
             return
 
         need_keypress('1')
@@ -428,5 +439,74 @@ def test_xor_import_empty(parts, expect, pick_menu_item, cap_story, need_keypres
 
     assert get_secrets()['mnemonic'] == expect
     reset_seed_words()
+
+
+@pytest.mark.parametrize("num_words", [12, 24])
+@pytest.mark.parametrize("num_parts", [2, 4, 20])
+@pytest.mark.parametrize("incl_self", [True, False])
+def test_seed_vault_xor(num_words, num_parts, incl_self, goto_eph_seed_menu, seed_vault_enable,
+                        generate_ephemeral_words, reset_seed_words, restore_main_seed,
+                        pick_menu_item, cap_story, choose_by_word_length, need_keypress,
+                        press_select, cap_menu, is_q1, verify_ephemeral_secret_ui,
+                        confirm_tmp_seed, set_seed_words, get_secrets):
+    reset_seed_words()
+    if incl_self and num_words != 24:
+        set_seed_words(proper[num_words])
+
+    seed_vault_enable(True)
+    words = []
+    for i in range(num_parts - int(incl_self)):
+        words.append(generate_ephemeral_words(num_words=num_words, seed_vault=True))
+
+    xfps = [
+        f"[{BIP32Node.from_master_secret(
+            Mnemonic("english").to_seed(" ".join(w))
+        ).fingerprint().hex().upper()}]"
+        for w in words
+    ]
+
+    restore_main_seed(seed_vault=True)
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Danger Zone")
+    pick_menu_item("Seed Functions")
+    pick_menu_item("Seed XOR")
+    pick_menu_item("Restore Seed XOR")
+    time.sleep(.01)
+    title, body = cap_story()
+
+    assert 'all the parts' in body
+
+    choose_by_word_length(num_words)
+    time.sleep(0.01)
+
+    title, body = cap_story()
+    assert 'you have a seed already' in body
+    if incl_self:
+        assert '(1) to include this Coldcard' in body
+        need_keypress('1')
+        words.append(get_secrets()["mnemonic"].split())
+    else:
+        press_select()
+
+    time.sleep(.1)
+    title, body = cap_story()
+    assert "Seed Vault" in body
+    need_keypress("2")
+    m = cap_menu()
+    for mi in m:
+        if mi.split()[1] in xfps:
+            need_keypress("1")
+        need_keypress(KEY_DOWN if is_q1 else "8")
+    press_select()
+    time.sleep(.1)
+    title, story = cap_story()
+    assert f"entered {num_parts} parts so far" in story
+    target_words = Mnemonic("english").to_mnemonic(
+        xor(*[Mnemonic("english").to_entropy(" ".join(w)) for w in words])
+    ).split()
+    assert f"{num_words}: {target_words[-1]}" in story
+    need_keypress("2")
+    confirm_tmp_seed(seedvault=True)
+    verify_ephemeral_secret_ui(target_words, seed_vault=True)
 
 # EOF

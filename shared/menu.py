@@ -237,7 +237,7 @@ class PreloginToggleMenuItem(ToggleMenuItem):
 class MenuSystem:
 
     def __init__(self, menu_items, chosen=None, should_cont=None,
-                        space_indicators=False):
+                        space_indicators=False, multichoice=False):
         self.shortcuts = {}
         self.should_continue = should_cont or (lambda: True)
         self.replace_items(menu_items)
@@ -245,6 +245,7 @@ class MenuSystem:
         self.chosen = chosen
         if chosen is not None:
             self.goto_idx(chosen)
+        self.multi_selected = [] if multichoice else None
 
     # subclasses: override us
     #
@@ -289,7 +290,7 @@ class MenuSystem:
         dis.clear()
 
         cursor_y = None
-        for n in range(self.ypos+PER_M+1):
+        for i, n in enumerate(range(self.ypos+PER_M+1)):
             if n+self.ypos >= self.count: break
 
             msg = self.items[n+self.ypos].label
@@ -307,6 +308,12 @@ class MenuSystem:
             if not has_qwerty and checked and (len(msg) > 14):
                 # on mk4 every label longer than 14 will overlap with checkmark
                 checked = False
+
+            if self.multi_selected is not None and (i in self.multi_selected):
+                # ignore length constraint above, we need to visually show that
+                # smthg is selected - in any case
+                # currently only used with XFPs so checkmark always good
+                checked = True
 
             dis.menu_draw(n, msg, is_sel, checked, self.space_indicators)
 
@@ -402,6 +409,11 @@ class MenuSystem:
         while self.should_continue() and the_ux.top_of_stack() == self:
             ch = await self.wait_choice()
             gc.collect()
+            if self.multi_selected is not None:
+                # multichoice
+                self.on_cancel()
+                return ch
+
             await self.activate(ch)
             
     async def wait_choice(self):
@@ -425,9 +437,23 @@ class MenuSystem:
             if not has_qwerty:
                 key = numpad_remap(key)
 
-            if key == KEY_ENTER or key == KEY_SPACE:
-                # selected - done
+            if self.multi_selected is not None and (key == "1"):  #1 is select/deselect key for both HW
+                # multichoice
+                if self.cursor in self.multi_selected:
+                    # already chosen - and user pressed again
+                    # unselect
+                    self.multi_selected.remove(self.cursor)
+                else:
+                    # select
+                    self.multi_selected.append(self.cursor)
+
+            elif key in KEY_ENTER+KEY_SPACE:
+                if self.multi_selected is not None and key == KEY_ENTER:
+                    # selected - multichoice done
+                    return self.multi_selected
+
                 return self.items[self.cursor]
+
             elif key == KEY_CANCEL:
                 # abort/nothing selected/back out?
                 return None
