@@ -49,6 +49,10 @@ def numwords_to_len(num_words):
     assert num_words in SEED_LEN_OPTS
     return (num_words * 8) // 6
 
+def len_from_marker(marker):
+    # calculates length of entropy from CC marker
+    return ((marker & 0x3) + 2) * 8
+
 class SecretStash:
     # Chip can hold 72-bytes as a secret: we need to store either
     # a list of seed words (packed), of various lengths, or maybe
@@ -103,7 +107,7 @@ class SecretStash:
 
         elif marker & 0x80:
             # seed phrase
-            ll = ((marker & 0x3) + 2) * 8
+            ll = len_from_marker(marker)
 
             # note: 
             # - byte length > number of words
@@ -149,7 +153,7 @@ class SecretStash:
 
         if marker & 0x80:
             # seed phrase
-            ll = ((marker & 0x3) + 2) * 8
+            ll = len_from_marker(marker)
             return '%d words' % len_to_numwords(ll)
 
         if marker == 0x00:
