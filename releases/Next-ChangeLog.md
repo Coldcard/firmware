@@ -12,7 +12,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Do not alow to import multisig wallet duplicate with only keys shuffled
 - Bugfix: Do not read whole PSBT into memory when writing finalized transaction
 - Bugfix: Properly handle null data OP_RETURN
-
+- Bugfix: Prevent user to apply XOR restore when len parts is smaller than 2 
 
 # Mk4 Specific Changes
 

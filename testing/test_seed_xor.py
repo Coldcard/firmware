@@ -100,7 +100,10 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
             time.sleep(0.01)
             title, body = cap_story()
             assert f"You've entered {n + 1} parts so far" in body
-            assert "or (2) if done" in body
+            if n+1 > 1:
+                assert "Or (2) if done" in body
+            else:
+                assert "Or (2)" not in body
 
             if n != len(parts) - 1:
                 need_keypress('1')
@@ -287,7 +290,10 @@ def test_import_zero_set(num_words, goto_home, pick_menu_item, cap_story, need_k
         time.sleep(0.01)
         title, body = cap_story()
         assert f"You've entered {n+1} parts so far" in body
-        assert "or (2) if done" in body
+        if n + 1 > 1:
+            assert "Or (2) if done" in body
+        else:
+            assert "Or (2)" not in body
 
         if n == 1:
             assert 'ZERO WARNING' in body
@@ -347,7 +353,10 @@ def test_xor_import_empty(parts, expect, pick_menu_item, cap_story, need_keypres
         time.sleep(0.01)
         title, body = cap_story()
         assert f"You've entered {n + 1} parts so far" in body
-        assert "or (2) if done" in body
+        if n + 1 > 1:
+            assert "Or (2) if done" in body
+        else:
+            assert "Or (2)" not in body
 
         if n != len(parts)-1:
             assert 'ZERO WARNING' not in body
