@@ -147,7 +147,11 @@ async def xor_all_done(new_words):
         msg += "ZERO WARNING\nProvided seed works out to all zeros "\
                 "right now. You may have doubled a part or made some other mistake.\n\n"
 
-    msg += "Press (1) to enter next list of words, or (2) if done with all words."
+    msg += "Press (1) to enter next list of words."
+    escape = "1"+KEY_CANCEL+KEY_QR
+    if num_parts >= 2:
+        msg += " Or (2) if done with all words."
+        escape += "2"
 
     ch = await ux_show_story(msg, strict_escape=True, escape='12x'+KEY_CANCEL, sensitive=True)
     if ch == 'x':
