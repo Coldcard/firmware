@@ -28,5 +28,6 @@ This lists the new changes that have not yet been published in a normal release.
 - New Feature: (BB)QR file share
 - Bugfix: Properly clear LCD screen after BBQR is shown
 - Bugfix: Writing to empty slot B caused broken card reader
+- Bugfix: Seed XOR UI, display correct letter B if own seed already added to the mix.
 
 

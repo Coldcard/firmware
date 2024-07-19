@@ -270,7 +270,9 @@ or press (2) for 18 words XOR.''', escape="12")
 
     if has_qwerty:
         from ux_q1 import seed_word_entry
-        await seed_word_entry("Part A Words", desired_num_words, done_cb=xor_all_done)
+        # if current loaded seed is added to xor - it is always A
+        await seed_word_entry("Part %s Words" % ("B" if import_xor_parts else "A"),
+                              desired_num_words, done_cb=xor_all_done)
     else:
         return XORWordNestMenu(num_words=desired_num_words, done_cb=xor_all_done)
 

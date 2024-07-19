@@ -51,7 +51,8 @@ def random_test_cases():
 def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
                      choose_by_word_length, need_keypress, get_secrets,
                      word_menu_entry, verify_ephemeral_secret_ui,
-                     confirm_tmp_seed, seed_vault_enable, press_select):
+                     confirm_tmp_seed, seed_vault_enable, press_select,
+                     scan_a_qr, is_q1, cap_screen_qr, cap_screen):
     def doit(parts, expect, incl_self=False, save_to_vault=False,
              is_master_tmp_fail=False):
         if expect is None:
@@ -94,6 +95,14 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
         for n, part in enumerate(parts):
             if n == 0 and incl_self:
                 continue
+
+            time.sleep(.1)
+            scr = cap_screen()
+            what = chr(65+n)
+            if is_q1:
+                assert f"Part {what}" in scr
+            else:
+                assert what in scr
 
             word_menu_entry(part.split())
 
