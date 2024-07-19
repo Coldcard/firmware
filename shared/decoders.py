@@ -2,11 +2,20 @@
 #
 # decoders.py - Convert QR (or text) values into useful bitcoin-related objects.
 #
-import ngu, bip39, ure
+#  included in Q builds only, not Mk4 --> manifest_q1.py
+#
+import ngu, bip39, ure, stash
 from ubinascii import unhexlify as a2b_hex
 from exceptions import QRDecodeExplained
 from bbqr import TYPE_LABELS
 from utils import decode_bip21_text
+
+
+def decode_seed_qr(data):
+    # SeedQR: 4 digit groups of index into word list
+    parts = [data[pos:pos + 4] for pos in range(0, len(data), 4)]
+    words = [bip39.wordlist_en[int(n)] for n in parts]
+    return words
 
 def txn_decoding_taster(txt):
     # look at first 4 bytes, and assume it's txn version number (LE32 0x1 or 0x2), then decode 
@@ -66,17 +75,15 @@ def decode_secret(got):
     taste = got.strip().lower()
 
     if taste.isdigit():
-        # SeedQR: 4 digit groups of index into word list
-        parts = [taste[pos:pos+4] for pos in range(0, len(taste), 4)]
         try:
-            assert len(parts) in (12, 18, 24)
-            words = [bip39.wordlist_en[int(n)] for n in parts]
+            words = decode_seed_qr(taste)
         except:
             raise ValueError('corrupt SeedQR?')
+        assert len(words) in stash.SEED_LEN_OPTS, "seed len"
         return 'words', words
 
     words = taste.strip().split(' ')
-    if len(words) in [ 12, 18, 24]:
+    if len(words) in stash.SEED_LEN_OPTS:
         # looks like bip-39 words, decode and re-expand
         idx = [bip39.get_word_index(w) for w in words]
         return 'words', [bip39.wordlist_en[n] for n in idx]

@@ -15,6 +15,9 @@ from uhashlib import sha256
 from utils import swab32, call_later_ms, B2A
 
 
+SEED_LEN_OPTS = [12, 18, 24]
+
+
 class ZeroSecretException(ValueError):
     # raised when there is no secret or secret is zero
     pass
@@ -43,7 +46,7 @@ def len_to_numwords(vlen):
 
 def numwords_to_len(num_words):
     # map number of BIP-39 seed words to length of binary secret
-    assert num_words in [12, 18, 24]
+    assert num_words in SEED_LEN_OPTS
     return (num_words * 8) // 6
 
 class SecretStash:

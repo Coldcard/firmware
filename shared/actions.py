@@ -8,7 +8,7 @@ import ckcc, pyb, version, uasyncio, sys, uos
 from uhashlib import sha256
 from uasyncio import sleep_ms
 from ubinascii import hexlify as b2a_hex
-from utils import imported, problem_file_line, get_filesize
+from utils import imported, problem_file_line, get_filesize, encode_seed_qr
 from utils import xfp2str, B2A, addr_fmt_label, txid_from_fname
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
 from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt
@@ -719,7 +719,7 @@ async def export_seedqr(*a):
         words = bip39.b2a_words(sv.raw).split(' ')
 
         dis.busy_bar(False)
-        qr = ''.join('%04d'% bip39.get_word_index(w) for w in words)
+        qr = encode_seed_qr(words)
 
         del words
 

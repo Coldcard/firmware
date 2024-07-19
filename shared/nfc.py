@@ -7,7 +7,7 @@
 # - has GPIO signal "??" which is multipurpose on its own pin
 # - this chip chosen because it can disable RF interaction
 #
-import utime, ngu, ndef
+import utime, ngu, ndef, stash
 from uasyncio import sleep_ms
 import uasyncio as asyncio
 from ustruct import pack, unpack
@@ -693,7 +693,7 @@ class NFCHandler:
         for urn, msg, meta in ndef.record_parser(data):
             msg = bytes(msg).decode().strip()        # from memory view
             split_msg = msg.split(" ")
-            if len(split_msg) in (12, 18, 24):
+            if len(split_msg) in stash.SEED_LEN_OPTS:
                 winner = split_msg
                 break
 

@@ -8,6 +8,7 @@ from mnemonic import Mnemonic
 from constants import simulator_fixed_words
 from xor import prepare_test_pairs
 from test_ux import word_menu_entry, pass_word_quiz
+from charcodes import KEY_QR, KEY_RIGHT
 
 wordlist = Mnemonic('english').wordlist
 
@@ -54,7 +55,7 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
                      confirm_tmp_seed, seed_vault_enable, press_select,
                      scan_a_qr, is_q1, cap_screen_qr, cap_screen):
     def doit(parts, expect, incl_self=False, save_to_vault=False,
-             is_master_tmp_fail=False):
+             is_master_tmp_fail=False, way=None):
         if expect is None:
             parts, expect = prepare_test_pairs(*parts)
 
@@ -92,6 +93,7 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
         else:
             press_select()
 
+        wordlist = Mnemonic('english').wordlist
         for n, part in enumerate(parts):
             if n == 0 and incl_self:
                 continue
@@ -104,9 +106,25 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
             else:
                 assert what in scr
 
-            word_menu_entry(part.split())
+            if way and "qr" in way:
+                assert is_q1
+                need_keypress(KEY_QR)
+                time.sleep(.1)
+                if way == "seedqr":
+                    qr = ''.join('%04d' % wordlist.index(w) for w in part.split())
+                else:
+                    qr = ' '.join(w[:4] for w in part.split())
+                scan_a_qr(qr)
+                for _ in range(20):
+                    scr = cap_screen()
+                    if 'Valid words' in scr:
+                        break
+                    time.sleep(.1)
+                press_select()
+            else:
+                word_menu_entry(part.split())
 
-            time.sleep(0.01)
+            time.sleep(.1)
             title, body = cap_story()
             assert f"You've entered {n + 1} parts so far" in body
             if n+1 > 1:
@@ -122,6 +140,13 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
                 assert f"{num_words}: {chk_word}" in body
                 if expect == zeros[num_words]:
                     assert 'ZERO WARNING' in body
+
+                if is_q1:
+                    need_keypress(KEY_QR)
+                    qr = cap_screen_qr().decode('ascii')
+                    parts = [qr[pos:pos + 4] for pos in range(0, len(qr), 4)]
+                    assert [wordlist[int(n)] for n in parts] == expect.split()
+                    press_select()
 
         need_keypress('2')
         try:
@@ -139,6 +164,7 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
 
     return doit
 
+@pytest.mark.parametrize('way', ["qr", "seedqr", "classic"])
 @pytest.mark.parametrize('incl_self', [False, True])
 @pytest.mark.parametrize('seed_vault', [False, True])
 @pytest.mark.parametrize('parts, expect', [
@@ -160,8 +186,10 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
     # random generated
     *random_test_cases()
 ])
-def test_import_xor(seed_vault, incl_self, parts, expect, restore_seed_xor):
-    restore_seed_xor(parts, expect, incl_self, seed_vault)
+def test_import_xor(seed_vault, incl_self, parts, expect, restore_seed_xor, way, is_q1):
+    if not is_q1 and "qr" in way:
+        raise pytest.skip("Q only")
+    restore_seed_xor(parts, expect, incl_self, seed_vault, way=way)
 
 
 @pytest.mark.parametrize('incl_self', [False, True])
@@ -186,7 +214,7 @@ def test_import_xor_zeros_ones(incl_self, parts, expect, restore_seed_xor):
 @pytest.mark.parametrize('trng', [False, True])
 def test_xor_split(num_words, qty, trng, goto_home, pick_menu_item, cap_story, need_keypress,
                    cap_menu, get_secrets, pass_word_quiz, set_seed_words, press_select,
-                   seed_story_to_words, is_q1):
+                   seed_story_to_words, is_q1, cap_screen_qr):
 
     set_seed_words(proper[num_words])
 
@@ -228,6 +256,19 @@ def test_xor_split(num_words, qty, trng, goto_home, pick_menu_item, cap_story, n
         assert all(len(prt) == num_words for prt in parts)
         chk_word = seed_story_to_words(chk_prt)[0]
         assert chk_word
+
+        need_keypress(KEY_QR)
+        p_all = []
+        for i in range(len(parts)):
+            p = cap_screen_qr().decode("ascii")  # SeedQR
+            pparts = [p[pos:pos + 4] for pos in range(0, len(p), 4)]
+            pwords = [wordlist[int(n)] for n in pparts]
+            p_all.append(pwords)
+            need_keypress(KEY_RIGHT)
+            time.sleep(.1)
+
+        press_select()  # exit QR display
+        assert p_all == parts
     else:
         words = [ln[4:] for ln in body.split('\n') if ln[2:4] == ': ']
         parts = [words[pos:pos + num_words] for pos in range(0, num_words * qty, num_words)]

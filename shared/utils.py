@@ -2,7 +2,7 @@
 #
 # utils.py - Misc utils. My favourite kind of source file.
 #
-import gc, sys, ustruct, ngu, chains, ure, time
+import gc, sys, ustruct, ngu, chains, ure, time, bip39
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
@@ -615,13 +615,26 @@ def datetime_to_str(dt, fmt="%d-%02d-%02d %02d:%02d:%02d"):
     dts = fmt % (y, mo, d, h, mi, s)
     return dts + " UTC"
 
+def censor_address(addr):
+    # We don't like to show the user multisig addresses because we cannot be certain
+    # they are valid and could actually be signed. And yet, dont blank too many
+    # spots or else an attacker could grind out a suitable replacement.
+    return addr[0:12] + '___' + addr[12+3:]
+
+def txid_from_fname(fname):
+    if len(fname) >= 64:
+        txid = fname[:64]
+        try:
+            a2b_hex(txid)
+            return txid
+        except: pass
+    return None
+
 def url_decode(u):
     # expand control chars from %XX and '+'
     # - equiv to urllib.parse.unquote_plus
     # - ure.sub is missing, so not being clever here.
     # - give up on syntax errors, and return unchanged
-    import ure
-
     u = u.replace('+', ' ')
     while 1:
         pos = u.find('%')
@@ -685,19 +698,7 @@ def decode_bip21_text(got):
 
     raise ValueError('not bip-21')
 
-def censor_address(addr):
-    # We don't like to show the user multisig addresses because we cannot be certain
-    # they are valid and could actually be signed. And yet, dont blank too many
-    # spots or else an attacker could grind out a suitable replacement.
-    return addr[0:12] + '___' + addr[12+3:]
-
-def txid_from_fname(fname):
-    if len(fname) >= 64:
-        txid = fname[:64]
-        try:
-            a2b_hex(txid)
-            return txid
-        except: pass
-    return None
+def encode_seed_qr(words):
+    return ''.join('%04d' % bip39.get_word_index(w) for w in words)
 
 # EOF
