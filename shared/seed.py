@@ -1001,7 +1001,7 @@ class SeedVaultMenu(MenuSystem):
                     # DO NOT offer any modification api (rename/delete)
                     submenu = submenu[:2]
 
-                item = MenuItem('%d: %s' % (i+1, name), menu=MenuSystem(submenu))
+                item = MenuItem('%2d: %s' % (i+1, name), menu=MenuSystem(submenu))
                 if is_active:
                     item.is_chosen = lambda: True
 
