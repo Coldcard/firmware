@@ -5,7 +5,7 @@ This lists the new changes that have not yet been published in a normal release.
 # Shared Improvements - Both Mk4 and Q
 
 - Enhancement: Allow JSON files in `NFC File Share`
-
+- Bugfix: UI ordered list alignment in Seed Vault menu
 
 # Mk4 Specific Changes
 
