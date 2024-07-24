@@ -393,7 +393,7 @@ class MultisigWallet(WalletABC):
         c = self.find_match(self.M, self.N, lst, addr_fmt=self.addr_fmt)
         if c:
             # All details are same: M/N, paths, addr fmt
-            if self.xpubs != c.xpubs:
+            if sorted(self.xpubs) != sorted(c.xpubs):
                 return None, ['xpubs'], 0
             elif self.name == c.name:
                 return None, [], 1

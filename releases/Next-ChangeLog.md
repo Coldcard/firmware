@@ -6,6 +6,8 @@ This lists the new changes that have not yet been published in a normal release.
 
 - Enhancement: Allow JSON files in `NFC File Share`
 - Bugfix: UI ordered list alignment in Seed Vault menu
+- Bugfix: Do not alow to import multisig wallet duplicate with only keys shuffled
+
 
 # Mk4 Specific Changes
 
