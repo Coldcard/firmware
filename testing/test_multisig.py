@@ -2995,4 +2995,30 @@ def test_txout_explorer(psbtv2, data, clear_ms, import_ms_wallet, fake_ms_txn,
     start_sign(psbt)
     txout_explorer(data)
 
+
+@pytest.mark.parametrize("desc", [True, False])
+def test_import_duplicate_shuffled_keys(desc, clear_ms, make_multisig, import_ms_wallet,
+                                        microsd_path, pick_menu_item, cap_story, goto_home,
+                                        press_cancel):
+    # DO NOT allow to import wsh(sortedmulti(2, A,B)) and wsh(sortedmulti(2, B, A))
+    # MUST BE treated as duplicates
+    clear_ms()
+    M, N = 2, 3
+    wname = "ms02"
+    keys = make_multisig(M, N)
+    import_ms_wallet(M, N, addr_fmt="p2wsh", name=wname, accept=True, keys=keys,
+                     descriptor=desc)
+    # shuffle
+    keys[0], keys[1] = keys[1], keys[0]
+
+    with pytest.raises(AssertionError):
+        import_ms_wallet(M, N, addr_fmt="p2wsh", name=wname, accept=True, keys=keys,
+                         descriptor=desc)
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert 'Duplicate wallet' in story
+    assert 'OK to approve' not in story
+    press_cancel()
+
 # EOF
