@@ -186,7 +186,7 @@ cd firmware
 git apply unix/linux_addr.patch
 
 #  * below is needed for ubuntu 24.04
-pushd ../external/micropython
+pushd external/micropython
 git apply ../../ubuntu24_mpy.patch
 popd
 #  * 
