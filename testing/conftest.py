@@ -8,7 +8,7 @@ from base58 import decode_base58_checksum
 from bip32 import BIP32Node
 from msg import verify_message
 from api import bitcoind, match_key
-from api import bitcoind_wallet, bitcoind_d_wallet, bitcoind_d_wallet_w_sk, bitcoind_d_sim_sign
+from api import bitcoind_wallet, bitcoind_d_wallet, bitcoind_d_wallet_w_sk, bitcoind_d_sim_sign, bitcoind_d_dev_watch
 from api import bitcoind_d_sim_watch, finalize_v2_v0_convert
 from binascii import b2a_hex, a2b_hex
 from constants import *
@@ -2187,6 +2187,36 @@ def skip_if_useless_way(is_q1, nfc_disabled):
             raise pytest.skip("NFC disabled")
 
     return doit
+
+
+@pytest.fixture(scope="session")
+def dev_core_import_object(dev):
+
+    import sys
+    sys.path.append("../shared")
+    from descriptor import Descriptor
+
+    ders = [
+        ("m/44h/1h/0h", AF_CLASSIC),
+        ("m/49h/1h/0h", AF_P2WPKH_P2SH),
+        ("m/84h/1h/0h", AF_P2WPKH)
+    ]
+    descriptors = []
+    for idx, (path, addr_format) in enumerate(ders):
+        # get rid of change and address bip32 indexes
+        path = "/".join(path.split("/")[:-2])
+        subpath = path.format(account=0)  # e.g. "m/44h/1h/0h"
+        ek = dev.send_recv(CCProtocolPacker.get_xpub(subpath), timeout=None)
+        d = Descriptor([(dev.master_fingerprint, subpath, ek)], addr_format)
+        for i in range(2):
+            descriptors.append({
+                "timestamp": "now",
+                "active": True,
+                "desc": d.serialize(internal=i),
+                "internal": bool(i)
+            })
+    return descriptors
+
 
 # useful fixtures
 from test_backup import backup_system
