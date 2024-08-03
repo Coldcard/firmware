@@ -250,14 +250,18 @@ class CardSlot:
         self.readonly = readonly
         self.wrote_files = set()
         if self.mux:
-            if slot_b is None:
-                # reading, and we don't care which, so pick slot with a card
-                # or default A if both installed
-                slot_b = (self.sd_detect2() == 0)
-                if self.sd_detect() == 0:
-                    slot_b = False
-            self.mux(1 if slot_b else 0)      # top slot = A
-            self.active_led = self.active_led2 if slot_b else self.active_led1
+            use_b_slot = False  # default A if both installed, or none
+            sa, sb = self.sd_detect() == 0, self.sd_detect2() == 0
+            if slot_b and sb:
+                # user choose B and B is present - proceed
+                use_b_slot = True
+            elif not slot_b and not sa and sb:
+                # user didn't choose B, but A is not present and B is
+                # write to B
+                use_b_slot = True
+
+            self.mux(1 if use_b_slot else 0)  # top slot = A
+            self.active_led = self.active_led2 if use_b_slot else self.active_led1
 
     def __enter__(self):
         # Mk4: maybe use our virtual disk in preference to SD Card
