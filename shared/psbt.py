@@ -1868,9 +1868,9 @@ class psbtObject(psbtProxy):
 
             # progress
             dis.fullscreen('Signing...')
-
+            # randomize secp context before each signing session
+            ngu.secp256k1.ctx_rnd()
             # Sign individual inputs
-            sigs = 0
             success = set()
             for in_idx, txi in self.input_iter():
                 dis.progress_sofar(in_idx, self.num_inputs)

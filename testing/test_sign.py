@@ -2106,7 +2106,8 @@ def test_no_outputs_tx(fake_txn, microsd_path, goto_home, press_select, pick_men
     except: pass
 
 
-def test_send2taproot_addresss(fake_txn , start_sign, end_sign, cap_story):
+def test_send2taproot_addresss(fake_txn , start_sign, end_sign, cap_story, use_testnet):
+    use_testnet()
     psbt = fake_txn(2, 2, segwit_in=True, change_outputs=[0], outstyles=["p2tr"])
     start_sign(psbt)
     title, story = cap_story()
