@@ -16,6 +16,8 @@
     Advanced
       12 Word Dice Roll
       24 Word Dice Roll
+      12 Word Fair Coin
+      24 Word Fair Coin
   Migrate COLDCARD
   Import Existing
     12 Words
@@ -39,6 +41,8 @@
         24 Words
         12 Word Dice Roll
         24 Word Dice Roll
+        12 Word Fair Coin
+        24 Word Fair Coin
       Import from QR Scan [IF QR SCANNER]
       Import Words
         12 Words
@@ -305,6 +309,8 @@
         24 Words
         12 Word Dice Roll
         24 Word Dice Roll
+        12 Word Fair Coin
+        24 Word Fair Coin
       Import from QR Scan [IF QR SCANNER]
       Import Words
         12 Words
