@@ -3026,4 +3026,12 @@ def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_ms_imp
     # only on firmware versions that do only 10 grinding iterations
     try_sign(base64.b64decode(b64psbt), accept=True)
 
+
+def test_null_data_op_return(fake_txn, start_sign, end_sign):
+    psbt = fake_txn(1, 1, op_return=[(50, b"")])
+    start_sign(psbt, False, stxn_flags=STXN_VISUALIZE)
+    story = end_sign(accept=None, expect_txn=False).decode()
+    assert "null-data" in story
+    assert "OP_RETURN" in story
+
 # EOF

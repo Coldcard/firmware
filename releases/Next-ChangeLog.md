@@ -10,7 +10,8 @@ This lists the new changes that have not yet been published in a normal release.
 - Enhancement: Improve side-channel protection. libsecp256k1 context randomization before each signing session.
 - Bugfix: UI ordered list alignment in Seed Vault menu
 - Bugfix: Do not alow to import multisig wallet duplicate with only keys shuffled
-- Bugfix: Do not read whole PSBT into memory when writing finalized transaction 
+- Bugfix: Do not read whole PSBT into memory when writing finalized transaction
+- Bugfix: Properly handle null data OP_RETURN
 
 
 # Mk4 Specific Changes
