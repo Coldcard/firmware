@@ -256,7 +256,6 @@ AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
 
 DebugFunctionsMenu = [
     #         xxxxxxxxxxxxxxxx
-    MenuItem("Lamp Test", f=lamp_test),
     MenuItem("Keyboard Test", f=keyboard_test),
     MenuItem('BBQr Demo', f=debug_bbqr_test, predicate=version.has_qwerty),
     MenuItem('Debug: assert', f=debug_assert),
