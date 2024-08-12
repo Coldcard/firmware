@@ -1964,9 +1964,10 @@ def check_and_decrypt_backup(microsd_path):
 
 @pytest.fixture
 def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
-                      press_select, word_menu_entry, get_setting):
+                      press_select, word_menu_entry, get_setting, is_q1,
+                      need_keypress, scan_a_qr, cap_screen):
     # restore backup with clear seed as first step
-    def doit(fn, passphrase, avail_settings=None):
+    def doit(fn, passphrase, avail_settings=None, pass_way=None):
         unit_test('devtest/clear_seed.py')
 
         m = cap_menu()
@@ -1978,7 +1979,19 @@ def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
         pick_menu_item(fn)
 
         time.sleep(.1)
-        word_menu_entry(passphrase, has_checksum=False)
+        if is_q1 and pass_way and pass_way == "qr":
+            need_keypress(KEY_QR)
+            time.sleep(.1)
+            qr = ' '.join(w[:4] for w in passphrase)
+            scan_a_qr(qr)
+            for _ in range(20):
+                scr = cap_screen()
+                if 'ENTER if all done' in scr:
+                    break
+                time.sleep(.1)
+            press_select()
+        else:
+            word_menu_entry(passphrase, has_checksum=False)
 
         time.sleep(.3)
         title, body = cap_story()
