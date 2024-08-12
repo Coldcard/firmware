@@ -26,6 +26,7 @@ This lists the new changes that have not yet been published in a normal release.
 ## 1.2.4Q - 2024-08-xx
 
 - New Feature: Seed XOR with SeedQR
+- New Feature: Scan backup password as QR
 - New Feature: (BB)QR file share
 - Bugfix: Properly clear LCD screen after BBQR is shown
 - Bugfix: Writing to empty slot B caused broken card reader

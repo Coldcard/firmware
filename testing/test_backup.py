@@ -105,6 +105,7 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
 @pytest.mark.parametrize('reuse_pw', [False, True])
 @pytest.mark.parametrize('save_pw', [False, True])
 @pytest.mark.parametrize('seedvault', [False, True])
+@pytest.mark.parametrize('pass_way', ["qr", None])
 def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypress, st,
                      open_microsd, microsd_path, unit_test, cap_menu, word_menu_entry,
                      pass_word_quiz, reset_seed_words, import_ms_wallet, get_setting,
@@ -112,7 +113,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
                      generate_ephemeral_words, set_bip39_pw, verify_backup_file,
                      check_and_decrypt_backup, restore_backup_cs, clear_ms, seedvault,
                      restore_main_seed, import_ephemeral_xprv, backup_system,
-                     press_cancel, sim_exec):
+                     press_cancel, sim_exec, pass_way):
     # Make an encrypted 7z backup, verify it, and even restore it!
     clear_ms()
     reset_seed_words()
@@ -225,7 +226,8 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     if multisig:
         avail_settings.append("multisig")
 
-    restore_backup_cs(files[0], words, avail_settings=avail_settings)
+    restore_backup_cs(files[0], words, avail_settings=avail_settings,
+                      pass_way=pass_way)
 
 
 @pytest.mark.parametrize("stype", ["words12", "words24", "xprv"])
