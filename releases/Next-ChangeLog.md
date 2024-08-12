@@ -14,6 +14,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Properly handle null data in `OP_RETURN`.
 - Bugfix: Prevent user from restoring Seed XOR when len parts is smaller than 2.
 - Bugfix: Fix display alignment of Seed Vault menu.
+- Change: Remove Lamp Test from Debug Options (lights covered by selftest)
 
 # Mk4 Specific Changes
 
