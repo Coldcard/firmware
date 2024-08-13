@@ -3246,4 +3246,82 @@ def test_legacy_multisig_setting(settings_set, import_ms_wallet, goto_home,
                          accept=True, force_legacy_ms=False)
     assert '"multi(...)" not allowed' in e.value.args[0]
 
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("cs", [True, False])
+@pytest.mark.parametrize("way", ["usb", "nfc", "sd", "vdisk", "qr"])
+def test_import_multisig_usb_json(use_regtest, cs, way, cap_menu, clear_ms,
+                                  pick_menu_item, goto_home, need_keypress,
+                                  offer_ms_import, bitcoind, microsd_path,
+                                  virtdisk_path, import_multisig):
+    name = "my_ms_wal"
+    use_regtest()
+    clear_ms()
+
+    with open("data/multisig/desc-p2wsh-myself.txt", "r") as f:
+        desc = f.read().strip()
+
+    if not cs:
+        desc, cs = desc.split("#")
+
+    val = json.dumps({"name": name, "desc": desc})
+
+    data = None
+    fname = None
+    if way == "usb":
+        title, story = offer_ms_import(val)
+    else:
+        if way in ["nfc", "qr"]:
+            data = val
+        else:
+            fname = "diff_name.txt"  # will be ignored as name in the json has preference
+            if way == "sd":
+                fpath = microsd_path(fname)
+            else:
+                fpath = virtdisk_path(fname)
+
+            with open(fpath, "w") as f:
+                f.write(val)
+
+        title, story = import_multisig(fname=fname, way=way, data=data)
+
+    assert "Create new multisig wallet?" in story
+    assert name in story
+    need_keypress("y")
+    time.sleep(.2)
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Multisig Wallets")
+    m = cap_menu()
+    assert name in m[0]
+
+
+@pytest.mark.parametrize("err,config", [
+    # all dummy data there to satisfy badlen check in usb.py
+    (
+        "'desc' key required",
+        {"name": "my_miniscript", "random": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+    ),
+    (
+        "'name' length",
+        {"name": "a" * 41, "desc": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+    ),
+    (
+        "'name' length",
+        {"name": "a", "desc": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+    ),
+    (
+        "'desc' empty",
+        {"name": "ab", "desc": "", "random": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+    ),
+    (
+        "'desc' empty",
+        {"name": "ab", "desc": None, "random": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+    ),
+])
+def test_json_import_failures(err, config, offer_ms_import):
+    with pytest.raises(Exception) as e:
+        offer_ms_import(json.dumps(config))
+    assert err in e.value.args[0]
+
 # EOF

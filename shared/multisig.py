@@ -1802,7 +1802,7 @@ async def import_multisig(*a):
                 if 'pub' in ln:
                     return True
 
-    fn = await file_picker(suffix='.txt', min_size=100, max_size=20*200,
+    fn = await file_picker(suffix=['.txt', '.json'], min_size=100, max_size=20*200,
                            taster=possible, force_vdisk=force_vdisk)
     if not fn: return
 
