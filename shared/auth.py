@@ -3,7 +3,7 @@
 # Operations that require user authorization, like our core features: signing messages
 # and signing bitcoin transactions.
 #
-import stash, ure, ux, chains, sys, gc, uio, version, ngu
+import stash, ure, ux, chains, sys, gc, uio, version, ngu, ujson
 from ubinascii import b2a_base64, a2b_base64
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
@@ -1543,28 +1543,47 @@ class NewEnrollRequest(UserAuthorizedAction):
 
 def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False):
     # Offer to import (enroll) a new multisig wallet. Allow reject by user.
+    from glob import dis
     from multisig import MultisigWallet
 
     UserAuthorizedAction.cleanup()
+    dis.fullscreen('Wait...')  # needed
+    dis.busy_bar(True)
 
-    if sf_len:
-        with SFFile(TXN_INPUT_OFFSET, length=sf_len) as fd:
-            config = fd.read(sf_len).decode()
+    try:
+        if sf_len:
+            with SFFile(TXN_INPUT_OFFSET, length=sf_len) as fd:
+                config = fd.read(sf_len).decode()
 
-    # this call will raise on parsing errors, so let them rise up
-    # and be shown on screen/over usb
-    ms = MultisigWallet.from_file(config, name=name)
+        try:
+            j_conf = ujson.loads(config)
+            assert "desc" in j_conf, "'desc' key required"
+            config = j_conf["desc"]
+            assert config, "'desc' empty"
 
-    UserAuthorizedAction.active_request = NewEnrollRequest(ms)
+            if "name" in j_conf:
+                # name from json has preference over filenames and desc checksum
+                name = j_conf["name"]
+                assert 2 <= len(name) <= 40, "'name' length"
+        except ValueError: pass
 
-    if ux_reset:
-        # for USB case, and import from PSBT
-        # kill any menu stack, and put our thing at the top
-        abort_and_goto(UserAuthorizedAction.active_request)
-    else:
-        # menu item case: add to stack
-        from ux import the_ux
-        the_ux.push(UserAuthorizedAction.active_request)
+        # this call will raise on parsing errors, so let them rise up
+        # and be shown on screen/over usb
+        ms = MultisigWallet.from_file(config, name=name)
+
+        UserAuthorizedAction.active_request = NewEnrollRequest(ms)
+
+        if ux_reset:
+            # for USB case, and import from PSBT
+            # kill any menu stack, and put our thing at the top
+            abort_and_goto(UserAuthorizedAction.active_request)
+        else:
+            # menu item case: add to stack
+            from ux import the_ux
+            the_ux.push(UserAuthorizedAction.active_request)
+    finally:
+        # always finish busy bar
+        dis.busy_bar(False)
 
 class FirmwareUpgradeRequest(UserAuthorizedAction):
     def __init__(self, hdr, length, hdr_check=False, psram_offset=None):
