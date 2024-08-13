@@ -10,6 +10,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Enhancement: Signature grinding optimizations.
 - Enhancement: Improve side-channel protection: libsecp256k1 context randomization now happens
   before each signing session.
+- Change: Do NOT require descriptor checksum when importing multisig wallets
 - Bugfix: Do not alow to import multisig wallet duplicate with only keys shuffled.
 - Bugfix: Do not read whole PSBT into memory when writing finalized transaction.
 - Bugfix: Properly handle null data in `OP_RETURN`.
