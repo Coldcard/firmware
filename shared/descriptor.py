@@ -140,11 +140,13 @@ class Descriptor:
         self.addr_fmt = addr_fmt
 
     @staticmethod
-    def checksum_check(desc_w_checksum):
+    def checksum_check(desc_w_checksum , csum_required=False):
         try:
             desc, checksum = desc_w_checksum.split("#")
         except ValueError:
-            raise ValueError("Missing descriptor checksum")
+            if csum_required:
+                raise ValueError("Missing descriptor checksum")
+            return desc_w_checksum, None
         calc_checksum = descriptor_checksum(desc)
         if calc_checksum != checksum:
             raise WrongCheckSumError("Wrong checksum %s, expected %s" % (checksum, calc_checksum))
