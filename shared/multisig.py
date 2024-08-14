@@ -734,9 +734,9 @@ class MultisigWallet(WalletABC):
         expect_chain = chains.current_chain().ctype
         if MultisigDescriptor.is_descriptor(config):
             _, addr_fmt, xpubs, has_mine, M, N, bip67 = cls.from_descriptor(config)
-            if not bip67 and not settings.get("legacy_ms", 0):
-                # BIP-67 disabled, but legacy_ms not allowed - raise
-                raise AssertionError('Legacy multisig "multi(...)" not allowed')
+            if not bip67 and not settings.get("unsort_ms", 0):
+                # BIP-67 disabled, but unsort_ms not allowed - raise
+                raise AssertionError('Unsorted multisig "multi(...)" not allowed')
         else:
             # oldschool
             bip67 = True
@@ -1292,20 +1292,20 @@ exists, otherwise 'Verify'.''')
     if ch == 'x': return
     start_chooser(psbt_xpubs_policy_chooser)
 
-def legacy_ms_chooser():
+def unsorted_ms_chooser():
     ch = ['Do Not Allow', 'Allow']
 
     def xset(idx, text):
-        settings.set('legacy_ms', idx)
+        settings.set('unsort_ms', idx)
         from actions import goto_top_menu
         goto_top_menu()
 
-    return settings.get('legacy_ms', 0), ch, xset
+    return settings.get('unsort_ms', 0), ch, xset
 
-async def legacy_ms_menu(*a):
+async def unsorted_ms_menu(*a):
     from menu import start_chooser
 
-    if not settings.get("legacy_ms", None):
+    if not settings.get("unsort_ms", None):
         ch = await ux_show_story(
             'With this setting ON, it is allowed to import and operate'
             ' "multi(...)" unsorted multisig wallets that do not follow BIP-67.'
@@ -1318,7 +1318,7 @@ async def legacy_ms_menu(*a):
         if ch != '4': return
 
     else:
-        # legacy_ms enabled - assume he is going to disable
+        # unsort_ms enabled - assume he is going to disable
         # check any multi(...) imported
         ms = settings.get("multisig", [])
         multi_names = [m[0] for m in ms if len(m) == 5]
@@ -1331,7 +1331,7 @@ async def legacy_ms_menu(*a):
             )
             return
 
-    start_chooser(legacy_ms_chooser)
+    start_chooser(unsorted_ms_chooser)
 
 class MultisigMenu(MenuSystem):
 
@@ -1356,8 +1356,9 @@ class MultisigMenu(MenuSystem):
         rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
         rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
         rv.append(MenuItem('Skip Checks?', f=disable_checks_menu))
-        rv.append(NonDefaultMenuItem('Legacy Multisig', 'legacy_ms',
-                                     f=legacy_ms_menu))
+        rv.append(NonDefaultMenuItem('Unsorted Multisig' if version.has_qwerty else "Unsorted Multi",
+                                     'unsort_ms',
+                                     f=unsorted_ms_menu))
 
         return rv
 

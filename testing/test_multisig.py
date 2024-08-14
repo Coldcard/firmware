@@ -257,13 +257,13 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, press_select,
     def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None,
              keys=None, do_import=True, derivs=None, descriptor=False,
              int_ext_desc=False, dev_key=False, way=None, bip67=True,
-             force_legacy_ms=True):
+             force_unsort_ms=True):
         # param: bip67 if false, only usable together with descriptor=True
         if not bip67:
             assert descriptor, "needs descriptor=True"
 
-        if (not bip67) and force_legacy_ms:
-            settings_set("legacy_ms", 1)
+        if (not bip67) and force_unsort_ms:
+            settings_set("unsort_ms", 1)
 
         keys = keys or make_multisig(M, N, unique=unique, dev_key=dev_key,
                                      deriv=common or (derivs[0] if derivs else None))
@@ -2492,7 +2492,7 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
                                 finalize_v2_v0_convert, press_select, desc):
     # 2of2 case here is described in docs with tutorial
     if desc == "multi":
-        settings_set("legacy_ms", 1)
+        settings_set("unsort_ms", 1)
 
     M, N = m_n
     settings_set("sighshchk", 1)  # disable checks
@@ -3200,20 +3200,21 @@ def test_multi_sortedmulti_duplicate(clear_ms, make_multisig, import_ms_wallet,
     press_cancel()
 
 
-def test_legacy_multisig_setting(settings_set, import_ms_wallet, goto_home,
+def test_unsort_multisig_setting(settings_set, import_ms_wallet, goto_home,
                                  pick_menu_item, cap_story, need_keypress,
-                                 settings_get, clear_ms, press_select):
+                                 settings_get, clear_ms, press_select, is_q1):
     clear_ms()
-    settings_set("legacy_ms", 0)  # OFF by default
+    mi = "Unsorted Multisig" if is_q1 else "Unsorted Multi"
+    settings_set("unsort_ms", 0)  # OFF by default
     with pytest.raises(Exception) as e:
         import_ms_wallet(2, 3, "p2wsh", descriptor=True, bip67=False,
-                         accept=True, force_legacy_ms=False)
+                         accept=True, force_unsort_ms=False)
     assert '"multi(...)" not allowed' in e.value.args[0]
 
     goto_home()
     pick_menu_item("Settings")
     pick_menu_item("Multisig Wallets")
-    pick_menu_item("Legacy Multisig")
+    pick_menu_item(mi)
     time.sleep(.1)
     title, story = cap_story()
     assert '"multi(...)" unsorted multisig wallets that do not follow BIP-67.' in story
@@ -3224,13 +3225,13 @@ def test_legacy_multisig_setting(settings_set, import_ms_wallet, goto_home,
     time.sleep(.1)
     pick_menu_item("Allow")
     time.sleep(.3)
-    assert settings_get("legacy_ms") == 1
+    assert settings_get("unsort_ms") == 1
     import_ms_wallet(2, 3, "p2wsh", descriptor=True, bip67=False,
-                     accept=True, force_legacy_ms=False)
+                     accept=True, force_unsort_ms=False)
     assert len(settings_get("multisig")) == 1
     pick_menu_item("Settings")
     pick_menu_item("Multisig Wallets")
-    pick_menu_item("Legacy Multisig")
+    pick_menu_item(mi)
     time.sleep(.1)
     title, story = cap_story()
     assert "Remove already saved multi(...) wallets first" in story
@@ -3238,12 +3239,12 @@ def test_legacy_multisig_setting(settings_set, import_ms_wallet, goto_home,
     press_select()
     assert len(settings_get("multisig")) == 1
     clear_ms()
-    pick_menu_item("Legacy Multisig")
+    pick_menu_item(mi)
     pick_menu_item("Do Not Allow")
     time.sleep(.3)
     with pytest.raises(Exception) as e:
         import_ms_wallet(2, 3, "p2wsh", descriptor=True, bip67=False,
-                         accept=True, force_legacy_ms=False)
+                         accept=True, force_unsort_ms=False)
     assert '"multi(...)" not allowed' in e.value.args[0]
 
 
