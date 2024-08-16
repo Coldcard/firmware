@@ -1859,7 +1859,7 @@ class psbtObject(psbtProxy):
                         if pubkey == node.pubkey():
                             good += 1
 
-                        OWNERSHIP.note_subpath_used(subpath)
+                            OWNERSHIP.note_subpath_used(subpath)
 
                     if not good:
                         raise FraudulentChangeOutput(out_idx, 
