@@ -31,18 +31,19 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Mk4 Specific Changes
 
-## 5.3.4 - 2024-08-xx
+## 5.4.0 - 2024-09-12
 
 - Shared enhancements and fixes listed above.
 
 
 # Q Specific Changes
 
-## 1.2.4Q - 2024-08-xx
+## 1.3.0Q - 2024-09-12
 
 - New Feature: Seed XOR can be imported by scanning SeedQR parts.
 - New Feature: Input backup password from QR scan.
 - New Feature: (BB)QR file share of arbitrary files.
+- New Feature: `Create Airgapped` now works with BBQRs 
 - Bugfix: Properly clear LCD screen after BBQR is shown.
 - Bugfix: Writing to empty slot B caused broken card reader.
 - Bugfix: During Seed XOR import, display correct letter B if own seed already added to the mix.
