@@ -1506,11 +1506,9 @@ def usb_show_address(addr_format, subpath):
 
 
 class NewEnrollRequest(UserAuthorizedAction):
-    def __init__(self, ms, auto_export=False):
+    def __init__(self, ms):
         super().__init__()
         self.wallet = ms
-        self.auto_export = auto_export
-
         # self.result ... will be re-serialized xpub
 
     async def interact(self):
@@ -1520,14 +1518,7 @@ class NewEnrollRequest(UserAuthorizedAction):
         try:
             ch = await ms.confirm_import()
 
-            if ch == 'y':
-                if self.auto_export:
-                    # save cosigner details now too 
-                    await ms.export_wallet_file('created on', 
-    "\n\nImport that file onto the other Coldcards involved with this multisig wallet.")
-                    await ms.export_electrum()
-
-            else:
+            if ch != 'y':
                 # they don't want to!
                 self.refused = True
                 await ux_dramatic_pause("Refused.", 2)

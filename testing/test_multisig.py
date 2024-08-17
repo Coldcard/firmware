@@ -24,6 +24,7 @@ from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint, uint256_from_st
 from io import BytesIO
 from hashlib import sha256
 from bbqr import split_qrs
+from charcodes import KEY_QR
 
 
 def HARD(n=0):
@@ -1545,12 +1546,14 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
 @pytest.mark.parametrize('addr_fmt', ['p2wsh', 'p2sh-p2wsh'])
 @pytest.mark.parametrize('acct_num', [ 0, 99, 4321])
 @pytest.mark.parametrize('N', [ 3, 14])
+@pytest.mark.parametrize('way', [ "sd", "qr"])
 def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_item,
-                        need_keypress, microsd_path, set_bip39_pw, clear_ms,
-                        get_settings, load_export, is_q1, press_select, press_cancel):
+                        need_keypress, microsd_path, set_bip39_pw, clear_ms, enter_number,
+                        get_settings, load_export, is_q1, press_select, press_cancel,
+                        cap_screen, way, scan_a_qr, skip_if_useless_way):
     # test UX and math for bip45 export
-
     # cleanup
+    skip_if_useless_way(way)
     from glob import glob
     for fn in glob(microsd_path('ccxp-*.json')):
         assert fn
@@ -1587,60 +1590,94 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
     pick_menu_item('Settings')
     pick_menu_item('Multisig Wallets')
     pick_menu_item('Create Airgapped')
+    if is_q1:
+        time.sleep(.1)
+        title, story = cap_story()
+        assert "scan multisg XPUBs from BBQr" in story
+        if way == "qr":
+            need_keypress(KEY_QR)
+        else:
+            press_select()
+
     time.sleep(.1)
     title, story = cap_story()
-    assert 'XPUB' in story
+    if way == "sd":
+        assert 'XPUB' in story
+    else:
+        # only QR way offers this special prompt
+        assert "address format" in story
 
     if addr_fmt == 'p2wsh':
         press_select()
     elif addr_fmt == 'p2sh-p2wsh':
         need_keypress('1')
     elif addr_fmt == 'p2sh':
-        need_keypress('2')
+        need_keypress('2')  # does not work imo
     else:
         assert 0, addr_fmt
 
-    time.sleep(.1)
-    title, story = cap_story()
+    if way == "qr":
+        # first non-json garbage
+        scan_a_qr("aaaaaaaaaaaaaaaaaaaa")
+        time.sleep(1)
+        scr = cap_screen()
+        assert f"Expected JSON data" in scr
 
-    assert ('(N=%d #files=%d' % (N, N)) in story
+        # JSON but wrong
+        _, parts = split_qrs('{"json": "but wrong","missing": "important data"}',
+                             'J', max_version=20)
+        for p in parts:
+            scan_a_qr(p)
+
+        time.sleep(1)
+        scr = cap_screen()
+        assert f"Failure: xfp" in scr  # missing xfp
+
+        # need to scan json XPUBs here
+        for i, fname in enumerate(glob(microsd_path('ccxp-*.json'))):
+            with open(fname, 'r') as f:
+                jj = f.read()
+            _, parts = split_qrs(jj, 'J', max_version=20)
+
+            for p in parts:
+                scan_a_qr(p)
+
+            time.sleep(1)
+            scr = cap_screen()
+            assert f"Number of keys scanned: {i+1}" in scr
+
+        press_cancel()  # quit QR animation
+
+    time.sleep(.1)
+    scr = cap_screen()
+    assert "How many need to sign?(M)" in scr
 
     if N == 3:
-        assert '2 of 3' in story
         M = 2
     elif N == 14:
-        assert '8 of 14' in story
         M = 8
     elif N == 4:
-        assert '3 of 4' in story
-        need_keypress('7')
-        time.sleep(.05)
-        title, story = cap_story()
         assert '2 of 4' in story
         M = 2
     else:
         assert 0, N
 
-    press_select()
-
+    enter_number(M)
     time.sleep(.1)
     title, story = cap_story()
 
     assert "Create new multisig" in story
     press_select()
-
-    impf, fname = load_export("sd", label="Coldcard multisig setup", is_json=False, sig_check=False,
-                              tail_check="Import that file onto the other Coldcards involved with this multisig wallet",
-                              ret_fname=True)
+    # we use clear_ms fixture at the begining of each test
+    # new multisig wallet is first menu item
+    press_select()
+    pick_menu_item("Coldcard Export")
+    impf, fname = load_export("sd", label="Coldcard multisig setup", is_json=False,
+                              sig_check=False, ret_fname=True)
     cc_fname = microsd_path(fname)
     assert f'Policy: {M} of {N}' in impf
     if addr_fmt != 'p2sh':
         assert f'Format: {addr_fmt.upper()}' in impf
-
-    wal, fname = load_export("sd", is_json=True, label="Electrum multisig wallet", sig_check=False,
-                             ret_fname=True)
-    el_fname = microsd_path(fname)
-    assert f'{M}of{N}' in wal['wallet_type']
 
     press_select()
     press_select()
@@ -1650,7 +1687,6 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
         # capture useful test data for testing Electrum plugin, etc
         for fn in glob(microsd_path('ccxp-*.json')):
             shutil.copy(fn, 'data/multisig/'+fn.rsplit('/', 1)[1])
-        shutil.copy(el_fname, f'data/multisig/el-{addr_fmt}-myself.json')
         shutil.copy(cc_fname, f'data/multisig/export-{addr_fmt}-myself.txt')
 
         json.dump(get_settings()['multisig'][0], 
@@ -1680,8 +1716,6 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
 
     need_keypress('1')
     time.sleep(.05)
-    title, story = cap_story()
-    # test code ehre
 
     # abort import, good enough
     press_cancel()

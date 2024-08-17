@@ -4,9 +4,9 @@
 #
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson, version
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, to_ascii_printable
-from utils import str_to_keypath, problem_file_line, parse_extended_key
+from utils import str_to_keypath, problem_file_line, parse_extended_key, get_filesize
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
-from ux import import_export_prompt, ux_enter_bip32_index, show_qr_code, OK, X
+from ux import import_export_prompt, ux_enter_bip32_index, show_qr_code, ux_enter_number, OK, X
 from files import CardSlot, CardMissingError, needs_microsd
 from descriptor import MultisigDescriptor, multisig_descriptor_template
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS
@@ -1506,7 +1506,7 @@ async def export_multisig_xpubs(*a):
     msg = '''\
 This feature creates a small file containing \
 the extended public keys (XPUB) you would need to join \
-a multisig wallet using the 'Create Airgapped' feature.
+a multisig wallet.
 
 Public keys for BIP-48 conformant paths are used:
 
@@ -1591,23 +1591,53 @@ P2WSH:
     # msg += '\n\nMultisig XPUB signature file written:\n\n%s' % sig_nice
     await ux_show_story(msg)
 
-async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, force_vdisk=False):
-    # collect all xpub- exports on current SD card (must be >= 1) to make "air gapped" wallet
-    # - ask for M value 
-    # - create wallet, save and also export 
-    # - also create electrum skel to go with that
-    # - only expected to work with our ccxp-foo.json export files.
-    from utils import get_filesize
+async def validate_xpub_for_ms(obj, af_str, deriv, chain, my_xfp, xpubs):
+    ln = obj.get(af_str)
+    # value in file is BE32, but we want LE32 internally
+    xfp = str2xfp(obj['xfp'])
+    if not deriv:
+        deriv = cleanup_deriv_path(obj[af_str + '_deriv'])
+    else:
+        assert deriv == obj[af_str + '_deriv'], "wrong derivation: %s != %s" % (
+            deriv, obj[af_str + '_deriv'])
 
-    chain = chains.current_chain()
-    my_xfp = settings.get('xfp')
+    return MultisigWallet.check_xpub(xfp, ln, deriv, chain.ctype, my_xfp, xpubs), deriv
 
+async def ms_coordinator_qr(af_str, my_xfp, chain):
+    from ux_q1 import QRScannerInteraction
+    num_mine = 0
+    num_files = 0
     xpubs = []
-    files = []
-    has_mine = 0
+    deriv = None
+    msg = 'Scan Multisig XPUBs from a BBQr'
+    while True:
+        vals = await QRScannerInteraction().scan_json(msg)
+        if vals:
+            try:
+                is_mine, deriv = await validate_xpub_for_ms(vals, af_str, deriv,
+                                                            chain, my_xfp, xpubs)
+            except Exception as e:
+                msg = "Failure: %s" % str(e)
+                continue
+
+            if is_mine:
+                num_mine += 1
+
+            num_files += 1
+
+        msg = "Number of keys scanned: %d" % len(xpubs)
+        if vals is None: break
+
+    return xpubs, deriv, num_mine, num_files
+
+
+async def ms_coordinator_file(af_str, my_xfp, chain, slot_b=None):
+    num_mine = 0
+    num_files = 0
+    xpubs = []
     deriv = None
     try:
-        with CardSlot(force_vdisk=force_vdisk) as card:
+        with CardSlot(slot_b=slot_b) as card:
             for path in card.get_paths():
                 for fn, ftype, *var in uos.ilistdir(path):
                     if ftype == 0x4000:
@@ -1632,22 +1662,12 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, force_vdisk=
                         with open(full_fname, 'rt') as fp:
                             vals = ujson.load(fp)
 
-                        ln = vals.get(mode)
-
-                        # value in file is BE32, but we want LE32 internally
-                        xfp = str2xfp(vals['xfp'])
-                        if not deriv:
-                            deriv = cleanup_deriv_path(vals[mode+'_deriv'])
-                        else:
-                            assert deriv == vals[mode+'_deriv'], "wrong derivation: %s != %s"%(
-                                            deriv, vals[mode+'_deriv'])
-
-                        is_mine = MultisigWallet.check_xpub(xfp, ln, deriv,
-                                                    chain.ctype, my_xfp, xpubs)
+                        is_mine, deriv = await validate_xpub_for_ms(vals, af_str, deriv,
+                                                                    chain, my_xfp, xpubs)
                         if is_mine:
-                            has_mine += 1
+                            num_mine += 1
 
-                        files.append(fn)
+                        num_files += 1
 
                     except CardMissingError:
                         raise
@@ -1661,28 +1681,51 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, force_vdisk=
         await needs_microsd()
         return
 
-    # remove dups; easy to happen if you double-tap the export
-    delme = set()
-    for i in range(len(xpubs)):
-        for j in range(len(xpubs)):
-            if j in delme: continue
-            if i == j: continue
-            if xpubs[i] == xpubs[j]:
-                delme.add(j)
-    if delme:
-        xpubs = [x for idx,x in enumerate(xpubs) if idx not in delme]
+    return xpubs, deriv, num_mine, num_files
 
-    if not xpubs or len(xpubs) == 1 and has_mine:
-        await ux_show_story("Unable to find any Coldcard exported keys on this card. Must have filename: ccxp-....json")
+async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False):
+    # collect all xpub- exports (must be >= 1) to make "air gapped" wallet
+    # - function f specifies a way how to collect co-signer info - currently SD and QR (Q only)
+    # - ask for M value
+    # - create wallet, save and also export
+    # - also create electrum skel to go with that
+    # - only expected to work with our ccxp-foo.json export file format
+    from glob import dis
+
+    chain = chains.current_chain()
+    my_xfp = settings.get('xfp')
+
+    if is_qr:
+        xpubs, deriv, num_mine, num_files = await ms_coordinator_qr(mode, my_xfp, chain)
+    else:
+        xpubs, deriv, num_mine, num_files = await ms_coordinator_file(mode, my_xfp, chain)
+        if CardSlot.both_inserted():
+            bxpubs, _, bnum_mine, bnum_files = await ms_coordinator_file(mode, my_xfp,
+                                                                         chain, True)
+            xpubs += bxpubs
+            num_mine += bnum_mine
+            num_files += bnum_files
+
+    # # remove dups; easy to happen if you double-tap the export
+    xpubs = list(set(xpubs))
+
+    if not xpubs or len(xpubs) == 1 and num_mine:
+        if is_qr:
+            msg = "No XPUBs scanned. Exit."
+        else:
+            msg = ("Unable to find any Coldcard exported keys on this card."
+                   " Must have filename: ccxp-....json")
+        await ux_show_story(msg)
         return
     
     # add myself if not included already
-    if not has_mine:
-        with stash.SensitiveValues() as sv:
-            node = sv.derive_path(deriv)
-            xpubs.append( (my_xfp, deriv, chain.serialize_public(node, AF_P2SH)) )
-    else:
-        assert has_mine == 1, "same coldcard included"
+    if not num_mine:
+        if await ux_show_story("Add current Coldcard with above XFP ?",
+                               title="[%s]" % xfp2str(my_xfp)):
+            dis.fullscreen("Wait...")
+            with stash.SensitiveValues() as sv:
+                node = sv.derive_path(deriv)
+                xpubs.append((my_xfp, deriv, chain.serialize_public(node, AF_P2SH)))
 
     N = len(xpubs)
 
@@ -1692,34 +1735,11 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, force_vdisk=
 
     # pick useful M value to start
     assert N >= 2
-    M = (N - 1) if N < 4 else ((N//2)+1)
+    M = await ux_enter_number("How many need to sign?(M)", N, can_cancel=True)
+    if not M:
+        await ux_dramatic_pause('Aborted.', 2)
+        return  # user cancel
 
-    while 1:
-        msg = '''How many need to sign?\n      %d of %d
-
-Press (7 or 9) to change M value, or %s \
-to continue.
-
-If you expected more or less keys (N=%d #files=%d), \
-then check card and file contents.
-
-Coldcard multisig setup file and an Electrum wallet file will be created automatically.\
-''' % (M, N, OK, N, len(files))
-
-        ch = await ux_show_story(msg, escape='123479')
-
-        if ch in '1234':
-            M = min(N, int(ch))     # undocumented shortcut
-        elif ch == '9':
-            M = min(N, M+1)
-        elif ch == '7':
-            M = max(1, M-1)
-        elif ch == 'x':
-            await ux_dramatic_pause('Aborted.', 2)
-            return
-        elif ch == 'y':
-            break
-        
     # create appropriate object
     assert 1 <= M <= N <= MAX_SIGNERS
 
@@ -1728,7 +1748,7 @@ Coldcard multisig setup file and an Electrum wallet file will be created automat
 
     from auth import NewEnrollRequest, UserAuthorizedAction
 
-    UserAuthorizedAction.active_request = NewEnrollRequest(ms, auto_export=True)
+    UserAuthorizedAction.active_request = NewEnrollRequest(ms)
 
     # menu item case: add to stack
     from ux import the_ux
@@ -1736,8 +1756,18 @@ Coldcard multisig setup file and an Electrum wallet file will be created automat
 
 async def create_ms_step1(*a):
     # Show story, have them pick address format.
+    ch = None
+    is_qr = False
+    if version.has_qr:
+        ch = await ux_show_story("Press "+ KEY_QR + " to scan multisg XPUBs from BBQr.")
 
-    ch = await ux_show_story('''\
+    if ch == KEY_QR:
+        is_qr = True
+        ch = await ux_show_story("Choose address format. Default is P2WSH addresses (segwit)."
+                                 " Press (1) for P2SH-P2WSH.", escape="1")
+
+    else:
+        ch = await ux_show_story('''\
 Insert SD card (or eject SD card to use Virtual Disk) with exported XPUB files from at least one other \
 Coldcard. A multisig wallet will be constructed using those keys and \
 this device.
@@ -1751,7 +1781,7 @@ Default is P2WSH addresses (segwit) or press (1) for P2SH-P2WSH.''', escape='1')
     else:
         return
 
-    return await ondevice_multisig_create(n, f)
+    return await ondevice_multisig_create(n, f, is_qr)
 
 
 async def import_multisig_nfc(*a):
