@@ -15,7 +15,7 @@ from ucollections import OrderedDict
 from menu import MenuItem, MenuSystem
 from utils import xfp2str, parse_extended_key, swab32, pad_raw_secret, problem_file_line
 from uhashlib import sha256
-from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm
+from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, OK, X
 from ux import PressRelease, ux_input_numbers, ux_input_text, show_qr_code
 from actions import goto_top_menu
 from stash import SecretStash, ZeroSecretException
@@ -363,7 +363,7 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
                 story = low_entropy_msg % (count, sec_bit, threshold)
                 if enforce:
                     ch = await ux_show_story("Not enough dice rolls!!!\n\n" + story +
-                                             "\n\nPress OK to add more dice rolls. X to exit")
+                                             "\n\nPress %s to add more dice rolls. %s to exit" % (OK, X))
                     if ch == "y":
                         redraw = True
                         continue
@@ -448,10 +448,10 @@ async def add_seed_to_vault(encoded, meta=None):
     xfp_ui = "[%s]" % new_xfp_str
     story = ("Press (1) to "
              "store temporary seed into Seed Vault. This way you can easily switch "
-             "to this secret and use it as temporary seed in future.\n\nPress OK "
+             "to this secret and use it as temporary seed in future.\n\nPress %s "
              "to continue without saving.")
 
-    ch = await ux_show_story(story, escape="1")
+    ch = await ux_show_story(story % OK, escape="1")
     if ch != "1":
         # didn't want to save
         return
@@ -605,7 +605,8 @@ async def approve_word_list(seed, nwords, ephemeral=False):
         ch = await word_quiz(words)
         if ch == 'x':
             # user abort quiz
-            if await ux_confirm("Throw away those words and stop this process? Press X to see the word list again and restart the quiz."):
+            if await ux_confirm("Throw away those words and stop this process? "
+                                "Press %s to see the word list again and restart the quiz." % X):
                 return
 
             # show the words again, but don't change them
@@ -786,7 +787,7 @@ async def word_quiz(words, limited=None, title='Word %d is?'):
             msg = '' if not dis.has_lcd else '\n'
 
             msg += '\n'.join(' %d: %s' % (i+1, choices[i]) for i in range(3))
-            msg += '\n\nWhich word is right?\n\nX to give up, OK to see all the words again.'
+            msg += '\n\nWhich word is right?\n\n%s to give up, %s to see all the words again.' % (X, OK)
 
             ch = await ux_show_story(msg, title=title % (o+1), escape='123', sensitive=True)
             if ch == 'x':
@@ -830,11 +831,11 @@ class SeedVaultMenu(MenuSystem):
         idx, xfp_str, encoded = item.arg
 
         msg = ("Remove seed from seed vault and delete its "
-               "settings?\n\nPress OK to continue, press (1) to "
+               "settings?\n\nPress %s to continue, press (1) to "
                "only remove from seed vault and keep "
                "encrypted settings for later use.\n\n"
                "WARNING: Funds will be lost if wallet is"
-               " not backed-up elsewhere.")
+               " not backed-up elsewhere.") % OK
 
         ch = await ux_show_story(title="[" + xfp_str + "]", msg=msg, escape="1")
         if ch == "x": return
@@ -1114,8 +1115,8 @@ you will be looking at an empty wallet.
 
 Limitations: 100 characters max length, ASCII characters 32-126 (0x20-0x7e) only.
 
-OK to continue or press (2) to hide this message forever.
-''' % (howto if not version.has_qwerty else '')
+%s to continue or press (2) to hide this message forever.
+''' % (howto if not version.has_qwerty else '', OK)
 
         ch = await ux_show_story(msg, escape='2')
         if ch == '2':
@@ -1213,7 +1214,7 @@ class PassphraseMenu(MenuSystem):
     @classmethod
     async def empty_phrase(cls, *a):
         if len(cls.pp_sofar) >= 3:
-            if not await ux_confirm("Press OK to clear passphrase."):
+            if not await ux_confirm("Press %s to clear passphrase." % OK):
                 return
 
         cls.pp_sofar = ''
@@ -1276,8 +1277,8 @@ async def apply_pass_value(new_pp):
 
     msg = ('Above is the master key fingerprint of the new wallet'
            ' created by adding passphrase to %s.'
-           '\n\nPress X to abort, OK to use the new wallet, (1) to apply'
-           ' and save to MicroSD for future.') % msg
+           '\n\nPress %s to abort, %s to use the new wallet, (1) to apply'
+           ' and save to MicroSD for future.') % (msg, X, OK)
 
     ch = await ux_show_story(msg, title="[%s]" % xfp_str, escape='1')
     if ch == 'x':

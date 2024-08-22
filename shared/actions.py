@@ -11,7 +11,7 @@ from ubinascii import hexlify as b2a_hex
 from utils import imported, problem_file_line, get_filesize, encode_seed_qr
 from utils import xfp2str, B2A, addr_fmt_label, txid_from_fname
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
-from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt
+from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt, OK, X
 from export import make_json_wallet, make_summary_file, make_descriptor_wallet_export
 from export import make_bitcoin_core_wallet, generate_wasabi_wallet, generate_generic_export
 from export import generate_unchained_export, generate_electrum_wallet
@@ -55,7 +55,7 @@ By using this product, you are accepting our Terms of Sale and Use.
 Read the full document at:
   coldcard.com/legal
 
-Press OK to accept terms and continue.""", escape='7')
+Press %s to accept terms and continue.""" % OK, escape='7')
 
         if ch == 'y':
             break
@@ -913,9 +913,9 @@ async def restore_main_secret(*a):
     msg = "Restore main wallet and its settings?\n\n"
     if not in_seed_vault(pa.tmp_value):
         msg += (
-            "Press OK to forget current temporary seed "
+            "Press %s to forget current temporary seed "
             "settings, or press (1) to save & keep "
-            "those settings if same seed is later restored."
+            "those settings if same seed is later restored." % OK
         )
         escape = "1"
 
@@ -1111,8 +1111,8 @@ async def ss_descriptor_skeleton(_0, _1, item):
     if int_ext is None:
         ch = await ux_show_story(
             "To export receiving and change descriptors in one descriptor "
-            "(<0;1> notation) press OK, press (1) to export "
-            "receiving and change descriptors separately.", escape='1')
+            "(<0;1> notation) press %s, press (1) to export "
+            "receiving and change descriptors separately." % OK, escape='1')
         if ch == "x": return
         int_ext = False if ch == "1" else True
 
@@ -1766,8 +1766,8 @@ async def _batch_sign(choices=None):
     from auth import sign_psbt_file
     from ux import the_ux
     for label, path, fn in choices:
-        ch = await ux_show_story("Sign %s ??\n\nPress OK to sign, (1) to skip this PSBT,"
-                                 " X to quit and exit." % fn, escape="1")
+        ch = await ux_show_story("Sign %s ??\n\nPress %s to sign, (1) to skip this PSBT,"
+                                 " %s to quit and exit." % (fn, OK, X), escape="1")
         if ch == "x": break
         elif ch == "y":
             input_psbt = path + '/' + fn
@@ -2267,7 +2267,7 @@ async def pushtx_setup_menu(*a):
 
     if not settings.get('nfc'):
         # force on NFC, so it works... but they can still turn it off later, etc.
-        if not await ux_confirm("This feature requires NFC to be enabled. OK to enable."):
+        if not await ux_confirm("This feature requires NFC to be enabled. %s to enable." % OK):
             return
         settings.set("nfc", 1)
         await change_nfc_enable(1)

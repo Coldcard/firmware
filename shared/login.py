@@ -4,7 +4,7 @@
 #
 import pincodes, version, random
 from glob import dis
-from ux import ux_wait_keyup, ux_wait_keydown, ux_show_story, ux_show_pin, ux_show_phish_words
+from ux import ux_wait_keyup, ux_wait_keydown, ux_show_story, ux_show_pin, ux_show_phish_words, X, OK
 from callgate import show_logout
 from pincodes import pa
 from uasyncio import sleep_ms
@@ -196,8 +196,8 @@ ITSELF FOREVER.
 
 Check and double-check your entry:\n\n  %s\n
 Maybe even take a break and come back later.\n
-Press OK to continue, X to stop for now.
-''' % (attempts_left, value), title="WARNING")
+Press %s to continue, %s to stop for now.
+''' % (attempts_left, value, OK, X), title="WARNING")
 
         if ch == 'x':
             show_logout()
@@ -300,7 +300,7 @@ suffix break point is correct.\n\n'''
             ch = await ux_show_story('''\
 You gave two different PIN codes and they don't match.
 
-Press (2) to try the second one again, X or OK to give up for now.''',
+Press (2) to try the second one again, %s to give up for now.''' % X,
                         title="PIN Mismatch", escape='2')
 
             if ch != '2':
