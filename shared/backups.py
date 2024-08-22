@@ -6,7 +6,7 @@ import compat7z, stash, ckcc, chains, gc, sys, bip39, uos, ngu
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from utils import pad_raw_secret
-from ux import ux_show_story, ux_confirm, ux_dramatic_pause
+from ux import ux_show_story, ux_confirm, ux_dramatic_pause, OK, X
 import version, ujson
 from uio import StringIO
 import seed
@@ -316,10 +316,10 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
     if bip39_passphrase and pa.tmp_value:
         # this is a BIP39 password ephemeral wallet
         msg = ("BIP39 passphrase is in effect. Backup ignores passphrases "
-               "and produces backup of main seed. Press OK to back-up main wallet,"
+               "and produces backup of main seed. Press %s to back-up main wallet,"
                " press (2) to back-up BIP39 passphrase wallet "
                "(extended private key created via seed + pass)")
-        ch = await ux_show_story(msg, escape="2")
+        ch = await ux_show_story(msg % OK, escape="2")
         if ch == "x": return
         if ch == "y":
             bypass_tmp = True
@@ -456,7 +456,7 @@ async def write_complete_backup(words, fname_pattern, write_sflash=False,
             sys.print_exception(e)
             # catch any error
             ch = await ux_show_story('Failed to write! Please insert formated MicroSD card, '
-                                    'and press OK to try again.\n\nX to cancel.\n\n\n'+str(e))
+                                    'and press %s to try again.\n\nX to cancel.\n\n\n' % OK +str(e))
             if ch == 'x': break
             continue
 
@@ -476,7 +476,7 @@ Insert another SD card and press (2) to make another copy.''' % nice
 
         else:
             ch = await ux_show_story('''File (#%d) written:\n\n%s\n\n\
-Press OK for another copy, or press X to stop.''' % (copy+1, nice), escape='2')
+Press %s for another copy, or press %s to stop.''' % (copy+1, nice, OK, X), escape='2')
             if ch == 'x': break
 
 async def verify_backup_file(fname):
@@ -624,8 +624,8 @@ async def clone_start(*a):
     # Begins cloning process, on target device.
     from files import CardSlot, CardMissingError, needs_microsd
 
-    ch = await ux_show_story('''Insert a MicroSD card and press OK to start. A small \
-file with an ephemeral public key will be written.''')
+    ch = await ux_show_story('''Insert a MicroSD card and press %s to start. A small \
+file with an ephemeral public key will be written.''' % OK)
     if ch != 'y': return
 
     # pick a random key pair, just for this cloning session
@@ -649,7 +649,7 @@ file with an ephemeral public key will be written.''')
     # Wait for incoming clone file, allow retries
     ch = await ux_show_story('''Keep power on this Coldcard, and take MicroSD card \
 to source Coldcard. Select Advanced/Tools > Backup > Clone Coldcard to write to card. Bring that card \
-back and press OK to complete clone process.''')
+back and press %s to complete clone process.''' % OK)
 
     while 1:
         if ch != 'y': 
@@ -686,7 +686,7 @@ back and press OK to complete clone process.''')
         if incoming:
             break
 
-        ch = await ux_show_story("Clone file not found. OK to try again, X to stop.")
+        ch = await ux_show_story("Clone file not found. %s to try again, %s to stop." % (OK, X))
 
     # calculate point
     session_key = pair.ecdh_multiply(his_pubkey)

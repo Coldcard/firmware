@@ -14,7 +14,7 @@ from ustruct import pack, unpack
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import b2a_base64, a2b_base64
 
-from ux import ux_show_story, ux_wait_keydown
+from ux import ux_show_story, ux_wait_keydown, OK, X
 from utils import B2A, problem_file_line, parse_addr_fmt_str, txid_from_fname
 from public_constants import AF_CLASSIC
 from charcodes import KEY_ENTER, KEY_CANCEL
@@ -715,7 +715,7 @@ class NFCHandler:
             # and in that case one would have to start from beginning (send us cmd, approve, etc.)
             # => get chance to check if you received the data and if something went wrong - retry just send
             await self.share_text(string)
-            ch = await ux_show_story(title="Shared", msg="Press OK to share again, otherwise X to stop.")
+            ch = await ux_show_story(title="Shared", msg="Press %s to share again, otherwise %s to stop." % (OK, X))
             if ch != "y":
                 break
 

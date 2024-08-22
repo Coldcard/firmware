@@ -6,7 +6,7 @@ import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson, version
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, to_ascii_printable
 from utils import str_to_keypath, problem_file_line, parse_extended_key
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
-from ux import import_export_prompt, ux_enter_bip32_index, show_qr_code
+from ux import import_export_prompt, ux_enter_bip32_index, show_qr_code, OK, X
 from files import CardSlot, CardMissingError, needs_microsd
 from descriptor import MultisigDescriptor, multisig_descriptor_template
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS
@@ -1166,8 +1166,10 @@ Derivation:
 
 Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=exp, dsum=dsum,
                                                   at=self.render_addr_fmt(self.addr_fmt))
-
-        story += 'OK to approve, X to cancel.' if not is_dup else 'X to cancel'
+        if not is_dup:
+            story += ('%s to approve, %s to cancel.' % (OK, X))
+        else:
+            story += '%s to cancel' % X
 
         ux_clear_keys(True)
         while 1:
@@ -1513,7 +1515,7 @@ P2SH-P2WSH:
 P2WSH:
    m/48h/{coin}h/{{acct}}h/2h
 
-OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
+{ok} to continue. {x} to abort.'''.format(coin=chain.b44_cointype, ok=OK, x=X)
 
     ch = await ux_show_story(msg)
     if ch != "y":
@@ -1695,14 +1697,14 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, force_vdisk=
     while 1:
         msg = '''How many need to sign?\n      %d of %d
 
-Press (7 or 9) to change M value, or OK \
+Press (7 or 9) to change M value, or %s \
 to continue.
 
 If you expected more or less keys (N=%d #files=%d), \
 then check card and file contents.
 
 Coldcard multisig setup file and an Electrum wallet file will be created automatically.\
-''' % (M, N, N, len(files))
+''' % (M, N, OK, N, len(files))
 
         ch = await ux_show_story(msg, escape='123479')
 

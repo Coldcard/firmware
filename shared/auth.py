@@ -13,7 +13,7 @@ from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH, AF_P
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
-from ux import show_qr_code
+from ux import show_qr_code, OK, X
 from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
 from utils import B2A, parse_addr_fmt_str, to_ascii_printable
@@ -126,7 +126,7 @@ Using the key associated with address:
 {subpath} =>
 {addr}
 
-Press OK to continue, otherwise X to cancel.'''
+Press %s to continue, otherwise %s to cancel.''' % (OK, X)
 
 # RFC2440 <https://www.ietf.org/rfc/rfc2440.txt> style signatures, popular
 # since the genesis block, but not really part of any BIP as far as I know.
@@ -433,7 +433,7 @@ async def sign_txt_file(filename):
 
             # prompt them to input another card?
             ch = await ux_show_story(prob+"Please insert an SDCard to receive signed message, "
-                                        "and press OK.", title="Need Card")
+                                        "and press %s." % OK, title="Need Card")
             if ch == 'x':
                 await ux_aborted()
                 return
@@ -762,7 +762,7 @@ class ApproveTransaction(UserAuthorizedAction):
             ux_clear_keys(True)
             dis.progress_bar_show(1)  # finish the Validating...
             if not hsm_active:
-                msg.write("\nPress OK to approve and sign transaction.")
+                msg.write("\nPress %s to approve and sign transaction." % OK)
                 if needs_txn_explorer:
                     msg.write(" Press (2) to explore txn.")
                 if self.is_sd and CardSlot.both_inserted():
@@ -1223,7 +1223,7 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
 
             # prompt them to input another card?
             ch = await ux_show_story(prob+"Please insert an SDCard to receive signed transaction, "
-                                        "and press OK.", title="Need Card")
+                                        "and press %s." % OK, title="Need Card")
             if ch == 'x':
                 await ux_aborted()
                 return
@@ -1304,13 +1304,13 @@ class NewPassphrase(UserAuthorizedAction):
         while 1:
             msg = ('BIP-39 passphrase (%d chars long) has been provided over '
                    'USB connection. Should we switch to that wallet now?\n\n'
-                   'Press OK to add passphrase ' % len(self._pw))
+                   'Press %s to add passphrase ' % (len(self._pw), OK))
             if pa.tmp_value:
                 msg += "to current active temporary seed. "
             else:
                 msg += "to master seed. "
 
-            msg += 'Press (2) to view the provided passphrase. X to cancel.'
+            msg += ('Press (2) to view the provided passphrase. %s to cancel.' % X)
 
             ch = await ux_show_story(msg=msg, title=title, escape=escape,
                                      strict_escape=True)

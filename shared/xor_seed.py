@@ -7,7 +7,7 @@
 #
 import stash, ngu, bip39, version
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_render_words
-from ux import show_qr_code
+from ux import show_qr_code, OK, X
 from seed import word_quiz, WordNestMenu, set_seed_value, set_ephemeral_seed
 from glob import settings
 from actions import goto_top_menu
@@ -59,7 +59,7 @@ The new parts are generated deterministically from your seed, so if you \
 repeat this process later, the same words will be shown.
 
 If you would prefer a random split using the TRNG, press (2). \
-Otherwise, press OK to continue.'''.format(n=num_parts), escape='2')
+Otherwise, press {ok} to continue.'''.format(n=num_parts, ok=OK), escape='2')
 
     use_rng = (ch == '2')
     if ch == 'x': return
@@ -245,8 +245,8 @@ It does not matter the order (A/B/C or C/A/B) and the Coldcard
 cannot determine when you have all the parts. You may stop at
 any time and you will have a valid wallet. Combined seed parts
 have to be equal length. No way to combine seed parts of different 
-length. Press OK for 24 words XOR, press (1) for 12 words XOR, 
-or press (2) for 18 words XOR.''', escape="12")
+length. Press %s for 24 words XOR, press (1) for 12 words XOR, 
+or press (2) for 18 words XOR.''' % OK, escape="12")
     if ch == 'x': return
 
     desired_num_words = 24
@@ -270,9 +270,9 @@ or press (2) for 18 words XOR.''', escape="12")
         if curr_num_words == desired_num_words:
             escape += "1"
             msg += ("\nPress (1) to include this Coldcard's seed words into the XOR seed set, "
-                    "or OK to continue without.")
+                    "or %s to continue without.")
 
-        ch = await ux_show_story(msg, escape=escape)
+        ch = await ux_show_story(msg % OK, escape=escape)
 
         if ch == 'x':
             return
