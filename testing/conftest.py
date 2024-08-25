@@ -128,6 +128,14 @@ def send_ux_abort(simulator):
 
     return doit
 
+@pytest.fixture
+def OK(is_q1):
+    return "ENTER" if is_q1 else "OK"
+
+@pytest.fixture
+def X(is_q1):
+    return "CANCEL" if is_q1 else "X"
+
 @pytest.fixture(scope='module')
 def need_keypress(dev, request):
     def doit(k, timeout=1000):

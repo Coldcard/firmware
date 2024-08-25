@@ -23,13 +23,13 @@ def _clone(source, target):
     _pick_menu_item(device, target_is_Q, "Clone Coldcard")
     time.sleep(.1)
     title, story = _cap_story(device)
-    assert "Insert a MicroSD card and press OK to start" in story
+    assert f"Insert a MicroSD card and press {'ENTER' if target_is_Q else 'OK'} to start" in story
     assert "A small file with an ephemeral public key will be written" in story
     _press_select(device, target_is_Q)
     time.sleep(.1)
     title, story = _cap_story(device)
     assert "Keep power on this Coldcard, and take MicroSD card to source Coldcard" in story
-    assert "Bring that card back and press OK to complete clone process" in story
+    assert f"Bring that card back and press {'ENTER' if target_is_Q else 'OK'} to complete clone process" in story
 
     # SOURCE
     # clone with multisig wallet

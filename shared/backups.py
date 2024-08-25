@@ -318,8 +318,8 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
         msg = ("BIP39 passphrase is in effect. Backup ignores passphrases "
                "and produces backup of main seed. Press %s to back-up main wallet,"
                " press (2) to back-up BIP39 passphrase wallet "
-               "(extended private key created via seed + pass)")
-        ch = await ux_show_story(msg % OK, escape="2")
+               "(extended private key created via seed + pass)" % OK)
+        ch = await ux_show_story(msg, escape="2")
         if ch == "x": return
         if ch == "y":
             bypass_tmp = True

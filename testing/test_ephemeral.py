@@ -176,7 +176,7 @@ def goto_eph_seed_menu(goto_home, pick_menu_item, cap_story, need_keypress):
 
 @pytest.fixture
 def restore_main_seed(goto_home, pick_menu_item, cap_story, cap_menu,
-                      need_keypress, settings_slots, press_select):
+                      need_keypress, settings_slots, press_select, OK):
 
     def doit(preserve_settings=False, seed_vault=False):
         if seed_vault:
@@ -193,10 +193,10 @@ def restore_main_seed(goto_home, pick_menu_item, cap_story, cap_menu,
 
         assert "Restore main wallet and its settings?" in story
         if seed_vault:
-            assert "Press OK to forget current temporary seed " not in story
+            assert f"Press {OK} to forget current temporary seed " not in story
             assert "settings, or press (1) to save & keep " not in story
         else:
-            assert "Press OK to forget current temporary seed " in story
+            assert f"Press {OK} to forget current temporary seed " in story
             assert "settings, or press (1) to save & keep " in story
             assert "those settings if same seed is later restored." in story
 
@@ -623,7 +623,7 @@ def test_ephemeral_seed_import_tapsigner(way, testnet, pick_menu_item, cap_story
 def test_ephemeral_seed_import_tapsigner_fail(pick_menu_item, cap_story, fail, cap_screen,
                                               need_keypress, reset_seed_words, enter_hex,
                                               tapsigner_encrypted_backup, goto_eph_seed_menu,
-                                              microsd_path, ephemeral_seed_disabled,
+                                              microsd_path, ephemeral_seed_disabled, OK, X,
                                               settings_set, press_select, press_cancel):
     
     
@@ -652,7 +652,7 @@ def test_ephemeral_seed_import_tapsigner_fail(pick_menu_item, cap_story, fail, c
 
     time.sleep(0.1)
     _, story = cap_story()
-    assert "Press OK to continue X to cancel." in story
+    assert f"Press {OK} to continue {X} to cancel." in story
     press_select()  # yes I have backup key
     if fail == "wrong_key":
         backup_key_hex = os.urandom(16).hex()
@@ -690,7 +690,7 @@ def test_ephemeral_seed_import_tapsigner_fail(pick_menu_item, cap_story, fail, c
 def test_ephemeral_seed_import_tapsigner_real(data, pick_menu_item, cap_story, microsd_path,
                                               need_keypress, reset_seed_words, enter_hex,
                                               goto_eph_seed_menu, verify_ephemeral_secret_ui,
-                                              ephemeral_seed_disabled, settings_set,
+                                              ephemeral_seed_disabled, settings_set, OK, X,
                                               confirm_tmp_seed, restore_main_seed, press_select):
     
     fname, backup_key_hex, pub = data
@@ -712,7 +712,7 @@ def test_ephemeral_seed_import_tapsigner_real(data, pick_menu_item, cap_story, m
 
     time.sleep(0.1)
     _, story = cap_story()
-    assert "Press OK to continue X to cancel." in story
+    assert f"Press {OK} to continue {X} to cancel." in story
     press_select()  # yes I have backup key
     enter_hex(backup_key_hex)
     confirm_tmp_seed(seedvault=False)

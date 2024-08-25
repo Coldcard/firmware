@@ -1026,7 +1026,7 @@ def test_make_example_file(microsd_path, make_multisig):
 @pytest.mark.parametrize('N', [ 5, 10])
 def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import,
                          need_keypress, cap_story, goto_home, pick_menu_item,
-                         cap_menu, is_q1, press_select):
+                         cap_menu, is_q1, press_select, OK):
     # import wallet, rename it, (check that indicated, works), attempt same w/ addr fmt different
 
     M = N
@@ -1088,7 +1088,7 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import,
     for keys in ['yn', 'n']:
         title, story = offer_ms_import(newer)
         assert 'Duplicate wallet' in story
-        assert 'OK to approve' not in story
+        assert f'{OK} to approve' not in story
         assert 'xxx-newer' in story
 
         for key in keys:
@@ -3125,7 +3125,7 @@ def test_txout_explorer(psbtv2, data, clear_ms, import_ms_wallet, fake_ms_txn,
     txout_explorer(data)
 
 def test_import_duplicate_shuffled_keys_legacy(clear_ms, make_multisig, import_ms_wallet,
-                                               cap_story, press_cancel):
+                                               cap_story, press_cancel, OK):
     clear_ms()
     M, N = 2, 3
     wname = "ms02"
@@ -3142,12 +3142,12 @@ def test_import_duplicate_shuffled_keys_legacy(clear_ms, make_multisig, import_m
     time.sleep(.1)
     title, story = cap_story()
     assert 'Duplicate wallet' in story
-    assert 'OK to approve' not in story
+    assert f'{OK} to approve' not in story
     press_cancel()
 
 @pytest.mark.parametrize("order", list(itertools.product([True, False], repeat=2)))
 def test_import_duplicate_shuffled_keys(clear_ms, make_multisig, import_ms_wallet,
-                                        cap_story, press_cancel, order):
+                                        cap_story, press_cancel, order, OK):
     # DO NOT allow to import both wsh(sortedmulti(2,A,B,C)) and wsh(sortedmulti(2,B,C,A))
     # DO NOT allow to import both wsh(multi(2,A,B,C)) and wsh(multi(2,B,C,A))
     # DO NOT allow to import both wsh(sortedmulti(2,A,B,C)) and wsh(multi(2,B,C,A))
@@ -3168,7 +3168,7 @@ def test_import_duplicate_shuffled_keys(clear_ms, make_multisig, import_ms_walle
     time.sleep(.1)
     title, story = cap_story()
     assert 'Duplicate wallet' in story
-    assert 'OK to approve' not in story
+    assert f'{OK} to approve' not in story
     if A != B:
         assert "BIP-67 clash" in story
 
@@ -3176,7 +3176,7 @@ def test_import_duplicate_shuffled_keys(clear_ms, make_multisig, import_ms_walle
 
 
 @pytest.mark.parametrize("int_ext", [True, False])
-def test_multi_sortedmulti_duplicate(clear_ms, make_multisig, import_ms_wallet,
+def test_multi_sortedmulti_duplicate(clear_ms, make_multisig, import_ms_wallet, OK,
                                      cap_story, press_cancel, int_ext, offer_ms_import):
     clear_ms()
     M, N = 3, 5
@@ -3195,7 +3195,7 @@ def test_multi_sortedmulti_duplicate(clear_ms, make_multisig, import_ms_wallet,
 
     title, story = offer_ms_import(ser_desc)
     assert 'Duplicate wallet' in story
-    assert 'OK to approve' not in story
+    assert f'{OK} to approve' not in story
     assert "BIP-67 clash" in story
     press_cancel()
 

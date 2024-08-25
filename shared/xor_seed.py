@@ -270,9 +270,9 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
         if curr_num_words == desired_num_words:
             escape += "1"
             msg += ("\nPress (1) to include this Coldcard's seed words into the XOR seed set, "
-                    "or %s to continue without.")
+                    "or %s to continue without." % OK)
 
-        ch = await ux_show_story(msg % OK, escape=escape)
+        ch = await ux_show_story(msg, escape=escape)
 
         if ch == 'x':
             return

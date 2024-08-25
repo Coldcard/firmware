@@ -607,7 +607,7 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
 @pytest.mark.parametrize("acct_num", [None, 0,  1, (2 ** 31) - 1])
 @pytest.mark.parametrize("int_ext", [True, False])
 def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home,
-            settings_set, need_keypress, expect_acctnum_captured,
+            settings_set, need_keypress, expect_acctnum_captured, OK,
             pick_menu_item, way, cap_story, cap_menu, int_ext, settings_get,
             virtdisk_path, load_export, press_select, skip_if_useless_way):
     skip_if_useless_way(way)
@@ -635,7 +635,7 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home,
 
     time.sleep(.1)
     _, story = cap_story()
-    assert "To export receiving and change descriptors in one descriptor (<0;1> notation) press OK" in story
+    assert f"To export receiving and change descriptors in one descriptor (<0;1> notation) press {OK}" in story
     assert "press (1) to export receiving and change descriptors separately" in story
     if int_ext:
         press_select()

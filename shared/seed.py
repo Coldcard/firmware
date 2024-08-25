@@ -449,9 +449,9 @@ async def add_seed_to_vault(encoded, meta=None):
     story = ("Press (1) to "
              "store temporary seed into Seed Vault. This way you can easily switch "
              "to this secret and use it as temporary seed in future.\n\nPress %s "
-             "to continue without saving.")
+             "to continue without saving." % OK)
 
-    ch = await ux_show_story(story % OK, escape="1")
+    ch = await ux_show_story(story, escape="1")
     if ch != "1":
         # didn't want to save
         return
