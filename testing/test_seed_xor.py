@@ -53,7 +53,7 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
                      choose_by_word_length, need_keypress, get_secrets,
                      word_menu_entry, verify_ephemeral_secret_ui,
                      confirm_tmp_seed, seed_vault_enable, press_select,
-                     scan_a_qr, is_q1, cap_screen_qr, cap_screen):
+                     scan_a_qr, is_q1, cap_screen_qr, cap_screen, OK):
     def doit(parts, expect, incl_self=False, save_to_vault=False,
              is_master_tmp_fail=False, way=None):
         if expect is None:
@@ -78,7 +78,7 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
         title, body = cap_story()
 
         assert 'all the parts' in body
-        assert "Press OK for 24 words" in body
+        assert f"Press {OK} for 24 words" in body
         assert "press (1)" in body
         assert "press (2)" in body
 
@@ -307,7 +307,7 @@ def test_xor_split(num_words, qty, trng, goto_home, pick_menu_item, cap_story, n
 @pytest.mark.parametrize('num_words', [12, 18, 24])
 def test_import_zero_set(num_words, goto_home, pick_menu_item, cap_story, need_keypress,
                          get_secrets, word_menu_entry, reset_seed_words, set_seed_words,
-                         choose_by_word_length, press_select, cap_menu):
+                         choose_by_word_length, press_select, cap_menu, OK):
 
     set_seed_words(proper[num_words])
 
@@ -321,7 +321,7 @@ def test_import_zero_set(num_words, goto_home, pick_menu_item, cap_story, need_k
     time.sleep(.01)
     title, body = cap_story()
     assert 'all the parts' in body
-    assert "Press OK for 24 words" in body
+    assert f"Press {OK} for 24 words" in body
     assert "press (1)" in body
     assert "press (2)" in body
 
@@ -374,7 +374,7 @@ def test_import_zero_set(num_words, goto_home, pick_menu_item, cap_story, need_k
 ])
 def test_xor_import_empty(parts, expect, pick_menu_item, cap_story, need_keypress,
                           cap_menu, word_menu_entry, get_secrets, reset_seed_words,
-                          unit_test, expect_ftux, choose_by_word_length):
+                          unit_test, expect_ftux, choose_by_word_length, OK):
 
     # test import when wallet empty
     if expect is None:
@@ -391,7 +391,7 @@ def test_xor_import_empty(parts, expect, pick_menu_item, cap_story, need_keypres
     time.sleep(0.01)
     title, body = cap_story()
     assert 'all the parts' in body
-    assert "Press OK for 24 words" in body
+    assert f"Press {OK} for 24 words" in body
     assert "press (1)" in body
     assert "press (2)" in body
     choose_by_word_length(num_words)

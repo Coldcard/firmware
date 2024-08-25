@@ -850,7 +850,7 @@ def test_q1_seed_word_entry_bug(word_menu_entry, unit_test, pick_menu_item,
 
 def test_custom_pushtx_url(goto_home, pick_menu_item, press_select, enter_complex,
                            cap_story, cap_menu, settings_remove, need_keypress,
-                           press_cancel, is_q1, settings_get):
+                           press_cancel, is_q1, settings_get, OK):
     goto_home()
     settings_remove('ptxurl')  # empty slate
 
@@ -867,7 +867,7 @@ def test_custom_pushtx_url(goto_home, pick_menu_item, press_select, enter_comple
 
     time.sleep(.1)
     title, story = cap_story()
-    if "This feature requires NFC to be enabled. OK to enable" in story:
+    if f"This feature requires NFC to be enabled. {OK} to enable" in story:
         press_select()
 
     time.sleep(.3)

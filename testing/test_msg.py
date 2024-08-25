@@ -305,7 +305,7 @@ def test_nfc_msg_signing_invalid(body, goto_home, pick_menu_item, nfc_write_text
 @pytest.mark.parametrize("path", ["", "m/84'/0'/0'/300/0", "m/800h/0h", "m/0/0/0/0/1/1/1"])
 @pytest.mark.parametrize("str_addr_fmt", ["p2pkh", "", "p2wpkh", "p2wpkh-p2sh", "p2sh-p2wpkh"])
 def test_nfc_msg_signing(msg, path, str_addr_fmt, nfc_write_text, nfc_read_text, pick_menu_item,
-                         goto_home, cap_story, press_select, press_cancel, addr_vs_path):
+                         goto_home, cap_story, press_select, press_cancel, addr_vs_path, OK):
 
     for _ in range(5):
         # need to wait for ApproveMessageSign to be popped from ux stack
@@ -343,7 +343,7 @@ def test_nfc_msg_signing(msg, path, str_addr_fmt, nfc_write_text, nfc_read_text,
     assert verify_message(addr, sig, msg) is True
     time.sleep(0.5)
     _, story = cap_story()
-    assert "Press OK to share again" in story
+    assert f"Press {OK} to share again" in story
     press_select()
     signed_msg_again = nfc_read_text()
     assert signed_msg == signed_msg_again

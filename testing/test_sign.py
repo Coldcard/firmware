@@ -2127,7 +2127,7 @@ def test_send2taproot_addresss(fake_txn , start_sign, end_sign, cap_story, use_t
 @pytest.mark.parametrize("action", ["sign", "skip", "refuse"])
 def test_batch_sign(num_tx, ui_path, action, fake_txn, need_keypress,
                     pick_menu_item, cap_story, microsd_path, cap_menu,
-                    microsd_wipe, goto_home, press_select, press_cancel):
+                    microsd_wipe, goto_home, press_select, press_cancel, X):
 
     goto_home()
     microsd_wipe()
@@ -2164,7 +2164,7 @@ def test_batch_sign(num_tx, ui_path, action, fake_txn, need_keypress,
     for i in range(num_tx):
         assert "Sign" in story
         assert "(1) to skip" in story
-        assert "X to quit and exit" in story
+        assert f"{X} to quit and exit" in story
         if action == "skip":
             need_keypress("1")  # skip this PSBT
             time.sleep(.5)
@@ -3027,7 +3027,8 @@ def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_ms_imp
     try_sign(base64.b64decode(b64psbt), accept=True)
 
 
-def test_null_data_op_return(fake_txn, start_sign, end_sign):
+def test_null_data_op_return(fake_txn, start_sign, end_sign, reset_seed_words):
+    reset_seed_words()
     psbt = fake_txn(1, 1, op_return=[(50, b"")])
     start_sign(psbt, False, stxn_flags=STXN_VISUALIZE)
     story = end_sign(accept=None, expect_txn=False).decode()
