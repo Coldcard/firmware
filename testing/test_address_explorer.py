@@ -464,6 +464,10 @@ def test_custom_path(path_sidx, which_fmt, addr_vs_path, pick_menu_item, goto_ad
     time.sleep(.2)
 
     if is_single:
+        # check that lateral scrolling on single address does not cause the yikes
+        need_keypress(KEY_RIGHT if is_q1 else "9")
+        need_keypress(KEY_LEFT if is_q1 else "7")
+
         time.sleep(.2)
         title, body = cap_story()
         assert 'Showing single addr' in body
@@ -501,7 +505,6 @@ def test_custom_path(path_sidx, which_fmt, addr_vs_path, pick_menu_item, goto_ad
         f_path, f_addr = next(addr_gen)
         assert f_path == path
         assert f_addr == addr
-
     else:
         n = 10
         if (start_idx + n) > MAX_BIP32_IDX:

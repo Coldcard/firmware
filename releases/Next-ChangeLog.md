@@ -14,11 +14,12 @@ This lists the new changes that have not yet been published in a normal release.
 - Enhancement: Improve side-channel protection: libsecp256k1 context randomization now happens
   before each signing session.
 - Change: Do NOT require descriptor checksum when importing multisig wallets
-- Bugfix: Do not alow to import multisig wallet duplicate with only keys shuffled.
+- Bugfix: Do not allow to import multisig wallet duplicate with only keys shuffled.
 - Bugfix: Do not read whole PSBT into memory when writing finalized transaction.
 - Bugfix: Properly handle null data in `OP_RETURN`.
 - Bugfix: Prevent user from restoring Seed XOR when len parts is smaller than 2.
 - Bugfix: Fix display alignment of Seed Vault menu.
+- Bugfix: Do not allow lateral scroll in Address Explorer when showing single address from custom path.
 - Change: Remove Lamp Test from Debug Options (lights covered by selftest)
 
 # Mk4 Specific Changes
