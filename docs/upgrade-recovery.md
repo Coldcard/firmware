@@ -27,7 +27,7 @@ Steps:
 - a checksum is calculated over the new firmware, and the current contents of
   flash, including the bootloader code, its secrets, unique identity bits
   (for the main chip). We call this the "world checksum".
-- before anything else happens, we update the main secure element (608B) with
+- before anything else happens, we update the main secure element (608C) with
   the world checksum, and during boot, knowledge of the world checksum is required
   to light the green genuine light.
 - the light stays green at this point, and the system could still boot the old firmware
@@ -92,7 +92,7 @@ Once a card is inserted, a search is made for a suitable firmware file.
 All DFU files will be considered, but you must provide the firmware
 file that you were attempting to upgrade to during the power failure,
 because the "world checksum" is calculated for each image found on
-the card. You will not be able to substitue a newer version of firmware.
+the card. You will not be able to substitute a newer version of firmware.
 Of course, firmware factory signatures are checked as well.
 
 
