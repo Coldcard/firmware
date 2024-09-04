@@ -4,42 +4,48 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk4 and Q
 
-- New Feature: Opt-in support for `multi(...)` - unsorted multisig. Enable here `Settings->Multisig Wallets->Legacy Multisig`
-- New Feature: Named multisig descriptor imports. Wrap descriptor in json {"name:"ms0", "desc":"<descriptor>"} with name key 
-  to use this name instead of the filename. Mostly usefull for USB and NFC imports that have no file, 
-  in which case name was created from descriptor checksum.
-- New Feature: XOR from Seed Vault
-- Enhancement: Allow JSON files in `NFC File Share`
-- Enhancement: latest [0.5.0](https://github.com/bitcoin-core/secp256k1/releases/tag/v0.5.0) libsecp256k1
-- Enhancement: Signature grinding optimizations.
+- New Feature: Opt-in support for unsorted multisig, which ignores BIP-67 policy. Use
+  descriptor with `multi(...)`. Disabled by default, Enable in 
+  `Settings > Multisig Wallets > Legacy Multisig`. Recommended for existing multisig
+  wallets, not new ones.
+- New Feature: Named multisig descriptor imports. Wrap descriptor in json:
+    `{"name:"ms0", "desc":"<descriptor>"}` to provide a name for the menu in `name`.
+  instead of the filename. Most useful for USB and NFC imports which have no filename, 
+  (name is created from descriptor checksum in those cases).
+- New Feature: XOR from Seed Vault (select other parts of the XOR from seeds in the vault).
+- Enhancement: upgrade to latest 
+  [libsecp256k1: 0.5.0](https://github.com/bitcoin-core/secp256k1/releases/tag/v0.5.0) 
+- Enhancement: Signature grinding optimizations. Now faster!
 - Enhancement: Improve side-channel protection: libsecp256k1 context randomization now happens
   before each signing session.
-- Change: Do NOT require descriptor checksum when importing multisig wallets
-- Bugfix: Do not allow to import multisig wallet duplicate with only keys shuffled.
-- Bugfix: Do not read whole PSBT into memory when writing finalized transaction.
-- Bugfix: Properly handle null data in `OP_RETURN`.
-- Bugfix: Prevent user from restoring Seed XOR when len parts is smaller than 2.
+- Enhancement: Allow JSON files in `NFC File Share`.
+- Change: Do not require descriptor checksum when importing multisig wallets.
+- Bugfix: Do not allow import of multisig wallet when same keys are shuffled.
+- Bugfix: Do not read whole PSBT into memory when writing finalized transaction (performance).
+- Bugfix: Prevent user from restoring Seed XOR when number of parts is smaller than 2.
 - Bugfix: Fix display alignment of Seed Vault menu.
-- Bugfix: Do not allow lateral scroll in Address Explorer when showing single address from custom path.
-- Change: Remove Lamp Test from Debug Options (lights covered by selftest)
+- Bugfix: Properly handle null data in `OP_RETURN`.
+- Bugfix: Do not allow lateral scroll in Address Explorer when showing single address
+  from custom path.
+- Change: Remove Lamp Test from Debug Options (covered by selftest).
 
 # Mk4 Specific Changes
 
 ## 5.3.4 - 2024-08-xx
 
-- tbd
+- Shared enhancements and fixes listed above.
 
 
 # Q Specific Changes
 
 ## 1.2.4Q - 2024-08-xx
 
-- New Feature: Seed XOR can be imported from SeedQR scanned.
+- New Feature: Seed XOR can be imported by scanning SeedQR parts.
 - New Feature: Input backup password from QR scan.
 - New Feature: (BB)QR file share of arbitrary files.
 - Bugfix: Properly clear LCD screen after BBQR is shown.
 - Bugfix: Writing to empty slot B caused broken card reader.
 - Bugfix: During Seed XOR import, display correct letter B if own seed already added to the mix.
-- Bugfix: Stop re-wording UX stories
+- Bugfix: Stop re-wording UX stories using a regular expression.
 
 
