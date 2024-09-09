@@ -1593,7 +1593,7 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
     if is_q1:
         time.sleep(.1)
         title, story = cap_story()
-        assert "scan multisg XPUBs from BBQr" in story
+        assert "scan multisg XPUBs from QR codes" in story
         if way == "qr":
             need_keypress(KEY_QR)
         else:
@@ -1631,7 +1631,7 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
 
         time.sleep(1)
         scr = cap_screen()
-        assert f"Failure: xfp" in scr  # missing xfp
+        assert f"Missing value: xfp" in scr  # missing xfp
 
         # need to scan json XPUBs here
         for i, fname in enumerate(glob(microsd_path('ccxp-*.json'))):
