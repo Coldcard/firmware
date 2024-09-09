@@ -9,9 +9,6 @@ import os, sys, pyb, ckcc, version, glob, uctypes
 # value must exist in battery_idle_timeout_chooser() choices
 DEFAULT_BATT_IDLE_TIMEOUT = const(30*60)
 
-# 0..255 brightness value for when on batteries
-DEFAULT_BATT_BRIGHTNESS = const(200)
-
 def init0():
     # called very early
     from mk4 import init0 as mk4_init0
