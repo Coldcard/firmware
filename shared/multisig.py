@@ -1592,41 +1592,56 @@ P2WSH:
     await ux_show_story(msg)
 
 async def validate_xpub_for_ms(obj, af_str, deriv, chain, my_xfp, xpubs):
-    ln = obj.get(af_str)
+    # Read xpub and validate from JSON received via SD card or BBQr
+    # - obj => JSON object (mapping)
+    # - af_str => address format we expect/need
+    # - derive => default derivation, can be overridden by file.
+
     # value in file is BE32, but we want LE32 internally
+    # - KeyError here handled by caller
     xfp = str2xfp(obj['xfp'])
+    n_deriv = cleanup_deriv_path(obj[af_str + '_deriv'])
+
+    ln = obj.get(af_str)
     if not deriv:
-        deriv = cleanup_deriv_path(obj[af_str + '_deriv'])
+        deriv = n_deriv
     else:
-        assert deriv == obj[af_str + '_deriv'], "wrong derivation: %s != %s" % (
-            deriv, obj[af_str + '_deriv'])
+        assert deriv == n_deriv, "wrong derivation: %s != %s" % (deriv, n_deriv)
 
     return MultisigWallet.check_xpub(xfp, ln, deriv, chain.ctype, my_xfp, xpubs), deriv
 
 async def ms_coordinator_qr(af_str, my_xfp, chain):
+    # Scan a number of JSON files from BBQr w/ derive, xfp and xpub details.
+    #
     from ux_q1 import QRScannerInteraction
+
     num_mine = 0
     num_files = 0
     xpubs = []
     deriv = None
-    msg = 'Scan Multisig XPUBs from a BBQr'
+
+    msg = 'Scan Exported XPUB from Coldcard'
     while True:
         vals = await QRScannerInteraction().scan_json(msg)
-        if vals:
-            try:
-                is_mine, deriv = await validate_xpub_for_ms(vals, af_str, deriv,
-                                                            chain, my_xfp, xpubs)
-            except Exception as e:
-                msg = "Failure: %s" % str(e)
-                continue
+        if vals is None:
+            break
 
-            if is_mine:
-                num_mine += 1
+        try:
+            is_mine, deriv = await validate_xpub_for_ms(vals, af_str, deriv, chain, my_xfp, xpubs)
+        except KeyError as e:
+            # random JSON will end up here
+            msg = "Missing value: %s" % str(e)
+            continue
+        except Exception as e:
+            # other QR codes, not BBQr (json) will stop here.
+            msg = "Failure: %s" % str(e)
+            continue
 
-            num_files += 1
+        if is_mine:
+            num_mine += 1
+        num_files += 1
 
-        msg = "Number of keys scanned: %d" % len(xpubs)
-        if vals is None: break
+        msg = "Number of keys scanned: %d" % num_files
 
     return xpubs, deriv, num_mine, num_files
 
@@ -1700,16 +1715,17 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False)
     else:
         xpubs, deriv, num_mine, num_files = await ms_coordinator_file(mode, my_xfp, chain)
         if CardSlot.both_inserted():
-            bxpubs, _, bnum_mine, bnum_files = await ms_coordinator_file(mode, my_xfp,
-                                                                         chain, True)
-            xpubs += bxpubs
+            # handle dual slot usage: assumes slot A used by first call above
+            bxpubs, _, bnum_mine, bnum_files = await ms_coordinator_file(
+                                                        mode, my_xfp, chain, True)
+            xpubs.extend(bxpubs)
             num_mine += bnum_mine
             num_files += bnum_files
 
-    # # remove dups; easy to happen if you double-tap the export
+    # remove dups; easy to happen if you double-tap the export
     xpubs = list(set(xpubs))
 
-    if not xpubs or len(xpubs) == 1 and num_mine:
+    if not xpubs or (len(xpubs) == 1 and num_mine):
         if is_qr:
             msg = "No XPUBs scanned. Exit."
         else:
@@ -1758,19 +1774,23 @@ async def create_ms_step1(*a):
     # Show story, have them pick address format.
     ch = None
     is_qr = False
+
     if version.has_qr:
-        ch = await ux_show_story("Press "+ KEY_QR + " to scan multisg XPUBs from BBQr.")
+        # They have a scanner, could do QR codes...
+        ch = await ux_show_story("Press "+ KEY_QR + " to scan multisg XPUBs from "\
+                        "QR codes (BBQr) or ENTER to use SD card(s).", title="QR or SD Card?")
 
     if ch == KEY_QR:
         is_qr = True
-        ch = await ux_show_story("Choose address format. Default is P2WSH addresses (segwit)."
-                                 " Press (1) for P2SH-P2WSH.", escape="1")
+        ch = await ux_show_story("Press ENTER for default address format (P2WSH, segwit), "\
+                                 "otherwise, press (1) for P2SH-P2WSH.", title="Address Format",
+                                     escape="1")
 
     else:
         ch = await ux_show_story('''\
-Insert SD card (or eject SD card to use Virtual Disk) with exported XPUB files from at least one other \
-Coldcard. A multisig wallet will be constructed using those keys and \
-this device.
+Insert SD card (or eject SD card to use Virtual Disk) with exported XPUB files \
+from at least one other Coldcard. A multisig wallet will be constructed using \
+those keys and this device.
 
 Default is P2WSH addresses (segwit) or press (1) for P2SH-P2WSH.''', escape='1')
 
