@@ -459,9 +459,9 @@ def test_seed_vault_xor(num_words, num_parts, incl_self, goto_eph_seed_menu, see
         words.append(generate_ephemeral_words(num_words=num_words, seed_vault=True))
 
     xfps = [
-        f"[{BIP32Node.from_master_secret(
-            Mnemonic("english").to_seed(" ".join(w))
-        ).fingerprint().hex().upper()}]"
+        '[%s]' % BIP32Node.from_master_secret(
+                    Mnemonic("english").to_seed(" ".join(w))
+                ).fingerprint().hex().upper()
         for w in words
     ]
 
