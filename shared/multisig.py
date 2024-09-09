@@ -1605,8 +1605,6 @@ async def validate_xpub_for_ms(obj, af_str, deriv, chain, my_xfp, xpubs):
     ln = obj.get(af_str)
     if not deriv:
         deriv = n_deriv
-    else:
-        assert deriv == n_deriv, "wrong derivation: %s != %s" % (deriv, n_deriv)
 
     return MultisigWallet.check_xpub(xfp, ln, deriv, chain.ctype, my_xfp, xpubs), deriv
 
@@ -1755,6 +1753,9 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False)
     if not M:
         await ux_dramatic_pause('Aborted.', 2)
         return  # user cancel
+
+    # create appropriate object
+    assert 1 <= M <= N <= MAX_SIGNERS
 
     name = 'CC-%d-of-%d' % (M, N)
     ms = MultisigWallet(name, (M, N), xpubs, chain_type=chain.ctype, addr_fmt=addr_fmt)
