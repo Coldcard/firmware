@@ -1734,10 +1734,11 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False)
         await ux_show_story(msg)
         return
     
-    # add myself if not included already
+    # add myself if not included already ?
     if not num_mine:
-        if await ux_show_story("Add current Coldcard with above XFP ?",
-                               title="[%s]" % xfp2str(my_xfp)):
+        ch = await ux_show_story("Add current Coldcard with above XFP ?",
+                                 title="[%s]" % xfp2str(my_xfp))
+        if ch == "y":
             dis.fullscreen("Wait...")
             with stash.SensitiveValues() as sv:
                 node = sv.derive_path(deriv)
@@ -1745,19 +1746,15 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False)
 
     N = len(xpubs)
 
-    if N > MAX_SIGNERS:
-        await ux_show_story("Too many signers, max is %d." % MAX_SIGNERS)
+    if (N > MAX_SIGNERS) or (N < 2):
+        await ux_show_story("Invalid number of signers,min is 2 max is %d." % MAX_SIGNERS)
         return
 
     # pick useful M value to start
-    assert N >= 2
     M = await ux_enter_number("How many need to sign?(M)", N, can_cancel=True)
     if not M:
         await ux_dramatic_pause('Aborted.', 2)
         return  # user cancel
-
-    # create appropriate object
-    assert 1 <= M <= N <= MAX_SIGNERS
 
     name = 'CC-%d-of-%d' % (M, N)
     ms = MultisigWallet(name, (M, N), xpubs, chain_type=chain.ctype, addr_fmt=addr_fmt)
