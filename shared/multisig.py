@@ -892,7 +892,7 @@ class MultisigWallet(WalletABC):
     async def export_wallet_file(self, mode="exported from", extra_msg=None, descriptor=False,
                                  core=False, desc_pretty=True):
         # create a text file with the details; ready for import to next Coldcard
-        from glob import NFC
+        from glob import NFC, dis
 
         my_xfp = xfp2str(settings.get('xfp'))
         if core:
@@ -912,7 +912,9 @@ class MultisigWallet(WalletABC):
                                             no_qr=not version.has_qwerty)
         if choice == KEY_CANCEL:
             return
-        elif choice in (KEY_NFC, KEY_QR):
+
+        dis.fullscreen("Wait...")
+        if choice in (KEY_NFC, KEY_QR):
             with uio.StringIO() as fp:
                 self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
                                    core=core, desc_pretty=desc_pretty)
@@ -1480,9 +1482,9 @@ async def ms_wallet_electrum_export(menu, label, item):
 
 async def ms_wallet_detail(menu, label, item):
     # show details of single multisig wallet
-
+    from glob import dis
     ms = item.arg
-
+    dis.fullscreen("Wait...")
     return await ms.show_detail()
 
 
