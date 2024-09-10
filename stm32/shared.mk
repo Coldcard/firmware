@@ -111,6 +111,19 @@ rc1:
 		`signit version rc1.bin`-$(HW_MODEL)-RC1-factory-coldcard.dfu
 	ls -1 *-RC1-*.dfu
 
+# Make a test release-candidate but use full repro flow; slower than rc1 above.
+# - no factory release, does no GIT tagging nor committing
+.PHONY: rc2
+rc2: RC2_TIMESTAMP = $(shell date "+%F_%H%M")
+rc2: RC2_FNAME = ./RC2-$(HW_MODEL)-coldcard.dfu
+rc2: submods-match
+	$(SUBMAKE) clean
+	$(SUBMAKE) repro
+	test -f built/production.bin
+	$(SIGNIT) sign -m $(HW_MODEL) $(VERSION_STRING) -r built/production.bin $(PROD_KEYNUM) -o built/rc2.bin
+	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/rc2.bin $(RC2_FNAME)
+	ls -1 ./RC2-*.dfu
+
 # This target just combines latest version of production firmware with bootrom into a DFU
 # file, stored in ../releases with appropriately dated file name.
 .PHONY: release-products
