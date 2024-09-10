@@ -13,7 +13,7 @@ from glob import settings
 from menu import MenuSystem, MenuItem
 from actions import goto_top_menu
 from utils import encode_seed_qr, pad_raw_secret
-from charcodes import KEY_CANCEL, KEY_QR
+from charcodes import KEY_QR
 
 
 def xor(*args):
@@ -107,7 +107,7 @@ Otherwise, press {ok} to continue.'''.format(n=num_parts, ok=OK), escape='2')
 
     while 1:
         ch = await show_n_parts(word_parts, chk_word)
-        if ch == KEY_CANCEL:
+        if ch == "x":
             if not use_rng: return
             if await ux_confirm("Stop and forget those words?"):
                 return
@@ -124,7 +124,7 @@ Otherwise, press {ok} to continue.'''.format(n=num_parts, ok=OK), escape='2')
 
         for ws, part in enumerate(word_parts):
             ch = await word_quiz(part, title='Word %s%%d is?' % chr(65+ws))
-            if ch == KEY_CANCEL: break
+            if ch == "x": break
         else:
             break
 
@@ -166,14 +166,14 @@ async def xor_all_done(data):
                 "right now. You may have doubled a part or made some other mistake.\n\n"
 
     msg += "Press (1) to enter next list of words."
-    escape = "1"+KEY_CANCEL+KEY_QR
+    escape = "1"+KEY_QR
     if num_parts >= 2:
         msg += " Or (2) if done with all words."
         escape += "2"
 
     while True:
         ch = await ux_show_story(msg, escape=escape, sensitive=True)
-        if ch in 'x'+KEY_CANCEL:
+        if ch in 'x':
             # give up - needs confirmation
             if import_xor_parts:
                 if not await ux_confirm("Throw away those words and stop this process?"):
@@ -196,6 +196,8 @@ async def xor_all_done(data):
         elif ch == '2':
             # done; import on temp basis, or be the main secret
             from pincodes import pa
+            from glob import dis
+
             enc = stash.SecretStash.encode(seed_phrase=seed)
 
             if pa.is_secret_blank():
@@ -204,6 +206,7 @@ async def xor_all_done(data):
                 # update menu contents now that wallet defined
                 goto_top_menu(first_time=True)
             else:
+                dis.fullscreen("Applying...")
                 # set as ephemeral seed, maybe save it too
                 # below is super costly as we need to bip32 generate master secret from entropy bytes
                 # only need XFPs for UI
@@ -231,14 +234,13 @@ class XORWordNestMenu(WordNestMenu):
 async def show_n_parts(parts, chk_word):
     num_parts = len(parts)
     seed_len = len(parts[0])
-    msg = 'Record these %d lists of %d-words each: ' % (num_parts, seed_len)
+    msg = 'Record these %d lists of %d-words each:' % (num_parts, seed_len)
 
     for n,words in enumerate(parts):
-        msg += 'Part %s:\n' % chr(65+n)
+        msg += '\n\nPart %s:\n' % chr(65+n)
         msg += ux_render_words(words, leading_blanks=0)
-        msg += '\n\n'
 
-    msg += ('The correctly reconstructed seed phrase will have this final word,'
+    msg += ('\n\nThe correctly reconstructed seed phrase will have this final word,'
             ' which we recommend recording:\n\n%d: %s\n\n' % (seed_len, chk_word))
 
     msg += 'Please check and double check your notes. There will be a test! '
@@ -270,6 +272,7 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
     import_xor_parts.clear()
 
     from pincodes import pa
+    from glob import dis
 
     escape = ""
     if not pa.is_secret_blank():
@@ -284,7 +287,8 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
         ch = await ux_show_story(msg, escape=escape)
 
         if ch == 'x': return
-        elif ch == '1':
+        if ch == '1':
+            dis.fullscreen("Wait...")
             with stash.SensitiveValues() as sv:
                 if sv.mode == 'words':
                     # needs copy here [:] otherwise rewritten with zeros in __exit__

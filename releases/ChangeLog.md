@@ -53,7 +53,6 @@ This lists the changes in the most recent firmware, for each hardware platform.
 - Bugfix: Exporting BIP-85 derived entropy via NFC was offered even when NFC disabled,
   leading to a Yikes error.
 - Bugfix: Properly clear LCD screen after simple QR code is shown
-- Change in default brightness (on battery) from 80% to 95%.
 
 
 # Release History

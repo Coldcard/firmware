@@ -656,9 +656,11 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
             try:
                 got = await QRScannerInteraction.scan('Scan seed from a QR code')
                 what, vals = decode_qr_result(got, expect_secret=True)
-            except QRDecodeExplained:
-                redraw_words(words)
+            except QRDecodeExplained as e:
+                err_msg = str(e)
+                redraw_words()
                 continue
+
             if what != "words":
                 err_msg = "Must be seed words, not %s" % what
             elif num_words != len(vals[0]):

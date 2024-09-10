@@ -43,10 +43,12 @@ This lists the new changes that have not yet been published in a normal release.
 - New Feature: Seed XOR can be imported by scanning SeedQR parts.
 - New Feature: Input backup password from QR scan.
 - New Feature: (BB)QR file share of arbitrary files.
-- New Feature: `Create Airgapped` now works with BBQRs 
+- New Feature: `Create Airgapped` now works with BBQRs.
+- Change: Default brightness (on battery) adjusted from 80% to 95%.
 - Bugfix: Properly clear LCD screen after BBQR is shown.
 - Bugfix: Writing to empty slot B caused broken card reader.
 - Bugfix: During Seed XOR import, display correct letter B if own seed already added to the mix.
 - Bugfix: Stop re-wording UX stories using a regular expression.
+- Bugfix: Fixed "easy exit" from quiz after split Seed XOR.
 
 
