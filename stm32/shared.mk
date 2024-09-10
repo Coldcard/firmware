@@ -113,10 +113,11 @@ rc1:
 
 # Make a test release-candidate but use full repro flow; slower than rc1 above.
 # - no factory release, does no GIT tagging nor committing
+# - but still must commit changed because code get into docker image via local git repo
 .PHONY: rc2
 rc2: RC2_TIMESTAMP = $(shell date "+%F_%H%M")
-rc2: RC2_FNAME = ./RC2-$(HW_MODEL)-coldcard.dfu
-rc2: submods-match
+rc2: RC2_FNAME = ./RC2-$(RC2_TIMESTAMP)-$(HW_MODEL)-coldcard.dfu
+rc2: submods-match code-committed
 	$(SUBMAKE) clean
 	$(SUBMAKE) repro
 	test -f built/production.bin

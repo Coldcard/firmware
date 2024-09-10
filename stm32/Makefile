@@ -14,7 +14,7 @@
 .DEFAULT all:
 	$(MAKE) DEBUG_BUILD=1 -f Q1-Makefile $(MAKECMDGOALS)
 
-clean clobber rc1 release repro:
+clean clobber rc1 rc2 release repro:
 	@echo You should do either:
 	@echo
 	@echo "   make" -f Q1-Makefile $(MAKECMDGOALS)
