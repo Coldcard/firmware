@@ -290,18 +290,19 @@ class MenuSystem:
         dis.clear()
 
         cursor_y = None
-        for i, n in enumerate(range(self.ypos+PER_M+1)):
-            if n+self.ypos >= self.count: break
+        for n in range(self.ypos+PER_M+1):
+            real_idx = n+self.ypos
+            if real_idx >= self.count: break
 
-            msg = self.items[n+self.ypos].label
-            is_sel = (self.cursor == n+self.ypos)
+            msg = self.items[real_idx].label
+            is_sel = (self.cursor == real_idx)
             if is_sel:
                 cursor_y = n
 
             # show check?
-            checked = (self.chosen is not None and (n+self.ypos) == self.chosen)
+            checked = (self.chosen is not None) and (real_idx == self.chosen)
 
-            fcn = getattr(self.items[n+self.ypos], 'is_chosen', None)
+            fcn = getattr(self.items[real_idx], 'is_chosen', None)
             if fcn and fcn():
                 checked = True
 
@@ -309,7 +310,7 @@ class MenuSystem:
                 # on mk4 every label longer than 14 will overlap with checkmark
                 checked = False
 
-            if self.multi_selected is not None and (i in self.multi_selected):
+            if self.multi_selected is not None and (real_idx in self.multi_selected):
                 # ignore length constraint above, we need to visually show that
                 # smthg is selected - in any case
                 # currently only used with XFPs so checkmark always good
@@ -448,7 +449,7 @@ class MenuSystem:
                     self.multi_selected.append(self.cursor)
 
             elif key in KEY_ENTER+KEY_SPACE:
-                if self.multi_selected is not None and key == KEY_ENTER:
+                if self.multi_selected is not None:
                     # selected - multichoice done
                     return self.multi_selected
 
