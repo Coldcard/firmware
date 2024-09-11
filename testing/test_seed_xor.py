@@ -256,7 +256,7 @@ def test_xor_split(num_words, qty, trng, goto_home, pick_menu_item, cap_story, n
     assert all((f'Part {chr(n+65)}:' in body) for n in range(qty))
 
     if is_q1:
-        *prts, _, chk_prt, _ = body.split("\n\n")
+        _, *prts, _, chk_prt, _ = body.split("\n\n")
         parts = [seed_story_to_words(prt) for prt in prts]
         assert len(parts) == qty
         assert all(len(prt) == num_words for prt in parts)

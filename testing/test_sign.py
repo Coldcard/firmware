@@ -2298,9 +2298,6 @@ def test_psbt_v2_global_quantities(way, fake_txn, start_sign, end_sign, cap_stor
                     outstyles=["p2pkh", "p2wpkh"], psbt_v2=True,
                     psbt_hacker=lambda psbt: hacker(psbt, way))
 
-    with open(f"/home/scg/PycharmProjects/afirmware/unix/work/MicroSD/{way}.psbt", "wb") as f:
-        f.write(psbt)
-
     start_sign(psbt)
     title, story = cap_story()
     assert "failed" in story or "Invalid PSBT" in story or "Network fee bigger" in story
