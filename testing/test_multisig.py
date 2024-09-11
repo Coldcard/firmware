@@ -9,7 +9,7 @@
 import sys
 sys.path.append("../shared")
 from descriptor import MultisigDescriptor, append_checksum, MULTI_FMT_TO_SCRIPT, parse_desc_str
-import time, pytest, os, random, json, shutil, pdb, io, base64, struct, bech32, itertools
+import time, pytest, os, random, json, shutil, pdb, io, base64, struct, bech32, itertools, re
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from ckcc.protocol import CCProtocolPacker, MAX_TXN_LEN
 from pprint import pprint
@@ -1544,27 +1544,29 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
         assert is_complete
 
 @pytest.mark.parametrize('addr_fmt', ['p2wsh', 'p2sh-p2wsh'])
-@pytest.mark.parametrize('acct_num', [ 0, 99, 4321])
-@pytest.mark.parametrize('N', [ 3, 14])
-@pytest.mark.parametrize('way', [ "sd", "qr"])
-def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_item,
+@pytest.mark.parametrize('acct_num', [ 0, None, 4321])
+@pytest.mark.parametrize('M_N', [(2,3), (8,14)])
+@pytest.mark.parametrize('way', ["sd", "qr"])
+@pytest.mark.parametrize('incl_self', [True, False, None])
+def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu_item,
                         need_keypress, microsd_path, set_bip39_pw, clear_ms, enter_number,
                         get_settings, load_export, is_q1, press_select, press_cancel,
-                        cap_screen, way, scan_a_qr, skip_if_useless_way):
+                        cap_screen, way, scan_a_qr, skip_if_useless_way, incl_self):
     # test UX and math for bip45 export
     # cleanup
     skip_if_useless_way(way)
+    M, N = M_N
     from glob import glob
     for fn in glob(microsd_path('ccxp-*.json')):
         assert fn
         os.unlink(fn)
     clear_ms()
 
-    for idx in range(N):
-        if N == 4:
-            set_bip39_pw(['Me', 'Myself', 'And I', ''][idx])
+    for idx in range(N - int(incl_self is None)):
+        if not idx and (incl_self is True):
+            set_bip39_pw('')
         else:
-            set_bip39_pw(f'test {idx}' if idx else '')
+            set_bip39_pw(f'test {idx}')
 
         goto_home()
         time.sleep(0.1)
@@ -1576,15 +1578,20 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
 
         # enter account number every time
         time.sleep(.05)
-        for n in str(acct_num):
-            need_keypress(n)
+        if acct_num is None:
+            # differing account numbers
+            for n in str(idx):
+                need_keypress(n)
+        else:
+            for n in str(acct_num):
+                need_keypress(n)
         press_select()
 
         need_keypress('1')
 
     set_bip39_pw('')
 
-    assert len(glob(microsd_path('ccxp-*.json'))) == N
+    assert len(glob(microsd_path('ccxp-*.json'))) == (N - int(incl_self is None))
 
     goto_home()
     pick_menu_item('Settings')
@@ -1611,8 +1618,6 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
         press_select()
     elif addr_fmt == 'p2sh-p2wsh':
         need_keypress('1')
-    elif addr_fmt == 'p2sh':
-        need_keypress('2')  # does not work imo
     else:
         assert 0, addr_fmt
 
@@ -1648,79 +1653,99 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
 
         press_cancel()  # quit QR animation
 
+    if not incl_self:
+        time.sleep(.1)
+        title, story = cap_story()
+        assert "Add current Coldcard" in story
+        assert xfp2str(simulator_fixed_xfp) in title
+        if incl_self is None:
+            # add it here instead of having export xpubs JSON  beforehand
+            press_select()
+            # choose account number
+            enter_number(654 if acct_num is None else acct_num)  # if None, numbers differ
+        else:
+            press_cancel()
+
     time.sleep(.1)
     scr = cap_screen()
     assert "How many need to sign?(M)" in scr
-
-    if N == 3:
-        M = 2
-    elif N == 14:
-        M = 8
-    elif N == 4:
-        assert '2 of 4' in story
-        M = 2
-    else:
-        assert 0, N
 
     enter_number(M)
     time.sleep(.1)
     title, story = cap_story()
 
-    assert "Create new multisig" in story
-    press_select()
-    # we use clear_ms fixture at the begining of each test
-    # new multisig wallet is first menu item
-    press_select()
-    pick_menu_item("Coldcard Export")
-    impf, fname = load_export("sd", label="Coldcard multisig setup", is_json=False,
-                              sig_check=False, ret_fname=True)
-    cc_fname = microsd_path(fname)
-    assert f'Policy: {M} of {N}' in impf
-    if addr_fmt != 'p2sh':
-        assert f'Format: {addr_fmt.upper()}' in impf
+    if incl_self is not False:
+        assert "Create new multisig" in story
+        press_select()
+        # we use clear_ms fixture at the begining of each test
+        # new multisig wallet is first menu item
+        press_select()
+        pick_menu_item("Coldcard Export")
+        impf, fname = load_export("sd", label="Coldcard multisig setup", is_json=False,
+                                  sig_check=False, ret_fname=True)
+        cc_fname = microsd_path(fname)
+        assert f'Policy: {M} of {N}' in impf
+        if addr_fmt != 'p2sh':
+            assert f'Format: {addr_fmt.upper()}' in impf
 
-    press_select()
-    press_select()
+        press_select()
+        press_select()
 
-    if N == 4 and acct_num == 0:
+        clear_ms()
 
-        # capture useful test data for testing Electrum plugin, etc
-        for fn in glob(microsd_path('ccxp-*.json')):
-            shutil.copy(fn, 'data/multisig/'+fn.rsplit('/', 1)[1])
-        shutil.copy(cc_fname, f'data/multisig/export-{addr_fmt}-myself.txt')
+        # test re-importing the wallet from export file
+        goto_home()
+        pick_menu_item('Settings')
+        pick_menu_item('Multisig Wallets')
+        pick_menu_item('Import from File')
+        time.sleep(0.5)
+        _, story = cap_story()
+        if "Press (1) to import multisig wallet file from SD Card" in story:
+            need_keypress("1")
 
-        json.dump(get_settings()['multisig'][0], 
-                    open(f'data/multisig/setting-{addr_fmt}-myself.json', 'w'))
-    
-    clear_ms()
+        time.sleep(.05)
+        pick_menu_item(cc_fname.rsplit('/', 1)[1])
 
-    # test re-importing the wallet from export file
-    goto_home()
-    pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
-    pick_menu_item('Import from File')
-    time.sleep(0.5)
-    _, story = cap_story()
-    if "Press (1) to import multisig wallet file from SD Card" in story:
-        need_keypress("1")
+        time.sleep(.05)
+        title, story = cap_story()
+        assert "Create new multisig" in story
+        assert f"Policy: {M} of {N}" in story
+        if acct_num is None:
+            assert ("Varies (%d)" % N) in story
+        else:
+            assert f"/{acct_num}h/" in story
 
-    time.sleep(.05)
-    pick_menu_item(cc_fname.rsplit('/', 1)[1])
+        need_keypress('1')
+        time.sleep(.1)
+        title, story = cap_story()
+        target = story
 
-    time.sleep(.05)
-    title, story = cap_story()
-    assert "Create new multisig" in story
-    assert f"Policy: {M} of {N}" in story
-    if addr_fmt != 'p2sh':
-        assert f"/{acct_num}h/" in story
+    else:
+        # own wallet not included in the mix, can only export resulting descriptor
+        desc = load_export(way, label="Descriptor multisig setup",
+                           is_json=False, sig_check=False)
+        desc = desc.strip()
+        do = MultisigDescriptor.parse(desc)
+        assert do.M == M
+        assert do.N == N
+        assert do.addr_fmt == (AF_P2WSH if addr_fmt == 'p2wsh' else AF_P2WSH_P2SH)
+        target = desc
 
-    need_keypress('1')
-    time.sleep(.05)
+    if acct_num is None:
+        # varies
+        # base is the same
+        assert len(re.findall(f"/48h/1h/", target)) == N
+        for i in range(N - int(incl_self is None)):
+            assert len(re.findall(f"/48h/1h/{i}h/{2 if addr_fmt == 'p2wsh' else 1}h", target)) == 1
+        if incl_self is None:
+            assert len(re.findall(f"/48h/1h/654h/{2 if addr_fmt == 'p2wsh' else 1}h", target)) == 1
+    else:
+        # all derivations are the same
+        assert len(re.findall(f"/48h/1h/{acct_num}h/{2 if addr_fmt == 'p2wsh' else 1}h", target)) == N
 
     # abort import, good enough
     press_cancel()
     press_cancel()
-
 
 @pytest.mark.unfinalized
 @pytest.mark.bitcoind

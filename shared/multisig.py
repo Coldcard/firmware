@@ -1593,22 +1593,18 @@ P2WSH:
     # msg += '\n\nMultisig XPUB signature file written:\n\n%s' % sig_nice
     await ux_show_story(msg)
 
-async def validate_xpub_for_ms(obj, af_str, deriv, chain, my_xfp, xpubs):
+async def validate_xpub_for_ms(obj, af_str, chain, my_xfp, xpubs):
     # Read xpub and validate from JSON received via SD card or BBQr
     # - obj => JSON object (mapping)
     # - af_str => address format we expect/need
-    # - derive => default derivation, can be overridden by file.
 
     # value in file is BE32, but we want LE32 internally
     # - KeyError here handled by caller
     xfp = str2xfp(obj['xfp'])
-    n_deriv = cleanup_deriv_path(obj[af_str + '_deriv'])
-
+    deriv = cleanup_deriv_path(obj[af_str + '_deriv'])
     ln = obj.get(af_str)
-    if not deriv:
-        deriv = n_deriv
 
-    return MultisigWallet.check_xpub(xfp, ln, deriv, chain.ctype, my_xfp, xpubs), deriv
+    return MultisigWallet.check_xpub(xfp, ln, deriv, chain.ctype, my_xfp, xpubs)
 
 async def ms_coordinator_qr(af_str, my_xfp, chain):
     # Scan a number of JSON files from BBQr w/ derive, xfp and xpub details.
@@ -1618,7 +1614,6 @@ async def ms_coordinator_qr(af_str, my_xfp, chain):
     num_mine = 0
     num_files = 0
     xpubs = []
-    deriv = None
 
     msg = 'Scan Exported XPUB from Coldcard'
     while True:
@@ -1627,7 +1622,7 @@ async def ms_coordinator_qr(af_str, my_xfp, chain):
             break
 
         try:
-            is_mine, deriv = await validate_xpub_for_ms(vals, af_str, deriv, chain, my_xfp, xpubs)
+            is_mine = await validate_xpub_for_ms(vals, af_str, chain, my_xfp, xpubs)
         except KeyError as e:
             # random JSON will end up here
             msg = "Missing value: %s" % str(e)
@@ -1643,14 +1638,13 @@ async def ms_coordinator_qr(af_str, my_xfp, chain):
 
         msg = "Number of keys scanned: %d" % num_files
 
-    return xpubs, deriv, num_mine, num_files
+    return xpubs, num_mine, num_files
 
 
 async def ms_coordinator_file(af_str, my_xfp, chain, slot_b=None):
     num_mine = 0
     num_files = 0
     xpubs = []
-    deriv = None
     try:
         with CardSlot(slot_b=slot_b) as card:
             for path in card.get_paths():
@@ -1677,8 +1671,8 @@ async def ms_coordinator_file(af_str, my_xfp, chain, slot_b=None):
                         with open(full_fname, 'rt') as fp:
                             vals = ujson.load(fp)
 
-                        is_mine, deriv = await validate_xpub_for_ms(vals, af_str, deriv,
-                                                                    chain, my_xfp, xpubs)
+                        is_mine = await validate_xpub_for_ms(vals, af_str, chain,
+                                                             my_xfp, xpubs)
                         if is_mine:
                             num_mine += 1
 
@@ -1696,7 +1690,7 @@ async def ms_coordinator_file(af_str, my_xfp, chain, slot_b=None):
         await needs_microsd()
         return
 
-    return xpubs, deriv, num_mine, num_files
+    return xpubs, num_mine, num_files
 
 async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False):
     # collect all xpub- exports (must be >= 1) to make "air gapped" wallet
@@ -1711,13 +1705,13 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False)
     my_xfp = settings.get('xfp')
 
     if is_qr:
-        xpubs, deriv, num_mine, num_files = await ms_coordinator_qr(mode, my_xfp, chain)
+        xpubs, num_mine, num_files = await ms_coordinator_qr(mode, my_xfp, chain)
     else:
-        xpubs, deriv, num_mine, num_files = await ms_coordinator_file(mode, my_xfp, chain)
+        xpubs, num_mine, num_files = await ms_coordinator_file(mode, my_xfp, chain)
         if CardSlot.both_inserted():
             # handle dual slot usage: assumes slot A used by first call above
-            bxpubs, _, bnum_mine, bnum_files = await ms_coordinator_file(
-                                                        mode, my_xfp, chain, True)
+            bxpubs, bnum_mine, bnum_files = await ms_coordinator_file(mode, my_xfp,
+                                                                      chain, True)
             xpubs.extend(bxpubs)
             num_mine += bnum_mine
             num_files += bnum_files
@@ -1739,10 +1733,14 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False)
         ch = await ux_show_story("Add current Coldcard with above XFP ?",
                                  title="[%s]" % xfp2str(my_xfp))
         if ch == "y":
+            acct = await ux_enter_bip32_index('Account Number:') or 0
             dis.fullscreen("Wait...")
+            deriv = "m/48h/%dh/%dh/%dh" % (chain.b44_cointype, acct,
+                                           2 if addr_fmt == AF_P2WSH else 1)
             with stash.SensitiveValues() as sv:
                 node = sv.derive_path(deriv)
                 xpubs.append((my_xfp, deriv, chain.serialize_public(node, AF_P2SH)))
+            num_mine += 1
 
     N = len(xpubs)
 
@@ -1756,19 +1754,27 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False)
         await ux_dramatic_pause('Aborted.', 2)
         return  # user cancel
 
+    dis.fullscreen("Wait...")
+
     # create appropriate object
     assert 1 <= M <= N <= MAX_SIGNERS
 
     name = 'CC-%d-of-%d' % (M, N)
     ms = MultisigWallet(name, (M, N), xpubs, chain_type=chain.ctype, addr_fmt=addr_fmt)
 
-    from auth import NewEnrollRequest, UserAuthorizedAction
+    if num_mine:
+        from auth import NewEnrollRequest, UserAuthorizedAction
 
-    UserAuthorizedAction.active_request = NewEnrollRequest(ms)
+        UserAuthorizedAction.active_request = NewEnrollRequest(ms)
 
-    # menu item case: add to stack
-    from ux import the_ux
-    the_ux.push(UserAuthorizedAction.active_request)
+        # menu item case: add to stack
+        from ux import the_ux
+        the_ux.push(UserAuthorizedAction.active_request)
+    else:
+        # we cannot enroll multisig in which we do not participate
+        # thou we can put descriptor on screen or on SD
+        await ms.export_wallet_file(descriptor=True, desc_pretty=False)
+
 
 async def create_ms_step1(*a):
     # Show story, have them pick address format.
@@ -1801,7 +1807,11 @@ Default is P2WSH addresses (segwit) or press (1) for P2SH-P2WSH.''', escape='1')
     else:
         return
 
-    return await ondevice_multisig_create(n, f, is_qr)
+    try:
+        return await ondevice_multisig_create(n, f, is_qr)
+    except Exception as e:
+        await ux_show_story('Failed to create multisig.\n\n%s\n%s' % (e, problem_file_line(e)),
+                            title="ERROR")
 
 
 async def import_multisig_nfc(*a):
