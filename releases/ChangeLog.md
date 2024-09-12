@@ -15,7 +15,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 - New Feature: XOR from Seed Vault (select other parts of the XOR from seeds in the vault).
 - Enhancement: upgrade to latest 
   [libsecp256k1: 0.5.0](https://github.com/bitcoin-core/secp256k1/releases/tag/v0.5.0) 
-- Enhancement: Signature grinding optimizations. Now faster!
+- Enhancement: Signature grinding optimizations. Now about 30% faster signing!
 - Enhancement: Improve side-channel protection: libsecp256k1 context randomization now happens
   before each signing session.
 - Enhancement: Allow JSON files in `NFC File Share`.
