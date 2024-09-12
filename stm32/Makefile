@@ -14,14 +14,14 @@
 .DEFAULT all:
 	$(MAKE) DEBUG_BUILD=1 -f Q1-Makefile $(MAKECMDGOALS)
 
-clean clobber release repro:
+clean clobber repro:
 	@echo You should do either:
 	@echo
 	@echo "   make" -f Q1-Makefile $(MAKECMDGOALS)
 	@echo "-OR-"
 	@echo "   make" -f MK4-Makefile $(MAKECMDGOALS)
 
-rc1 rc2:
+rc1 rc2 release:
 	make -f Q1-Makefile $(MAKECMDGOALS) && make -f MK4-Makefile $(MAKECMDGOALS)
 
 # EOF
