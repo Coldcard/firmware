@@ -216,7 +216,7 @@ class CardSlot:
         if num_sd_slots == 2:
             # Q has luxurious dual slots
             cls.mux = Pin('SD_MUX', Pin.OUT, value=0)
-            cls.sd_detect2 = Pin('SD_DETECT2')
+            cls.sd_detect2 = Pin('SD_DETECT2', Pin.IN, pull=Pin.PULL_UP)
             cls.irq2 = ExtInt(cls.sd_detect2, ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
 
             cls.active_led2 = Pin('SD_ACTIVE2', Pin.OUT)
@@ -226,7 +226,7 @@ class CardSlot:
             cls.mux = None
             cls.active_led = Pin('SD_ACTIVE', Pin.OUT)
 
-        cls.sd_detect = Pin('SD_DETECT')
+        cls.sd_detect = Pin('SD_DETECT', Pin.IN, pull=Pin.PULL_UP)
         cls.irq = ExtInt(cls.sd_detect, ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
 
     @classmethod

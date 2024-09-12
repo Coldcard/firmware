@@ -34,6 +34,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 ## 5.4.0 - 2024-09-12
 
 - Shared enhancements and fixes listed above.
+- Bugfix: Correct intermittent card inserted/not inserted detection error.
 
 
 # Q Specific Changes
