@@ -19,4 +19,4 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 1.3.?Q - 2024-??-??
 
-- tbd
+- Bugfix: Properly re-draw status bar after Restore Master on COLDCARD without master seed.
