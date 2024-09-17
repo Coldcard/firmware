@@ -10,7 +10,7 @@ from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
 from ux import import_export_prompt, ux_enter_bip32_index, show_qr_code, ux_enter_number, OK, X
 from files import CardSlot, CardMissingError, needs_microsd
 from descriptor import Descriptor
-from miniscript import Key, Sortedmulti, Number
+from miniscript import Key, Sortedmulti, Number, Multi
 from desc_utils import multisig_descriptor_template
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS, AF_P2TR
 from menu import MenuSystem, MenuItem, NonDefaultMenuItem
@@ -236,11 +236,14 @@ class MultisigWallet(BaseStorageWallet):
 
     @classmethod
     def is_correct_chain(cls, o, curr_chain):
-        if "ch" not in o[-1]:
+        # for newer versions, last element can be bip67 marker
+        d = o[-1] if isinstance(o[-1], dict) else o[-2]
+
+        if "ch" not in d:
             # mainnet
             ch = "BTC"
         else:
-            ch = o[-1]["ch"]
+            ch = d["ch"]
 
         if ch == curr_chain.ctype:
             return True
@@ -685,7 +688,7 @@ class MultisigWallet(BaseStorageWallet):
         xpubs = []
 
         descriptor = Descriptor.from_string(descriptor)
-        descriptor.legacy_ms_compat()  # raises
+        assert descriptor.is_basic_multisig, "not multisig"  # raises
         addr_fmt = descriptor.addr_fmt
 
         M, N = descriptor.miniscript.m_n()
@@ -701,15 +704,15 @@ class MultisigWallet(BaseStorageWallet):
             if is_mine:
                 has_mine += 1
 
-        return None, addr_fmt, xpubs, has_mine, M, N, # TODO multi/sortedmulti
+        return None, addr_fmt, xpubs, has_mine, M, N, descriptor.is_sortedmulti
 
     def to_descriptor(self):
         keys = [
             Key.from_cc_data(xfp, deriv, xpub)
             for xfp, deriv, xpub in self.xpubs
         ]
-        # TODO does not need to be sorted multi now
-        miniscript = Sortedmulti(Number(self.M), *keys)
+        _cls = Sortedmulti if self.bip67 else Multi
+        miniscript = _cls(Number(self.M), *keys)
         desc = Descriptor(miniscript=miniscript)
         desc.set_from_addr_fmt(self.addr_fmt)
         return desc
@@ -1542,7 +1545,9 @@ async def validate_xpub_for_ms(obj, af_str, chain, my_xfp, xpubs):
     deriv = cleanup_deriv_path(obj[af_str + '_deriv'])
     ln = obj.get(af_str)
 
-    return MultisigWallet.check_xpub(xfp, ln, deriv, chain.ctype, my_xfp, xpubs)
+    is_mine, item = check_xpub(xfp, ln, deriv, chain.ctype, my_xfp, xpubs)
+    xpubs.append(item)
+    return is_mine
 
 async def ms_coordinator_qr(af_str, my_xfp, chain):
     # Scan a number of JSON files from BBQr w/ derive, xfp and xpub details.

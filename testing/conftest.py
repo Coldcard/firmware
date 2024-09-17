@@ -1788,7 +1788,7 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 cap_screen_qr, garbage_collector):
     def doit(way, label, is_json, sig_check=True, addr_fmt=AF_CLASSIC, ret_sig_addr=False,
              tail_check=None, sd_key=None, vdisk_key=None, nfc_key=None, ret_fname=False,
-             fpattern=None, qr_key=None):
+             fpattern=None, qr_key=None, skip_query=False):
         
         s_label = None
         if label == "Address summary":
@@ -1800,54 +1800,55 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
             "nfc": nfc_key or (KEY_NFC if is_q1 else "3"),
             "qr": qr_key or (KEY_QR if is_q1 else "4"),
         }
-        time.sleep(0.2)
-        title, story = cap_story()
-        if way == "sd":
-            if f"({key_map['sd']}) to save {s_label if s_label else label} file to SD Card" in story:
-                need_keypress(key_map['sd'])
+        if not skip_query:
+            time.sleep(0.2)
+            title, story = cap_story()
+            if way == "sd":
+                if f"({key_map['sd']}) to save {s_label if s_label else label} file to SD Card" in story:
+                    need_keypress(key_map['sd'])
 
-        elif way == "nfc":
-            if f"{key_map['nfc'] if is_q1 else '(3)'} to share via NFC" not in story:
-                pytest.skip("NFC disabled")
-            else:
-                need_keypress(key_map['nfc'])
-                time.sleep(0.2)
-                if is_json:
-                    nfc_export = nfc_read_json()
+            elif way == "nfc":
+                if f"{key_map['nfc'] if is_q1 else '(3)'} to share via NFC" not in story:
+                    pytest.skip("NFC disabled")
                 else:
-                    nfc_export = nfc_read_text()
+                    need_keypress(key_map['nfc'])
+                    time.sleep(0.2)
+                    if is_json:
+                        nfc_export = nfc_read_json()
+                    else:
+                        nfc_export = nfc_read_text()
+                    time.sleep(0.3)
+                    press_cancel()  # exit NFC animation
+                    return nfc_export
+            elif way == "qr":
+                if 'file written' in story:
+                    assert not is_q1
+                    # mk4 only does QR if fits in normal QR, becaise it can't do BBQr
+                    pytest.skip('no BBQr on Mk4')
+
+                need_keypress(key_map["qr"])
                 time.sleep(0.3)
-                press_cancel()  # exit NFC animation
-                return nfc_export
-        elif way == "qr":
-            if 'file written' in story:
-                assert not is_q1
-                # mk4 only does QR if fits in normal QR, becaise it can't do BBQr
-                pytest.skip('no BBQr on Mk4')
-
-            need_keypress(key_map["qr"])
-            time.sleep(0.3)
-            try:
-                file_type, data = readback_bbqr()
-                if file_type == "J":
-                    return json.loads(data)
-                elif file_type == "U":
-                    return data.decode('utf-8') if not isinstance(data, str) else data
-                else:
-                    raise NotImplementedError
-            except:
-                raise
-                res = cap_screen_qr().decode('ascii')
                 try:
-                    return json.loads(res)
+                    file_type, data = readback_bbqr()
+                    if file_type == "J":
+                        return json.loads(data)
+                    elif file_type == "U":
+                        return data.decode('utf-8') if not isinstance(data, str) else data
+                    else:
+                        raise NotImplementedError
                 except:
-                    return res
-        else:
-            # virtual disk
-            if f"({key_map['vdisk']}) to save to Virtual Disk" not in story:
-                pytest.skip("Vdisk disabled")
+                    raise
+                    res = cap_screen_qr().decode('ascii')
+                    try:
+                        return json.loads(res)
+                    except:
+                        return res
             else:
-                need_keypress(key_map['vdisk'])
+                # virtual disk
+                if f"({key_map['vdisk']}) to save to Virtual Disk" not in story:
+                    pytest.skip("Vdisk disabled")
+                else:
+                    need_keypress(key_map['vdisk'])
 
         time.sleep(0.2)
         title, story = cap_story()

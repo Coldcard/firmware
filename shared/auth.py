@@ -1574,16 +1574,15 @@ class NewMiniscriptEnrollRequest(UserAuthorizedAction):
         ms = self.wallet
         try:
             ch = await ms.confirm_import()
-
             if ch != 'y':
                 # they don't want to!
                 self.refused = True
                 await ux_dramatic_pause("Refused.", 2)
 
-            if self.bsms_index is not None:
-                # remove signer round 2 from settings after multisig import is approved by user
-                from bsms import BSMSSettings
-                BSMSSettings.signer_delete(self.bsms_index)
+            elif self.bsms_index is not None:
+                    # remove signer round 2 from settings after multisig import is approved by user
+                    from bsms import BSMSSettings
+                    BSMSSettings.signer_delete(self.bsms_index)
 
         except WalletOutOfSpace:
             return await self.failure('No space left')

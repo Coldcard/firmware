@@ -210,11 +210,6 @@ class Descriptor:
             for k in self.keys:
                 k.taproot = taproot
 
-    def legacy_ms_compat(self):
-        if not (self.is_sortedmulti and self.addr_fmt in (AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH)):
-            raise ValueError("Unsupported descriptor. Supported: sh(, sh(wsh(, wsh(. "
-                             "MUST be sortedmulti.")
-
     def validate(self):
         from glob import settings
         if self.miniscript:

@@ -1130,7 +1130,7 @@ def test_failure_signer_round2(encryption_type, goto_home, press_select, pick_me
         failure_msg = "Incompatible BSMS version. Need BSMS 1.0 got BSMS 2.0"
     elif failure == "sortedmulti":
         kws = {failure: False}
-        failure_msg = "Unsupported descriptor. Supported: sh(, sh(wsh(, wsh(. MUST be sortedmulti."
+        failure_msg = "sortedmulti required"
     elif failure == "has_ours":
         kws = {failure: False}
         failure_msg = "My key 0F056943 missing in descriptor."

@@ -1895,7 +1895,7 @@ def test_duplicate_unknow_values_in_psbt(dev, start_sign, end_sign, fake_txn):
 def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
                              bitcoind, bitcoind_d_dev_watch, settings_set, finalize_v2_v0_convert):
     def doit(addr_fmt, sighash, num_inputs=2, num_outputs=2, consolidation=False, sh_checks=False,
-             psbt_v2=False, tx_check=True):
+             psbt_v2=False):
 
         from decimal import Decimal, ROUND_DOWN
 
@@ -1913,6 +1913,8 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
             settings_set("sighshchk", int(not sh_checks))
 
         not_all_ALL = any(sh != "ALL" for sh in sighash)
+
+        stranger = bitcoind.create_wallet(f"{os.urandom(10).hex()}")
 
         bitcoind_d_dev_watch.keypoolrefill(num_inputs + num_outputs)
         input_val = bitcoind.supply_wallet.getbalance() / num_inputs
@@ -1932,7 +1934,7 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
         unspent = bitcoind_d_dev_watch.listunspent()
         output_val = bitcoind_d_dev_watch.getbalance() / num_outputs
         # consolidation or not?
-        dest_wal = bitcoind_d_dev_watch if consolidation else bitcoind.supply_wallet
+        dest_wal = bitcoind_d_dev_watch if consolidation else stranger  # using stranger here as supply+wallet is legacy and has no tr addresses
         destinations = [
             {dest_wal.getnewaddress("", addr_fmt): Decimal(output_val).quantize(Decimal('.0000001'), rounding=ROUND_DOWN)}
             for _ in range(num_outputs)
@@ -2025,11 +2027,13 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
         assert resp["complete"] is True
         tx_hex = resp["hex"]
 
-        if tx_check:
-            # sign and get finalized tx ready for broadcast out
-            start_sign(psbt_sh_bytes, finalize=True)
-            cc_tx_hex = end_sign(accept=True, finalize=True)
-            assert tx_hex == cc_tx_hex.hex()
+        # sign again - this time get finalized tx ready for broadcast out
+        start_sign(psbt_sh_bytes, finalize=True)
+        cc_tx_hex = end_sign(accept=True, finalize=True).hex()
+        if addr_fmt != "bech32m":
+            # schnorr signatures are not deterministic
+            # any subsequent sign will produce different witness
+            assert tx_hex == cc_tx_hex
 
         if psbt_v2:
             # check txn_modifiable properly set
@@ -2055,9 +2059,9 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
                 assert mod & 4 == 0
 
         # for PSBTv2 here we check if we correctly finalize
-        res = bitcoind.supply_wallet.testmempoolaccept([tx_hex])
+        res = bitcoind.supply_wallet.testmempoolaccept([cc_tx_hex])
         assert res[0]["allowed"]
-        txn_id = bitcoind.supply_wallet.sendrawtransaction(tx_hex)
+        txn_id = bitcoind.supply_wallet.sendrawtransaction(cc_tx_hex)
         assert txn_id
 
     return doit

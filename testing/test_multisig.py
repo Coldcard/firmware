@@ -256,7 +256,7 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, press_select,
     def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None,
              keys=None, do_import=True, derivs=None, descriptor=False,
              int_ext_desc=False, dev_key=False, way=None, bip67=True,
-             force_unsort_ms=True):
+             force_unsort_ms=True, chain="XTN"):
         # param: bip67 if false, only usable together with descriptor=True
         if not bip67:
             assert descriptor, "needs descriptor=True"
@@ -265,7 +265,8 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, press_select,
             settings_set("unsort_ms", 1)
 
         keys = keys or make_multisig(M, N, unique=unique, dev_key=dev_key,
-                                     deriv=common or (derivs[0] if derivs else None))
+                                     deriv=common or (derivs[0] if derivs else None),
+                                     chain=chain)
         name = name or f'test-{M}-{N}'
 
         if not do_import:
@@ -1051,7 +1052,7 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import,
         menu = cap_menu()
         assert f'{M}/{N}: {name}' in menu
         # depending if NFC enabled or not, and if Q (has QR) or whether EDGE
-        assert (len(menu) - num_wallets) in [6, 7, 8]
+        assert (len(menu) - num_wallets) in [6, 7, 8, 9]
 
     title, story = offer_ms_import(make_named('xxx-orig'))
     assert 'Create new multisig wallet' in story
