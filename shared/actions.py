@@ -4,12 +4,12 @@
 #
 # Every function here is called directly by a menu item. They should all be async.
 #
-import ckcc, pyb, version, uasyncio, sys, uos
+import ckcc, pyb, version, uasyncio, sys, uos, chains
 from uhashlib import sha256
 from uasyncio import sleep_ms
 from ubinascii import hexlify as b2a_hex
 from utils import imported, problem_file_line, get_filesize, encode_seed_qr
-from utils import xfp2str, B2A, addr_fmt_label, txid_from_fname
+from utils import xfp2str, B2A, txid_from_fname
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
 from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt, OK, X
 from export import make_json_wallet, make_summary_file, make_descriptor_wallet_export
@@ -874,12 +874,10 @@ async def start_login_sequence():
 
     # Version warning before HSM is offered
     if version.is_edge and not ckcc.is_simulator():
-        await ux_show_story(
-            "This firmware version is qualified for use with wallets (such as
-            AnchorWatch, Liana, etc) that keep redundant key schemas for recovery
-            independant of COLDCARD. We support the very latest Bitcoin innovations
-            in the Edge Version."
-          title="Edge Version")
+        await ux_show_story("This firmware version is qualified for use with wallets (such as"
+                            "AnchorWatch, Liana, etc) that keep redundant key schemas for recovery"
+                            "independent of COLDCARD. We support the very latest Bitcoin innovations"
+                            "in the Edge Version.", title="Edge Version")
 
     dis.draw_status(xfp=settings.get('xfp'))
 
@@ -1115,9 +1113,9 @@ async def electrum_skeleton(*a):
         return
 
     rv = [
-        MenuItem(addr_fmt_label(af), f=electrum_skeleton_step2,
+        MenuItem(chains.addr_fmt_label(af), f=electrum_skeleton_step2,
                  arg=(af, account_num))
-        for af in [AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH]
+        for af in chains.SINGLESIG_AF
     ]
     the_ux.push(MenuSystem(rv))
 
@@ -1131,7 +1129,7 @@ def ss_descriptor_export_story(addition="", background="", acct=True):
 async def ss_descriptor_skeleton(_0, _1, item):
     # Export of descriptor data (wallet)
     int_ext, addition, f_pattern = None, "", "descriptor.txt"
-    allowed_af = [AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2TR]
+    allowed_af = chains.SINGLESIG_AF
     if item.arg:
         int_ext, allowed_af, ll, f_pattern = item.arg
         addition = " for " + ll
@@ -1158,7 +1156,7 @@ async def ss_descriptor_skeleton(_0, _1, item):
                                             fname_pattern=f_pattern)
     else:
         rv = [
-            MenuItem(addr_fmt_label(af), f=descriptor_skeleton_step2,
+            MenuItem(chains.addr_fmt_label(af), f=descriptor_skeleton_step2,
                      arg=(af, account_num, int_ext, f_pattern))
             for af in allowed_af
         ]
@@ -1899,10 +1897,11 @@ async def sign_message_on_sd(*a):
             # min 1 line max 3 lines
             return 1 <= len(lines) <= 3
 
-    fn = await file_picker(suffix='txt', min_size=2, max_size=500, taster=is_signable,
-                           none_msg=('Must be one line of text, optionally '
+    fn = await file_picker(suffix=['txt', "json"], min_size=2, max_size=500, taster=is_signable,
+                           none_msg=('Must be txt file with one msg line, optionally '
                                      'followed by a subkey derivation path on a second line '
-                                     'and/or address format on third line.'))
+                                     'and/or address format on third line. JSON msg signing '
+                                     'format also supported'))
 
     if not fn:
         return

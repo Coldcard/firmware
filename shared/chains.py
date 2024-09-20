@@ -13,6 +13,9 @@ from serializations import hash160, ser_compact_size, disassemble, ser_string
 from ucollections import namedtuple
 from opcodes import OP_RETURN, OP_1, OP_16
 
+
+SINGLESIG_AF = (AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH)
+
 # See SLIP 132 <https://github.com/satoshilabs/slips/blob/master/slip-0132.md>
 # for background on these version bytes. Not to be confused with SLIP-32 which involves Bech32.
 Slip132Version = namedtuple('Slip132Version', ('pub', 'priv', 'hint'))
@@ -442,6 +445,47 @@ CommonDerivations = [
             AF_P2TR),  # generates bc1p bech32m addresses
 ]
 
+STD_DERIVATIONS = {
+    "p2pkh": CommonDerivations[0][1],
+    "p2sh-p2wpkh": CommonDerivations[1][1],
+    "p2wpkh-p2sh": CommonDerivations[1][1],
+    "p2wpkh": CommonDerivations[2][1],
+}
+
+def parse_addr_fmt_str(addr_fmt):
+    # accepts strings and also integers if already parsed
+    try:
+        if isinstance(addr_fmt, int):
+            if addr_fmt in [AF_P2WPKH_P2SH, AF_P2WPKH, AF_CLASSIC]:
+                return addr_fmt
+            else:
+                raise ValueError
+
+        addr_fmt = addr_fmt.lower()
+        if addr_fmt in ("p2sh-p2wpkh", "p2wpkh-p2sh"):
+            return AF_P2WPKH_P2SH
+        elif addr_fmt == "p2pkh":
+            return AF_CLASSIC
+        elif addr_fmt == "p2wpkh":
+            return AF_P2WPKH
+        else:
+            raise ValueError
+    except ValueError:
+        raise ValueError("Invalid address format: '%s'\n\n"
+                         "Choose from p2pkh, p2wpkh, p2sh-p2wpkh." % addr_fmt)
+
+
+def af_to_bip44_purpose(addr_fmt):
+    # single signature only
+    return {AF_CLASSIC: 44,
+            AF_P2WPKH_P2SH: 49,
+            AF_P2WPKH: 84}[addr_fmt]
+
+
+def addr_fmt_label(addr_fmt):
+    return {AF_CLASSIC: "Classic P2PKH",
+            AF_P2WPKH_P2SH: "P2SH-Segwit",
+            AF_P2WPKH: "Segwit P2WPKH"}[addr_fmt]
 
 def verify_recover_pubkey(sig, digest):
     # verifies a message digest against a signature and recovers

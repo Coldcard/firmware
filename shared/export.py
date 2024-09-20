@@ -442,14 +442,7 @@ def generate_electrum_wallet(addr_type, account_num):
     xfp = settings.get('xfp')
 
     # Must get the derivation path, and the SLIP32 version bytes right!
-    if addr_type == AF_CLASSIC:
-        mode = 44
-    elif addr_type == AF_P2WPKH:
-        mode = 84
-    elif addr_type == AF_P2WPKH_P2SH:
-        mode = 49
-    else:
-        raise ValueError(addr_type)
+    mode = chains.af_to_bip44_purpose(addr_type)
 
     OWNERSHIP.note_wallet_used(addr_type, account_num)
 
@@ -545,16 +538,7 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
     xfp = settings.get('xfp')
     dis.progress_bar_show(0.1)
     if mode is None:
-        if addr_type == AF_CLASSIC:
-            mode = 44
-        elif addr_type == AF_P2WPKH:
-            mode = 84
-        elif addr_type == AF_P2WPKH_P2SH:
-            mode = 49
-        elif addr_type == AF_P2TR:
-            mode = 86
-        else:
-            raise ValueError(addr_type)
+        mode = chains.af_to_bip44_purpose(addr_type)
 
     OWNERSHIP.note_wallet_used(addr_type, account_num)
 

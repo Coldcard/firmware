@@ -373,4 +373,26 @@ def test_psbt_static(file, goto_home, cap_story, scan_a_qr, press_select,
     assert res["complete"] is True
     assert rb.hex() == res["hex"]
 
+
+def test_verify_signed_msg(goto_home, need_keypress, scan_a_qr, cap_story):
+    goto_home()
+    need_keypress(KEY_QR)
+
+    data = """\n\n\n  \t  \n-----BEGIN BITCOIN SIGNED MESSAGE-----
+5b9e372262952ed399dcdd4f5f08458a6d2811f120cddcb4267099f68f60207c  addresses.csv
+-----BEGIN BITCOIN SIGNATURE-----
+tb1qupyd58ndsh7lut0et0vtrq432jvu9jtdyws9n9
+KDOloGMDU3fv+Y3NRSe17SoO4uSKo9IUU2+baJ/pqaHZBuvmW6j5nnv/N4M5BCVawiUig/qzExZpFsA7ZKzlUmU=
+-----END BITCOIN SIGNATURE-----\n\n\n\n"""
+
+    actual_vers, parts = split_qrs(data, 'U', max_version=20)
+
+    for p in parts:
+        scan_a_qr(p)
+        time.sleep(4.0 / len(parts))       # just so we can watch
+
+    title, story = cap_story()
+    assert "Good signature by address" in story
+
+
 # EOF

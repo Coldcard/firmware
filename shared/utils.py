@@ -214,16 +214,17 @@ def is_printable(s):
             return False
     return True
 
-def to_ascii_printable(s, strip=False):
+def to_ascii_printable(s, strip=False, only_printable=True):
     try:
         s = str(s, 'ascii')
         if strip:
             s = s.strip()
         assert is_ascii(s)
-        assert is_printable(s)
+        if only_printable:
+            assert is_printable(s)
         return s
     except:
-        raise AssertionError('must be ascii printable')
+        raise AssertionError("must be ascii" + (" printable" if only_printable else ""))
 
 
 def problem_file_line(exc):
@@ -270,7 +271,7 @@ def cleanup_deriv_path(bin_path, allow_star=False):
 
     # regex for valid chars, m at start, maybe /*h or /* at end sometimes
     mat = ure.match(r"(m|m/|)[0-9/h]*" + ('' if not allow_star else r"(\*h|\*|)"), s)
-    assert mat.group(0) == s, "invalid characters"
+    assert mat.group(0) == s, "invalid characters in path"
 
     parts = s.split('/')
 
@@ -797,29 +798,5 @@ def truncate_address(addr):
 
 def encode_seed_qr(words):
     return ''.join('%04d' % bip39.get_word_index(w) for w in words)
-
-def parse_msg_sign_request(data):
-    lines = data.split("\n")
-    assert len(lines) >= 1, "min 1 line"
-    assert len(lines) <= 3, "max 3 lines"
-
-    subpath = ""
-    addr_fmt = "p2pkh"
-    if len(lines) == 1:
-        text = lines[0]
-    elif len(lines) == 2:
-        text, subpath = lines
-    else:
-        text, subpath, addr_fmt = lines
-        if not addr_fmt:
-            addr_fmt = "p2pkh"
-
-    if not subpath:
-        subpath = STD_DERIVATIONS[addr_fmt]
-        subpath = subpath.format(
-            chain=chains.current_chain().b44_cointype
-        )
-
-    return text, subpath, addr_fmt
 
 # EOF

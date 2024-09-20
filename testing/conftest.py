@@ -2299,6 +2299,7 @@ from test_drv_entro import derive_bip85_secret, activate_bip85_ephemeral
 from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto_eph_seed_menu
 from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed, confirm_tmp_seed
 from test_ephemeral import verify_ephemeral_secret_ui, get_identity_story, get_seed_value_ux, seed_vault_enable
+from test_msg import verify_msg_sign_story, sign_msg_from_text, msg_sign_export, sign_msg_from_address
 from test_multisig import import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn
 from test_miniscript import offer_minsc_import
 from test_multisig import make_ms_address, clear_ms, make_myself_wallet, import_multisig

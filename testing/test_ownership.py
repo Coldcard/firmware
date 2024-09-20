@@ -100,8 +100,7 @@ def test_positive(addr_fmt, offset, subaccount, chain, from_empty, change_idx,
             menu_item = expect_name = 'Classic P2PKH'
             path = "m/44h/{ct}h/{acc}h"
         elif addr_fmt == AF_P2WPKH_P2SH:
-            expect_name = 'P2WPKH-in-P2SH'
-            menu_item = 'P2SH-Segwit'
+            menu_item = expect_name = 'P2SH-Segwit'
             path = "m/49h/{ct}h/{acc}h"
             clear_ms()
         elif addr_fmt == AF_P2WPKH:
@@ -169,25 +168,39 @@ def test_positive(addr_fmt, offset, subaccount, chain, from_empty, change_idx,
 @pytest.mark.parametrize('valid', [ True, False] )
 @pytest.mark.parametrize('testnet', [ True, False] )
 @pytest.mark.parametrize('method', [ 'qr', 'nfc'] )
-def test_ux(valid, testnet, method, 
+@pytest.mark.parametrize('multisig', [ True, False] )
+def test_ux(valid, testnet, method,
     sim_exec, wipe_cache, make_myself_wallet, use_testnet, goto_home, pick_menu_item,
     press_cancel, press_select, settings_set, is_q1, nfc_write, need_keypress,
-    cap_screen, cap_story, load_shared_mod, scan_a_qr
+    cap_screen, cap_story, load_shared_mod, scan_a_qr, skip_if_useless_way,
+    sign_msg_from_address, multisig, import_ms_wallet, clear_ms,
 ):
-
+    skip_if_useless_way(method)
     addr_fmt = AF_CLASSIC
 
     if valid:
-        mk = BIP32Node.from_wallet_key(simulator_fixed_tprv if testnet else simulator_fixed_xprv)
-        path = "m/44h/{ct}h/{acc}h/0/3".format(acc=0, ct=(1 if testnet else 0))
-        sk = mk.subkey_for_path(path)
-        addr = sk.address(chain="XTN" if testnet else "BTC")
+        if multisig:
+            from test_multisig import make_ms_address, HARD
+            M, N = 2, 3
+
+            expect_name = f'own_ux_test'
+            clear_ms()
+            keys = import_ms_wallet(M, N, AF_P2WSH, name=expect_name, accept=1)
+
+            # iffy: no cosigner index in this wallet, so indicated that w/ path_mapper
+            addr, scriptPubKey, script, details = make_ms_address(
+                M, keys, is_change=0, idx=50, addr_fmt=AF_P2WSH,
+                testnet=int(testnet), path_mapper=lambda cosigner: [HARD(45), 0, 50]
+            )
+        else:
+            mk = BIP32Node.from_wallet_key(simulator_fixed_tprv if testnet else simulator_fixed_xprv)
+            path = "m/44h/{ct}h/{acc}h/0/3".format(acc=0, ct=(1 if testnet else 0))
+            sk = mk.subkey_for_path(path)
+            addr = sk.address(chain="XTN" if testnet else "BTC")
     else:
-        addr = fake_address(addr_fmt, testnet) 
+        addr = fake_address(addr_fmt, testnet)
 
     if method == 'qr':
-        if not is_q1:
-            raise pytest.skip('no QR on Mk4')
         goto_home()
         pick_menu_item('Scan Any QR Code')
         scan_a_qr(addr)
@@ -229,7 +242,17 @@ def test_ux(valid, testnet, method,
         assert title == 'Verified Address'
         assert 'Found in wallet' in story
         assert 'Derivation path' in story
-        assert 'P2PKH' in story
+
+        if multisig:
+            assert expect_name in story
+            assert "Press (0) to sign message with this key" not in story
+        else:
+            assert 'P2PKH' in story
+            assert "Press (0) to sign message with this key" in story
+            need_keypress('0')
+            msg = "coinkite CC the most solid HWW"
+            sign_msg_from_address(msg, addr, path, addr_fmt, method, testnet)
+
     else:
         assert title == 'Unknown Address'
         assert 'Searched ' in story
@@ -302,7 +325,7 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
     assert addr in story
     assert title == 'Verified Address'
     assert 'Found in wallet' in story
-    # assert 'Derivation path' in story
+    assert 'Derivation path' in story
     if af == "P2SH-Segwit":
         assert "P2WPKH-in-P2SH" in story
     elif af == "Segwit P2WPKH":

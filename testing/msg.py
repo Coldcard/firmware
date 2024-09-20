@@ -22,11 +22,12 @@ RFC_SIGNATURE_TEMPLATE = '''\
 
 
 def parse_signed_message(msg):
-    msplit = msg.strip().split("\n")
-    assert msplit[0] == "-----BEGIN BITCOIN SIGNED MESSAGE-----"
-    assert msplit[2] == "-----BEGIN BITCOIN SIGNATURE-----"
-    assert msplit[5] == "-----END BITCOIN SIGNATURE-----"
-    return msplit[1], msplit[3], msplit[4]
+    msplit = msg.strip().rsplit("\n", 4)
+    assert msplit[0].startswith("-----BEGIN BITCOIN SIGNED MESSAGE-----\n")
+    msg = msplit[0].replace("-----BEGIN BITCOIN SIGNED MESSAGE-----\n", "")
+    assert msplit[1] == "-----BEGIN BITCOIN SIGNATURE-----"
+    assert msplit[4] == "-----END BITCOIN SIGNATURE-----"
+    return msg, msplit[2], msplit[3]
 
 
 def sig_hdr_base(addr_fmt):
