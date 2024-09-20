@@ -13,12 +13,12 @@ from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH, AF_P
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
-from ux import show_qr_code, OK, X
+from ux import show_qr_code, OK, X, ux_input_text, ux_enter_bip32_index
 from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
-from utils import B2A, parse_addr_fmt_str, to_ascii_printable, parse_msg_sign_request
+from utils import B2A, to_ascii_printable
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
-from files import CardSlot
+from files import CardSlot, CardMissingError, needs_microsd
 from exceptions import HSMDenied
 from version import MAX_TXN_LEN
 from charcodes import KEY_QR, KEY_NFC, KEY_ENTER, KEY_CANCEL, KEY_LEFT, KEY_RIGHT
@@ -282,14 +282,13 @@ def write_sig_file(content_list, derive=None, addr_fmt=AF_CLASSIC, pk=None, sig_
             dis.progress_bar_show(i / 6)
     return sig_nice
 
-def validate_text_for_signing(text):
+def validate_text_for_signing(text, only_printable=True):
     # Check for some UX/UI traps in the message itself.
     # - messages must be short and ascii only. Our charset is limited
     # - too many spaces, leading/trailing can be an issue
+    # MSG_MAX_SPACES = 4      # impt. compared to -=- positioning
 
-    MSG_MAX_SPACES = 4      # impt. compared to -=- positioning
-
-    result = to_ascii_printable(text)
+    result = to_ascii_printable(text, only_printable=only_printable)
 
     length = len(result)
     assert length >= 2, "msg too short (min. 2)"
@@ -302,17 +301,55 @@ def validate_text_for_signing(text):
     # looks ok
     return result
 
+def parse_msg_sign_request(data):
+    subpath = ""
+    addr_fmt = "p2pkh"
+    is_json = False
+    try:
+        data_dict = ujson.loads(data.strip())
+        text = data_dict.get("msg", None)
+        if text is None:
+            raise AssertionError("MSG required")
+        subpath = data_dict.get("subpath", subpath)
+        addr_fmt = data_dict.get("addr_fmt", addr_fmt)
+        is_json = True
+    except ValueError:
+        lines = data.split("\n")
+        assert len(lines) >= 1, "min 1 line"
+        assert len(lines) <= 3, "max 3 lines"
+
+        if len(lines) == 1:
+            text = lines[0]
+        elif len(lines) == 2:
+            text, subpath = lines
+        else:
+            text, subpath, addr_fmt = lines
+            if not addr_fmt:
+                addr_fmt = "p2pkh"
+
+    if not subpath:
+        subpath = chains.STD_DERIVATIONS[addr_fmt]
+        subpath = subpath.format(
+            coin_type=chains.current_chain().b44_cointype,
+            account=0, change=0, idx=0
+        )
+
+    return text, subpath, addr_fmt, is_json
+
+
 class ApproveMessageSign(UserAuthorizedAction):
     def __init__(self, text, subpath, addr_fmt, approved_cb=None,
-                 msg_sign_request=None):
+                 msg_sign_request=None, only_printable=True):
         super().__init__()
-
+        is_json = False
         if msg_sign_request:
-            text, subpath, addr_fmt = parse_msg_sign_request(msg_sign_request)
+            text, subpath, addr_fmt, is_json = parse_msg_sign_request(msg_sign_request)
 
-        self.text = validate_text_for_signing(text)
+        self.text = validate_text_for_signing(
+            text, only_printable=not is_json and only_printable
+        )
         self.subpath = cleanup_deriv_path(subpath)
-        self.addr_fmt = parse_addr_fmt_str(addr_fmt)
+        self.addr_fmt = chains.parse_addr_fmt_str(addr_fmt)
         self.approved_cb = approved_cb
 
         from glob import dis
@@ -363,10 +400,158 @@ def sign_msg(text, subpath, addr_fmt):
     abort_and_goto(UserAuthorizedAction.active_request)
 
 
+async def msg_sign_ux_get_subpath(addr_fmt):
+    purpose = chains.af_to_bip44_purpose(addr_fmt)
+    chain_n = chains.current_chain().b44_cointype
+    acct = await ux_enter_bip32_index('Account Number:') or 0
+    ch = await ux_show_story(title="Change?",
+                             msg="Press (0) to use internal/change address,"
+                                 " %s to use external/receive address." % OK, escape="0")
+    change = 1 if ch == '0' else 0
+    idx = await ux_enter_bip32_index('Index Number:') or 0
+    return "m/%dh/%dh/%dh/%d/%d" % (purpose, chain_n, acct, change, idx)
+
+
+async def ux_sign_msg(txt, approved_cb=None, kill_menu=True):
+    from menu import MenuSystem, MenuItem
+    from ux import the_ux
+
+    async def done(_1, _2, item):
+        from auth import approve_msg_sign, msg_sign_ux_get_subpath
+
+        text, af = item.arg
+        subpath = await msg_sign_ux_get_subpath(af)
+
+        await approve_msg_sign(text, subpath, af, approved_cb=approved_cb,
+                               kill_menu=kill_menu, only_printable=False)
+
+    # pick address format
+    rv = [
+        MenuItem(chains.addr_fmt_label(af), f=done, arg=(txt, af))
+        for af in chains.SINGLESIG_AF
+    ]
+    the_ux.push(MenuSystem(rv))
+
+
+async def approve_msg_sign(text, subpath, addr_fmt, approved_cb=None,
+                           msg_sign_request=None, kill_menu=False,
+                           only_printable=True):
+    UserAuthorizedAction.cleanup()
+    UserAuthorizedAction.check_busy(ApproveMessageSign)
+    try:
+        UserAuthorizedAction.active_request = ApproveMessageSign(
+            text, subpath, addr_fmt,
+            approved_cb=approved_cb,
+            msg_sign_request=msg_sign_request,
+            only_printable=only_printable,
+        )
+        if kill_menu:
+            abort_and_goto(UserAuthorizedAction.active_request)
+        else:
+            # do not kill the menu stack! just append
+            from ux import the_ux
+            the_ux.push(UserAuthorizedAction.active_request)
+    except (AssertionError, ValueError) as exc:
+        await ux_show_story("Problem: %s\n\nMessage to be signed must be a single line of ASCII text." % exc)
+        return
+
+
+async def msg_signing_done(signature, address, text):
+    from ux import import_export_prompt
+
+    ch = await import_export_prompt("Signed Msg", is_import=False,
+                                    no_qr=not version.has_qwerty)
+    if ch == KEY_CANCEL:
+        return
+
+    if isinstance(ch, dict):
+        await sd_sign_msg_done(signature, address, text, "msg_sign", **ch)
+    elif version.has_qr and ch == KEY_QR:
+        from ux_q1 import qr_msg_sign_done
+        await qr_msg_sign_done(signature, address, text)
+    elif ch in KEY_NFC+"3":
+        from glob import NFC
+        if NFC:
+            await NFC.msg_sign_done(signature, address, text)
+
+
+async def sign_with_own_address(subpath, addr_fmt):
+    # used for cases where we already have the key picked, but need the message:
+    #     * address_explorer custom path
+    #     * positive ownership test
+    from glob import dis
+
+    to_sign = await ux_input_text("", scan_ok=True, prompt="Enter MSG")  # max len is 100 only here
+    if not to_sign: return
+
+    await approve_msg_sign(to_sign, subpath, addr_fmt, approved_cb=msg_signing_done, kill_menu=True)
+
+
+async def sd_sign_msg_done(signature, address, text, base=None, orig_path=None,
+                           slot_b=None, force_vdisk=False):
+    from glob import dis
+    dis.fullscreen('Generating...')
+
+    out_fn = None
+    sig = b2a_base64(signature).decode('ascii').strip()
+
+    while 1:
+        # try to put back into same spot
+        # add -signed to end.
+        target_fname = base + '-signed.txt'
+        lst = [orig_path]
+        if orig_path:
+            lst.append(None)
+
+        for path in lst:
+            try:
+                with CardSlot(readonly=True, slot_b=slot_b, force_vdisk=force_vdisk) as card:
+                    out_full, out_fn = card.pick_filename(target_fname, path)
+                    out_path = path
+                    if out_full: break
+            except CardMissingError:
+                prob = 'Missing card.\n\n'
+                out_fn = None
+
+        if not out_fn:
+            # need them to insert a card
+            prob = ''
+        else:
+            # attempt write-out
+            try:
+                dis.fullscreen("Saving...")
+                with CardSlot(slot_b=slot_b, force_vdisk=force_vdisk) as card:
+                    with card.open(out_full, 'wt') as fd:
+                        # save in full RFC style
+                        # gen length is 6
+                        gen = rfc_signature_template_gen(addr=address, msg=text, sig=sig)
+                        for i, part in enumerate(gen):
+                            fd.write(part)
+                            dis.progress_bar_show(i / 6)
+
+                # success and done!
+                break
+
+            except OSError as exc:
+                prob = 'Failed to write!\n\n%s\n\n' % exc
+                sys.print_exception(exc)
+                # fall through to try again
+
+        # prompt them to input another card?
+        ch = await ux_show_story(prob + "Please insert an SDCard to receive signed message, "
+                                        "and press %s." % OK, title="Need Card")
+        if ch == 'x':
+            await ux_aborted()
+            return
+
+    # done.
+    msg = "Created new file:\n\n%s" % out_fn
+    await ux_show_story(msg, title='File Signed')
+
+
 async def sign_txt_file(filename):
     # sign a one-line text file found on a MicroSD card
     # - not yet clear how to do address types other than 'classic'
-    from files import CardSlot, CardMissingError
     from ux import the_ux
 
     async def done(signature, address, text):
@@ -376,59 +561,8 @@ async def sign_txt_file(filename):
         orig_path, basename = filename.rsplit('/', 1)
         orig_path += '/'
         base = basename.rsplit('.', 1)[0]
-        out_fn = None
 
-        sig = b2a_base64(signature).decode('ascii').strip()
-
-        while 1:
-            # try to put back into same spot
-            # add -signed to end.
-            target_fname = base+'-signed.txt'
-
-            for path in [orig_path, None]:
-                try:
-                    with CardSlot(readonly=True) as card:
-                        out_full, out_fn = card.pick_filename(target_fname, path)
-                        out_path = path
-                        if out_full: break
-                except CardMissingError:
-                    prob = 'Missing card.\n\n'
-                    out_fn = None
-
-            if not out_fn: 
-                # need them to insert a card
-                prob = ''
-            else:
-                # attempt write-out
-                try:
-                    dis.fullscreen("Saving...")
-                    with CardSlot() as card:
-                        with card.open(out_full, 'wt') as fd:
-                            # save in full RFC style
-                            # gen length is 6
-                            gen = rfc_signature_template_gen(addr=address, msg=text, sig=sig)
-                            for i, part in enumerate(gen):
-                                fd.write(part)
-                                dis.progress_bar_show(i / 6)
-
-                    # success and done!
-                    break
-
-                except OSError as exc:
-                    prob = 'Failed to write!\n\n%s\n\n' % exc
-                    sys.print_exception(exc)
-                    # fall through to try again
-
-            # prompt them to input another card?
-            ch = await ux_show_story(prob+"Please insert an SDCard to receive signed message, "
-                                        "and press %s." % OK, title="Need Card")
-            if ch == 'x':
-                await ux_aborted()
-                return
-
-        # done.
-        msg = "Created new file:\n\n%s" % out_fn
-        await ux_show_story(msg, title='File Signed')
+        await sd_sign_msg_done(signature, address, text, base, orig_path)
 
     UserAuthorizedAction.cleanup()
     UserAuthorizedAction.check_busy()
@@ -438,16 +572,8 @@ async def sign_txt_file(filename):
         with card.open(filename, 'rt') as fd:
             res = fd.read()
 
-    try:
-        UserAuthorizedAction.active_request = ApproveMessageSign(
-            None, None, None, approved_cb=done,
-            msg_sign_request=res
-        )
-        # do not kill the menu stack!
-        the_ux.push(UserAuthorizedAction.active_request)
-    except AssertionError as exc:
-        await ux_show_story("Problem: %s\n\nMessage to be signed must be a single line of ASCII text." % exc)
-        return
+    await approve_msg_sign(None, None, None, approved_cb=done,
+                           msg_sign_request=res)
 
 def verify_signature(msg, addr, sig_str):
     warnings = ""
@@ -564,7 +690,6 @@ async def verify_armored_signed_msg(contents, digest_check=True):
     await ux_show_story('\n\n'.join(m for m in [err_msg, story, warn_msg] if m), title=title)
 
 async def verify_txt_sig_file(filename):
-    from files import CardSlot, CardMissingError, needs_microsd
     # copy message into memory
     try:
         with CardSlot() as card:
@@ -1074,7 +1199,6 @@ def psbt_encoding_taster(taste, psbt_len):
 async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
     # sign a PSBT file found on a MicroSD card
     # - or from VirtualDisk (mk4)
-    from files import CardSlot, CardMissingError
     from glob import dis
     from ux import the_ux
 

@@ -7,16 +7,8 @@ from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
 from uhashlib import sha256
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
-
-STD_DERIVATIONS = {
-    "p2pkh": "m/44h/{chain}h/0h/0/0",
-    "p2sh-p2wpkh": "m/49h/{chain}h/0h/0/0",
-    "p2wpkh-p2sh": "m/49h/{chain}h/0h/0/0",
-    "p2wpkh": "m/84h/{chain}h/0h/0/0",
-}
 
 try:
     from font_iosevka import FontIosevka
@@ -212,16 +204,17 @@ def is_printable(s):
             return False
     return True
 
-def to_ascii_printable(s, strip=False):
+def to_ascii_printable(s, strip=False, only_printable=True):
     try:
         s = str(s, 'ascii')
         if strip:
             s = s.strip()
         assert is_ascii(s)
-        assert is_printable(s)
+        if only_printable:
+            assert is_printable(s)
         return s
     except:
-        raise AssertionError('must be ascii printable')
+        raise AssertionError("must be ascii" + (" printable" if only_printable else ""))
 
 
 def problem_file_line(exc):
@@ -271,7 +264,7 @@ def cleanup_deriv_path(bin_path, allow_star=False):
 
     # regex for valid chars, m at start, maybe /*h or /* at end sometimes
     mat = ure.match(r"(m|m/|)[0-9/h]*" + ('' if not allow_star else r"(\*h|\*|)"), s)
-    assert mat.group(0) == s, "invalid characters"
+    assert mat.group(0) == s, "invalid characters in path"
 
     parts = s.split('/')
 
@@ -512,24 +505,6 @@ def word_wrap(ln, w):
 
         yield left
 
-def parse_addr_fmt_str(addr_fmt):
-    # accepts strings and also integers if already parsed
-    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
-
-    if addr_fmt in [AF_P2WPKH_P2SH, AF_P2WPKH, AF_CLASSIC]:
-        return addr_fmt
-
-    addr_fmt = addr_fmt.lower()
-    if addr_fmt in ("p2sh-p2wpkh", "p2wpkh-p2sh"):
-        return AF_P2WPKH_P2SH
-    elif addr_fmt == "p2pkh":
-        return AF_CLASSIC
-    elif addr_fmt == "p2wpkh":
-        return AF_P2WPKH
-    else:
-        raise ValueError("Invalid address format: '%s'\n\n"
-                           "Choose from p2pkh, p2wpkh, p2sh-p2wpkh." % addr_fmt)
-
 def parse_extended_key(ln, private=False):
     # read an xpub/ypub/etc and return BIP-32 node and what chain it's on.
     # - can handle any garbage line
@@ -564,14 +539,6 @@ def chunk_writer(fd, body):
         fd.write(body[i:i + chunk])
         dis.progress_bar_show(idx / 10)
     dis.progress_bar_show(1)
-
-
-def addr_fmt_label(addr_fmt):
-    return {
-        AF_CLASSIC: "Classic P2PKH",
-        AF_P2WPKH_P2SH: "P2SH-Segwit",
-        AF_P2WPKH: "Segwit P2WPKH"
-    }[addr_fmt]
 
 
 def pad_raw_secret(raw_sec_str):
@@ -707,29 +674,5 @@ def decode_bip21_text(got):
 
 def encode_seed_qr(words):
     return ''.join('%04d' % bip39.get_word_index(w) for w in words)
-
-def parse_msg_sign_request(data):
-    lines = data.split("\n")
-    assert len(lines) >= 1, "min 1 line"
-    assert len(lines) <= 3, "max 3 lines"
-
-    subpath = ""
-    addr_fmt = "p2pkh"
-    if len(lines) == 1:
-        text = lines[0]
-    elif len(lines) == 2:
-        text, subpath = lines
-    else:
-        text, subpath, addr_fmt = lines
-        if not addr_fmt:
-            addr_fmt = "p2pkh"
-
-    if not subpath:
-        subpath = STD_DERIVATIONS[addr_fmt]
-        subpath = subpath.format(
-            chain=chains.current_chain().b44_cointype
-        )
-
-    return text, subpath, addr_fmt
 
 # EOF

@@ -4,7 +4,7 @@
 #
 #  included in Q builds only, not Mk4 --> manifest_q1.py
 #
-import ngu, bip39, ure, stash
+import ngu, bip39, ure, stash, json
 from ubinascii import unhexlify as a2b_hex
 from exceptions import QRDecodeExplained
 from bbqr import TYPE_LABELS
@@ -131,7 +131,11 @@ def decode_qr_result(got, expect_secret=False, expect_text=False, expect_bbqr=Fa
             pass
 
         elif ty == 'J':
-            return 'json', (got,)
+            what = "json"
+            if "msg" in got:
+                what = "smsg"
+
+            return what, (got,)
         else:
             msg = TYPE_LABELS.get(ty, 'Unknown FileType')
             raise QRDecodeExplained("Sorry, %s not useful." % msg)
@@ -159,6 +163,12 @@ def decode_qr_result(got, expect_secret=False, expect_text=False, expect_bbqr=Fa
     if expect_secret:
         raise QRDecodeExplained("Not a secret?")
 
+    try:
+        dct = json.loads(got)
+        if "msg" in dct:
+            return "smsg", (got,)
+    except: pass
+
     # try to recognize various bitcoin-related text strings...
     return decode_short_text(got)
 
@@ -178,6 +188,9 @@ def decode_short_text(got):
 
     # might be a PSBT?
     if len(got) > 100:
+        if got.lstrip().startswith("-----BEGIN BITCOIN SIGNED MESSAGE-----"):
+            return "vmsg", (got,)
+
         from auth import psbt_encoding_taster
         try: 
             decoder, _, psbt_len = psbt_encoding_taster(got[0:10].encode(), len(got))

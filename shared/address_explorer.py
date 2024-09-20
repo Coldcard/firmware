@@ -8,14 +8,14 @@ import chains, stash, version
 from ux import ux_show_story, the_ux, ux_enter_bip32_index
 from ux import export_prompt_builder, import_export_prompt_decode
 from menu import MenuSystem, MenuItem
-from public_constants import AFC_BECH32, AFC_BECH32M, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+from public_constants import AFC_BECH32, AFC_BECH32M, AF_P2WPKH
 from multisig import MultisigWallet
 from uasyncio import sleep_ms
 from uhashlib import sha256
 from ubinascii import hexlify as b2a_hex
 from glob import settings
 from auth import write_sig_file
-from utils import addr_fmt_label, censor_address
+from utils import censor_address
 from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME, KEY_LEFT, KEY_RIGHT
 from charcodes import KEY_CANCEL
 
@@ -112,9 +112,8 @@ class PickAddrFmtMenu(MenuSystem):
     def __init__(self, path, parent):
         self.parent = parent
         items = [
-            MenuItem(addr_fmt_label(AF_CLASSIC), f=self.done, arg=(path, AF_CLASSIC)),
-            MenuItem(addr_fmt_label(AF_P2WPKH), f=self.done, arg=(path, AF_P2WPKH)),
-            MenuItem(addr_fmt_label(AF_P2WPKH_P2SH), f=self.done, arg=(path, AF_P2WPKH_P2SH)),
+            MenuItem(chains.addr_fmt_label(af), f=self.done, arg=(path, af))
+            for af in chains.SINGLESIG_AF
         ]
         super().__init__(items)
         if path.startswith("m/84h"):
@@ -198,7 +197,7 @@ class AddressListMenu(MenuSystem):
         indent = ' ↳ ' if version.has_qwerty else '↳'
         for i, (address, path, addr_fmt) in enumerate(choices):
             axi = address[-4:]  # last 4 address characters
-            items.append(MenuItem(addr_fmt_label(addr_fmt), f=self.pick_single,
+            items.append(MenuItem(chains.addr_fmt_label(addr_fmt), f=self.pick_single,
                                   arg=(path, addr_fmt, axi)))
             items.append(MenuItem(indent+address, f=self.pick_single,
                                   arg=(path, addr_fmt, axi)))
@@ -338,6 +337,9 @@ Press (3) if you really understand and accept these risks.
                     msg += '\n\n'
             if n:
                 msg += "Press RIGHT to see next group, LEFT to go back. X to quit."
+            else:
+                escape += "0"
+                msg += " Press (0) to sign message with this key."
 
             return msg, addrs, escape
 
@@ -383,8 +385,15 @@ Press (3) if you really understand and accept these risks.
 
                 continue
 
-            elif choice == '0' and allow_change:
-                change = 1
+            elif choice == '0':
+                if allow_change:
+                    change = 1
+                else:
+                    # only custom path sets allow_change to False
+                    # msg sign
+                    from auth import sign_with_own_address
+                    await sign_with_own_address(path, addr_fmt)
+
             elif n is None:
                 # makes no sense to do any of below, showing just single address
                 continue

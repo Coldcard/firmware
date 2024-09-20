@@ -41,6 +41,7 @@ addr_fmt_names = {
     AF_P2WSH: 'p2wsh',
     AF_P2WPKH_P2SH: 'p2wpkh-p2sh',
     AF_P2WSH_P2SH: 'p2wsh-p2sh',
+    AF_P2TR: "p2tr",
 }
     
 
