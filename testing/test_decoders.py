@@ -179,4 +179,25 @@ def test_wif(data, try_decode):
     assert compressed == tcompressed
     assert testnet == ttestnet
 
+@pytest.mark.parametrize('data', [
+    '{"msg": "coinkite"}',
+    '{"msg": "coink\n\n\tite", "subpath": "m/99h"}',
+    '{"msg": "coinkite", "subpath": "m/96420h", "addr_fmt": "p2wpkh"}',
+])
+def test_json_msg_sign(data, try_decode):
+    ft, vals = try_decode(data)
+    assert ft == "smsg"
+    assert vals[0] == data
+
+
+@pytest.mark.parametrize('data', [
+    "-----BEGIN BITCOIN SIGNED MESSAGE-----\ncoinkite\n-----BEGIN BITCOIN SIGNATURE-----\nmtHSVByP9EYZmB26jASDdPVm19gvpecb5R\nH3c6imctVKRRYC1zOBAitdb/PuoQ9j0xaR6qKXH5dQECZH5OuvvE7aoL6j/WOaR/CFq/+SvIZPAzIhvQYBizBUc=\n-----END BITCOIN SIGNATURE-----",
+    "\n\n-----BEGIN BITCOIN SIGNED MESSAGE-----\ncoinkite\n-----BEGIN BITCOIN SIGNATURE-----\nmtHSVByP9EYZmB26jASDdPVm19gvpecb5R\nH3c6imctVKRRYC1zOBAitdb/PuoQ9j0xaR6qKXH5dQECZH5OuvvE7aoL6j/WOaR/CFq/+SvIZPAzIhvQYBizBUc=\n-----END BITCOIN SIGNATURE-----",
+    "\n\n\t-----BEGIN BITCOIN SIGNED MESSAGE-----\ncoinkite\n-----BEGIN BITCOIN SIGNATURE-----\nmtHSVByP9EYZmB26jASDdPVm19gvpecb5R\nH3c6imctVKRRYC1zOBAitdb/PuoQ9j0xaR6qKXH5dQECZH5OuvvE7aoL6j/WOaR/CFq/+SvIZPAzIhvQYBizBUc=\n-----END BITCOIN SIGNATURE-----",
+])
+def test_json_msg_verify(data, try_decode):
+    ft, vals = try_decode(data)
+    assert ft == "vmsg"
+    assert vals[0] == data
+
 # EOF

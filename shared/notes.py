@@ -298,6 +298,15 @@ class NoteContentBase:
         # single export
         await start_export([self])
 
+    async def sign_txt_msg(self, a, b, item):
+        from auth import ux_sign_msg, msg_signing_done
+        txt = item.arg
+        await ux_sign_msg(txt, approved_cb=msg_signing_done, kill_menu=False)
+
+    def sign_misc_menu_item(self):
+        return MenuItem("Sign Note Text", f=self.sign_txt_msg, arg=self.misc)
+
+
 class PasswordContent(NoteContentBase):
     # "Passwords" have a few more fields and are more structured
     flds = ['title', 'user', 'password', 'site', 'misc' ]
@@ -317,6 +326,7 @@ class PasswordContent(NoteContentBase):
             MenuItem('Edit Metadata', f=self.edit),
             MenuItem('Delete', f=self.delete),
             MenuItem('Change Password', f=self.change_pw),
+            self.sign_misc_menu_item(),
             ShortcutItem(KEY_QR, f=self.view_qr),
             ShortcutItem(KEY_NFC, f=self.share_nfc, arg='password'),
         ]
@@ -446,6 +456,7 @@ class NoteContent(NoteContentBase):
             MenuItem('Edit', f=self.edit),
             MenuItem('Delete', f=self.delete),
             MenuItem('Export', f=self.export),
+            self.sign_misc_menu_item(),
             ShortcutItem(KEY_QR, f=self.view_qr),
             ShortcutItem(KEY_NFC, f=self.share_nfc, arg='misc'),
         ]

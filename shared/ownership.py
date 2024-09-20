@@ -247,7 +247,7 @@ class OwnershipCache:
                 if af == addr_fmt and acct_num:
                     w = MasterSingleSigWallet(addr_fmt, account_idx=acct_num)
                     possibles.append(w)
-        except ValueError: pass  # if not single sig address format
+        except (KeyError, ValueError): pass  # if not single sig address format
 
         if not possibles:
             # can only happen w/ scripts; for single-signer we have things to check
@@ -307,26 +307,43 @@ class OwnershipCache:
         # Provide a simple UX. Called functions do fullscreen, progress bar stuff.
         from ux import ux_show_story, show_qr_code
         from charcodes import KEY_QR
+        from multisig import MultisigWallet
         from public_constants import AFC_BECH32, AFC_BECH32M
 
         try:
             wallet, subpath = OWNERSHIP.search(addr)
+            is_ms = isinstance(wallet, MultisigWallet)
+            sp = wallet.render_path(*subpath)
 
             msg = addr
             msg += '\n\nFound in wallet:\n  ' + wallet.name
-            msg += '\nDerivation path:\n  ' + wallet.render_path(*subpath)
-            if version.has_qwerty:
-                esc = KEY_QR
+            msg += '\nDerivation path:\n  ' + sp
+            if is_ms:
+                esc = ""
             else:
-                msg += '\n\nPress (1) for QR'
-                esc = '1'
+                esc = "0"
+                msg += "\n\nPress (0) to sign message with this key."
+
+            if version.has_qwerty:
+                esc += KEY_QR
+            else:
+                msg += ' (1) for address QR'
+                esc += '1'
 
             while 1:
                 ch = await ux_show_story(msg, title="Verified Address",
-                                                        escape=esc, hint_icons=KEY_QR)
-                if ch != esc: break
-                await show_qr_code(addr, is_alnum=(wallet.addr_fmt & (AFC_BECH32 | AFC_BECH32M)),
-                                                msg=addr)
+                                         escape=esc, hint_icons=KEY_QR)
+                if ch in ("1"+KEY_QR):
+                    await show_qr_code(
+                        addr,
+                        is_alnum=(wallet.addr_fmt & (AFC_BECH32 | AFC_BECH32M)),
+                        msg=addr
+                    )
+                elif not is_ms and (ch == "0"):  # only singlesig
+                    from auth import sign_with_own_address
+                    await sign_with_own_address(sp, wallet.addr_fmt)
+                else:
+                    break
 
         except UnknownAddressExplained as exc:
             await ux_show_story(addr + '\n\n' + str(exc), title="Unknown Address")

@@ -5,7 +5,7 @@
 import pytest, time, json, random, os, pdb
 from helpers import prandom
 from charcodes import *
-
+from constants import AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2WPKH
 from test_bbqr import readback_bbqr
 from bbqr import split_qrs
 
@@ -43,10 +43,10 @@ def goto_notes(cap_story, cap_menu, press_select, goto_home, pick_menu_item):
 @pytest.fixture
 def need_some_notes(settings_get, settings_set):
     # create a note or use what's there, provide as obj
-    def doit():
+    def doit(title='Title Here', body='Body'):
         notes = settings_get('notes', [])
         if not notes:
-            settings_set('notes', [dict(misc='Body', title='Title Here')])
+            settings_set('notes', [dict(misc=body, title=title)])
         return notes
     return doit
 
@@ -384,7 +384,7 @@ def test_huge_notes(size, encoding, goto_notes, enter_text, cap_menu, need_keypr
     
     time.sleep(.5)      # decompression time in some cases
     m = cap_menu()
-    assert m[-1] == 'Export'
+    assert m[-2] == 'Export'
 
     notes = settings_get('notes')
     assert len(notes) == 1
@@ -623,5 +623,42 @@ def test_tmp_notes_separation(goto_notes, pick_menu_item, generate_ephemeral_wor
     assert 'note-tmp' not in mm
     assert 'pwd-tmp' not in mm
     assert 'note-tmp2' not in mm
+
+
+@pytest.mark.parametrize("msg", ["COLDCARD rocks!", "cc\nCC"])
+@pytest.mark.parametrize("addr_fmt", [AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH])
+@pytest.mark.parametrize("acct", [None, 0, 9999])
+@pytest.mark.parametrize("way", ["sd", "qr", "nfc", "vdisk"])
+def test_sign_note_body(msg, addr_fmt, acct, need_some_notes,
+                        pick_menu_item, sign_msg_from_text, way,
+                        goto_notes, settings_set):
+    settings_set("notes", [])
+    title = "aaa"
+    need_some_notes(title, msg)
+    goto_notes()
+    pick_menu_item(f"1: {title}")
+    pick_menu_item("Sign Note Text")
+    sign_msg_from_text(msg, addr_fmt, acct, False, 0, way)
+
+
+@pytest.mark.parametrize("chain", ["BTC", "XTN"])
+@pytest.mark.parametrize("change", [True, False])
+@pytest.mark.parametrize("idx", [None, 0, 9999])
+def test_sign_password_free_form(chain, change, idx, need_some_passwords, settings_set,
+                                 goto_notes, pick_menu_item, sign_msg_from_text):
+    settings_set('notes', [])  # clear
+    title = "A"
+    msg = 'More Notes AAAA'
+    settings_set('notes', [
+        {'misc': msg,
+         'password': 'fds65fd5f1sd51s',
+         'site': 'https://a.com',
+         'title': title,
+         'user': 'AAA'}
+    ])
+    goto_notes()
+    pick_menu_item(f"1: {title}")
+    pick_menu_item("Sign Note Text")
+    sign_msg_from_text(msg, AF_P2WPKH, None, change, idx, "qr", chain)
 
 # EOF
