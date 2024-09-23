@@ -18,8 +18,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 5.4.1 - 2024-??-??
 
-- tbd
-
+- Enhancement: Export single sig descriptor with simple QR
 
 
 # Q Specific Changes
