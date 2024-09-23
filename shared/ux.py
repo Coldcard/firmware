@@ -456,7 +456,7 @@ def import_export_prompt_decode(ch):
 
 async def import_export_prompt(what_it_is, is_import=False, no_qr=False,
                                no_nfc=False, title=None, intro='', footnotes='',
-                               slot_b_only=False):
+                               slot_b_only=False, force_prompt=False):
     # Show story allowing user to select source for importing/exporting
     # - return either str(mode) OR dict(file_args)
     # - KEY_NFC or KEY_QR for those sources
@@ -466,7 +466,8 @@ async def import_export_prompt(what_it_is, is_import=False, no_qr=False,
     if is_import:
         prompt, escape = _import_prompt_builder(what_it_is, no_qr, no_nfc, slot_b_only)
     else:
-        prompt, escape = export_prompt_builder(what_it_is, no_qr, no_nfc)
+        prompt, escape = export_prompt_builder(what_it_is, no_qr, no_nfc,
+                                               force_prompt=force_prompt)
 
     # TODO: detect if we're only asking A or B, when just one card is inserted
     # - assume that's what they want to do
