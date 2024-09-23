@@ -609,8 +609,7 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
 def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home,
             settings_set, need_keypress, expect_acctnum_captured, OK,
             pick_menu_item, way, cap_story, cap_menu, int_ext, settings_get,
-            virtdisk_path, load_export, press_select, skip_if_useless_way):
-    skip_if_useless_way(way)
+            virtdisk_path, load_export, press_select):
 
     settings_set('chain', chain)
     chain_num = 1 if chain in ["XTN", "XRT"] else 0
