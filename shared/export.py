@@ -134,14 +134,15 @@ be needed for different systems.
             yield fp.getvalue()
             del fp
 
-async def write_text_file(fname_pattern, body, title, derive, addr_fmt):
+async def write_text_file(fname_pattern, body, title, derive, addr_fmt,
+                          force_prompt=False):
     # Export data as a text file.
     from glob import dis, NFC
     from files import CardSlot, CardMissingError, needs_microsd
     from ux import import_export_prompt
 
     choice = await import_export_prompt("%s file" % title, is_import=False,
-                                        no_qr=(not version.has_qwerty))
+                                        force_prompt=force_prompt) # QR offered also on Mk4
     if choice == KEY_CANCEL:
         return
     elif choice == KEY_QR:
@@ -590,7 +591,8 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
         )
 
     dis.progress_bar_show(1)
-    await write_text_file(fname_pattern, body, "Descriptor", derive + "/0/0", addr_type)
+    await write_text_file(fname_pattern, body, "Descriptor", derive + "/0/0",
+                          addr_type, force_prompt=True)
 
 # EOF
 
