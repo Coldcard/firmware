@@ -513,6 +513,9 @@ psram_memset4(void *dest_addr, uint32_t value, uint32_t byte_len)
         *dest = value;
 
         asm("nop; nop; nop;");           // tested value, do not reduce
+        asm("nop; nop; nop;");           // more margin
+        asm("nop; nop; nop;");           // more margin
+        asm("nop; nop; nop;");           // more margin
     }
 }
 
