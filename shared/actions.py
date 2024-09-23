@@ -1018,6 +1018,7 @@ async def export_xpub(label, _2, item):
 
     chain = chains.current_chain()
     acct = 0
+    slip132 = False  # non-slip is default from Oct 2024
 
     # decode menu code => standard derivation
     mode = item.arg
@@ -1033,24 +1034,44 @@ async def export_xpub(label, _2, item):
     else:
         remap = {44:0, 49:1, 84:2,86:3}[mode]
         _, path, addr_fmt = chains.CommonDerivations[remap]
-        path = path.format(account='{acct}', coin_type=chain.b44_cointype, change=0, idx=0)[:-4]
-
-    # always show SLIP-132 style, because defacto
-    show_slip132 = (addr_fmt != AF_CLASSIC)
+        path = path.format(account=acct, coin_type=chain.b44_cointype,
+                           change=0, idx=0)[:-4]
 
     while 1:
-        msg = '''Show QR of the XPUB for path:\n\n%s\n\n''' % path
+        msg = 'Show QR of the XPUB for path:\n\n%s\n\n' % path
+        esc = ""
+        if path != "m":
+            esc += "1"
+            msg += "Press (1) to select account other than %s. " % (acct or "zero")
+            if addr_fmt != AF_CLASSIC:
+                esc += "2"
+                slp_af = addr_fmt
+                if slip132:
+                    slp_af = AF_CLASSIC
 
-        if '{acct}' in path:
-            msg += "Press (1) to select account other than zero. "
+                slp = chain.slip132[slp_af].hint + "pub"
+                msg += " Press (2) to show %s %s." % (
+                    slp, "(BIP-32)" if slip132 else "(SLIP-132)"
+                )
         if glob.NFC:
-            msg += "Press %s to share via NFC. " % (KEY_NFC if version.has_qwerty else "(3)")
+            if version.has_qwerty:
+                esc += KEY_NFC
+                key_hint = KEY_NFC
+            else:
+                esc += "3"
+                key_hint = "(3)"
+            msg += " Press %s to share via NFC. " % key_hint
 
-        ch = await ux_show_story(msg, escape='13')
+        ch = await ux_show_story(msg, escape=esc)
         if ch == 'x': return
+        if ch == "2":
+            slip132 = not slip132
+            continue
         if ch == '1':
             acct = await ux_enter_bip32_index('Account Number:') or 0
-            path = path.format(acct=acct)
+            pth_split = path.split("/")
+            pth_split[-1] = ("%dh" % acct)
+            path = "/".join(pth_split)
             continue
 
         # assume zero account if not picked
@@ -1062,7 +1083,7 @@ async def export_xpub(label, _2, item):
         # render xpub/ypub/zpub
         with stash.SensitiveValues() as sv:
             node = sv.derive_path(path) if path != 'm' else sv.node
-            xpub = chain.serialize_public(node, addr_fmt)
+            xpub = chain.serialize_public(node, addr_fmt if slip132 else AF_CLASSIC)
 
         from ownership import OWNERSHIP
         OWNERSHIP.note_wallet_used(addr_fmt, acct)
@@ -1071,8 +1092,6 @@ async def export_xpub(label, _2, item):
             await glob.NFC.share_text(xpub)
         else:
             await show_qr_code(xpub, False)
-
-        break
 
 
 def electrum_export_story(background=False):
