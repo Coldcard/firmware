@@ -7,12 +7,14 @@ This lists the new changes that have not yet been published in a normal release.
 
 - Enhancement: Hide Secure Notes & Passwords in Deltamode. Wipe seed if notes menu accessed. 
 - Enhancement: Hide Seed Vault in Deltamode. Wipe seed if Seed Vault menu accessed. 
+- Enhancement: Ability to switch between BIP-32 XPUB and SLIP-132 garbage in `Export XPUB`
 - Bugfix: Sometimes see a struck screen after _Verifying..._ in boot up sequence.
   On Q, result is blank screen, on Mk4, result is three-dots screen.
 - Bugfix: Do not allow to enable/disable Seed Vault feature when in temporary seed mode
 - Bugfix: Bless Firmware causes hanging progress bar
 - Bugfix: Prevent yikes in ownership search
 - Change: Do not allow to purge settings of current active tmp seed when deleting it from Seed Vault
+
 
 
 # Mk4 Specific Changes

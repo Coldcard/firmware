@@ -519,15 +519,15 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, mi
 
 
 @pytest.mark.qrcode
+@pytest.mark.parametrize('chain', ["BTC", "XTN"])
 @pytest.mark.parametrize('acct_num', [ None, 0, 99, 8989])
-@pytest.mark.parametrize('use_nfc', [False, True])
-def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home,
+def test_export_xpub(chain, acct_num, dev, cap_menu, pick_menu_item, goto_home,
                      cap_story, need_keypress, enter_number, cap_screen_qr,
-                     use_mainnet, nfc_read_text, is_q1, press_select, press_cancel,
+                     settings_set, nfc_read_text, is_q1, press_select, press_cancel,
                      press_nfc, expect_acctnum_captured):
     # XPUB's via QR
-    use_mainnet()
-
+    settings_set("chain", chain)
+    chain_num = 0 if chain == "BTC" else 1
     goto_home()
     pick_menu_item('Advanced/Tools')
     pick_menu_item('Export Wallet')
@@ -537,11 +537,11 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
     for m in top_items:
         is_xfp = False
         if '-84' in m:
-            expect = "m/84h/0h/{acct}h"
+            expect = f"m/84h/{chain_num}h/{{acct}}h"
         elif '-44' in m:
-            expect = "m/44h/0h/{acct}h"
+            expect = f"m/44h/{chain_num}h/{{acct}}h"
         elif '49' in m:
-            expect = "m/49h/0h/{acct}h"
+            expect = f"m/49h/{chain_num}h/{{acct}}h"
         elif 'Master' in m:
             expect = "m"
         elif 'XFP' in m:
@@ -551,17 +551,21 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
         time.sleep(0.3)
         if is_xfp:
             got = cap_screen_qr().decode('ascii')
-            if use_nfc:
-                press_nfc()
-            assert got == xfp2str(simulator_fixed_xfp).upper()
-            press_cancel()
+            time.sleep(.1)
+            press_nfc()
+            time.sleep(.2)
+            nfc_got = nfc_read_text()
+            time.sleep(.2)
+            assert nfc_got == got == xfp2str(simulator_fixed_xfp).upper()
+            press_cancel() # cancel animation
+            press_cancel() # cancel QR
             continue
 
         time.sleep(0.3)
         title, story = cap_story()
-        assert expect in story
+        assert expect.format(acct=0) in story
 
-        if 'acct' in expect:
+        if expect != "m":
             assert "Press (1) to select account" in story
             if acct_num is not None:
                 need_keypress('1')
@@ -571,24 +575,52 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
                 expect = expect.format(acct=acct_num)
                 title, story = cap_story()
                 assert expect in story
-                assert "Press (1) to select account" not in story
+                assert "Press (1) to select account" in story
 
-        expect = expect.format(acct=0)
-        if not use_nfc:
-            press_select()
-            got_pub = cap_screen_qr().decode('ascii')
-        else:
-            if f'Press {KEY_NFC if is_q1 else "(3)"}' not in story:
-                raise pytest.skip("NFC disabled")
+            expect = expect.format(acct=0)
+
+        press_select()
+        got_pub = cap_screen_qr().decode('ascii')
+
+        if f'Press {KEY_NFC if is_q1 else "(3)"}' in story:
             assert 'NFC' in story
             press_nfc()
             time.sleep(0.2)
-            got_pub = nfc_read_text()
+            got_nfc_pub = nfc_read_text()
             time.sleep(0.1)
-            #press_select()
+            press_cancel() # cancel animation
+            press_cancel() # cancel QR
+            assert got_nfc_pub == got_pub
 
-        if got_pub[0] not in 'xt':
-            got_pub,*_ = slip132undo(got_pub)
+        time.sleep(.1)
+        _, story = cap_story()
+        assert got_pub[0] in 'xt'
+        if "Press (2)" in story:
+            if chain == "BTC":
+                assert f"{'z' if expect[:5] == 'm/84h' else 'y'}pub (SLIP-132)" in story
+            else:
+                assert f"{'v' if expect[:5] == 'm/84h' else 'u'}pub (SLIP-132)" in story
+            need_keypress("2")
+            time.sleep(.1)
+            _, story = cap_story()
+            assert ("%spub (BIP-32)" % ("x" if chain == "BTC" else "t")) in story
+            assert "Press (2)" in story
+
+            press_select()
+            got_slip_pub = cap_screen_qr().decode('ascii')
+            got_unslip, *_ = slip132undo(got_slip_pub)
+            assert got_unslip == got_pub
+
+            if f'Press {KEY_NFC if is_q1 else "(3)"}' in story:
+                assert 'NFC' in story
+                press_nfc()
+                time.sleep(0.2)
+                got_nfc_slip_pub = nfc_read_text()
+                time.sleep(0.1)
+                press_cancel() # cancel animation
+                assert got_slip_pub == got_nfc_slip_pub
+
+            press_cancel()  # cancel QR
 
         expect_acctnum_captured(acct_num)
 
@@ -598,7 +630,6 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
         if expect != 'm':
             wallet = wallet.subkey_for_path(expect[2:].replace('h', "'"))
         assert got.sec() == wallet.sec()
-
         press_cancel()
 
 @pytest.mark.parametrize("chain", ["BTC", "XTN", "XRT"])
