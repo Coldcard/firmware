@@ -24,7 +24,7 @@ async def doit():
             m = []
 
         # recursing into functions that do stuff doesn't work well, skip
-        avoid = {'Clone Coldcard', 'Debug Functions', 'Migrate COLDCARD'}
+        avoid = {'Clone Coldcard', 'Debug Functions', 'Migrate Coldcard'}
         if any(label.startswith(a) for a in avoid):
             return
 
@@ -65,7 +65,7 @@ async def doit():
                     # trick pins are not available in EmptyWallet
                     continue
 
-                pred = getattr(mi, 'predicate', None)
+                pred = getattr(mi, '_predicate', None)
                 if pred in (True, False):
                     if here in ("NFC Tools", "Import via NFC", "NFC File Share"):
                         here += ' [IF NFC ENABLED]'
@@ -98,7 +98,7 @@ async def doit():
                 elif pred == hsm_available:
                     here += ' [IF HSM AND SECRET]'
                 elif pred:
-                    if here == "Secure Notes & Passwords":
+                    if here in ("Secure Notes & Passwords", "Push Transaction"):
                         here += ' [IF ENBALED]'
                     else:
                         here += ' [MAYBE]'
@@ -140,6 +140,11 @@ async def doit():
     settings.put("axskip", 1)
     settings.put("b39skip", 1)
     settings.put("sd2fa", ["a"])
+    settings.put("ptxurl", 'https://coldcard.com/pushtx#')
+
+    # saved passphrase on MicroSD
+    with open("MicroSD/.tmp.tmp", "wb") as f:
+        f.write(b'\xf0\xc9\xff\x00\xf37c\xdd\x8bz\xfa\x0b\xd9\x16;g8\xf8S0\xa5\x129\x99\xd4\xa2=\n\x01\xf9q$w\xb2sb,\xa7\xf9')
 
     with open('menudump.txt', 'wt') as fd:
         for nm, m in [
