@@ -271,7 +271,7 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
                 assert 'Velocity limit requires' in story
                 assert 'starting value' in story
                 press_select()
-                
+
             pick_menu_item(vel_mi)
             pick_menu_item(vel)  # actually a full menu item
             if vel == "Unlimited":
