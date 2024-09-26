@@ -291,7 +291,7 @@ DangerZoneMenu = [
                           "WARNING: Seed Vault is encrypted (AES-256-CTR) by your seed,"
                           " but not held directly inside secure elements. Backups are required"
                           " after any change to vault! Recommended for experiments or temporary use."),
-                   predicate=has_se_secrets),
+                   predicate=has_real_secret),
     MenuItem('Perform Selftest', f=start_selftest),             # little harmful
     MenuItem("Set High-Water", f=set_highwater),
     MenuItem('Wipe HSM Policy', f=wipe_hsm_policy, predicate=hsm_policy_available),

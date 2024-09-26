@@ -1473,4 +1473,21 @@ def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_m
     m = cap_menu()
     assert m[0] == "Ready To Sign"
 
+
+def test_seed_vault_enable_on_tmp(generate_ephemeral_words, reset_seed_words,
+                                  goto_eph_seed_menu, ephemeral_seed_disabled,
+                                  verify_ephemeral_secret_ui, goto_home, cap_menu,
+                                  restore_main_seed, pick_menu_item, settings_set):
+    settings_set("seedvault", None)  # disable seed vault
+    reset_seed_words()
+    goto_eph_seed_menu()
+    ephemeral_seed_disabled()
+    e_seed_words = generate_ephemeral_words(num_words=12, dice=False,
+                                            from_main=True, seed_vault=False)
+    verify_ephemeral_secret_ui(mnemonic=e_seed_words, seed_vault=False)
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    m = cap_menu()
+    assert "Seed Vault" not in m
+
 # EOF
