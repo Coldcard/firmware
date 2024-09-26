@@ -4,12 +4,14 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk4 and Q
 
+- Bugfix: Sometimes see a struck screen after _Verifying..._ in boot up sequence.
+  On Q, result is blank screen, on Mk4, result is three-dots screen.
+- Bugfix: Do not allow to enable/disable Seed Vault feature when in temporary seed mode
+
+
 # Mk4 Specific Changes
 
-- tbd
-
-
-## 5.4.? - 2024-??-??
+## 5.4.1 - 2024-??-??
 
 - tbd
 
@@ -17,6 +19,6 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Q Specific Changes
 
-## 1.3.?Q - 2024-??-??
+## 1.3.1Q - 2024-??-??
 
 - Bugfix: Properly re-draw status bar after Restore Master on COLDCARD without master seed.
