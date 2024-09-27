@@ -256,7 +256,7 @@ def confirm_tmp_seed(need_keypress, cap_story, press_select):
 
 @pytest.fixture
 def seed_vault_delete(pick_menu_item, need_keypress, cap_menu, cap_story,
-                      goto_home, press_select):
+                      goto_home, press_select, settings_get):
     def doit(xfp, wipe=True):
         # delete it from records
         goto_home()
@@ -276,12 +276,17 @@ def seed_vault_delete(pick_menu_item, need_keypress, cap_menu, cap_story,
         title, story = cap_story()
         assert "Remove" in story
         assert xfp in title
-        assert "press (1)" in story
+
         if wipe:
             press_select()
         else:
-            # preserve settings - remove just from seed vaul
-            need_keypress("1")
+            if xfp2str(settings_get("xfp")) == xfp:
+                assert "press (1)" not in story
+                press_select()  # will NOT wipe settings
+            else:
+                assert "press (1)" in story
+                # preserve settings - remove just from seed vaul
+                need_keypress("1")
 
         time.sleep(.1)
         goto_home()
@@ -1117,16 +1122,21 @@ def test_seed_vault_modifications(settings_set, reset_seed_words, pick_menu_item
     m = cap_menu()
     assert m[0] == "AAA"
     pick_menu_item("Delete")
+    time.sleep(.1)
+    title, story = cap_story()
+    # current active does not offer to purge the slot, only to remove from Seed Vault
+    assert "delete its settings?" not in story
     press_select()
     time.sleep(.1)
+    goto_home()
     m = cap_menu()
-    # after we delete from seed vault together with its settings
-    # we're back to master secret
-    assert m[0] == "Ready To Sign"
+    # still in tmp mode
+    assert m[0] != "Ready To Sign"
     pick_menu_item("Seed Vault")
     time.sleep(.1)
     m = cap_menu()
-    assert len(m) == 2
+    # Ignore Add Current and Restore Master (only SV items are numbered with colon)
+    assert len([mi for mi in m if ":" in mi]) == 2
 
     press_down()
     press_select()
@@ -1146,7 +1156,10 @@ def test_seed_vault_modifications(settings_set, reset_seed_words, pick_menu_item
     assert "Delete" in m
 
     pick_menu_item("Delete")
-    need_keypress("1")  # only delete from seed vault
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "delete its settings?" not in story
+    press_select()  # only delete from seed vault, no other option provided
     time.sleep(.1)
     m = cap_menu()
     assert len(m) == 3
@@ -1163,6 +1176,25 @@ def test_seed_vault_modifications(settings_set, reset_seed_words, pick_menu_item
     m = cap_menu()
     # still in ephemeral
     assert title == m[0]
+
+    restore_main_seed()
+    pick_menu_item("Seed Vault")
+    press_select()
+    time.sleep(.1)
+    m = cap_menu()
+    assert "Rename" in m
+    assert "Use This Seed" in m
+    assert "Delete" in m
+
+    pick_menu_item("Delete")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "delete its settings?" in story
+    need_keypress("1")  # only remove from seed vault, keep settings
+    time.sleep(.1)
+    m = cap_menu()
+    assert all([":" not in mi for mi in m])
+    assert "(none saved yet)" in m
 
 
 def test_xfp_collision(reset_seed_words, settings_set, import_ephemeral_xprv,
