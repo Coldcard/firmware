@@ -137,7 +137,7 @@ SettingsMenu = [
     MenuItem('Login Settings', menu=LoginPrefsMenu),
     MenuItem('Hardware On/Off', menu=HWTogglesMenu),
     NonDefaultMenuItem('Multisig Wallets', 'multisig',
-                       menu=make_multisig_menu, predicate=has_secrets),
+                       menu=make_multisig_menu, predicate=has_secrets, shortcut='m'),
     NonDefaultMenuItem('NFC Push Tx', 'ptxurl', menu=pushtx_setup_menu),
     MenuItem('Display Units', chooser=value_resolution_chooser),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),

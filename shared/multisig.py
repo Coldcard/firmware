@@ -1332,6 +1332,8 @@ class MultisigMenu(MenuSystem):
     @classmethod
     def construct(cls):
         # Dynamic menu with user-defined names of wallets shown
+        from glob import NFC
+        from ccc import toggle_ccc_feature
 
         if not MultisigWallet.exists():
             rv = [MenuItem('(none setup yet)', f=no_ms_yet)]
@@ -1340,7 +1342,7 @@ class MultisigMenu(MenuSystem):
             for ms in MultisigWallet.get_all():
                 rv.append(MenuItem('%d/%d: %s' % (ms.M, ms.N, ms.name),
                             menu=make_ms_wallet_menu, arg=ms.storage_idx))
-        from glob import NFC
+
         rv.append(MenuItem('Import from File', f=import_multisig))
         rv.append(MenuItem('Import from QR', f=import_multisig_qr,
                            predicate=version.has_qwerty, shortcut=KEY_QR))
@@ -1359,6 +1361,7 @@ class MultisigMenu(MenuSystem):
         rv.append(NonDefaultMenuItem(
                          'Unsorted Multisig?' if version.has_qwerty else 'Unsorted Multi?',
                          'unsort_ms', f=unsorted_ms_menu))
+        rv.append(NonDefaultMenuItem('Coldcard Co-signing', 'ccc', f=toggle_ccc_feature))
 
         return rv
 

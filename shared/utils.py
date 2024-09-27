@@ -631,6 +631,12 @@ def url_decode(u):
 
     return u
 
+def url_encode(u):
+    # convert non-text chars into %hex for URL usage
+    # - urllib.parse.quote() but w/o as much thought
+    return ''.join( (ch if 33 <= ord(ch) <= 127 else '%%%02x' % ord(ch)) \
+                    for ch in u)
+
 def decode_bip21_text(got):
     # Assume text is a BIP-21 payment address (url), with amount, description
     # and url protocol prefix ... all optional except the address.
