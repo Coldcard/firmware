@@ -830,42 +830,37 @@ class SeedVaultMenu(MenuSystem):
     async def _remove(menu, label, item):
         from glob import dis, settings
 
+        esc = ""
+        tmp_val = False
         idx, xfp_str, encoded = item.arg
+        current_active = (pa.tmp_value == bytes(encoded))
 
-        msg = ("Remove seed from seed vault and delete its "
-               "settings?\n\nPress %s to continue, press (1) to "
-               "only remove from seed vault and keep "
-               "encrypted settings for later use.\n\n"
-               "WARNING: Funds will be lost if wallet is"
-               " not backed-up elsewhere.") % OK
+        msg = "Remove seed from seed vault "
+        if pa.tmp_value and current_active:
+            tmp_val = True
+            msg += "?\n\n"
+        else:
+            msg += ("and delete its settings?\n\n"
+                    "Press %s to continue, press (1) to "
+                    "only remove from seed vault and keep "
+                    "encrypted settings for later use.\n\n") % OK
+            esc += "1"
 
-        ch = await ux_show_story(title="[" + xfp_str + "]", msg=msg, escape="1")
+        msg += "WARNING: Funds will be lost if wallet is not backed-up elsewhere."
+
+        ch = await ux_show_story(title="[" + xfp_str + "]", msg=msg, escape=esc)
         if ch == "x": return
 
         dis.fullscreen("Saving...")
 
-        wipe_slot = (ch != "1")
-        tmp_val = False
-
-        if pa.tmp_value:
-            tmp_val = True
+        wipe_slot = not current_active and (ch != "1")
 
         if wipe_slot:
-            # are we deleting current active ephemeral wallet
-            # and its settings ?
-            # slot wiping
-            if tmp_val:
-                # wipe current settings
-                settings.blank()
-                pa.tmp_value = False
-                settings.return_to_master_seed()
-            else:
-                # in main settings
-                xs = SettingsObject()
-                xs.set_key(encoded)
-                xs.load()
-                xs.blank()
-                del xs
+            xs = SettingsObject()
+            xs.set_key(encoded)
+            xs.load()
+            xs.blank()
+            del xs
 
         # CAUTION: will get shadow copy if in tmp seed mode already
         seeds = settings.master_get("seeds", [])
