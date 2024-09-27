@@ -41,7 +41,7 @@ class CCCFeature:
 
     @classmethod
     def get_num_words(cls):
-        # return 12 or 24 
+        # return 12 or 24
         return SecretStash.is_words(cls.get_encoded_secret())
 
     @classmethod
@@ -137,7 +137,7 @@ class CCCFeature:
 
         # Velocity: if zero => no velocity checks
         velocity = pol.get("vel", None)
-        if velocity:  
+        if velocity:
             if not psbt.lock_time:
                 raise CCCPolicyViolationError("no nLockTime")
 
@@ -171,7 +171,7 @@ class CCCFeature:
         if pol.get('web2fa', False):
             psbt.warnings.append(('CCC', 'Web 2FA required.'))
             return True
-        
+
 
     @classmethod
     def could_sign(cls, psbt):
@@ -601,11 +601,11 @@ class CCCPolicyMenu(MenuSystem):
             msg = 'Velocity limit requires a per-transaction magnitude to be set.'\
                   ' This has been set to 1BTC as a starting value.'
             self.policy = CCCFeature.update_policy_key(mag=1)
-                
+
             await ux_show_story(msg)
-            
+
         start_chooser(self.velocity_chooser)
-        
+
 
     def velocity_chooser(self):
         # offer some useful values from a menu
@@ -721,6 +721,12 @@ async def gen_or_import():
     return words
 
 
+async def ephemeral_seed_import(nwords):
+    async def import_done_cb(words):
+        dis.fullscreen("Applying...")
+        await set_ephemeral_seed_words(words, meta='Imported')
+
+
 async def toggle_ccc_feature(*a):
     # The only menu item show to user!
     if settings.get('ccc'):
@@ -830,6 +836,5 @@ async def key_c_challenge(words):
     # got to config menu
     m = CCCConfigMenu()
     the_ux.push(m)
-    
 
 # EOF
