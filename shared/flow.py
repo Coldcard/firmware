@@ -159,7 +159,7 @@ which take apart the flash chips of the SDCard may still be able to find the \
 data or filenames.'''),
     ToggleMenuItem('Menu Wrapping', 'wa', ['Default Off', 'Enable'],
            story='''When enabled, allows scrolling past menu top/bottom \
-(wrap around). By default, this is only happens in very large menus.'''),
+(wrap around). By default, this only happens in very large menus.'''),
     ToggleMenuItem('Home Menu XFP', 'hmx', ['Only Tmp', 'Always Show'],
                    story=('Forces display of XFP (seed fingerprint) '
                           'at top of main menu. Normally, XFP is shown only when '
