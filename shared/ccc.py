@@ -662,7 +662,6 @@ and loaded on your phone via QR code.
 WARNING: You will not be able to sign transactions if you do not have an NFC-enabled \
 phone with Internet access and 2FA app holding correct shared-secret.''',
                     title="Web 2FA")
-        if ch != 'y':
             return
 
         # challenge them, and don't set unless it works
