@@ -2330,6 +2330,21 @@ PUSHTX_SUPPLIERS = [
     ('mempool.space', 'https://mempool.space/pushtx#'),
 ]
 
+async def feature_requires_nfc():
+    # prompt them that it's need (iff not already enabled)
+    # - return F if they decline
+    if settings.get('nfc'):
+        return True
+
+    # force on NFC, so it works... but they can still turn it off later, etc.
+    if not await ux_confirm("This feature requires NFC to be enabled. %s to enable." % OK):
+        return False
+
+    settings.set("nfc", 1)
+    await change_nfc_enable(1)
+
+    return True
+
 async def pushtx_setup_menu(*a):
     # let them pick a URL from menu to enable "pushtx" feature, and provide
     # some background, and even let them enter a custom URL.
@@ -2348,12 +2363,9 @@ async def pushtx_setup_menu(*a):
         if ch != "y":
             return
 
-    if not settings.get('nfc'):
-        # force on NFC, so it works... but they can still turn it off later, etc.
-        if not await ux_confirm("This feature requires NFC to be enabled. %s to enable." % OK):
-            return
-        settings.set("nfc", 1)
-        await change_nfc_enable(1)
+    if not await feature_requires_nfc():
+        # they don't want to proceed
+        return 
 
     async def doit(menu, picked, xx_self):
         # using stock values, or Disable 
