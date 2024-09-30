@@ -850,7 +850,7 @@ class QRScannerInteraction:
                 problem = str(exc)
                 continue
             except Exception as exc:
-                import sys; sys.print_exception(exc)
+                # import sys; sys.print_exception(exc)
                 problem = "Unable to decode QR"
                 continue
 
