@@ -52,6 +52,7 @@ freeze_as_mpy('', [
 	'wallet.py',
 	'ownership.py',
 	'ccc.py',
+	'web2fa.py',
 ], opt=0)
 
 # Optimize data-like files, since no need to debug them.

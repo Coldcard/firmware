@@ -611,7 +611,7 @@ def txid_from_fname(fname):
         except: pass
     return None
 
-def url_decode(u):
+def url_unquote(u):
     # expand control chars from %XX and '+'
     # - equiv to urllib.parse.unquote_plus
     # - ure.sub is missing, so not being clever here.
@@ -631,7 +631,7 @@ def url_decode(u):
 
     return u
 
-def url_encode(u):
+def url_quote(u):
     # convert non-text chars into %hex for URL usage
     # - urllib.parse.quote() but w/o as much thought
     return ''.join( (ch if 33 <= ord(ch) <= 127 else '%%%02x' % ord(ch)) \
