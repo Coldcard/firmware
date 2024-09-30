@@ -29,7 +29,7 @@ else:
     # (using FontSmall) .. except it's an approximation since variable-width font.
     # - even 19 could work sometimes, but not when line is completely full
     # - really should look at rendered-width of text
-    CH_PER_W = 17
+    CH_PER_W = 19
     STORY_H = 5
     from ux_mk4 import PressRelease, ux_enter_number, ux_input_text, ux_show_pin
     from ux_mk4 import ux_login_countdown, ux_confirm, ux_dice_rolling, ux_render_words
