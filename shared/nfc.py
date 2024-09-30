@@ -275,34 +275,6 @@ class NFCHandler:
 
             if done: break
 
-    async def share_2fa_link(self, wallet_name, shared_secret):
-        #
-        # Share complex NFC deeplink into 2fa backend; returns expected code to prompt for
-        #
-        from utils import b2a_base64url, url_encode
-        from version import has_qr
-
-        prefix = 'coldcard.com/2fa?'
-    
-        # random nonce: if we get this back, then server approves of TOTP answer
-        if has_qr:
-            # data for a QR
-            nonce = a2b_hex(ngu.random.bytes(32)).upper()
-        else:
-            # 8 digits
-            nonce = str(ngu.random.uniform(1_0000_0000))
-
-        qs = 'g=%s&ss=%s%nm=%sq=%d' % (nonce, shared_secret, url_encode(wallet_name), has_qr)
-
-        # TODO: encryption and base64 here
-
-        n = ndef.ndefMaker()
-        n.add_url(prefix + qs, https=True)
-
-        aborted = await self.share_start(n, prompt="Tap for 2FA Authentication", 
-                                                line2="Wallet: " + wallet_name)
-
-        return None if aborted else nonce
 
     async def push_tx_from_file(self):
         # Pick (signed txn) file from SD card and broadcast via PushTx
