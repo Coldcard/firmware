@@ -2,7 +2,7 @@
 #
 # ccc.py - ColdCard Cosign feature. Be a leg in a 2-of-3 that signed based on policy.
 #
-import gc, chains, version, ngu
+import gc, chains, version, ngu, web2fa
 from ubinascii import b2a_base64, a2b_base64
 from utils import b2a_base64url, swab32
 from glob import settings
@@ -23,7 +23,7 @@ class CCCFeature:
     @classmethod
     def get_policy(cls):
         # de-serialize just the spending policy
-        return settings.get('ccc', {}).get('pol')
+        return dict(settings.get('ccc', dict(pol={})).get('pol'))
 
     @classmethod
     def update_policy(cls, pol):
@@ -31,6 +31,14 @@ class CCCFeature:
         v = dict(settings.get('ccc', {}))
         v['pol'] = dict(pol)
         settings.set('ccc', v)
+
+    @classmethod
+    def update_policy_key(cls, **kws):
+        # update a single element of the spending policy
+        # - used for web2fa
+        p = cls.get_policy()
+        p.update(kws)
+        cls.update_policy(p)
 
     @classmethod
     def remove_ccc(cls):
@@ -79,10 +87,16 @@ class CCCPolicyMenu(MenuSystem):
             #                xxxxxxxxxxxxxxxx
             CheckedMenuItem('Max Magnitude', 'mag', f=self.set_magnitude),
             CheckedMenuItem('Limit Velocity', 'vel', chooser=self.velocity_chooser),
-            CheckedMenuItem('Web 2FA', 'web2fa', f=self.toggle_2fa),
-            CheckedMenuItem('Whitelisted' + ' Addresses' if version.has_qr else '',
+            CheckedMenuItem('Whitelisted' + (' Addresses' if version.has_qr else ''),
                                     'addr', f=self.edit_whitelist),
+            CheckedMenuItem('Web 2FA', 'web2fa', f=self.toggle_2fa),
         ]
+
+        if self.policy.get('web2fa'):
+            items.extend([
+                MenuItem('↳ Test 2FA', f=self.test_2fa),
+                MenuItem('↳ Enroll More', f=self.enroll_more_2fa),
+            ])
 
         if not self.first_time:
             # NOTE: if they are setting it up, do **not** offer to cancel or abort
@@ -111,10 +125,23 @@ class CCCPolicyMenu(MenuSystem):
                     "the secret (key C) words."):
             return
 
-        # TODO commit
+        # commit change
         CCCFeature.update_policy(self.policy)
 
         the_ux.pop()
+
+    async def test_2fa(self, *a):
+        ss = self.policy.get('web2fa')
+        assert ss
+        ok = await web2fa.perform_web2fa('CCC Test', ss)
+
+        await ux_show_story('Correct code was given.' if ok else 'Failed or aborted.')
+
+    async def enroll_more_2fa(self, *a):
+        # let more phones in on the party
+        ss = self.policy.get('web2fa')
+        assert ss
+        await web2fa.web2fa_enroll('CCC', ss)
         
     async def edit_whitelist(self, *a):
         pass
@@ -164,17 +191,42 @@ class CCCPolicyMenu(MenuSystem):
     async def toggle_2fa(self, *a):
         if self.policy.get('web2fa'):
             # enabled already
+
+            if not await ux_confirm("Disable web 2FA check? Effect is immediate."):
+                return
+
+
+            # Save just that one setting right now, but don't commit other changes they
+            # might have made in this menu already. Reason: we don't want the old shared
+            # secret to go back into effect if they fail to commit on this menu.
+            CCCFeature.update_policy_key(web2fa='')
+
             self.policy['web2fa'] = ''
-            await ux_show_story("Web 2FA has been disabled. If you re-enable it, a new secret will be generated, so it is safe to remove it from your phone once this change is committed.",
-                    title="Web 2FA")
+            self.update_contents()
+
+            await ux_show_story("Web 2FA has been disabled. If you re-enable it, a new secret will be generated, so it is safe to remove it from your phone at this point.")
+
             return
 
-        # pick a shared secret; 10 bytes, so encodes to 16 base32 chars
-        ss = ngu.codecs.b32_encode(ngu.random.bytes(10))
+        ch = await ux_show_story('''When enabled, any spend (signing) requires 
+the use of mobile 2FA application (TOTP RFC-6238). Shared-secret is picked now, 
+and loaded on your phone.
 
-        # TODO challege them, and don't set until confirmed end-to-end
+WARNING: You will not be able to sign transactions, if you do not have an NFC-enabled 
+phone with Internet access and 2FA app holding correct shared-secret.''',
+                    title="Web 2FA")
+        if ch != 'y':
+            return
 
+        # challenge them, and don't set until confirmed end-to-end success
+        ss = await web2fa.web2fa_enroll('CCC')
+        if not ss:
+            return
+
+        # update w/o confirm step because very annoying to need to re-do? or maybe not IDK
+        CCCFeature.update_policy_key(web2fa=ss)
         self.policy['web2fa'] = ss
+        self.update_contents()
 
 async def gen_or_import12():
     # returns 12 words, or None to abort
@@ -271,7 +323,7 @@ async def modify_ccc_settings():
     #       add "Press (1) to choose from Vault", etc
     ch = await ux_show_story(
             "Spending policy cannot be viewed, changed nor disabled while on the road. "
-            " But if you have the seed words (for key C) you may proceed.",
+            "But if you have the seed words (for key C) you may proceed.",
             title="CCC Enabled", escape='6' if version.is_devmode else None)
 
     if ch == '6':
