@@ -141,10 +141,10 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
             # cleanup leading zeros and such
             value = str(min(int(value), max_value))
 
-async def ux_input_numbers(val):
+async def ux_input_numbers(val, **kws):
     # collect a series of digits
     # - not wanted on Q1; just get the digits mixed in w/ the text.
-    pass
+    raise NotImplementedError
 
 async def ux_input_text(value, confirm_exit=False, hex_only=False, max_len=100,
             prompt='Enter value', min_len=0, b39_complete=False, scan_ok=False,

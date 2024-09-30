@@ -122,7 +122,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
             # cleanup leading zeros and such
             value = str(min(int(value), max_value))
 
-async def ux_input_numbers(val):
+async def ux_input_numbers(val, prompt=None, maxlen=32):
     # collect a series of digits
     from glob import dis
     from display import FontTiny
@@ -137,6 +137,11 @@ async def ux_input_numbers(val):
 
     dis.clear()
     dis.text(None, -1, footer, FontTiny)
+
+    if prompt:
+        dis.text(0, 0, prompt)
+        y += 8
+
     dis.save()
 
     while 1:
@@ -169,7 +174,7 @@ async def ux_input_numbers(val):
                 # quit if they press X on empty screen
                 return
         else:
-            if len(here) < 32:
+            if len(here) < maxlen:
                 here += ch
 
 async def ux_input_text(pw, confirm_exit=True, hex_only=False, max_len=100, min_len=0, **_kws):
