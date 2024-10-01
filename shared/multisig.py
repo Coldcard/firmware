@@ -1504,18 +1504,18 @@ async def export_multisig_xpubs(*a, xfp=None, alt_secret=None, skip_prompt=False
 
     if not skip_prompt:
         msg = '''\
-    This feature creates a small file containing \
-    the extended public keys (XPUB) you would need to join \
-    a multisig wallet.
+This feature creates a small file containing \
+the extended public keys (XPUB) you would need to join \
+a multisig wallet.
 
-    Public keys for BIP-48 conformant paths are used:
+Public keys for BIP-48 conformant paths are used:
 
-    P2SH-P2WSH:
-       m/48h/{coin}h/{{acct}}h/1h
-    P2WSH:
-       m/48h/{coin}h/{{acct}}h/2h
+P2SH-P2WSH:
+   m/48h/{coin}h/{{acct}}h/1h
+P2WSH:
+   m/48h/{coin}h/{{acct}}h/2h
 
-    {ok} to continue. {x} to abort.'''.format(coin=chain.b44_cointype, ok=OK, x=X)
+{ok} to continue. {x} to abort.'''.format(coin=chain.b44_cointype, ok=OK, x=X)
 
         ch = await ux_show_story(msg)
         if ch != "y":
