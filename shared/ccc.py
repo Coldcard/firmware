@@ -646,7 +646,12 @@ class CCCPolicyMenu(MenuSystem):
             if not await ux_confirm("Disable web 2FA check? Effect is immediate."):
                 return
 
-            self.policy = CCCFeature.update_policy_key(web2fa='')
+            # Save just that one setting right now, but don't commit other changes they
+            # might have made in this menu already. Reason: we don't want the old shared
+            # secret to go back into effect if they fail to commit on this menu.
+            CCCFeature.update_policy_key(web2fa='')
+
+            self.policy['web2fa'] = ''
             self.update_contents()
 
             await ux_show_story("Web 2FA has been disabled. If you re-enable it, a new "
@@ -662,6 +667,7 @@ and loaded on your phone via QR code.
 WARNING: You will not be able to sign transactions if you do not have an NFC-enabled \
 phone with Internet access and 2FA app holding correct shared-secret.''',
                     title="Web 2FA")
+        if ch != 'y':
             return
 
         # challenge them, and don't set unless it works
