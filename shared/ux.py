@@ -18,7 +18,7 @@ if version.has_qwerty:
     from lcd_display import CHARS_W, CHARS_H
     CH_PER_W = CHARS_W
     STORY_H = CHARS_H
-    from ux_q1 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
+    from ux_q1 import PressRelease, ux_enter_number, ux_input_text, ux_show_pin
     from ux_q1 import ux_login_countdown, ux_confirm, ux_dice_rolling, ux_render_words
     from ux_q1 import ux_show_phish_words
     OK = "ENTER"
@@ -29,7 +29,7 @@ else:
     # (using FontSmall) .. except it's an approximation since variable-width font.
     CH_PER_W = 19
     STORY_H = 5
-    from ux_mk4 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
+    from ux_mk4 import PressRelease, ux_enter_number, ux_input_text, ux_show_pin
     from ux_mk4 import ux_login_countdown, ux_confirm, ux_dice_rolling, ux_render_words
     from ux_mk4 import ux_show_phish_words
     OK = "OK"

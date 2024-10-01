@@ -59,7 +59,7 @@ async def perform_web2fa(label, shared_secret):
         #
         # Mk4 and other devices w/o QR scanner, require user to enter 8 digits
         #
-        from ux_mk4 import ux_input_numbers
+        from ux_mk4 import ux_input_digits
 
         def limit_len(n):
             ll = len(n)
@@ -70,10 +70,10 @@ async def perform_web2fa(label, shared_secret):
             return ''
 
         while 1:
-            got = await ux_input_numbers('', limit_len, maxlen=8, prompt="8-digits From Web")
+            got = await ux_input_digits('', limit_len, maxlen=8, prompt="8-digits From Web")
 
             if not got:
-                # abort w/ empty entry
+                # abort if empty entry
                 return False
 
             if got == expect:

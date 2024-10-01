@@ -16,7 +16,7 @@ from menu import MenuItem, MenuSystem
 from utils import xfp2str, parse_extended_key, swab32, pad_raw_secret, problem_file_line
 from uhashlib import sha256
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, OK, X
-from ux import PressRelease, ux_input_numbers, ux_input_text, show_qr_code
+from ux import PressRelease, ux_input_text, show_qr_code
 from actions import goto_top_menu
 from stash import SecretStash, ZeroSecretException
 from ubinascii import hexlify as b2a_hex
@@ -1208,7 +1208,9 @@ class PassphraseMenu(MenuSystem):
     @classmethod
     async def add_numbers(cls, *a):
         # Mk4 only: add some digits (quick, easy)
-        pw = await ux_input_numbers(cls.pp_sofar)
+        from ux_mk4 import ux_input_digits
+
+        pw = await ux_input_digits(cls.pp_sofar)
         if pw is not None:
             cls.pp_sofar = pw
             cls.check_length()
