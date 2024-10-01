@@ -970,7 +970,9 @@ class psbtObject(psbtProxy):
         self.txn = None
         self.xpubs = []         # tuples(xfp_path, xpub)
 
+        # what secret are signing with? (default: the current master secret)
         self.my_xfp = settings.get('xfp', 0)
+        self.alternate_secret = None            # a stash-encoded secret
 
         # details that we discover as we go
         self.inputs = None
@@ -1014,6 +1016,7 @@ class psbtObject(psbtProxy):
         self.has_gic = False  # global input count
         self.has_goc = False  # global output count
         self.has_gtv = False  # global txn version
+
 
     @property
     def lock_time(self):
@@ -1830,7 +1833,7 @@ class psbtObject(psbtProxy):
         from glob import dis
         from ownership import OWNERSHIP
 
-        with stash.SensitiveValues() as sv:
+        with stash.SensitiveValues(secret=self.alternate_secret) as sv:
             # Double check the change outputs are right. This is slow, but critical because
             # it detects bad actors, not bugs or mistakes.
             # - equivilent check already done for p2sh outputs when we re-built the redeem script
