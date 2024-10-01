@@ -122,8 +122,8 @@ async def ux_enter_number(prompt, max_value, can_cancel=False, value=''):
             # cleanup leading zeros and such
             value = str(min(int(value), max_value))
 
-async def ux_input_numbers(val, prompt=None, maxlen=32):
-    # collect a series of digits
+async def ux_input_digits(val, prompt=None, maxlen=32):
+    # collect a series of digits.
     from glob import dis
     from display import FontTiny
 
