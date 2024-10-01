@@ -70,10 +70,12 @@ def init0():
     rng_seeding()
 
 async def dev_enable_repl(*a):
-    # Mk4: Enable serial port connection. You'll have to break case open.
+    # Enable serial port connection. You'll have to break case open.
+
     from ux import ux_show_story
 
     wipe_if_deltamode()
+    if not version.is_devmode: return
 
     # allow REPL access
     ckcc.vcp_enabled(True)
