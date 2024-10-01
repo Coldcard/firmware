@@ -19,6 +19,7 @@ from countdowns import countdown_chooser
 from paper import make_paper_wallet
 from trick_pins import TrickPinMenu
 from tapsigner import import_tapsigner_backup_file
+from ccc import toggle_ccc_feature
 
 # useful shortcut keys
 from charcodes import KEY_QR, KEY_NFC
@@ -235,6 +236,7 @@ DevelopersMenu = [
     MenuItem('Warm Reset', f=reset_self),
     MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
     MenuItem("BKPW Override", menu=bkpw_override),
+    MenuItem('Reflash GPU', f=reflash_gpu, predicate=version.has_qwerty),
 ]
 
 AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
@@ -326,7 +328,6 @@ correctly- crafted transactions signed on Testnet could be broadcast on Mainnet.
     MenuItem('Settings Space', f=show_settings_space),
     MenuItem('MCU Key Slots', f=show_mcu_keys_left),
     MenuItem('Bless Firmware', f=bless_flash),          # no need for this anymore?
-    MenuItem('Reflash GPU', f=reflash_gpu, predicate=version.has_qwerty),
     MenuItem("Wipe LFS", f=wipe_filesystem),    # kills other-seed settings, HSM stuff, addr cache
 ]
 
@@ -366,6 +367,7 @@ AdvancedNormalMenu = [
                    story=("Enable HSM? Enables all user management commands, and other HSM-only USB commands. "
                           "By default these commands are disabled."),
                    predicate=hsm_available),
+    NonDefaultMenuItem('Coldcard Co-signing', 'ccc', f=toggle_ccc_feature, predicate=is_not_tmp),
     MenuItem('User Management', menu=make_users_menu,
              predicate=hsm_available),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu, shortcut=KEY_NFC),

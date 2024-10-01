@@ -326,6 +326,9 @@ class SensitiveValues:
 
         return xfp
 
+    def get_xfp(self):
+        return swab32(self.node.my_fp())
+
     def register(self, item):
         # Caller can add his own sensitive (derived?) data to our wiper
         # typically would be byte arrays or byte strings, but also

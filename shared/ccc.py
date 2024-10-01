@@ -4,7 +4,7 @@
 #
 import gc, chains, version, ngu, web2fa, bip39
 from ubinascii import b2a_base64, a2b_base64
-from utils import b2a_base64url, swab32, a2b_hex, b2a_hex
+from utils import b2a_base64url, swab32, a2b_hex, b2a_hex, xfp2str
 from glob import settings
 from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number
 from menu import MenuSystem, MenuItem
@@ -31,12 +31,19 @@ class CCCFeature:
         ll = len_to_numwords(len_from_marker(marker))
         return ll
 
+
     @classmethod
     def get_encoded_secret(cls):
         # get the key C as encoded binary secret, compatible w/
         # encodings used in stash
         # TODO: move to "storage locker"?
         return a2b_hex(settings.get('ccc')['secret'])
+
+    @classmethod
+    def get_xfp(cls):
+        # just the XFP
+        return settings.get('ccc')['c_xfp']
+        
 
     @classmethod
     def init_setup(cls, words):
@@ -49,7 +56,7 @@ class CCCFeature:
 
         chain = chains.current_chain()
         xfp = swab32(node.my_fp())
-        xpub = chain.serialize_public(node)
+        xpub = chain.serialize_public(node)     # fully useless value tho
 
         # NOTE: b_xfp and b_xpub still needed, but that's another step, not yet.
 
@@ -94,9 +101,89 @@ def render_mag_value(mag):
     else:
         return '%d SATS' % mag
 
+
+class CCCConfigMenu(MenuSystem):
+    def __init__(self, first_time=True):
+        items = self.construct()
+        super(CCCConfigMenu, self).__init__(items)
+
+    def update_contents(self):
+        tmp = self.construct()
+        self.replace_items(tmp)
+
+    def construct(self):
+        from multisig import MultisigWallet, make_ms_wallet_menu
+
+        my_xfp = CCCFeature.get_xfp()
+        items = [
+            #         xxxxxxxxxxxxxxxx
+            MenuItem('[CCC %s]' % xfp2str(my_xfp), f=self.show_ident),
+            MenuItem('Spending Policy', menu=CCCPolicyMenu.be_a_submenu),
+            MenuItem('Export CCC XPub', f=self.export_xpub_c),
+            MenuItem('Temporary Mode', f=self.enter_temp_mode),
+            MenuItem('Multisig Wallets'),
+        ]
+
+        # look for wallets that are defined related to CCC feature, shortcut to them
+        for ms in MultisigWallet.get_all():
+            if my_xfp in ms.xfp_paths:
+                items.append(MenuItem('↳ %d/%d: %s' % (ms.M, ms.N, ms.name),
+                            menu=make_ms_wallet_menu, arg=ms.storage_idx))
+
+        items.append(MenuItem('↳ Build 2-of-N', f=self.build_2ofN))
+
+        return items
+
+    async def export_xpub_c(self, *a):
+        # do standard Coldcard export for multisig setups
+        xfp = CCCFeature.get_xfp()
+        enc = CCCFeature.get_encoded_secret()
+
+        from multisig import export_multisig_xpubs
+        await export_multisig_xpubs(*a, xfp=xfp, alt_secret=enc, skip_prompt=True)
+
+    async def build_2ofN(self, *a):
+        # ask for a key B, assume A and C are defined => export MS config and import into self.
+        # - like the airgap setup, but assume A and C are this Coldcard
+        m = '''Builds simple 2-of-N multisig wallet, with this Coldcard's main secret (key A), 
+the CCC policy-controlled key C, and at least one other device, as key B. 
+\nYou will need to export the XPUB from another Coldcard and place it on an SD Card, or be ready to show it as a QR, before proceeding.'''
+        if await ux_show_story(m) != 'y':
+            return
+
+        from multisig import create_ms_step1
+
+        # picks addr fmt, QR or not, gets at least one file, then...
+        await create_ms_step1(for_ccc=CCCFeature.get_encoded_secret())
+
+        # prompt for file, prompt for our acct number, unless already exported to this card?
+
+    async def show_ident(self, *a):
+        # give some background? or just KISS for now?
+        xfp = xfp2str(CCCFeature.get_xfp())
+        await ux_show_story("XFP (Extended Finger Print) of key C is:\n\n  %s" % xfp)
+
+    async def enter_temp_mode(self, *a):
+        # apply key C as temp seed, so you can do anything with it
+        # - just a shortcut, since they have the words, and could enter them
+        # - one-way trip because the CCC feature won't be enabled inside the temp seed settings
+        if await ux_show_story(
+                'Loads the CCC controled seed (key C) as a Temporary Seed and allows '
+                'easy use of all Coldcard features on that key.') != 'y':
+            return
+
+        from seed import set_ephemeral_seed
+        from actions import goto_top_menu
+
+        enc = CCCFeature.get_encoded_secret()
+        await set_ephemeral_seed(enc, meta='Key C from CCC')
+
+        goto_top_menu()
+
 class CheckedMenuItem(MenuItem):
-    # Show a checkmark if policy setting is defined and not the default
-    # TODO on Q, should show value right-justified in menu display
+    # Show a checkmark if **policy** setting is defined and not the default
+    # TODO on Q, should show value right-justified in menu display!
+    # - only works inside CCCPolicyMenu
     def __init__(self, label, polkey, **kws):
         super().__init__(label, **kws)
         self.polkey = polkey
@@ -113,7 +200,7 @@ class CCCPolicyMenu(MenuSystem):
     # - and delete/cancel CCC (clears setting?)
     # - be a sticky menu that's hard to exit (ie. SAVE choice and no cancel out)
 
-    def __init__(self, first_time=True):
+    def __init__(self, first_time=False):
         self.first_time = first_time
         self.policy = CCCFeature.get_policy() if not first_time else CCCFeature.default_policy()
         items = self.construct()
@@ -122,6 +209,11 @@ class CCCPolicyMenu(MenuSystem):
     def update_contents(self):
         tmp = self.construct()
         self.replace_items(tmp)
+
+    @classmethod
+    async def be_a_submenu(cls, *a):
+        print("here")
+        return cls()
 
     def construct(self):
         items = [
@@ -189,7 +281,8 @@ class CCCPolicyMenu(MenuSystem):
 
     async def set_magnitude(self, *a):
         was = self.policy.get('mag', 0)
-        val = await ux_enter_number('Per Txn Max Out', int(1e8), can_cancel=True)
+        val = await ux_enter_number('Per Txn Max Out', max_value=int(1e8), can_cancel=True)
+
         if (val is None) or (val == was):
             msg = "Did not change"
             val = was
@@ -210,16 +303,19 @@ class CCCPolicyMenu(MenuSystem):
         # offer some useful values from a menu
         vel = self.policy.get('vel', 0)        # in blocks
 
-        # reminder: consider the poor Mk4 users
+        # reminder: dont forget the poor Mk4 users
+        #        xxxxxxxxxxxxxxxx
         ch = [  'Unlimited',
-                ' 6 blocks (1 hr)',
-                '60 blocks (10 hrs)',
+                '6 blocks (1 hr)',
+                '24 blocks (4h)',
+                '48 blocks (8h)',
+                '72 blocks (12h)',
                 '144 blocks (day)',
                 '288 blocks (2d)',
                 '432 blocks (3d)',
-                '1008 blocks (week)',
+                '1008 blocks (wk)',
               ]
-        va = [ 0, 6, 60, 144, 288, 432, 1008 ]
+        va = [0] + [int(x.split()[0]) for x in ch[1:]]
 
         try:
             which = va.index(vel)
@@ -306,12 +402,6 @@ async def gen_or_import12():
     return words
 
 
-async def ephemeral_seed_import(nwords):
-    async def import_done_cb(words):
-        dis.fullscreen("Applying...")
-        await set_ephemeral_seed_words(words, meta='Imported')
-
-
 async def toggle_ccc_feature(*a):
     # The only menu item show to user!
     if settings.get('ccc'):
@@ -327,7 +417,6 @@ A=This Coldcard, B=Backup Key, C=Policy Key ... blah balh
 ''',
         title="Coldcard Co-Signing")
 
-    print('ch=' + repr(ch))
     if ch != 'y': 
         # just a tourist
         return
@@ -342,8 +431,11 @@ async def enable_step1(words):
     # do BIP-32 basics: capture XFP and XPUB and encoded version of the secret
     CCCFeature.init_setup(words)
 
+    # push them directly into policy submenu first time.
     m = CCCPolicyMenu(first_time=True)
     the_ux.push(m)
+
+    # that will lead back to a "nested" menu other setup
 
 async def modify_ccc_settings():
     # generally not expecting changes to policy on the fly because
@@ -400,9 +492,9 @@ async def key_c_challenge(words):
             
         return
 
-    # pop stack
+    # got to config menu
     the_ux.pop()
-    m = CCCPolicyMenu(first_time=False)
+    m = CCCConfigMenu()
     the_ux.push(m)
     
 

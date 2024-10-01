@@ -1333,7 +1333,6 @@ class MultisigMenu(MenuSystem):
     def construct(cls):
         # Dynamic menu with user-defined names of wallets shown
         from glob import NFC
-        from ccc import toggle_ccc_feature
 
         if not MultisigWallet.exists():
             rv = [MenuItem('(none setup yet)', f=no_ms_yet)]
@@ -1361,8 +1360,6 @@ class MultisigMenu(MenuSystem):
         rv.append(NonDefaultMenuItem(
                          'Unsorted Multisig?' if version.has_qwerty else 'Unsorted Multi?',
                          'unsort_ms', f=unsorted_ms_menu))
-        rv.append(NonDefaultMenuItem('Coldcard Co-signing', 'ccc', f=toggle_ccc_feature))
-
         return rv
 
     def update_contents(self):
@@ -1487,40 +1484,42 @@ async def ms_wallet_detail(menu, label, item):
     return await ms.show_detail()
 
 
-async def export_multisig_xpubs(*a):
+async def export_multisig_xpubs(*a, xfp=None, alt_secret=None, skip_prompt=False):
     # WAS: Create a single text file with lots of docs, and all possible useful xpub values.
     # THEN: Just create the one-liner xpub export value they need/want to support BIP-45
     # NOW: Export JSON with one xpub per useful address type and semi-standard derivation path
     #
-    # Consumer for this file is supposed to be ourselves, when we build on-device multisig.
+    # - consumer for this file is supposed to be ourselves, when we build on-device multisig.
     # - however some 3rd parties are making use of it as well.
+    # - used for CCC feature now as well, but result looks just like normal export
     #
     from glob import NFC, dis
     from ux import import_export_prompt
 
-    xfp = xfp2str(settings.get('xfp', 0))
+    xfp = xfp2str(xfp or settings.get('xfp', 0))
     chain = chains.current_chain()
     
     fname_pattern = 'ccxp-%s.json' % xfp
     label = "Multisig XPUB"
 
-    msg = '''\
-This feature creates a small file containing \
-the extended public keys (XPUB) you would need to join \
-a multisig wallet.
+    if not skip_prompt:
+        msg = '''\
+    This feature creates a small file containing \
+    the extended public keys (XPUB) you would need to join \
+    a multisig wallet.
 
-Public keys for BIP-48 conformant paths are used:
+    Public keys for BIP-48 conformant paths are used:
 
-P2SH-P2WSH:
-   m/48h/{coin}h/{{acct}}h/1h
-P2WSH:
-   m/48h/{coin}h/{{acct}}h/2h
+    P2SH-P2WSH:
+       m/48h/{coin}h/{{acct}}h/1h
+    P2WSH:
+       m/48h/{coin}h/{{acct}}h/2h
 
-{ok} to continue. {x} to abort.'''.format(coin=chain.b44_cointype, ok=OK, x=X)
+    {ok} to continue. {x} to abort.'''.format(coin=chain.b44_cointype, ok=OK, x=X)
 
-    ch = await ux_show_story(msg)
-    if ch != "y":
-        return
+        ch = await ux_show_story(msg)
+        if ch != "y":
+            return
 
     acct_num = await ux_enter_bip32_index('Account Number:') or 0
 
@@ -1540,7 +1539,7 @@ P2WSH:
 
     def render(fp):
         fp.write('{\n')
-        with stash.SensitiveValues() as sv:
+        with stash.SensitiveValues(secret=alt_secret) as sv:
             for deriv, name, fmt in todo:
                 if fmt == AF_P2SH and acct_num:
                     continue
@@ -1589,7 +1588,7 @@ P2WSH:
         return
 
     msg = '%s file written:\n\n%s' % (label, nice)
-    # msg += '\n\nMultisig XPUB signature file written:\n\n%s' % sig_nice
+
     await ux_show_story(msg)
 
 async def validate_xpub_for_ms(obj, af_str, chain, my_xfp, xpubs):
@@ -1691,7 +1690,18 @@ async def ms_coordinator_file(af_str, my_xfp, chain, slot_b=None):
 
     return xpubs, num_mine, num_files
 
-async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False):
+def add_own_xpub(chain, acct_num, addr_fmt, secret=None):
+    # Build out what's required for using master secret (or another
+    # encoded secret) as a co-signer
+    deriv = "m/48h/%dh/%dh/%dh" % (chain.b44_cointype, acct_num,
+                                       2 if addr_fmt == AF_P2WSH else 1)
+
+    with stash.SensitiveValues(secret=secret) as sv:
+        node = sv.derive_path(deriv)
+        the_xfp = sv.get_xfp()
+        return (the_xfp, deriv, chain.serialize_public(node, AF_P2SH))
+
+async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False, for_ccc=None):
     # collect all xpub- exports (must be >= 1) to make "air gapped" wallet
     # - function f specifies a way how to collect co-signer info - currently SD and QR (Q only)
     # - ask for M value
@@ -1726,19 +1736,38 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False)
                    " Must have filename: ccxp-....json")
         await ux_show_story(msg)
         return
-    
-    # add myself if not included already ?
-    if not num_mine:
+
+    if for_ccc:
+        # Always include 2 keys from CCC: own master (key A) and key C
+        # - force them to same derivation.
+        acct = await ux_enter_bip32_index('CCC Account Number:') or 0
+
+        dis.fullscreen("Wait...")
+        a = add_own_xpub(chain, acct, addr_fmt)                # master: key A
+        c = add_own_xpub(chain, acct, addr_fmt, secret=for_ccc)
+
+        # problem: above file searching may find xpub export from key C
+        # (or our master seed, exported) .. we can't add them again,
+        # since xfp are not unique and that's probably not what they wanted
+        got_xfps = [a[0], c[0]]
+        xpubs = [x for x in xpubs if x[0] not in got_xfps]
+
+        if not xpubs:
+            await ux_show_story("Need at least one other co-signer (key B).")
+            return
+
+        xpubs.append(a)
+        xpubs.append(c)
+        num_mine += 2
+
+    elif not num_mine:
+        # add myself if not included already? As an option.
         ch = await ux_show_story("Add current Coldcard with above XFP ?",
                                  title="[%s]" % xfp2str(my_xfp))
         if ch == "y":
             acct = await ux_enter_bip32_index('Account Number:') or 0
             dis.fullscreen("Wait...")
-            deriv = "m/48h/%dh/%dh/%dh" % (chain.b44_cointype, acct,
-                                           2 if addr_fmt == AF_P2WSH else 1)
-            with stash.SensitiveValues() as sv:
-                node = sv.derive_path(deriv)
-                xpubs.append((my_xfp, deriv, chain.serialize_public(node, AF_P2SH)))
+            xpubs.append(add_own_xpub(chain, acct, addr_fmt))
             num_mine += 1
 
     N = len(xpubs)
@@ -1747,18 +1776,25 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False)
         await ux_show_story("Invalid number of signers,min is 2 max is %d." % MAX_SIGNERS)
         return
 
-    # pick useful M value to start
-    M = await ux_enter_number("How many need to sign?(M)", N, can_cancel=True)
-    if not M:
-        await ux_dramatic_pause('Aborted.', 2)
-        return  # user cancel
+    if for_ccc:
+        M = 2
+    else:
+        # pick useful M value to start
+        M = await ux_enter_number("How many need to sign?(M)", N, can_cancel=True)
+        if not M:
+            await ux_dramatic_pause('Aborted.', 2)
+            return  # user cancel
 
     dis.fullscreen("Wait...")
 
     # create appropriate object
     assert 1 <= M <= N <= MAX_SIGNERS
 
-    name = 'CC-%d-of-%d' % (M, N)
+    if for_ccc:
+        name = 'Coldcard Cosign'
+    else:
+        name = 'CC-%d-of-%d' % (M, N)
+
     ms = MultisigWallet(name, (M, N), xpubs, chain_type=chain.ctype, addr_fmt=addr_fmt)
 
     if num_mine:
@@ -1775,7 +1811,7 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False)
         await ms.export_wallet_file(descriptor=True, desc_pretty=False)
 
 
-async def create_ms_step1(*a):
+async def create_ms_step1(*a, for_ccc=None):
     # Show story, have them pick address format.
     ch = None
     is_qr = False
@@ -1807,7 +1843,7 @@ Default is P2WSH addresses (segwit) or press (1) for P2SH-P2WSH.''', escape='1')
         return
 
     try:
-        return await ondevice_multisig_create(n, f, is_qr)
+        return await ondevice_multisig_create(n, f, is_qr, for_ccc=for_ccc)
     except Exception as e:
         await ux_show_story('Failed to create multisig.\n\n%s\n%s' % (e, problem_file_line(e)),
                             title="ERROR")
