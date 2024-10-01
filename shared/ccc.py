@@ -2,19 +2,60 @@
 #
 # ccc.py - ColdCard Cosign feature. Be a leg in a 2-of-3 that signed based on policy.
 #
-import gc, chains, version, ngu, web2fa
+import gc, chains, version, ngu, web2fa, bip39
 from ubinascii import b2a_base64, a2b_base64
-from utils import b2a_base64url, swab32
+from utils import b2a_base64url, swab32, a2b_hex, b2a_hex
 from glob import settings
 from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number
 from menu import MenuSystem, MenuItem
+from seed import seed_words_to_encoded_secret
+from stash import SecretStash, len_from_marker, len_to_numwords
 
 class CCCFeature:
     @classmethod
+    def is_enabled(cls):
+        # is the feature enabled right now?
+        return bool(settings.get('ccc', False))
+
+    @classmethod
     def words_check(cls, words):
         # test if words provided are right
-        w = settings.get('ccc', {})['words']
-        return (words == w)
+        enc = seed_words_to_encoded_secret(words)
+        exp = cls.get_encoded_secret()
+        return (enc == exp)
+
+    @classmethod
+    def get_num_words(cls):
+        # return 12 or 24 
+        marker = cls.get_encoded_secret()[0]
+        ll = len_to_numwords(len_from_marker(marker))
+        return ll
+
+    @classmethod
+    def get_encoded_secret(cls):
+        # get the key C as encoded binary secret, compatible w/
+        # encodings used in stash
+        # TODO: move to "storage locker"?
+        return a2b_hex(settings.get('ccc')['secret'])
+
+    @classmethod
+    def init_setup(cls, words):
+        # Encode 12 or 24 words into the secret to held as key C.
+        # - also capture XFP and XPUB for key C
+        # TODO: move to "storage locker"?
+        assert len(words) in (12, 24)
+        enc = seed_words_to_encoded_secret(words)
+        _,_,node = SecretStash.decode(enc)
+
+        chain = chains.current_chain()
+        xfp = swab32(node.my_fp())
+        xpub = chain.serialize_public(node)
+
+        # NOTE: b_xfp and b_xpub still needed, but that's another step, not yet.
+
+        v = dict(secret=b2a_hex(enc), c_xfp=xfp, c_xpub=xpub, pol=CCCFeature.default_policy())
+        settings.put('ccc', v)
+        settings.save()
 
     @classmethod
     def default_policy(cls):
@@ -169,14 +210,16 @@ class CCCPolicyMenu(MenuSystem):
         # offer some useful values from a menu
         vel = self.policy.get('vel', 0)        # in blocks
 
-        # TODO better/more values
-        ch = [  'Disabled/Unlimited',
-                ' 1 hour (6 blocks)',
-                '10 hours (60)',
-                ' 1 week (1024)',
-                ' 2 weeks (2048)',
+        # reminder: consider the poor Mk4 users
+        ch = [  'Unlimited',
+                ' 6 blocks (1 hr)',
+                '60 blocks (10 hrs)',
+                '144 blocks (day)',
+                '288 blocks (2d)',
+                '432 blocks (3d)',
+                '1008 blocks (week)',
               ]
-        va = [ 0, 6, 60, 1024, 2048 ]
+        va = [ 0, 6, 60, 144, 288, 432, 1008 ]
 
         try:
             which = va.index(vel)
@@ -195,7 +238,6 @@ class CCCPolicyMenu(MenuSystem):
             if not await ux_confirm("Disable web 2FA check? Effect is immediate."):
                 return
 
-
             # Save just that one setting right now, but don't commit other changes they
             # might have made in this menu already. Reason: we don't want the old shared
             # secret to go back into effect if they fail to commit on this menu.
@@ -204,15 +246,17 @@ class CCCPolicyMenu(MenuSystem):
             self.policy['web2fa'] = ''
             self.update_contents()
 
-            await ux_show_story("Web 2FA has been disabled. If you re-enable it, a new secret will be generated, so it is safe to remove it from your phone at this point.")
+            await ux_show_story("Web 2FA has been disabled. If you re-enable it, a new "
+                    "secret will be generated, so it is safe to remove it from your "
+                    "phone at this point.")
 
             return
 
         ch = await ux_show_story('''When enabled, any spend (signing) requires 
-the use of mobile 2FA application (TOTP RFC-6238). Shared-secret is picked now, 
-and loaded on your phone.
+use of mobile 2FA application (TOTP RFC-6238). Shared-secret is picked now, 
+and loaded on your phone via QR code.
 
-WARNING: You will not be able to sign transactions, if you do not have an NFC-enabled 
+WARNING: You will not be able to sign transactions if you do not have an NFC-enabled 
 phone with Internet access and 2FA app holding correct shared-secret.''',
                     title="Web 2FA")
         if ch != 'y':
@@ -233,19 +277,22 @@ async def gen_or_import12():
     from seed import WordNestMenu, generate_seed, approve_word_list
 
     ch = await ux_show_story(
-        "Press %s to generate a new 12 word master secret seed phrase to be used "
-        "as the Coldcard Secret (key C). Press (1) to import existing 12 words." % OK,
-        escape='1', title="CCC Key C")
+        "Press %s to generate a new 12-word master secret seed phrase to be used "
+        "as the Coldcard Cosigning Secret (key C).\n\nOr press (1) to import existing "
+        "12-words or (2) for 24." % OK,
+        escape='12', title="CCC Key C")
 
-    if ch == '1':
+    if ch == '1' or ch == '2':
+        nwords = 24 if ch == '2' else 12
+
         async def done_key_C_import(words):
             await enable_step1(words)
 
         if version.has_qwerty:
             from ux_q1 import seed_word_entry
-            await seed_word_entry('Key C Seed Words', 12, done_cb=done_key_C_import)
+            await seed_word_entry('Key C Seed Words', nwords, done_cb=done_key_C_import)
         else:
-            words = WordNestMenu(12, done_cb=done_key_C_import)
+            words = WordNestMenu(nwords, done_cb=done_key_C_import)
 
         return None     # will call parent again
 
@@ -292,23 +339,8 @@ async def enable_step1(words):
         words = await gen_or_import12()
         if not words: return
 
-    assert len(words) == 12
-
-    # do BIP-32 basics
-    from stash import SecretStash
-    from seed import seed_words_to_encoded_secret
-    enc = seed_words_to_encoded_secret(words)
-    _,_,node = SecretStash.decode(enc)
-
-    chain = chains.current_chain()
-    xfp = swab32(node.my_fp())
-    xpub = chain.serialize_public(node)
-
-    # TODO: b_xfp and b_xpub needed?
-
-    v = dict(words=words, c_xfp=xfp, c_xpub=xpub, pol=CCCFeature.default_policy())
-    settings.put('ccc', v)
-    settings.save()
+    # do BIP-32 basics: capture XFP and XPUB and encoded version of the secret
+    CCCFeature.init_setup(words)
 
     m = CCCPolicyMenu(first_time=True)
     the_ux.push(m)
@@ -324,43 +356,54 @@ async def modify_ccc_settings():
     ch = await ux_show_story(
             "Spending policy cannot be viewed, changed nor disabled while on the road. "
             "But if you have the seed words (for key C) you may proceed.",
-            title="CCC Enabled", escape='6' if version.is_devmode else None)
+            title="CCC Enabled", escape='6')
 
-    if ch == '6':
+    if ch == '6' and version.is_devmode:
         # debug hack: skip word entry
-        assert version.is_devmode
-        w = settings.get('ccc')['words']
-        await key_c_challenge(w)
+        # - doing full decode cycle here for better testing
+        enc = CCCFeature.get_encoded_secret()
+        chk, raw, _ = SecretStash.decode(enc)
+        assert chk == 'words'
+        words = bip39.b2a_words(raw).split(' ')
+        await key_c_challenge(words)
         return
         
     if ch != 'y': return
 
+    # small info-leak here: exposing 12 vs 24 words, but we expect most to be 12 anyway
+    nwords = CCCFeature.get_num_words()
+
     import seed
     if version.has_qwerty:
         from ux_q1 import seed_word_entry
-        await seed_word_entry('Enter Seed Words', 12,
-                                            done_cb=key_c_challenge)
+        await seed_word_entry('Enter Seed Words', nwords, done_cb=key_c_challenge)
     else:
-        return seed.WordNestMenu(12, done_cb=key_c_challenge)
+        return seed.WordNestMenu(nwords, done_cb=key_c_challenge)
+
+NUM_CHALLENGE_FAILS = 0
 
 async def key_c_challenge(words):
     # They entered some words, if they match our key C then allow edit of policy
-    assert len(words) == 12
     from glob import dis
 
     dis.fullscreen('Verifying...')
     
     if not CCCFeature.words_check(words):
+        # keep an in-memory counter, and after 3 fails, reboot
+        global NUM_CHALLENGE_FAILS
+        NUM_CHALLENGE_FAILS += 1
+        if NUM_CHALLENGE_FAILS >= 3:
+            from utils import clean_shutdown
+            clean_shutdown()
+
         await ux_show_story("Sorry, those words are incorrect.")
-        # TODO: keep an in-memory counter, and after 3 fails, reboot
+            
         return
 
     # pop stack
     the_ux.pop()
     m = CCCPolicyMenu(first_time=False)
     the_ux.push(m)
-
-
     
 
 # EOF
