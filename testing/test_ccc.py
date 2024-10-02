@@ -3,12 +3,14 @@
 # tests related to CCC feature
 #
 #
-import pytest, requests, re, time, random, json, glob, os
+import pytest, requests, re, time, random, json, glob, os, hashlib
 from binascii import a2b_hex, b2a_hex
 from base64 import urlsafe_b64encode
 from urllib.parse import urlparse, parse_qs
 from onetimepass import get_totp
 from helpers import prandom
+from pysecp256k1.ecdh import ecdh, ECDH_HASHFP_CLS
+from pysecp256k1 import ec_seckey_verify, ec_pubkey_parse, ec_pubkey_serialize, ec_pubkey_create
 from mnemonic import Mnemonic
 from bip32 import BIP32Node
 from constants import AF_P2WSH
@@ -19,27 +21,39 @@ from bbqr import split_qrs
 # TODO: we will rotate the server key before release.
 SERVER_PUBKEY = '036d0f95c3aaf5cd3e8be561b07814fbb1c9ee2171ed301828151975411472a2fd'
 
+
+def py_ckcc_hashfp(output, x, y, data=None):
+    try:
+        m = hashlib.sha256()
+        m.update(x.contents.raw)
+        m.update(y.contents.raw)
+        output.contents.raw = m.digest()
+        return 1
+    except:
+        return 0
+
+
+ckcc_hashfp = ECDH_HASHFP_CLS(py_ckcc_hashfp)
+
+
 def make_session_key(his_pubkey=None):
     # - second call: given the pubkey of far side, calculate the shared pt on curve
     # - creates session key based on that
-    from ecdsa.curves import SECP256k1
-    from ecdsa import VerifyingKey, SigningKey
-    from ecdsa.util import number_to_string
-    from hashlib import sha256
+    while True:
+        my_seckey = prandom(32)
+        try:
+            ec_seckey_verify(my_seckey)
+            break
+        except: continue
 
-    my_key = SigningKey.generate(curve=SECP256k1, hashfunc=sha256)
+    my_pubkey = ec_pubkey_create(my_seckey)
 
-    his_pubkey = VerifyingKey.from_string(bytes.fromhex(SERVER_PUBKEY),
-                                                curve=SECP256k1, hashfunc=sha256)
+    his_pubkey = ec_pubkey_parse(bytes.fromhex(SERVER_PUBKEY))
 
     # do the D-H thing
-    pt = my_key.privkey.secret_multiplier * his_pubkey.pubkey.point
+    shared_key = ecdh(my_seckey, his_pubkey, hashfp=ckcc_hashfp)
 
-    # final key is sha256 of that point, serialized (64 bytes).
-    order = SECP256k1.order
-    kk = number_to_string(pt.x(), order) + number_to_string(pt.y(), order)
-
-    return sha256(kk).digest(), my_key.get_verifying_key().to_string('compressed')
+    return shared_key, ec_pubkey_serialize(my_pubkey)
 
 
 @pytest.fixture
