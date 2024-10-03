@@ -726,12 +726,6 @@ async def gen_or_import():
     return words
 
 
-async def ephemeral_seed_import(nwords):
-    async def import_done_cb(words):
-        dis.fullscreen("Applying...")
-        await set_ephemeral_seed_words(words, meta='Imported')
-
-
 async def toggle_ccc_feature(*a):
     # The only menu item show to user!
     if settings.get('ccc'):
@@ -741,7 +735,6 @@ async def toggle_ccc_feature(*a):
     # - create C key (maybe import?)
     # - collect a policy setup, maybe 2FA enrol too
     # - lock that down
-    # - TODO copy
     ch = await ux_show_story('''\
 This feature creates a new 2-of-3 multisig wallet. A, B, and C keys are as follows:\n
 A=This Coldcard, B=Backup Key, C=Policy Key ... blah balh
