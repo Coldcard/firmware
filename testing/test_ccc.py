@@ -189,18 +189,20 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
 @pytest.fixture
 def enter_enabled_ccc(goto_home, pick_menu_item, cap_story, press_select, is_q1,
                       word_menu_entry, cap_menu):
-    def doit(c_words):
-        goto_home()
-        pick_menu_item("Advanced/Tools")
-        pick_menu_item("Coldcard Co-signing")
-        time.sleep(.1)
-        title, story = cap_story()
-        assert title == "CCC Enabled"
-        assert "policy cannot be viewed, changed nor disabled while on the road" in story
-        assert "if you have the seed words (for key C) you may proceed" in story
-        press_select()
-        time.sleep(.1)
-        word_menu_entry(c_words)
+    def doit(c_words, first_time=False):
+        if not first_time:
+            goto_home()
+            pick_menu_item("Advanced/Tools")
+            pick_menu_item("Coldcard Co-signing")
+            time.sleep(.1)
+            title, story = cap_story()
+            assert title == "CCC Enabled"
+            assert "policy cannot be viewed, changed nor disabled while on the road" in story
+            assert "if you have the seed words (for key C) you may proceed" in story
+            press_select()
+            time.sleep(.1)
+            word_menu_entry(c_words)
+
         time.sleep(.1)
         m = cap_menu()
 
@@ -299,10 +301,7 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
 
 def test_test_test(setup_ccc, enter_enabled_ccc, ccc_ms_setup):
     words = setup_ccc()
-    # TODO now we are back in advanced/tools and need to provide secret
-    # TODO to set-up multisig... painful... we should drop user right to the
-    # TODO CCC config menu so he can setup multisig immediatelly
-    enter_enabled_ccc(words)
+    enter_enabled_ccc(words, first_time=True)
     ccc_ms_setup()
 
 # EOF
