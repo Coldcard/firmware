@@ -266,8 +266,10 @@ class CCCPolicyMenu(MenuSystem):
         CCCFeature.update_policy(self.policy)
 
         the_ux.pop()
-        m = CCCConfigMenu()
-        the_ux.push(m)
+        if type(the_ux.top_of_stack()) != CCCConfigMenu:
+            # only on initial setup
+            m = CCCConfigMenu()
+            the_ux.push(m)
 
     async def test_2fa(self, *a):
         ss = self.policy.get('web2fa')
