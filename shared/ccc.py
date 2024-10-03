@@ -241,6 +241,10 @@ class CCCPolicyMenu(MenuSystem):
 
         return items
 
+    def on_cancel(self):
+        # zip to cancel item when they try to exit via X button
+        self.goto_idx(self.count - 1)
+
     async def remove_policy(self, *a):
         if not await ux_confirm("Key C will be lost, and policy settings forgotten. This unit will only be able to partly sign transactions (1 of 3). To completely remove this wallet, proceed to the miltisig wallet and remove entry there as well."):
             return
