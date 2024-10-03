@@ -119,7 +119,7 @@ class CCCConfigMenu(MenuSystem):
             #         xxxxxxxxxxxxxxxx
             MenuItem('[CCC %s]' % xfp2str(my_xfp), f=self.show_ident),
             MenuItem('Spending Policy', menu=CCCPolicyMenu.be_a_submenu),
-            MenuItem('Export CCC XPub', f=self.export_xpub_c),
+            MenuItem('Export CCC XPUBs', f=self.export_xpub_c),
             MenuItem('Temporary Mode', f=self.enter_temp_mode),
             MenuItem('Multisig Wallets'),
         ]
@@ -377,9 +377,9 @@ async def gen_or_import12():
     from seed import WordNestMenu, generate_seed, approve_word_list
 
     ch = await ux_show_story(
-        "Press %s to generate a new 12-word master secret seed phrase to be used "
+        "Press %s to generate a new 12-word seed phrase to be used "
         "as the Coldcard Cosigning Secret (key C).\n\nOr press (1) to import existing "
-        "12-words or (2) for 24." % OK,
+        "12-words or (2) for 24-words import." % OK,
         escape='12', title="CCC Key C")
 
     if ch == '1' or ch == '2':
