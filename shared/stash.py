@@ -208,7 +208,9 @@ class SensitiveValues:
 
         self._bip39pw = bip39pw
 
-        if secret is not None:
+        if secret is Ellipsis:
+            self.mode = self.raw = self.node = None
+        elif secret is not None:
             # sometimes we already know the secret
             self.secret = secret
             self.deltamode = False

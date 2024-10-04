@@ -3,7 +3,7 @@
 # tests related to CCC feature
 #
 #
-import pytest, requests, re, time, random, json, glob, os, hashlib
+import pytest, requests, re, time, random, json, glob, os, hashlib, struct, base64
 from binascii import a2b_hex, b2a_hex
 from base64 import urlsafe_b64encode
 from urllib.parse import urlparse, parse_qs
@@ -16,6 +16,7 @@ from bip32 import BIP32Node
 from constants import AF_P2WSH
 from charcodes import KEY_QR
 from bbqr import split_qrs
+from psbt import BasicPSBT
 
 
 # TODO: we will rotate the server key before release.
@@ -204,6 +205,7 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
             assert "Whitelist" in m
         assert "Web 2FA" in m
         # TODO allow setting above values here
+        # TODO check settings object data
 
         press_cancel()  # leave Spending Policy
 
@@ -282,15 +284,16 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
 
         time.sleep(.1)
         title, story = cap_story()
-        assert title == "QR or SD Card?"
-        if way in ("sd", "vdisk"):
-            press_select()
-        else:
-            need_keypress(KEY_QR)
-            _, parts = split_qrs(data, 'J', max_version=20)
-            for p in parts:
-                scan_a_qr(p)
-                time.sleep(.1)
+        if is_q1:
+            assert title == "QR or SD Card?"
+            if way in ("sd", "vdisk"):
+                press_select()
+            else:
+                need_keypress(KEY_QR)
+                _, parts = split_qrs(data, 'J', max_version=20)
+                for p in parts:
+                    scan_a_qr(p)
+                    time.sleep(.1)
 
         # casual on-device multisig create
         if addr_fmt == AF_P2WSH:
@@ -307,12 +310,81 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
         assert "Coldcard Cosign" in story
         press_select()
 
+        # something that we need for fake_ms_tx
+        return struct.unpack('<I', a2b_hex(xfp))[0], master, derived
+
     return doit
 
 
-def test_test_test(setup_ccc, enter_enabled_ccc, ccc_ms_setup):
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("magnitude_ok", [True, False])
+def test_ccc_cosign(setup_ccc, enter_enabled_ccc, ccc_ms_setup, fake_ms_txn, start_sign,
+                   cap_menu, pick_menu_item, need_keypress, cap_story, microsd_path,
+                   bitcoind, end_sign, magnitude_ok, settings_set):
+    settings_set("ccc", None)
+
     words = setup_ccc()
     enter_enabled_ccc(words, first_time=True)
     ccc_ms_setup()
+
+    m = cap_menu()
+    for mi in m:
+        if "2/3: Coldcard Cosign" in mi:
+            target_mi = mi
+            break
+    else:
+        assert False
+
+    pick_menu_item(target_mi)
+    pick_menu_item("Descriptors")
+    pick_menu_item("Bitcoin Core")
+    time.sleep(.1)
+    need_keypress("1")
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Bitcoin Core multisig setup file written" in story
+    fname = story.split("\n\n")[-1]
+    with open(microsd_path(fname), "r") as f:
+        res = f.read()
+
+    res = res.replace("importdescriptors ", "").strip()
+    r1 = res.find("[")
+    r2 = res.find("]", -1, 0)
+    res = res[r1: r2]
+    res = json.loads(res)
+
+    bitcoind_wo = bitcoind.create_wallet(
+        wallet_name=f"watch_only_ccc", disable_private_keys=True,
+        blank=True, passphrase=None, avoid_reuse=False, descriptors=True
+    )
+    res = bitcoind_wo.importdescriptors(res)
+    # remove junk
+    for obj in res:
+        assert obj["success"], obj
+
+    multi_addr = bitcoind_wo.getnewaddress()
+    bitcoind.supply_wallet.sendtoaddress(address=multi_addr, amount=5.0)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    # create funded PSBT
+    psbt_resp = bitcoind_wo.walletcreatefundedpsbt(
+        [], [{bitcoind.supply_wallet.getnewaddress(): 1 if magnitude_ok else 2}], 0, {"fee_rate": 20}
+    )
+    psbt = psbt_resp.get("psbt")
+
+    start_sign(base64.b64decode(psbt))
+    signed = end_sign(accept=True)
+    po = BasicPSBT().parse(signed)
+
+    if magnitude_ok:
+        assert len(po.inputs[0].part_sigs) == 2  # CC key signed
+        res = bitcoind_wo.finalizepsbt(base64.b64encode(signed).decode())
+        assert res["complete"]
+        tx_hex = res["hex"]
+        res = bitcoind_wo.testmempoolaccept([tx_hex])
+        assert res[0]["allowed"]
+        res = bitcoind_wo.sendrawtransaction(tx_hex)
+        assert len(res) == 64  # tx id
+    else:
+        assert len(po.inputs[0].part_sigs) == 1  # CC key did NOT sign
 
 # EOF

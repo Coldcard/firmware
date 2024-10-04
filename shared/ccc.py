@@ -22,7 +22,7 @@ class CCCFeature:
         # Test if words provided are right
         enc = seed_words_to_encoded_secret(words)
         exp = cls.get_encoded_secret()
-        return (enc == exp)
+        return enc == exp
 
     @classmethod
     def get_num_words(cls):
@@ -39,7 +39,10 @@ class CCCFeature:
     @classmethod
     def get_xfp(cls):
         # just the XFP
-        return settings.get('ccc')['c_xfp']
+        ccc = settings.get('ccc')
+        if ccc:
+            return ccc['c_xfp']
+        
 
     @classmethod
     def init_setup(cls, words):
@@ -77,7 +80,7 @@ class CCCFeature:
         v = dict(settings.get('ccc', {}))
         v['pol'] = dict(pol)
         settings.set('ccc', v)
-        return dict(pol)
+        return v['pol']
 
     @classmethod
     def update_policy_key(cls, **kws):
@@ -290,7 +293,7 @@ class CCCAddrWhitelist(MenuSystem):
                 return
 
             await self.add_addresses([addr])
-            return 
+            return
 
         # loose RE to match any group of chars that could be addresses
         # - really just removing whitespace and punctuation
@@ -335,11 +338,11 @@ class CCCAddrWhitelist(MenuSystem):
             if not here: break
             got.extend(here)
             ln = 'Got %d so far. ENTER to apply.' % len(got)
-            
+
         if got:
             # import them
             await self.add_addresses(got)
-        
+
     async def add_addresses(self, more_addrs):
         # add new entries, if unique; preserve ordering
         addrs = CCCFeature.get_policy().get('addr', [])
@@ -361,7 +364,7 @@ class CCCAddrWhitelist(MenuSystem):
                 (len(new), '\n\n'.join(new)))
         else:
             await ux_show_story("Added new address to whitelist:\n\n%s" % new[0])
-            
+
 
 class CCCPolicyMenu(MenuSystem):
     # Build menu stack that allows edit of all features of the spending
@@ -416,7 +419,7 @@ class CCCPolicyMenu(MenuSystem):
     async def set_magnitude(self, *a):
         was = self.policy.get('mag', 0)
         val = await ux_enter_number('Per Txn Max Out', max_value=int(1e8),
-                                            can_cancel=True, value=(was or ''))
+                                    can_cancel=True, value=(was or ''))
 
         if (val is None) or (val == was):
             msg = "Did not change"
