@@ -2864,7 +2864,7 @@ def test_bitcoind_MofN_tutorial(m_n, script, clear_ms, goto_home, need_keypress,
     split_story = story.split("\n\n")
     fname = split_story[1]
     fname_tx = split_story[3]
-    cc_tx_id = split_story[-1].split("\n")[-1]
+    cc_tx_id = split_story[-2].split("\n")[-1]
     with open(microsd_path(fname), "r") as f:
         final_psbt = f.read().strip()
 
@@ -2960,7 +2960,7 @@ def test_bitcoind_MofN_tutorial(m_n, script, clear_ms, goto_home, need_keypress,
     assert "PSBT Signed" == title
     assert "Updated PSBT is:" in story
     press_select()
-    fname = story.split("\n\n")[-1]
+    fname = story.split("\n\n")[-2]
     with open(microsd_path(fname), "r") as f:
         cc_signed_psbt = f.read().strip()
 

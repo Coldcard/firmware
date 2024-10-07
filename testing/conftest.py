@@ -1,6 +1,6 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, io, math, pdb
+import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, io, math, pdb, base64
 from subprocess import check_output
 from ckcc.protocol import CCProtocolPacker
 from helpers import B2A, U2SAT, hash160, addr_from_display_format
@@ -1291,12 +1291,12 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
             assert False, 'timed out'
 
         txid = None
-        lines = story.split('\n')
-        if 'Final TXID:' in lines:
-            txid = lines[-1]
-            result_fname = lines[-4]
+        lines = story.split('\n\n')
+        if 'Final TXID:' in story:
+            txid = lines[-2].split("\n")[-1]
+            result_fname = lines[-3]
         else:
-            result_fname = lines[-1]
+            result_fname = lines[-2]
 
         result = open_microsd(result_fname, 'rb').read()
 
@@ -1703,6 +1703,42 @@ def nfc_read_text(nfc_read):
     return doit
 
 @pytest.fixture()
+def nfc_read_txn(nfc_read, press_select):
+    def doit(txid=None, contents=None):
+        if contents is None:
+            contents = nfc_read()
+            time.sleep(.5)
+            press_select()
+
+        got_txid = None
+        got_txn = None
+        got_psbt = None
+        got_hash = None
+        for got in ndef.message_decoder(contents):
+            if got.type == 'urn:nfc:wkt:T':
+                assert 'Transaction' in got.text or 'PSBT' in got.text
+                if 'Transaction' in got.text and txid:
+                    assert b2a_hex(txid).decode() in got.text
+            elif got.type == 'urn:nfc:ext:bitcoin.org:txid':
+                got_txid = b2a_hex(got.data).decode('ascii')
+            elif got.type == 'urn:nfc:ext:bitcoin.org:txn':
+                got_txn = got.data
+            elif got.type == 'urn:nfc:ext:bitcoin.org:psbt':
+                got_psbt = got.data
+            elif got.type == 'urn:nfc:ext:bitcoin.org:sha256':
+                got_hash = got.data
+            else:
+                raise ValueError(got.type)
+
+        assert got_psbt or got_txn, 'no data?'
+        assert got_hash
+        assert got_hash == hashlib.sha256(got_psbt or got_txn).digest()
+
+        return got_txid, got_psbt, got_txn
+    return doit
+
+
+@pytest.fixture()
 def nfc_block4rf(sim_eval):
     # wait until RF is enabled and something to read (doesn't read it tho)
     def doit(timeout=15):
@@ -1814,10 +1850,10 @@ def load_export_and_verify_signature(microsd_path, virtdisk_path, verify_detache
 @pytest.fixture
 def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_text, nfc_read_json,
                 load_export_and_verify_signature, is_q1, press_cancel, press_select, readback_bbqr,
-                cap_screen_qr):
+                cap_screen_qr, nfc_read_txn):
     def doit(way, label, is_json, sig_check=True, addr_fmt=AF_CLASSIC, ret_sig_addr=False,
              tail_check=None, sd_key=None, vdisk_key=None, nfc_key=None, ret_fname=False,
-             fpattern=None, qr_key=None):
+             fpattern=None, qr_key=None, is_tx=False, encoding="base64"):
         
         s_label = None
         if label == "Address summary":
@@ -1832,7 +1868,8 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
         time.sleep(0.2)
         title, story = cap_story()
         if way == "sd":
-            if f"({key_map['sd']}) to save {s_label if s_label else label} file to SD Card" in story:
+            if (f"({key_map['sd']}) to save {s_label if s_label else label} "
+                f"{'' if is_tx else 'file '}to SD Card") in story:
                 need_keypress(key_map['sd'])
 
         elif way == "nfc":
@@ -1841,6 +1878,10 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
             else:
                 need_keypress(key_map['nfc'])
                 time.sleep(0.2)
+                if is_tx:
+                    nfc_export = nfc_read_txn()
+                    return nfc_export[1:]
+
                 if is_json:
                     nfc_export = nfc_read_json()
                 else:
@@ -1863,6 +1904,8 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                     return json.loads(data)
                 elif file_type == "U":
                     return data.decode('utf-8') if not isinstance(data, str) else data
+                elif file_type in ("P", "T"):
+                    return data
                 else:
                     raise NotImplementedError
             except:
@@ -1880,11 +1923,37 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
 
         time.sleep(0.2)
         title, story = cap_story()
+        path_f = microsd_path if way == "sd" else virtdisk_path
         if sig_check:
             export, sig_addr = load_export_and_verify_signature(story, way, is_json=is_json,
                                                                 addr_fmt=addr_fmt, label=label,
                                                                 tail_check=tail_check,
                                                                 fpattern=fpattern)
+        elif is_tx:
+            enc = "rb" if encoding == "binary" else "r"
+            _split = story.split("\n\n")
+            export = None
+            if 'Updated PSBT is:' == _split[0]:
+                fname = _split[1]
+                path = path_f(fname)
+                with open(path, enc) as f:
+                    export = f.read()
+
+                export_tx = None
+                if "Finalized transaction (ready for broadcast)" in _split[2]:
+                    fname_tx = _split[3]
+                    path_tx = path_f(fname_tx)
+                    with open(path_tx, enc) as f:
+                        export_tx = f.read()
+            else:
+                # just finalized tx
+                assert "Finalized transaction (ready for broadcast):" == _split[0]
+                fname_tx = _split[1]
+                path_tx = path_f(fname_tx)
+                with open(path_tx, enc) as f:
+                    export_tx = f.read()
+
+            return export, export_tx
         else:
             assert f"{label} file written" in story
             if tail_check:
@@ -1896,10 +1965,8 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 assert fpattern in fname
             if is_json:
                 assert fname.endswith(".json")
-            if way == "sd":
-                path = microsd_path(fname)
-            else:
-                path = virtdisk_path(fname)
+
+            path = path_f(fname)
             with open(path, "r") as f:
                 export = f.read()
                 if is_json:
@@ -1913,6 +1980,110 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
             # ret_fname now only works if sig is not checked
             return export, fname
         return export
+    return doit
+
+
+@pytest.fixture
+def signing_artifacts_reexport(cap_story, need_keypress, load_export, press_cancel, is_q1):
+    def doit(way, tx_final=False, txid=None, encoding=None, del_after=False, is_usb=False):
+        label = "Finalized TX ready for broadcast" if tx_final else "Partly Signed PSBT"
+        def _check_story(the_way):
+            time.sleep(.2)
+            title, story = cap_story()
+            assert title == "PSBT Signed"
+
+            if the_way in ["qr", "nfc"]:
+                what = label + " shared via %s." % the_way.upper()
+                assert what in story
+            else:
+                if not del_after:
+                    assert "Updated PSBT is" in story
+                if tx_final:
+                    assert "Finalized transaction (ready for broadcast)" in story
+                    if txid:
+                        assert txid in story
+
+            assert "Press (0) to re-export." in story
+            need_keypress("0")
+
+        to_do = ["sd", "vdisk", "nfc", "qr"]
+        if not is_usb:
+            _check_story(way)
+            to_do.remove(way)  # put it as the last item
+            to_do.append(way)
+
+        if not is_q1:
+            to_do.remove("qr")
+
+        res = []
+        res_tx = []
+        for _way in to_do:
+            try:
+                rv = load_export(_way, label, is_json=False, sig_check=False,
+                                 is_tx=True, encoding=encoding)
+                if isinstance(rv, tuple):
+                    _psbt, _tx = rv
+                    if _psbt:
+                        res.append(_psbt)
+                    if _tx:
+                        res_tx.append(_tx)
+                else:
+                    if tx_final:
+                        res_tx.append(rv)
+                    else:
+                        res.append(rv)
+                if _way in ("qr", "nfc"):
+                    # nfc now needs cancel as it keeps reexporting
+                    # qr needs to go back from qr view
+                    press_cancel()
+                _check_story(_way)
+            except BaseException as e:
+                if _way != "vdisk":
+                    raise
+
+        # check we exported the same - even if in different format
+        final_res = []
+        for x in res:
+            if x is not None:
+                x = x.strip()
+                if isinstance(x, bytearray):
+                    x = bytes(x)
+                if not isinstance(x, bytes):
+                    try:
+                        # is just a hex string
+                        x = bytes.fromhex(x)
+                    except:
+                        x = base64.b64decode(x)
+                else:
+                    try:
+                        x = base64.b64decode(x.decode())
+                    except: pass
+
+                final_res.append(x)
+
+        final_res_tx = []
+        for y in res_tx:
+            if y is not None:
+                y = y.strip()
+                try:
+                    y = a2b_hex(y)
+                except: pass
+                if isinstance(y, bytearray):
+                    # bytearray is unhashable type
+                    y = bytes(y)
+
+                final_res_tx.append(y)
+
+        if not del_after and final_res:
+            assert len(set(final_res)) == 1
+
+        fin_tx = None
+        if final_res_tx:
+            assert len(set(final_res_tx)) == 1
+            fin_tx = final_res_tx[0]
+
+        return final_res[0] if final_res else None, fin_tx
+
     return doit
 
 
@@ -2312,7 +2483,7 @@ from test_multisig import make_ms_address, clear_ms, make_myself_wallet, import_
 from test_nfc import try_sign_nfc
 from test_se2 import goto_trick_menu, clear_all_tricks, new_trick_pin, se2_gate, new_pin_confirmed
 from test_seed_xor import restore_seed_xor
-from test_ux import pass_word_quiz, word_menu_entry
+from test_ux import pass_word_quiz, word_menu_entry, enable_hw_ux
 from txn import fake_txn
 
 # EOF

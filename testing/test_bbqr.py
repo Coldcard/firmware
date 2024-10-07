@@ -232,6 +232,7 @@ def test_show_bbqr_contents(src, cap_screen_qr, sim_exec, render_bbqr, load_shar
     assert ft == 'B'
 
 @pytest.mark.bitcoind
+@pytest.mark.reexport
 @pytest.mark.parametrize('size', [ 2, 10 ] )
 @pytest.mark.parametrize('max_ver', [ 20 ] )        # 20 max due to 4k USB buffer limit
 @pytest.mark.parametrize('encoding', '2HZ' )
@@ -242,7 +243,7 @@ def test_bbqr_psbt(size, encoding, max_ver, partial, segwit, scan_a_qr, readback
                    cap_screen_qr, render_bbqr, goto_home, use_regtest, cap_story,
                    decode_psbt_with_bitcoind, decode_with_bitcoind, fake_txn, dev,
                    start_sign, end_sign, press_cancel, press_select, need_keypress,
-                   base64str, try_sign_bbqr):
+                   base64str, try_sign_bbqr, signing_artifacts_reexport):
 
     num_in = size
     num_out = size*10
@@ -291,6 +292,12 @@ def test_bbqr_psbt(size, encoding, max_ver, partial, segwit, scan_a_qr, readback
     assert oc == num_out
 
     press_cancel()      # back to menu
+    _psbt, _txn = signing_artifacts_reexport("qr", tx_final=not partial,
+                                             encoding="binary")
+    if partial:
+        assert _psbt == rb
+    else:
+        assert _txn == rb
 
 @pytest.mark.parametrize('test_size', [7854, 4592,
     758, 375, 465,       # v15 capacity

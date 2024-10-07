@@ -2,16 +2,14 @@
 #
 # ux_q1.py - UX/UI interactions that are Q1 specific and use big screen, keyboard.
 #
-import utime, gc, ngu, sys, chains
+import utime, gc, ngu, sys, bip39
 import uasyncio as asyncio
 from uasyncio import sleep_ms
 from charcodes import *
 from lcd_display import CHARS_W, CHARS_H, CursorSpec, CURSOR_SOLID, CURSOR_OUTLINE
 from exceptions import AbortInteraction, QRDecodeExplained
-import bip39
 from decoders import decode_qr_result
 from ubinascii import hexlify as b2a_hex
-from ubinascii import unhexlify as a2b_hex
 from ubinascii import b2a_base64
 
 from utils import problem_file_line, show_single_address
@@ -996,20 +994,17 @@ class QRScannerInteraction:
 async def qr_psbt_sign(decoder, psbt_len, raw):
     # Got a PSBT coming in from QR scanner. Sign it.
     # - similar to auth.sign_psbt_file()
-    from auth import UserAuthorizedAction, ApproveTransaction, try_push_tx
-    from utils import CapsHexWriter
-    from glob import dis, PSRAM
-    from ux import show_qr_code, the_ux, ux_show_story
-    from ux_q1 import show_bbqr_codes
+    from auth import UserAuthorizedAction, ApproveTransaction, done_signing
+    from ux import the_ux
     from sffile import SFFile
-    from auth import MAX_TXN_LEN, TXN_INPUT_OFFSET, TXN_OUTPUT_OFFSET
+    from auth import TXN_INPUT_OFFSET, psbt_encoding_taster
 
     if raw != 'PSRAM':      # might already be in place
-
+        # copy to PSRAM, and convert encoding at same time
         if isinstance(raw, str):
             raw = raw.encode()
 
-        # copy to PSRAM, and convert encoding at same time
+        _, output_encoder, _ = psbt_encoding_taster(raw[:10], psbt_len)
         total = 0
         with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as out:
             if not decoder:
@@ -1023,37 +1018,17 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
         assert total <= psbt_len
         psbt_len = total
 
-    async def done(psbt):
-        dis.fullscreen("Wait...")
-        txid = None
-
-        with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as psram:
-
-            # save transaction, as hex into PSRAM
-            with CapsHexWriter(psram) as fd:
-                if psbt.is_complete():
-                    txid = psbt.finalize(fd)
-                else:
-                    psbt.serialize(fd)
-
-            data_len, sha = psram.tell(), fd.checksum.digest()
-
-        UserAuthorizedAction.cleanup()
-
-        # Show the result as a QR, perhaps many BBQr's
-        # - note: already HEX here!
-        here = PSRAM.read_at(TXN_OUTPUT_OFFSET, data_len)
-        if txid and await try_push_tx(a2b_hex(here), txid, sha):
-            return  # success, exit
-
-        msg = txid or "Partly Signed PSBT"
-        try:
-            await show_qr_code(here.decode(), is_alnum=True, msg=msg)
-        except (ValueError, RuntimeError):
-            await show_bbqr_codes('T' if txid else 'P', here, msg, already_hex=True)
+    else:
+        with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as out:
+            taste = out.read(10)
+            _, output_encoder, _ = psbt_encoding_taster(taste, psbt_len)
 
     UserAuthorizedAction.cleanup()
-    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done)
+    UserAuthorizedAction.active_request = ApproveTransaction(
+        psbt_len, approved_cb=done_signing,
+        cb_kws={"input_method": "qr",
+                "output_encoder": output_encoder}
+    )
     the_ux.push(UserAuthorizedAction.active_request)
 
 async def ux_visualize_txn(bin_txn):
@@ -1192,7 +1167,7 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
     #    - BUT: need zlib compress (not present) .. delayed for now
     from bbqr import TYPE_LABELS, int2base36, b32encode, num_qr_needed
     from glob import PSRAM, dis
-    from ux import ux_wait_keyup, ux_wait_keydown
+    from ux import ux_wait_keydown
     import uqr
 
     assert not PSRAM.is_at(data, 0)     # input data would be overwritten with our work

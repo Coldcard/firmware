@@ -734,4 +734,15 @@ def wipe_if_deltamode():
         import callgate
         callgate.fast_wipe()
 
+def chunk_checksum(fd, chunk=1024):
+    # reads from open file descriptor
+    md = sha256()
+    while True:
+        data = fd.read(chunk)
+        if not data:
+            break
+        md.update(data)
+
+    return md.digest()
+
 # EOF

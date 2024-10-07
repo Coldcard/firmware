@@ -604,7 +604,6 @@ async def import_from_other(menu, *a):
     else:
         def contains_json(fname):
             if not fname.endswith('.json'): return False
-            print(fname)
             try:
                 obj = json.load(open(fname, 'rt'))
                 assert 'coldcard_notes' in obj

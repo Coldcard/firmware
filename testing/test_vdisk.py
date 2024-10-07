@@ -29,14 +29,16 @@ def test_vd_basics(dev, virtdisk_path, is_simulator):
     assert os.path.isfile(virtdisk_path(f'ident/ckcc-{sn}.txt'))
 
 @pytest.fixture
-def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, press_cancel):
+def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, press_cancel,
+                      pick_menu_item, goto_home):
 
     # like "try_sign" but use Virtual Disk to send/receive PSBT/results
     # - on real dev, need user to manually say yes ... alot
     # - on simulator, start with "--eject" arg so no SDCard emulated
 
 
-    def doit(f_or_data, accept=True, expect_finalize=False, accept_ms_import=False, complete=False, encoding='binary'):
+    def doit(f_or_data, accept=True, expect_finalize=False, accept_ms_import=False,
+             encoding='binary'):
 
         assert not accept_ms_import, 'no support'
         assert accept, 'no support'
@@ -48,7 +50,8 @@ def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, pre
             filename = 'memory'
         else:
             filename = f_or_data
-            ip = open(f_or_data, 'rb').read()
+            with open(f_or_data, 'rb') as f:
+                ip = f.read()
             if ip[0:10] == b'70736274ff':
                 ip = a2b_hex(ip.strip())
             assert ip[0:5] == b'psbt\xff'
@@ -65,12 +68,16 @@ def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, pre
         virtdisk_wipe()
 
         xfn = virtdisk_path('testcase.psbt')
-        open(xfn, 'wb').write(ip)
+        with open(xfn, 'wb') as f:
+            f.write(ip)
 
-        press_select()      # ready to sign (hopefully)
+        goto_home()
+        pick_menu_item("Ready To Sign")
 
         # CC scans drive, reads PSBT, verifies...
         time.sleep(1)
+        title, story = cap_story()
+        assert "OK TO SEND" in title
 
         # approve siging txn
         if accept:
@@ -78,35 +85,40 @@ def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, pre
         else:
             press_cancel()
 
-        if accept == False:
+        if accept is False:
             time.sleep(0.050)
 
             # look for "Aborting..." ??
             return ip, None, None
 
         # wait for it to finish signing
+        time.sleep(.1)
         title, story = cap_story()
-        if "OK TO SEND" in title or "PSBT Signed" in title:
-            press_select()
+        assert "PSBT Signed" in title
 
-        result_fn = xfn.replace('.psbt', '-*.psbt')
-        result_txn = xfn.replace('.psbt', '.txn')
+        split_story = story.split("\n\n")
+        result_fn = split_story[1]
+        result_txn = None
+        result_txid = None
+        if expect_finalize:
+            result_txn = split_story[3]
+            result_txid = split_story[4].split("\n")[-1]
+            reexport_msg = split_story[5]
+        else:
+            reexport_msg = split_story[2]
 
+        assert "Press (0) to re-export." == reexport_msg
         got_psbt = None
         got_txn = None
         txid, got_txid = None, None
-        for i in range(15):
-            try:
-                got_txn = open(result_txn, 'rb').read()
-            except FileNotFoundError as e:
-                print(e)
-                pass
 
-            lst = glob.glob(result_fn)
-            if lst:
-                assert len(lst) == 1, "multi files: " + ', '.join(lst)
-                result_fn = lst[0]
-                got_psbt = open(result_fn, 'rb').read()
+        for i in range(15):
+            if result_txn:
+                with open(virtdisk_path(result_txn), 'rb') as f:
+                    got_txn = f.read()
+
+            with open(virtdisk_path(result_fn), 'rb') as f:
+                got_psbt = f.read()
 
             # for delete-psbt mode
             for ff in glob.glob(virtdisk_path('*.txn')):
@@ -115,7 +127,9 @@ def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, pre
                     got_txid = re.findall(r'[0-9a-f]{64}', ff)[0]
                 except IndexError:
                     got_txid = None
-                got_txn = a2b_hex(open(ff, 'rt').read().strip())
+
+                with open(ff, 'rt') as f:
+                    got_txn = a2b_hex(f.read().strip())
 
             if got_txn or got_psbt:
                 break
@@ -130,10 +144,11 @@ def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, pre
             txid = got_txid
 
         if got_txid:
-            assert got_txn
-            assert got_txid == txid
             assert expect_finalize
-            open("debug/vd-result.txn", 'wb').write(got_txid)
+            assert got_txn
+            assert got_txid == txid == result_txid
+            with open("debug/vd-result.txn", 'wb') as f:
+                f.write(got_txid)
 
 
         # check output encoding matches input (for PSBT only)
@@ -160,7 +175,8 @@ def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, pre
 
         if got_psbt:
             assert got_psbt[0:5] == b'psbt\xff'
-            open("debug/vd-result.psbt", 'wb').write(got_psbt)
+            with open("debug/vd-result.psbt", 'wb') as f:
+                f.write(got_psbt)
 
             from psbt import BasicPSBT
             was = BasicPSBT().parse(ip) 
@@ -168,16 +184,18 @@ def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, pre
             assert was.txn == now.txn
             assert was != now
 
-        return ip, (got_psbt or got_txn), txid
+        return ip, (got_txn or got_psbt), txid
 
     return doit
 
 
 @pytest.mark.unfinalized            # iff partial=1
+@pytest.mark.reexport
 @pytest.mark.parametrize('encoding', ['binary', 'hex', 'base64'])
 @pytest.mark.parametrize('num_outs', [1,2])
 @pytest.mark.parametrize('partial', [1, 0])
-def test_virtdisk_signing(encoding, num_outs, partial, try_sign_virtdisk, fake_txn, dev, sd_cards_eject):
+def test_virtdisk_signing(encoding, num_outs, partial, try_sign_virtdisk, fake_txn, dev,
+                          sd_cards_eject, signing_artifacts_reexport):
     xp = dev.master_xpub
     sd_cards_eject()
 
@@ -191,6 +209,14 @@ def test_virtdisk_signing(encoding, num_outs, partial, try_sign_virtdisk, fake_t
     psbt = fake_txn(2, num_outs, xp, segwit_in=True, psbt_hacker=hack)
 
     _, txn, txid = try_sign_virtdisk(psbt, expect_finalize=not partial, encoding=encoding)
+
+    sd_cards_eject(slot_a=0)
+    _psbt, _txn = signing_artifacts_reexport("vdisk", tx_final=not partial, txid=txid,
+                                             encoding=encoding)
+    if partial:
+        assert _psbt == txn
+    else:
+        assert _txn == txn
 
 if 0:
     @pytest.mark.parametrize('num_outs', [ 1, 20, 250])
@@ -260,7 +286,7 @@ def test_macos_detection():
 def test_import_prv_virtdisk(testnet, pick_menu_item, cap_story, need_keypress,
                              unit_test, cap_menu, get_secrets, multiple_runs,
                              reset_seed_words, virtdisk_path, virtdisk_wipe,
-                             settings_set, press_select):
+                             settings_set, press_select, enable_hw_ux):
     # copied from test_ux as we need vdisk enabled and card ejected
     if testnet:
         netcode = "XTN"
@@ -270,6 +296,8 @@ def test_import_prv_virtdisk(testnet, pick_menu_item, cap_story, need_keypress,
         settings_set('chain', 'XTN')
 
     unit_test('devtest/clear_seed.py')
+
+    enable_hw_ux("vdisk")
 
     fname = 'test-%d.txt' % os.getpid()
     path = virtdisk_path(fname)
