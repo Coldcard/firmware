@@ -1306,12 +1306,13 @@ def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoin
         assert decoded['txid'] == txid
 
 @pytest.mark.unfinalized            # iff partial=1
+@pytest.mark.reexport
 @pytest.mark.parametrize('encoding', ['binary', 'hex', 'base64'])
-#@pytest.mark.parametrize('num_outs', [1,2,3,4,5,6,7,8])
 @pytest.mark.parametrize('num_outs', [1,15])
 @pytest.mark.parametrize('del_after', [1, 0])
 @pytest.mark.parametrize('partial', [1, 0])
-def test_sdcard_signing(encoding, num_outs, del_after, partial, try_sign_microsd, fake_txn, try_sign, dev, settings_set):
+def test_sdcard_signing(encoding, num_outs, del_after, partial, try_sign_microsd, fake_txn,
+                        dev, settings_set, signing_artifacts_reexport):
     # exercise the txn encode/decode from sdcard
     xp = dev.master_xpub
 
@@ -1327,7 +1328,13 @@ def test_sdcard_signing(encoding, num_outs, del_after, partial, try_sign_microsd
     psbt = fake_txn(2, num_outs, xp, segwit_in=True, psbt_hacker=hack)
 
     _, txn, txid = try_sign_microsd(psbt, finalize=not partial,
-                                        encoding=encoding, del_after=del_after)
+                                    encoding=encoding, del_after=del_after)
+    _psbt, _txn = signing_artifacts_reexport("sd", tx_final=not partial, txid=txid,
+                                             encoding=encoding, del_after=del_after)
+    if partial:
+        assert _psbt == txn
+    else:
+        assert _txn == txn
 
 @pytest.mark.unfinalized
 @pytest.mark.parametrize('num_ins', [2,3,8])
@@ -2388,7 +2395,7 @@ def test_locktime_ux(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign,
     assert "Finalized transaction (ready for broadcast)" in story
     assert "TXID" in story
     split_story = story.split("\n\n")
-    story_txid = split_story[-1].split("\n")[-1]
+    story_txid = split_story[-2].split("\n")[-1]
     signed_psbt_fname = split_story[1]
     with open(microsd_path(signed_psbt_fname), "r") as f:
         signed_psbt = f.read().strip()
@@ -2500,7 +2507,7 @@ def test_nsequence_blockheight_relative_locktime_ux(sequence, use_regtest, bitco
     assert "Finalized transaction (ready for broadcast)" in story
     assert "TXID" in story
     split_story = story.split("\n\n")
-    story_txid = split_story[-1].split("\n")[-1]
+    story_txid = split_story[-2].split("\n")[-1]
     signed_psbt_fname = split_story[1]
     with open(microsd_path(signed_psbt_fname), "r") as f:
         signed_psbt = f.read().strip()
@@ -2611,7 +2618,7 @@ def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind
     assert "Finalized transaction (ready for broadcast)" in story
     assert "TXID" in story
     split_story = story.split("\n\n")
-    story_txid = split_story[-1].split("\n")[-1]
+    story_txid = split_story[-2].split("\n")[-1]
     signed_psbt_fname = split_story[1]
     with open(microsd_path(signed_psbt_fname), "r") as f:
         signed_psbt = f.read().strip()
@@ -2724,7 +2731,7 @@ def test_mixed_locktimes(num_rtl, use_regtest, bitcoind_d_sim_watch, start_sign,
     assert "Finalized transaction (ready for broadcast)" in story
     assert "TXID" in story
     split_story = story.split("\n\n")
-    story_txid = split_story[-1].split("\n")[-1]
+    story_txid = split_story[-2].split("\n")[-1]
     signed_psbt_fname = split_story[1]
     with open(microsd_path(signed_psbt_fname), "r") as f:
         signed_psbt = f.read().strip()

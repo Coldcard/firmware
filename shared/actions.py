@@ -2327,7 +2327,7 @@ async def pushtx_setup_menu(*a):
 
     if not await feature_requires_nfc():
         # they don't want to proceed
-        return 
+        return
 
     async def doit(menu, picked, xx_self):
         # using stock values, or Disable 

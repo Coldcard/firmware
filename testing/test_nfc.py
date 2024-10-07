@@ -149,7 +149,7 @@ def test_ndef_ccfile(ccfile, load_shared_mod):
 @pytest.fixture
 def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
                  sim_exec, nfc_read, nfc_write, nfc_block4rf, press_select,
-                 press_cancel, press_nfc):
+                 press_cancel, press_nfc, nfc_read_txn):
 
     # like "try_sign" but use NFC to send/receive PSBT/results
 
@@ -263,29 +263,7 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
             press_select()
             txid = None
 
-        got_txid = None
-        got_txn = None
-        got_psbt = None
-        got_hash = None
-        for got in ndef.message_decoder(contents):
-            if got.type == 'urn:nfc:wkt:T':
-                assert 'Transaction' in got.text or 'PSBT' in got.text
-                if 'Transaction' in got.text and txid:
-                    assert b2a_hex(txid).decode() in got.text
-            elif got.type == 'urn:nfc:ext:bitcoin.org:txid':
-                got_txid = b2a_hex(got.data).decode('ascii')
-            elif got.type == 'urn:nfc:ext:bitcoin.org:txn':
-                got_txn = got.data
-            elif got.type == 'urn:nfc:ext:bitcoin.org:psbt':
-                got_psbt = got.data
-            elif got.type == 'urn:nfc:ext:bitcoin.org:sha256':
-                got_hash = got.data
-            else:
-                raise ValueError(got.type)
-
-        assert got_psbt or got_txn, 'no data?'
-        assert got_hash
-        assert got_hash == sha256(got_psbt or got_txn).digest()
+        got_txid, got_psbt, got_txn = nfc_read_txn(txid=txid, contents=contents)
 
         if got_txid and not txid:
             # Txid not shown in pure NFC case
@@ -331,6 +309,7 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
             assert was.txn == now.txn
             assert was != now
 
+        press_cancel()  # exit re-export animation
         return ip, (got_psbt or got_txn), txid
 
     yield doit
@@ -381,10 +360,15 @@ def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress,
             raise ValueError(got.type)
 
 @pytest.mark.unfinalized            # iff partial=1
+@pytest.mark.reexport
 @pytest.mark.parametrize('encoding', ['binary', 'hex', 'base64'])
 @pytest.mark.parametrize('num_outs', [1,2])
 @pytest.mark.parametrize('partial', [1, 0])
-def test_nfc_signing(encoding, num_outs, partial, try_sign_nfc, fake_txn, dev):
+def test_nfc_signing(encoding, num_outs, partial, try_sign_nfc, fake_txn, dev,
+                     signing_artifacts_reexport, microsd_wipe):
+    # clear any possible files on SD - that are created by signing_artifacts_reexport
+    microsd_wipe()
+
     xp = dev.master_xpub
 
     def hack(psbt):
@@ -396,7 +380,13 @@ def test_nfc_signing(encoding, num_outs, partial, try_sign_nfc, fake_txn, dev):
 
     psbt = fake_txn(2, num_outs, xp, segwit_in=True, psbt_hacker=hack)
 
-    _, txn, txid = try_sign_nfc(psbt, expect_finalize=not partial, encoding=encoding)
+    got_psbt, txn, txid = try_sign_nfc(psbt, expect_finalize=not partial, encoding=encoding)
+    _psbt, _txn = signing_artifacts_reexport("nfc", tx_final=not partial, txid=txid,
+                                             encoding=encoding)
+    if partial:
+        assert _psbt == txn
+    else:
+        assert _txn == txn
 
 def test_rf_uid(rf_interface, cap_story, goto_home, pick_menu_item):
     # read UID of NFC chip over the air

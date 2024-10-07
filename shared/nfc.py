@@ -520,11 +520,11 @@ class NFCHandler:
         await self.wipe(False)
         return rv
 
-
     async def start_psbt_rx(self):
         from auth import psbt_encoding_taster, TXN_INPUT_OFFSET
         from auth import UserAuthorizedAction, ApproveTransaction
         from ux import the_ux
+        from auth import done_signing
         from sffile import SFFile
 
         data = await self.start_nfc_rx()
@@ -546,10 +546,7 @@ class NFCHandler:
                 if urn == 'urn:nfc:ext:bitcoin.org:sha256' and len(msg) == 32:
                     # probably produced by another Coldcard: SHA256 over expected contents
                     psbt_sha = bytes(msg)
-        except Exception as e:
-            # dont crash when given garbage
-            import sys; sys.print_exception(e)
-            pass
+        except Exception: pass  # dont crash when given garbage
 
         if psbt_in is None:
             await ux_show_story("Could not find PSBT in what was written.", title="Sorry!")
@@ -572,40 +569,11 @@ class NFCHandler:
         UserAuthorizedAction.cleanup()
         UserAuthorizedAction.active_request = ApproveTransaction(
             psbt_len, 0x0, psbt_sha=psbt_sha,
-            approved_cb=self.signing_done
-        )
+            approved_cb=done_signing,
+            cb_kws={"input_method": "nfc",
+                    "output_encoder": output_encoder})
         # kill any menu stack, and put our thing at the top
         the_ux.push(UserAuthorizedAction.active_request)
-
-    async def signing_done(self, psbt):
-        # User approved the PSBT, and signing worked... share result over NFC (only)
-        from auth import TXN_OUTPUT_OFFSET, try_push_tx
-        from version import MAX_TXN_LEN
-        from sffile import SFFile
-
-        txid = None
-
-        # re-serialize the PSBT back out (into PSRAM)
-        with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd:
-            if psbt.is_complete():
-                txid = psbt.finalize(fd)
-            else:
-                psbt.serialize(fd)
-
-            self.result = (fd.tell(), fd.checksum.digest())
-
-        out_len, out_sha = self.result
-
-        if txid and await try_push_tx(out_len, txid, out_sha):
-            return  # success, exit
-
-        if txid:
-            await self.share_signed_txn(txid, TXN_OUTPUT_OFFSET, out_len, out_sha)
-        else:
-            await self.share_psbt(TXN_OUTPUT_OFFSET, out_len, out_sha)
-
-        # ? show txid on screen ?
-        # thank them?
 
     @classmethod
     async def selftest(cls):
