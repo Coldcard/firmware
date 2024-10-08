@@ -215,7 +215,7 @@ class WordNestMenu(MenuSystem):
         while isinstance(the_ux.top_of_stack(), cls):
             the_ux.pop()
 
-    def on_cancel(self):
+    async def on_cancel(self):
         # user pressed cancel on a menu (so he's going upwards)
         # - if it's a step where we added to the word list, undo that.
         # - but keep them in our system until:
@@ -411,7 +411,7 @@ async def new_from_dice(nwords):
         await commit_new_words(words)
 
 def in_seed_vault(encoded):
-    # Test if indicated xfp (or currently active XFP) is in the seed vault already.
+    # Test if indicated secret is in the seed vault already.
     seeds = settings.master_get("seeds", [])
     if seeds:
         ss = stash.SecretStash.storage_serialize(encoded)
@@ -1193,7 +1193,7 @@ class PassphraseMenu(MenuSystem):
 
         return PassphraseSaverMenu(items)
 
-    def on_cancel(self):
+    async def on_cancel(self):
         if not version.has_qwerty:
             # zip to cancel item when they fail to exit via X button
             self.goto_idx(self.count - 1)

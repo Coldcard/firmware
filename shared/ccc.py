@@ -14,12 +14,12 @@ from stash import SecretStash, len_from_marker, len_to_numwords
 class CCCFeature:
     @classmethod
     def is_enabled(cls):
-        # is the feature enabled right now?
+        # Is the feature enabled right now?
         return bool(settings.get('ccc', False))
 
     @classmethod
     def words_check(cls, words):
-        # test if words provided are right
+        # Test if words provided are right
         enc = seed_words_to_encoded_secret(words)
         exp = cls.get_encoded_secret()
         return (enc == exp)
@@ -28,9 +28,7 @@ class CCCFeature:
     def get_num_words(cls):
         # return 12 or 24 
         marker = cls.get_encoded_secret()[0]
-        ll = len_to_numwords(len_from_marker(marker))
-        return ll
-
+        return len_to_numwords(len_from_marker(marker))
 
     @classmethod
     def get_encoded_secret(cls):
@@ -43,7 +41,6 @@ class CCCFeature:
     def get_xfp(cls):
         # just the XFP
         return settings.get('ccc')['c_xfp']
-        
 
     @classmethod
     def init_setup(cls, words):
@@ -66,7 +63,9 @@ class CCCFeature:
 
     @classmethod
     def default_policy(cls):
-        return dict(mag=1, vel=0, web2fa='', addr=[])
+        # a very basic an permissive policy, but non-zero too.
+        # - 1BTC per day
+        return dict(mag=1, vel=144, web2fa='', addr=[])
 
     @classmethod
     def get_policy(cls):
@@ -79,18 +78,21 @@ class CCCFeature:
         v = dict(settings.get('ccc', {}))
         v['pol'] = dict(pol)
         settings.set('ccc', v)
+        return dict(pol)
 
     @classmethod
     def update_policy_key(cls, **kws):
-        # update a single element of the spending policy
-        # - used for web2fa
+        # update a few elements of the spending policy
+        # - all settings "saved" as they are changed.
+        # - return updated policy
         p = cls.get_policy()
         p.update(kws)
-        cls.update_policy(p)
+        return cls.update_policy(p)
 
     @classmethod
     def remove_ccc(cls):
-        # already confirmed
+        # delete our settings complete; lose key C .. already confirmed
+        # - leave MS in place
         settings.remove_key('ccc')
         settings.save()
 
@@ -103,9 +105,9 @@ def render_mag_value(mag):
 
 
 class CCCConfigMenu(MenuSystem):
-    def __init__(self, first_time=True):
+    def __init__(self):
         items = self.construct()
-        super(CCCConfigMenu, self).__init__(items)
+        super().__init__(items)
 
     def update_contents(self):
         tmp = self.construct()
@@ -117,7 +119,7 @@ class CCCConfigMenu(MenuSystem):
         my_xfp = CCCFeature.get_xfp()
         items = [
             #         xxxxxxxxxxxxxxxx
-            MenuItem('[CCC %s]' % xfp2str(my_xfp), f=self.show_ident),
+            MenuItem('CCC [%s]' % xfp2str(my_xfp), f=self.show_ident),
             MenuItem('Spending Policy', menu=CCCPolicyMenu.be_a_submenu),
             MenuItem('Export CCC XPUBs', f=self.export_xpub_c),
             MenuItem('Temporary Mode', f=self.enter_temp_mode),
@@ -131,8 +133,31 @@ class CCCConfigMenu(MenuSystem):
                             menu=make_ms_wallet_menu, arg=ms.storage_idx))
 
         items.append(MenuItem('↳ Build 2-of-N', f=self.build_2ofN))
+        items.append(MenuItem('Remove CCC', f=self.remove_ccc))
 
         return items
+
+    async def remove_ccc(self, *a):
+        if not await ux_confirm("Key C will be lost, and policy settings forgotten. This unit will only be able to partly sign transactions. To completely remove this wallet, proceed to the miltisig menu and remove wallet entry there as well."):
+            return
+
+        if not await ux_confirm("Last chance. Funds in this wallet may be impacted."):
+            return
+
+        CCCFeature.remove_ccc()
+        the_ux.pop()
+
+    async def on_cancel(self):
+        # trying to exit from CCCConfigMenu
+        from seed import in_seed_vault
+
+        enc = CCCFeature.get_encoded_secret()
+        if in_seed_vault(enc):
+            # remind them to clear the seed-vault copy of Key C because it defeats feature
+            await ux_show_story('''Key C is in your seed vault. If you are done with setup, 
+you MUST delete it from the Seed Vault.''', title='REMINDER')
+
+        the_ux.pop()
 
     async def export_xpub_c(self, *a):
         # do standard Coldcard export for multisig setups
@@ -180,7 +205,7 @@ the CCC policy-controlled key C, and at least one other device, as key B.
 
         goto_top_menu()
 
-class CheckedMenuItem(MenuItem):
+class PolCheckedMenuItem(MenuItem):
     # Show a checkmark if **policy** setting is defined and not the default
     # TODO on Q, should show value right-justified in menu display!
     # - only works inside CCCPolicyMenu
@@ -200,11 +225,10 @@ class CCCPolicyMenu(MenuSystem):
     # - and delete/cancel CCC (clears setting?)
     # - be a sticky menu that's hard to exit (ie. SAVE choice and no cancel out)
 
-    def __init__(self, first_time=False):
-        self.first_time = first_time
-        self.policy = CCCFeature.get_policy() if not first_time else CCCFeature.default_policy()
+    def __init__(self):
+        self.policy = CCCFeature.get_policy()
         items = self.construct()
-        super(CCCPolicyMenu, self).__init__(items)
+        super().__init__(items)
 
     def update_contents(self):
         tmp = self.construct()
@@ -218,11 +242,11 @@ class CCCPolicyMenu(MenuSystem):
     def construct(self):
         items = [
             #                xxxxxxxxxxxxxxxx
-            CheckedMenuItem('Max Magnitude', 'mag', f=self.set_magnitude),
-            CheckedMenuItem('Limit Velocity', 'vel', chooser=self.velocity_chooser),
-            CheckedMenuItem('Whitelisted' + (' Addresses' if version.has_qr else ''),
+            PolCheckedMenuItem('Max Magnitude', 'mag', f=self.set_magnitude),
+            PolCheckedMenuItem('Limit Velocity', 'vel', chooser=self.velocity_chooser),
+            PolCheckedMenuItem('Whitelist' + (' Addresses' if version.has_qr else ''),
                                     'addr', f=self.edit_whitelist),
-            CheckedMenuItem('Web 2FA', 'web2fa', f=self.toggle_2fa),
+            PolCheckedMenuItem('Web 2FA', 'web2fa', f=self.toggle_2fa),
         ]
 
         if self.policy.get('web2fa'):
@@ -231,45 +255,7 @@ class CCCPolicyMenu(MenuSystem):
                 MenuItem('↳ Enroll More', f=self.enroll_more_2fa),
             ])
 
-        if not self.first_time:
-            # NOTE: if they are setting it up, do **not** offer to cancel or abort
-            # because if they are this far, already saved 12 words and done a bunch
-            # of work.
-            items.append(MenuItem('CANCEL Changes', f=self.cancel_changes))
-
-        items.append(MenuItem('SAVE & APPLY', f=self.done_apply))
-
         return items
-
-    def on_cancel(self):
-        # zip to cancel item when they try to exit via X button
-        self.goto_idx(self.count - 1)
-
-    async def remove_policy(self, *a):
-        if not await ux_confirm("Key C will be lost, and policy settings forgotten. This unit will only be able to partly sign transactions (1 of 3). To completely remove this wallet, proceed to the miltisig wallet and remove entry there as well."):
-            return
-
-        CCCFeature.remove_ccc()
-        the_ux.pop()
-
-    async def cancel_changes(self, *a):
-        if not await ux_confirm("Your changes on to the policy, if any, will be forgotten."):
-            return
-        the_ux.pop()
-
-    async def done_apply(self, *a):
-        if not await ux_confirm("Policy will be saved and cannot be changed again without "
-                    "the secret (key C) words."):
-            return
-
-        # commit change
-        CCCFeature.update_policy(self.policy)
-
-        the_ux.pop()
-        if type(the_ux.top_of_stack()) != CCCConfigMenu:
-            # only on initial setup
-            m = CCCConfigMenu()
-            the_ux.push(m)
 
     async def test_2fa(self, *a):
         ss = self.policy.get('web2fa')
@@ -303,7 +289,7 @@ class CCCPolicyMenu(MenuSystem):
         else:
             msg += " maximum per-transaction: \n\n  %s" % render_mag_value(val)
 
-        self.policy['mag'] = val
+        self.policy = CCCFeature.update_policy_key(mag=val)
 
         await ux_show_story(msg, title="Txn Magnitude")
         
@@ -331,7 +317,7 @@ class CCCPolicyMenu(MenuSystem):
             which = 0
 
         def set(idx, text):
-            self.policy['vel'] = va[idx]
+            self.policy = CCCFeature.update_policy_key(vel=va[idx])
 
         return which, ch, set
 
@@ -342,12 +328,7 @@ class CCCPolicyMenu(MenuSystem):
             if not await ux_confirm("Disable web 2FA check? Effect is immediate."):
                 return
 
-            # Save just that one setting right now, but don't commit other changes they
-            # might have made in this menu already. Reason: we don't want the old shared
-            # secret to go back into effect if they fail to commit on this menu.
-            CCCFeature.update_policy_key(web2fa='')
-
-            self.policy['web2fa'] = ''
+            self.policy = CCCFeature.update_policy_key(web2fa='')
             self.update_contents()
 
             await ux_show_story("Web 2FA has been disabled. If you re-enable it, a new "
@@ -366,17 +347,16 @@ phone with Internet access and 2FA app holding correct shared-secret.''',
         if ch != 'y':
             return
 
-        # challenge them, and don't set until confirmed end-to-end success
+        # challenge them, and don't set unless it works
         ss = await web2fa.web2fa_enroll('CCC')
         if not ss:
             return
 
-        # update w/o confirm step because very annoying to need to re-do? or maybe not IDK
-        CCCFeature.update_policy_key(web2fa=ss)
-        self.policy['web2fa'] = ss
+        # update state
+        self.policy = CCCFeature.update_policy_key(web2fa=ss)
         self.update_contents()
 
-async def gen_or_import12():
+async def gen_or_import():
     # returns 12 words, or None to abort
     from seed import WordNestMenu, generate_seed, approve_word_list
 
@@ -433,35 +413,49 @@ A=This Coldcard, B=Backup Key, C=Policy Key ... blah balh
 
 async def enable_step1(words):
     if not words:
-        words = await gen_or_import12()
+        words = await gen_or_import()
         if not words: return
 
     # do BIP-32 basics: capture XFP and XPUB and encoded version of the secret
     CCCFeature.init_setup(words)
 
     # push them directly into policy submenu first time.
-    m = CCCPolicyMenu(first_time=True)
+    m = CCCConfigMenu()
     the_ux.push(m)
 
     # that will lead back to a "nested" menu other setup
 
 async def modify_ccc_settings():
-    # generally not expecting changes to policy on the fly because
+    # Generally not expecting changes to policy on the fly because
     # that's the whole point. Use the B key to override individual spends
-    # but if you can prove you have C key, then harmless to allow changes
+    # but if you can prove you have C key, then it's harmless to allow changes
     # since you could just spend as needed.
 
-    # TODO: if seed vault enabled and any 12-word secrets,
-    #       add "Press (1) to choose from Vault", etc
-    ch = await ux_show_story(
-            "Spending policy cannot be viewed, changed nor disabled while on the road. "
-            "But if you have the seed words (for key C) you may proceed.",
+    enc = CCCFeature.get_encoded_secret()
+    bypass = False
+
+    from seed import in_seed_vault
+    if in_seed_vault(enc):
+        # if seed vault enabled and they have the secret there, just go
+        # allow easy access to menu (impt for debug/setup/testing time).
+        await ux_show_story('''You have a copy of the CCC key C in the Seed Vault, so 
+you may proceed to change settings now.\n\nYou must delete that key from the vault once 
+setup and debug is finished, or all benefit of this feature is lost!''')
+
+        bypass = True
+
+    else:
+        ch = await ux_show_story(
+            "Spending policy cannot be viewed, changed nor disabled, "
+            "unless you have the seed words for key C.",
             title="CCC Enabled", escape='6')
 
-    if ch == '6' and version.is_devmode:
-        # debug hack: skip word entry
+        if ch == '6' and version.is_devmode:
+            # debug hack: skip word entry
+            bypass = True
+
+    if bypass:
         # - doing full decode cycle here for better testing
-        enc = CCCFeature.get_encoded_secret()
         chk, raw, _ = SecretStash.decode(enc)
         assert chk == 'words'
         words = bip39.b2a_words(raw).split(' ')
@@ -497,11 +491,11 @@ async def key_c_challenge(words):
             clean_shutdown()
 
         await ux_show_story("Sorry, those words are incorrect.")
-            
         return
 
+    # success. they are in.
+
     # got to config menu
-    the_ux.pop()
     m = CCCConfigMenu()
     the_ux.push(m)
     

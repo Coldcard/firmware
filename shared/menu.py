@@ -382,7 +382,7 @@ class MenuSystem:
                 self.up()
 
     # events
-    def on_cancel(self):
+    async def on_cancel(self):
         # override me
         if the_ux.pop():
             # top of stack (main top-level menu)
@@ -393,7 +393,7 @@ class MenuSystem:
         #
         if picked is None:
             # "go back" or cancel or something
-            self.on_cancel()
+            await self.on_cancel()
         else:
             await picked.activate(self, self.cursor)
 
@@ -406,7 +406,7 @@ class MenuSystem:
             gc.collect()
             if self.multi_selected is not None:
                 # multichoice
-                self.on_cancel()
+                await self.on_cancel()
                 return ch
 
             await self.activate(ch)
