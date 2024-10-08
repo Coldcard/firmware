@@ -569,7 +569,6 @@ class CCCPolicyMenu(MenuSystem):
         await web2fa.web2fa_enroll('CCC', ss)
 
     async def set_magnitude(self, *a):
-        # TODO: looks ugly on Q?
         was = self.policy.get('mag', 0)
         val = await ux_enter_number('Per Txn Max Out', max_value=int(1e8),
                                     can_cancel=True, value=(was or ''))
@@ -646,12 +645,7 @@ class CCCPolicyMenu(MenuSystem):
             if not await ux_confirm("Disable web 2FA check? Effect is immediate."):
                 return
 
-            # Save just that one setting right now, but don't commit other changes they
-            # might have made in this menu already. Reason: we don't want the old shared
-            # secret to go back into effect if they fail to commit on this menu.
-            CCCFeature.update_policy_key(web2fa='')
-
-            self.policy['web2fa'] = ''
+            self.policy = CCCFeature.update_policy_key(web2fa='')
             self.update_contents()
 
             await ux_show_story("Web 2FA has been disabled. If you re-enable it, a new "
