@@ -10,6 +10,7 @@ from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_ente
 from menu import MenuSystem, MenuItem
 from seed import seed_words_to_encoded_secret
 from stash import SecretStash, len_from_marker, len_to_numwords
+from charcodes import KEY_QR
 
 class CCCFeature:
     @classmethod
@@ -219,6 +220,96 @@ class PolCheckedMenuItem(MenuItem):
         assert isinstance(m, CCCPolicyMenu)
         return bool(m.policy.get(self.polkey, False))
 
+
+class CCCAddrWhitelist(MenuSystem):
+    # simulator arg:    --seq tcENTERENTERsENTERwENTER
+    def __init__(self):
+        items = self.construct()
+        super().__init__(items)
+
+    def update_contents(self):
+        tmp = self.construct()
+        self.replace_items(tmp)
+
+    @classmethod
+    async def be_a_submenu(cls, *a):
+        return cls()
+
+    def construct(self):
+        # list of addresses
+        addrs = CCCFeature.get_policy().get('addr', [])
+
+        if version.has_qr:
+            def shorten4menu(a):
+                return a[:12]+'⋯'+a[-16:]
+        else:
+            def shorten4menu(a):
+                # good for segwit
+                # TODO: test on classics
+                return a[:6]+'⋯'+a[-8:]
+
+        items = [MenuItem(shorten4menu(a), f=self.edit_addr, arg=a) for a in addrs]
+
+        if not items:
+            items.append(MenuItem("(none yet)"))
+
+        if version.has_qr:
+            items.append(MenuItem('Scan QR', f=self.scan_qr, shortcut=KEY_QR))
+
+        items.append(MenuItem('Import from SD'))
+
+        return items
+
+    async def edit_addr(self, menu, idx, item):
+        # show detail and offer delete
+        addr = item.arg
+        msg = 'Spends to this address will be permitted:\n\n%s\n\nPress (4) to delete.' % addr
+        ch = await ux_show_story(msg, escape='4')
+        if ch == '4':
+            self.delete_addr(addr)
+
+    def delete_addr(self, addr):
+        # no confirm, stakes are low
+        addrs = CCCFeature.get_policy().get('addr', [])
+        addrs.remove(addr)
+        CCCFeature.update_policy_key(addrs=addrs)
+        self.update_contents()
+
+    async def scan_qr(self, *a):
+        # Scan and return a text string. For things like BIP-39 passphrase
+        # and perhaps they are re-using a QR from something else. Don't act on contents.
+        from ux_q1 import QRScannerInteraction
+        q = QRScannerInteraction()
+
+        got = []
+        ln = ''
+        while 1:
+            here = await q.scan_for_addresses("Bitcoin Address(es) to Whitelist", line2=ln)
+            if not here: break
+            got.extend(here)
+            ln = 'Got %d so far. CANCEL to save.' % len(got)        # XXX ENTER would be better
+            
+        if got:
+            # import them
+            await self.add_addresses(got)
+        
+    async def add_addresses(self, more_addrs):
+        # add new entries, if unique; preserve ordering
+        addrs = CCCFeature.get_policy().get('addr', [])
+        new = []
+        for a in more_addrs:
+            if a not in addrs:
+                addrs.append(a)
+                new.append(a)
+
+        if not new:
+            await ux_show_story("Already in whitelist:\n\n" + '\n\n'.join(more_addrs))
+            return
+
+        CCCFeature.update_policy_key(addrs=addrs)
+        self.update_contents()
+            
+
 class CCCPolicyMenu(MenuSystem):
     # Build menu stack that allows edit of all features of the spending
     # policy. Key C is set already at this point.
@@ -236,7 +327,6 @@ class CCCPolicyMenu(MenuSystem):
 
     @classmethod
     async def be_a_submenu(cls, *a):
-        print("here")
         return cls()
 
     def construct(self):
@@ -245,7 +335,7 @@ class CCCPolicyMenu(MenuSystem):
             PolCheckedMenuItem('Max Magnitude', 'mag', f=self.set_magnitude),
             PolCheckedMenuItem('Limit Velocity', 'vel', chooser=self.velocity_chooser),
             PolCheckedMenuItem('Whitelist' + (' Addresses' if version.has_qr else ''),
-                                    'addr', f=self.edit_whitelist),
+                                    'addr', menu=CCCAddrWhitelist.be_a_submenu),
             PolCheckedMenuItem('Web 2FA', 'web2fa', f=self.toggle_2fa),
         ]
 
@@ -269,9 +359,6 @@ class CCCPolicyMenu(MenuSystem):
         ss = self.policy.get('web2fa')
         assert ss
         await web2fa.web2fa_enroll('CCC', ss)
-        
-    async def edit_whitelist(self, *a):
-        pass
 
     async def set_magnitude(self, *a):
         was = self.policy.get('mag', 0)

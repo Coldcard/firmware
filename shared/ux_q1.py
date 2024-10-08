@@ -830,10 +830,10 @@ class QRScannerInteraction:
 
         return data
 
-    async def scan_general(self, prompt, convertor):
+    async def scan_general(self, prompt, convertor, line2=None):
         # Scan stuff, and parse it .. raise QRDecodeExplained if you don't like it
         # continues until something is accepted
-        problem = None
+        problem = line2
 
         while 1:
             try:
@@ -847,7 +847,7 @@ class QRScannerInteraction:
                 problem = str(exc)
                 continue
             except Exception as exc:
-                #import sys; sys.print_exception(exc)
+                import sys; sys.print_exception(exc)
                 problem = "Unable to decode QR"
                 continue
 
@@ -876,6 +876,31 @@ class QRScannerInteraction:
                 raise QRDecodeExplained('Unable to decode JSON data')
             
         return await self.scan_general(prompt, convertor)
+
+    async def scan_for_addresses(self, prompt, line2=None):
+        # accept only payment addresses; strips BIP-21 junk that might be there
+        # - always a list result, might be size one
+        from utils import decode_bip21_text
+
+        def addr_taster(got):
+            # could be muliple-line text file via BBQR or single line
+            got = decode_qr_result(got, expect_text=True)
+
+            try:
+                rv = []
+                for ln in got.split():
+                    what, args = decode_bip21_text(ln)
+                    if what == 'addr':
+                        rv.append(args[1])
+                if rv:
+                    return rv
+            except QRDecodeExplained:
+                raise
+            except:
+                pass
+            raise QRDecodeExplained("Not a payment address?")
+
+        return await self.scan_general(prompt, addr_taster, line2=line2)
 
 
     async def scan_anything(self, expect_secret=False, tmp=False):
