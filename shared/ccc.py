@@ -517,7 +517,6 @@ class CCCAddrWhitelist(MenuSystem):
         else:
             await ux_show_story("Added new address to whitelist:\n\n%s" % new[0])
 
-
 class CCCPolicyMenu(MenuSystem):
     # Build menu stack that allows edit of all features of the spending
     # policy. Key C is set already at this point.
