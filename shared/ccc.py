@@ -2,7 +2,7 @@
 #
 # ccc.py - ColdCard Cosign feature. Be a leg in a 2-of-3 that signed based on policy.
 #
-import gc, chains, version, ngu, web2fa, bip39
+import gc, chains, version, ngu, web2fa, bip39, re
 from ubinascii import b2a_base64, a2b_base64
 from utils import b2a_base64url, swab32, a2b_hex, b2a_hex, xfp2str
 from glob import settings
@@ -10,7 +10,7 @@ from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_ente
 from menu import MenuSystem, MenuItem
 from seed import seed_words_to_encoded_secret
 from stash import SecretStash, len_from_marker, len_to_numwords
-from charcodes import KEY_QR
+from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC
 
 class CCCFeature:
     @classmethod
@@ -139,7 +139,9 @@ class CCCConfigMenu(MenuSystem):
         return items
 
     async def remove_ccc(self, *a):
-        if not await ux_confirm("Key C will be lost, and policy settings forgotten. This unit will only be able to partly sign transactions. To completely remove this wallet, proceed to the miltisig menu and remove wallet entry there as well."):
+        if not await ux_confirm('''Key C will be lost, and policy settings forgotten. \
+This unit will only be able to partly sign transactions. To completely remove this \
+wallet, proceed to the miltisig menu and remove related wallet entry.'''):
             return
 
         if not await ux_confirm("Last chance. Funds in this wallet may be impacted."):
@@ -155,7 +157,7 @@ class CCCConfigMenu(MenuSystem):
         enc = CCCFeature.get_encoded_secret()
         if in_seed_vault(enc):
             # remind them to clear the seed-vault copy of Key C because it defeats feature
-            await ux_show_story('''Key C is in your seed vault. If you are done with setup, 
+            await ux_show_story('''Key C is in your seed vault. If you are done with setup, \
 you MUST delete it from the Seed Vault.''', title='REMINDER')
 
         the_ux.pop()
@@ -171,9 +173,10 @@ you MUST delete it from the Seed Vault.''', title='REMINDER')
     async def build_2ofN(self, *a):
         # ask for a key B, assume A and C are defined => export MS config and import into self.
         # - like the airgap setup, but assume A and C are this Coldcard
-        m = '''Builds simple 2-of-N multisig wallet, with this Coldcard's main secret (key A), 
-the CCC policy-controlled key C, and at least one other device, as key B. 
-\nYou will need to export the XPUB from another Coldcard and place it on an SD Card, or be ready to show it as a QR, before proceeding.'''
+        m = '''Builds simple 2-of-N multisig wallet, with this Coldcard's main secret (key A), \
+the CCC policy-controlled key C, and at least one other device, as key B. \
+\nYou will need to export the XPUB from another Coldcard and place it on an SD Card, or \
+be ready to show it as a QR, before proceeding.'''
         if await ux_show_story(m) != 'y':
             return
 
@@ -195,7 +198,8 @@ the CCC policy-controlled key C, and at least one other device, as key B.
         # - one-way trip because the CCC feature won't be enabled inside the temp seed settings
         if await ux_show_story(
                 'Loads the CCC controled seed (key C) as a Temporary Seed and allows '
-                'easy use of all Coldcard features on that key.') != 'y':
+                'easy use of all Coldcard features on that key.\n\nSave into Seed Vault '
+                'to permit easy access to CCC Config menu.') != 'y':
             return
 
         from seed import set_ephemeral_seed
@@ -256,7 +260,7 @@ class CCCAddrWhitelist(MenuSystem):
         if version.has_qr:
             items.append(MenuItem('Scan QR', f=self.scan_qr, shortcut=KEY_QR))
 
-        items.append(MenuItem('Import from SD'))
+        items.append(MenuItem('Import from File', f=self.import_file))
 
         return items
 
@@ -275,6 +279,60 @@ class CCCAddrWhitelist(MenuSystem):
         CCCFeature.update_policy_key(addrs=addrs)
         self.update_contents()
 
+    async def import_file(self, *a):
+        # Import from a file, or NFC.
+        # - simulator:  --seq tcENTERENTERsENTERwENTERiENTER1
+        # - very forgiving, does not care about file format
+        # - but also silent on all errors
+        from ux import import_export_prompt
+        from glob import NFC
+        from actions import file_picker
+        from files import CardSlot
+        from utils import cleanup_payment_address
+
+        choice = await import_export_prompt("List of addresses", is_import=True, no_qr=True)
+
+        if choice == KEY_CANCEL:
+            return
+        elif choice == KEY_NFC:
+            addr = await NFC.read_address()
+            if not addr:
+                # error already displayed in nfc.py
+                return
+
+            await self.add_addresses([addr])
+            return 
+
+        # loose RE to match any group of chars that could be addresses
+        # - really just removing whitespace and punctuation
+        # - lacking re.findall(), so using re.split() on negatives
+        pat = re.compile(r'[^A-Za-z0-9]')
+
+        # pick a likely-looking file: just looking at size and extension
+        fn = await file_picker(suffix=['csv', 'txt'],
+                                min_size=20, max_size=5000,
+                                none_msg="Must contain payment addresses", **choice)
+
+        if not fn: return
+
+        results = []
+        with CardSlot(readonly=True, **choice) as card:
+            with open(fn, 'rt') as fd:
+                for ln in fd.readlines():
+                    for here in pat.split(ln):
+                        print(here)
+                        if len(here) >= 4:
+                            try:
+                                addr = cleanup_payment_address(here)
+                                results.append(addr)
+                            except: pass
+
+        if not results:
+            await ux_show_story("Unable to find any payment addresses in that file.")
+        else:
+            await self.add_addresses(results)
+
+
     async def scan_qr(self, *a):
         # Scan and return a text string. For things like BIP-39 passphrase
         # and perhaps they are re-using a QR from something else. Don't act on contents.
@@ -287,7 +345,7 @@ class CCCAddrWhitelist(MenuSystem):
             here = await q.scan_for_addresses("Bitcoin Address(es) to Whitelist", line2=ln)
             if not here: break
             got.extend(here)
-            ln = 'Got %d so far. CANCEL to save.' % len(got)        # XXX ENTER would be better
+            ln = 'Got %d so far. ENTER to apply.' % len(got)
             
         if got:
             # import them
@@ -308,6 +366,12 @@ class CCCAddrWhitelist(MenuSystem):
 
         CCCFeature.update_policy_key(addrs=addrs)
         self.update_contents()
+
+        if len(new) > 1:
+            await ux_show_story("Added %d new addresses to whitelist:\n\n%s" %
+                (len(new), '\n\n'.join(new)))
+        else:
+            await ux_show_story("Added new address to whitelist:\n\n%s" % new[0])
             
 
 class CCCPolicyMenu(MenuSystem):
@@ -362,7 +426,8 @@ class CCCPolicyMenu(MenuSystem):
 
     async def set_magnitude(self, *a):
         was = self.policy.get('mag', 0)
-        val = await ux_enter_number('Per Txn Max Out', max_value=int(1e8), can_cancel=True)
+        val = await ux_enter_number('Per Txn Max Out', max_value=int(1e8),
+                                            can_cancel=True, value=(was or ''))
 
         if (val is None) or (val == was):
             msg = "Did not change"
@@ -525,8 +590,8 @@ async def modify_ccc_settings():
     if in_seed_vault(enc):
         # if seed vault enabled and they have the secret there, just go
         # allow easy access to menu (impt for debug/setup/testing time).
-        await ux_show_story('''You have a copy of the CCC key C in the Seed Vault, so 
-you may proceed to change settings now.\n\nYou must delete that key from the vault once 
+        await ux_show_story('''You have a copy of the CCC key C in the Seed Vault, so \
+you may proceed to change settings now.\n\nYou must delete that key from the vault once \
 setup and debug is finished, or all benefit of this feature is lost!''')
 
         bypass = True

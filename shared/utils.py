@@ -498,7 +498,7 @@ def word_wrap(ln, w):
                     yield OUT_CTRL_ADDRESS + addr[pos:pos+aw]
                     pos += aw
                 return
-                
+
             # bad-break the line
             sp = min(txtlen(ln), w)
             nsp = sp
@@ -641,6 +641,7 @@ def decode_bip21_text(got):
     # Assume text is a BIP-21 payment address (url), with amount, description
     # and url protocol prefix ... all optional except the address.
     # - also will detect correctly encoded & checksummed xpubs
+    # - always verifies checksum of data it finds
 
     proto, args, addr = None, None, None
 
@@ -667,10 +668,12 @@ def decode_bip21_text(got):
     try:
         raw = ngu.codecs.b58_decode(addr)
 
-        # it's valid base58
-        # an address, P2PKH or xpub (xprv checked above)
+        # It's valid base58: could be
+        # an address, P2PKH or xpub/xprv
         if addr[1:4] == 'pub':
             return 'xpub', (addr,)
+        if addr[1:4] == 'prv':
+            return 'xprv', (addr,)
 
         return 'addr', (proto, addr, args)
     except:
@@ -696,5 +699,22 @@ def show_single_address(addr):
 def chunk_address(addr):
     # useful to show payment addresses specially
     return [addr[i:i+4] for i in range(0, len(addr), 4)]
+
+def cleanup_payment_address(s):
+    # Cleanup a payment  address, or raise if bad checksum
+    # - later matching is string-based, so just doing basic syntax check here
+    # - must be checksumed-base58 or bech32
+    try:
+        ngu.codecs.b58_decode(s)
+        assert len(s) < 40          # or else it's an xpub/xprv
+        return s
+    except: pass
+
+    try:
+        ngu.codecs.segwit_decode(s)
+        return s.lower()
+    except: pass
+
+    raise ValueError('bad address value: ' + s)
 
 # EOF

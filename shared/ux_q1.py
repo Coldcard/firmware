@@ -786,7 +786,7 @@ class QRScannerInteraction:
         pass
 
     @staticmethod
-    async def scan(prompt, line2=None):
+    async def scan(prompt, line2=None, enter_quits=False):
         # draw animation, while waiting for them to scan something
         # - CANCEL to abort
         # - returns a string, BBQr object or None.
@@ -805,6 +805,8 @@ class QRScannerInteraction:
 
         task = asyncio.create_task(SCAN.scan_once())
 
+        escape = KEY_CANCEL + (KEY_ENTER if enter_quits else '')
+
         ph = 0
         while 1:
             if task.done():
@@ -816,9 +818,9 @@ class QRScannerInteraction:
             ph  = (ph + 1) % len(frames)
 
             # wait for key or 250ms animation delay
-            ch = await ux_wait_keydown(KEY_CANCEL, 250)
+            ch = await ux_wait_keydown(escape, 250)
 
-            if ch == KEY_CANCEL:
+            if ch and (ch in escape):
                 data = None
                 break
 
@@ -830,14 +832,14 @@ class QRScannerInteraction:
 
         return data
 
-    async def scan_general(self, prompt, convertor, line2=None):
+    async def scan_general(self, prompt, convertor, line2=None, enter_quits=False):
         # Scan stuff, and parse it .. raise QRDecodeExplained if you don't like it
         # continues until something is accepted
         problem = line2
 
         while 1:
             try:
-                got = await self.scan(prompt, line2=problem)
+                got = await self.scan(prompt, line2=problem, enter_quits=enter_quits)
                 if got is None:
                     return None
 
@@ -900,7 +902,7 @@ class QRScannerInteraction:
                 pass
             raise QRDecodeExplained("Not a payment address?")
 
-        return await self.scan_general(prompt, addr_taster, line2=line2)
+        return await self.scan_general(prompt, addr_taster, line2=line2, enter_quits=True)
 
 
     async def scan_anything(self, expect_secret=False, tmp=False):

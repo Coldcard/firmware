@@ -7,6 +7,7 @@
 import stash, ustruct, chains, sys, gc, uio, ujson, uos, utime, ckcc, ngu, version
 from sffile import SFFile
 from utils import problem_file_line, cleanup_deriv_path, match_deriv_path
+from utils import cleanup_payment_address
 from pincodes import AE_LONG_SECRET_LEN
 from stash import blank_object
 from users import Users, MAX_NUMBER_USERS, calc_local_pincode
@@ -149,22 +150,6 @@ def assert_empty_dict(j):
     if extra:
         raise ValueError("Unknown item: " + ', '.join(extra))
 
-def cleanup_whitelist_value(s):
-    # one element in a list of addresses or paths or descriptors?
-    # - later matching is string-based, so just doing basic syntax check here
-    # - must be checksumed-base58 or bech32
-    try:
-        ngu.codecs.b58_decode(s)
-        return s
-    except: pass
-
-    try:
-        ngu.codecs.segwit_decode(s)
-        return s
-    except: pass
-
-    raise ValueError('bad whitelist value: ' + s)
-
 
 class WhitelistOpts:
     # contains various options related to whitelisting
@@ -215,7 +200,7 @@ class ApprovalRule:
         self.per_period = pop_int(j, 'per_period', 0, MAX_SATS)
         self.max_amount = pop_int(j, 'max_amount', 0, MAX_SATS)
         self.users = pop_list(j, 'users', check_user)
-        self.whitelist = pop_list(j, 'whitelist', cleanup_whitelist_value)
+        self.whitelist = pop_list(j, 'whitelist', cleanup_payment_address)
         self.whitelist_opts = pop_dict(j, 'whitelist_opts', False, WhitelistOpts)
         self.min_users = pop_int(j, 'min_users', 1, len(self.users))
         self.local_conf = pop_bool(j, 'local_conf')

@@ -1761,7 +1761,7 @@ async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
         if none_msg:
             msg += none_msg
         if suffix:
-            msg += '\n\nThe filename must end in "%s". ' % suffix
+            msg += '\n\nThe filename must end in %r. ' % suffix
 
         msg += '\n\nMaybe insert (another) SD card and try again?'
 
