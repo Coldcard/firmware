@@ -845,7 +845,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
         # early test for spending policy; not an error if violates policy
         # - might add warnings
-        could_ccc_sign, needs_2fa = CCCFeature.could_sign(self.psbt)
+        could_ccc_sign, needs_2fa = await CCCFeature.could_sign(self.psbt)
 
         # step 2: figure out what we are approving, so we can get sign-off
         # - outputs, amounts
