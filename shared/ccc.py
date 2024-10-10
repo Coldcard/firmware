@@ -197,8 +197,8 @@ be ready to show it as a QR, before proceeding.'''
         # - one-way trip because the CCC feature won't be enabled inside the temp seed settings
         if await ux_show_story(
                 'Loads the CCC controled seed (key C) as a Temporary Seed and allows '
-                'easy use of all Coldcard features on that key.\n\nSave into Seed Vault '
-                'to permit easy access to CCC Config menu.') != 'y':
+                'easy use of all Coldcard features on that key.\n\nIf saved into Seed Vault '
+                'easy access to CCC Config menu is enabled.') != 'y':
             return
 
         from seed import set_ephemeral_seed
@@ -578,8 +578,8 @@ async def modify_ccc_settings():
 
     from seed import in_seed_vault
     if in_seed_vault(enc):
-        # if seed vault enabled and they have the secret there, just go
-        # allow easy access to menu (impt for debug/setup/testing time).
+        # If seed vault enabled and they have the key C in there already, just go
+        # directly into menu (super helpful for debug/setup/testing time). We do warn tho.
         await ux_show_story('''You have a copy of the CCC key C in the Seed Vault, so \
 you may proceed to change settings now.\n\nYou must delete that key from the vault once \
 setup and debug is finished, or all benefit of this feature is lost!''')
