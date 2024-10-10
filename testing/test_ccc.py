@@ -372,13 +372,14 @@ def test_ccc_cosign(setup_ccc, enter_enabled_ccc, ccc_ms_setup, fake_ms_txn, sta
     psbt = psbt_resp.get("psbt")
 
     start_sign(base64.b64decode(psbt))
+    time.sleep(.1)
+    title, story = cap_story()
+    assert 'OK TO SEND?' == title
     if not magnitude_ok:
-        time.sleep(.1)
-        title, story = cap_story()
-        assert "Policy Violation" == title
-        assert "magnitude" in story
-        assert "sign with A key" in story
-        press_select()
+        assert "(1 warning below)" in story
+        assert "CCC: Violates spending policy - magnitude. Won't sign." in story
+    else:
+        assert "warning" not in story
 
     signed = end_sign(accept=True)
     po = BasicPSBT().parse(signed)

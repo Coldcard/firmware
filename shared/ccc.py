@@ -126,10 +126,10 @@ class CCCFeature:
         
 
     @classmethod
-    def could_sign(cls, psbt):
+    async def could_sign(cls, psbt):
         # We are looking at a PSBT: can we sign it, and would we?
         # - if we **could** but will not, due to policy, add warning msg
-        # - return (we could sign, needs2fa step)
+        # - return (we could sign, needs 2fa step)
         if not cls.is_enabled:
             return False, False
 
@@ -139,15 +139,15 @@ class CCCFeature:
             return False, False
 
         xfp = cls.get_xfp()
-        if  (xfp not in ms.xfp_paths):
+        if  xfp not in ms.xfp_paths:
             # does not involve us
             return False, False
 
         try:
             # check policy
-            needs_2fa = cls.meets_policy(psbt)
-        except CCCPolicyViolationError:
-            psbt.warning.append(('CCC', "Violates spending policy. Won't sign."))
+            needs_2fa = await cls.meets_policy(psbt)
+        except CCCPolicyViolationError as e:
+            psbt.warnings.append(('CCC', "Violates spending policy - %s. Won't sign." % e))
             return False, False
 
         return True, needs_2fa
