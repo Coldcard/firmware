@@ -82,7 +82,7 @@ class CCCFeature:
 
     @classmethod
     def default_policy(cls):
-        # a very basic an permissive policy, but non-zero too.
+        # a very basic and permissive policy, but non-zero too.
         # - 1BTC per day
         chain = chains.current_chain()
         return dict(mag=1, vel=144, block_h=chain.ccc_min_block, web2fa='', addrs=[])
