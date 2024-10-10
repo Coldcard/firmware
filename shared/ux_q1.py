@@ -86,7 +86,7 @@ async def ux_confirm(msg):
 
     return resp == 'y'
 
-async def ux_enter_number(prompt, max_value, can_cancel=False):
+async def ux_enter_number(prompt, max_value, can_cancel=False, value=''):
     # return the decimal number which the user has entered
     # - default/blank value assumed to be zero
     # - clamps large values to the max
@@ -96,7 +96,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
     # allow key repeat on X only?
     press = PressRelease()
 
-    value = ''
+    value = str(value)
     max_w = int(log(max_value, 10) + 1)
 
     dis.clear()
