@@ -10,10 +10,8 @@ from menu import MenuSystem, MenuItem
 from seed import seed_words_to_encoded_secret
 from stash import SecretStash, len_to_numwords
 from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC
+from exceptions import CCCPolicyViolationError
 
-
-class PolicyViolationException(Exception):
-    pass
 
 class CCCFeature:
     @classmethod
@@ -44,9 +42,7 @@ class CCCFeature:
     def get_xfp(cls):
         # just the XFP
         ccc = settings.get('ccc')
-        if ccc:
-            return ccc['c_xfp']
-        
+        return ccc['c_xfp'] if ccc else None
 
     @classmethod
     def init_setup(cls, words):
@@ -103,15 +99,79 @@ class CCCFeature:
         settings.save()
 
     @classmethod
-    def validate_tx(cls, psbt):
-        policy = cls.get_policy()
-        magnitude = policy.get("mag", None)
+    async def meets_policy(cls, psbt):
+        # Does policy allow signing this? Else raise why
+        pol = cls.get_policy()
+
+        # mag
+        magnitude = pol.get("mag", None)
         outgoing = psbt.total_value_out - psbt.total_change_value
         if magnitude < 1000:
             # it is a BTC, convert to sats
             magnitude = magnitude * 100000000
+
         if outgoing > magnitude:
-            raise PolicyViolationException("magnitude")
+            raise CCCPolicyViolationError("magnitude")
+
+        # vel
+
+        # whitelist
+
+        # web2fa 
+        # - slow, requires UX, and they might not acheive it...
+        # - wait until about to do signature
+        if pol.get('web2fa', False):
+            psbt.warnings.append(('CCC', 'Web 2FA required.'))
+            return True
+        
+
+    @classmethod
+    def could_sign(cls, psbt):
+        # We are looking at a PSBT: can we sign it, and would we?
+        # - if we **could** but will not, due to policy, add warning msg
+        # - return (we could sign, needs2fa step)
+        if not cls.is_enabled:
+            return False, False
+
+        ms = psbt.active_multisig
+        if not ms:
+            # single-sig CCC not supported
+            return False, False
+
+        xfp = cls.get_xfp()
+        if  (xfp not in ms.xfp_paths):
+            # does not involve us
+            return False, False
+
+        try:
+            # check policy
+            needs_2fa = cls.meets_policy(psbt)
+        except CCCPolicyViolationError:
+            psbt.warning.append(('CCC', "Violates spending policy. Won't sign."))
+            return False, False
+
+        return True, needs_2fa
+
+    @classmethod
+    async def web2fa_challenge(cls):
+        # they are trying to sign something, so make them get our their phone
+        # - at this point they have already ok'ed the details of the txn
+        # - and we have approved other elements of the spending policy.
+        # - TODO: maybe show wallet name? or even txn details?? (but info leak to Coinkite)
+        pol = cls.get_policy()
+        ss = pol.get('web2fa')
+        assert ss
+
+        ok = await web2fa.perform_web2fa('Approve CCC Transaction', ss)
+        if not ok:
+            raise CCCPolicyViolationError
+
+    @classmethod
+    def sign_psbt(cls, psbt):
+        # do the math
+        # TODO: capture the block height if vel is defined; no going back after this pt.
+        psbt.sign_it(cls.get_encoded_secret(), cls.get_xfp())
+
 
 def render_mag_value(mag):
     # handle integer bitcoins, and satoshis in same value
@@ -544,6 +604,7 @@ async def gen_or_import():
     elif ch == '6':
         # pick existing from Seed Vault
         enc = await SeedVaultChooserMenu.pick(words_only=True)
+        if not enc: return None
         words = SecretStash.decode_words(enc)
         await enable_step1(words)
 

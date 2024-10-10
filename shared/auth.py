@@ -791,7 +791,8 @@ class ApproveTransaction(UserAuthorizedAction):
     async def interact(self):
         # Prompt user w/ details and get approval
         from glob import dis, hsm_active
-        from ccc import CCCFeature, PolicyViolationException
+        from ccc import CCCFeature
+        from exceptions import CCCPolicyViolationError
 
         # step 1: parse PSBT from PSRAM into in-memory objects.
 
@@ -826,23 +827,12 @@ class ApproveTransaction(UserAuthorizedAction):
 
             dis.progress_bar_show(0.85)
 
-            if CCCFeature.is_enabled():
-                if self.psbt.active_multisig and (ccc_c_xfp in self.psbt.active_multisig.xfp_paths):
-                    CCCFeature.validate_tx(self.psbt)
-                    self.psbt.sign_it(CCCFeature.get_encoded_secret(), ccc_c_xfp)
-
         except FraudulentChangeOutput as exc:
             print('FraudulentChangeOutput: ' + exc.args[0])
             return await self.failure(exc.args[0], title='Change Fraud')
         except FatalPSBTIssue as exc:
             print('FatalPSBTIssue: ' + exc.args[0])
             return await self.failure(exc.args[0])
-        except PolicyViolationException as exc:
-            ch = await ux_show_story(
-                exc.args[0]+"\n\n Would you like to sign with A key?",
-                title='Policy Violation')
-            if ch != "y":
-                return
         except BaseException as exc:
             del self.psbt
             gc.collect()
@@ -854,6 +844,10 @@ class ApproveTransaction(UserAuthorizedAction):
                 msg = "Invalid PSBT"
 
             return await self.failure(msg, exc)
+
+        # early test for spending policy; not an error if violates policy
+        # - might add warnings
+        could_ccc_sign, needs_2fa = CCCFeature.could_sign(self.psbt)
 
         # step 2: figure out what we are approving, so we can get sign-off
         # - outputs, amounts
@@ -954,7 +948,7 @@ class ApproveTransaction(UserAuthorizedAction):
             return await self.failure(msg)
 
         if ch not in 'yb':
-            # they don't want to!
+            # they don't want to sign!
             self.refused = True
 
             await ux_dramatic_pause("Refused.", 1)
@@ -964,11 +958,27 @@ class ApproveTransaction(UserAuthorizedAction):
             self.done()
             return
 
+        if needs_2fa and could_ccc_sign:
+            # They still need to pass web2fa challenge (but it meets other specs ok)
+            try:
+                await CCCFeature.web2fa_challenge()
+            except:
+                could_ccc_sign = False
+                ch = await ux_show_story("Will not add CCC signature. Proceed anyway?")
+                if ch != 'y':
+                    return await self.failure("2FA Failed")
+
         # do the actual signing.
         try:
             dis.fullscreen('Wait...')
             gc.collect()           # visible delay caused by this but also sign_it() below
             self.psbt.sign_it()
+
+            if could_ccc_sign:
+                dis.fullscreen('CCC Sign...')
+                gc.collect()
+                CCCFeature.sign_psbt(self.psbt)
+
         except FraudulentChangeOutput as exc:
             return await self.failure(exc.args[0], title='Change Fraud')
         except MemoryError:
