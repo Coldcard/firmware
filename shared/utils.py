@@ -551,16 +551,16 @@ def chunk_writer(fd, body):
     dis.progress_bar_show(1)
 
 
-def pad_raw_secret(raw_sec_str):
+def pad_raw_secret(text_sec_str):
     # Chip can hold 72-bytes as a secret
     # every secret has 0th byte as marker
     # then secret and padded to zero to AE_SECRET_LEN
     from pincodes import AE_SECRET_LEN
 
     raw = bytearray(AE_SECRET_LEN)
-    if len(raw_sec_str) % 2:
-        raw_sec_str += '0'
-    x = a2b_hex(raw_sec_str)
+    if len(text_sec_str) % 2:
+        text_sec_str += '0'
+    x = a2b_hex(text_sec_str)
     raw[0:len(x)] = x
     return raw
 

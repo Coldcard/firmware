@@ -8,7 +8,7 @@ from glob import settings
 from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number
 from menu import MenuSystem, MenuItem
 from seed import seed_words_to_encoded_secret
-from stash import SecretStash, len_from_marker, len_to_numwords
+from stash import SecretStash, len_to_numwords
 from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC
 
 class CCCFeature:
@@ -27,8 +27,7 @@ class CCCFeature:
     @classmethod
     def get_num_words(cls):
         # return 12 or 24 
-        marker = cls.get_encoded_secret()[0]
-        return len_to_numwords(len_from_marker(marker))
+        return SecretStash.is_words(cls.get_encoded_secret())
 
     @classmethod
     def get_encoded_secret(cls):
@@ -156,8 +155,8 @@ wallet, proceed to the miltisig menu and remove related wallet entry.'''):
         enc = CCCFeature.get_encoded_secret()
         if in_seed_vault(enc):
             # remind them to clear the seed-vault copy of Key C because it defeats feature
-            await ux_show_story('''Key C is in your seed vault. If you are done with setup, \
-you MUST delete it from the Seed Vault.''', title='REMINDER')
+            await ux_show_story('''Key C is in your Seed Vault. If you are done with setup, \
+you MUST delete it from the Vault!''', title='REMINDER')
 
         the_ux.pop()
 
@@ -197,8 +196,8 @@ be ready to show it as a QR, before proceeding.'''
         # - one-way trip because the CCC feature won't be enabled inside the temp seed settings
         if await ux_show_story(
                 'Loads the CCC controled seed (key C) as a Temporary Seed and allows '
-                'easy use of all Coldcard features on that key.\n\nIf saved into Seed Vault '
-                'easy access to CCC Config menu is enabled.') != 'y':
+                'easy use of all Coldcard features on that key.\n\nIf you save into Seed Vault, '
+                'access to CCC Config menu is quick and easy.') != 'y':
             return
 
         from seed import set_ephemeral_seed
@@ -500,13 +499,16 @@ phone with Internet access and 2FA app holding correct shared-secret.''',
 
 async def gen_or_import():
     # returns 12 words, or None to abort
-    from seed import WordNestMenu, generate_seed, approve_word_list
+    from seed import WordNestMenu, generate_seed, approve_word_list, SeedVaultChooserMenu
 
-    ch = await ux_show_story(
-        "Press %s to generate a new 12-word seed phrase to be used "
-        "as the Coldcard Cosigning Secret (key C).\n\nOr press (1) to import existing "
-        "12-words or (2) for 24-words import." % OK,
-        escape='12', title="CCC Key C")
+    msg = "Press %s to generate a new 12-word seed phrase to be used "\
+          "as the Coldcard Cosigning Secret (key C).\n\nOr press (1) to import existing "\
+          "12-words or (2) for 24-words import." % OK
+
+    if settings.master_get("seedvault", False):
+        msg += ' (6) for import from Seed Vault'
+
+    ch = await ux_show_story(msg, escape='126', title="CCC Key C")
 
     if ch == '1' or ch == '2':
         nwords = 24 if ch == '2' else 12
@@ -521,6 +523,13 @@ async def gen_or_import():
             words = WordNestMenu(nwords, done_cb=done_key_C_import)
 
         return None     # will call parent again
+    elif ch == '6':
+        # pick existing from Seed Vault
+        enc = await SeedVaultChooserMenu.pick(words_only=True)
+        words = SecretStash.decode_words(enc)
+        await enable_step1(words)
+
+        return None
 
     elif ch == 'y':
         await ux_dramatic_pause('Generating...', 3)

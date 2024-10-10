@@ -567,6 +567,7 @@ def ux_draw_words(y, num_words, words):
         cols = 2
         xpos = [2, 18]
     else:
+        assert num_words in (18, 24)
         cols = 3
         xpos = [0, 11, 23]
 
