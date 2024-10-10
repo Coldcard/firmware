@@ -791,6 +791,7 @@ class ApproveTransaction(UserAuthorizedAction):
     async def interact(self):
         # Prompt user w/ details and get approval
         from glob import dis, hsm_active
+        from ccc import CCCFeature, PolicyViolationException
 
         # step 1: parse PSBT from PSRAM into in-memory objects.
 
@@ -813,7 +814,8 @@ class ApproveTransaction(UserAuthorizedAction):
         try:
             await self.psbt.validate()      # might do UX: accept multisig import
             dis.progress_bar_show(0.10)
-            self.psbt.consider_inputs()
+            ccc_c_xfp = CCCFeature.get_xfp()  # can be None
+            self.psbt.consider_inputs(cosign_xfp=ccc_c_xfp)
 
             dis.progress_bar_show(0.33)
             self.psbt.consider_keys()
@@ -823,12 +825,24 @@ class ApproveTransaction(UserAuthorizedAction):
             self.psbt.consider_dangerous_sighash()
 
             dis.progress_bar_show(0.85)
+
+            if CCCFeature.is_enabled():
+                if self.psbt.active_multisig and (ccc_c_xfp in self.psbt.active_multisig.xfp_paths):
+                    CCCFeature.validate_tx(self.psbt)
+                    self.psbt.sign_it(CCCFeature.get_encoded_secret(), ccc_c_xfp)
+
         except FraudulentChangeOutput as exc:
             print('FraudulentChangeOutput: ' + exc.args[0])
             return await self.failure(exc.args[0], title='Change Fraud')
         except FatalPSBTIssue as exc:
             print('FatalPSBTIssue: ' + exc.args[0])
             return await self.failure(exc.args[0])
+        except PolicyViolationException as exc:
+            ch = await ux_show_story(
+                exc.args[0]+"\n\n Would you like to sign with A key?",
+                title='Policy Violation')
+            if ch != "y":
+                return
         except BaseException as exc:
             del self.psbt
             gc.collect()

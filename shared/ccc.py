@@ -11,6 +11,10 @@ from seed import seed_words_to_encoded_secret
 from stash import SecretStash, len_to_numwords
 from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC
 
+
+class PolicyViolationException(Exception):
+    pass
+
 class CCCFeature:
     @classmethod
     def is_enabled(cls):
@@ -97,6 +101,17 @@ class CCCFeature:
         # - leave MS in place
         settings.remove_key('ccc')
         settings.save()
+
+    @classmethod
+    def validate_tx(cls, psbt):
+        policy = cls.get_policy()
+        magnitude = policy.get("mag", None)
+        outgoing = psbt.total_value_out - psbt.total_change_value
+        if magnitude < 1000:
+            # it is a BTC, convert to sats
+            magnitude = magnitude * 100000000
+        if outgoing > magnitude:
+            raise PolicyViolationException("magnitude")
 
 def render_mag_value(mag):
     # handle integer bitcoins, and satoshis in same value

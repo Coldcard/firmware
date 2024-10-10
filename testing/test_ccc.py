@@ -320,7 +320,7 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
 @pytest.mark.parametrize("magnitude_ok", [True, False])
 def test_ccc_cosign(setup_ccc, enter_enabled_ccc, ccc_ms_setup, fake_ms_txn, start_sign,
                    cap_menu, pick_menu_item, need_keypress, cap_story, microsd_path,
-                   bitcoind, end_sign, magnitude_ok, settings_set):
+                   bitcoind, end_sign, magnitude_ok, settings_set, press_select):
     settings_set("ccc", None)
 
     words = setup_ccc()
@@ -372,6 +372,14 @@ def test_ccc_cosign(setup_ccc, enter_enabled_ccc, ccc_ms_setup, fake_ms_txn, sta
     psbt = psbt_resp.get("psbt")
 
     start_sign(base64.b64decode(psbt))
+    if not magnitude_ok:
+        time.sleep(.1)
+        title, story = cap_story()
+        assert "Policy Violation" == title
+        assert "magnitude" in story
+        assert "sign with A key" in story
+        press_select()
+
     signed = end_sign(accept=True)
     po = BasicPSBT().parse(signed)
 
