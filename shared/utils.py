@@ -2,7 +2,7 @@
 #
 # utils.py - Misc utils. My favourite kind of source file.
 #
-import gc, sys, ustruct, ngu, chains, ure, time, bip39, version
+import gc, sys, ustruct, ngu, chains, ure, uos, uio, time, bip39, version, uasyncio
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
@@ -91,7 +91,6 @@ def pop_count(i):
 
 def get_filesize(fn):
     # like os.path.getsize()
-    import uos
     try:
         return uos.stat(fn)[6]
     except OSError:
@@ -221,7 +220,6 @@ def to_ascii_printable(s, strip=False, only_printable=True):
 def problem_file_line(exc):
     # return a string of just the filename.py and line number where
     # an exception occured. Best used on AssertionError.
-    import uio, sys, ure
 
     tmp = uio.StringIO()
     sys.print_exception(exc, tmp)
@@ -252,7 +250,6 @@ def cleanup_deriv_path(bin_path, allow_star=False):
     # - assume 'm' prefix, so '34' becomes 'm/34', etc
     # - do not assume /// is m/0/0/0
     # - if allow_star, then final position can be * or *h (wildcard)
-    import ure
     from public_constants import MAX_PATH_DEPTH
 
     s = to_ascii_printable(bin_path, strip=True).lower()
@@ -432,7 +429,7 @@ def clean_shutdown(style=0):
     # wipe SPI flash and shutdown (wiping main memory)
     # - mk4: SPI flash not used, but NFC may hold data (PSRAM cleared by bootrom)
     # - bootrom wipes every byte of SRAM, so no need to repeat here
-    import callgate, version, uasyncio
+    import callgate
 
     # save if anything pending
     from glob import settings
@@ -658,7 +655,7 @@ def decode_bip21_text(got):
         args = dict()
         for p in parts:
             k, v = p.split('=', 1)
-            args[k] = url_decode(v)
+            args[k] = url_unquote(v)
 
     # assume it's an bare address for now
     if not addr:

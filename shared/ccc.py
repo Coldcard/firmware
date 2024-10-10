@@ -3,8 +3,7 @@
 # ccc.py - ColdCard Cosign feature. Be a leg in a 2-of-3 that signed based on policy.
 #
 import gc, chains, version, ngu, web2fa, bip39, re
-from ubinascii import b2a_base64, a2b_base64
-from utils import b2a_base64url, swab32, a2b_hex, b2a_hex, xfp2str
+from utils import swab32, a2b_hex, b2a_hex, xfp2str, truncate_address
 from glob import settings
 from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number
 from menu import MenuSystem, MenuItem
@@ -243,16 +242,7 @@ class CCCAddrWhitelist(MenuSystem):
         # list of addresses
         addrs = CCCFeature.get_policy().get('addr', [])
 
-        if version.has_qr:
-            def shorten4menu(a):
-                return a[:12]+'⋯'+a[-16:]
-        else:
-            def shorten4menu(a):
-                # good for segwit
-                # TODO: test on classics
-                return a[:6]+'⋯'+a[-8:]
-
-        items = [MenuItem(shorten4menu(a), f=self.edit_addr, arg=a) for a in addrs]
+        items = [MenuItem(truncate_address(a), f=self.edit_addr, arg=a) for a in addrs]
 
         if not items:
             items.append(MenuItem("(none yet)"))
