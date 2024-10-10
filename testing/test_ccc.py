@@ -141,7 +141,7 @@ def test_2fa_server(shared_secret, q_mode, make_2fa_url, enc, roundtrip_2fa):
 
 @pytest.fixture
 def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz, is_q1,
-             seed_story_to_words, cap_menu, OK, word_menu_entry):
+             seed_story_to_words, cap_menu, OK, word_menu_entry, press_cancel):
     def doit(c_words=None):
         goto_home()
         pick_menu_item("Advanced/Tools")
@@ -178,23 +178,34 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
             # manual import of C key
             word_menu_entry(c_words)
 
+        seed = Mnemonic.to_seed(" ".join(c_words))
+        expect = BIP32Node.from_master_secret(seed)
+        xfp = expect.fingerprint().hex().upper()
+
+        m = cap_menu()
+
+        assert m[0] == f"CCC [{xfp}]"
+        assert "Spending Policy" in m
+        assert "Export CCC XPUBs" in m
+        assert "Temporary Mode" in m  # TODO strange name -> Activate as TMP?
+        assert "Multisig Wallets" in m
+        assert "Build 2-of-N" in m[-2]
+        assert "Remove CCC" == m[-1]
+
+        pick_menu_item("Spending Policy")
+        time.sleep(.1)
         m = cap_menu()
 
         assert "Max Magnitude" in m
         assert "Limit Velocity" in m
-        assert "Whitelisted Addresses" in m
+        if is_q1:
+            assert "Whitelist Addresses" in m
+        else:
+            assert "Whitelist" in m
         assert "Web 2FA" in m
-        assert "SAVE & APPLY" in m
         # TODO allow setting above values here
 
-        # magnitude is already 1 BTC
-        pick_menu_item("SAVE & APPLY")
-        time.sleep(.1)
-        title, story = cap_story()
-        assert title == "Are you SURE ?!?"
-        assert "Policy will be saved and cannot be changed again without the secret (key C) words" in story
-        press_select()
-        time.sleep(.1)
+        press_cancel()  # leave Spending Policy
 
         return c_words
 
@@ -216,20 +227,6 @@ def enter_enabled_ccc(goto_home, pick_menu_item, cap_story, press_select, is_q1,
             press_select()
             time.sleep(.1)
             word_menu_entry(c_words)
-
-        time.sleep(.1)
-        m = cap_menu()
-
-        seed = Mnemonic.to_seed(" ".join(c_words))
-        expect = BIP32Node.from_master_secret(seed)
-        xfp = expect.fingerprint().hex().upper()
-
-        assert m[0] == f"[CCC {xfp}]"
-        assert "Spending Policy" in m
-        assert "Export CCC XPUBs" in m
-        assert "Temporary Mode" in m  # TODO strange name -> Activate as TMP?
-        assert "Multisig Wallets" in m
-        assert "Build 2-of-N" in m[-1]
 
     return doit
 
