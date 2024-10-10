@@ -4,6 +4,8 @@
 #
 import gc, chains, version, ngu, web2fa, bip39, re, ckcc
 from utils import swab32, a2b_hex, b2a_hex, xfp2str, truncate_address, pad_raw_secret
+import gc, chains, version, ngu, web2fa, bip39, re
+from utils import swab32, a2b_hex, b2a_hex, xfp2str, truncate_address
 from glob import settings
 from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number
 from menu import MenuSystem, MenuItem, start_chooser
