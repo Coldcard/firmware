@@ -970,9 +970,7 @@ class psbtObject(psbtProxy):
         self.txn = None
         self.xpubs = []         # tuples(xfp_path, xpub)
 
-        # what secret are signing with? (default: the current master secret)
         self.my_xfp = settings.get('xfp', 0)
-        self.alternate_secret = None            # a stash-encoded secret
 
         # details that we discover as we go
         self.inputs = None
