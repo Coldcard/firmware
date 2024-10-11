@@ -138,6 +138,11 @@ def test_2fa_server(shared_secret, q_mode, make_2fa_url, enc, roundtrip_2fa):
     # NOTE: cannot re-start same test until next 30-second period because of rate limiting
     # check on server side.
 
+@pytest.fixture
+def get_last_violation(sim_exec):
+    def doit():
+        return sim_exec('from ccc import CCCFeature; RV.write(CCCFeature.last_fail_reason)')
+    return doit
 
 @pytest.fixture
 def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz, is_q1,
@@ -190,7 +195,7 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
         assert "Export CCC XPUBs" in m
         assert "Temporary Mode" in m  # TODO strange name -> Activate as TMP?
         assert "Multisig Wallets" in m
-        assert "Build 2-of-N" in m[-2]
+        assert "↳ Build 2-of-N" in m
         assert "Remove CCC" == m[-1]
 
         pick_menu_item("Spending Policy")
@@ -218,6 +223,12 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
             press_select()
 
         if vel:
+            if not mag:
+                title, story = cap_story()
+                assert 'Velocity limit requires' in story
+                assert 'starting value' in story
+                press_select()
+                
             pick_menu_item(vel_mi)
 
         if whitelist:
@@ -419,7 +430,7 @@ def bitcoind_create_watch_only_wallet(pick_menu_item, need_keypress, microsd_pat
 @pytest.mark.parametrize("mag", [1000000, None, 2])
 def test_ccc_magnitude(mag_ok, mag, setup_ccc, enter_enabled_ccc, ccc_ms_setup, start_sign,
                        cap_menu, cap_story, bitcoind, end_sign, settings_set,
-                       bitcoind_create_watch_only_wallet):
+                       bitcoind_create_watch_only_wallet, get_last_violation):
 
     settings_set("ccc", None)
 
@@ -464,7 +475,8 @@ def test_ccc_magnitude(mag_ok, mag, setup_ccc, enter_enabled_ccc, ccc_ms_setup, 
     assert 'OK TO SEND?' == title
     if not mag_ok:
         assert "(1 warning below)" in story
-        assert "CCC: Violates spending policy - magnitude. Won't sign." in story
+        assert "CCC: Violates spending policy. Won't sign." in story
+        assert get_last_violation() == 'magnitude'
     else:
         assert "warning" not in story
 

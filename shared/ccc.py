@@ -174,7 +174,7 @@ class CCCFeature:
             needs_2fa = cls.meets_policy(psbt)
         except CCCPolicyViolationError as e:
             cls.last_fail_reason = str(e)
-            psbt.warnings.append(('CCC', "Violates spending policy. Won't sign." % e))
+            psbt.warnings.append(('CCC', "Violates spending policy. Won't sign."))
             return False, False
 
         return True, needs_2fa
@@ -241,7 +241,8 @@ class CCCConfigMenu(MenuSystem):
         items.append(MenuItem('↳ Build 2-of-N', f=self.build_2ofN))
 
         if CCCFeature.last_fail_reason:
-            items.append('Last Violation', f=self.debug_last_fail)
+            #         xxxxxxxxxxxxxxxx
+            items.insert(1, MenuItem('Last Violation', f=self.debug_last_fail))
 
         items.append(MenuItem('Remove CCC', f=self.remove_ccc))
 
@@ -267,7 +268,12 @@ wallet, proceed to the miltisig menu and remove related wallet entry.'''):
         # trying to exit from CCCConfigMenu
         from seed import in_seed_vault
 
-        enc = CCCFeature.get_encoded_secret()
+        try:
+            enc = CCCFeature.get_encoded_secret()
+        except:
+            # some test cases?
+            enc = None
+
         if in_seed_vault(enc):
             # remind them to clear the seed-vault copy of Key C because it defeats feature
             await ux_show_story('''Key C is in your Seed Vault. If you are done with setup, \
