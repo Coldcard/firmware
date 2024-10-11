@@ -4,9 +4,8 @@
 #
 #
 import pytest, requests, re, time, random, json, glob, os, hashlib, struct, base64
-from binascii import a2b_hex, b2a_hex
+from binascii import a2b_hex
 from base64 import urlsafe_b64encode
-from urllib.parse import urlparse, parse_qs
 from onetimepass import get_totp
 from helpers import prandom
 from pysecp256k1.ecdh import ecdh, ECDH_HASHFP_CLS
@@ -142,8 +141,9 @@ def test_2fa_server(shared_secret, q_mode, make_2fa_url, enc, roundtrip_2fa):
 
 @pytest.fixture
 def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz, is_q1,
-             seed_story_to_words, cap_menu, OK, word_menu_entry, press_cancel):
-    def doit(c_words=None):
+              seed_story_to_words, cap_menu, OK, word_menu_entry, press_cancel, press_delete,
+              enter_number, scan_a_qr, cap_screen, settings_get):
+    def doit(c_words=None, mag=None, vel=None, whitelist=None, w2fa=None):
         goto_home()
         pick_menu_item("Advanced/Tools")
         pick_menu_item("Coldcard Co-signing")
@@ -194,17 +194,79 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
         assert "Remove CCC" == m[-1]
 
         pick_menu_item("Spending Policy")
+
+        whitelist_mi = "Whitelist Addresses" if is_q1 else "Whitelist"
+        mag_mi = "Max Magnitude"
+        vel_mi = "Limit Velocity"
+        mi_2fa = "Web 2FA"
+
         time.sleep(.1)
         m = cap_menu()
+        assert mag_mi in m
+        assert vel_mi in m
+        assert whitelist_mi in m
+        assert mi_2fa in m
 
-        assert "Max Magnitude" in m
-        assert "Limit Velocity" in m
-        if is_q1:
-            assert "Whitelist Addresses" in m
-        else:
-            assert "Whitelist" in m
-        assert "Web 2FA" in m
-        # TODO allow setting above values here
+        # setting above values here
+        if mag:
+            pick_menu_item(mag_mi)
+            press_delete()  # default is 1 BTC
+            enter_number(mag)
+            time.sleep(.1)
+            title, story = cap_story()
+            assert f"{mag} {'BTC' if int(mag) < 1000 else 'SATS'}" in story
+            press_select()
+
+        if vel:
+            pick_menu_item(vel_mi)
+
+        if whitelist:
+            pick_menu_item(whitelist_mi)
+            time.sleep(.1)
+            m = cap_menu()
+            assert "(none yet)" in m
+            assert "Import from File" in m
+            if is_q1:
+                assert "Scan QR" in m
+                pick_menu_item("Scan QR")
+                for i, addr in enumerate(whitelist, start=1):
+                    scan_a_qr(addr)
+                    time.sleep(.5)
+                    scr = cap_screen()
+                    assert f"Got {i} so far" in scr
+                    assert "ENTER to apply" in scr
+
+                press_select()
+                time.sleep(.1)
+                _, story = cap_story()
+                if len(whitelist) == 1:
+                    assert "Added new address to whitelist" in story
+                else:
+                    assert f"Added {len(whitelist)} new addresses to whitelist" in story
+
+                for addr in whitelist:
+                    assert addr in story
+
+                press_select()
+                time.sleep(.1)
+                m = cap_menu()
+                mi_addrs = [a for a in m if '⋯' in a]
+                for mia, addr in zip(mi_addrs, whitelist):
+                    _start, _end = mia.split('⋯')
+                    assert addr.startswith(_start)
+                    assert addr.endswith(_end)
+
+                press_cancel()
+            else:
+                assert "Scan QR" not in m
+
+            assert settings_get("ccc")["pol"]["addr"] == whitelist
+
+        if w2fa:
+            pick_menu_item(mi_2fa)
+
+
+
         # TODO check settings object data
 
         press_cancel()  # leave Spending Policy
@@ -323,7 +385,11 @@ def test_ccc_cosign(setup_ccc, enter_enabled_ccc, ccc_ms_setup, fake_ms_txn, sta
                    bitcoind, end_sign, magnitude_ok, settings_set, press_select):
     settings_set("ccc", None)
 
-    words = setup_ccc()
+    words = setup_ccc(
+        whitelist=["tb1qpw52mskfjp04ncd4f24znv7yyx73ja6cuzderl",
+                   "tb1q43wr5u62nj27u9a5cvw9khh70ey33hq47jj54a",
+                   "tb1qrr729zxgznjdp29ufyqmmw0men2yfrm9pqsm3m"]
+    )
     enter_enabled_ccc(words, first_time=True)
     ccc_ms_setup()
 

@@ -3,7 +3,7 @@
 # ccc.py - ColdCard Cosign feature. Be a leg in a 2-of-3 that signed based on policy.
 #
 import gc, chains, version, ngu, web2fa, bip39, re
-from utils import swab32, a2b_hex, b2a_hex, xfp2str, truncate_address
+from utils import swab32, a2b_hex, b2a_hex, xfp2str, truncate_address, pad_raw_secret
 from glob import settings
 from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number
 from menu import MenuSystem, MenuItem
@@ -36,7 +36,8 @@ class CCCFeature:
         # get the key C as encoded binary secret, compatible w/
         # encodings used in stash
         # TODO: move to "storage locker"?
-        return a2b_hex(settings.get('ccc')['secret'])
+        # pad with zeros and a2b
+        return pad_raw_secret(settings.get('ccc')['secret'])
 
     @classmethod
     def get_xfp(cls):
@@ -59,7 +60,10 @@ class CCCFeature:
 
         # NOTE: b_xfp and b_xpub still needed, but that's another step, not yet.
 
-        v = dict(secret=b2a_hex(enc), c_xfp=xfp, c_xpub=xpub, pol=CCCFeature.default_policy())
+        v = dict(secret=SecretStash.storage_serialize(enc),
+                 c_xfp=xfp, c_xpub=xpub,
+                 pol=CCCFeature.default_policy())
+
         settings.put('ccc', v)
         settings.save()
 
@@ -343,7 +347,7 @@ class CCCAddrWhitelist(MenuSystem):
         # no confirm, stakes are low
         addrs = CCCFeature.get_policy().get('addr', [])
         addrs.remove(addr)
-        CCCFeature.update_policy_key(addrs=addrs)
+        CCCFeature.update_policy_key(addr=addrs)
         self.update_contents()
 
     async def import_file(self, *a):
@@ -431,7 +435,7 @@ class CCCAddrWhitelist(MenuSystem):
             await ux_show_story("Already in whitelist:\n\n" + '\n\n'.join(more_addrs))
             return
 
-        CCCFeature.update_policy_key(addrs=addrs)
+        CCCFeature.update_policy_key(addr=addrs)
         self.update_contents()
 
         if len(new) > 1:
