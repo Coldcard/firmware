@@ -557,7 +557,7 @@ class psbtInputProxy(psbtProxy):
         #self.utxo = None
         #self.witness_utxo = None
         self.part_sigs = {}
-        self.added_sigs = {}  # signature that CC added (clearly seprated from what can be already in part_sigs)
+        self.added_sigs = {}  # signature that CC added (clearly separated from what can be already in part_sigs)
         #self.sighash = None
         self.subpaths = {}          # will typically be non-empty for all inputs
         #self.redeem_script = None
@@ -2243,7 +2243,7 @@ class psbtObject(psbtProxy):
                 assert inp.added_sigs, 'No signature on input #%d'%in_idx
                 assert not inp.is_multisig, 'Multisig PSBT combine not supported'
 
-                pubkey, der_sig = inp.added_sigs.items()[0]
+                pubkey, der_sig = list(inp.added_sigs.items())[0]
 
                 s = b''
                 s += ser_push_data(der_sig)
@@ -2275,7 +2275,7 @@ class psbtObject(psbtProxy):
                     assert not wit.scriptWitness.stack, 'replacing non-empty?'
                     assert not inp.is_multisig, 'Multisig PSBT combine not supported'
 
-                    pubkey, der_sig = inp.added_sigs.items()[0]
+                    pubkey, der_sig = list(inp.added_sigs.items())[0]
                     assert pubkey[0] in {0x02, 0x03} and len(pubkey) == 33, "bad v0 pubkey"
                     wit.scriptWitness.stack = [der_sig, pubkey]
 
