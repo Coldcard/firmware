@@ -77,7 +77,7 @@ class CCCFeature:
     def default_policy(cls):
         # a very basic an permissive policy, but non-zero too.
         # - 1BTC per day
-        return dict(mag=1, vel=144, web2fa='', addrs=[])
+        return dict(mag=1, vel=144, vel_block_h=0, web2fa='', addrs=[])
 
     @classmethod
     def get_policy(cls):
@@ -130,6 +130,15 @@ class CCCFeature:
                 raise CCCPolicyViolationError("magnitude")
 
         # vel
+        velocity = pol.get("vel", None)
+        if velocity:  # if zero - unlimited
+            if psbt.lock_time >= 500000000:
+                # this is unix timestamp - not allowed - fail
+                raise CCCPolicyViolationError("velocity not block height")
+
+            # off by one possibility - we need to decide whether we want it to be <= or just <
+            if psbt.lock_time < (pol.get("vel_block_h", 0) + velocity):
+                raise CCCPolicyViolationError("velocity")
 
         # whitelist
         wl = pol.get("addrs", None)
@@ -197,9 +206,13 @@ class CCCFeature:
     @classmethod
     def sign_psbt(cls, psbt):
         # do the math
-        # TODO: capture the block height if vel is defined; no going back after this pt.
         psbt.sign_it(cls.get_encoded_secret(), cls.get_xfp())
         cls.last_fail_reason = None
+
+        velocity = cls.get_policy().get("vel", None)
+        if velocity:
+            # preserve velocity settings & update last block height
+            cls.update_policy_key(vel_block_h=psbt.lock_time)
 
 
 def render_mag_value(mag):
@@ -575,14 +588,17 @@ class CCCPolicyMenu(MenuSystem):
         # reminder: dont forget the poor Mk4 users
         #        xxxxxxxxxxxxxxxx
         ch = [  'Unlimited',
-                '6 blocks (1 hr)',
+                '6 blocks (1h)',
                 '24 blocks (4h)',
                 '48 blocks (8h)',
                 '72 blocks (12h)',
-                '144 blocks (day)',
+                '144 blocks (1d)',
                 '288 blocks (2d)',
                 '432 blocks (3d)',
-                '1008 blocks (wk)',
+                '720 blocks (5d)',
+                '1008 blocks (1w)',
+                '2016 blocks (2w)',
+                '4032 blocks (4w)',
               ]
         va = [0] + [int(x.split()[0]) for x in ch[1:]]
 

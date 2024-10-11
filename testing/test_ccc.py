@@ -222,14 +222,24 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
             assert f"{mag} {'BTC' if int(mag) < 1000 else 'SATS'}" in story
             press_select()
 
+            assert settings_get("ccc")["pol"]["mag"] == mag
+
         if vel:
-            if not mag:
+            if not settings_get("ccc")["pol"]["mag"]:
                 title, story = cap_story()
                 assert 'Velocity limit requires' in story
                 assert 'starting value' in story
                 press_select()
                 
             pick_menu_item(vel_mi)
+            pick_menu_item(vel)  # actually a full menu item
+            if vel == "Unlimited":
+                target = 0
+            else:
+                target = int(vel.split()[0])
+
+            time.sleep(.2)
+            assert settings_get("ccc")["pol"]["vel"] == target
 
         if whitelist:
             pick_menu_item(whitelist_mi)
@@ -276,9 +286,6 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
         if w2fa:
             pick_menu_item(mi_2fa)
 
-
-
-        # TODO check settings object data
 
         press_cancel()  # leave Spending Policy
 
@@ -425,14 +432,46 @@ def bitcoind_create_watch_only_wallet(pick_menu_item, need_keypress, microsd_pat
     return doit
 
 
+@pytest.fixture
+def policy_sign(start_sign, end_sign, cap_story, get_last_violation):
+    def doit(wallet, psbt, violation=None):
+        start_sign(base64.b64decode(psbt))
+        time.sleep(.1)
+        title, story = cap_story()
+        assert 'OK TO SEND?' == title
+        if violation:
+            assert "(1 warning below)" in story
+            assert "CCC: Violates spending policy. Won't sign." in story
+            assert get_last_violation() == violation
+        else:
+            assert "warning" not in story
+
+        signed = end_sign(accept=True)
+        po = BasicPSBT().parse(signed)
+
+        if violation is None:
+            assert len(po.inputs[0].part_sigs) == 2  # CC key signed
+            res = wallet.finalizepsbt(base64.b64encode(signed).decode())
+            assert res["complete"]
+            tx_hex = res["hex"]
+            res = wallet.testmempoolaccept([tx_hex])
+            assert res[0]["allowed"]
+            res = wallet.sendrawtransaction(tx_hex)
+            assert len(res) == 64  # tx id
+        else:
+            assert len(po.inputs[0].part_sigs) == 1  # CC key did NOT sign
+
+    return doit
+
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("mag_ok", [True, False])
 @pytest.mark.parametrize("mag", [1000000, None, 2])
-def test_ccc_magnitude(mag_ok, mag, setup_ccc, enter_enabled_ccc, ccc_ms_setup, start_sign,
-                       cap_menu, cap_story, bitcoind, end_sign, settings_set,
-                       bitcoind_create_watch_only_wallet, get_last_violation):
+def test_ccc_magnitude(mag_ok, mag, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
+                       cap_menu, bitcoind, settings_set, policy_sign,
+                       bitcoind_create_watch_only_wallet):
 
     settings_set("ccc", None)
+    settings_set("chain", "XRT")
 
     if mag_ok:
         # always try limit/border value
@@ -446,7 +485,7 @@ def test_ccc_magnitude(mag_ok, mag, setup_ccc, enter_enabled_ccc, ccc_ms_setup, 
         else:
             to_send = ((mag / 100000000)+1) if mag > 1000 else (mag+0.001)
 
-    words = setup_ccc(mag=mag)
+    words = setup_ccc(mag=mag, vel="Unlimited")
     enter_enabled_ccc(words, first_time=True)
     ccc_ms_setup()
 
@@ -469,37 +508,13 @@ def test_ccc_magnitude(mag_ok, mag, setup_ccc, enter_enabled_ccc, ccc_ms_setup, 
     )
     psbt = psbt_resp.get("psbt")
 
-    start_sign(base64.b64decode(psbt))
-    time.sleep(.1)
-    title, story = cap_story()
-    assert 'OK TO SEND?' == title
-    if not mag_ok:
-        assert "(1 warning below)" in story
-        assert "CCC: Violates spending policy. Won't sign." in story
-        assert get_last_violation() == 'magnitude'
-    else:
-        assert "warning" not in story
-
-    signed = end_sign(accept=True)
-    po = BasicPSBT().parse(signed)
-
-    if mag_ok:
-        assert len(po.inputs[0].part_sigs) == 2  # CC key signed
-        res = bitcoind_wo.finalizepsbt(base64.b64encode(signed).decode())
-        assert res["complete"]
-        tx_hex = res["hex"]
-        res = bitcoind_wo.testmempoolaccept([tx_hex])
-        assert res[0]["allowed"]
-        res = bitcoind_wo.sendrawtransaction(tx_hex)
-        assert len(res) == 64  # tx id
-    else:
-        assert len(po.inputs[0].part_sigs) == 1  # CC key did NOT sign
+    policy_sign(bitcoind_wo, psbt, violation=None if mag_ok else "magnitude")
 
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("whitelist_ok", [True, False])
-def test_ccc_whitelist(whitelist_ok, setup_ccc, enter_enabled_ccc, ccc_ms_setup, start_sign,
-                       cap_menu, cap_story, bitcoind, end_sign, settings_set,
+def test_ccc_whitelist(whitelist_ok, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
+                       cap_menu, bitcoind, settings_set, policy_sign,
                        bitcoind_create_watch_only_wallet):
 
     settings_set("ccc", None)
@@ -517,7 +532,7 @@ def test_ccc_whitelist(whitelist_ok, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
     else:
         send_to = bitcoind.supply_wallet.getnewaddress()
 
-    words = setup_ccc(whitelist=whitelist)
+    words = setup_ccc(whitelist=whitelist, vel="Unlimited")
     enter_enabled_ccc(words, first_time=True)
     ccc_ms_setup()
 
@@ -539,30 +554,72 @@ def test_ccc_whitelist(whitelist_ok, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
         [], [{send_to: 1}], 0, {"fee_rate": 2}
     )
     psbt = psbt_resp.get("psbt")
+    policy_sign(bitcoind_wo, psbt, violation=None if whitelist_ok else "whitelist")
 
-    start_sign(base64.b64decode(psbt))
-    time.sleep(.1)
-    title, story = cap_story()
-    assert 'OK TO SEND?' == title
-    if not whitelist_ok:
-        assert "(1 warning below)" in story
-        assert "CCC: Violates spending policy - whitelist. Won't sign." in story
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("velocity_mi", ['6 blocks (1h)', '48 blocks (8h)'])
+def test_ccc_velocity(velocity_mi, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
+                       cap_menu, bitcoind, settings_set, policy_sign,
+                       bitcoind_create_watch_only_wallet, settings_get):
+
+    settings_set("ccc", None)
+    settings_set("chain", "XRT")
+
+    blocks = int(velocity_mi.split()[0])
+
+    words = setup_ccc(vel=velocity_mi)
+    enter_enabled_ccc(words, first_time=True)
+    ccc_ms_setup()
+
+    assert settings_get("ccc")["pol"]["vel_block_h"] == 0
+
+    m = cap_menu()
+    for mi in m:
+        if "2/3: Coldcard Cosign" in mi:
+            target_mi = mi
+            break
     else:
-        assert "warning" not in story
+        assert False
 
-    signed = end_sign(accept=True)
-    po = BasicPSBT().parse(signed)
+    bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
 
-    if whitelist_ok:
-        assert len(po.inputs[0].part_sigs) == 2  # CC key signed
-        res = bitcoind_wo.finalizepsbt(base64.b64encode(signed).decode())
-        assert res["complete"]
-        tx_hex = res["hex"]
-        res = bitcoind_wo.testmempoolaccept([tx_hex])
-        assert res[0]["allowed"]
-        res = bitcoind_wo.sendrawtransaction(tx_hex)
-        assert len(res) == 64  # tx id
-    else:
-        assert len(po.inputs[0].part_sigs) == 1  # CC key did NOT sign
+    multi_addr = bitcoind_wo.getnewaddress()
+    bitcoind.supply_wallet.sendtoaddress(address=multi_addr, amount=5.0)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    # create funded PSBT, first tx
+    init_block_height = bitcoind.supply_wallet.getblockchaininfo()["blocks"]  # block height
+    psbt_resp = bitcoind_wo.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 1}],
+                                                   init_block_height)  # nLockTime set to current block height
+    psbt = psbt_resp.get("psbt")
+    po = BasicPSBT().parse(psbt)
+    assert po.parsed_txn.nLockTime == init_block_height
+    policy_sign(bitcoind_wo, psbt)  # success as this is first tx that sets block height from 0
+
+    assert settings_get("ccc")["pol"]["vel_block_h"] == init_block_height
+
+    # mine some, BUT not enough to satisfy velocity policy
+    bitcoind.supply_wallet.generatetoaddress(blocks - 1, bitcoind.supply_wallet.getnewaddress())
+    block_height = bitcoind.supply_wallet.getblockchaininfo()["blocks"]
+    psbt_resp = bitcoind_wo.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 1}],
+                                                   block_height)
+    psbt = psbt_resp.get("psbt")
+    po = BasicPSBT().parse(psbt)
+    assert po.parsed_txn.nLockTime == block_height
+    policy_sign(bitcoind_wo, psbt, violation="velocity")
+
+    assert settings_get("ccc")["pol"]["vel_block_h"] == init_block_height  # still initial block height as above failed
+
+    # mine the remaining one block to satisfy velocity policy
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    block_height = bitcoind.supply_wallet.getblockchaininfo()["blocks"]
+    psbt_resp = bitcoind_wo.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 1}],
+                                                   block_height)
+    psbt = psbt_resp.get("psbt")
+    po = BasicPSBT().parse(psbt)
+    assert po.parsed_txn.nLockTime == block_height
+    policy_sign(bitcoind_wo, psbt)  # success
+
+    assert settings_get("ccc")["pol"]["vel_block_h"] == block_height  # updated block height
 
 # EOF
