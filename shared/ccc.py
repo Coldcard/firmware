@@ -6,7 +6,7 @@ import gc, chains, version, ngu, web2fa, bip39, re
 from utils import swab32, a2b_hex, b2a_hex, xfp2str, truncate_address, pad_raw_secret
 from glob import settings
 from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number
-from menu import MenuSystem, MenuItem
+from menu import MenuSystem, MenuItem, start_chooser
 from seed import seed_words_to_encoded_secret
 from stash import SecretStash, len_to_numwords
 from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC
@@ -113,15 +113,21 @@ class CCCFeature:
         # Does policy allow signing this? Else raise why
         pol = cls.get_policy()
 
+        # not safe to sign any txn w/ warnings: might be complaining about
+        # massive miner fees, or weird OP_RETURN stuff
+        if psbt.warnings:
+            raise CCCPolicyViolationError("has warnings")
+
         # mag
         magnitude = pol.get("mag", None)
-        outgoing = psbt.total_value_out - psbt.total_change_value
-        if magnitude < 1000:
-            # it is a BTC, convert to sats
-            magnitude = magnitude * 100000000
+        if magnitude is not None:
+            outgoing = psbt.total_value_out - psbt.total_change_value
+            if magnitude < 1000:
+                # it is a BTC, convert to sats
+                magnitude = magnitude * 100000000
 
-        if outgoing > magnitude:
-            raise CCCPolicyViolationError("magnitude")
+            if outgoing > magnitude:
+                raise CCCPolicyViolationError("magnitude")
 
         # vel
 
@@ -495,7 +501,7 @@ class CCCPolicyMenu(MenuSystem):
         items = [
             #                xxxxxxxxxxxxxxxx
             PolCheckedMenuItem('Max Magnitude', 'mag', f=self.set_magnitude),
-            PolCheckedMenuItem('Limit Velocity', 'vel', chooser=self.velocity_chooser),
+            PolCheckedMenuItem('Limit Velocity', 'vel', f=self.set_velocity),
             PolCheckedMenuItem('Whitelist' + (' Addresses' if version.has_qr else ''),
                                     'addrs', menu=CCCAddrWhitelist.be_a_submenu),
             PolCheckedMenuItem('Web 2FA', 'web2fa', f=self.toggle_2fa),
@@ -543,6 +549,19 @@ class CCCPolicyMenu(MenuSystem):
 
         await ux_show_story(msg, title="Txn Magnitude")
         
+    async def set_velocity(self, *a):
+        mag = self.policy.get('mag', 0) or 0
+
+        if not mag:
+            msg = 'Velocity limit requires a per-transaction magnitude to be set.'\
+                  ' This has been set to 1BTC as a starting value.'
+            self.policy = CCCFeature.update_policy_key(mag=1)
+                
+            await ux_show_story(msg)
+            
+        start_chooser(self.velocity_chooser)
+        
+
     def velocity_chooser(self):
         # offer some useful values from a menu
         vel = self.policy.get('vel', 0)        # in blocks
@@ -587,11 +606,11 @@ class CCCPolicyMenu(MenuSystem):
 
             return
 
-        ch = await ux_show_story('''When enabled, any spend (signing) requires 
-use of mobile 2FA application (TOTP RFC-6238). Shared-secret is picked now, 
+        ch = await ux_show_story('''When enabled, any spend (signing) requires \
+use of mobile 2FA application (TOTP RFC-6238). Shared-secret is picked now, \
 and loaded on your phone via QR code.
 
-WARNING: You will not be able to sign transactions if you do not have an NFC-enabled 
+WARNING: You will not be able to sign transactions if you do not have an NFC-enabled \
 phone with Internet access and 2FA app holding correct shared-secret.''',
                     title="Web 2FA")
         if ch != 'y':
