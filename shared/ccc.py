@@ -103,7 +103,7 @@ class CCCFeature:
         settings.save()
 
     @classmethod
-    async def meets_policy(cls, psbt):
+    def meets_policy(cls, psbt):
         # Does policy allow signing this? Else raise why
         pol = cls.get_policy()
 
@@ -140,7 +140,7 @@ class CCCFeature:
         
 
     @classmethod
-    async def could_sign(cls, psbt):
+    def could_sign(cls, psbt):
         # We are looking at a PSBT: can we sign it, and would we?
         # - if we **could** but will not, due to policy, add warning msg
         # - return (we could sign, needs 2fa step)
@@ -159,7 +159,7 @@ class CCCFeature:
 
         try:
             # check policy
-            needs_2fa = await cls.meets_policy(psbt)
+            needs_2fa = cls.meets_policy(psbt)
         except CCCPolicyViolationError as e:
             psbt.warnings.append(('CCC', "Violates spending policy - %s. Won't sign." % e))
             return False, False
