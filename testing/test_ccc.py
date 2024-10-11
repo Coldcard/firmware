@@ -260,7 +260,7 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
             else:
                 assert "Scan QR" not in m
 
-            assert settings_get("ccc")["pol"]["addr"] == whitelist
+            assert settings_get("ccc")["pol"]["addrs"] == whitelist
 
         if w2fa:
             pick_menu_item(mi_2fa)

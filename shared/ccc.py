@@ -71,7 +71,7 @@ class CCCFeature:
     def default_policy(cls):
         # a very basic an permissive policy, but non-zero too.
         # - 1BTC per day
-        return dict(mag=1, vel=144, web2fa='', addr=[])
+        return dict(mag=1, vel=144, web2fa='', addrs=[])
 
     @classmethod
     def get_policy(cls):
@@ -120,7 +120,7 @@ class CCCFeature:
         # vel
 
         # whitelist
-        wl = pol.get("addr", None)
+        wl = pol.get("addrs", None)
         if wl:
             c = chains.current_chain()
             wl = set(wl)
@@ -331,7 +331,7 @@ class CCCAddrWhitelist(MenuSystem):
 
     def construct(self):
         # list of addresses
-        addrs = CCCFeature.get_policy().get('addr', [])
+        addrs = CCCFeature.get_policy().get('addrs', [])
 
         items = [MenuItem(truncate_address(a), f=self.edit_addr, arg=a) for a in addrs]
 
@@ -355,9 +355,9 @@ class CCCAddrWhitelist(MenuSystem):
 
     def delete_addr(self, addr):
         # no confirm, stakes are low
-        addrs = CCCFeature.get_policy().get('addr', [])
+        addrs = CCCFeature.get_policy().get('addrs', [])
         addrs.remove(addr)
-        CCCFeature.update_policy_key(addr=addrs)
+        CCCFeature.update_policy_key(addrs=addrs)
         self.update_contents()
 
     async def import_file(self, *a):
@@ -434,7 +434,7 @@ class CCCAddrWhitelist(MenuSystem):
 
     async def add_addresses(self, more_addrs):
         # add new entries, if unique; preserve ordering
-        addrs = CCCFeature.get_policy().get('addr', [])
+        addrs = CCCFeature.get_policy().get('addrs', [])
         new = []
         for a in more_addrs:
             if a not in addrs:
@@ -445,7 +445,7 @@ class CCCAddrWhitelist(MenuSystem):
             await ux_show_story("Already in whitelist:\n\n" + '\n\n'.join(more_addrs))
             return
 
-        CCCFeature.update_policy_key(addr=addrs)
+        CCCFeature.update_policy_key(addrs=addrs)
         self.update_contents()
 
         if len(new) > 1:
@@ -480,7 +480,7 @@ class CCCPolicyMenu(MenuSystem):
             PolCheckedMenuItem('Max Magnitude', 'mag', f=self.set_magnitude),
             PolCheckedMenuItem('Limit Velocity', 'vel', chooser=self.velocity_chooser),
             PolCheckedMenuItem('Whitelist' + (' Addresses' if version.has_qr else ''),
-                                    'addr', menu=CCCAddrWhitelist.be_a_submenu),
+                                    'addrs', menu=CCCAddrWhitelist.be_a_submenu),
             PolCheckedMenuItem('Web 2FA', 'web2fa', f=self.toggle_2fa),
         ]
 
