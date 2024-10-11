@@ -14,6 +14,12 @@ from exceptions import CCCPolicyViolationError
 
 
 class CCCFeature:
+
+    # we don't show the user the reason for policy fail (by design, so attacker
+    # cannot maximize their take against the policy), but during setup/experiments
+    # we offer to show the reason in the menu
+    last_fail_reason = None
+
     @classmethod
     def is_enabled(cls):
         # Is the feature enabled right now?
@@ -161,7 +167,8 @@ class CCCFeature:
             # check policy
             needs_2fa = cls.meets_policy(psbt)
         except CCCPolicyViolationError as e:
-            psbt.warnings.append(('CCC', "Violates spending policy - %s. Won't sign." % e))
+            cls.last_fail_reason = str(e)
+            psbt.warnings.append(('CCC', "Violates spending policy. Won't sign." % e))
             return False, False
 
         return True, needs_2fa
@@ -178,6 +185,7 @@ class CCCFeature:
 
         ok = await web2fa.perform_web2fa('Approve CCC Transaction', ss)
         if not ok:
+            cls.last_fail_reason = '2FA Fail'
             raise CCCPolicyViolationError
 
     @classmethod
@@ -185,6 +193,7 @@ class CCCFeature:
         # do the math
         # TODO: capture the block height if vel is defined; no going back after this pt.
         psbt.sign_it(cls.get_encoded_secret(), cls.get_xfp())
+        cls.last_fail_reason = None
 
 
 def render_mag_value(mag):
@@ -224,9 +233,17 @@ class CCCConfigMenu(MenuSystem):
                             menu=make_ms_wallet_menu, arg=ms.storage_idx))
 
         items.append(MenuItem('↳ Build 2-of-N', f=self.build_2ofN))
+
+        if CCCFeature.last_fail_reason:
+            items.append('Last Violation', f=self.debug_last_fail)
+
         items.append(MenuItem('Remove CCC', f=self.remove_ccc))
 
         return items
+
+    async def debug_last_fail(self, *a):
+        msg = 'The most recent policy check failed because of:\n\n%s' % CCCFeature.last_fail_reason
+        await ux_confirm(msg)
 
     async def remove_ccc(self, *a):
         if not await ux_confirm('''Key C will be lost, and policy settings forgotten. \
