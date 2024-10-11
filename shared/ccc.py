@@ -120,8 +120,18 @@ class CCCFeature:
         # vel
 
         # whitelist
+        wl = pol.get("addr", None)
+        if wl:
+            c = chains.current_chain()
+            wl = set(wl)
+            for idx, txo in psbt.output_iter():
+                out = psbt.outputs[idx]
+                if not out.is_change:  # ignore change
+                    addr = c.render_address(txo.scriptPubKey)
+                    if addr not in wl:
+                        raise CCCPolicyViolationError("whitelist")
 
-        # web2fa 
+        # web 2fa
         # - slow, requires UX, and they might not acheive it...
         # - wait until about to do signature
         if pol.get('web2fa', False):

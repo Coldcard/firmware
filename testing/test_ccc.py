@@ -378,18 +378,64 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
     return doit
 
 
+@pytest.fixture
+def bitcoind_create_watch_only_wallet(pick_menu_item, need_keypress, microsd_path,
+                                      cap_story, bitcoind):
+    def doit(ms_menu_item):
+        pick_menu_item(ms_menu_item)
+        pick_menu_item("Descriptors")
+        pick_menu_item("Bitcoin Core")
+        time.sleep(.1)
+        need_keypress("1")
+        time.sleep(.1)
+        title, story = cap_story()
+        assert "Bitcoin Core multisig setup file written" in story
+        fname = story.split("\n\n")[-1]
+        with open(microsd_path(fname), "r") as f:
+            res = f.read()
+
+        res = res.replace("importdescriptors ", "").strip()
+        r1 = res.find("[")
+        r2 = res.find("]", -1, 0)
+        res = res[r1: r2]
+        res = json.loads(res)
+
+        bitcoind_wo = bitcoind.create_wallet(
+            wallet_name=f"watch_only_ccc", disable_private_keys=True,
+            blank=True, passphrase=None, avoid_reuse=False, descriptors=True
+        )
+        res = bitcoind_wo.importdescriptors(res)
+        # remove junk
+        for obj in res:
+            assert obj["success"], obj
+
+        return bitcoind_wo
+
+    return doit
+
+
 @pytest.mark.bitcoind
-@pytest.mark.parametrize("magnitude_ok", [True, False])
-def test_ccc_cosign(setup_ccc, enter_enabled_ccc, ccc_ms_setup, fake_ms_txn, start_sign,
-                   cap_menu, pick_menu_item, need_keypress, cap_story, microsd_path,
-                   bitcoind, end_sign, magnitude_ok, settings_set, press_select):
+@pytest.mark.parametrize("mag_ok", [True, False])
+@pytest.mark.parametrize("mag", [1000000, None, 2])
+def test_ccc_magnitude(mag_ok, mag, setup_ccc, enter_enabled_ccc, ccc_ms_setup, start_sign,
+                       cap_menu, cap_story, bitcoind, end_sign, settings_set,
+                       bitcoind_create_watch_only_wallet):
+
     settings_set("ccc", None)
 
-    words = setup_ccc(
-        whitelist=["tb1qpw52mskfjp04ncd4f24znv7yyx73ja6cuzderl",
-                   "tb1q43wr5u62nj27u9a5cvw9khh70ey33hq47jj54a",
-                   "tb1qrr729zxgznjdp29ufyqmmw0men2yfrm9pqsm3m"]
-    )
+    if mag_ok:
+        # always try limit/border value
+        if mag is None:
+            to_send = 1
+        else:
+            to_send = mag / 100000000 if mag > 1000 else mag
+    else:
+        if mag is None:
+            to_send = 1.1
+        else:
+            to_send = ((mag / 100000000)+1) if mag > 1000 else (mag+0.001)
+
+    words = setup_ccc(mag=mag)
     enter_enabled_ccc(words, first_time=True)
     ccc_ms_setup()
 
@@ -401,39 +447,14 @@ def test_ccc_cosign(setup_ccc, enter_enabled_ccc, ccc_ms_setup, fake_ms_txn, sta
     else:
         assert False
 
-    pick_menu_item(target_mi)
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    time.sleep(.1)
-    need_keypress("1")
-    time.sleep(.1)
-    title, story = cap_story()
-    assert "Bitcoin Core multisig setup file written" in story
-    fname = story.split("\n\n")[-1]
-    with open(microsd_path(fname), "r") as f:
-        res = f.read()
-
-    res = res.replace("importdescriptors ", "").strip()
-    r1 = res.find("[")
-    r2 = res.find("]", -1, 0)
-    res = res[r1: r2]
-    res = json.loads(res)
-
-    bitcoind_wo = bitcoind.create_wallet(
-        wallet_name=f"watch_only_ccc", disable_private_keys=True,
-        blank=True, passphrase=None, avoid_reuse=False, descriptors=True
-    )
-    res = bitcoind_wo.importdescriptors(res)
-    # remove junk
-    for obj in res:
-        assert obj["success"], obj
+    bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
 
     multi_addr = bitcoind_wo.getnewaddress()
     bitcoind.supply_wallet.sendtoaddress(address=multi_addr, amount=5.0)
     bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
     # create funded PSBT
     psbt_resp = bitcoind_wo.walletcreatefundedpsbt(
-        [], [{bitcoind.supply_wallet.getnewaddress(): 1 if magnitude_ok else 2}], 0, {"fee_rate": 20}
+        [], [{bitcoind.supply_wallet.getnewaddress(): to_send}], 0, {"fee_rate": 20}
     )
     psbt = psbt_resp.get("psbt")
 
@@ -441,7 +462,7 @@ def test_ccc_cosign(setup_ccc, enter_enabled_ccc, ccc_ms_setup, fake_ms_txn, sta
     time.sleep(.1)
     title, story = cap_story()
     assert 'OK TO SEND?' == title
-    if not magnitude_ok:
+    if not mag_ok:
         assert "(1 warning below)" in story
         assert "CCC: Violates spending policy - magnitude. Won't sign." in story
     else:
@@ -450,7 +471,77 @@ def test_ccc_cosign(setup_ccc, enter_enabled_ccc, ccc_ms_setup, fake_ms_txn, sta
     signed = end_sign(accept=True)
     po = BasicPSBT().parse(signed)
 
-    if magnitude_ok:
+    if mag_ok:
+        assert len(po.inputs[0].part_sigs) == 2  # CC key signed
+        res = bitcoind_wo.finalizepsbt(base64.b64encode(signed).decode())
+        assert res["complete"]
+        tx_hex = res["hex"]
+        res = bitcoind_wo.testmempoolaccept([tx_hex])
+        assert res[0]["allowed"]
+        res = bitcoind_wo.sendrawtransaction(tx_hex)
+        assert len(res) == 64  # tx id
+    else:
+        assert len(po.inputs[0].part_sigs) == 1  # CC key did NOT sign
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("whitelist_ok", [True, False])
+def test_ccc_whitelist(whitelist_ok, setup_ccc, enter_enabled_ccc, ccc_ms_setup, start_sign,
+                       cap_menu, cap_story, bitcoind, end_sign, settings_set,
+                       bitcoind_create_watch_only_wallet):
+
+    settings_set("ccc", None)
+    settings_set("chain", "XRT")
+
+    whitelist = [
+        "bcrt1qqca9eefwz8tzn7rk6aumhwhapyf5vsrtrddxxp",
+        "bcrt1q7nck280nje50gzjja3gyguhp2ds6astu5ndhkj",
+        "bcrt1qhexpvdhwuerqq0h24j06g8y5eumjjdr28ng4vv",
+        "bcrt1q3ylr55pk7rl0rc06d8th7h25zmcuvvg8wt0yl3",
+    ]
+
+    if whitelist_ok:
+        send_to = whitelist[0]
+    else:
+        send_to = bitcoind.supply_wallet.getnewaddress()
+
+    words = setup_ccc(whitelist=whitelist)
+    enter_enabled_ccc(words, first_time=True)
+    ccc_ms_setup()
+
+    m = cap_menu()
+    for mi in m:
+        if "2/3: Coldcard Cosign" in mi:
+            target_mi = mi
+            break
+    else:
+        assert False
+
+    bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
+
+    multi_addr = bitcoind_wo.getnewaddress()
+    bitcoind.supply_wallet.sendtoaddress(address=multi_addr, amount=5.0)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    # create funded PSBT
+    psbt_resp = bitcoind_wo.walletcreatefundedpsbt(
+        [], [{send_to: 1}], 0, {"fee_rate": 2}
+    )
+    psbt = psbt_resp.get("psbt")
+
+    start_sign(base64.b64decode(psbt))
+    time.sleep(.1)
+    title, story = cap_story()
+    assert 'OK TO SEND?' == title
+    if not whitelist_ok:
+        assert "(1 warning below)" in story
+        assert "CCC: Violates spending policy - whitelist. Won't sign." in story
+    else:
+        assert "warning" not in story
+
+    signed = end_sign(accept=True)
+    po = BasicPSBT().parse(signed)
+
+    if whitelist_ok:
         assert len(po.inputs[0].part_sigs) == 2  # CC key signed
         res = bitcoind_wo.finalizepsbt(base64.b64encode(signed).decode())
         assert res["complete"]
