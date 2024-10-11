@@ -327,7 +327,6 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
         if w2fa:
             pick_menu_item(mi_2fa)
 
-
         press_cancel()  # leave Spending Policy
 
         return c_words

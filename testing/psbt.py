@@ -376,7 +376,7 @@ class BasicPSBT:
         # auto-detect and decode Base64 and Hex.
         if raw[0:10].lower() == b'70736274ff':
             raw = a2b_hex(raw.strip())
-        if raw[0:6] == b'cHNidP':
+        if raw[0:6] in (b'cHNidP', 'cHNidP'):
             raw = b64decode(raw)
         assert raw[0:5] == b'psbt\xff', "bad magic {}".format(raw[0:5])
         with io.BytesIO(raw[5:]) as fd:
