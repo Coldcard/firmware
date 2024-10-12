@@ -139,10 +139,12 @@ class CCCFeature:
                 # this is unix timestamp - not allowed - fail
                 raise CCCPolicyViolationError("nLockTime not block height")
 
-            # off by one possibility - we need to decide whether we want it to be <= or just <
-            block_h = pol.get("block_h", 865321)
+            block_h = pol.get("block_h", 0) or 865321
             if psbt.lock_time <= block_h:
-                raise CCCPolicyViolationError("too early")
+                raise CCCPolicyViolationError("rewound")
+
+            # off by one possibility - we need to decide whether we want it to be <= or just <
+            # TODO - decide and document
             if psbt.lock_time < (block_h + velocity):
                 raise CCCPolicyViolationError("velocity")
 
