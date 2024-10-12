@@ -18,7 +18,7 @@ class CCCFeature:
     # we don't show the user the reason for policy fail (by design, so attacker
     # cannot maximize their take against the policy), but during setup/experiments
     # we offer to show the reason in the menu
-    last_fail_reason = None
+    last_fail_reason = ""
 
     @classmethod
     def is_enabled(cls):
@@ -77,7 +77,7 @@ class CCCFeature:
     def default_policy(cls):
         # a very basic an permissive policy, but non-zero too.
         # - 1BTC per day
-        return dict(mag=1, vel=144, vel_block_h=0, web2fa='', addrs=[])
+        return dict(mag=1, vel=144, block_h=0, web2fa='', addrs=[])
 
     @classmethod
     def get_policy(cls):
@@ -132,12 +132,16 @@ class CCCFeature:
         # vel
         velocity = pol.get("vel", None)
         if velocity:  # if zero - unlimited
+            if not psbt.lock_time:
+                raise CCCPolicyViolationError("no nLockTime")
+
             if psbt.lock_time >= 500000000:
                 # this is unix timestamp - not allowed - fail
-                raise CCCPolicyViolationError("velocity not block height")
+                raise CCCPolicyViolationError("nLockTime not block height")
 
             # off by one possibility - we need to decide whether we want it to be <= or just <
-            if psbt.lock_time < (pol.get("vel_block_h", 0) + velocity):
+            block_h = pol.get("block_h", 0)
+            if (psbt.lock_time <= block_h) or (psbt.lock_time < (block_h + velocity)):
                 raise CCCPolicyViolationError("velocity")
 
         # whitelist
@@ -207,12 +211,12 @@ class CCCFeature:
     def sign_psbt(cls, psbt):
         # do the math
         psbt.sign_it(cls.get_encoded_secret(), cls.get_xfp())
-        cls.last_fail_reason = None
+        cls.last_fail_reason = ""
 
         velocity = cls.get_policy().get("vel", None)
         if velocity:
             # preserve velocity settings & update last block height
-            cls.update_policy_key(vel_block_h=psbt.lock_time)
+            cls.update_policy_key(block_h=psbt.lock_time)
 
 
 def render_mag_value(mag):
@@ -588,16 +592,17 @@ class CCCPolicyMenu(MenuSystem):
         # reminder: dont forget the poor Mk4 users
         #        xxxxxxxxxxxxxxxx
         ch = [  'Unlimited',
-                '6 blocks (1h)',
+                '6 blocks (hour)',
                 '24 blocks (4h)',
                 '48 blocks (8h)',
                 '72 blocks (12h)',
-                '144 blocks (1d)',
+                '144 blocks (day)',
                 '288 blocks (2d)',
                 '432 blocks (3d)',
                 '720 blocks (5d)',
                 '1008 blocks (1w)',
                 '2016 blocks (2w)',
+                '3024 blocks (2w)',
                 '4032 blocks (4w)',
               ]
         va = [0] + [int(x.split()[0]) for x in ch[1:]]

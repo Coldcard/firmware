@@ -450,6 +450,8 @@ def policy_sign(start_sign, end_sign, cap_story, get_last_violation):
         po = BasicPSBT().parse(signed)
 
         if violation is None:
+            assert not get_last_violation()
+
             assert len(po.inputs[0].part_sigs) == 2  # CC key signed
             res = wallet.finalizepsbt(base64.b64encode(signed).decode())
             assert res["complete"]
@@ -558,7 +560,7 @@ def test_ccc_whitelist(whitelist_ok, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
 
 
 @pytest.mark.bitcoind
-@pytest.mark.parametrize("velocity_mi", ['6 blocks (1h)', '48 blocks (8h)'])
+@pytest.mark.parametrize("velocity_mi", ['6 blocks (hour)', '48 blocks (8h)'])
 def test_ccc_velocity(velocity_mi, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
                        cap_menu, bitcoind, settings_set, policy_sign,
                        bitcoind_create_watch_only_wallet, settings_get):
@@ -572,7 +574,7 @@ def test_ccc_velocity(velocity_mi, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
     enter_enabled_ccc(words, first_time=True)
     ccc_ms_setup()
 
-    assert settings_get("ccc")["pol"]["vel_block_h"] == 0
+    assert settings_get("ccc")["pol"]["block_h"] == 0
 
     m = cap_menu()
     for mi in m:
@@ -592,11 +594,11 @@ def test_ccc_velocity(velocity_mi, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
     psbt_resp = bitcoind_wo.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 1}],
                                                    init_block_height)  # nLockTime set to current block height
     psbt = psbt_resp.get("psbt")
-    po = BasicPSBT().parse(psbt)
+    po = BasicPSBT().parse(base64.b64decode(psbt))
     assert po.parsed_txn.nLockTime == init_block_height
     policy_sign(bitcoind_wo, psbt)  # success as this is first tx that sets block height from 0
 
-    assert settings_get("ccc")["pol"]["vel_block_h"] == init_block_height
+    assert settings_get("ccc")["pol"]["block_h"] == init_block_height
 
     # mine some, BUT not enough to satisfy velocity policy
     bitcoind.supply_wallet.generatetoaddress(blocks - 1, bitcoind.supply_wallet.getnewaddress())
@@ -604,11 +606,11 @@ def test_ccc_velocity(velocity_mi, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
     psbt_resp = bitcoind_wo.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 1}],
                                                    block_height)
     psbt = psbt_resp.get("psbt")
-    po = BasicPSBT().parse(psbt)
+    po = BasicPSBT().parse(base64.b64decode(psbt))
     assert po.parsed_txn.nLockTime == block_height
     policy_sign(bitcoind_wo, psbt, violation="velocity")
 
-    assert settings_get("ccc")["pol"]["vel_block_h"] == init_block_height  # still initial block height as above failed
+    assert settings_get("ccc")["pol"]["block_h"] == init_block_height  # still initial block height as above failed
 
     # mine the remaining one block to satisfy velocity policy
     bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
@@ -616,10 +618,10 @@ def test_ccc_velocity(velocity_mi, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
     psbt_resp = bitcoind_wo.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 1}],
                                                    block_height)
     psbt = psbt_resp.get("psbt")
-    po = BasicPSBT().parse(psbt)
+    po = BasicPSBT().parse(base64.b64decode(psbt))
     assert po.parsed_txn.nLockTime == block_height
     policy_sign(bitcoind_wo, psbt)  # success
 
-    assert settings_get("ccc")["pol"]["vel_block_h"] == block_height  # updated block height
+    assert settings_get("ccc")["pol"]["block_h"] == block_height  # updated block height
 
 # EOF
