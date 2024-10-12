@@ -140,8 +140,10 @@ class CCCFeature:
                 raise CCCPolicyViolationError("nLockTime not block height")
 
             # off by one possibility - we need to decide whether we want it to be <= or just <
-            block_h = pol.get("block_h", 0)
-            if (psbt.lock_time <= block_h) or (psbt.lock_time < (block_h + velocity)):
+            block_h = pol.get("block_h", 865321)
+            if psbt.lock_time <= block_h:
+                raise CCCPolicyViolationError("too early")
+            if psbt.lock_time < (block_h + velocity):
                 raise CCCPolicyViolationError("velocity")
 
         # whitelist
@@ -556,6 +558,7 @@ class CCCPolicyMenu(MenuSystem):
         val = await ux_enter_number('Per Txn Max Out', max_value=int(1e8),
                                     can_cancel=True, value=(was or ''))
 
+        args = dict(mag=val)
         if (val is None) or (val == was):
             msg = "Did not change"
             val = was
@@ -565,10 +568,13 @@ class CCCPolicyMenu(MenuSystem):
 
         if not val:
             msg = "No check for maximum transaction size will be done. "
+            if self.policy.get('vel', 0):
+                msg += ' Velocity check also disabled.'
+                args['vel'] = 0
         else:
             msg += " maximum per-transaction: \n\n  %s" % render_mag_value(val)
 
-        self.policy = CCCFeature.update_policy_key(mag=val)
+        self.policy = CCCFeature.update_policy_key(**args)
 
         await ux_show_story(msg, title="Txn Magnitude")
         
@@ -602,7 +608,7 @@ class CCCPolicyMenu(MenuSystem):
                 '720 blocks (5d)',
                 '1008 blocks (1w)',
                 '2016 blocks (2w)',
-                '3024 blocks (2w)',
+                '3024 blocks (3w)',
                 '4032 blocks (4w)',
               ]
         va = [0] + [int(x.split()[0]) for x in ch[1:]]
