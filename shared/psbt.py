@@ -2,11 +2,11 @@
 #
 # psbt.py - understand PSBT file format: verify and generate them
 #
+import stash, gc, history, sys, ngu, ckcc
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, B2A, keypath_to_str
 from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str
-import stash, gc, history, sys, ngu, ckcc
 from chains import NLOCK_IS_TIME
 from uhashlib import sha256
 from uio import BytesIO
@@ -18,6 +18,7 @@ from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, ser_uint256,
 from serializations import ser_sig_der, uint256_from_str, ser_push_data
 from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_ANYONECANPAY
 from serializations import ALL_SIGHASH_FLAGS
+from opcodes import OP_CHECKMULTISIG
 from glob import settings
 
 from public_constants import (
@@ -438,7 +439,7 @@ class psbtOutputProxy(psbtProxy):
                 # num_ours == 1 and len(subpaths) == 1, single sig, we only allow p2sh-p2wpkh
                 if not redeem_script:
                     # Perhaps an omission, so let's not call fraud on it
-                    # But definately required, else we don't know what script we're sending to.
+                    # But definitely required, else we don't know what script we're sending to.
                     raise FatalPSBTIssue("Missing redeem script for output #%d" % out_idx)
 
                 target_spk = bytes([0xa9, 0x14]) + hash160(redeem_script) + bytes([0x87])
@@ -1016,6 +1017,9 @@ class psbtObject(psbtProxy):
         self.has_goc = False  # global output count
         self.has_gtv = False  # global txn version
 
+        # misc
+        self.would_finalize_ms = False
+
     @property
     def lock_time(self):
         return (self._lock_time or self.fallback_locktime) or 0
@@ -1192,7 +1196,6 @@ class psbtObject(psbtProxy):
         # Peek at the inputs to see if we can guess M/N value. Just takes
         # first one it finds.
         #
-        from opcodes import OP_CHECKMULTISIG
         for i in self.inputs:
             ks = i.witness_script or i.redeem_script
             if not ks: continue
@@ -1696,8 +1699,11 @@ class psbtObject(psbtProxy):
         # We should know pubkey required for each input now.
         # - but we may not be the signer for those inputs, which is fine.
         # - TODO: but what if not SIGHASH_ALL
-        no_keys = set(n for n,inp in enumerate(self.inputs)
-                            if inp.required_key == None and not inp.fully_signed)
+        no_keys = set(
+            n
+            for n,inp in enumerate(self.inputs)
+            if (inp.required_key is None) and (not inp.fully_signed)
+        )
         if no_keys:
             # This is seen when you re-sign same signed file by accident (multisig)
             # - case of len(no_keys)==num_inputs is handled by consider_keys
@@ -2193,14 +2199,42 @@ class psbtObject(psbtProxy):
 
         # plus we added some signatures
         for inp in self.inputs:
-            if inp.is_multisig:
-                # but we can't combine/finalize multisig stuff, so will never't be 'final'
-                return False
+            if inp.is_multisig and self.active_multisig:
+                if (len(inp.added_sigs) + len(inp.part_sigs)) >= self.active_multisig.M:
+                    self.would_finalize_ms = True
+                    signed += 1
 
-            if inp.added_sigs:
+            elif inp.added_sigs:
                 signed += 1
 
         return signed == self.num_inputs
+
+    def multisig_signatures(self, inp):
+        assert self.active_multisig
+        # collect all signatures into one place
+        # both we added & those already in part_sigs
+        all_sigs = {}
+        all_sigs.update(inp.added_sigs)
+        for pk, get_data in inp.part_sigs.items():
+            all_sigs[pk] = self.get(get_data)
+
+        if self.active_multisig.bip67:
+            # BIP-67 easy just sort by public keys
+            sigs = [sig for pk, sig in sorted(all_sigs.items())]
+        else:
+            # need to respect the order of keys in actual descriptor
+            sigs = []
+            for xfp, _, _ in self.active_multisig.xpubs:
+                for pk, pth in inp.subpaths.items():
+                    # if xfp matches but pk not in all_sigs -> signer haven't signed
+                    # it is ok in threshold multisig - just skip
+                    if (xfp == pth[0]) and (pk in all_sigs):
+                        sigs.append(all_sigs[pk])
+                        break
+
+        # save space and only provide necessary amount of signatures (smaller tx, less fees)
+        sigs = sigs[:self.active_multisig.M]
+        return sigs
 
     def finalize(self, fd):
         # Stream out the finalized transaction, with signatures applied
@@ -2228,9 +2262,13 @@ class psbtObject(psbtProxy):
             inp = self.inputs[in_idx]
 
             if inp.is_segwit:
+                if inp.is_multisig:
+                    if inp.redeem_script:
+                        # p2sh-p2wsh
+                        txi.scriptSig = ser_string(self.get(inp.redeem_script))
 
-                if inp.is_p2sh:
-                    # multisig (p2sh) segwit still requires the script here.
+                elif inp.is_p2sh:
+                    # singlesig (p2sh) segwit still requires the script here.
                     txi.scriptSig = ser_string(inp.scriptSig)
                 else:
                     # major win for segwit (p2pkh): no redeem script bloat anymore
@@ -2241,15 +2279,18 @@ class psbtObject(psbtProxy):
             else:
                 # insert the new signature(s), assuming fully signed txn.
                 assert inp.added_sigs, 'No signature on input #%d'%in_idx
-                assert not inp.is_multisig, 'Multisig PSBT combine not supported'
+                if inp.is_multisig:
+                    # p2sh multisig (non-segwit)
+                    sigs = self.multisig_signatures(inp)
+                    ss = b"\x00"
+                    for sig in sigs:
+                        ss += ser_push_data(sig)
+                    ss += ser_push_data(self.get(inp.redeem_script))
+                    txi.scriptSig = ss
 
-                pubkey, der_sig = list(inp.added_sigs.items())[0]
-
-                s = b''
-                s += ser_push_data(der_sig)
-                s += ser_push_data(pubkey)
-
-                txi.scriptSig = s
+                else:
+                    pubkey, der_sig = list(inp.added_sigs.items())[0]
+                    txi.scriptSig = ser_push_data(der_sig) + ser_push_data(pubkey)
 
             fd.write(txi.serialize())
 
@@ -2273,11 +2314,13 @@ class psbtObject(psbtProxy):
                 if inp.is_segwit and inp.added_sigs:
                     # put in new sig: wit is a CTxInWitness
                     assert not wit.scriptWitness.stack, 'replacing non-empty?'
-                    assert not inp.is_multisig, 'Multisig PSBT combine not supported'
-
-                    pubkey, der_sig = list(inp.added_sigs.items())[0]
-                    assert pubkey[0] in {0x02, 0x03} and len(pubkey) == 33, "bad v0 pubkey"
-                    wit.scriptWitness.stack = [der_sig, pubkey]
+                    if inp.is_multisig:
+                        sigs = self.multisig_signatures(inp)
+                        wit.scriptWitness.stack = [b""] + sigs + [self.get(inp.witness_script)]
+                    else:
+                        pubkey, der_sig = list(inp.added_sigs.items())[0]
+                        assert pubkey[0] in {0x02, 0x03} and len(pubkey) == 33, "bad v0 pubkey"
+                        wit.scriptWitness.stack = [der_sig, pubkey]
 
                 fd.write(wit.serialize())
 

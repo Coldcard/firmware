@@ -1310,6 +1310,14 @@ class MultisigMenu(MenuSystem):
                            predicate=bool(NFC), shortcut=KEY_NFC))
         rv.append(MenuItem('Export XPUB', f=export_multisig_xpubs))
         rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
+        rv.append(ToggleMenuItem("Finalize Transaction" if version.has_qwerty else "Finalize TXN",
+                                 'finms',
+                                 ['Default Off', 'Enable'],
+                                 story="Allow to finalize multisig transactions ?"
+                                       "\n\nBy default, Coldcard won't attempt to finalize"
+                                       " transaction containing multisig inputs. Only exceptions"
+                                       " are when NFC PushTX is enabled, and SD/VDisk where"
+                                       " both signed PSBT and finalized TX are exported."))
         rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
         rv.append(MenuItem('Skip Checks?', f=disable_checks_menu))
         rv.append(ToggleMenuItem('Full %s View?' % ('Address' if version.has_qwerty else 'Addr'),

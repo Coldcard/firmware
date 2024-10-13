@@ -218,4 +218,15 @@ def seconds2human_readable(s):
 
     return " ".join(msg)
 
+def bitcoind_addr_fmt(script_type):
+    if script_type == "p2wsh":
+        addr_type = "bech32"
+    elif script_type == "p2sh":
+        addr_type = "legacy"
+    else:
+        assert script_type == "p2sh-p2wsh"
+        addr_type = "p2sh-segwit"
+
+    return addr_type
+
 # EOF
