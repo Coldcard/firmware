@@ -2,7 +2,7 @@
 #
 # ccc.py - ColdCard Cosign feature. Be a leg in a 2-of-3 that signed based on policy.
 #
-import gc, chains, version, ngu, web2fa, bip39, re
+import gc, chains, version, ngu, web2fa, bip39, re, ckcc
 from utils import swab32, a2b_hex, b2a_hex, xfp2str, truncate_address, pad_raw_secret
 from glob import settings
 from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number
@@ -77,7 +77,9 @@ class CCCFeature:
     def default_policy(cls):
         # a very basic an permissive policy, but non-zero too.
         # - 1BTC per day
-        return dict(mag=1, vel=144, block_h=0, web2fa='', addrs=[])
+        chain = chains.current_chain()
+        return dict(mag=1, vel=144, block_h=chain.CCC_MIN_BLOCK,
+                    web2fa='', addrs=[])
 
     @classmethod
     def get_policy(cls):
@@ -139,7 +141,7 @@ class CCCFeature:
                 # this is unix timestamp - not allowed - fail
                 raise CCCPolicyViolationError("nLockTime not block height")
 
-            block_h = pol.get("block_h", 0) or 865321
+            block_h = pol.get("block_h", chains.current_chain().CCC_MIN_BLOCK)
             if psbt.lock_time <= block_h:
                 raise CCCPolicyViolationError("rewound")
 

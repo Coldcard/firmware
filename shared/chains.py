@@ -32,6 +32,9 @@ Slip132Version = namedtuple('Slip132Version', ('pub', 'priv', 'hint'))
 class ChainsBase:
 
     curve = 'secp256k1'
+    menu_name = None        # use 'name' if this isn't defined
+    core_name = None        # name of chain's "core" p2p software
+    CCC_MIN_BLOCK = 0
 
     # b44_cointype comes from
     #    <https://github.com/satoshilabs/slips/blob/master/slip-0044.md>
@@ -292,6 +295,7 @@ class BitcoinMain(ChainsBase):
     # see <https://github.com/bitcoin/bitcoin/blob/master/src/chainparams.cpp#L140>
     ctype = 'BTC'
     name = 'Bitcoin Mainnet'
+    CCC_MIN_BLOCK = 865572
 
     slip132 = {
         AF_CLASSIC:     Slip132Version(0x0488B21E, 0x0488ADE4, 'x'),
@@ -309,7 +313,7 @@ class BitcoinMain(ChainsBase):
 
     b44_cointype = 0
 
-class BitcoinTestnet(BitcoinMain):
+class BitcoinTestnet(ChainsBase):
     # testnet4 (was testnet3 up until 2025 but all parameters are the same)
     ctype = 'XTN'
     name = 'Bitcoin Testnet 4'
@@ -331,7 +335,7 @@ class BitcoinTestnet(BitcoinMain):
     b44_cointype = 1
 
 
-class BitcoinRegtest(BitcoinMain):
+class BitcoinRegtest(ChainsBase):
     ctype = 'XRT'
     name = 'Bitcoin Regtest'
 
