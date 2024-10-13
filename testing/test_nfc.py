@@ -5,7 +5,7 @@
 # - many test "sync" issues here; case is right but gets outs of sync with DUT
 # - use `./simulator.py --eff --set nfc=1`
 #
-import pytest, time, io, shutil, json, os
+import pytest, time, io, shutil, json, os, random
 from binascii import b2a_hex, a2b_hex
 from struct import pack, unpack
 import ndef
@@ -172,17 +172,18 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
             ip = b2a_hex(ip)
             recs = [ndef.TextRecord(ip)]
         elif encoding == 'base64':
-            from base64 import b64encode, b64decode
+            from base64 import b64encode
             ip = b64encode(ip)
             recs = [ndef.TextRecord(ip)]
         else:
             assert encoding == 'binary'
             recs = [ndef.Record(type='urn:nfc:ext:bitcoin.org:psbt', data=ip),
                     ndef.Record(type='urn:nfc:ext:bitcoin.org:sha256', data=sha256(ip).digest()),
-                    ndef.TextRecord('some text here about situ'),
+                    ndef.TextRecord('some text'),
             ]
 
-        open('debug/nfc-sent.psbt', 'wb').write(ip)
+        with open('debug/nfc-sent.psbt', 'wb') as f:
+            f.write(ip)
 
         # wrap in a CCFile 
         serialized = b''.join(ndef.message_encoder(recs))
@@ -425,6 +426,7 @@ def test_ndef_roundtrip(load_shared_mod):
     assert cc_ndef.ccfile_decode(r) == (12, 399, False, 4096)
 
 
+@pytest.mark.parametrize('multisig', [True, False])
 @pytest.mark.parametrize('num_outs', [2, 5, 100, 250])
 @pytest.mark.parametrize('chain', ['BTC', 'XTN'])
 @pytest.mark.parametrize('way', ['sd', 'nfc', 'usb', 'qr'])
@@ -432,7 +434,8 @@ def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
                     try_sign, fake_txn, nfc_block4rf, nfc_read, press_cancel,
                     cap_story, cap_screen, has_qwerty, way, try_sign_microsd,
                     try_sign_nfc, scan_a_qr, need_keypress, press_select,
-                    goto_home):
+                    goto_home, multisig, fake_ms_txn, import_ms_wallet,
+                    clear_ms, try_sign_bbqr):
     # check the NFC push Tx feature, validating the URL's it makes
     # - not the UX
     # - 100 outs => 5000 or so
@@ -441,7 +444,9 @@ def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
     from base64 import urlsafe_b64decode
     from urllib.parse import urlsplit, parse_qsl, unquote
 
+    clear_ms()
     settings_set('chain', chain)
+    settings_remove("finms")  # we do not need finms setting on as we have push tx enabled
 
     enable_nfc()
 
@@ -451,33 +456,29 @@ def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
     prefix = 'http://10.0.0.10/pushtx#'
     settings_set('ptxurl', prefix)
 
-    psbt = fake_txn(2, num_outs)
+    if multisig:
+        goto_home()
+        # create 1 of 3 multiig wallet - no need for another signers to make tx final
+        M, N = 1, 3
+        keys = import_ms_wallet(M, N, random.choice(["p2wsh", "p2sh-p2wsh", "p2sh"]),
+                                name="ms_pushtx", accept=True, way=way, netcode=chain,
+                                force_unsort_ms=random.getrandbits(1))
+        psbt = fake_ms_txn(2, num_outs, M, keys)
+    else:
+        psbt = fake_txn(2, num_outs)
+
     if way == "usb":
         _, result = try_sign(psbt, finalize=True)
     elif way == "sd":
         ip, result, txid = try_sign_microsd(psbt, finalize=True, nfc_push_tx=True)
     elif way == "nfc":
+        if len(psbt) > 1000:
+            pytest.skip("too big")
+
         ip, result, txid = try_sign_nfc(psbt, expect_finalize=True, nfc_tools=True,
-                                        nfc_push_tx=True)
+                                        nfc_push_tx=True, encoding="hex")
     elif way == "qr":
-        goto_home()
-        need_keypress(KEY_QR)
-        from bbqr import split_qrs
-        actual_vers, parts = split_qrs(psbt, 'P')
-        for p in parts:
-            scan_a_qr(p)
-            time.sleep(4.0 / len(parts))  # just so we can watch
-
-        for r in range(20):
-            title, story = cap_story()
-            if 'OK TO SEND' in title:
-                break
-            time.sleep(.1)
-        else:
-            raise pytest.fail('never saw it?')
-
-        # approve it
-        press_select()
+        try_sign_bbqr(psbt, nfc_push_tx=True)
 
     # print(f'len = {len(result)}')
     #

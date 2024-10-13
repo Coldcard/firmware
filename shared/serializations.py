@@ -16,7 +16,6 @@ ser_*, deser_*: functions that handle serialization/deserialization
 """
 
 from ubinascii import hexlify as b2a_hex
-from ubinascii import unhexlify as a2b_hex
 import ustruct as struct
 import ngu
 from opcodes import *
@@ -60,10 +59,13 @@ def deser_compact_size(f):
     nit = struct.unpack("<B", f.read(1))[0]
     if nit == 253:
         nit = struct.unpack("<H", f.read(2))[0]
+        assert 253 <= nit
     elif nit == 254:
         nit = struct.unpack("<I", f.read(4))[0]
+        assert 0x10000 <= nit
     elif nit == 255:
         nit = struct.unpack("<Q", f.read(8))[0]
+        assert 0x100000000 <= nit
     return nit
 
 def deser_string(f):
@@ -80,14 +82,12 @@ def deser_uint256(f):
         r += t << (i * 32)
     return r
 
-
 def ser_uint256(u):
     rs = b""
     for i in range(8):
         rs += struct.pack("<I", u & 0xFFFFFFFF)
         u >>= 32
     return rs
-
 
 def uint256_from_str(s):
     r = 0
@@ -96,12 +96,10 @@ def uint256_from_str(s):
         r += t[i] << (i * 32)
     return r
 
-
 def uint256_from_compact(c):
     nbytes = (c >> 24) & 0xFF
     v = (c & 0xFFFFFF) << (8 * (nbytes - 3))
     return v
-
 
 def deser_vector(f, c):
     nit = deser_compact_size(f)
@@ -111,7 +109,6 @@ def deser_vector(f, c):
         t.deserialize(f)
         r.append(t)
     return r
-
 
 # ser_function_name: Allow for an alternate serialization function on the
 # entries in the vector (we use this for serializing the vector of transactions
@@ -125,7 +122,6 @@ def ser_vector(l, ser_function_name=None):
             r += i.serialize()
     return r
 
-
 def deser_uint256_vector(f):
     nit = deser_compact_size(f)
     r = []
@@ -134,29 +130,22 @@ def deser_uint256_vector(f):
         r.append(t)
     return r
 
-
 def ser_uint256_vector(l):
     r = ser_compact_size(len(l))
     for i in l:
         r += ser_uint256(i)
     return r
 
-
 def deser_string_vector(f):
     nit = deser_compact_size(f)
-    r = []
-    for i in range(nit):
-        t = deser_string(f)
-        r.append(t)
-    return r
-
+    return [deser_string(f) for _ in range(nit)]
 
 def ser_string_vector(l):
     r = ser_compact_size(len(l))
     for sv in l:
         r += ser_string(sv)
-    return r
 
+    return r
 
 def deser_int_vector(f):
     nit = deser_compact_size(f)
@@ -165,7 +154,6 @@ def deser_int_vector(f):
         t = struct.unpack("<i", f.read(4))[0]
         r.append(t)
     return r
-
 
 def ser_int_vector(l):
     r = ser_compact_size(len(l))
@@ -177,16 +165,18 @@ def ser_push_data(dd):
     # "compile" data to be pushed on the script stack
     # - will be minimal sized, but only supports size ranges we're likely to see
     ll = len(dd)
-    assert 2 <= ll <= 255
-
-    if ll <= 75:
+    if ll < 0x4c:
         return bytes([ll]) + dd           # OP_PUSHDATAn + data
+    elif ll <= 0xff:
+        return bytes([0x4c, ll]) + dd       # 0x4c = 76 => OP_PUSHDATA1 + size + data
+    elif ll <= 0xffff:
+        return bytes([0x4d]) + struct.pack(b'<H', ll) + dd  # # 0x4d = 77 => OP_PUSHDATA2
     else:
-        return bytes([76, ll]) + dd       # 0x4c = 76 => OP_PUSHDATA1 + size + data
+        assert False
 
 def ser_push_int(n):
     # push a small integer onto the stack
-    from opcodes import OP_0, OP_1, OP_16, OP_PUSHDATA1
+    from opcodes import OP_0, OP_1
 
     if n == 0:
         return bytes([OP_0])
