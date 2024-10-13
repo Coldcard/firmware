@@ -34,7 +34,7 @@ class ChainsBase:
     curve = 'secp256k1'
     menu_name = None        # use 'name' if this isn't defined
     core_name = None        # name of chain's "core" p2p software
-    ccc_min_block = 0       # block height at which CCC feature was developed
+    CCC_MIN_BLOCK = 0       # block height at which CCC feature was developed
 
     # b44_cointype comes from
     #    <https://github.com/satoshilabs/slips/blob/master/slip-0044.md>
