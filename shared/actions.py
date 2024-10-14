@@ -1739,7 +1739,7 @@ async def bless_flash(*a):
     pa.greenlight_firmware()
 
     # redraw our screen
-    dis.show()
+    dis.busy_bar(False)  # includes dis.show()
 
 
 def is_psbt(filename):
