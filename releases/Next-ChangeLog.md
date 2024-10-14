@@ -8,6 +8,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Sometimes see a struck screen after _Verifying..._ in boot up sequence.
   On Q, result is blank screen, on Mk4, result is three-dots screen.
 - Bugfix: Do not allow to enable/disable Seed Vault feature when in temporary seed mode
+- Bugfix: Bless Firmware causes hanging progress bar
 
 
 # Mk4 Specific Changes
