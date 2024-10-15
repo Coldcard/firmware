@@ -95,33 +95,34 @@ def word_menu_entry(cap_menu, pick_menu_item, is_q1, do_keypresses, cap_screen):
             # easier for us on Q, but have to anticipate the autocomplete
             for n, w in enumerate(words, start=1):
                 do_keypresses(w[0:2])
-                time.sleep(0.50)
+                time.sleep(0.05)
                 if 'Next key' in cap_screen():
                     do_keypresses(w[2])
-                    time.sleep(.1)
+                    time.sleep(.01)
                 if 'Next key' in cap_screen():
                     if len(w) > 3:
                         do_keypresses(w[3])
                     else:
                         do_keypresses(KEY_DOWN)
-                    time.sleep(.1)
+                    time.sleep(.01)
 
                 pat = rf'{n}:\s?{w}'
                 for x in range(10):
                     if re.search(pat, cap_screen()):
                         break
-                    time.sleep(0.20)
+                    time.sleep(0.02)
                 else:
                     raise RuntimeError('timeout')
 
             if len(words) == 23:
                 do_keypresses(KEY_DOWN)
-                time.sleep(.3)
+                time.sleep(.03)
                 cap_scr = cap_screen()
                 while 'Next key' in cap_scr:
                     target = cap_scr.split("\n")[-1].replace("Next key: ", "")
+                    # picks first choice!?
                     do_keypresses(target[0])
-                    time.sleep(.3)
+                    time.sleep(.03)
                     cap_scr = cap_screen()
             else:
                 cap_scr = cap_screen()
@@ -994,7 +995,7 @@ def test_dump_menutree(sim_execfile):
     sim_execfile('devtest/menu_dump.py')
 
 if 0:
-    # show what the final word can be (debug only)
+    # show what the final word can be (debug only) Mk4 only
     def test_23_words(goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, reset_seed_words, cap_screen_qr, qr_quality_check):
         
         unit_test('devtest/clear_seed.py')
