@@ -423,9 +423,11 @@ async def add_seed_to_vault(encoded, meta=None):
 
     if not settings.master_get("seedvault", False):
         # seed vault disabled
+        # this can be re-enabled by attacker in deltamode
         return
-    if pa.is_secret_blank():
+    if pa.is_secret_blank() or pa.is_deltamode():
         # do not save anything if no SE secret yet
+        # do not offer any access to SV in deltamode
         return
 
     # do not offer to store secrets that are already in vault
@@ -969,6 +971,12 @@ class SeedVaultMenu(MenuSystem):
         # Dynamic menu with user-defined names of seeds shown
         from glob import settings
         from pincodes import pa
+
+        if pa.is_deltamode():
+            # attacker has re-enabled SeedVault in Settings
+            import callgate
+            callgate.fast_wipe()
+
 
         rv = []
         add_current_tmp = MenuItem("Add current tmp", f=cls._add_current_tmp)
