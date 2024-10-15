@@ -12,6 +12,7 @@ from stash import SecretStash, len_to_numwords
 from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC
 from exceptions import CCCPolicyViolationError
 
+NLOCK_IS_TIME = const(500000000)
 
 class CCCFeature:
 
@@ -136,9 +137,9 @@ class CCCFeature:
             if not psbt.lock_time:
                 raise CCCPolicyViolationError("no nLockTime")
 
-            if psbt.lock_time >= 500000000:
+            if psbt.lock_time >= NLOCK_IS_TIME:
                 # this is unix timestamp - not allowed - fail
-                raise CCCPolicyViolationError("nLockTime not block height")
+                raise CCCPolicyViolationError("nLockTime not height")
 
             block_h = pol.get("block_h", chains.current_chain().ccc_min_block)
             if psbt.lock_time <= block_h:
@@ -218,10 +219,13 @@ class CCCFeature:
         psbt.sign_it(cls.get_encoded_secret(), cls.get_xfp())
         cls.last_fail_reason = ""
 
-        velocity = cls.get_policy().get("vel", None)
-        if velocity:
-            # preserve velocity settings & update last block height
+        old_h = cls.get_policy().get('block_h', 1)
+        if old_h < psbt.lock_time < NLOCK_IS_TIME:
+            # always update last block height, even if velocity isn't enabled yet
+            # - attacker might have changed to testnet, but there is no
+            #   reason to ever lower block height. strictly ascending
             cls.update_policy_key(block_h=psbt.lock_time)
+            settings.save()
 
 
 def render_mag_value(mag):
