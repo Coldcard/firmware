@@ -891,8 +891,10 @@ async def start_login_sequence():
 
     if pa.is_deltamode():
         # pretend Secure Notes & Passwords is disabled
+        # pretend SeedVault is disabled
         try:
             settings.remove_key("secnap")
+            settings.master_set("seedvault", False)
         except: pass
 
     if version.has_nfc and settings.get('nfc', 0):

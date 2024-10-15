@@ -6,6 +6,7 @@ This lists the new changes that have not yet been published in a normal release.
 # Shared Improvements - Both Mk4 and Q
 
 - Enhancement: Hide Secure Notes & Passwords in Deltamode. Wipe seed if notes menu accessed. 
+- Enhancement: Hide Seed Vault in Deltamode. Wipe seed if Seed Vault menu accessed. 
 - Bugfix: Sometimes see a struck screen after _Verifying..._ in boot up sequence.
   On Q, result is blank screen, on Mk4, result is three-dots screen.
 - Bugfix: Do not allow to enable/disable Seed Vault feature when in temporary seed mode
