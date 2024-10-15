@@ -79,7 +79,6 @@ class UserAuthorizedAction:
         top_ux = the_ux.top_of_stack()
         if not isinstance(top_ux, cls) and cls.active_request.ux_done:
             # do cleaup
-            print('recovery cleanup')
             cls.cleanup()
             return
 
@@ -91,8 +90,8 @@ class UserAuthorizedAction:
 
         # show line number and/or simple text about error
         if exc:
-            print("%s:" % msg)
-            sys.print_exception(exc)
+            #print("%s:" % msg)
+            #sys.print_exception(exc)
 
             msg += '\n\n'
             em = str(exc)
@@ -827,10 +826,10 @@ class ApproveTransaction(UserAuthorizedAction):
             dis.progress_bar_show(0.85)
 
         except FraudulentChangeOutput as exc:
-            print('FraudulentChangeOutput: ' + exc.args[0])
+            #print('FraudulentChangeOutput: ' + exc.args[0])
             return await self.failure(exc.args[0], title='Change Fraud')
         except FatalPSBTIssue as exc:
-            print('FatalPSBTIssue: ' + exc.args[0])
+            #print('FatalPSBTIssue: ' + exc.args[0])
             return await self.failure(exc.args[0])
         except BaseException as exc:
             del self.psbt
@@ -915,13 +914,15 @@ class ApproveTransaction(UserAuthorizedAction):
 
             ux_clear_keys(True)
             dis.progress_bar_show(1)  # finish the Validating...
+
             if not hsm_active:
                 msg.write("\nPress %s to approve and sign transaction." % OK)
                 if needs_txn_explorer:
                     msg.write(" Press (2) to explore txn.")
                 if self.is_sd and CardSlot.both_inserted():
                     msg.write(" (B) to write to lower SD slot.")
-                msg.write(" X to abort.")
+                msg.write(" %s to abort." % X)
+
                 while True:
                     ch = await ux_show_story(msg, title="OK TO SEND?", escape="2b")
                     if ch == "2" and needs_txn_explorer:
@@ -932,8 +933,8 @@ class ApproveTransaction(UserAuthorizedAction):
                         del msg
                         break
             else:
+                # get approval (maybe) from the HSM
                 ch = await hsm_active.approve_transaction(self.psbt, self.psbt_sha, msg.getvalue())
-                dis.progress_bar_show(1)     # finish the Validating...
 
         except MemoryError:
             # recovery? maybe.
@@ -1062,7 +1063,7 @@ class ApproveTransaction(UserAuthorizedAction):
             rv += 'Press RIGHT to see next group'
             if offset:
                 rv += ', LEFT to go back'
-            rv += '. X to quit.'
+            rv += ('. %s to quit.' % X)
 
             return rv
 
@@ -1443,8 +1444,8 @@ class RemoteBackup(UserAuthorizedAction):
 
         except BaseException as exc:
             self.failed = "Error during backup process."
-            print("Backup failure: ")
-            sys.print_exception(exc)
+            #print("Backup failure: ")
+            #sys.print_exception(exc)
         finally:
             self.done()
 
