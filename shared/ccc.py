@@ -12,6 +12,7 @@ from stash import SecretStash, len_to_numwords
 from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC
 from exceptions import CCCPolicyViolationError
 
+# nLockTime in transaction above this value is a unix timestamp (time_t) not block height.
 NLOCK_IS_TIME = const(500000000)
 
 class CCCFeature:
@@ -40,15 +41,13 @@ class CCCFeature:
 
     @classmethod
     def get_encoded_secret(cls):
-        # get the key C as encoded binary secret, compatible w/
-        # encodings used in stash
-        # TODO: move to "storage locker"?
-        # pad with zeros and a2b
+        # Gets the key C as encoded binary secret, compatible w/
+        # encodings used in stash.
         return pad_raw_secret(settings.get('ccc')['secret'])
 
     @classmethod
     def get_xfp(cls):
-        # just the XFP
+        # Just the XFP value for our key C
         ccc = settings.get('ccc')
         return ccc['c_xfp'] if ccc else None
 
@@ -120,20 +119,20 @@ class CCCFeature:
         if psbt.warnings:
             raise CCCPolicyViolationError("has warnings")
 
-        # mag
+        # Magnitude: size limits for output side (non change)
         magnitude = pol.get("mag", None)
         if magnitude is not None:
-            outgoing = psbt.total_value_out - psbt.total_change_value
             if magnitude < 1000:
                 # it is a BTC, convert to sats
                 magnitude = magnitude * 100000000
 
+            outgoing = psbt.total_value_out - psbt.total_change_value
             if outgoing > magnitude:
                 raise CCCPolicyViolationError("magnitude")
 
-        # vel
+        # Velocity: if zero => no velocity checks
         velocity = pol.get("vel", None)
-        if velocity:  # if zero - unlimited
+        if velocity:  
             if not psbt.lock_time:
                 raise CCCPolicyViolationError("no nLockTime")
 
@@ -145,12 +144,11 @@ class CCCFeature:
             if psbt.lock_time <= block_h:
                 raise CCCPolicyViolationError("rewound")
 
-            # off by one possibility - we need to decide whether we want it to be <= or just <
-            # TODO - decide and document
+            # we wont sign txn unless old height + velocity >= new height
             if psbt.lock_time < (block_h + velocity):
                 raise CCCPolicyViolationError("velocity")
 
-        # whitelist
+        # Whitelist of outputs addresses
         wl = pol.get("addrs", None)
         if wl:
             c = chains.current_chain()
@@ -162,7 +160,7 @@ class CCCFeature:
                     if addr not in wl:
                         raise CCCPolicyViolationError("whitelist")
 
-        # web 2fa
+        # Web 2FA
         # - slow, requires UX, and they might not acheive it...
         # - wait until about to do signature
         if pol.get('web2fa', False):
@@ -203,12 +201,11 @@ class CCCFeature:
         # they are trying to sign something, so make them get our their phone
         # - at this point they have already ok'ed the details of the txn
         # - and we have approved other elements of the spending policy.
-        # - TODO: maybe show wallet name? or even txn details?? (but info leak to Coinkite)
+        # - could show MS wallet name, or txn details but will not because that is
+        #   an info leak to Coinkite... and we just don't want to know.
         pol = cls.get_policy()
-        ss = pol.get('web2fa')
-        assert ss
 
-        ok = await web2fa.perform_web2fa('Approve CCC Transaction', ss)
+        ok = await web2fa.perform_web2fa('Approve CCC Transaction', pol.get('web2fa'))
         if not ok:
             cls.last_fail_reason = '2FA Fail'
             raise CCCPolicyViolationError
@@ -254,7 +251,6 @@ class CCCConfigMenu(MenuSystem):
             MenuItem('CCC [%s]' % xfp2str(my_xfp), f=self.show_ident),
             MenuItem('Spending Policy', menu=CCCPolicyMenu.be_a_submenu),
             MenuItem('Export CCC XPUBs', f=self.export_xpub_c),
-            MenuItem('Temporary Mode', f=self.enter_temp_mode),
             MenuItem('Multisig Wallets'),
         ]
 
@@ -270,18 +266,26 @@ class CCCConfigMenu(MenuSystem):
             #         xxxxxxxxxxxxxxxx
             items.insert(1, MenuItem('Last Violation', f=self.debug_last_fail))
 
+        items.append(MenuItem('Load Key C', f=self.enter_temp_mode))
         items.append(MenuItem('Remove CCC', f=self.remove_ccc))
 
         return items
 
     async def debug_last_fail(self, *a):
-        msg = 'The most recent policy check failed because of:\n\n%s' % CCCFeature.last_fail_reason
-        await ux_confirm(msg)
+        # debug for customers: why did we reject that last txn?
+        msg = 'The most recent policy check failed because of:\n\n"%s"\n\nPress (4) to clear.' \
+                    % CCCFeature.last_fail_reason
+        ch = await ux_show_story(msg, escape='4')
+
+        if ch == '4':
+            CCCFeature.last_fail_reason = ''
+            self.update_contents()
 
     async def remove_ccc(self, *a):
+        # disable and remove feature
         if not await ux_confirm('''Key C will be lost, and policy settings forgotten. \
 This unit will only be able to partly sign transactions. To completely remove this \
-wallet, proceed to the miltisig menu and remove related wallet entry.'''):
+wallet, proceed to the multisig menu and remove related wallet entry.'''):
             return
 
         if not await ux_confirm("Last chance. Funds in this wallet may be impacted."):
@@ -357,7 +361,6 @@ be ready to show it as a QR, before proceeding.'''
 
 class PolCheckedMenuItem(MenuItem):
     # Show a checkmark if **policy** setting is defined and not the default
-    # TODO on Q, should show value right-justified in menu display!
     # - only works inside CCCPolicyMenu
     def __init__(self, label, polkey, **kws):
         super().__init__(label, **kws)
@@ -366,7 +369,7 @@ class PolCheckedMenuItem(MenuItem):
     def is_chosen(self):
         # should we show a check in parent menu? check the policy
         m = the_ux.top_of_stack()
-        assert isinstance(m, CCCPolicyMenu)
+        #assert isinstance(m, CCCPolicyMenu)
         return bool(m.policy.get(self.polkey, False))
 
 
@@ -561,6 +564,7 @@ class CCCPolicyMenu(MenuSystem):
         await web2fa.web2fa_enroll('CCC', ss)
 
     async def set_magnitude(self, *a):
+        # TODO: looks ugly on Q?
         was = self.policy.get('mag', 0)
         val = await ux_enter_number('Per Txn Max Out', max_value=int(1e8),
                                     can_cancel=True, value=(was or ''))
@@ -691,6 +695,7 @@ async def gen_or_import():
             words = WordNestMenu(nwords, done_cb=done_key_C_import)
 
         return None     # will call parent again
+
     elif ch == '6':
         # pick existing from Seed Vault
         enc = await SeedVaultChooserMenu.pick(words_only=True)
@@ -701,6 +706,7 @@ async def gen_or_import():
         return None
 
     elif ch == 'y':
+        # normal path: pick 12 words, quiz them
         await ux_dramatic_pause('Generating...', 3)
         seed = generate_seed()
         words = await approve_word_list(seed, 12)
@@ -719,6 +725,7 @@ async def toggle_ccc_feature(*a):
     # - create C key (maybe import?)
     # - collect a policy setup, maybe 2FA enrol too
     # - lock that down
+    # - TODO copy
     ch = await ux_show_story('''\
 This feature creates a new 2-of-3 multisig wallet. A, B, and C keys are as follows:\n
 A=This Coldcard, B=Backup Key, C=Policy Key ... blah balh

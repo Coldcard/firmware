@@ -172,11 +172,15 @@ def get_last_violation(sim_exec):
         return sim_exec('from ccc import CCCFeature; RV.write(CCCFeature.last_fail_reason)')
     return doit
 
+_skip_quiz = False
+
 @pytest.fixture
 def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz, is_q1,
               seed_story_to_words, cap_menu, OK, word_menu_entry, press_cancel, press_delete,
-              enter_number, scan_a_qr, cap_screen, settings_get):
+              enter_number, scan_a_qr, cap_screen, settings_get, need_keypress):
+
     def doit(c_words=None, mag=None, vel=None, whitelist=None, w2fa=None):
+
         goto_home()
         pick_menu_item("Advanced/Tools")
         pick_menu_item("Coldcard Co-signing")
@@ -205,8 +209,17 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
                 c_words = [w[3:].strip() for w in story.split('\n') if w and w[2] == ':']
             assert len(c_words) == nwords
 
-            count, _, _ = pass_word_quiz(c_words)
-            assert count == nwords
+            global _skip_quiz
+            if not _skip_quiz:
+                count, _, _ = pass_word_quiz(c_words)
+                assert count == nwords
+                _skip_quiz = True
+            else:
+                # skip the quiz, faster
+                time.sleep(.1)
+                need_keypress('6')      # undocumented quiz-skip
+                time.sleep(.1)
+                press_select()
 
         else:
             # manual import of C key
@@ -221,9 +234,9 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
         assert m[0] == f"CCC [{xfp}]"
         assert "Spending Policy" in m
         assert "Export CCC XPUBs" in m
-        assert "Temporary Mode" in m  # TODO strange name -> Activate as TMP?
         assert "Multisig Wallets" in m
         assert "↳ Build 2-of-N" in m
+        assert "Load Key C" in m
         assert "Remove CCC" == m[-1]
 
         pick_menu_item("Spending Policy")
@@ -651,5 +664,14 @@ def test_ccc_velocity(velocity_mi, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
     policy_sign(bitcoind_wo, psbt)  # success
 
     assert settings_get("ccc")["pol"]["block_h"] == block_height  # updated block height
+
+# TODO
+# - policy-fail reason submenu; check display
+# - weird nLockTime values: 0, time_t, backwards
+# - check velocity is exactly right to block number vs. required gap
+# - check txn rewind fails
+# - check txn re-sign fails (if velocity in effect)
+#
+
 
 # EOF
