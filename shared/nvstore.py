@@ -57,6 +57,7 @@ from utils import call_later_ms
 #   seedvault = (bool) opt-in enable seed vault feature
 #   seeds = list of stored secrets for seedvault feature
 #   bright = (int:0-255) LCD brightness when on battery
+#   secnap = (bool) opt-in enable Secure Notes & Passwords feature
 #   notes = (complex) Secure notes held for user, see notes.py
 #   accts = (list of tuples: (addr_fmt, account#)) Single-sig wallets we've seen them use
 #   aei   = (bool) allow changing start index in Address Explorer

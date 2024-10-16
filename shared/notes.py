@@ -21,7 +21,13 @@ from utils import problem_file_line, url_decode
 ONE_LINE = CHARS_W-2
 
 async def make_notes_menu(*a):
-    if settings.get('notes', False) == False:
+
+    from pincodes import pa
+    if pa.is_deltamode():
+        import callgate
+        callgate.fast_wipe()
+
+    if not settings.get('secnap', False):
         # Explain feature, and then enable if interested. Drop them into menu.
         ch = await ux_show_story('''\
 Enable this feature to store short text notes and passwords inside the Coldcard.
@@ -34,8 +40,10 @@ Press ENTER to enable and get started otherwise CANCEL.''',
         if ch != 'y':
             return
 
-        # mark as enabled (altho empty)
-        settings.set('notes', [])
+        # mark as enabled
+        settings.set('secnap', True)
+        if settings.get('notes', None) is None:
+            settings.set('notes', [])
 
         # need to correct top menu now, so this choice is there.
         goto_top_menu()
@@ -170,6 +178,7 @@ class NotesMenu(MenuSystem):
     async def disable_notes(cls, *a):
         # they don't want feature anymore; already checked no notes in effect
         # - no need for confirm, they aren't loosing anything
+        settings.remove_key('secnap')
         settings.remove_key('notes')
         settings.save()
 
