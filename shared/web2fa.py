@@ -3,11 +3,14 @@
 # web2fa.py -- Bounce a shared secret off a Coinkite server to allow mobile app 2FA.
 #
 #
-import ngu, ndef
+import ngu, ndef, aes256ctr
 from ustruct import pack, unpack
 from utils import b2a_base64url, url_quote, B2A
 from version import has_qr
 from ux import show_qr_code, ux_show_story, X, OK
+
+# only Coinkite server knows private key for this
+SERVER_PUBKEY = b'\x03\x6d\x0f\x95\xc3\xaa\xf5\xcd\x3e\x8b\xe5\x61\xb0\x78\x14\xfb\xb1\xc9\xee\x21\x71\xed\x30\x18\x28\x15\x19\x75\x41\x14\x72\xa2\xfd'
 
 def encrypt_details(qs):
     # encryption and base64 here
@@ -16,8 +19,16 @@ def encrypt_details(qs):
     # - AES-256-CTR encryption based on that
     # - base64url encode result
 
-    # TODO
-    return qs
+    # pick a random key pair, just for this session
+    pair = ngu.secp256k1.keypair()
+    my_pubkey = pair.pubkey().to_bytes(False)        # compressed format
+
+    session_key = pair.ecdh_multiply(SERVER_PUBKEY)
+    del pair
+
+    enc = aes256ctr.new(session_key).cipher
+
+    return b2a_base64url(my_pubkey + enc(qs.encode('ascii')))
 
 async def perform_web2fa(label, shared_secret):
 
@@ -51,8 +62,6 @@ async def perform_web2fa(label, shared_secret):
             return False    # pressed cancel
 
         # only one legal response possible, and already validated above
-        print("data = %r" % data)
-        print("expect = %r" % expect)
         return (data == prefix+expect)
 
     else:
@@ -112,7 +121,6 @@ async def web2fa_enroll(label, ss=None):
                 nm=url_quote(label if has_qr else label[0:4]))
 
     while 1:
-
         # show QR for enroll
         await show_qr_code(qr, is_alnum=False, msg="Import into 2FA Mobile App")
 
@@ -120,23 +128,17 @@ async def web2fa_enroll(label, ss=None):
         ok = await perform_web2fa('Enroll: ' + label, ss)
         if ok: break
 
-        ch = await ux_show_story("That isn't correct. Please re-import and/or try again or (%s) to give up." % X)
+        ch = await ux_show_story("That isn't correct. Please re-import and/or "\
+                                    "try again or %s to give up." % X)
         if ch == 'x':
             # mk4 only?
             return None
 
     return ss
 
-
-async def nfc_share_2fa_link(wallet_name, shared_secret):
-    #
-    # Share complex NFC deeplink into 2fa backend; returns expected response-code.
-    # Next step is to prompt for that 8-digit code (mk4) or scan QR (Q)
-    #
-    from glob import NFC
-
-    assert NFC
-
+def make_web2fa_url(wallet_name, shared_secret):
+    # Build complex URL into our server w/ encrypted data
+    # - picking a nonce in the process
     prefix = 'coldcard.com/2fa?'
 
     # random nonce: if we get this back, then server approves of TOTP answer
@@ -144,7 +146,7 @@ async def nfc_share_2fa_link(wallet_name, shared_secret):
         # data for a QR
         nonce = B2A(ngu.random.bytes(32)).upper()
     else:
-        # 8 digits
+        # 8 digits for human entry
         nonce = '%08d' % ngu.random.uniform(1_0000_0000)
 
     # compose URL
@@ -153,8 +155,20 @@ async def nfc_share_2fa_link(wallet_name, shared_secret):
     # encrypt that
     qs = encrypt_details(qs)
 
+    return nonce, prefix + qs
+
+async def nfc_share_2fa_link(wallet_name, shared_secret):
+    #
+    # Share complex NFC deeplink into 2fa backend; returns expected response-code.
+    # Next step is to prompt for that 8-digit code (mk4) or scan QR (Q)
+    #
+    from glob import NFC
+    assert NFC
+
+    nonce, url = make_web2fa_url(wallet_name, shared_secret)
+
     n = ndef.ndefMaker()
-    n.add_url(prefix + qs, https=True)
+    n.add_url(url, https=True)
 
     aborted = await NFC.share_start(n, prompt="Tap for 2FA Authentication", 
                                             line2="Wallet: " + wallet_name)
