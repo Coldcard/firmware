@@ -352,7 +352,7 @@ AdvancedNormalMenu = [
     MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu, shortcut='x'),  # also inside FileMgmt
     MenuItem("Upgrade Firmware", menu=UpgradeMenu, predicate=is_not_tmp),
     MenuItem("File Management", menu=FileMgmtMenu),
-    NonDefaultMenuItem('Secure Notes & Passwords', 'notes', menu=make_notes_menu,
+    NonDefaultMenuItem('Secure Notes & Passwords', 'secnap', menu=make_notes_menu,
                             predicate=version.has_qwerty),
     MenuItem('Derive Seed B85' if not version.has_qwerty else 'Derive Seeds (BIP-85)',
                             f=drv_entro_start),
@@ -424,7 +424,7 @@ NormalSystem = [
     MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
     MenuItem("Address Explorer", menu=address_explore, shortcut='x'),
     MenuItem('Secure Notes & Passwords', menu=make_notes_menu, shortcut='n',
-                 predicate=lambda: version.has_qwerty and (settings.get("notes", False) != False)),
+                 predicate=lambda: version.has_qwerty and settings.get("secnap", False)),
     MenuItem('Type Passwords', f=password_entry, shortcut='t',
              predicate=lambda: settings.get("emu", False) and has_secrets()),
     MenuItem('Seed Vault', menu=make_seed_vault_menu, shortcut='v',

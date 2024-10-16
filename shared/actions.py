@@ -889,6 +889,12 @@ async def start_login_sequence():
                         await ar.interact()
             except: pass
 
+    if pa.is_deltamode():
+        # pretend Secure Notes & Passwords is disabled
+        try:
+            settings.remove_key("secnap")
+        except: pass
+
     if version.has_nfc and settings.get('nfc', 0):
         # Maybe allow NFC now
         import nfc
