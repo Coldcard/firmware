@@ -9,8 +9,11 @@ from utils import b2a_base64url, url_quote, B2A
 from version import has_qr
 from ux import show_qr_code, ux_show_story, X, OK
 
-# only Coinkite server knows private key for this
-SERVER_PUBKEY = b'\x03\x6d\x0f\x95\xc3\xaa\xf5\xcd\x3e\x8b\xe5\x61\xb0\x78\x14\xfb\xb1\xc9\xee\x21\x71\xed\x30\x18\x28\x15\x19\x75\x41\x14\x72\xa2\xfd'
+# Only Coldcard.com server knows private key for this pubkey. It protects
+# the privacy of the values we send to the server.
+#
+# = 0231301ec4acec08c1c7d0181f4ffb8be70d693acccc86cccb8f00bf2e00fcabfd
+SERVER_PUBKEY = b'\x02\x31\x30\x1e\xc4\xac\xec\x08\xc1\xc7\xd0\x18\x1f\x4f\xfb\x8b\xe7\x0d\x69\x3a\xcc\xcc\x86\xcc\xcb\x8f\x00\xbf\x2e\x00\xfc\xab\xfd'
 
 def encrypt_details(qs):
     # encryption and base64 here

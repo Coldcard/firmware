@@ -17,10 +17,8 @@ from charcodes import KEY_QR
 from bbqr import split_qrs
 from psbt import BasicPSBT
 
-
-# TODO: we will rotate the server key before release.
-SERVER_PUBKEY = '036d0f95c3aaf5cd3e8be561b07814fbb1c9ee2171ed301828151975411472a2fd'
-
+# pubkey for production server. 
+SERVER_PUBKEY = '0231301ec4acec08c1c7d0181f4ffb8be70d693acccc86cccb8f00bf2e00fcabfd'
 
 def py_ckcc_hashfp(output, x, y, data=None):
     try:
