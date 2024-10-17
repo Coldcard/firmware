@@ -29,6 +29,10 @@ Slip132Version = namedtuple('Slip132Version', ('pub', 'priv', 'hint'))
 #   - from <https://github.com/Bit-Wasp/bitcoin-php/issues/576>
 # - also electrum source: electrum/lib/constants.py
 
+# nLockTime in transaction equal or above this value is a unix timestamp (time_t) not block height.
+NLOCK_IS_TIME = const(500000000)
+
+
 class ChainsBase:
 
     curve = 'secp256k1'

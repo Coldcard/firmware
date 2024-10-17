@@ -4,13 +4,14 @@
 #
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, B2A, keypath_to_str, problem_file_line
+from utils import xfp2str, B2A, keypath_to_str
 from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str
-import stash, gc, history, sys, ngu, ckcc, chains
+import stash, gc, history, sys, ngu, ckcc
+from chains import NLOCK_IS_TIME
 from uhashlib import sha256
 from uio import BytesIO
 from sffile import SizerFile
-from multisig import MultisigWallet, disassemble_multisig, disassemble_multisig_mn
+from multisig import MultisigWallet, disassemble_multisig_mn
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160, hash256
 from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, ser_uint256, COutPoint
@@ -1404,9 +1405,9 @@ class psbtObject(psbtProxy):
                 assert inp.prevout_idx is not None
                 assert inp.previous_txid
                 if inp.req_time_locktime is not None:
-                    assert inp.req_time_locktime >= 500000000
+                    assert inp.req_time_locktime >= NLOCK_IS_TIME
                 if inp.req_height_locktime is not None:
-                    assert 0 < inp.req_height_locktime < 500000000
+                    assert 0 < inp.req_height_locktime < NLOCK_IS_TIME
             else:
                 # v0 requires exclusion
                 assert inp.prevout_idx is None
@@ -1435,7 +1436,7 @@ class psbtObject(psbtProxy):
                 ))
             else:
                 msg = "This tx can only be spent after "
-                if self.lock_time < 500000000:
+                if self.lock_time < NLOCK_IS_TIME:
                     msg += "block height of %d" % self.lock_time
                 else:
                     try:

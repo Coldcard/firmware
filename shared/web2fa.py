@@ -4,10 +4,9 @@
 #
 #
 import ngu, ndef, aes256ctr
-from ustruct import pack, unpack
 from utils import b2a_base64url, url_quote, B2A
 from version import has_qr
-from ux import show_qr_code, ux_show_story, X, OK
+from ux import show_qr_code, ux_show_story, X
 
 # Only Coldcard.com server knows private key for this pubkey. It protects
 # the privacy of the values we send to the server.
@@ -65,7 +64,7 @@ async def perform_web2fa(label, shared_secret):
             return False    # pressed cancel
 
         # only one legal response possible, and already validated above
-        return (data == prefix+expect)
+        return data == (prefix+expect)
 
     else:
         #
@@ -82,7 +81,8 @@ async def perform_web2fa(label, shared_secret):
             return ''
 
         while 1:
-            got = await ux_input_digits('', limit_len, maxlen=8, prompt="8-digits From Web")
+            got = await ux_input_digits('', limit_len, maxlen=8,
+                                        prompt="8-digits From Web")
 
             if not got:
                 # abort if empty entry
@@ -92,7 +92,10 @@ async def perform_web2fa(label, shared_secret):
                 # good match
                 return True
 
-            ch = await ux_show_story("You entered an incorrect code. You must enter the digits shown after the correct 2FA code is provided to the website. Try again or (X) to stop.")
+            ch = await ux_show_story("You entered an incorrect code. You must"
+                                     " enter the digits shown after the correct"
+                                     " 2FA code is provided to the website."
+                                     " Try again or %s to stop." % X)
             if ch == 'x':
                 return False
 
@@ -117,7 +120,7 @@ async def web2fa_enroll(label, ss=None):
     # show a QR that app know how to use
     # - problem: on Mk4, not really enough space:
     #  - can only show up to 42 chars, and secret is 16, required overhead is 23 => 39 min
-    #  - can't fit any meta data, like username or our serial # in there
+    #  - can't fit any metadata, like username or our serial # in there
     # - better on Q1 where no limitations for this size of QR
 
     qr = 'otpauth://totp/{nm}?secret={ss}'.format(ss=ss, 
@@ -131,8 +134,8 @@ async def web2fa_enroll(label, ss=None):
         ok = await perform_web2fa('Enroll: ' + label, ss)
         if ok: break
 
-        ch = await ux_show_story("That isn't correct. Please re-import and/or "\
-                                    "try again or %s to give up." % X)
+        ch = await ux_show_story("That isn't correct. Please re-import and/or "
+                                 "try again or %s to give up." % X)
         if ch == 'x':
             # mk4 only?
             return None
@@ -173,8 +176,8 @@ async def nfc_share_2fa_link(wallet_name, shared_secret):
     n = ndef.ndefMaker()
     n.add_url(url, https=True)
 
-    aborted = await NFC.share_start(n, prompt="Tap for 2FA Authentication", 
-                                            line2="Wallet: " + wallet_name)
+    aborted = await NFC.share_start(n, prompt="Tap for 2FA Authentication",
+                                    line2="Wallet: " + wallet_name)
 
     return None if aborted else nonce
 

@@ -3,22 +3,20 @@
 # ccc.py - ColdCard Cosign feature. Be a leg in a 2-of-3 that signed based on policy.
 #
 import gc, chains, version, ngu, web2fa, bip39, re
+from chains import NLOCK_IS_TIME
 from utils import swab32, a2b_hex, b2a_hex, xfp2str, truncate_address, pad_raw_secret
 from glob import settings
 from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number
 from menu import MenuSystem, MenuItem, start_chooser
 from seed import seed_words_to_encoded_secret
-from stash import SecretStash, len_to_numwords
+from stash import SecretStash
 from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC
 from exceptions import CCCPolicyViolationError
 
-# nLockTime in transaction above this value is a unix timestamp (time_t) not block height.
-NLOCK_IS_TIME = const(500000000)
 
 # limit to number of addresses in list
 MAX_WHITELIST = const(25)
 
-# TODO: if A has already signed the PSBT, and we don't need key C, don't try; maybe show warning
 
 class CCCFeature:
 
@@ -185,6 +183,9 @@ class CCCFeature:
         if not ms:
             # single-sig CCC not supported
             return False, False
+
+        # TODO: if key B has already signed the PSBT, and so we don't need key C,
+        #       don't try to sign; maybe show warning?
 
         xfp = cls.get_xfp()
         if  xfp not in ms.xfp_paths:
@@ -738,6 +739,7 @@ async def toggle_ccc_feature(*a):
     # - create C key (maybe import?)
     # - collect a policy setup, maybe 2FA enrol too
     # - lock that down
+    # - TODO copy
     ch = await ux_show_story('''\
 Adds an additional seed to your Coldcard, and enforces a "spending policy" whenever \
 it signs with that key. Spending policies can restrict: magnitude (BTC out), \
