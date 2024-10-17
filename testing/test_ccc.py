@@ -671,7 +671,8 @@ def test_ccc_velocity(velocity_mi, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
 # - check velocity is exactly right to block number vs. required gap
 # - check txn rewind fails
 # - check txn re-sign fails (if velocity in effect)
-#
+# - check any warning is blocked
+#       - check too-big fee is blocked
 
 
 # EOF
