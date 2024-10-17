@@ -15,6 +15,11 @@ from exceptions import CCCPolicyViolationError
 # nLockTime in transaction above this value is a unix timestamp (time_t) not block height.
 NLOCK_IS_TIME = const(500000000)
 
+# limit to number of addresses in list TODO
+MAX_WHITELIST = const(25)
+
+# TODO: if A has already signed the PSBT, and we don't need key C, don't try; maybe show warning
+
 class CCCFeature:
 
     # we don't show the user the reason for policy fail (by design, so attacker
