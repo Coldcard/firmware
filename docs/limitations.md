@@ -209,4 +209,5 @@ We will summarize transaction outputs as "change" back into same wallet, however
 - maximum of 25 whitelisted addresses can be enabled
 - Web2FA: any number of mobile devices can be enrolled, but all will have the same shared secret
 - any warning from the PSBT, such as huge fees, will disable CCC cosign.
+- only 12 or 24 word seeds (not XPRV) are accepted for "key C"
 
