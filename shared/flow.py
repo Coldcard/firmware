@@ -367,7 +367,7 @@ AdvancedNormalMenu = [
                    story=("Enable HSM? Enables all user management commands, and other HSM-only USB commands. "
                           "By default these commands are disabled."),
                    predicate=hsm_available),
-    NonDefaultMenuItem('Coldcard Co-signing', 'ccc', f=toggle_ccc_feature, predicate=is_not_tmp),
+    NonDefaultMenuItem('Coldcard Co-Signing', 'ccc', f=toggle_ccc_feature, predicate=is_not_tmp),
     MenuItem('User Management', menu=make_users_menu,
              predicate=hsm_available),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu, shortcut=KEY_NFC),

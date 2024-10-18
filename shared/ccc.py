@@ -1,6 +1,6 @@
 # (c) Copyright 2024 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# ccc.py - ColdCard Cosign feature. Be a leg in a 2-of-3 that signed based on policy.
+# ccc.py - ColdCard Co-sign feature. Be a leg in a 2-of-3 that is signed based on a policy.
 #
 import gc, chains, version, ngu, web2fa, bip39, re
 from chains import NLOCK_IS_TIME
@@ -688,7 +688,7 @@ async def gen_or_import():
     from seed import WordNestMenu, generate_seed, approve_word_list, SeedVaultChooserMenu
 
     msg = "Press %s to generate a new 12-word seed phrase to be used "\
-          "as the Coldcard Cosigning Secret (key C).\n\nOr press (1) to import existing "\
+          "as the Coldcard Co-Signing Secret (key C).\n\nOr press (1) to import existing "\
           "12-words or (2) for 24-words import." % OK
 
     if settings.master_get("seedvault", False):
@@ -750,7 +750,7 @@ A=Coldcard (master seed), B=Backup Key (offline/recovery), C=Spending Policy Key
 
 Spending policy cannot be viewed or changed without knowledge of key C.\
 ''',
-        title="Coldcard Co-Signing" if version.has_qwerty else 'CC Cosigning')
+        title="Coldcard Co-Signing" if version.has_qwerty else 'CC Co-Sign')
 
     if ch != 'y': 
         # just a tourist
