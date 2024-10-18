@@ -15,7 +15,7 @@ from exceptions import CCCPolicyViolationError
 # nLockTime in transaction above this value is a unix timestamp (time_t) not block height.
 NLOCK_IS_TIME = const(500000000)
 
-# limit to number of addresses in list TODO
+# limit to number of addresses in list
 MAX_WHITELIST = const(25)
 
 # TODO: if A has already signed the PSBT, and we don't need key C, don't try; maybe show warning
@@ -395,6 +395,7 @@ class CCCAddrWhitelist(MenuSystem):
     def construct(self):
         # list of addresses
         addrs = CCCFeature.get_policy().get('addrs', [])
+        maxxed = (len(addrs) >= MAX_WHITELIST)
 
         items = [MenuItem(truncate_address(a), f=self.edit_addr, arg=a) for a in addrs]
 
@@ -402,9 +403,11 @@ class CCCAddrWhitelist(MenuSystem):
             items.append(MenuItem("(none yet)"))
 
         if version.has_qr:
-            items.append(MenuItem('Scan QR', f=self.scan_qr, shortcut=KEY_QR))
+            items.append(MenuItem('Scan QR', f=(self.maxed_out if maxxed else self.scan_qr),
+                                                    shortcut=KEY_QR))
 
-        items.append(MenuItem('Import from File', f=self.import_file))
+        items.append(MenuItem('Import from File',
+                f=(self.maxed_out if maxxed else self.import_file)))
 
         return items
 
@@ -454,7 +457,7 @@ class CCCAddrWhitelist(MenuSystem):
 
         # pick a likely-looking file: just looking at size and extension
         fn = await file_picker(suffix=['csv', 'txt'],
-                                min_size=20, max_size=5000,
+                                min_size=20, max_size=20000,
                                 none_msg="Must contain payment addresses", **choice)
 
         if not fn: return
@@ -464,7 +467,6 @@ class CCCAddrWhitelist(MenuSystem):
             with open(fn, 'rt') as fd:
                 for ln in fd.readlines():
                     for here in pat.split(ln):
-                        print(here)
                         if len(here) >= 4:
                             try:
                                 addr = cleanup_payment_address(here)
@@ -474,7 +476,8 @@ class CCCAddrWhitelist(MenuSystem):
         if not results:
             await ux_show_story("Unable to find any payment addresses in that file.")
         else:
-            await self.add_addresses(results)
+            # silently limit to first 25 results; lets them use addresses.csv easily
+            await self.add_addresses(results[:MAX_WHITELIST])
 
 
     async def scan_qr(self, *a):
@@ -495,6 +498,9 @@ class CCCAddrWhitelist(MenuSystem):
             # import them
             await self.add_addresses(got)
 
+    async def maxed_out(self, *a):
+        await ux_show_story("Max %d items in whitelist. Please make room first." % MAX_WHITELIST)
+
     async def add_addresses(self, more_addrs):
         # add new entries, if unique; preserve ordering
         addrs = CCCFeature.get_policy().get('addrs', [])
@@ -507,6 +513,9 @@ class CCCAddrWhitelist(MenuSystem):
         if not new:
             await ux_show_story("Already in whitelist:\n\n" + '\n\n'.join(more_addrs))
             return
+
+        if len(addrs) > MAX_WHITELIST:
+            return await self.maxed_out()
 
         CCCFeature.update_policy_key(addrs=addrs)
         self.update_contents()
@@ -568,8 +577,9 @@ class CCCPolicyMenu(MenuSystem):
         await web2fa.web2fa_enroll('CCC', ss)
 
     async def set_magnitude(self, *a):
+        # Looks decent on both Q and Mk4...
         was = self.policy.get('mag', 0)
-        val = await ux_enter_number('Per Txn Max Out', max_value=int(1e8),
+        val = await ux_enter_number('Transaction Max:', max_value=int(1e8),
                                     can_cancel=True, value=(was or ''))
 
         args = dict(mag=val)
@@ -577,7 +587,7 @@ class CCCPolicyMenu(MenuSystem):
             msg = "Did not change"
             val = was
         else:
-            msg = "You can have set the"
+            msg = "You have set the"
             unchanged = False
 
         if not val:
@@ -729,10 +739,16 @@ async def toggle_ccc_feature(*a):
     # - collect a policy setup, maybe 2FA enrol too
     # - lock that down
     ch = await ux_show_story('''\
-This feature creates a new 2-of-3 multisig wallet. A, B, and C keys are as follows:\n
-A=This Coldcard, B=Backup Key, C=Policy Key ... blah balh
+Adds an additional seed to your Coldcard, and enforces a "spending policy" whenever \
+it signs with that key. Spending policies can restrict: magnitude (BTC out), \
+velocity (blocks between txn), address whitelisting, and/or require confirmation by 2FA phone app.
+
+Assuming the use of a 2-of-3 multisig wallet, keys are as follows:\n
+A=Coldcard (master seed), B=Backup Key (offline/recovery), C=Spending Policy Key. 
+
+Spending policy cannot be viewed or changed without knowledge of key C.\
 ''',
-        title="Coldcard Co-Signing")
+        title="Coldcard Co-Signing" if version.has_qwerty else 'CC Cosigning')
 
     if ch != 'y': 
         # just a tourist
@@ -748,11 +764,9 @@ async def enable_step1(words):
     # do BIP-32 basics: capture XFP and XPUB and encoded version of the secret
     CCCFeature.init_setup(words)
 
-    # push them directly into policy submenu first time.
+    # continue into config menu
     m = CCCConfigMenu()
     the_ux.push(m)
-
-    # that will lead back to a "nested" menu other setup
 
 async def modify_ccc_settings():
     # Generally not expecting changes to policy on the fly because
@@ -783,15 +797,15 @@ setup and debug is finished, or all benefit of this feature is lost!''')
             # debug hack: skip word entry
             bypass = True
 
+        elif ch != 'y': return
+
     if bypass:
-        # - doing full decode cycle here for better testing
+        # doing full decode cycle here for better testing
         chk, raw, _ = SecretStash.decode(enc)
         assert chk == 'words'
         words = bip39.b2a_words(raw).split(' ')
         await key_c_challenge(words)
         return
-        
-    if ch != 'y': return
 
     # small info-leak here: exposing 12 vs 24 words, but we expect most to be 12 anyway
     nwords = CCCFeature.get_num_words()

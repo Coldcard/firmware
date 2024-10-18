@@ -125,6 +125,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=False, value=''):
         elif ch == KEY_DELETE:
             if value:
                 value = value[0:-1]
+                dis.text(0, 4, ' '*CHARS_W)
         elif ch == KEY_CLEAR:
             value = ''
             dis.text(0, 4, ' '*CHARS_W)

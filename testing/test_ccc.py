@@ -670,6 +670,9 @@ def test_ccc_velocity(velocity_mi, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
 # - check txn re-sign fails (if velocity in effect)
 # - check any warning is blocked
 #       - check too-big fee is blocked
+# - "export cc xpubs" path
+# - 'build 2-of-N' path
+# - maxed out values: 24 words, 25 whitelisted p2wsh values
 
 
 # EOF
