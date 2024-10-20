@@ -181,7 +181,7 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
 
         goto_home()
         pick_menu_item("Advanced/Tools")
-        pick_menu_item("Coldcard Co-signing")
+        pick_menu_item("Coldcard Co-Signing")
         time.sleep(.1)
         title, story = cap_story()
         assert title == "Coldcard Co-Signing"
@@ -338,7 +338,7 @@ def enter_enabled_ccc(goto_home, pick_menu_item, cap_story, press_select, is_q1,
         if not first_time:
             goto_home()
             pick_menu_item("Advanced/Tools")
-            pick_menu_item("Coldcard Co-signing")
+            pick_menu_item("Coldcard Co-Signing")
             time.sleep(.1)
             title, story = cap_story()
             assert title == "CCC Enabled"
@@ -472,15 +472,18 @@ def bitcoind_create_watch_only_wallet(pick_menu_item, need_keypress, microsd_pat
 
 @pytest.fixture
 def policy_sign(start_sign, end_sign, cap_story, get_last_violation):
-    def doit(wallet, psbt, violation=None):
+    def doit(wallet, psbt, violation=None, num_warn=1, warn_list=None):
         start_sign(base64.b64decode(psbt))
         time.sleep(.1)
         title, story = cap_story()
         assert 'OK TO SEND?' == title
         if violation:
-            assert "(1 warning below)" in story
+            assert ("(%d warning%s below)"% (num_warn, "s" if num_warn > 1 else "")) in story
             assert "CCC: Violates spending policy. Won't sign." in story
             assert get_last_violation() == violation
+            if warn_list:
+                for w in warn_list:
+                    assert w in story
         else:
             assert "warning" not in story
 
@@ -512,6 +515,7 @@ def test_ccc_magnitude(mag_ok, mag, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
 
     settings_set("ccc", None)
     settings_set("chain", "XRT")
+    settings_set("multisig", [])
 
     if mag_ok:
         # always try limit/border value
@@ -559,6 +563,7 @@ def test_ccc_whitelist(whitelist_ok, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
 
     settings_set("ccc", None)
     settings_set("chain", "XRT")
+    settings_set("multisig", [])
 
     whitelist = [
         "bcrt1qqca9eefwz8tzn7rk6aumhwhapyf5vsrtrddxxp",
@@ -600,11 +605,12 @@ def test_ccc_whitelist(whitelist_ok, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("velocity_mi", ['6 blocks (hour)', '48 blocks (8h)'])
 def test_ccc_velocity(velocity_mi, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
-                       cap_menu, bitcoind, settings_set, policy_sign,
-                       bitcoind_create_watch_only_wallet, settings_get):
+                      cap_menu, bitcoind, settings_set, policy_sign,
+                      bitcoind_create_watch_only_wallet, settings_get):
 
     settings_set("ccc", None)
     settings_set("chain", "XRT")
+    settings_set("multisig", [])
 
     blocks = int(velocity_mi.split()[0])
 
@@ -625,7 +631,7 @@ def test_ccc_velocity(velocity_mi, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
     bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
 
     multi_addr = bitcoind_wo.getnewaddress()
-    bitcoind.supply_wallet.sendtoaddress(address=multi_addr, amount=5.0)
+    bitcoind.supply_wallet.sendtoaddress(address=multi_addr, amount=49)
     bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
     # create funded PSBT, first tx
     init_block_height = bitcoind.supply_wallet.getblockchaininfo()["blocks"]  # block height
@@ -639,6 +645,7 @@ def test_ccc_velocity(velocity_mi, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
     assert settings_get("ccc")["pol"]["block_h"] == init_block_height
 
     # mine some, BUT not enough to satisfy velocity policy
+    # - check velocity is exactly right to block number vs. required gap
     bitcoind.supply_wallet.generatetoaddress(blocks - 1, bitcoind.supply_wallet.getnewaddress())
     block_height = bitcoind.supply_wallet.getblockchaininfo()["blocks"]
     psbt_resp = bitcoind_wo.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 1}],
@@ -662,14 +669,105 @@ def test_ccc_velocity(velocity_mi, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
 
     assert settings_get("ccc")["pol"]["block_h"] == block_height  # updated block height
 
+    # check txn re-sign fails (if velocity in effect)
+    policy_sign(bitcoind_wo, psbt, violation="rewound")
+    # check decreasing nLockTime
+    policy_sign(
+        bitcoind_wo,
+        bitcoind_wo.walletcreatefundedpsbt(
+            [], [{bitcoind.supply_wallet.getnewaddress(): 1}], block_height - 1
+        )["psbt"],
+        violation="rewound"
+    )
+    # check nLockTime disabled when velocity enabled - fail
+    policy_sign(
+        bitcoind_wo,
+        bitcoind_wo.walletcreatefundedpsbt(
+            [], [{bitcoind.supply_wallet.getnewaddress(): 1}], 0
+        )["psbt"],
+        violation="no nLockTime"
+    )
+    # unix timestamp
+    policy_sign(
+        bitcoind_wo,
+        bitcoind_wo.walletcreatefundedpsbt(
+            [], [{bitcoind.supply_wallet.getnewaddress(): 1}], 500000000
+        )["psbt"],
+        violation="nLockTime not height"
+    )
+
+
+@pytest.mark.bitcoind
+def test_ccc_warnings(setup_ccc, enter_enabled_ccc, ccc_ms_setup,
+                      cap_menu, bitcoind, settings_set, policy_sign,
+                      bitcoind_create_watch_only_wallet, settings_get):
+
+    settings_set("ccc", None)
+    settings_set("chain", "XRT")
+    settings_set("multisig", [])
+
+    whitelist = ["bcrt1qlk39jrclgnawa42tvhu2n7se987qm96qg8v76e",
+                 "2Mxp1Dy2MyR4w36J2VaZhrFugNNFgh6LC1j",
+                 "mjR14oKxYzRg9RAZdpu3hrw8zXfFgGzLKm"]
+
+    words = setup_ccc(mag=10000000, vel='6 blocks (hour)', whitelist=whitelist,)
+    enter_enabled_ccc(words, first_time=True)
+    ccc_ms_setup()
+
+    m = cap_menu()
+    for mi in m:
+        if "2/3: Coldcard Cosign" in mi:
+            target_mi = mi
+            break
+    else:
+        assert False
+
+    bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
+    bitcoind.supply_wallet.sendtoaddress(address=bitcoind_wo.getnewaddress(), amount=2)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    # create funded PSBT, first tx
+    # whitelist OK, velocity OK, & magnitude OK - but fee high
+    init_block_height = bitcoind.supply_wallet.getblockchaininfo()["blocks"]  # block height
+    psbt_resp = bitcoind_wo.walletcreatefundedpsbt([], [{whitelist[0]: 0.06},{whitelist[1]: 0.01},{whitelist[2]: 0.03}],
+                                                   init_block_height, {"fee_rate":39000})
+    psbt = psbt_resp.get("psbt")
+    po = BasicPSBT().parse(base64.b64decode(psbt))
+    assert po.parsed_txn.nLockTime == init_block_height
+    policy_sign(bitcoind_wo, psbt, violation="has warnings", num_warn=2, warn_list=["Big Fee"])
+
+    # invalidate nLockTime with use of nSequence max values
+    utxos = bitcoind_wo.listunspent()
+    ins = []
+    for i, utxo in enumerate(utxos):
+        # block height based RTL
+        inp = {
+            "txid": utxo["txid"],
+            "vout": utxo["vout"],
+            "sequence": 0xffffffff,
+        }
+        ins.append(inp)
+
+    psbt_resp = bitcoind_wo.walletcreatefundedpsbt(ins, [{whitelist[0]: 0.06},{whitelist[1]: 0.01},{whitelist[2]: 0.03}],
+                                                   0, {"fee_rate":2, "replaceable": False})  # locktime needs to be zero, otherwise exception from core (contradicting parameters)
+    po = BasicPSBT().parse(base64.b64decode(psbt_resp.get("psbt")))
+    assert po.parsed_txn.nLockTime == 0
+    po.parsed_txn.nLockTime = init_block_height  # add locktime
+    po.txn = po.parsed_txn.serialize_with_witness()
+    policy_sign(bitcoind_wo, po.as_b64_str(), violation="has warnings", num_warn=2, warn_list=["Bad Locktime"])
+
+    # exotic sighash warning
+    settings_set("sighshchk", 1)  # needed to only get warning instead of failure
+    psbt_resp = bitcoind_wo.walletcreatefundedpsbt([], [{whitelist[0]: 0.06},{whitelist[1]: 0.01},{whitelist[2]: 0.03}],
+                                                   init_block_height, {"fee_rate":2, "replaceable": True})
+    po = BasicPSBT().parse(base64.b64decode(psbt_resp.get("psbt")))
+    for idx, i in enumerate(po.inputs):
+        i.sighash = 2  # NONE
+
+    policy_sign(bitcoind_wo, po.as_b64_str(), violation="has warnings", num_warn=2, warn_list=["sighash NONE"])
+
+
 # TODO
 # - policy-fail reason submenu; check display
-# - weird nLockTime values: 0, time_t, backwards
-# - check velocity is exactly right to block number vs. required gap
-# - check txn rewind fails
-# - check txn re-sign fails (if velocity in effect)
-# - check any warning is blocked
-#       - check too-big fee is blocked
 # - "export cc xpubs" path
 # - 'build 2-of-N' path
 # - maxed out values: 24 words, 25 whitelisted p2wsh values
