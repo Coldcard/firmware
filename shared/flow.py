@@ -236,6 +236,7 @@ DevelopersMenu = [
     MenuItem("Serial REPL", f=dev_enable_repl),
     MenuItem('Warm Reset', f=reset_self),
     MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
+    MenuItem("BKPW Override", menu=bkpw_override),
 ]
 
 AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)

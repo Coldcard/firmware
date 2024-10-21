@@ -16,6 +16,7 @@ This lists the new changes that have not yet been published in a normal release.
   about successful master seed verification.
 - Enhancement: Catch more DeltaMode cases in XOR path.
   Thanks to [@dmonakhov](https://github.com/dmonakhov))
+- Enhancement: BKPW override (for "developers")
 - Change: If derivation path is omitted during message signing, default is used 
   based on address format (`m/44h/0h/0h/0/0` for p2pkh, and `m/84h/0h/0h/0/0` for p2wpkh). 
   Default is no longer root (m).
@@ -46,4 +47,3 @@ This lists the new changes that have not yet been published in a normal release.
 - New Feature: Sign message from QR scan (format has to be JSON)
 - Enhancement: Sign scanned Simple Text by pressing (0). Next screens query information about key to use. 
 - Bugfix: Properly re-draw status bar after Restore Master on COLDCARD without master seed.
-
