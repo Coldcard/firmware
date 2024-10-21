@@ -50,7 +50,7 @@ Press ENTER to enable and get started otherwise CANCEL.''',
 
     return NotesMenu(NotesMenu.construct())
 
-async def get_a_password(old_value):
+async def get_a_password(old_value, min_len=0, max_len=128):
     # Get a (new) password as a string.
     # - does some fun generation as well.
 
@@ -104,9 +104,9 @@ async def get_a_password(old_value):
     handlers = {KEY_F1: _pick_12, KEY_F2: _pick_24, KEY_F3: _pick_dense,
                 KEY_F4: _do_dumb, KEY_F6: _toggle_case, KEY_F5: _bip85}
 
-    return await ux_input_text(old_value, confirm_exit=False, max_len=128, scan_ok=True,
-                    b39_complete=True, prompt='Password',  placeholder='(optional)',
-                    funct_keys=(fmsg, handlers))
+    return await ux_input_text(old_value, confirm_exit=False, max_len=max_len, min_len=min_len,
+                               scan_ok=True, b39_complete=True, prompt='Password',
+                               placeholder='(optional)', funct_keys=(fmsg, handlers))
 
 class NotesMenu(MenuSystem):
 
