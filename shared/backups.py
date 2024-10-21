@@ -15,6 +15,7 @@ from pincodes import pa
 
 # we make passwords with this number of words
 num_pw_words = const(12)
+bkpw_min_len = const(32)
 
 # max size we expect for a backup data file (encrypted or cleartext)
 # - limited by size of LFS area of flash, since all settings are held there
@@ -309,7 +310,7 @@ async def restore_from_dict(vals):
 async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
     from stash import bip39_passphrase
 
-    words = None
+    pwd = None
     skip_quiz = False
     bypass_tmp = False
 
@@ -329,28 +330,40 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
                                 "so backup will be of that seed."):
             return
 
-    stored_words = settings.get('bkpw', None)
+    # first check if bkpw already defined on tmp seed settings
+    stored_pwd = None
+    master_pwd = settings.master_get("bkpw", None)
+    if pa.tmp_value:
+        stored_pwd = settings.get('bkpw', None)
 
-    if stored_words:
-        stored_words = stored_words.split()
-        ch = await ux_show_story("Use same backup file password as last time?\n\n"
-                    " 1: %s\n   ...\n%d: %s" 
-                    % (stored_words[0], len(stored_words), stored_words[-1]), sensitive=True)
+    if not stored_pwd and master_pwd:
+        stored_pwd = master_pwd
+
+    if stored_pwd:
+        # we can have words or other type of password here
+        split_pwd = stored_pwd.split()
+        if len(split_pwd) == num_pw_words:  # weak
+            hint = " 1: %s\n   ...\n%d: %s" % (split_pwd[0], len(split_pwd), split_pwd[-1])
+        else:
+            hint = " %s...%s" % (stored_pwd[0], stored_pwd[-1])
+
+        ch = await ux_show_story("Use same backup file password as last time?\n\n" + hint,
+                                 sensitive=True)
 
         if ch == 'y':
-            words = stored_words
+            pwd = stored_pwd  # string, not list
             skip_quiz = True
 
-    if not words:
+    if not pwd:
         # Pick a password: like bip39 but no checksum word
         #
         b = bytearray(32)
         while 1:
             ckcc.rng_bytes(b)
-            words = bip39.b2a_words(b).split(' ')[0:num_pw_words]
+            pwd = bip39.b2a_words(b).rsplit(' ', num_pw_words)[0]
 
-            ch = await seed.show_words(words,
-                            prompt="Record this (%d word) backup file password:\n", escape='6')
+            ch = await seed.show_words(prompt="Record this (%d word) backup file password:\n",
+                                       words=pwd.split(" "), escape='6')
 
             if ch == '6' and not write_sflash:
                 # Secret feature: plaintext mode
@@ -367,43 +380,43 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
 
             break
 
-    if words and not skip_quiz:
+    if pwd and not skip_quiz:
         # quiz them, but be nice and do a shorter test.
-        ch = await seed.word_quiz(words, limited=(num_pw_words//3))
+        ch = await seed.word_quiz(pwd.split(" "), limited=(num_pw_words//3))
         if ch == 'x': return
 
-    if words and words != stored_words:
+    if pwd and pwd != stored_pwd:
         ch = await ux_show_story("Would you like to use these same words next time you perform a backup?"
                                  " Press (1) to save them into this Coldcard for next time.", escape='1')
 
         if ch == '1':
-            settings.put('bkpw', ' '.join(words))
+            settings.set('bkpw', pwd)  # if on tmp save to tmp, do not update master
             settings.save()
-        elif stored_words:
-            settings.remove_key('bkpw')
-            settings.save()
+        # stop droping bkpw just because someone decided to use differrent password
+        # elif stored_words:
+        #     settings.remove_key('bkpw')
+        #     settings.save()
 
-    return await write_complete_backup(words, fname_pattern, write_sflash=write_sflash,
+    return await write_complete_backup(pwd, fname_pattern, write_sflash=write_sflash,
                                        bypass_tmp=bypass_tmp)
 
-async def write_complete_backup(words, fname_pattern, write_sflash=False,
+async def write_complete_backup(pwd, fname_pattern, write_sflash=False,
                                 allow_copies=True, bypass_tmp=False):
     # Just do the writing
     from glob import dis
     from files import CardSlot
 
     # Show progress:
-    dis.fullscreen('Encrypting...' if words else 'Generating...')
+    dis.fullscreen('Encrypting...' if pwd else 'Generating...')
     body = render_backup_contents(bypass_tmp=bypass_tmp).encode()
 
     gc.collect()
 
-    if words:
+    if pwd:
         # NOTE: Takes a few seconds to do the key-streching, but little actual
         # time to do the encryption.
 
-        pw = ' '.join(words)
-        zz = compat7z.Builder(password=pw, progress_fcn=dis.progress_bar_show)
+        zz = compat7z.Builder(password=pwd, progress_fcn=dis.progress_bar_show)
         zz.add_data(body)
 
         # pick random filename, but ending in .txt
@@ -742,11 +755,9 @@ async def clone_write_data(*a):
     my_pubkey = pair.pubkey().to_bytes(False)
     session_key = pair.ecdh_multiply(his_pubkey)
 
-    words = [b2a_hex(session_key).decode()]
-
     fname = b2a_hex(my_pubkey).decode() + '-ccbk.7z'
 
-    await write_complete_backup(words, fname, allow_copies=False, bypass_tmp=True)
+    await write_complete_backup(b2a_hex(session_key).decode(), fname, allow_copies=False, bypass_tmp=True)
 
     await ux_show_story("Done.\n\nTake this MicroSD card back to other Coldcard and continue from there.")
 

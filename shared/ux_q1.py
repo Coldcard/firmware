@@ -162,7 +162,6 @@ async def ux_input_text(value, confirm_exit=False, hex_only=False, max_len=100,
     #   to make longer single-line value onto screen
      # - confirm_exit default False here, because so easy to re-enter w/ qwerty, True on mk4
     from glob import dis
-    from ux import ux_show_story
 
     MAX_LINES = 7        # without scroll
     can_scroll = False

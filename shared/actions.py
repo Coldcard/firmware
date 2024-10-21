@@ -11,7 +11,7 @@ from ubinascii import hexlify as b2a_hex
 from utils import imported, problem_file_line, get_filesize, encode_seed_qr
 from utils import xfp2str, B2A, txid_from_fname
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
-from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt, OK, X
+from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt, OK, X, ux_render_words
 from export import make_json_wallet, make_summary_file, make_descriptor_wallet_export
 from export import make_bitcoin_core_wallet, generate_wasabi_wallet, generate_generic_export
 from export import generate_unchained_export, generate_electrum_wallet
@@ -603,7 +603,6 @@ consequences.''', escape='4')
 def render_master_secrets(mode, raw, node):
     # Render list of words, or XPRV / master secret to text.
     import stash, chains
-    from ux import ux_render_words
 
     c = chains.current_chain()
     qr_alnum = False
@@ -1414,6 +1413,59 @@ async def restore_everything_cleartext(*A):
         prob = await backups.restore_complete_doit(fn, [])
         if prob:
             await ux_show_story(prob, title='FAILED')
+
+async def bkpw_override(*A):
+    # allows user to:
+    #   1.) manually set bkpw
+    #   2.) remove existing bkpw setting
+    #   3.) view current active bkpw
+    from backups import bkpw_min_len
+
+    if pa.is_secret_blank():
+        return
+
+    if pa.is_deltamode():
+        import callgate
+        callgate.fast_wipe()
+
+    while True:
+        pwd = settings.get("bkpw", None)
+
+        msg = ("Password used to encrypt COLDCARD backup."
+               "\n\nPress (0) to change backup password")
+        esc = "0"
+        if pwd:
+            esc += "12"
+            msg += ", (1) to forget current password, (2) to show current active backup password."
+
+        ch = await ux_show_story(title="BKPW", msg=msg, escape=esc)
+        if ch == "x": return
+        elif ch == "1":
+            if await ux_confirm("Delete current stored password?"):
+                settings.remove_key("bkpw")
+                settings.save()
+                await ux_dramatic_pause("Deleted.", 2)
+
+        elif ch == "2":
+            if await ux_confirm('The next screen will show current active backup password.'
+                                '\n\nAnyone with knowledge of the password will '
+                                'be able to decrypt your backups.'):
+                await ux_show_story(pwd)
+
+        elif ch == "0":
+            if version.has_qwerty:
+                from notes import get_a_password
+                npwd = await get_a_password(pwd, min_len=bkpw_min_len)
+            else:
+                npwd = await ux_input_text(pwd, prompt="Your Backup Password",
+                                           min_len=bkpw_min_len, max_len=128)
+
+            if (npwd is None) or (npwd == pwd): continue
+
+            settings.set('bkpw', npwd)
+            settings.save()
+            await ux_dramatic_pause("Saved.", 2)
+
 
 async def wipe_filesystem(*A):
     if not await ux_confirm('''\

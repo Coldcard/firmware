@@ -83,10 +83,11 @@ from utils import call_later_ms
 # prelogin settings - do not need to be part of other saved settings
 # PRELOGIN_SETTINGS = ["_skip_pin", "nick", "rngk", "lgto", "kbtn", "terms_ok"]
 # keep these settings only if unspecified on the other end
-KEEP_IF_BLANK_SETTINGS = ["bkpw", "wa", "sighshchk", "emu", "rz", "b39skip",
-                          "axskip", "del", "pms", "idle_to", "batt_to", "bright"]
+KEEP_IF_BLANK_SETTINGS = ["wa", "sighshchk", "emu", "rz", "b39skip",
+                          "axskip", "del", "pms", "idle_to", "batt_to",
+                          "bright"]
 
-SEEDVAULT_FIELDS = ['seeds', 'seedvault', 'xfp', 'words']
+SEEDVAULT_FIELDS = ['seeds', 'seedvault', 'xfp', 'words', "bkpw"]
 
 NUM_SLOTS = const(100)
 SLOTS = range(NUM_SLOTS)
