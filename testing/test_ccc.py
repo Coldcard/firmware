@@ -443,7 +443,7 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
 
 @pytest.fixture
 def bitcoind_create_watch_only_wallet(pick_menu_item, need_keypress, microsd_path,
-                                      cap_story, bitcoind):
+                                      cap_story, bitcoind, press_cancel):
     def doit(ms_menu_item):
         pick_menu_item(ms_menu_item)
         pick_menu_item("Descriptors")
@@ -472,6 +472,9 @@ def bitcoind_create_watch_only_wallet(pick_menu_item, need_keypress, microsd_pat
         for obj in res:
             assert obj["success"], obj
 
+        for _ in range(3):
+            press_cancel()
+
         return bitcoind_wo
 
     return doit
@@ -479,7 +482,7 @@ def bitcoind_create_watch_only_wallet(pick_menu_item, need_keypress, microsd_pat
 
 @pytest.fixture
 def policy_sign(start_sign, end_sign, cap_story, get_last_violation):
-    def doit(wallet, psbt, violation=None, num_warn=1, warn_list=None, b_sig=False):
+    def doit(wallet, psbt, violation=None, num_warn=1, warn_list=None):
         start_sign(base64.b64decode(psbt))
         time.sleep(.1)
         title, story = cap_story()
@@ -509,9 +512,7 @@ def policy_sign(start_sign, end_sign, cap_story, get_last_violation):
             res = wallet.sendrawtransaction(tx_hex)
             assert len(res) == 64  # tx id
         else:
-            if not b_sig:
-                assert len(po.inputs[0].part_sigs) == 1  # CC key did NOT sign
-
+            assert len(po.inputs[0].part_sigs) == 1  # CC key did NOT sign
             tx_hex = None
 
         return signed, tx_hex
@@ -778,10 +779,11 @@ def test_ccc_warnings(setup_ccc, enter_enabled_ccc, ccc_ms_setup,
     policy_sign(bitcoind_wo, po.as_b64_str(), violation="has warnings", num_warn=2, warn_list=["sighash NONE"])
 
 
-def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
-                   bitcoind, cap_menu, settings_get,
+def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim_exec,
+                   bitcoind, cap_menu, settings_get, load_export, press_cancel,
                    bitcoind_create_watch_only_wallet, policy_sign, goto_eph_seed_menu,
-                   pick_menu_item, word_menu_entry, press_select):
+                   pick_menu_item, word_menu_entry, press_select, import_multisig,
+                   restore_main_seed):
 
     # - maxed out values: 24 words, 25 whitelisted p2wsh values
     settings_set("ccc", None)
@@ -815,6 +817,12 @@ def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
     whitelist = bitcoind_wo.deriveaddresses(desc_str, (0,24))
     setup_ccc(c_words, whitelist=whitelist, first_time=False)
 
+
+    pick_menu_item(target_mi)  # choose already created multisig
+    pick_menu_item("Coldcard Export")
+    ms_conf = load_export("sd", "Coldcard multisig setup", is_json=False, sig_check=False)
+    press_cancel()
+
     # fund CCC multisig
     bitcoind.supply_wallet.sendtoaddress(address=bitcoind_wo.getnewaddress(), amount=2)
     bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
@@ -833,17 +841,71 @@ def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
     time.sleep(0.1)
     word_menu_entry(b_words)
     press_select()
+    import_multisig(data=ms_conf)
+    press_select()  # confirm multisig import
 
-    # sign with B
-    part_psbt, _ = policy_sign(bitcoind_wo, base64.b64encode(part_psbt).decode(), violation="velocity", b_sig=True)  # no violations - signing with B key
-    # is final both A & B key signed
-    resp = bitcoind_wo.finalizepsbt(base64.b64encode(part_psbt).decode(), True)
-    assert resp["complete"]
-    tx_hex = resp["hex"]
-    res = bitcoind_wo.testmempoolaccept([tx_hex])
-    assert res[0]["allowed"]
-    res = bitcoind_wo.sendrawtransaction(tx_hex)
-    assert len(res) == 64  # tx id
+    # get rid of last violation - as it is held as global
+    sim_exec('from ccc import CCCFeature; CCCFeature.last_fail_reason=""')
+
+    # sign with B (B does not have ccc in settings so CC is unaware that part of CCC is signing)
+    policy_sign(bitcoind_wo, base64.b64encode(part_psbt).decode())  # no violations
+    restore_main_seed()
+
+
+def test_sign_with_key_C(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, cap_menu,
+                         bitcoind_create_watch_only_wallet, pick_menu_item, load_export,
+                         press_cancel, bitcoind, policy_sign, goto_eph_seed_menu, word_menu_entry,
+                         import_multisig, press_select, settings_get, sim_exec, restore_main_seed):
+    settings_set("ccc", None)
+    settings_set("chain", "XRT")
+    settings_set("multisig", [])
+
+    words = setup_ccc(c_words=None)
+    enter_enabled_ccc(words, first_time=True)
+    ccc_ms_setup()
+
+    m = cap_menu()
+    for mi in m:
+        if "2/3: Coldcard Cosign" in mi:
+            target_mi = mi
+            break
+    else:
+        assert False
+
+    bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
+    pick_menu_item(target_mi)  # choose already created multisig
+    pick_menu_item("Coldcard Export")
+    ms_conf = load_export("sd", "Coldcard multisig setup", is_json=False, sig_check=False)
+    press_cancel()
+
+    # fund CCC multisig
+    bitcoind.supply_wallet.sendtoaddress(address=bitcoind_wo.getnewaddress(), amount=2)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    psbt_resp = bitcoind_wo.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 1.005}],
+                                                   0)  # nLockTime disabled
+    psbt = psbt_resp.get("psbt")
+    part_psbt, _ = policy_sign(bitcoind_wo, psbt, violation="magnitude")  # more than 1 BTC
+
+    # get C seed
+    ccc_secret = bytes.fromhex(settings_get("ccc")["secret"])
+    assert ccc_secret[0] == 128
+    ccc_entropy = ccc_secret[1:]  # marker
+    c_words = Mnemonic('english').to_mnemonic(ccc_entropy)
+    # load key B as tmp
+    goto_eph_seed_menu()
+    pick_menu_item("Import Words")
+    pick_menu_item("12 Words")
+    time.sleep(0.1)
+    word_menu_entry(c_words.split())
+    press_select()
+    import_multisig(data=ms_conf)
+    press_select()  # confirm multisig import
+
+    # get rid of last violation - as it is held as global
+    sim_exec('from ccc import CCCFeature; CCCFeature.last_fail_reason=""')
+    # no violations ccc not in C settings
+    policy_sign(bitcoind_wo, base64.b64encode(part_psbt).decode())
+    restore_main_seed()
 
 
 @pytest.mark.parametrize("chain", ["BTC", "XTN"])
