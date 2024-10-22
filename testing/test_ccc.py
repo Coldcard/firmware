@@ -7,7 +7,7 @@ import pytest, requests, re, time, random, json, glob, os, hashlib, struct, base
 from binascii import a2b_hex
 from base64 import urlsafe_b64encode
 from onetimepass import get_totp
-from helpers import prandom
+from helpers import prandom, slip132undo
 from pysecp256k1.ecdh import ecdh, ECDH_HASHFP_CLS
 from pysecp256k1 import ec_seckey_verify, ec_pubkey_parse, ec_pubkey_serialize, ec_pubkey_create
 from mnemonic import Mnemonic
@@ -846,10 +846,65 @@ def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
     assert len(res) == 64  # tx id
 
 
+@pytest.mark.parametrize("chain", ["BTC", "XTN"])
+@pytest.mark.parametrize("c_num_words", [None, 12, 24])
+@pytest.mark.parametrize("acct", [None, 9999])
+def test_ccc_xpub_export(chain, c_num_words, acct, settings_set, load_export, setup_ccc,
+                         enter_enabled_ccc, pick_menu_item, enter_number, press_select,
+                         settings_get, cap_menu):
+    # - "export cc xpubs" path
+    settings_set("ccc", None)
+    settings_set("chain", chain)
+    settings_set("multisig", [])
+
+    words = None
+    if isinstance(c_num_words, int):
+        words = Mnemonic('english').generate(strength=128 if c_num_words == 12 else 256)
+        b39_seed = Mnemonic.to_seed(words)
+        master = BIP32Node.from_master_secret(b39_seed, netcode=chain)
+        xfp = master.fingerprint().hex().upper()
+        words = words.split()
+
+    setup_ccc(c_words=words)
+    enter_enabled_ccc(words, first_time=True)
+    pick_menu_item("Export CCC XPUBs")
+    if acct is None:
+        press_select()  # default zero
+    else:
+        enter_number(acct)
+
+    xpub_obj = load_export("sd", label="Multisig XPUB", is_json=True, sig_check=False)
+
+    if acct is None:
+        assert xpub_obj["account"] == "0"
+    else:
+        assert xpub_obj["account"] == str(acct)
+
+    if words is None:
+        # get secret from device as device generation was used
+        ccc_secret = bytes.fromhex(settings_get("ccc")["secret"])
+        assert ccc_secret[0] == 128
+        ccc_entropy = ccc_secret[1:]  # marker
+        words = Mnemonic('english').to_mnemonic(ccc_entropy)
+        b39_seed = Mnemonic.to_seed(words)
+        master = BIP32Node.from_master_secret(b39_seed, netcode=chain)
+        xfp = master.fingerprint().hex().upper()
+
+    assert xpub_obj["xfp"] == xfp
+    assert xfp in cap_menu()[0]
+    if acct is None:
+        subkey = master.subkey_for_path(xpub_obj["p2sh_deriv"])
+        assert subkey.hwif() == xpub_obj["p2sh"]
+
+    for l in ["p2sh_p2wsh", "p2wsh"]:
+        subkey = master.subkey_for_path(xpub_obj[l+"_deriv"])
+        xpub = subkey.hwif()
+        assert slip132undo(xpub_obj[l])[0] == xpub
+        assert xpub in xpub_obj[l+"_desc"]
+
 
 # TODO
 # - policy-fail reason submenu; check display
-# - "export cc xpubs" path
 # - 'build 2-of-N' path
 
 
