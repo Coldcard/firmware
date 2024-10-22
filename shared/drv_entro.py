@@ -56,32 +56,32 @@ still backed-up.''')
 
 def bip85_derive(picked, index):
     # implement the core step of BIP85 from our master secret
-
+    path = "m/83696968h/"
     if picked in (0,1,2):
         # BIP-39 seed phrases (we only support English)
         num_words = stash.SEED_LEN_OPTS[picked]
         width = (16, 24, 32)[picked]        # of bytes
-        path = "m/83696968h/39h/0h/{num_words}h/{index}h".format(num_words=num_words, index=index)
+        path += "39h/0h/%dh/%dh" % (num_words, index)
         s_mode = 'words'
     elif picked == 3:
-        # HDSeed for Bitcoin Core: but really a WIF of a private key, can be used anywhere
+        # HDSeed for Bitcoin Core: but really a WIF of a private key
         s_mode = 'wif'
-        path = "m/83696968h/2h/{index}h".format(index=index)
+        path += "2h/%dh" % index
         width = 32
     elif picked == 4:
         # New XPRV
-        path = "m/83696968h/32h/{index}h".format(index=index)
+        path += "32h/%dh" % index
         s_mode = 'xprv'
         width = 64
     elif picked in (5, 6):
         width = 32 if picked == 5 else 64
-        path = "m/83696968h/128169h/{width}h/{index}h".format(width=width, index=index)
+        path += "128169h/%dh/%dh" % (width, index)
         s_mode = 'hex'
     elif picked == 7:
         width = 64
         # hardcoded width for now
         # b"pwd".hex() --> 707764
-        path = "m/83696968h/707764h/{pwd_len}h/{index}h".format(pwd_len=BIP85_PWD_LEN, index=index)
+        path += "707764h/%dh/%dh" % (BIP85_PWD_LEN, index)
         s_mode = 'pw'
     else:
         raise ValueError(picked)
