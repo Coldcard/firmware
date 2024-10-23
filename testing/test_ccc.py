@@ -2,8 +2,10 @@
 #
 # tests related to CCC feature
 #
+# run simulator without --eff
 #
-import pytest, requests, re, time, random, json, glob, os, hashlib, struct, base64, bech32
+#
+import pytest, pdb, requests, re, time, random, json, glob, os, hashlib, struct, base64
 from binascii import a2b_hex
 from base64 import urlsafe_b64encode
 from onetimepass import get_totp
@@ -341,19 +343,25 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
 @pytest.fixture
 def enter_enabled_ccc(goto_home, pick_menu_item, cap_story, press_select, is_q1,
                       word_menu_entry, cap_menu):
-    def doit(c_words, first_time=False):
+    def doit(c_words, first_time=False, seed_vault=False):
         if not first_time:
             goto_home()
             pick_menu_item("Advanced/Tools")
             pick_menu_item("Coldcard Co-Signing")
             time.sleep(.1)
             title, story = cap_story()
-            assert title == "CCC Enabled"
-            assert "policy cannot be viewed, changed" in story
-            assert "unless you have the seed words for key C" in story
-            press_select()
-            time.sleep(.1)
-            word_menu_entry(c_words)
+            if seed_vault:
+                assert "You have a copy of the CCC key C in the Seed Vault" in story
+                assert "You must delete that key from the vault once setup and debug is finished" in story
+                assert "or all benefit of this feature is lost!" in story
+                press_select()
+            else:
+                assert title == "CCC Enabled"
+                assert "policy cannot be viewed, changed" in story
+                assert "unless you have the seed words for key C" in story
+                press_select()
+                time.sleep(.1)
+                word_menu_entry(c_words)
 
     return doit
 
@@ -852,13 +860,17 @@ def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim
     restore_main_seed()
 
 
-def test_sign_with_key_C(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, cap_menu,
-                         bitcoind_create_watch_only_wallet, pick_menu_item, load_export,
-                         press_cancel, bitcoind, policy_sign, goto_eph_seed_menu, word_menu_entry,
-                         import_multisig, press_select, settings_get, sim_exec, restore_main_seed):
+@pytest.mark.parametrize("seed_vault", [True, False])
+def test_load_and_sign_key_C(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, cap_menu,
+                             bitcoind_create_watch_only_wallet, pick_menu_item, load_export, sim_exec,
+                             cap_story, press_cancel, bitcoind, policy_sign, restore_main_seed,
+                             verify_ephemeral_secret_ui, word_menu_entry, import_multisig,
+                             press_select, settings_get, seed_vault, confirm_tmp_seed):
     settings_set("ccc", None)
     settings_set("chain", "XRT")
     settings_set("multisig", [])
+    settings_set("seedvault", int(seed_vault))
+    settings_set("seeds", [])
 
     words = setup_ccc(c_words=None)
     enter_enabled_ccc(words, first_time=True)
@@ -886,18 +898,24 @@ def test_sign_with_key_C(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setu
     psbt = psbt_resp.get("psbt")
     part_psbt, _ = policy_sign(bitcoind_wo, psbt, violation="magnitude")  # more than 1 BTC
 
-    # get C seed
+    # get C seed from device as it was TRNG generated
     ccc_secret = bytes.fromhex(settings_get("ccc")["secret"])
     assert ccc_secret[0] == 128
     ccc_entropy = ccc_secret[1:]  # marker
     c_words = Mnemonic('english').to_mnemonic(ccc_entropy)
-    # load key B as tmp
-    goto_eph_seed_menu()
-    pick_menu_item("Import Words")
-    pick_menu_item("12 Words")
-    time.sleep(0.1)
-    word_menu_entry(c_words.split())
+
+    # load key C as tmp
+    enter_enabled_ccc(c_words.split())
+    pick_menu_item("Load Key C")
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Loads the CCC controlled seed (key C) as a Temporary Seed" in story
+    assert "save into Seed Vault" in story
+    assert "access to CCC Config menu is quick and easy" in story
     press_select()
+    confirm_tmp_seed(seedvault=seed_vault)
+    verify_ephemeral_secret_ui(mnemonic=c_words.split(), seed_vault=seed_vault)
+
     import_multisig(data=ms_conf)
     press_select()  # confirm multisig import
 
@@ -905,7 +923,19 @@ def test_sign_with_key_C(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setu
     sim_exec('from ccc import CCCFeature; CCCFeature.last_fail_reason=""')
     # no violations ccc not in C settings
     policy_sign(bitcoind_wo, base64.b64encode(part_psbt).decode())
-    restore_main_seed()
+    restore_main_seed(seed_vault=seed_vault)
+
+    enter_enabled_ccc(c_words.split(), seed_vault=seed_vault)
+    press_cancel()
+    time.sleep(.1)
+    title, story = cap_story()
+    if seed_vault:
+        assert title == "REMINDER"
+        assert "Key C is in your Seed Vault" in story
+        assert "you MUST delete it from the Vault!" in story
+    else:
+        # if key is not in seed vault there is no reminder
+        assert not title and not story
 
 
 @pytest.mark.parametrize("chain", ["BTC", "XTN"])

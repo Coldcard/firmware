@@ -17,7 +17,6 @@ from exceptions import CCCPolicyViolationError
 # limit to number of addresses in list
 MAX_WHITELIST = const(25)
 
-
 class CCCFeature:
 
     # we don't show the user the reason for policy fail (by design, so attacker
@@ -312,8 +311,8 @@ wallet, proceed to the multisig menu and remove related wallet entry.'''):
 
         if in_seed_vault(enc):
             # remind them to clear the seed-vault copy of Key C because it defeats feature
-            await ux_show_story('''Key C is in your Seed Vault. If you are done with setup, \
-you MUST delete it from the Vault!''', title='REMINDER')
+            await ux_show_story("Key C is in your Seed Vault. If you are done with setup, "
+                                "you MUST delete it from the Vault!", title='REMINDER')
 
         the_ux.pop()
 
@@ -323,7 +322,7 @@ you MUST delete it from the Vault!''', title='REMINDER')
         enc = CCCFeature.get_encoded_secret()
 
         from multisig import export_multisig_xpubs
-        await export_multisig_xpubs(*a, xfp=xfp, alt_secret=enc, skip_prompt=True)
+        await export_multisig_xpubs(xfp=xfp, alt_secret=enc, skip_prompt=True)
 
     async def build_2ofN(self, *a):
         # ask for a key B, assume A and C are defined => export MS config and import into self.
@@ -352,7 +351,7 @@ be ready to show it as a QR, before proceeding.'''
         # - just a shortcut, since they have the words, and could enter them
         # - one-way trip because the CCC feature won't be enabled inside the temp seed settings
         if await ux_show_story(
-                'Loads the CCC controled seed (key C) as a Temporary Seed and allows '
+                'Loads the CCC controlled seed (key C) as a Temporary Seed and allows '
                 'easy use of all Coldcard features on that key.\n\nIf you save into Seed Vault, '
                 'access to CCC Config menu is quick and easy.') != 'y':
             return
@@ -594,7 +593,7 @@ class CCCPolicyMenu(MenuSystem):
         if not val:
             msg = "No check for maximum transaction size will be done. "
             if self.policy.get('vel', 0):
-                msg += ' Velocity check also disabled.'
+                msg += 'Velocity check also disabled. '
                 args['vel'] = 0
         else:
             msg += " maximum per-transaction: \n\n  %s" % render_mag_value(val)
