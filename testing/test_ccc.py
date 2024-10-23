@@ -5,8 +5,7 @@
 # run simulator without --eff
 #
 #
-import pytest, pdb, requests, re, time, random, json, glob, os, hashlib, struct, base64
-from binascii import a2b_hex
+import pytest, pdb, requests, re, time, random, json, glob, os, hashlib, base64
 from base64 import urlsafe_b64encode
 from onetimepass import get_totp
 from helpers import prandom, slip132undo
@@ -369,35 +368,43 @@ def enter_enabled_ccc(goto_home, pick_menu_item, cap_story, press_select, is_q1,
 @pytest.fixture
 def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_menu_item,
                  cap_story, press_select, need_keypress, enter_number):
-    def doit(b_words=12, way="sd", addr_fmt=AF_P2WSH):
-        if isinstance(b_words, int):
-            assert b_words in (12,24)
-            words = Mnemonic('english').generate(strength=128 if b_words == 12 else 256)
-            b39_seed = Mnemonic.to_seed(words)
-        else:
-            assert isinstance(b_words, list)
-            b39_seed = Mnemonic.to_seed(" ".join(b_words))
+    def doit(N=3, b_words=12, way="sd", addr_fmt=AF_P2WSH):
 
-        master = BIP32Node.from_master_secret(b39_seed)
-        xfp = master.fingerprint().hex().upper()
-        label = "p2wsh" if addr_fmt == AF_P2WSH else "p2sh_p2wsh"
-        derive = f"m/48h/1h/0h/{'2' if addr_fmt == AF_P2WSH else '1'}h"
-        derived = master.subkey_for_path(derive)
+        N2 = N - 2  # how many more signers we need (B keys)
 
-        data = json.dumps({
-            f"{label}_deriv": derive,
-            f"{label}": derived.hwif(),
-            "account": "0",
-            "xfp": xfp
-        })
+        res = []
+        for i in range(N2):
+            if isinstance(b_words, int):
+                assert b_words in (12,24)
+                words = Mnemonic('english').generate(strength=128 if b_words == 12 else 256)
+                b39_seed = Mnemonic.to_seed(words)
+            else:
+                assert isinstance(b_words, list)
+                b39_seed = Mnemonic.to_seed(" ".join(b_words))
+
+            master = BIP32Node.from_master_secret(b39_seed)
+            xfp = master.fingerprint().hex().upper()
+            label = "p2wsh" if addr_fmt == AF_P2WSH else "p2sh_p2wsh"
+            derive = f"m/48h/1h/0h/{'2' if addr_fmt == AF_P2WSH else '1'}h"
+            derived = master.subkey_for_path(derive)
+
+            data = {
+                f"{label}_deriv": derive,
+                f"{label}": derived.hwif(),
+                "account": "0",
+                "xfp": xfp
+            }
+            res.append((derived, data))
+
         if way in ("sd", "vdisk"):
             path_f = microsd_path if way == "sd" else virtdisk_path
             for fn in glob.glob(path_f('ccxp-*.json')):
                 os.remove(fn) # cleanup as we want to control N
 
-            fname = f"ccxp-{xfp}.json"
-            with open(path_f(fname), "w") as f:
-                f.write(data)
+            for d, dd in res:
+                fname = f"ccxp-{dd['xfp']}.json"
+                with open(path_f(fname), "w") as f:
+                    f.write(json.dumps(dd))
 
         m = cap_menu()
         target_mi = None
@@ -423,10 +430,11 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
                 press_select()
             else:
                 need_keypress(KEY_QR)
-                _, parts = split_qrs(data, 'J', max_version=20)
-                for p in parts:
-                    scan_a_qr(p)
-                    time.sleep(.1)
+                for d, dd in res:
+                    _, parts = split_qrs(json.dumps(dd), 'J', max_version=20)
+                    for p in parts:
+                        scan_a_qr(p)
+                        time.sleep(.1)
 
         # casual on-device multisig create
         if addr_fmt == AF_P2WSH:
@@ -439,12 +447,21 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
         time.sleep(.1)
         title, story = cap_story()
         assert "Create new multisig wallet" in story
-        assert "Policy: 2 of 3" in story
-        assert "Coldcard Cosign" in story
+        assert f"Policy: 2 of {N}" in story
+        if is_q1:
+            assert "Coldcard Co-sign" in story
+        else:
+            assert "CCC" in story
         press_select()
+        time.sleep(.1)
 
-        # something that we need for fake_ms_tx
-        return struct.unpack('<I', a2b_hex(xfp))[0], master, derived
+        # build menu item belonging to this multisig wallet
+        ms_name = story.split("\n\n")[1].split("\n")[-1].strip()  # ms name
+        mi = f"↳ 2/{N}: {ms_name}"
+        m = cap_menu()
+        assert mi in m
+
+        return res, mi
 
     return doit
 
@@ -472,7 +489,7 @@ def bitcoind_create_watch_only_wallet(pick_menu_item, need_keypress, microsd_pat
         res = json.loads(res)
 
         bitcoind_wo = bitcoind.create_wallet(
-            wallet_name=f"watch_only_ccc", disable_private_keys=True,
+            wallet_name=f"watch_only_ccc_{ms_menu_item.split()[-1]}", disable_private_keys=True,
             blank=True, passphrase=None, avoid_reuse=False, descriptors=True
         )
         res = bitcoind_wo.importdescriptors(res)
@@ -531,7 +548,7 @@ def policy_sign(start_sign, end_sign, cap_story, get_last_violation):
 @pytest.mark.parametrize("mag_ok", [True, False])
 @pytest.mark.parametrize("mag", [1000000, None, 2])
 def test_ccc_magnitude(mag_ok, mag, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
-                       cap_menu, bitcoind, settings_set, policy_sign,
+                       bitcoind, settings_set, policy_sign,
                        bitcoind_create_watch_only_wallet):
 
     settings_set("ccc", None)
@@ -552,16 +569,7 @@ def test_ccc_magnitude(mag_ok, mag, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
 
     words = setup_ccc(mag=mag, vel="Unlimited")
     enter_enabled_ccc(words, first_time=True)
-    ccc_ms_setup()
-
-    m = cap_menu()
-    for mi in m:
-        if "2/3: Coldcard Cosign" in mi:
-            target_mi = mi
-            break
-    else:
-        assert False
-
+    _, target_mi = ccc_ms_setup()
     bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
 
     multi_addr = bitcoind_wo.getnewaddress()
@@ -579,7 +587,7 @@ def test_ccc_magnitude(mag_ok, mag, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("whitelist_ok", [True, False])
 def test_ccc_whitelist(whitelist_ok, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
-                       cap_menu, bitcoind, settings_set, policy_sign,
+                       bitcoind, settings_set, policy_sign,
                        bitcoind_create_watch_only_wallet):
 
     settings_set("ccc", None)
@@ -600,16 +608,7 @@ def test_ccc_whitelist(whitelist_ok, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
 
     words = setup_ccc(whitelist=whitelist, vel="Unlimited")
     enter_enabled_ccc(words, first_time=True)
-    ccc_ms_setup()
-
-    m = cap_menu()
-    for mi in m:
-        if "2/3: Coldcard Cosign" in mi:
-            target_mi = mi
-            break
-    else:
-        assert False
-
+    _, target_mi = ccc_ms_setup()
     bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
 
     multi_addr = bitcoind_wo.getnewaddress()
@@ -626,8 +625,8 @@ def test_ccc_whitelist(whitelist_ok, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("velocity_mi", ['6 blocks (hour)', '48 blocks (8h)'])
 def test_ccc_velocity(velocity_mi, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
-                      cap_menu, bitcoind, settings_set, policy_sign,
-                      bitcoind_create_watch_only_wallet, settings_get):
+                      bitcoind, settings_set, policy_sign, settings_get,
+                      bitcoind_create_watch_only_wallet):
 
     settings_set("ccc", None)
     settings_set("chain", "XRT")
@@ -637,17 +636,9 @@ def test_ccc_velocity(velocity_mi, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
 
     words = setup_ccc(vel=velocity_mi)
     enter_enabled_ccc(words, first_time=True)
-    ccc_ms_setup()
+    _, target_mi = ccc_ms_setup()
 
     assert settings_get("ccc")["pol"]["block_h"] == 0
-
-    m = cap_menu()
-    for mi in m:
-        if "2/3: Coldcard Cosign" in mi:
-            target_mi = mi
-            break
-    else:
-        assert False
 
     bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
 
@@ -720,7 +711,7 @@ def test_ccc_velocity(velocity_mi, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
 
 @pytest.mark.bitcoind
 def test_ccc_warnings(setup_ccc, enter_enabled_ccc, ccc_ms_setup,
-                      cap_menu, bitcoind, settings_set, policy_sign,
+                      bitcoind, settings_set, policy_sign,
                       bitcoind_create_watch_only_wallet, settings_get):
 
     settings_set("ccc", None)
@@ -733,17 +724,9 @@ def test_ccc_warnings(setup_ccc, enter_enabled_ccc, ccc_ms_setup,
 
     words = setup_ccc(mag=10000000, vel='6 blocks (hour)', whitelist=whitelist,)
     enter_enabled_ccc(words, first_time=True)
-    ccc_ms_setup()
-
-    m = cap_menu()
-    for mi in m:
-        if "2/3: Coldcard Cosign" in mi:
-            target_mi = mi
-            break
-    else:
-        assert False
-
+    _, target_mi = ccc_ms_setup()
     bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
+
     bitcoind.supply_wallet.sendtoaddress(address=bitcoind_wo.getnewaddress(), amount=2)
     bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
     # create funded PSBT, first tx
@@ -788,10 +771,9 @@ def test_ccc_warnings(setup_ccc, enter_enabled_ccc, ccc_ms_setup,
 
 
 def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim_exec,
-                   bitcoind, cap_menu, settings_get, load_export, press_cancel,
+                   bitcoind, settings_get, load_export, press_cancel, restore_main_seed,
                    bitcoind_create_watch_only_wallet, policy_sign, goto_eph_seed_menu,
-                   pick_menu_item, word_menu_entry, press_select, import_multisig,
-                   restore_main_seed):
+                   pick_menu_item, word_menu_entry, press_select, import_multisig):
 
     # - maxed out values: 24 words, 25 whitelisted p2wsh values
     settings_set("ccc", None)
@@ -804,16 +786,7 @@ def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim
     enter_enabled_ccc(words, first_time=True)
     # B mnemonic is 24 words
     b_words = "ceiling apology excite illegal accident define boat prosper decrease utility romance try trial dizzy win lawsuit much sustain similar meadow draw oil cousin wagon".split()
-    ccc_ms_setup(b_words)
-
-    m = cap_menu()
-    for mi in m:
-        if "2/3: Coldcard Cosign" in mi:
-            target_mi = mi
-            break
-    else:
-        assert False
-
+    _, target_mi = ccc_ms_setup(b_words=b_words)
     bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
 
     # create whitelist with own addresses - only conso to first 25 addrs allowed
@@ -861,8 +834,8 @@ def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim
 
 
 @pytest.mark.parametrize("seed_vault", [True, False])
-def test_load_and_sign_key_C(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, cap_menu,
-                             bitcoind_create_watch_only_wallet, pick_menu_item, load_export, sim_exec,
+def test_load_and_sign_key_C(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim_exec,
+                             bitcoind_create_watch_only_wallet, pick_menu_item, load_export,
                              cap_story, press_cancel, bitcoind, policy_sign, restore_main_seed,
                              verify_ephemeral_secret_ui, word_menu_entry, import_multisig,
                              press_select, settings_get, seed_vault, confirm_tmp_seed):
@@ -874,17 +847,9 @@ def test_load_and_sign_key_C(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_
 
     words = setup_ccc(c_words=None)
     enter_enabled_ccc(words, first_time=True)
-    ccc_ms_setup()
-
-    m = cap_menu()
-    for mi in m:
-        if "2/3: Coldcard Cosign" in mi:
-            target_mi = mi
-            break
-    else:
-        assert False
-
+    _, target_mi = ccc_ms_setup()
     bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
+
     pick_menu_item(target_mi)  # choose already created multisig
     pick_menu_item("Coldcard Export")
     ms_conf = load_export("sd", "Coldcard multisig setup", is_json=False, sig_check=False)
@@ -995,10 +960,96 @@ def test_ccc_xpub_export(chain, c_num_words, acct, settings_set, load_export, se
         assert xpub in xpub_obj[l+"_desc"]
 
 
+def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
+                                   bitcoind_create_watch_only_wallet, cap_story, bitcoind,
+                                   policy_sign, settings_get, cap_menu, pick_menu_item,
+                                   press_select, load_export, offer_ms_import):
+    # - 'build 2-of-N' path
+    settings_set("ccc", None)
+    settings_set("chain", "XRT")
+    settings_set("multisig", [])
+
+    words = setup_ccc(c_words=None, mag=2, vel='6 blocks (hour)')
+    enter_enabled_ccc(words, first_time=True)
+    b_keys_0, mi = ccc_ms_setup(N=5)
+    assert len(b_keys_0) == 3  # 5 - 2 (C, A) = 3
+    w0 = bitcoind_create_watch_only_wallet(mi)
+    b_keys_1, mi = ccc_ms_setup(N=15)
+    assert len(b_keys_1) == 13  # 15 - 2 (C, A) = 13
+    w1 = bitcoind_create_watch_only_wallet(mi)
+    b_keys_2, mi = ccc_ms_setup(N=5)
+    assert len(b_keys_2) == 3
+    w2 = bitcoind_create_watch_only_wallet(mi)
+
+    # fund CCC multisig
+    bitcoind.supply_wallet.sendtoaddress(address=w0.getnewaddress(), amount=3)
+    bitcoind.supply_wallet.sendtoaddress(address=w1.getnewaddress(), amount=10)
+    bitcoind.supply_wallet.sendtoaddress(address=w2.getnewaddress(), amount=33)
+    # mine above
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    init_block_height = bitcoind.supply_wallet.getblockchaininfo()["blocks"]  # block height
+    for w in [w0, w1, w2]:
+        psbt = w.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 2.1}],
+                                             init_block_height)["psbt"]
+        policy_sign(w, psbt, violation="magnitude")  # more than 2 BTC
+
+    assert settings_get("ccc")["pol"]["block_h"] == 0  # not updated - all above are failures
+
+    # now good sign with wallet 0
+    psbt = w0.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 2}],
+                                     init_block_height)["psbt"]
+    policy_sign(w, psbt)  # ok
+
+    # mine above
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    assert settings_get("ccc")["pol"]["block_h"] == init_block_height
+
+    # velocity now issue for all wallets (after previous spend)
+    for w in [w0, w1, w2]:
+        psbt = w.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 0.1}],
+                                             init_block_height+1)["psbt"]
+        policy_sign(w, psbt, violation="velocity")
+
+    enter_enabled_ccc(words, first_time=False)
+    _, ami = ccc_ms_setup(N=8)
+    _, mi = ccc_ms_setup(N=4)
+    time.sleep(.1)
+    m = cap_menu()
+    assert "↳ Build 2-of-N" in m
+
+    # delete one
+    pick_menu_item(mi)
+    pick_menu_item("Delete")
+    press_select() # confirm ms delete
+    time.sleep(.1)
+    m = cap_menu()
+    assert mi not in m
+
+    # export one of the wallets
+    w_mn, w_name = ami.rsplit(" ", 1)
+    new_name = "new name"
+    pick_menu_item(ami)  # just another ms wallet
+    pick_menu_item("Coldcard Export")
+    ms_conf = load_export("sd", label="Coldcard multisig setup", is_json=False, sig_check=False)
+
+    # try importing duplicate does not work
+    _, story = offer_ms_import(ms_conf)
+    assert "Duplicate wallet" in story
+
+    # try rename
+    ms_conf = ms_conf.replace(w_name, new_name)
+    _, story = offer_ms_import(ms_conf)
+    assert "Update NAME only of existing multisig wallet?" in story
+    press_select()
+    time.sleep(.1)
+
+    enter_enabled_ccc(words, first_time=False)
+    m = cap_menu()
+    assert f"{w_mn} {new_name}" in m
+
+
 # TODO
 # - policy-fail reason submenu; check display
-# - 'build 2-of-N' path
-
-
 
 # EOF

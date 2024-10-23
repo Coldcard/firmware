@@ -1738,13 +1738,14 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
         return
 
     if for_ccc:
+        secret, rand_name = for_ccc
         # Always include 2 keys from CCC: own master (key A) and key C
         # - force them to same derivation.
         acct = await ux_enter_bip32_index('CCC Account Number:') or 0
 
         dis.fullscreen("Wait...")
         a = add_own_xpub(chain, acct, addr_fmt)                # master: key A
-        c = add_own_xpub(chain, acct, addr_fmt, secret=for_ccc)
+        c = add_own_xpub(chain, acct, addr_fmt, secret=secret)
 
         # problem: above file searching may find xpub export from key C
         # (or our master seed, exported) .. we can't add them again,
@@ -1791,7 +1792,10 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
     assert 1 <= M <= N <= MAX_SIGNERS
 
     if for_ccc:
-        name = 'Coldcard Cosign'
+        name = "Coldcard Co-sign" if version.has_qwerty else "CCC"
+        if rand_name:
+            # unique name (hopefully) for each CCC wallet
+            name += "x%X" % ngu.random.bytes(1)[0]
     else:
         name = 'CC-%d-of-%d' % (M, N)
 
@@ -1818,14 +1822,15 @@ async def create_ms_step1(*a, for_ccc=None):
 
     if version.has_qr:
         # They have a scanner, could do QR codes...
-        ch = await ux_show_story("Press "+ KEY_QR + " to scan multisg XPUBs from "\
-                        "QR codes (BBQr) or ENTER to use SD card(s).", title="QR or SD Card?")
+        ch = await ux_show_story("Press "+ KEY_QR + " to scan multisg XPUBs from "
+                                 "QR codes (BBQr) or ENTER to use SD card(s).",
+                                 title="QR or SD Card?")
 
     if ch == KEY_QR:
         is_qr = True
-        ch = await ux_show_story("Press ENTER for default address format (P2WSH, segwit), "\
+        ch = await ux_show_story("Press ENTER for default address format (P2WSH, segwit), "
                                  "otherwise, press (1) for P2SH-P2WSH.", title="Address Format",
-                                     escape="1")
+                                 escape="1")
 
     else:
         ch = await ux_show_story('''\
