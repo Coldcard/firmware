@@ -260,12 +260,14 @@ class CCCConfigMenu(MenuSystem):
         ]
 
         # look for wallets that are defined related to CCC feature, shortcut to them
+        count = 0
         for ms in MultisigWallet.get_all():
             if my_xfp in ms.xfp_paths:
                 items.append(MenuItem('↳ %d/%d: %s' % (ms.M, ms.N, ms.name),
-                            menu=make_ms_wallet_menu, arg=ms.storage_idx))
+                                        menu=make_ms_wallet_menu, arg=ms.storage_idx))
+                count += 1
 
-        items.append(MenuItem('↳ Build 2-of-N', f=self.build_2ofN, arg=len(items)>4))
+        items.append(MenuItem('↳ Build 2-of-N', f=self.build_2ofN, arg=count))
 
         if CCCFeature.last_fail_reason:
             #         xxxxxxxxxxxxxxxx
@@ -325,7 +327,7 @@ wallet, proceed to the multisig menu and remove related wallet entry.'''):
         await export_multisig_xpubs(xfp=xfp, alt_secret=enc, skip_prompt=True)
 
     async def build_2ofN(self, m, l, i):
-        num = i.arg
+        count = i.arg
         # ask for a key B, assume A and C are defined => export MS config and import into self.
         # - like the airgap setup, but assume A and C are this Coldcard
         m = '''Builds simple 2-of-N multisig wallet, with this Coldcard's main secret (key A), \
@@ -338,7 +340,7 @@ be ready to show it as a QR, before proceeding.'''
         from multisig import create_ms_step1
 
         # picks addr fmt, QR or not, gets at least one file, then...
-        await create_ms_step1(for_ccc=(CCCFeature.get_encoded_secret(), num))
+        await create_ms_step1(for_ccc=(CCCFeature.get_encoded_secret(), count))
 
         # prompt for file, prompt for our acct number, unless already exported to this card?
 
