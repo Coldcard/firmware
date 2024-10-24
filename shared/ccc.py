@@ -6,7 +6,7 @@ import gc, chains, version, ngu, web2fa, bip39, re
 from chains import NLOCK_IS_TIME
 from utils import swab32, a2b_hex, b2a_hex, xfp2str, truncate_address, pad_raw_secret
 from glob import settings
-from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number
+from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number, ux_aborted
 from menu import MenuSystem, MenuItem, start_chooser
 from seed import seed_words_to_encoded_secret
 from stash import SecretStash
@@ -52,6 +52,11 @@ class CCCFeature:
         # Just the XFP value for our key C
         ccc = settings.get('ccc')
         return ccc['c_xfp'] if ccc else None
+
+    @classmethod
+    def get_master_xpub(cls):
+        ccc = settings.get('ccc')
+        return ccc['c_xpub'] if ccc else None
 
     @classmethod
     def init_setup(cls, words):
@@ -290,13 +295,14 @@ class CCCConfigMenu(MenuSystem):
 
     async def remove_ccc(self, *a):
         # disable and remove feature
-        if not await ux_confirm('''Key C will be lost, and policy settings forgotten. \
-This unit will only be able to partly sign transactions. To completely remove this \
-wallet, proceed to the multisig menu and remove related wallet entry.'''):
+        if not await ux_confirm('Key C will be lost, and policy settings forgotten.'
+                                ' This unit will only be able to partly sign transactions.'
+                                ' To completely remove this wallet, proceed to the multisig'
+                                ' menu and remove related wallet entries.'):
             return
 
-        if not await ux_confirm("Last chance. Funds in this wallet may be impacted."):
-            return
+        if not await ux_confirm("Funds in related wallet/s may be impacted.", confirm_key='4'):
+            return await ux_aborted()
 
         CCCFeature.remove_ccc()
         the_ux.pop()
@@ -347,7 +353,11 @@ be ready to show it as a QR, before proceeding.'''
     async def show_ident(self, *a):
         # give some background? or just KISS for now?
         xfp = xfp2str(CCCFeature.get_xfp())
-        await ux_show_story("XFP (Extended Finger Print) of key C is:\n\n  %s" % xfp)
+        xpub = CCCFeature.get_master_xpub()
+        await ux_show_story(
+            "Key C:\n\n"
+            "XFP (Master Fingerprint):\n\n  %s\n\n"
+            "Master Extended Public Key:\n\n  %s " % (xfp, xpub))
 
     async def enter_temp_mode(self, *a):
         # apply key C as temp seed, so you can do anything with it

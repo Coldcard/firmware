@@ -58,15 +58,7 @@ class PressRelease:
             else:
                 self.last_key = ch
                 return ch
-            
-            
-async def ux_confirm(msg):
-    # confirmation screen, with stock title and Y=of course.
-    from ux import ux_show_story
 
-    resp = await ux_show_story("Are you SURE ?!?\n\n" + msg)
-
-    return resp == 'y'
 
 async def ux_enter_number(prompt, max_value, can_cancel=False, value=''):
     # return the decimal number which the user has entered

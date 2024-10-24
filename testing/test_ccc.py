@@ -5,7 +5,7 @@
 # run simulator without --eff
 #
 #
-import pytest, pdb, requests, re, time, random, json, glob, os, hashlib, base64
+import pytest, pdb, requests, re, time, random, json, glob, os, hashlib, base64, uuid
 from base64 import urlsafe_b64encode
 from onetimepass import get_totp
 from helpers import prandom, slip132undo
@@ -489,7 +489,7 @@ def bitcoind_create_watch_only_wallet(pick_menu_item, need_keypress, microsd_pat
         res = json.loads(res)
 
         bitcoind_wo = bitcoind.create_wallet(
-            wallet_name=f"watch_only_ccc_{ms_menu_item.split()[-1]}", disable_private_keys=True,
+            wallet_name=f"wo_ccc_{str(uuid.uuid4())}", disable_private_keys=True,
             blank=True, passphrase=None, avoid_reuse=False, descriptors=True
         )
         res = bitcoind_wo.importdescriptors(res)
@@ -507,7 +507,7 @@ def bitcoind_create_watch_only_wallet(pick_menu_item, need_keypress, microsd_pat
 
 @pytest.fixture
 def policy_sign(start_sign, end_sign, cap_story, get_last_violation):
-    def doit(wallet, psbt, violation=None, num_warn=1, warn_list=None):
+    def doit(wallet, psbt, violation=None, num_warn=1, warn_list=None, ccc_disabled=False):
         start_sign(base64.b64decode(psbt))
         time.sleep(.1)
         title, story = cap_story()
@@ -525,20 +525,23 @@ def policy_sign(start_sign, end_sign, cap_story, get_last_violation):
         signed = end_sign(accept=True)
         po = BasicPSBT().parse(signed)
 
+        tx_hex = None
         if violation is None:
-            assert not get_last_violation()
+            if ccc_disabled:
+                assert len(po.inputs[0].part_sigs) == 1  # only A signed
+            else:
+                assert not get_last_violation()
 
-            assert len(po.inputs[0].part_sigs) == 2  # CC key signed
-            res = wallet.finalizepsbt(base64.b64encode(signed).decode())
-            assert res["complete"]
-            tx_hex = res["hex"]
-            res = wallet.testmempoolaccept([tx_hex])
-            assert res[0]["allowed"]
-            res = wallet.sendrawtransaction(tx_hex)
-            assert len(res) == 64  # tx id
+                assert len(po.inputs[0].part_sigs) == 2  # CC key signed
+                res = wallet.finalizepsbt(base64.b64encode(signed).decode())
+                assert res["complete"]
+                tx_hex = res["hex"]
+                res = wallet.testmempoolaccept([tx_hex])
+                assert res[0]["allowed"]
+                res = wallet.sendrawtransaction(tx_hex)
+                assert len(res) == 64  # tx id
         else:
             assert len(po.inputs[0].part_sigs) == 1  # CC key did NOT sign
-            tx_hex = None
 
         return signed, tx_hex
 
@@ -1028,7 +1031,7 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
 
     # export one of the wallets
     w_mn, w_name = ami.rsplit(" ", 1)
-    new_name = "new name"
+    new_name = "new"
     pick_menu_item(ami)  # just another ms wallet
     pick_menu_item("Coldcard Export")
     ms_conf = load_export("sd", label="Coldcard multisig setup", is_json=False, sig_check=False)
@@ -1047,6 +1050,48 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
     enter_enabled_ccc(words, first_time=False)
     m = cap_menu()
     assert f"{w_mn} {new_name}" in m
+
+
+def test_remove_ccc(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, settings_get,
+                    pick_menu_item, cap_story, press_select, need_keypress, policy_sign,
+                    bitcoind_create_watch_only_wallet, bitcoind):
+    settings_set("ccc", None)
+    settings_set("multisig", [])
+
+    words = setup_ccc(c_words=None, mag=2, vel='6 blocks (hour)')
+    enter_enabled_ccc(words, first_time=True)
+    _, mi = ccc_ms_setup(N=3)
+
+    w0 = bitcoind_create_watch_only_wallet(mi)
+
+    ccc_ms_setup(N=5)
+
+    assert len(settings_get("multisig")) == 2
+
+    pick_menu_item("Remove CCC")  # start remove
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Key C will be lost, and policy settings forgotten" in story
+    assert "unit will only be able to partly sign transactions" in story
+    assert "proceed to the multisig menu and remove related wallet entries" in story
+    press_select()
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Press (4)" in story
+    assert "accept all consequences" in story
+    assert "Funds in related wallet/s may be impacted" in story
+    need_keypress("4")
+
+    # multisig wallets are not impacted by removal of ccc
+    assert len(settings_get("multisig")) == 2
+
+    bitcoind.supply_wallet.sendtoaddress(address=w0.getnewaddress(), amount=5)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    psbt = w0.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 4}],
+                                     bitcoind.supply_wallet.getblockchaininfo()["blocks"])["psbt"]
+    # below should be magnitude violation, BUT we removed CCC
+    policy_sign(w0, psbt, ccc_disabled=True)
+
 
 
 # TODO

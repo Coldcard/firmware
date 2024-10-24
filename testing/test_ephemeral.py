@@ -98,12 +98,12 @@ def get_seed_value_ux(goto_home, pick_menu_item, need_keypress, cap_story,
         pick_menu_item("Danger Zone")
         pick_menu_item("Seed Functions")
         pick_menu_item('View Seed Words')
-        time.sleep(.01)
+        time.sleep(.1)
         title, body = cap_story()
         assert ('Are you SURE' in body) or ('Are you SURE' in title)
         assert 'can control all funds' in body
         press_select()  # skip warning
-        time.sleep(0.01)
+        time.sleep(0.1)
         title, story = cap_story()
 
         if nfc:
@@ -149,7 +149,7 @@ def get_identity_story(goto_home, pick_menu_item, cap_story):
 
 
 @pytest.fixture
-def goto_eph_seed_menu(goto_home, pick_menu_item, cap_story, need_keypress):
+def goto_eph_seed_menu(goto_home, pick_menu_item, cap_story, need_keypress, is_q1):
     def _doit():
         goto_home()
         pick_menu_item("Advanced/Tools")
@@ -397,6 +397,7 @@ def generate_ephemeral_words(goto_eph_seed_menu, pick_menu_item, press_select,
         assert len(e_seed_words) == num_words
 
         need_keypress("6")  # skip quiz
+        time.sleep(.1)
         press_select()  # yes - I'm sure
         confirm_tmp_seed(seedvault=seed_vault)
 

@@ -77,14 +77,6 @@ class PressRelease:
             else:
                 self.last_key = ch
                 return ch
-            
-async def ux_confirm(msg):
-    # confirmation screen, with stock title and Y=of course.
-    from ux import ux_show_story
-
-    resp = await ux_show_story(msg, title="Are you SURE ?!?")
-
-    return resp == 'y'
 
 async def ux_enter_number(prompt, max_value, can_cancel=False, value=''):
     # return the decimal number which the user has entered
@@ -601,6 +593,7 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
     # - max word length is 8, min is 3
     # - useful: simulator.py --q1 --eff --seq 'aa ee 4i '
     from glob import dis
+    from ux import ux_confirm
 
     assert num_words and prompt and done_cb
 
@@ -692,8 +685,7 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
         elif ch == KEY_CANCEL:
             if word_num >= 2:
                 tmp = dis.save_state()
-                ok = await ux_confirm("Everything you've entered will be lost.")
-                if not ok: 
+                if not await ux_confirm("Everything you've entered will be lost."):
                     dis.restore_state(tmp)
                     continue
             return None

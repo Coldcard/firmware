@@ -584,12 +584,10 @@ async def clear_seed(*a):
                             'Saved temporary seed settings and Seed Vault are lost.'):
         return await ux_aborted()
 
-    ch = await ux_show_story('''Are you REALLY sure though???\n\n\
+    if not await ux_confirm('''Are you REALLY sure though???\n\n\
 This action will certainly cause you to lose all funds associated with this wallet, \
 unless you have a backup of the seed words and know how to import them into a \
-new wallet.\n\nPress (4) to prove you read to the end of this message and accept all \
-consequences.''', escape='4')
-    if ch != '4':
+new wallet.''', confirm_key='4'):
         return await ux_aborted()
 
     # clear settings, address cache, settings from tmp seeds / seedvault seeds

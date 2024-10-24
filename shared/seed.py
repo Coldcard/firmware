@@ -1119,17 +1119,14 @@ class EphemeralSeedMenu(MenuSystem):
 async def make_ephemeral_seed_menu(*a):
     if (not pa.tmp_value) and (not settings.master_get("seedvault", False)):
         # force a warning on them, unless they are already doing it.
-        ch = await ux_show_story(
+        if not await ux_confirm(
             "Temporary seed is a secret completely separate "
             "from the master seed, typically held in device RAM and "
             "not persisted between reboots in the Secure Element. "
-            "Enable the Seed Vault feature to store these secrets longer-term."
-            "\n\nPress (4) to prove you read to the end"
-            " of this message and accept all consequences.",
+            "Enable the Seed Vault feature to store these secrets longer-term.",
             title="WARNING",
-            escape="4"
-        )
-        if ch != "4":
+            confirm_key="4"
+        ):
             return
 
     rv = EphemeralSeedMenu.construct()
