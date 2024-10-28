@@ -473,6 +473,7 @@ class PinAttempt:
     def tmp_secret(self, encoded, chain=None, bip39pw=''):
         # Use indicated secret and stop using the SE; operate like this until reboot
         from glob import settings
+        from utils import xfp2str
         from nvstore import SettingsObject
 
         val = bytes(encoded + bytes(AE_SECRET_LEN - len(encoded)))
@@ -483,7 +484,9 @@ class PinAttempt:
         target_nvram_key = None
         if encoded is not None:
             # disallow using master seed as temporary
-            master_err = "Cannot use master seed as temporary."
+            xfp = xfp2str(settings.master_get("xfp", 0))
+            master_err = ("Cannot use master seed as temporary. BUT you have just successfully "
+                          "tested recovery of your master seed [%s].") % xfp
             target_nvram_key = settings.hash_key(val)
             if SettingsObject.master_nvram_key:
                 assert self.tmp_value
