@@ -663,51 +663,40 @@ class NFCHandler:
         # user is pushing a file downloaded from another CC over NFC
         # - would need an NFC app in between for the sneakernet step
         # get some data
-        data = await self.start_nfc_rx()
-        if not data: return
-
-        winner = None
-        for urn, msg, meta in ndef.record_parser(data):
-            if len(msg) < 70: continue
-            msg = bytes(msg).decode()        # from memory view
+        def f(m):
+            if len(m) < 70:
+                return
+            m = m.decode()
+            
             # multi( catches both multi( and sortedmulti(
-            if 'pub' in msg or "multi(" in msg:
-                winner = msg
-                break
+            if 'pub' in m or "multi(" in m:
+                return m
 
-        if not winner:
-            await ux_show_story('Unable to find multisig descriptor.')
-            return
+        winner = await self._nfc_reader(f, 'Unable to find multisig descriptor.')
 
-        from auth import maybe_enroll_xpub
-        try:
-            maybe_enroll_xpub(config=winner)
-        except Exception as e:
-            #import sys; sys.print_exception(e)
-            await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
+        if winner:
+            from auth import maybe_enroll_xpub
+            try:
+                maybe_enroll_xpub(config=winner)
+            except Exception as e:
+                #import sys; sys.print_exception(e)
+                await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
     async def import_ephemeral_seed_words_nfc(self, *a):
-        data = await self.start_nfc_rx()
-        if not data: return
+        def f(m):
+            sm = m.decode().strip().split(" ")
+            if len(sm) in stash.SEED_LEN_OPTS:
+                return sm
 
-        winner = None
-        for urn, msg, meta in ndef.record_parser(data):
-            msg = bytes(msg).decode().strip()        # from memory view
-            split_msg = msg.split(" ")
-            if len(split_msg) in stash.SEED_LEN_OPTS:
-                winner = split_msg
-                break
+        winner = await self._nfc_reader(f, 'Unable to find seed words')
 
-        if not winner:
-            await ux_show_story('Unable to find seed words')
-            return
-
-        try:
-            from seed import set_ephemeral_seed_words
-            await set_ephemeral_seed_words(winner, meta='NFC Import')
-        except Exception as e:
-            #import sys; sys.print_exception(e)
-            await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
+        if winner:
+            try:
+                from seed import set_ephemeral_seed_words
+                await set_ephemeral_seed_words(winner, meta='NFC Import')
+            except Exception as e:
+                #import sys; sys.print_exception(e)
+                await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
     async def confirm_share_loop(self, string):
         while True:
@@ -720,21 +709,16 @@ class NFCHandler:
                 break
 
     async def address_show_and_share(self):
-        from auth import show_address, ApproveMessageSign
+        from auth import show_address
 
-        data = await self.start_nfc_rx()
-        if not data: return
+        def f(m):
+            sm = m.decode().split("\n")
+            if 1 <= len(sm) <= 2:
+                return sm
 
-        winner = None
-        for urn, msg, meta in ndef.record_parser(data):
-            msg = bytes(msg).decode()  # from memory view
-            split_msg = msg.split("\n")
-            if 1 <= len(split_msg) <= 2:
-                winner = split_msg
-                break
+        winner = await self._nfc_reader(f, 'Expected address and derivation path.')
 
         if not winner:
-            await ux_show_story('Expected address and derivation path.')
             return
 
         if len(winner) == 1:
@@ -758,20 +742,16 @@ class NFCHandler:
         from ux import the_ux
 
         UserAuthorizedAction.cleanup()
-
-        data = await self.start_nfc_rx()
-        if not data: return
-
-        winner = None
-        for urn, msg, meta in ndef.record_parser(data):
-            msg = bytes(msg).decode()  # from memory view
-            split_msg = msg.split("\n")
+        
+        def f(m):
+            m = m.decode()
+            split_msg = m.split("\n")
             if 1 <= len(split_msg) <= 3:
-                winner = split_msg
-                break
+                return split_msg
+
+        winner = await self._nfc_reader(f, 'Unable to find correctly formated message to sign.')
 
         if not winner:
-            await ux_show_story('Unable to find correctly formated message to sign.')
             return
 
         if len(winner) == 1:
@@ -804,81 +784,54 @@ class NFCHandler:
 
     async def verify_sig_nfc(self):
         from auth import verify_armored_signed_msg
+        
+        f = lambda x: x.decode().strip() if b"SIGNED MESSAGE" in x else None
+        winner = await self._nfc_reader(f, 'Unable to find signed message.')
 
-        data = await self.start_nfc_rx()
-        if not data: return
-
-        winner = None
-        for urn, msg, meta in ndef.record_parser(data):
-            msg = bytes(msg).decode()  # from memory view
-            if "SIGNED MESSAGE" in msg:
-                winner = msg.strip()
-                break
-
-        if not winner:
-            await ux_show_story('Unable to find signed message.')
-            return
-
-        await verify_armored_signed_msg(winner, digest_check=False)
+        if winner:
+            await verify_armored_signed_msg(winner, digest_check=False)
 
     async def verify_address_nfc(self):
         # Get an address or complete bip-21 url even and search it... slow.
         from utils import decode_bip21_text
+        
+        def f(m):
+            m = m.decode()
+            what, vals = decode_bip21_text(m)
+            if what == 'addr':
+                return vals[1]
 
-        data = await self.start_nfc_rx()
-        if not data: return
+        winner = await self._nfc_reader(f, 'Unable to find address from NFC data.')
 
-        winner = None
-        for urn, msg, meta in ndef.record_parser(data):
-            msg = bytes(msg).decode()  # from memory view
-            try:
-                what, vals = decode_bip21_text(msg)
-                if what == 'addr':
-                    winner = vals[1]
-                    break
-            except ValueError:
-                pass
-
-        if not winner:
-            await ux_show_story('Unable to find address from NFC data.')
-            return
-
-        from ownership import OWNERSHIP
-        await OWNERSHIP.search_ux(winner)
+        if winner:
+            from ownership import OWNERSHIP
+            await OWNERSHIP.search_ux(winner)
 
     async def read_extended_private_key(self):
-        data = await self.start_nfc_rx()
-        if not data: return
-
-        winner = None
-        for urn, msg, meta in ndef.record_parser(data):
-            msg = bytes(msg).decode()  # from memory view
-            if "prv" in msg:
-                winner = msg.strip()
-                break
-
-        if not winner:
-            await ux_show_story('Unable to find extended private key.')
-            return
-
-        return winner
+        f = lambda x: x.decode().strip() if b"prv" in x else None
+        return await self._nfc_reader(f, 'Unable to find extended private key.')
 
     async def read_tapsigner_b64_backup(self):
+        f = lambda x: a2b_base64(x.decode()) if 150 <= len(x) <= 280 else None
+        return await self._nfc_reader(f, 'Unable to find base64 encoded TAPSIGNER backup.')
+    
+    async def _nfc_reader(self, func, fail_msg):
         data = await self.start_nfc_rx()
         if not data: return
 
         winner = None
         for urn, msg, meta in ndef.record_parser(data):
-            msg = bytes(msg).decode()  # from memory view
+            msg = bytes(msg)
             try:
-                if 150 <= len(msg) <= 280:
-                    winner = a2b_base64(msg)
+                r = func(msg)
+                if r is not None:
+                    winner = r
                     break
             except:
                 pass
 
         if not winner:
-            await ux_show_story('Unable to find base64 encoded TAPSIGNER backup.')
+            await ux_show_story(fail_msg)
             return
 
         return winner
