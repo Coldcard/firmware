@@ -1408,7 +1408,7 @@ async def wipe_filesystem(*A):
     if not await ux_confirm('''\
 Erase internal filesystem and rebuild it. Resets contents of internal flash area \
 used for settings, address search cache, and HSM config file. Does not affect funds, \
-or seed words but will reset settings used with other BIP-39 passphrases. \
+or seed words but will reset settings used with other temporary seeds & BIP-39 passphrases. \
 Does not affect MicroSD card, if any.'''):
         return
 
