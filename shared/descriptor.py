@@ -145,8 +145,8 @@ class Tapscript:
                 orig_keys[k.origin] = []
             orig_keys[k.origin].append(k)
         for i, k_lst in enumerate(orig_keys.values()):
-            subderiv = True if len(k_lst) == 1 else False
-            self.policy = self.policy.replace(k_lst[0].to_string(subderiv=subderiv), chr(64) + str(i))
+            # always keep subderivation in policy string
+            self.policy = self.policy.replace(k_lst[0].to_string(subderiv=False), chr(64) + str(i))
 
     @staticmethod
     def _parse_policy(tree, all_keys):
@@ -256,8 +256,7 @@ class Descriptor:
                 orig_keys[k.origin] = []
             orig_keys[k.origin].append(k)
         for i, k_lst in enumerate(orig_keys.values()):
-            subderiv = True if len(k_lst) == 1 else False
-            s = s.replace(k_lst[0].to_string(subderiv=subderiv), chr(64) + str(i))
+            s = s.replace(k_lst[0].to_string(subderiv=False), chr(64) + str(i))
         return s
 
     def ux_policy(self):

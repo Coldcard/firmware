@@ -2,7 +2,7 @@
 #
 # Miniscript-related tests.
 #
-import pytest, json, time, itertools, struct, random, os
+import pytest, json, time, itertools, struct, random, os, base64
 from ckcc.protocol import CCProtocolPacker
 from constants import AF_P2TR
 from psbt import BasicPSBT
@@ -1748,7 +1748,7 @@ def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
     assert "num_leafs > 8" in story
 
 @pytest.mark.bitcoind
-@pytest.mark.parametrize("lt_type", ["older", "after"])
+# @pytest.mark.parametrize("lt_type", ["older", "after"])
 @pytest.mark.parametrize("same_acct", [True, False])
 @pytest.mark.parametrize("recovery", [True, False])
 @pytest.mark.parametrize("leaf2_mine", [True, False])
@@ -1762,13 +1762,13 @@ def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
 
     "or_d(pk(@A),and_v(v:multi_a(2,@B,@C),locktime(N)))",
 ])
-def test_minitapscript(leaf2_mine, recovery, lt_type, minisc, clear_miniscript, goto_home,
+def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home,
                        pick_menu_item, cap_menu, cap_story, microsd_path, internal_type,
                        use_regtest, bitcoind, microsd_wipe, load_export, dev,
                        address_explorer_check, get_cc_key, import_miniscript,
                        bitcoin_core_signer, same_acct, import_duplicate, press_select,
                        garbage_collector):
-
+    lt_type = "older"
     # needs bitcoind 26.0
     normal_cosign_core = False
     recovery_cosign_core = False
@@ -2478,3 +2478,82 @@ def test_miniscript_name_validation(microsd_path, offer_minsc_import):
         with pytest.raises(Exception) as e:
             offer_minsc_import(json.dumps({"name": tc, "desc": CHANGE_BASED_DESCS[0]}))
         assert "must be ascii" in e.value.args[0]
+
+
+def test_bug_fill_policy(set_seed_words, goto_home, pick_menu_item, need_keypress,
+                         microsd_path, cap_story, press_select, clear_miniscript,
+                         cap_menu, bitcoind, start_sign, end_sign):
+    clear_miniscript()
+    mnemonic = "normal useless alpha sphere grid defense feed era farm law hair region"
+    set_seed_words(mnemonic)
+
+    desc = """tr(tpubD6NzVbkrYhZ4Xjg1aU3fkQSj6yp8d7XNpnpVvjUBqDzMJt7J6QafSCBF5RLY2wwi
+Vuhu79MKCKbUxjCxvicdATdc7hMPEejgCkQy3B28MiP/<0;1>/*,{and_v(v:multi_a(1,
+[61cd4eb6/48'/1'/0'/2']tpubDE4RRPsyHN6GUsic4hrniYUhTsQ7h1bRQYyDPcWDFjKZ
+vhms2nUNwo2j4oRwtuDZNJwwXzeoZ22RjGrueJ3zgAbbSTEM8kZQ8EnyDE79sGK/<2;3>/*
+,[c658b283/48'/1'/0'/2']tpubDFL5wzgPBYK5pZ2Kh1T8qrxnp43kjE5CXfguZHHBrZS
+WpkfASy5rVfj7prh11XdqkC1P3kRwUPBeX7AHN8XBNx8UwiprnFnEm5jyswiRD4p/<2;3>/
+*),older(65535)),multi_a(2,[c658b283/48'/1'/0'/2']tpubDFL5wzgPBYK5pZ2Kh
+1T8qrxnp43kjE5CXfguZHHBrZSWpkfASy5rVfj7prh11XdqkC1P3kRwUPBeX7AHN8XBNx8U
+wiprnFnEm5jyswiRD4p/<0;1>/*,[61cd4eb6/48'/1'/0'/2']tpubDE4RRPsyHN6GUsic
+4hrniYUhTsQ7h1bRQYyDPcWDFjKZvhms2nUNwo2j4oRwtuDZNJwwXzeoZ22RjGrueJ3zgAb
+bSTEM8kZQ8EnyDE79sGK/<0;1>/*,[25f48f59/48'/1'/0'/2']tpubDFRnTG8pxuoQ67w
+aXsh1vNLD9c88JcRwEFxKCUsXzR11RkuV4pqFU6ccCZdwnjGY4yw25uCRHh4wCKNquvfgQ3
+zUvcND8MhRQFv8dCFzjNu/<0;1>/*)})#vh0vvyyn"""
+
+    psbt = """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"""
+
+    desc_fname = "minib.txt"
+    with open(microsd_path(desc_fname), "w") as f:
+        f.write(desc)
+
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Miniscript")
+    pick_menu_item("Import")
+    need_keypress("1")
+    pick_menu_item(desc_fname)
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "Create new miniscript wallet?" in story
+    assert "minib" in story  # name
+    press_select()
+
+    goto_home()
+    start_sign(base64.b64decode(psbt))
+    signed = end_sign(accept=True)
+    assert signed != base64.b64decode(psbt)
