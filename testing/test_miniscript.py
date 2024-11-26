@@ -2749,7 +2749,6 @@ def test_expanding_multisig(tmplt, clear_miniscript, goto_home, pick_menu_item, 
     res = wo.finalizepsbt(final_psbt)
     assert res["complete"]
     tx_hex = res["hex"]
-    # assert tx_hex == final_txn
     res = wo.testmempoolaccept([tx_hex])
     # timelocked
     assert not res[0]["allowed"]
@@ -2768,3 +2767,112 @@ def test_expanding_multisig(tmplt, clear_miniscript, goto_home, pick_menu_item, 
 
     # check addresses
     address_explorer_check("sd", af, wo, wname)
+
+
+def test_big_boy(use_regtest, clear_miniscript, bitcoin_core_signer, get_cc_key, microsd_path,
+                 garbage_collector, pick_menu_item, bitcoind, import_miniscript, press_select,
+                 cap_story, cap_menu, load_export, start_sign, end_sign):
+    # keys (@0,@4,@5) are more important (primary) than keys (@1,@2,@3) (secondary)
+    # currently requires to tweak MAX_TR_SIGNERS = 33
+    tmplt = (
+        "tr("
+        "tpubD6NzVbkrYhZ4XgXS51CV3bhoP5dJeQqPhEyhKPDXBgEs64VdSyAfku99gtDXQzY6HEXY5Dqdw8Qud1fYiyewDmYjKe9gGJeDx7x936ur4Ju/<0;1>/*,"  # unspendable
+        "{{{and_v(v:multi_a(3,@5/<8;9>/*,@1/<8;9>/*,@2/<8;9>/*,@3/<8;9>/*),older(1000)),"  # after 1000 blocks one of primary keys can sign with 2 secondary
+        "and_v(v:multi_a(3,@0/<8;9>/*,@1/<10;11>/*,@2/<10;11>/*,@3/<10;11>/*),older(1000))},"  # after 1000 blocks one of primary keys can sign with 2 secondary
+        "{{and_v(v:multi_a(5,@4/<2;3>/*,@5/<2;3>/*,@0/<2;3>/*,@1/<2;3>/*,@2/<2;3>/*,@3/<2;3>/*),older(20)),"  # 5of6 after 20 blocks
+        "and_v(v:multi_a(4,@4/<4;5>/*,@5/<4;5>/*,@0/<4;5>/*,@1/<4;5>/*,@2/<4;5>/*,@3/<4;5>/*),older(60))},"  # 4of6 after 60 blocks
+        "{and_v(v:multi_a(2,@4/<6;7>/*,@5/<6;7>/*,@0/<6;7>/*),older(120)),"  # after 120 blocks it is enough to have 2 of (@0,@4,@5)
+        "and_v(v:multi_a(3,@4/<8;9>/*,@1/<6;7>/*,@2/<6;7>/*,@3/<6;7>/*),older(1000))}}},"  # after 1000 blocks one of primary keys can sign with 2 secondary
+        "multi_a(6,@1/<0;1>/*,@2/<0;1>/*,@3/<0;1>/*,@4/<0;1>/*,@5/<0;1>/*,@0/<0;1>/*)})"  # 6of6 primary path
+    )
+
+    use_regtest()
+    clear_miniscript()
+    af = "bech32m"
+
+    cc_key = get_cc_key("86h/1h/0h").replace('/<0;1>/*', "")
+    desc = tmplt.replace("@0", cc_key)
+
+    cosigners = []
+    for i in range(1, 6):
+        csigner, ckey = bitcoin_core_signer(f"co-signer-{i}")
+        ckey = ckey.replace("/0/*", "")
+        csigner.keypoolrefill(20)
+        cosigners.append(csigner)
+        desc = desc.replace(f"@{i}", ckey)
+
+    wname = "bigboy"
+    fname = f"{wname}.txt"
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
+        f.write(desc)
+
+    garbage_collector.append(fpath)
+
+    wo = bitcoind.create_wallet(wallet_name=wname, disable_private_keys=True, blank=True,
+                                passphrase=None, avoid_reuse=False, descriptors=True)
+
+    _, story = import_miniscript(fname)
+    assert "Create new miniscript wallet?" in story
+    # do some checks on policy --> helper function to replace keys with letters
+    press_select()
+    menu = cap_menu()
+    assert menu[0] == wname
+    pick_menu_item(menu[0])  # pick imported descriptor multisig wallet
+    pick_menu_item("Descriptors")
+    pick_menu_item("Bitcoin Core")
+    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
+    text = text.replace("importdescriptors ", "").strip()
+    # remove junk
+    r1 = text.find("[")
+    r2 = text.find("]", -1, 0)
+    text = text[r1: r2]
+    core_desc_object = json.loads(text)
+    res = wo.importdescriptors(core_desc_object)
+    for obj in res:
+        assert obj["success"]
+
+    # fund wallet
+    addr = wo.getnewaddress("", af)
+    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    unspent = wo.listunspent()
+    assert len(unspent) == 1
+    inp = {"txid": unspent[0]["txid"], "vout": unspent[0]["vout"]}
+    # split to 10 utxos
+    dest_addrs = [wo.getnewaddress(f"a{i}", af) for i in range(10)]
+    psbt_resp = wo.walletcreatefundedpsbt(
+        [inp],
+        [{a: 4} for a in dest_addrs] + [{bitcoind.supply_wallet.getnewaddress(): 5}],
+        0,
+        {"fee_rate": 3, "change_type": af, "subtractFeeFromOutputs": [0]},
+    )
+    psbt = psbt_resp.get("psbt")
+
+    # sign with all cosigners
+    for s in cosigners:
+        psbt = s.walletprocesspsbt(psbt, True)["psbt"]
+
+    # now CC
+    start_sign(base64.b64decode(psbt))
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "Consolidating" not in story
+    final_psbt = end_sign(True)
+    final_psbt = base64.b64encode(final_psbt).decode()
+
+    res = wo.finalizepsbt(final_psbt)
+    assert res["complete"]
+    tx_hex = res["hex"]
+    res = wo.testmempoolaccept([tx_hex])
+    assert res[0]["allowed"]
+    res = wo.sendrawtransaction(tx_hex)
+    assert len(res) == 64  # tx id
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())  # mine above
+
+    unspent = wo.listunspent()
+    assert len(unspent) == 11
+
+
