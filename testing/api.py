@@ -4,6 +4,8 @@
 
 import os, time, uuid, socket, shutil, pytest, tempfile, subprocess, signal, base64
 from authproxy import AuthServiceProxy, JSONRPCException
+from helpers import xfp2str
+from ckcc.protocol import CCProtocolPacker
 
 
 def find_bitcoind():
@@ -289,6 +291,27 @@ def bitcoind_d_sim_watch(bitcoind):
         },
     ]
     conn.importdescriptors(descriptors)
+    yield conn
+
+
+@pytest.fixture
+def bitcoind_d_dev_watch(request, dev, bitcoind, dev_core_import_object):
+    name = ""
+
+    if dev.is_simulator:
+        settings_set = request.getfixturevalue('settings_set')
+        settings_set("chain", "XRT")
+        name += "sim"
+
+    assert dev.send_recv(CCProtocolPacker.block_chain()) == "XRT", "needs regtest"
+    xfp = xfp2str(dev.master_fingerprint)
+    name += xfp
+    name += "watch-only"
+    w_name = '%s-%s' % (name, uuid.uuid4())
+    conn = bitcoind.create_wallet(wallet_name=w_name, disable_private_keys=True, blank=True,
+                                  passphrase=None, avoid_reuse=False, descriptors=True)
+
+    conn.importdescriptors(dev_core_import_object)
     yield conn
 
 @pytest.fixture

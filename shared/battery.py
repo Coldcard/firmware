@@ -11,7 +11,7 @@ import uctypes
 DEFAULT_BATT_IDLE_TIMEOUT = const(10*60)
 
 # 0..255 brightness value for when on batteries
-DEFAULT_BATT_BRIGHTNESS = const(200)
+DEFAULT_BATT_BRIGHTNESS = const(243)        # 95% PWM
 
 # had to move this pin in RevD
 # - TODO: remove this support once older boards are gone
@@ -86,8 +86,8 @@ def brightness_chooser():
 
     bright = settings.get('bright', DEFAULT_BATT_BRIGHTNESS)
 
-    ch = [ '25%', '50%', '60%', '70%', '80% (default)', '90%','100%']
-    va = [ 64, 128, 153, 180, DEFAULT_BATT_BRIGHTNESS, 230, 255]
+    ch = [ '25%', '50%', '60%', '70%', '80%', '90%', '95% (default)', '100%']
+    va = [ 64, 128, 153, 180, 200, 230, DEFAULT_BATT_BRIGHTNESS, 255]
 
     try:
         which = va.index(bright)

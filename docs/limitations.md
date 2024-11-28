@@ -62,7 +62,7 @@
   that to the user for approval.
 - during USB "show address" for multisig, we limit subkey paths to
   16 levels deep (including master fingerprint)
-- max of 15 co-signers due to 520 byte script limitation in consensus layer with classic P2SH
+- max of 15 co-signers due to 520 byte script limitation in consensus layer with classic P2SH (same limit applies to segwit even though consensus allows up to 20 co-signers)
 - (mk3) we have space for up to 8 M-of-3 wallets, or a single M-of-15 wallet. YMMV
 - only a single multisig wallet can be involved in a PSBT; can't sign inputs from two different
     multisig wallets at the same time.
@@ -72,8 +72,14 @@
 - derivation path for each cosigner must be known and consistent with PSBT
 - XFP values (fingerprints) MUST be unique for each of the co-signers
 - multisig wallet `name` can only contain printable ASCII characters `range(32, 127)`
-- we support only BIP-67 (sorted multisig) wallets.
 
+### BIP-67
+- importing multisig from PSBT can ONLY create `sortedmulti(...)` multisig according to BIP-67, DO NOT use with `multi(...)`
+- creating airgapped multisig using COLDCARD as coordinator always produces `sortedmulti(...)` multisig according to BIP-67
+- COLDCARD import/export [format](https://coldcard.com/docs/multisig/#configuration-text-file-for-multisig) only supports `sortedmulti(...)` multisig according to BIP-67. To import multisig wallet with `multi(...)` use descriptor import [format](https://github.com/bitcoin/bips/blob/master/bip-0383.mediawiki)
+- encrypted COLDCARD backups that contains multisig wallets with `multi(...)` MUST only be restored on firmware versions with `multi(...)` support
+- all imported `multi(...)` must differ in keys (same as `sortedmulti(...)`). If `wsh(multi(2,A,B))` is already registered, `wsh(multi(2,B,A))` will be rejected upon import as duplicate, even thought they are actually different script/wallet.
+- just BIP67 difference is also treated as duplicate. If `wsh(multi(2,A,B)` is registered, `wsh(sortedmulti(2,A,B))` will be rejected as duplicate and vice-versa.
 
 # SIGHASH types
 

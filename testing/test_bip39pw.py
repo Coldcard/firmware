@@ -13,7 +13,6 @@ from mnemonic import Mnemonic
 from constants import simulator_fixed_xfp, simulator_fixed_words, simulator_fixed_tprv
 from helpers import xfp2str
 
-
 # add the BIP39 test vectors
 vectors = json.load(open('bip39-vectors.json'))['english']
 

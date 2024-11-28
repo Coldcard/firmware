@@ -5,13 +5,15 @@
 # - for secret spliting on paper
 # - all combination of partial XOR seed phrases are working wallets
 #
-import stash, ngu, bip39, random
-from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_render_words
+import stash, ngu, bip39, version
+from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause
+from ux import show_qr_code, ux_render_words, OK
 from seed import word_quiz, WordNestMenu, set_seed_value, set_ephemeral_seed
 from glob import settings
+from menu import MenuSystem, MenuItem
 from actions import goto_top_menu
-from version import has_qwerty
-from charcodes import KEY_CANCEL
+from utils import encode_seed_qr, pad_raw_secret
+from charcodes import KEY_QR
 
 
 def xor(*args):
@@ -58,7 +60,7 @@ The new parts are generated deterministically from your seed, so if you \
 repeat this process later, the same words will be shown.
 
 If you would prefer a random split using the TRNG, press (2). \
-Otherwise, press OK to continue.'''.format(n=num_parts), escape='2')
+Otherwise, press {ok} to continue.'''.format(n=num_parts, ok=OK), escape='2')
 
     use_rng = (ch == '2')
     if ch == 'x': return
@@ -105,15 +107,24 @@ Otherwise, press OK to continue.'''.format(n=num_parts), escape='2')
 
     while 1:
         ch = await show_n_parts(word_parts, chk_word)
-        if ch == KEY_CANCEL:
+        if ch == "x":
             if not use_rng: return
             if await ux_confirm("Stop and forget those words?"):
                 return
             continue
+        if ch == KEY_QR:
+            qrs = []
+            for wl in word_parts:
+                qrs.append(encode_seed_qr(wl))
+
+            from qrs import XORQRDisplaySingle
+            o = XORQRDisplaySingle(qrs, True, 0, sidebar=None)
+            await o.interact_bare()
+            continue
 
         for ws, part in enumerate(word_parts):
             ch = await word_quiz(part, title='Word %s%%d is?' % chr(65+ws))
-            if ch == KEY_CANCEL: break
+            if ch == "x": break
         else:
             break
 
@@ -122,23 +133,30 @@ Quiz Passed!\n
 You have confirmed the details of the new split.''')
 
 # list of seed phrases
+# stores encoded secret bytes (not word lists)
 import_xor_parts = []
 
-async def xor_all_done(new_words):
+async def xor_all_done(data):
     # So we have another part, might be done or not.
     global import_xor_parts
-    import_xor_parts.append(new_words)
-    target_words = len(new_words)
+    chk_words = None
+    if data is None:
+        # special case, needs something already in import_xor_parts
+        target_words = stash.len_to_numwords(len(import_xor_parts[0]))
+    else:
+        new_encoded = bip39.a2b_words(data) if isinstance(data, list) else data
+        import_xor_parts.append(new_encoded)
+        target_words = stash.len_to_numwords(len(new_encoded))
 
     XORWordNestMenu.pop_all()
 
     num_parts = len(import_xor_parts)
-    enc_parts = [bip39.a2b_words(w) for w in import_xor_parts]
-    seed = xor(*enc_parts)
+    seed = xor(*import_xor_parts)
 
     msg = "You've entered %d parts so far.\n\n" % num_parts
     if num_parts >= 2:
-        chk_word = bip39.b2a_words(seed).split(' ')[-1]
+        chk_words = bip39.b2a_words(seed).split(' ')
+        chk_word = chk_words[-1]
         msg += "If you stop now, the %dth word of the XOR-combined seed phrase\nwill be:\n\n" % target_words
         msg += "%d: %s\n\n" % (target_words, chk_word)
 
@@ -147,71 +165,82 @@ async def xor_all_done(new_words):
         msg += "ZERO WARNING\nProvided seed works out to all zeros "\
                 "right now. You may have doubled a part or made some other mistake.\n\n"
 
-    msg += "Press (1) to enter next list of words, or (2) if done with all words."
+    msg += "Press (1) to enter next list of words."
+    escape = "1"+KEY_QR
+    if num_parts >= 2:
+        msg += " Or (2) if done with all words."
+        escape += "2"
 
-    ch = await ux_show_story(msg, strict_escape=True, escape='12x'+KEY_CANCEL, sensitive=True)
-    if ch == 'x':
-        # give up
-        import_xor_parts.clear()          # concern: we are contaminated w/ secrets
-        return None
+    while True:
+        ch = await ux_show_story(msg, escape=escape, sensitive=True)
+        if ch in 'x':
+            # give up - needs confirmation
+            if import_xor_parts:
+                if not await ux_confirm("Throw away those words and stop this process?"):
+                    continue
+            import_xor_parts.clear()          # concern: we are contaminated w/ secrets
+        elif chk_words and ch == KEY_QR:
+            rv = encode_seed_qr(chk_words)
+            await show_qr_code(rv, True, msg="SeedQR")
+            continue
+        elif ch == '1':
+            # do another list of words
+            if version.has_qwerty:
+                from ux_q1 import seed_word_entry
+                await seed_word_entry("Part %s Words" % chr(65+len(import_xor_parts)),
+                                      target_words, done_cb=xor_all_done)
+            else:
+                nxt = XORWordNestMenu(num_words=target_words, done_cb=xor_all_done)
+                the_ux.push(nxt)
 
-    elif ch == '1':
-        # do another list of words
-        if has_qwerty:
-            from ux_q1 import seed_word_entry
-            await seed_word_entry("Part %s Words" % chr(65+len(import_xor_parts)),
-                                                target_words, done_cb=xor_all_done)
-        else:
-            nxt = XORWordNestMenu(num_words=target_words, done_cb=xor_all_done)
-            the_ux.push(nxt)
+        elif ch == '2':
+            # done; import on temp basis, or be the main secret
+            from pincodes import pa
+            from glob import dis
 
-    elif ch == '2':
-        # done; import on temp basis, or be the main secret
-        from pincodes import pa
-        enc = stash.SecretStash.encode(seed_phrase=seed)
+            enc = stash.SecretStash.encode(seed_phrase=seed)
 
-        if pa.is_secret_blank():
-            # save it since they have no other secret
-            set_seed_value(encoded=enc)
-            # update menu contents now that wallet defined
-            goto_top_menu(first_time=True)
-        else:
-            # set as ephemeral seed, maybe save it too
-            # below is super costly as we need to bip32 generate master secret from entropy bytes
-            # only need XFPs for UI
-            # xfps = [
-            #     xfp2str(swab32(
-            #         stash.SecretStash.decode(stash.SecretStash.encode(seed_phrase=i))[2].my_fp()
-            #     ))
-            #     for i in enc_parts
-            # ]
-            await set_ephemeral_seed(
-                enc,
-                meta='SeedXOR(%d parts, check: "%s")' % (
-                    num_parts, chk_word
+            if pa.is_secret_blank():
+                # save it since they have no other secret
+                set_seed_value(encoded=enc)
+                # update menu contents now that wallet defined
+                goto_top_menu(first_time=True)
+            else:
+                dis.fullscreen("Applying...")
+                # set as ephemeral seed, maybe save it too
+                # below is super costly as we need to bip32 generate master secret from entropy bytes
+                # only need XFPs for UI
+                # xfps = [
+                #     xfp2str(swab32(
+                #         stash.SecretStash.decode(stash.SecretStash.encode(seed_phrase=i))[2].my_fp()
+                #     ))
+                #     for i in enc_parts
+                # ]
+                await set_ephemeral_seed(
+                    enc,
+                    meta='SeedXOR(%d parts, check: "%s")' % (
+                        num_parts, chk_word
+                    )
                 )
-            )
-            goto_top_menu()
-
-    return None
+                goto_top_menu()
+        break
 
 class XORWordNestMenu(WordNestMenu):
     def tr_label(self):
         global import_xor_parts
         pn = len(import_xor_parts)
-        return chr(65+pn) + ' Word' 
+        return chr(65+pn) + ' Word'
 
 async def show_n_parts(parts, chk_word):
     num_parts = len(parts)
     seed_len = len(parts[0])
-    msg = 'Record these %d lists of %d-words each: ' % (num_parts, seed_len)
+    msg = 'Record these %d lists of %d-words each:' % (num_parts, seed_len)
 
     for n,words in enumerate(parts):
-        msg += 'Part %s:\n' % chr(65+n)
+        msg += '\n\nPart %s:\n' % chr(65+n)
         msg += ux_render_words(words, leading_blanks=0)
-        msg += '\n\n'
 
-    msg += ('The correctly reconstructed seed phrase will have this final word,'
+    msg += ('\n\nThe correctly reconstructed seed phrase will have this final word,'
             ' which we recommend recording:\n\n%d: %s\n\n' % (seed_len, chk_word))
 
     msg += 'Please check and double check your notes. There will be a test! '
@@ -227,8 +256,8 @@ It does not matter the order (A/B/C or C/A/B) and the Coldcard
 cannot determine when you have all the parts. You may stop at
 any time and you will have a valid wallet. Combined seed parts
 have to be equal length. No way to combine seed parts of different 
-length. Press OK for 24 words XOR, press (1) for 12 words XOR, 
-or press (2) for 18 words XOR.''', escape="12")
+length. Press %s for 24 words XOR, press (1) for 12 words XOR, 
+or press (2) for 18 words XOR.''' % OK, escape="12")
     if ch == 'x': return
 
     desired_num_words = 24
@@ -243,6 +272,7 @@ or press (2) for 18 words XOR.''', escape="12")
     import_xor_parts.clear()
 
     from pincodes import pa
+    from glob import dis
 
     escape = ""
     if not pa.is_secret_blank():
@@ -252,21 +282,48 @@ or press (2) for 18 words XOR.''', escape="12")
         if curr_num_words == desired_num_words:
             escape += "1"
             msg += ("\nPress (1) to include this Coldcard's seed words into the XOR seed set, "
-                    "or OK to continue without.")
+                    "or %s to continue without." % OK)
 
         ch = await ux_show_story(msg, escape=escape)
 
-        if ch == 'x':
-            return
-        elif ch == '1':
+        if ch == 'x': return
+        if ch == '1':
+            dis.fullscreen("Wait...")
             with stash.SensitiveValues() as sv:
                 if sv.mode == 'words':
-                    words = bip39.b2a_words(sv.raw).split(' ')
-                    import_xor_parts.append(words)
+                    # needs copy here [:] otherwise rewritten with zeros in __exit__
+                    import_xor_parts.append(sv.raw[:])
 
-    if has_qwerty:
+        # Add from Seed Vault?
+        # filter only those that are correct length and type from seed vault
+        opt = []
+        for i, (xfp_str, hex_str, _, _) in enumerate(settings.master_get("seeds", [])):
+            raw = pad_raw_secret(hex_str)
+            if raw[0] & 0x80:
+                # seed phrase
+                sk = raw[1:1 + stash.len_from_marker(raw[0])]
+                if stash.len_to_numwords(len(sk)) == desired_num_words:
+                    opt.append((i, xfp_str, sk))
+        if opt:
+            escape = "2"
+            msg = ("Seed Vault is enabled. %d stored seeds have suitable type and length."
+                   "\n\nPress (2) to add from Seed Vault, press %s to continue normally.") % (len(opt), OK)
+            ch = await ux_show_story(msg, escape=escape)
+            if ch == 'x': return
+            if ch == "2":
+                rv = [MenuItem("%2d: [%s]" % (i, xfp_str)) for i, xfp_str, _ in opt]
+                the_ux.push(MenuSystem(rv, multichoice=True))
+                selected = await the_ux.top_of_stack().interact()
+                if selected:
+                    import_xor_parts += [opt[i][-1] for i in range(len(opt)) if i in selected]
+
+                    return await xor_all_done(None)
+
+    if version.has_qwerty:
         from ux_q1 import seed_word_entry
-        await seed_word_entry("Part A Words", desired_num_words, done_cb=xor_all_done)
+        # if current loaded seed is added to xor - it is always A
+        await seed_word_entry("Part %s Words" % (chr(65+len(import_xor_parts))),
+                              desired_num_words, done_cb=xor_all_done)
     else:
         return XORWordNestMenu(num_words=desired_num_words, done_cb=xor_all_done)
 

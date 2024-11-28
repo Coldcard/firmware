@@ -329,7 +329,7 @@ def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr, seed_sto
     settings_set("b85max", 0)
 
 
-def test_type_passwords(dev, cap_menu, pick_menu_item, goto_home,
+def test_type_passwords(dev, cap_menu, pick_menu_item, goto_home, OK,
                         cap_story, press_select, cap_screen, enter_text):
     goto_home()
     pick_menu_item('Settings')
@@ -351,7 +351,7 @@ def test_type_passwords(dev, cap_menu, pick_menu_item, goto_home,
         enter_text(str(index))
         time.sleep(1)
         _, story = cap_story()
-        assert "Place mouse at required password prompt, then press OK to send keystrokes." in story
+        assert f"Place mouse at required password prompt, then press {OK} to send keystrokes." in story
         split_story = story.split("\n\n")
         _, pwd = split_story[1].split("\n")
         _, path = split_story[2].split("\n")

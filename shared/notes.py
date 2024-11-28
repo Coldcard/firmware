@@ -347,7 +347,8 @@ class PasswordContent(NoteContentBase):
 
     async def view_pw(self, *a):
         msg = self.password or '<EMPTY>'
-        ch = await ux_show_story(msg, title=self.title, escape=KEY_QR, hint_icons=KEY_QR)
+        ch = await ux_show_story(msg, title=self.title, escape=KEY_QR,
+                                 hint_icons=KEY_QR)
         if ch == KEY_QR:
             await self.view_qr()
             
@@ -441,7 +442,8 @@ class NoteContent(NoteContentBase):
         ]
 
     async def view(self, *a):
-        ch = await ux_show_story(self.misc, title=self.title, escape=KEY_QR, hint_icons=KEY_QR)
+        ch = await ux_show_story(self.misc, title=self.title, escape=KEY_QR,
+                                 hint_icons=KEY_QR)
         if ch == KEY_QR:
             await self.view_qr()
 

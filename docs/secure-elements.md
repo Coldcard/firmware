@@ -4,7 +4,7 @@
 
 The **COLDCARD<sup>&reg;</sup>** Mk4 and Q have two secure elements:  
 
-- SE1 (Secure Element 1): Microchip ATECC608B
+- SE1 (Secure Element 1): Microchip ATECC608
 - SE2 (Secure Element 2): Maxim DS28C36B
 
 Because different vendors make them, they do not share bugs and weaknesses.
@@ -20,7 +20,7 @@ HMAC-SHA256.
 
 Assume attackers have physical access to a COLDCARD, have opened
 the case, and can probe the bus connections between the MCU and SE1
-or SE2. They may even desolder SE1 and SE2 from the board, and put
+or SE2. They may even de-solder SE1 and SE2 from the board, and put
 active circuits between them and the MCU &mdash; an active MiTM attack.
 
 

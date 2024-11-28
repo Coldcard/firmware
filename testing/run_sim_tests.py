@@ -225,6 +225,8 @@ def main():
                         help="run 'login_settings_tests'")
     parser.add_argument("--clone", action="store_true", default=False,
                         help="run 'clone_tests'")
+    parser.add_argument("--seedless", action="store_true", default=False,
+                        help="run 'seedless_tests'")
     parser.add_argument("--collect", type=str, metavar="MARK",
                         help="Collect marked test and print them to stdout")
     parser.add_argument("-k", "--pytest-k", type=str, metavar="EXPRESSION", default=None,
@@ -245,7 +247,8 @@ def main():
     if args.module is None and (args.onetime is False
                                 and args.veryslow is False
                                 and args.login is False
-                                and args.clone is False):
+                                and args.clone is False
+                                and args.seedless is False):
         args.module = ["all"]
 
     DEFAULT_SIMULATOR_ARGS = ["--eff", "--set", "nfc=1"]
@@ -334,6 +337,13 @@ def main():
                                               failed_first=args.ff, pytest_k=args.pytest_k,
                                               headless=args.headless)
         result.append((f"clone_tests", ec, failed_tests))
+
+    if args.seedless:
+        print("start seedless tests")
+        ec, failed_tests = run_coldcard_tests(test_module="seedless_tests.py", pdb=args.pdb,
+                                              failed_first=args.ff, pytest_k=args.pytest_k,
+                                              headless=args.headless)
+        result.append((f"seedless_tests", ec, failed_tests))
 
     print("All done")
 

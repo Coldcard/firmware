@@ -206,7 +206,7 @@ class QRScanner:
 
                     break 
             except asyncio.CancelledError:
-                print('scan cancel')
+                #print('scan cancel')
                 return None
             finally:
                 # Problem: another valid scan can come in just as we are trying

@@ -13,7 +13,7 @@ from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH, AF_P
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
-from ux import show_qr_code
+from ux import show_qr_code, OK, X
 from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
 from utils import B2A, parse_addr_fmt_str, to_ascii_printable
@@ -126,7 +126,7 @@ Using the key associated with address:
 {subpath} =>
 {addr}
 
-Press OK to continue, otherwise X to cancel.'''
+Press %s to continue, otherwise %s to cancel.''' % (OK, X)
 
 # RFC2440 <https://www.ietf.org/rfc/rfc2440.txt> style signatures, popular
 # since the genesis block, but not really part of any BIP as far as I know.
@@ -437,7 +437,7 @@ async def sign_txt_file(filename):
 
             # prompt them to input another card?
             ch = await ux_show_story(prob+"Please insert an SDCard to receive signed message, "
-                                        "and press OK.", title="Need Card")
+                                        "and press %s." % OK, title="Need Card")
             if ch == 'x':
                 await ux_aborted()
                 return
@@ -766,7 +766,7 @@ class ApproveTransaction(UserAuthorizedAction):
             ux_clear_keys(True)
             dis.progress_bar_show(1)  # finish the Validating...
             if not hsm_active:
-                msg.write("\nPress OK to approve and sign transaction.")
+                msg.write("\nPress %s to approve and sign transaction." % OK)
                 if needs_txn_explorer:
                     msg.write(" Press (2) to explore txn.")
                 if self.is_sd and CardSlot.both_inserted():
@@ -1190,9 +1190,14 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
 
                                 if out2_full:
                                     fd0.seek(0)
+
                                     with HexWriter(card.open(out2_full, 'w+t')) as fd:
                                         # save transaction, in hex
-                                        fd.write(fd0.read())
+                                        tmp_buf = bytearray(4096)
+                                        while True:
+                                            rv = fd0.readinto(tmp_buf)
+                                            if not rv: break
+                                            fd.write(memoryview(tmp_buf)[:rv])
 
                                     if del_after:
                                         # rename it now that we know the txid
@@ -1222,7 +1227,7 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
 
             # prompt them to input another card?
             ch = await ux_show_story(prob+"Please insert an SDCard to receive signed transaction, "
-                                        "and press OK.", title="Need Card")
+                                        "and press %s." % OK, title="Need Card")
             if ch == 'x':
                 await ux_aborted()
                 return
@@ -1303,13 +1308,13 @@ class NewPassphrase(UserAuthorizedAction):
         while 1:
             msg = ('BIP-39 passphrase (%d chars long) has been provided over '
                    'USB connection. Should we switch to that wallet now?\n\n'
-                   'Press OK to add passphrase ' % len(self._pw))
+                   'Press %s to add passphrase ' % (len(self._pw), OK))
             if pa.tmp_value:
                 msg += "to current active temporary seed. "
             else:
                 msg += "to master seed. "
 
-            msg += 'Press (2) to view the provided passphrase. X to cancel.'
+            msg += ('Press (2) to view the provided passphrase. %s to cancel.' % X)
 
             ch = await ux_show_story(msg=msg, title=title, escape=escape,
                                      strict_escape=True)
@@ -1558,10 +1563,9 @@ def maybe_delete_miniscript(msc):
     abort_and_goto(UserAuthorizedAction.active_request)
 
 class NewMiniscriptEnrollRequest(UserAuthorizedAction):
-    def __init__(self, msc, auto_export=False, bsms_index=None):
+    def __init__(self, msc, bsms_index=None):
         super().__init__()
         self.wallet = msc
-        self.auto_export = auto_export
         self.bsms_index = bsms_index
 
     async def interact(self):
@@ -1570,22 +1574,15 @@ class NewMiniscriptEnrollRequest(UserAuthorizedAction):
         ms = self.wallet
         try:
             ch = await ms.confirm_import()
-
-            if ch in 'y' + KEY_ENTER:
-                if self.bsms_index is not None:
-                    # remove signer round 2 from settings after multisig import is approved by user
-                    from bsms import BSMSSettings
-                    BSMSSettings.signer_delete(self.bsms_index)
-                if self.auto_export:
-                    # save cosigner details now too
-                    await ms.export_wallet_file('created on',
-                                                "\n\nImport that file onto the other Coldcards involved with this multisig wallet.")
-                    await ms.export_electrum()
-
-            else:
+            if ch != 'y':
                 # they don't want to!
                 self.refused = True
                 await ux_dramatic_pause("Refused.", 2)
+
+            elif self.bsms_index is not None:
+                    # remove signer round 2 from settings after multisig import is approved by user
+                    from bsms import BSMSSettings
+                    BSMSSettings.signer_delete(self.bsms_index)
 
         except WalletOutOfSpace:
             return await self.failure('No space left')
@@ -1629,15 +1626,12 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_
             j_conf = ujson.loads(config)
             assert "desc" in j_conf, "'desc' key required"
             config = j_conf["desc"]
-            assert isinstance(config, str), "'desc' value not a str"
             assert config, "'desc' empty"
 
             if "name" in j_conf:
                 # name from json has preference over filenames and desc checksum
                 name = j_conf["name"]
-                assert isinstance(name, str), "'name' value not a str"
-                assert len(name) >= 2, "'name' too short"
-                assert len(name) <= 40, "'name' too long (max 40)"
+                assert 2 <= len(name) <= 40, "'name' length"
         except ValueError: pass
 
         # this call will raise on parsing errors, so let them rise up
@@ -1664,9 +1658,6 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_
             # menu item case: add to stack
             from ux import the_ux
             the_ux.push(UserAuthorizedAction.active_request)
-
-    except Exception as e:
-        raise
     finally:
         dis.busy_bar(False)
 

@@ -5,7 +5,7 @@
 import ngu
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import a2b_base64
-from ux import ux_show_story
+from ux import ux_show_story, OK, X
 from ux import ux_input_text, import_export_prompt
 from files import CardSlot, CardMissingError, needs_microsd
 from charcodes import KEY_NFC, KEY_QR, KEY_CANCEL
@@ -84,7 +84,7 @@ async def import_tapsigner_backup_file(_1, _2, item):
 
     if await ux_show_story("Make sure to have your TAPSIGNER handy as you will need to provide "
                            "'Backup Password' from the back of the card in the next step.\n\n"
-                           "Press OK to continue X to cancel.") != "y":
+                           "Press %s to continue %s to cancel." % (OK, X)) != "y":
         return
 
     while True:

@@ -9,6 +9,7 @@ from charcodes import *
 from test_bbqr import readback_bbqr
 from bbqr import split_qrs
 
+
 # All tests in this file are exclusively meant for Q
 #
 @pytest.fixture(autouse=True)
@@ -93,6 +94,7 @@ def delete_note(press_select, goto_notes, cap_menu, pick_menu_item,
 def build_note(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
                need_keypress, cap_screen_qr, readback_bbqr, nfc_read_text,
                press_select, press_cancel, is_headless):
+
     def doit(n_title, n_body):
         # we don't try to preserve leading/trailing spaces on note bodies
         n_body= n_body.strip()
@@ -120,6 +122,7 @@ def build_note(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
             title, story = cap_story()
             assert title == n_title
             assert story == n_body
+
             if not is_headless:
                 need_keypress(KEY_QR)
                 qr_rb = cap_screen_qr().decode('utf-8')
@@ -270,10 +273,12 @@ def build_password(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
 
 
 @pytest.fixture
-def change_password(goto_notes, pick_menu_item, enter_text, cap_story, need_keypress,
-                    settings_get, press_select, press_cancel, cap_menu):
+def change_password(goto_notes, pick_menu_item, enter_text, cap_story,
+                    need_keypress, settings_get, press_select, press_cancel,
+                    cap_menu):
+
     def doit(id_title, new_title=None, new_username=None, new_site=None,
-             new_misc=None, new_password=None):
+             new_misc=None, new_password=None, old_password=None):
         goto_notes()
         m = cap_menu()
         found = [i for i in m if f': {id_title}' in i]
@@ -324,6 +329,7 @@ def change_password(goto_notes, pick_menu_item, enter_text, cap_story, need_keyp
             assert 'New Password' in story
             assert 'Old Password' in story
             assert new_password in story
+
             need_keypress(KEY_ENTER)
 
         # test changes at low-level
@@ -344,7 +350,7 @@ def change_password(goto_notes, pick_menu_item, enter_text, cap_story, need_keyp
 
 
 @pytest.mark.parametrize('n_title', [ 'a', 'aaa', 'b'*32])
-@pytest.mark.parametrize('n_body', [ 'short', 'very long '*30])
+@pytest.mark.parametrize('n_body', [ 'short', 'very long '*30, 'mOKa', 'x X x'])
 def test_build_note(n_title, n_body, build_note, delete_note):
     build_note(n_title, n_body)
     delete_note(n_title)
@@ -413,7 +419,7 @@ def test_password_flow_gen(key, build_password, change_password):
 
 
 def test_password_change_title(build_password, change_password):
-    build_password(n_title="old_title", n_pw="default", key_pw=None)
+    build_password(n_title="old_title", n_pw="default")
     change_password(id_title="old_title", new_title="new_title")
 
 

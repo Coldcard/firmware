@@ -20,9 +20,9 @@ if version.has_qwerty:
     from ux_q1 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
     from ux_q1 import ux_login_countdown, ux_confirm, ux_dice_rolling, ux_render_words
     from ux_q1 import ux_show_phish_words
+    OK = "ENTER"
+    X = "CANCEL"
 
-    def q1_reword(msg):
-        return msg.replace('\nX ', 'CANCEL ').replace(' X ', ' CANCEL ').replace('OK', 'ENTER')
 else:
     # How many characters can we fit on each line? How many lines?
     # (using FontSmall)
@@ -31,7 +31,9 @@ else:
     from ux_mk4 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
     from ux_mk4 import ux_login_countdown, ux_confirm, ux_dice_rolling, ux_render_words
     from ux_mk4 import ux_show_phish_words
-    q1_reword = lambda m: m
+    OK = "OK"
+    X = "X"
+
 
 class UserInteraction:
     def __init__(self):
@@ -169,7 +171,7 @@ def ux_poll_key():
 
 
 async def ux_show_story(msg, title=None, escape=None, sensitive=False,
-                        strict_escape=False, scrollbar=True, hint_icons=None):
+                        strict_escape=False, hint_icons=None):
     # show a big long string, and wait for XY to continue
     # - returns character used to get out (X or Y)
     # - can accept other chars to 'escape' as well.
@@ -193,13 +195,9 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False,
             if ln[-1] == '\n': 
                 ln = ln[:-1]
 
-            ln = q1_reword(ln)
-
             lines.extend(word_wrap(ln, CH_PER_W))
     else:
         # simple string being shown
-        msg = q1_reword(msg)
-
         for ln in msg.split('\n'):
             lines.extend(word_wrap(ln, CH_PER_W))
 

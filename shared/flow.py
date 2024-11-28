@@ -188,6 +188,7 @@ XpubExportMenu = [
 WalletExportMenu = [  
     #         xxxxxxxxxxxxxxxx
     MenuItem("Bitcoin Core", f=bitcoin_core_skeleton),
+    MenuItem("Fully Noded", f=named_generic_skeleton, arg="Fully Noded"),
     MenuItem("Sparrow Wallet", f=named_generic_skeleton, arg="Sparrow"),
     MenuItem("Nunchuk", f=named_generic_skeleton, arg="Nunchuk"),
     MenuItem("Zeus", f=ss_descriptor_skeleton,
@@ -217,6 +218,7 @@ FileMgmtMenu = [
     MenuItem('List Files', f=list_files),
     MenuItem('Verify Sig File', f=verify_sig_file),
     MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file, shortcut=KEY_NFC),
+    MenuItem('QR File Share', predicate=version.has_qr, f=qr_share_file, shortcut=KEY_QR),
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
     MenuItem('Format SD Card', f=wipe_sd_card),
     MenuItem('Format RAM Disk', predicate=vdisk_enabled, f=wipe_vdisk),
@@ -258,7 +260,6 @@ AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
 
 DebugFunctionsMenu = [
     #         xxxxxxxxxxxxxxxx
-    MenuItem("Lamp Test", f=lamp_test),
     MenuItem("Keyboard Test", f=keyboard_test),
     MenuItem('BBQr Demo', f=debug_bbqr_test, predicate=version.has_qwerty),
     MenuItem('Debug: assert', f=debug_assert),

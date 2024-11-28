@@ -7,7 +7,7 @@
 # wallet systems, which may expect seed phrases, XPRV, or other entropy.
 #
 import stash, seed, ngu, chains, bip39
-from ux import ux_show_story, ux_enter_bip32_index, the_ux, ux_confirm, ux_dramatic_pause
+from ux import ux_show_story, ux_enter_bip32_index, the_ux, ux_confirm, ux_dramatic_pause, OK
 from menu import MenuItem, MenuSystem
 from ubinascii import hexlify as b2a_hex
 from ubinascii import b2a_base64
@@ -59,7 +59,7 @@ def bip85_derive(picked, index):
 
     if picked in (0,1,2):
         # BIP-39 seed phrases (we only support English)
-        num_words = (12, 18, 24)[picked]
+        num_words = stash.SEED_LEN_OPTS[picked]
         width = (16, 24, 32)[picked]        # of bytes
         path = "m/83696968h/39h/0h/{num_words}h/{index}h".format(num_words=num_words, index=index)
         s_mode = 'words'
@@ -309,7 +309,7 @@ async def password_entry(*args, **kwargs):
 
 async def send_keystrokes(kbd, password, path):
     # Prompt them for timing reasons, then send.
-    msg = "Place mouse at required password prompt, then press OK to send keystrokes."
+    msg = "Place mouse at required password prompt, then press %s to send keystrokes." % OK
 
     if path:
         # for BIP-85 usage, be chatty and confirm p/w value on screen (debatable)
