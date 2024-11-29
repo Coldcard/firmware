@@ -2876,3 +2876,136 @@ def test_big_boy(use_regtest, clear_miniscript, bitcoin_core_signer, get_cc_key,
     assert len(unspent) == 11
 
 
+@pytest.mark.parametrize("af", ["bech32", "bech32m"])
+def test_single_key_miniscript(af, settings_set, clear_miniscript, goto_home, get_cc_key,
+                               garbage_collector, microsd_path, bitcoind, import_miniscript,
+                               press_select, cap_menu, pick_menu_item, load_export, cap_story,
+                               start_sign, end_sign):
+    sequence = 10
+    goto_home()
+    clear_miniscript()
+    settings_set("chain", "XRT")
+    policy = "and_v(v:pk(@0/<0;1>/*),older(10))"
+
+    if af == "bech32m":
+        tmplt = f"tr(tpubD6NzVbkrYhZ4XgXS51CV3bhoP5dJeQqPhEyhKPDXBgEs64VdSyAfku99gtDXQzY6HEXY5Dqdw8Qud1fYiyewDmYjKe9gGJeDx7x936ur4Ju/<0;1>/*,{policy})"
+    else:
+        tmplt = f"wsh({policy})"
+
+    cc_key = get_cc_key("m/99h/0h/0h").replace('/<0;1>/*', '')
+    tmplt = tmplt.replace("@0", cc_key)
+
+    wname = "single_key_mini"
+    fname = f"{wname}.txt"
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
+        f.write(tmplt)
+
+    garbage_collector.append(fpath)
+
+    wo = bitcoind.create_wallet(wallet_name=wname, disable_private_keys=True, blank=True,
+                                passphrase=None, avoid_reuse=False, descriptors=True)
+
+    _, story = import_miniscript(fname)
+    assert "Create new miniscript wallet?" in story
+    # do some checks on policy --> helper function to replace keys with letters
+    press_select()
+    menu = cap_menu()
+    assert menu[0] == wname
+    pick_menu_item(menu[0])  # pick imported descriptor multisig wallet
+    pick_menu_item("Descriptors")
+    pick_menu_item("Bitcoin Core")
+    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
+    text = text.replace("importdescriptors ", "").strip()
+    # remove junk
+    r1 = text.find("[")
+    r2 = text.find("]", -1, 0)
+    text = text[r1: r2]
+    core_desc_object = json.loads(text)
+    res = wo.importdescriptors(core_desc_object)
+    for obj in res:
+        assert obj["success"]
+
+    # fund wallet
+    addr = wo.getnewaddress("", af)
+    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    unspent = wo.listunspent()
+    assert len(unspent) == 1
+
+    inp = {"txid": unspent[0]["txid"], "vout": unspent[0]["vout"], "sequence": sequence}
+    # split to 10 utxos
+    dest_addrs = [wo.getnewaddress(f"a{i}", af) for i in range(10)]
+    psbt_resp = wo.walletcreatefundedpsbt(
+        [inp],
+        [{a: 4} for a in dest_addrs] + [{bitcoind.supply_wallet.getnewaddress(): 5}],
+        0,
+        {"fee_rate": 3, "change_type": af, "subtractFeeFromOutputs": [0]},
+    )
+    psbt = psbt_resp.get("psbt")
+
+    start_sign(base64.b64decode(psbt))
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "Consolidating" not in story
+    final_psbt = end_sign(True)
+    final_psbt = base64.b64encode(final_psbt).decode()
+
+    res = wo.finalizepsbt(final_psbt)
+    assert res["complete"]
+    tx_hex = res["hex"]
+    res = wo.testmempoolaccept([tx_hex])
+    # timelocked
+    assert not res[0]["allowed"]
+    assert res[0]["reject-reason"] == 'non-BIP68-final'
+
+    # mines some blocks to release the lock
+    bitcoind.supply_wallet.generatetoaddress(sequence, bitcoind.supply_wallet.getnewaddress())
+
+    res = wo.testmempoolaccept([tx_hex])
+    assert res[0]["allowed"]
+    res = wo.sendrawtransaction(tx_hex)
+    assert len(res) == 64  # tx id
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())  # mine above
+
+    unspent = wo.listunspent()
+    assert len(unspent) == 11
+
+    # now consolidate to one output
+    psbt_resp = wo.walletcreatefundedpsbt(
+        [{"txid": o["txid"], "vout": o["vout"], "sequence": sequence} for o in unspent],
+        [{wo.getnewaddress("", af): wo.getbalance()}],
+        0,
+        {"fee_rate": 3, "change_type": af, "subtractFeeFromOutputs": [0]},
+    )
+    psbt = psbt_resp.get("psbt")
+
+    start_sign(base64.b64decode(psbt))
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "Consolidating" in story
+    final_psbt = end_sign(True)
+    final_psbt = base64.b64encode(final_psbt).decode()
+
+    res = wo.finalizepsbt(final_psbt)
+    assert res["complete"]
+    tx_hex = res["hex"]
+    res = wo.testmempoolaccept([tx_hex])
+    # timelocked
+    assert not res[0]["allowed"]
+    assert res[0]["reject-reason"] == 'non-BIP68-final'
+
+    # mines some blocks to release the lock
+    bitcoind.supply_wallet.generatetoaddress(sequence, bitcoind.supply_wallet.getnewaddress())
+
+    res = wo.testmempoolaccept([tx_hex])
+    assert res[0]["allowed"]
+    res = wo.sendrawtransaction(tx_hex)
+    assert len(res) == 64  # tx id
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())  # mine above
+
+    unspent = wo.listunspent()
+    assert len(unspent) == 1
