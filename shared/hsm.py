@@ -826,7 +826,6 @@ class HSMPolicy:
             return False
 
         if miniscript:
-            print("self.share_addrs", self.share_addrs)
             return ('msas' in self.share_addrs)
 
         if is_p2sh:

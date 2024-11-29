@@ -504,7 +504,7 @@ class psbtOutputProxy(psbtProxy):
         # - must match expected address for this output, coming from unsigned txn
         addr_type, addr_or_pubkey, is_segwit = txo.get_address()
 
-        if self.subpaths and len(self.subpaths) == 1:
+        if self.subpaths and len(self.subpaths) == 1 and not active_miniscript:  # miniscript can have one key only
             # p2pk, p2pkh, p2wpkh cases
             expect_pubkey, = self.subpaths.keys()
         elif self.taproot_subpaths and len(self.taproot_subpaths) == 1:
