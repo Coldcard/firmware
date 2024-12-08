@@ -1979,6 +1979,7 @@ def check_and_decrypt_backup(microsd_path):
         with open(xfn_path, "r") as f:
             res = f.read()
 
+        os.remove(xfn_path)
         return res
 
     return doit
