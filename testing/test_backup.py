@@ -113,7 +113,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
                      generate_ephemeral_words, set_bip39_pw, verify_backup_file,
                      check_and_decrypt_backup, restore_backup_cs, clear_ms, seedvault,
                      restore_main_seed, import_ephemeral_xprv, backup_system,
-                     press_cancel, sim_exec, pass_way):
+                     press_cancel, sim_exec, pass_way, garbage_collector):
     # Make an encrypted 7z backup, verify it, and even restore it!
     clear_ms()
     reset_seed_words()
@@ -193,9 +193,12 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         print("filename %d: %s" % (copy, fn))
 
         files.append(fn)
+        garbage_collector.append(microsd_path(fn))
 
         # write extra copy.
-        need_keypress('2')
+        if not copy:
+            need_keypress('2')
+
         time.sleep(.01)
 
     bk_a = open_microsd(files[0]).read()

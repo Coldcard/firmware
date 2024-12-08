@@ -1965,6 +1965,7 @@ def check_and_decrypt_backup(microsd_path):
         with open(xfn_path, "r") as f:
             res = f.read()
 
+        os.remove(xfn_path)
         return res
 
     return doit
@@ -2237,6 +2238,16 @@ def dev_core_import_object(dev):
                 "internal": bool(i)
             })
     return descriptors
+
+
+@pytest.fixture
+def garbage_collector():
+    to_remove = []
+    yield to_remove
+    for pth in to_remove:
+        try:
+            os.remove(pth)
+        except: pass
 
 
 # useful fixtures
