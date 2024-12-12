@@ -579,7 +579,7 @@ async def clear_seed(*a):
 
     if not await ux_confirm('Wipe seed words and reset wallet. '
                             'All funds will be lost. '
-                            'You better have a backup of the seed words.'
+                            'You better have a backup of the seed words. '
                             'All settings like multisig wallets are also wiped. '
                             'Saved temporary seed settings and Seed Vault are lost.'):
         return await ux_aborted()
