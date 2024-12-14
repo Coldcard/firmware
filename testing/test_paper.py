@@ -166,7 +166,7 @@ def test_generate(mode, pdf, netcode, dev, cap_menu, pick_menu_item, goto_home, 
 
 @pytest.mark.parametrize('rolls', [ '123123', '123'*30] )
 def test_dice_generate_failure_num_attempts(rolls, dev, cap_menu, pick_menu_item,
-                                            goto_home, cap_story, need_keypress,
+                                            goto_home, cap_story, need_keypress, OK, X,
                                             microsd_path, press_select, press_cancel):
     # verify the math for dice rolling method
 
@@ -197,7 +197,7 @@ def test_dice_generate_failure_num_attempts(rolls, dev, cap_menu, pick_menu_item
     title, story = cap_story()
     assert 'Not enough dice rolls!!!' in story
     assert 'For 256-bit security you need at least 99 rolls' in story
-    assert 'Press OK to add more dice rolls. X to exit' in story
+    assert f'Press {OK} to add more dice rolls. {X} to exit' in story
     press_cancel()
 
 @pytest.mark.parametrize('rolls', ['123'*34, "1"*99, "64"*50])

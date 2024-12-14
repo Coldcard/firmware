@@ -4,7 +4,6 @@
 #
 import framebuf, uqr
 from ux import UserInteraction, ux_wait_keyup, the_ux 
-from utils import word_wrap
 from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME, KEY_NFC,
                         KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ENTER, KEY_CANCEL)
 from version import has_qwerty
@@ -48,8 +47,14 @@ class QRDisplaySingle(UserInteraction):
 
         # can fail if not enough space in QR
         self.qr_data = uqr.make(msg, min_version=2,
-                                    max_version=11 if not has_qwerty else 25,
-                                    encoding=enc)
+                                max_version=11 if not has_qwerty else 25,
+                                encoding=enc)
+
+    def idx_hint(self):
+        # draw_qr_display takes this and renders hint in the top right corner
+        # this member function decides what type of hint will be shown
+        # numbers, letters, etc.
+        return str(self.start_n + self.idx) if len(self.addrs) > 1 else None
 
     def redraw(self):
         # Redraw screen.
@@ -66,10 +71,9 @@ class QRDisplaySingle(UserInteraction):
             self.calc_qr(body)
 
         # draw display
-        idx_hint = str(self.start_n + self.idx) if len(self.addrs) > 1 else None
         dis.busy_bar(False)
         dis.draw_qr_display(self.qr_data, self.msg or body, self.is_alnum,
-                            self.sidebar, idx_hint, self.invert)
+                            self.sidebar, self.idx_hint(), self.invert)
 
     async def interact_bare(self):
         from glob import NFC, dis
@@ -115,5 +119,11 @@ class QRDisplaySingle(UserInteraction):
     async def interact(self):
         await self.interact_bare()
         the_ux.pop()
+
+
+class XORQRDisplaySingle(QRDisplaySingle):
+    def idx_hint(self):
+        if len(self.addrs) > 1:
+            return chr(65+int(self.start_n + self.idx))
 
 # EOF

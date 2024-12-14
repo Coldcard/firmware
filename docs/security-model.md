@@ -25,7 +25,7 @@ the Microchip ATECC508A and later the ATECC608B, to store its
 secrets. This secure element has 72 bytes of storage protected by
 a 4- to 12-digit PIN code.
 
-Mk4 adds a second secure element to the COLDCARD. The ATECC608B is
+Mk4 adds a second secure element to the COLDCARD. The ATECC608 is
 still used, now called SE1 (Secure Element 1), along with a new
 chip, the Maxim DS28C36B, called SE2 (Secure Element 2).  The
 DS28C36B (SE2) has more memory with fifteen 32-byte slots of secure

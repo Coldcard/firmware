@@ -605,11 +605,16 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
 
     assert num_words and prompt and done_cb
 
-    words = ['' for _ in range(num_words)]
+    def redraw_words(wrds=None):
+        if not wrds:
+            wrds = ['' for _ in range(num_words)]
 
-    dis.clear()
-    dis.text(None, 0, prompt, invert=1)
-    pos = ux_draw_words(2 if num_words != 24 else 1, num_words, words)
+        dis.clear()
+        dis.text(None, 0, prompt, invert=1)
+        p = ux_draw_words(2 if num_words != 24 else 1, num_words, wrds)
+        return wrds, p
+
+    words, pos = redraw_words()
 
     word_num = 0
     value = ''
@@ -617,7 +622,8 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
     press = PressRelease()
     last_words = []
     while 1:
-        if word_num == num_words:
+        final = (word_num == num_words)
+        if final:
             # useful to show final word on screen, even tho confirm not needed
             err_msg = 'Press ENTER if all done.' if not has_checksum else \
                       'Valid words! Press ENTER.'
@@ -646,8 +652,30 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
         ch = await press.wait()
 
         commit = False
-        final = (word_num == num_words)
-        if ch == KEY_ENTER:
+        if ch == KEY_QR:
+            try:
+                got = await QRScannerInteraction.scan('Scan seed from a QR code')
+                what, vals = decode_qr_result(got, expect_secret=True)
+            except QRDecodeExplained as e:
+                err_msg = str(e)
+                redraw_words()
+                continue
+
+            if what != "words":
+                err_msg = "Must be seed words, not %s" % what
+            elif num_words != len(vals[0]):
+                err_msg = "Must be seed of length %d, not %s" % (num_words, len(vals[0]))
+            else:
+                words = vals[0]
+                # offer just the actual imported csum if user deletes csum word
+                last_words = [words[-1]]
+                word_num = num_words
+
+            # needs redraw, empty on error with error below
+            # if success, qr imported words shown to user
+            redraw_words(words)
+
+        elif ch == KEY_ENTER:
             if final:
                 break
             commit = True
@@ -1186,7 +1214,7 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
             if ch: break
 
     # after QR drawing, we need to correct some pixels
-    dis.clear()
+    dis.real_clear()
 
 
 # EOF

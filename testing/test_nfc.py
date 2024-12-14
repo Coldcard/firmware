@@ -5,9 +5,7 @@
 # - many test "sync" issues here; case is right but gets outs of sync with DUT
 # - use `./simulator.py --eff --set nfc=1`
 #
-import io
-
-import pytest, time
+import pytest, time, io, shutil, json, os
 from binascii import b2a_hex, a2b_hex
 from struct import pack, unpack
 import ndef
@@ -585,5 +583,74 @@ def test_share_by_pushtx(goto_home, cap_story, pick_menu_item, settings_set,
     assert b't='+urlsafe_b64encode(fake_txn).rstrip(b'=')+b'&c=' in contents
 
     settings_remove('ptxurl')
+
+@pytest.mark.parametrize("fname,mode,ftype", [
+    ("ccbk-start.json", "r", "J"),
+    ("ckcc-backup.txt", "r", "U"),
+    ("devils-txn.txn", "rb", "T"),
+    ("example-change.psbt", "rb", "P"),
+    ("sim_conso5.psbt", "rb", "P"),  # binary psbt
+    ("payjoin.psbt", "rb", "P"),  # base64 string in file
+    ("worked-unsigned.psbt", "rb", "P"),  # hex string psbt
+    ("coldcard-export.json", "rb", "J"),
+    ("coldcard-export.sig", "r", "U"),
+])
+def test_nfc_share_files(fname, mode, ftype, nfc_read_json, nfc_read_text,
+                         need_keypress, goto_home, pick_menu_item, is_q1,
+                         cap_menu, nfc_read, nfc_block4rf, press_select):
+    goto_home()
+    fpath = "data/" + fname
+    shutil.copy2(fpath, '../unix/work/MicroSD')
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("File Management")
+    pick_menu_item("NFC File Share")
+    time.sleep(.1)
+    pick_menu_item(fname)
+    time.sleep(.1)
+    if ftype == "J":
+        contents = nfc_read_json()
+    elif ftype == "U":
+        contents = nfc_read_text()
+    else:
+        nfc_block4rf()
+        res = nfc_read()
+
+        got_txid = None
+        got_txn = None
+        got_psbt = None
+        got_hash = None
+        for got in ndef.message_decoder(res):
+            if got.type == 'urn:nfc:wkt:T':
+                assert 'Transaction' in got.text or 'PSBT' in got.text
+            elif got.type == 'urn:nfc:ext:bitcoin.org:txid':
+                got_txid = b2a_hex(got.data).decode('ascii')
+            elif got.type == 'urn:nfc:ext:bitcoin.org:txn':
+                got_txn = got.data
+            elif got.type == 'urn:nfc:ext:bitcoin.org:psbt':
+                got_psbt = got.data
+            elif got.type == 'urn:nfc:ext:bitcoin.org:sha256':
+                got_hash = got.data
+            else:
+                raise ValueError(got.type)
+
+        if fname.endswith(".psbt"):
+            contents = bytes(got_psbt)
+            assert got_hash
+        else:
+            contents = bytes(got_txn)
+
+    time.sleep(.1)
+    press_select()
+
+    with open(fpath, mode) as f:
+        res = f.read()
+
+    if fname.endswith(".txn"):
+        res = bytes.fromhex(res.decode())
+    if fname.endswith(".json"):
+        res = json.loads(res)
+
+    assert res == contents
+    os.remove('../unix/work/MicroSD/' + fname)
 
 # EOF

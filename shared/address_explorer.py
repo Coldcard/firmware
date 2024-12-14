@@ -359,7 +359,9 @@ Press (3) if you really understand and accept these risks.
 
             elif choice == '0' and allow_change:
                 change = 1
-
+            elif n is None:
+                # makes no sense to do any of below, showing just single address
+                continue
             elif ch in (KEY_LEFT+"7"):
                 # go backwards in explorer
                 if start - n < 0:

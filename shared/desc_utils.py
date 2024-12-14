@@ -489,54 +489,50 @@ class Unspend(Key):
 
 
 def fill_policy(policy, keys, external=True, internal=True):
-    keys_len = len(keys)
-    for i in range(keys_len - 1, -1, -1):
-        k = keys[i]
+    orig_keys = []
+    for k in keys:
+        if not isinstance(k, str):
+            k_orig = k.to_string(external, internal, subderiv=False)
+        else:
+            _idx = k.find("]")  # end of key origin info - no more / expected besides subderivation
+            assert _idx != -1
+            ek = k[_idx+1:].split("/")[0]
+            k_orig = k[:_idx+1] + ek
+
+        if k_orig not in orig_keys:
+            orig_keys.append(k_orig)
+
+    for i in range(len(orig_keys) - 1, -1, -1):
+        k = orig_keys[i]
         ph = "@%d" % i
         ph_len = len(ph)
         while True:
-            subderiv = True
             ix = policy.find(ph)
             if ix == -1:
                 break
-            if policy[ix+ph_len] == "/":
-                # subderivation is part of the policy
-                subderiv = False
-                x = ix + ph_len
-                substr = policy[x:x+26]  # 26 is the longest possible subderivation allowed "/<2147483647;2147483646>/*"
-                mp_start = substr.find("<")
-                assert mp_start != -1
-                mp_end = substr.find(">")
-                mp = substr[mp_start:mp_end + 1]
-                _ext, _int = mp[1:-1].split(";")
-                if external and not internal:
-                    sub = _ext
-                elif internal and not external:
-                    sub = _int
-                else:
-                    sub = None
-                if sub is not None:
-                    policy = policy[:x + mp_start] + sub + policy[x + mp_end + 1:]
 
-            if not isinstance(k, str):
-                k_str = k.to_string(external, internal, subderiv=subderiv)
+            assert policy[ix+ph_len] == "/"
+            # subderivation is part of the policy
+            x = ix + ph_len
+            substr = policy[x:x+26]  # 26 is the longest possible subderivation allowed "/<2147483647;2147483646>/*"
+            mp_start = substr.find("<")
+            assert mp_start != -1
+            mp_end = substr.find(">")
+            mp = substr[mp_start:mp_end + 1]
+            _ext, _int = mp[1:-1].split(";")
+            if external and not internal:
+                sub = _ext
+            elif internal and not external:
+                sub = _int
             else:
-                k_str = k
-                if not subderiv:
-                    k_str = "/".join(k_str.split("/")[:-2])
-                mp_start = k_str.find("<")
-                if mp_start != -1:
-                    mp_end = k_str.find(">")
-                    mp = k_str[mp_start:mp_end+1]
-                    ext, int = mp[1:-1].split(";")
-                    if external and not internal:
-                        k_str = k_str.replace(mp, ext)
-                    if internal and not external:
-                        k_str = k_str.replace(mp, int)
+                sub = None
+            if sub is not None:
+                policy = policy[:x + mp_start] + sub + policy[x + mp_end + 1:]
 
             x = policy[ix:ix + ph_len]
             assert x == ph
-            policy = policy[:ix] + k_str + policy[ix + ph_len:]
+            policy = policy[:ix] + k + policy[ix + ph_len:]
+
     return policy
 
 

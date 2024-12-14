@@ -5,15 +5,15 @@
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson, version
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, str2xfp, cleanup_deriv_path, keypath_to_str, to_ascii_printable
-from utils import str_to_keypath, problem_file_line, check_xpub, truncate_address
+from utils import str_to_keypath, problem_file_line, check_xpub, truncate_address, get_filesize
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
-from ux import import_export_prompt, ux_enter_bip32_index, show_qr_code
+from ux import import_export_prompt, ux_enter_bip32_index, show_qr_code, ux_enter_number, OK, X
 from files import CardSlot, CardMissingError, needs_microsd
 from descriptor import Descriptor
-from miniscript import Key, Sortedmulti, Number
+from miniscript import Key, Sortedmulti, Number, Multi
 from desc_utils import multisig_descriptor_template
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS, AF_P2TR
-from menu import MenuSystem, MenuItem
+from menu import MenuSystem, MenuItem, NonDefaultMenuItem
 from opcodes import OP_CHECKMULTISIG
 from exceptions import FatalPSBTIssue
 from glob import settings
@@ -83,9 +83,9 @@ def disassemble_multisig(redeem_script):
 
     return M, N, pubkeys
 
-def make_redeem_script(M, nodes, subkey_idx):
+def make_redeem_script(M, nodes, subkey_idx, bip67=True):
     # take a list of BIP-32 nodes, and derive Nth subkey (subkey_idx) and make
-    # a standard M-of-N redeem script for that. Always applies BIP-67 sorting.
+    # a standard M-of-N redeem script for that. Applies BIP-67 sorting by default.
     N = len(nodes)
     assert 1 <= M <= N <= MAX_SIGNERS
 
@@ -97,7 +97,8 @@ def make_redeem_script(M, nodes, subkey_idx):
         pubkeys.append(b'\x21' + copy.pubkey())
         del copy
 
-    pubkeys.sort()
+    if bip67:
+        pubkeys.sort()
 
     # serialize redeem script
     pubkeys.insert(0, bytes([80 + M]))
@@ -128,7 +129,7 @@ class MultisigWallet(BaseStorageWallet):
     disable_checks = False
     key_name = "multisig"
 
-    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type=None):
+    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type=None, bip67=True):
         super().__init__(chain_type=chain_type)
 
         self.name = name
@@ -137,6 +138,7 @@ class MultisigWallet(BaseStorageWallet):
         assert len(xpubs[0]) == 3
         self.xpubs = xpubs                  # list of (xfp(int), deriv, xpub(str))
         self.addr_fmt = addr_fmt            # address format for wallet
+        self.bip67 = bip67
 
         # calc useful cache value: numeric xfp+subpath, with lookup
         self.xfp_paths = {}
@@ -193,11 +195,22 @@ class MultisigWallet(BaseStorageWallet):
             opts['d'] = pp
             xp = [(a, pp.index(deriv),c) for a,deriv,c in self.xpubs]
 
-        return (self.name, (self.M, self.N), xp, opts)
+        # make list already, will become one after json ser/deser
+        res = [self.name, (self.M, self.N), xp, opts]
+        if not self.bip67:
+            # wallets that do not follow BIP-67 are backwards incompatible
+            res.append(0)
+
+        return res
 
     @classmethod
     def deserialize(cls, vals, idx=-1):
         # take json object, make instance.
+        bip67 = 1  # default enabled, requires 5-element serialization to disable
+        if len(vals) == 5:
+            bip67 = vals[-1]
+            vals = vals[:-1]
+
         name, m_of_n, xpubs, opts = vals
 
         if len(xpubs[0]) == 2:
@@ -217,18 +230,20 @@ class MultisigWallet(BaseStorageWallet):
                 xpubs = [(a, derivs[b], c) for a,b,c in xpubs]
 
         rv = cls(name, m_of_n, xpubs, addr_fmt=opts.get('ft', AF_P2SH),
-                 chain_type=opts.get('ch', 'BTC'))
+                 chain_type=opts.get('ch', 'BTC'), bip67=bool(bip67))
         rv.storage_idx = idx
-
         return rv
 
     @classmethod
     def is_correct_chain(cls, o, curr_chain):
-        if "ch" not in o[-1]:
+        # for newer versions, last element can be bip67 marker
+        d = o[-1] if isinstance(o[-1], dict) else o[-2]
+
+        if "ch" not in d:
             # mainnet
             ch = "BTC"
         else:
-            ch = o[-1]["ch"]
+            ch = d["ch"]
 
         if ch == curr_chain.ctype:
             return True
@@ -350,8 +365,18 @@ class MultisigWallet(BaseStorageWallet):
         c = self.find_match(self.M, self.N, lst, addr_fmt=self.addr_fmt)
         if c:
             # All details are same: M/N, paths, addr fmt
-            if self.xpubs != c.xpubs:
+            if sorted(self.xpubs) != sorted(c.xpubs):
+                # this also applies to non-BIP-67 type multisig wallets
+                # multi(2,A,B) is treated as duplicate of multi(2,B,A)
+                # consensus-wise they are different script/wallet but CC
+                # don't allow to import one if other already imported
                 return None, ['xpubs'], 0
+            elif self.bip67 != c.bip67:
+                # treat same keys inside different desc multi/sortedmulti as duplicates
+                # sortedmulti(2,A,B) is considered same as multi(2,A,B) or multi(2,B,A)
+                # do not allow to import multi if sortedmulti with the same set of keys
+                # already imported and vice-versa
+                return None, ["BIP-67 clash"], 1
             elif self.name == c.name:
                 return None, [], 1
             else:
@@ -365,7 +390,6 @@ class MultisigWallet(BaseStorageWallet):
         # See if the xpubs are changing, which is risky... other differences like
         # name are okay.
         diffs = set()
-        name_diff = None
         for c in similar:
             if c.M != self.M:
                 diffs.add('M differs')
@@ -429,7 +453,7 @@ class MultisigWallet(BaseStorageWallet):
             if idx > MAX_BIP32_IDX:
                 break
             # make the redeem script, convert into address
-            script = make_redeem_script(self.M, nodes, idx)
+            script = make_redeem_script(self.M, nodes, idx, self.bip67)
             addr = ch.p2sh_address(self.addr_fmt, script)
 
             yield idx, addr, [p.format(idx=idx) for p in paths], script
@@ -512,6 +536,9 @@ class MultisigWallet(BaseStorageWallet):
             here = None
             too_shallow = False
             for xp_idx, path in check_these:
+                if not self.bip67:
+                    assert xp_idx == pk_order, "script key order"
+
                 # matched fingerprint, try to make pubkey that needs to match
                 xpub = self.xpubs[xp_idx][-1]
 
@@ -562,7 +589,7 @@ class MultisigWallet(BaseStorageWallet):
                     msg += ', too shallow'
                 raise AssertionError(msg)
 
-            if pk_order:
+            if self.bip67 and pk_order:
                 # verify sorted order
                 assert bytes(pubkey) > bytes(pubkeys[pk_order-1]), 'BIP-67 violation'
 
@@ -661,7 +688,7 @@ class MultisigWallet(BaseStorageWallet):
         xpubs = []
 
         descriptor = Descriptor.from_string(descriptor)
-        descriptor.legacy_ms_compat()  # raises
+        assert descriptor.is_basic_multisig, "not multisig"  # raises
         addr_fmt = descriptor.addr_fmt
 
         M, N = descriptor.miniscript.m_n()
@@ -677,14 +704,15 @@ class MultisigWallet(BaseStorageWallet):
             if is_mine:
                 has_mine += 1
 
-        return None, addr_fmt, xpubs, has_mine, M, N
+        return None, addr_fmt, xpubs, has_mine, M, N, descriptor.is_sortedmulti
 
     def to_descriptor(self):
         keys = [
             Key.from_cc_data(xfp, deriv, xpub)
             for xfp, deriv, xpub in self.xpubs
         ]
-        miniscript = Sortedmulti(Number(self.M), *keys)
+        _cls = Sortedmulti if self.bip67 else Multi
+        miniscript = _cls(Number(self.M), *keys)
         desc = Descriptor(miniscript=miniscript)
         desc.set_from_addr_fmt(self.addr_fmt)
         return desc
@@ -712,9 +740,13 @@ class MultisigWallet(BaseStorageWallet):
         if Descriptor.is_descriptor(config):
             # assume descriptor, classic config should not contain sertedmulti( and check for checksum separator
             # ignore name
-            _, addr_fmt, xpubs, has_mine, M, N = cls.from_descriptor(config)
+            _, addr_fmt, xpubs, has_mine, M, N, bip67 = cls.from_descriptor(config)
+            if not bip67 and not settings.get("unsort_ms", 0):
+                # BIP-67 disabled, but unsort_ms not allowed - raise
+                raise AssertionError('Unsorted multisig "multi(...)" not allowed')
         else:
             # oldschool
+            bip67 = True
             lines = [line for line in config.split('\n') if line]  # remove empty lines
             parsed_name, addr_fmt, xpubs, has_mine, M, N = cls.from_simple_text(lines)
             if parsed_name:
@@ -747,7 +779,8 @@ class MultisigWallet(BaseStorageWallet):
         assert has_mine == 1, 'my key included more than once'
 
         # done. have all the parts
-        return cls(name, (M, N), xpubs, addr_fmt=addr_fmt, chain_type=expect_chain)
+        return cls(name, (M, N), xpubs, addr_fmt=addr_fmt,
+                   chain_type=expect_chain, bip67=bip67)
 
     def make_fname(self, prefix, suffix='txt'):
         rv = '%s-%s.%s' % (prefix, self.name, suffix)
@@ -789,7 +822,7 @@ class MultisigWallet(BaseStorageWallet):
     async def export_wallet_file(self, mode="exported from", extra_msg=None, descriptor=False,
                                  core=False, desc_pretty=True):
         # create a text file with the details; ready for import to next Coldcard
-        from glob import NFC
+        from glob import NFC, dis
 
         my_xfp = xfp2str(settings.get('xfp'))
         if core:
@@ -809,7 +842,9 @@ class MultisigWallet(BaseStorageWallet):
                                             no_qr=not version.has_qwerty)
         if choice == KEY_CANCEL:
             return
-        elif choice in (KEY_NFC, KEY_QR):
+
+        dis.fullscreen("Wait...")
+        if choice in (KEY_NFC, KEY_QR):
             with uio.StringIO() as fp:
                 self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
                                    core=core, desc_pretty=desc_pretty)
@@ -949,9 +984,11 @@ class MultisigWallet(BaseStorageWallet):
         assert has_mine == 1         # 'my key not included'
 
         name = 'PSBT-%d-of-%d' % (M, N)
+        # this will always create sortedmulti multisig (BIP-67)
+        # because BIP-174 came years after wide spread acceptance of BIP-67 policy
         ms = cls(name, (M, N), xpubs, chain_type=expect_chain, addr_fmt=addr_fmt or AF_P2SH) # TODO why legacy
 
-        # may just keep just in-memory version, no approval required, if we are
+        # may just keep in-memory version, no approval required, if we are
         # trusting PSBT's today, otherwise caller will need to handle UX w.r.t new wallet
         return ms, (trust_mode != TRUST_PSBT)
 
@@ -1026,19 +1063,28 @@ class MultisigWallet(BaseStorageWallet):
         is_dup = False
         if name_change:
             story = 'Update NAME only of existing multisig wallet?'
+        elif num_dups and isinstance(diff_items, list):
+            # failures only
+            story = "Duplicate wallet."
+            if diff_items:
+                story += diff_items[0]
+            else:
+                story += ' All details are the same as existing!'
+            is_dup = True
         elif diff_items:
             # Concern here is overwrite when similar, but we don't overwrite anymore, so 
             # more of a warning about funny business.
             story = '''\
 WARNING: This new wallet is similar to an existing wallet, but will NOT replace it. Consider deleting previous wallet first. Differences: \
 ''' + ', '.join(diff_items)
-        elif num_dups:
-            story = 'Duplicate wallet. All details are the same as existing!'
-            is_dup = True
         else:
             story = 'Create new multisig wallet?'
 
         derivs, dsum = self.get_deriv_paths()
+
+        if not self.bip67 and not is_dup:
+            # do not need to warn if duplicate, won;t be allowed to import anyways
+            story += "\nWARNING: BIP-67 disabled! Unsorted multisig - order of keys in descriptor/backup is crucial"
 
         story += '''\n
 Wallet Name:
@@ -1054,10 +1100,12 @@ Addresses:
 Derivation:
   {dsum}
 
-Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=exp, dsum=dsum, 
-                                        at=self.render_addr_fmt(self.addr_fmt))
-
-        story += 'OK to approve, X to cancel.' if not is_dup else 'X to cancel'
+Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=exp, dsum=dsum,
+                                                  at=self.render_addr_fmt(self.addr_fmt))
+        if not is_dup:
+            story += ('%s to approve, %s to cancel.' % (OK, X))
+        else:
+            story += '%s to cancel' % X
 
         ux_clear_keys(True)
         while 1:
@@ -1084,16 +1132,17 @@ Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=
         msg = uio.StringIO()
 
         if verbose:
-            msg.write('''
-Policy: {M} of {N}
-Blockchain: {ctype}
-Addresses:
-  {at}\n\n'''.format(M=self.M, N=self.N, ctype=self.chain_type,
-            at=self.render_addr_fmt(self.addr_fmt)))
+            if not self.bip67:
+                msg.write("WARNING: BIP-67 disabled! Unsorted multisig - order of keys in descriptor/backup is crucial.\n\n")
 
-        # concern: the order of keys here is non-deterministic
-        # or order is taken from descriptor order (multi) but we do not support it
-        # or order is determined by BIP (sortedmulti)
+            vmsg = ('Policy: {M} of {N}\n'
+                    'Blockchain: {ctype}\n'
+                    'Addresses: {at}\n\n')
+            vmsg = vmsg.format(M=self.M, N=self.N, ctype=self.chain_type,
+                               at=self.render_addr_fmt(self.addr_fmt))
+            msg.write(vmsg)
+
+        # order of keys in self.xpubs is same as order of keys in CC import format or descriptor
         for idx, (xfp, deriv, xpub) in enumerate(self.xpubs):
             if idx:
                 msg.write('\n---===---\n\n')
@@ -1115,7 +1164,7 @@ async def no_ms_yet(*a):
     await ux_show_story("You don't have any multisig wallets yet.")
 
 def disable_checks_chooser():
-    ch = [ 'Normal', 'Skip Checks']
+    ch = ['Normal', 'Skip Checks']
 
     def xset(idx, text):
         MultisigWallet.disable_checks = bool(idx)
@@ -1147,7 +1196,7 @@ Press (4) to confirm entering this DANGEROUS mode.
 
 def psbt_xpubs_policy_chooser():
     # Chooser for trust policy
-    ch = [ 'Verify Only', 'Offer Import', 'Trust PSBT']
+    ch = ['Verify Only', 'Offer Import', 'Trust PSBT']
 
     def xset(idx, text):
         settings.set('pms', idx)
@@ -1181,6 +1230,47 @@ exists, otherwise 'Verify'.''')
     if ch == 'x': return
     start_chooser(psbt_xpubs_policy_chooser)
 
+def unsorted_ms_chooser():
+    ch = ['Do Not Allow', 'Allow']
+
+    def xset(idx, text):
+        settings.set('unsort_ms', idx)
+        from actions import goto_top_menu
+        goto_top_menu()
+
+    return settings.get('unsort_ms', 0), ch, xset
+
+async def unsorted_ms_menu(*a):
+    from menu import start_chooser
+
+    if not settings.get("unsort_ms", None):
+        ch = await ux_show_story(
+            'With this setting ON, it is allowed to import and operate'
+            ' "multi(...)" unsorted multisig wallets that do not follow BIP-67.'
+            ' It is of CRUCIAL importance for unsorted wallets, to backup multisig descriptor'
+            ' and preserve order of the keys in it.'
+            ' Many popular wallets like Sparrow and Electrum do NOT support "multi(...)".'
+            '\n\nUSE AT YOUR OWN RISK. Disabling BIP-67 is discouraged!'
+            '\n\nPress (4) to confirm allowing "multi(...)"', escape='4')
+
+        if ch != '4': return
+
+    else:
+        # unsort_ms enabled - assume he is going to disable
+        # check any multi(...) imported
+        ms = settings.get("multisig", [])
+        multi_names = [m[0] for m in ms if len(m) == 5]
+        if multi_names:
+            # do not allow to disable if any multi(...) imported
+            # list by name what needs to be removed
+            await ux_show_story(
+                "Remove already saved multi(...) wallets first.\n\n%s"
+                % multi_names
+            )
+            return
+
+    start_chooser(unsorted_ms_chooser)
+
 class MultisigMenu(MenuSystem):
 
     @classmethod
@@ -1208,6 +1298,9 @@ class MultisigMenu(MenuSystem):
         rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
         rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
         rv.append(MenuItem('Skip Checks?', f=disable_checks_menu))
+        rv.append(NonDefaultMenuItem('Unsorted Multisig' if version.has_qwerty else "Unsorted Multi",
+                                     'unsort_ms',
+                                     f=unsorted_ms_menu))
 
         return rv
 
@@ -1234,14 +1327,19 @@ async def make_ms_wallet_menu(menu, label, item):
     ms = MultisigWallet.get_by_idx(item.arg)
     if not ms: return
 
-    return [
+    rv = [
         MenuItem('"%s"' % ms.name, f=ms_wallet_detail, arg=ms),
         MenuItem('View Details', f=ms_wallet_detail, arg=ms),
         MenuItem('Delete', f=ms_wallet_delete, arg=ms),
-        MenuItem('Coldcard Export', f=ms_wallet_ckcc_export, arg=(ms, {})),
-        MenuItem('Descriptors', menu=make_ms_wallet_descriptor_menu, arg=ms),
-        MenuItem('Electrum Wallet', f=ms_wallet_electrum_export, arg=ms),
     ]
+    if ms.bip67:
+        rv += [
+            MenuItem('Coldcard Export', f=ms_wallet_ckcc_export, arg=(ms, {})),
+            MenuItem('Electrum Wallet', f=ms_wallet_electrum_export, arg=ms),
+        ]
+    # only way to export non-BIP-67 ms wallet is descriptors (+core export)
+    rv.append(MenuItem('Descriptors', menu=make_ms_wallet_descriptor_menu, arg=ms))
+    return rv
 
 async def make_ms_wallet_descriptor_menu(menu, label, item):
     # descriptor menu
@@ -1322,9 +1420,9 @@ async def ms_wallet_electrum_export(menu, label, item):
 
 async def ms_wallet_detail(menu, label, item):
     # show details of single multisig wallet
-
+    from glob import dis
     ms = item.arg
-
+    dis.fullscreen("Wait...")
     return await ms.show_detail()
 
 
@@ -1348,7 +1446,7 @@ async def export_multisig_xpubs(*a):
     msg = '''\
 This feature creates a small file containing \
 the extended public keys (XPUB) you would need to join \
-a multisig wallet using the 'Create Airgapped' feature.
+a multisig wallet.
 
 Public keys for BIP-48 conformant paths are used:
 
@@ -1359,7 +1457,7 @@ P2WSH:
 P2TR:
    m/48h/{coin}h/{{acct}}h/3h
 
-OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
+{ok} to continue. {x} to abort.'''.format(coin=chain.b44_cointype, ok=OK, x=X)
 
     ch = await ux_show_story(msg)
     if ch != "y":
@@ -1436,23 +1534,62 @@ OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
     # msg += '\n\nMultisig XPUB signature file written:\n\n%s' % sig_nice
     await ux_show_story(msg)
 
-async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, force_vdisk=False):
-    # collect all xpub- exports on current SD card (must be >= 1) to make "air gapped" wallet
-    # - ask for M value 
-    # - create wallet, save and also export 
-    # - also create electrum skel to go with that
-    # - only expected to work with our ccxp-foo.json export files.
-    from utils import get_filesize
+async def validate_xpub_for_ms(obj, af_str, chain, my_xfp, xpubs):
+    # Read xpub and validate from JSON received via SD card or BBQr
+    # - obj => JSON object (mapping)
+    # - af_str => address format we expect/need
 
-    chain = chains.current_chain()
-    my_xfp = settings.get('xfp')
+    # value in file is BE32, but we want LE32 internally
+    # - KeyError here handled by caller
+    xfp = str2xfp(obj['xfp'])
+    deriv = cleanup_deriv_path(obj[af_str + '_deriv'])
+    ln = obj.get(af_str)
 
+    is_mine, item = check_xpub(xfp, ln, deriv, chain.ctype, my_xfp, xpubs)
+    xpubs.append(item)
+    return is_mine
+
+async def ms_coordinator_qr(af_str, my_xfp, chain):
+    # Scan a number of JSON files from BBQr w/ derive, xfp and xpub details.
+    #
+    from ux_q1 import QRScannerInteraction
+
+    num_mine = 0
+    num_files = 0
     xpubs = []
-    files = []
-    has_mine = 0
-    deriv = None
+
+    msg = 'Scan Exported XPUB from Coldcard'
+    while True:
+        vals = await QRScannerInteraction().scan_json(msg)
+        if vals is None:
+            break
+
+        try:
+            is_mine = await validate_xpub_for_ms(vals, af_str, chain, my_xfp, xpubs)
+        except KeyError as e:
+            # random JSON will end up here
+            msg = "Missing value: %s" % str(e)
+            continue
+        except Exception as e:
+            # other QR codes, not BBQr (json) will stop here.
+            msg = "Failure: %s" % str(e)
+            continue
+
+        if is_mine:
+            num_mine += 1
+        num_files += 1
+
+        msg = "Number of keys scanned: %d" % num_files
+
+    return xpubs, num_mine, num_files
+
+
+async def ms_coordinator_file(af_str, my_xfp, chain, slot_b=None):
+    num_mine = 0
+    num_files = 0
+    xpubs = []
     try:
-        with CardSlot(force_vdisk=force_vdisk) as card:
+        with CardSlot(slot_b=slot_b) as card:
             for path in card.get_paths():
                 for fn, ftype, *var in uos.ilistdir(path):
                     if ftype == 0x4000:
@@ -1477,23 +1614,12 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, force_vdisk=
                         with open(full_fname, 'rt') as fp:
                             vals = ujson.load(fp)
 
-                        ln = vals.get(mode)
-
-                        # value in file is BE32, but we want LE32 internally
-                        xfp = str2xfp(vals['xfp'])
-                        if not deriv:
-                            deriv = cleanup_deriv_path(vals[mode+'_deriv'])
-                        else:
-                            assert deriv == vals[mode+'_deriv'], "wrong derivation: %s != %s"%(
-                                            deriv, vals[mode+'_deriv'])
-
-                        is_mine, item = check_xpub(xfp, ln, deriv, chain.ctype,
-                                                   my_xfp, MultisigWallet.disable_checks)
-                        xpubs.append(item)
+                        is_mine = await validate_xpub_for_ms(vals, af_str, chain,
+                                                             my_xfp, xpubs)
                         if is_mine:
-                            has_mine += 1
+                            num_mine += 1
 
-                        files.append(fn)
+                        num_files += 1
 
                     except CardMissingError:
                         raise
@@ -1507,86 +1633,113 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, force_vdisk=
         await needs_microsd()
         return
 
-    # remove dups; easy to happen if you double-tap the export
-    delme = set()
-    for i in range(len(xpubs)):
-        for j in range(len(xpubs)):
-            if j in delme: continue
-            if i == j: continue
-            if xpubs[i] == xpubs[j]:
-                delme.add(j)
-    if delme:
-        xpubs = [x for idx,x in enumerate(xpubs) if idx not in delme]
+    return xpubs, num_mine, num_files
 
-    if not xpubs or len(xpubs) == 1 and has_mine:
-        await ux_show_story("Unable to find any Coldcard exported keys on this card. Must have filename: ccxp-....json")
+async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False):
+    # collect all xpub- exports (must be >= 1) to make "air gapped" wallet
+    # - function f specifies a way how to collect co-signer info - currently SD and QR (Q only)
+    # - ask for M value
+    # - create wallet, save and also export
+    # - also create electrum skel to go with that
+    # - only expected to work with our ccxp-foo.json export file format
+    from glob import dis
+
+    chain = chains.current_chain()
+    my_xfp = settings.get('xfp')
+
+    if is_qr:
+        xpubs, num_mine, num_files = await ms_coordinator_qr(mode, my_xfp, chain)
+    else:
+        xpubs, num_mine, num_files = await ms_coordinator_file(mode, my_xfp, chain)
+        if CardSlot.both_inserted():
+            # handle dual slot usage: assumes slot A used by first call above
+            bxpubs, bnum_mine, bnum_files = await ms_coordinator_file(mode, my_xfp,
+                                                                      chain, True)
+            xpubs.extend(bxpubs)
+            num_mine += bnum_mine
+            num_files += bnum_files
+
+    # remove dups; easy to happen if you double-tap the export
+    xpubs = list(set(xpubs))
+
+    if not xpubs or (len(xpubs) == 1 and num_mine):
+        if is_qr:
+            msg = "No XPUBs scanned. Exit."
+        else:
+            msg = ("Unable to find any Coldcard exported keys on this card."
+                   " Must have filename: ccxp-....json")
+        await ux_show_story(msg)
         return
     
-    # add myself if not included already
-    if not has_mine:
-        with stash.SensitiveValues() as sv:
-            node = sv.derive_path(deriv)
-            xpubs.append( (my_xfp, deriv, chain.serialize_public(node, AF_P2SH)) )
-    else:
-        assert has_mine == 1, "same coldcard included"
+    # add myself if not included already ?
+    if not num_mine:
+        ch = await ux_show_story("Add current Coldcard with above XFP ?",
+                                 title="[%s]" % xfp2str(my_xfp))
+        if ch == "y":
+            acct = await ux_enter_bip32_index('Account Number:') or 0
+            dis.fullscreen("Wait...")
+            deriv = "m/48h/%dh/%dh/%dh" % (chain.b44_cointype, acct,
+                                           2 if addr_fmt == AF_P2WSH else 1)
+            with stash.SensitiveValues() as sv:
+                node = sv.derive_path(deriv)
+                xpubs.append((my_xfp, deriv, chain.serialize_public(node, AF_P2SH)))
+            num_mine += 1
 
     N = len(xpubs)
 
-    if N > MAX_SIGNERS:
-        await ux_show_story("Too many signers, max is %d." % MAX_SIGNERS)
+    if (N > MAX_SIGNERS) or (N < 2):
+        await ux_show_story("Invalid number of signers,min is 2 max is %d." % MAX_SIGNERS)
         return
 
     # pick useful M value to start
-    assert N >= 2
-    M = (N - 1) if N < 4 else ((N//2)+1)
+    M = await ux_enter_number("How many need to sign?(M)", N, can_cancel=True)
+    if not M:
+        await ux_dramatic_pause('Aborted.', 2)
+        return  # user cancel
 
-    while 1:
-        msg = '''How many need to sign?\n      %d of %d
+    dis.fullscreen("Wait...")
 
-Press (7 or 9) to change M value, or OK \
-to continue.
-
-If you expected more or less keys (N=%d #files=%d), \
-then check card and file contents.
-
-Coldcard multisig setup file and an Electrum wallet file will be created automatically.\
-''' % (M, N, N, len(files))
-
-        ch = await ux_show_story(msg, escape='123479')
-
-        if ch in '1234':
-            M = min(N, int(ch))     # undocumented shortcut
-        elif ch == '9':
-            M = min(N, M+1)
-        elif ch == '7':
-            M = max(1, M-1)
-        elif ch == 'x':
-            await ux_dramatic_pause('Aborted.', 2)
-            return
-        elif ch == 'y':
-            break
-        
     # create appropriate object
     assert 1 <= M <= N <= MAX_SIGNERS
 
     name = 'CC-%d-of-%d' % (M, N)
     ms = MultisigWallet(name, (M, N), xpubs, chain_type=chain.ctype, addr_fmt=addr_fmt)
 
-    from auth import NewMiniscriptEnrollRequest, UserAuthorizedAction
+    if num_mine:
+        from auth import NewMiniscriptEnrollRequest, UserAuthorizedAction
 
-    UserAuthorizedAction.active_request = NewMiniscriptEnrollRequest(ms, auto_export=True)
+        UserAuthorizedAction.active_request = NewMiniscriptEnrollRequest(ms)
 
-    # menu item case: add to stack
-    from ux import the_ux
-    the_ux.push(UserAuthorizedAction.active_request)
+        # menu item case: add to stack
+        from ux import the_ux
+        the_ux.push(UserAuthorizedAction.active_request)
+    else:
+        # we cannot enroll multisig in which we do not participate
+        # thou we can put descriptor on screen or on SD
+        await ms.export_wallet_file(descriptor=True, desc_pretty=False)
+
 
 async def create_ms_step1(*a):
     # Show story, have them pick address format.
+    ch = None
+    is_qr = False
 
-    ch = await ux_show_story('''\
-Insert SD card (or eject SD card to use Virtual Disk) with exported XPUB files from at least one other \
-Coldcard. A multisig wallet will be constructed using those keys and \
-this device.
+    if version.has_qr:
+        # They have a scanner, could do QR codes...
+        ch = await ux_show_story("Press "+ KEY_QR + " to scan multisg XPUBs from "\
+                        "QR codes (BBQr) or ENTER to use SD card(s).", title="QR or SD Card?")
+
+    if ch == KEY_QR:
+        is_qr = True
+        ch = await ux_show_story("Press ENTER for default address format (P2WSH, segwit), "\
+                                 "otherwise, press (1) for P2SH-P2WSH.", title="Address Format",
+                                     escape="1")
+
+    else:
+        ch = await ux_show_story('''\
+Insert SD card (or eject SD card to use Virtual Disk) with exported XPUB files \
+from at least one other Coldcard. A multisig wallet will be constructed using \
+those keys and this device.
 
 Default is P2WSH addresses (segwit) or press (1) for P2SH-P2WSH.''', escape='1')
 
@@ -1597,7 +1750,11 @@ Default is P2WSH addresses (segwit) or press (1) for P2SH-P2WSH.''', escape='1')
     else:
         return
 
-    return await ondevice_multisig_create(n, f)
+    try:
+        return await ondevice_multisig_create(n, f, is_qr)
+    except Exception as e:
+        await ux_show_story('Failed to create multisig.\n\n%s\n%s' % (e, problem_file_line(e)),
+                            title="ERROR")
 
 
 async def import_multisig_nfc(*a):

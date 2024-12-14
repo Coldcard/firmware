@@ -4,7 +4,7 @@
 #
 import stash, ujson, ngu, pyb, os, version, aes256ctr
 from files import CardSlot, CardMissingError, needs_microsd
-from ux import ux_dramatic_pause, ux_confirm, ux_show_story
+from ux import ux_dramatic_pause, ux_confirm, ux_show_story, OK, X
 from utils import xfp2str, problem_file_line, B2A
 from menu import MenuItem, MenuSystem
 
@@ -125,9 +125,9 @@ class PassphraseSaverMenu(MenuSystem):
             escape = "1x"
             if settings.master_get("words", True):
                 escape += "y"
-                msg += " Press OK to add to master seed."
+                msg += (" Press %s to add to master seed." % OK)
 
-            msg += "Press X to exit."
+            msg += ("Press %s to exit." % X)
 
             ch = await ux_show_story(msg, title=title, escape=escape,
                                      strict_escape=True)

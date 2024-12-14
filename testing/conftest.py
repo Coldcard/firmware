@@ -8,7 +8,7 @@ from base58 import decode_base58_checksum
 from bip32 import BIP32Node
 from msg import verify_message
 from api import bitcoind, match_key
-from api import bitcoind_wallet, bitcoind_d_wallet, bitcoind_d_wallet_w_sk, bitcoind_d_sim_sign
+from api import bitcoind_wallet, bitcoind_d_wallet, bitcoind_d_wallet_w_sk, bitcoind_d_sim_sign, bitcoind_d_dev_watch
 from api import bitcoind_d_sim_watch, finalize_v2_v0_convert
 from binascii import b2a_hex, a2b_hex
 from constants import *
@@ -127,6 +127,14 @@ def send_ux_abort(simulator):
         simulator.send_recv(CCProtocolPacker.sim_ux_abort())
 
     return doit
+
+@pytest.fixture
+def OK(is_q1):
+    return "ENTER" if is_q1 else "OK"
+
+@pytest.fixture
+def X(is_q1):
+    return "CANCEL" if is_q1 else "X"
 
 @pytest.fixture(scope='module')
 def need_keypress(dev, request):
@@ -1342,22 +1350,18 @@ def start_sign(dev):
     return doit
 
 @pytest.fixture
-def end_sign(dev, press_select, press_cancel):
+def end_sign(dev, need_keypress):
     from ckcc_protocol.protocol import CCUserRefused
 
     def doit(accept=True, in_psbt=None, finalize=False, accept_ms_import=False, expect_txn=True):
 
         if accept_ms_import:
             # XXX would be better to do cap_story here, but that would limit test to simulator
-            press_select(timeout=None)
+            need_keypress('y', timeout=None)
             time.sleep(0.050)
 
         if accept != None:
-            time.sleep(.1)
-            if accept:
-                press_select(timeout=None)
-            else:
-                press_cancel(timeout=None)
+            need_keypress('y' if accept else 'x', timeout=None)
 
         if accept == False:
             with pytest.raises(CCUserRefused):
@@ -1982,9 +1986,10 @@ def check_and_decrypt_backup(microsd_path):
 
 @pytest.fixture
 def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
-                      press_select, word_menu_entry, get_setting):
+                      press_select, word_menu_entry, get_setting, is_q1,
+                      need_keypress, scan_a_qr, cap_screen):
     # restore backup with clear seed as first step
-    def doit(fn, passphrase, avail_settings=None):
+    def doit(fn, passphrase, avail_settings=None, pass_way=None):
         unit_test('devtest/clear_seed.py')
 
         m = cap_menu()
@@ -1996,7 +2001,19 @@ def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
         pick_menu_item(fn)
 
         time.sleep(.1)
-        word_menu_entry(passphrase, has_checksum=False)
+        if is_q1 and pass_way and pass_way == "qr":
+            need_keypress(KEY_QR)
+            time.sleep(.1)
+            qr = ' '.join(w[:4] for w in passphrase)
+            scan_a_qr(qr)
+            for _ in range(20):
+                scr = cap_screen()
+                if 'ENTER if all done' in scr:
+                    break
+                time.sleep(.1)
+            press_select()
+        else:
+            word_menu_entry(passphrase, has_checksum=False)
 
         time.sleep(.3)
         title, body = cap_story()
@@ -2233,6 +2250,37 @@ def skip_if_useless_way(is_q1, nfc_disabled):
 
     return doit
 
+
+@pytest.fixture(scope="session")
+def dev_core_import_object(dev):
+
+    import sys
+    sys.path.append("../shared")
+    from descriptor import Descriptor
+
+    ders = [
+        ("m/44h/1h/0h", AF_CLASSIC),
+        ("m/49h/1h/0h", AF_P2WPKH_P2SH),
+        ("m/84h/1h/0h", AF_P2WPKH),
+        ("m/86h/1h/0h", AF_P2TR),
+    ]
+    descriptors = []
+    for idx, (path, addr_format) in enumerate(ders):
+        # get rid of change and address bip32 indexes
+        path = "/".join(path.split("/")[:-2])
+        subpath = path.format(account=0)  # e.g. "m/44h/1h/0h"
+        ek = dev.send_recv(CCProtocolPacker.get_xpub(subpath), timeout=None)
+        d = Descriptor([(dev.master_fingerprint, subpath, ek)], addr_format)
+        for i in range(2):
+            descriptors.append({
+                "timestamp": "now",
+                "active": True,
+                "desc": d.serialize(internal=i),
+                "internal": bool(i)
+            })
+    return descriptors
+
+
 @pytest.fixture
 def garbage_collector():
     to_remove = []
@@ -2251,8 +2299,8 @@ from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto
 from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed, confirm_tmp_seed
 from test_ephemeral import verify_ephemeral_secret_ui, get_identity_story, get_seed_value_ux, seed_vault_enable
 from test_multisig import import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn
-from test_multisig import make_ms_address, clear_ms, make_myself_wallet
 from test_miniscript import offer_minsc_import
+from test_multisig import make_ms_address, clear_ms, make_myself_wallet, import_multisig
 from test_se2 import goto_trick_menu, clear_all_tricks, new_trick_pin, se2_gate, new_pin_confirmed
 from test_seed_xor import restore_seed_xor
 from test_ux import pass_word_quiz, word_menu_entry

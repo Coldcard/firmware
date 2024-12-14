@@ -3,7 +3,7 @@
 # Transaction Signing. Important.
 #
 
-import time, pytest, os, random, pdb, struct, base64, binascii, itertools, datetime, math
+import time, pytest, os, random, pdb, struct, base64, binascii, itertools, datetime
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from binascii import b2a_hex, a2b_hex
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
@@ -16,7 +16,7 @@ from helpers import B2A, fake_dest_addr, parse_change_back
 from helpers import xfp2str, seconds2human_readable, hash160
 from msg import verify_message
 from bip32 import BIP32Node
-from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP
+from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP, simulator_fixed_tpub
 from txn import *
 from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint
 from ckcc_protocol.constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
@@ -1892,50 +1892,55 @@ def test_duplicate_unknow_values_in_psbt(dev, start_sign, end_sign, fake_txn):
 
 
 @pytest.fixture
-def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, press_select,
-                             bitcoind, bitcoind_d_sim_watch, settings_set, finalize_v2_v0_convert,
-                             bitcoind_d_wallet_w_sk):
+def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
+                             bitcoind, bitcoind_d_dev_watch, settings_set, finalize_v2_v0_convert):
     def doit(addr_fmt, sighash, num_inputs=2, num_outputs=2, consolidation=False, sh_checks=False,
              psbt_v2=False):
+
         from decimal import Decimal, ROUND_DOWN
 
-        # supply wallet is legacy wallet (does not support taproot)
-        aa = bitcoind_d_wallet_w_sk.getnewaddress()
-        bitcoind.supply_wallet.sendtoaddress(address=aa, amount=49)
-        bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())  # mine
+        if dev.is_simulator:
+            # if running against real HW you need to set CC to correct sighshchk mode
+            # Below test need to run with sighshchk disabled:
+            #     * test_sighash_same
+            #     * test_sighash_different
+            #     * test_sighash_fullmix
+            #
+            # With sighshchk enabled (CC default):
+            #     * test_sighash_disallowed_consolidation
+            #     * test_sighash_disallowed_NONE
 
-        settings_set("sighshchk", int(not sh_checks))
-        microsd_wipe()
-        time.sleep(0.1)
-        goto_home()
+            settings_set("sighshchk", int(not sh_checks))
 
         not_all_ALL = any(sh != "ALL" for sh in sighash)
 
-        bitcoind_d_sim_watch.keypoolrefill(num_inputs + num_outputs)
-        input_val = bitcoind_d_wallet_w_sk.getbalance() / num_inputs
+        stranger = bitcoind.create_wallet(f"{os.urandom(10).hex()}")
+
+        bitcoind_d_dev_watch.keypoolrefill(num_inputs + num_outputs)
+        input_val = bitcoind.supply_wallet.getbalance() / num_inputs
         cc_dest = [
-            {bitcoind_d_sim_watch.getnewaddress("", addr_fmt): Decimal(input_val).quantize(Decimal('.0000001'), rounding=ROUND_DOWN)}
+            {bitcoind_d_dev_watch.getnewaddress("", addr_fmt): Decimal(input_val).quantize(Decimal('.0000001'), rounding=ROUND_DOWN)}
             for _ in range(num_inputs)
         ]
-        psbt = bitcoind_d_wallet_w_sk.walletcreatefundedpsbt(
+        psbt = bitcoind.supply_wallet.walletcreatefundedpsbt(
             [], cc_dest, 0, {"fee_rate": 20, "subtractFeeFromOutputs": [0]}
         )["psbt"]
-        psbt = bitcoind_d_wallet_w_sk.walletprocesspsbt(psbt, True, "ALL")["psbt"]
-        resp = bitcoind_d_wallet_w_sk.finalizepsbt(psbt)
+        psbt = bitcoind.supply_wallet.walletprocesspsbt(psbt, True, "ALL")["psbt"]
+        resp = bitcoind.supply_wallet.finalizepsbt(psbt)
         assert resp["complete"] is True
-        assert len(bitcoind_d_wallet_w_sk.sendrawtransaction(resp["hex"])) == 64
+        assert len(bitcoind.supply_wallet.sendrawtransaction(resp["hex"])) == 64
         # mine above txs
-        bitcoind_d_wallet_w_sk.generatetoaddress(1, bitcoind_d_wallet_w_sk.getnewaddress())
-        unspent = bitcoind_d_sim_watch.listunspent()
-        output_val = bitcoind_d_sim_watch.getbalance() / num_outputs
+        bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+        unspent = bitcoind_d_dev_watch.listunspent()
+        output_val = bitcoind_d_dev_watch.getbalance() / num_outputs
         # consolidation or not?
-        dest_wal = bitcoind_d_sim_watch if consolidation else bitcoind_d_wallet_w_sk
+        dest_wal = bitcoind_d_dev_watch if consolidation else stranger  # using stranger here as supply+wallet is legacy and has no tr addresses
         destinations = [
             {dest_wal.getnewaddress("", addr_fmt): Decimal(output_val).quantize(Decimal('.0000001'), rounding=ROUND_DOWN)}
             for _ in range(num_outputs)
         ]
         assert len(unspent) >= num_inputs
-        psbt = bitcoind_d_sim_watch.walletcreatefundedpsbt(
+        psbt = bitcoind_d_dev_watch.walletcreatefundedpsbt(
             unspent[:num_inputs], destinations, 0,
             {"fee_rate": 20, "subtractFeeFromOutputs": list(range(num_outputs))}
         )["psbt"]
@@ -1949,35 +1954,39 @@ def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, p
                 i.sighash = SIGHASH_MAP.get(sighash[idx], sighash[idx])
 
         if psbt_v2:
-            # below is noop is psbt is already v2
-            psbt_sh = base64.b64encode(x.to_v2()).decode()
+            # below is noop if psbt is already v2
+            psbt_sh_bytes = x.to_v2()
+            psbt_sh = base64.b64encode(psbt_sh_bytes).decode()
+
         else:
+            psbt_sh_bytes = x.as_bytes()
             psbt_sh = x.as_b64_str()
 
         # make useful reference psbt along the way
         open(f'debug/sighash-{sighash[0] if len(sighash) == 1 else "MIX"}.psbt'\
                 .replace('|', '-'), 'wt').write(psbt_sh)
 
-        with open(microsd_path("sighash.psbt"), "w") as f:
-            f.write(psbt_sh)
-
-        press_select()
-        time.sleep(0.2)
-        title, story = cap_story()
-
+        # get story out of CC via visualize feature
+        start_sign(psbt_sh_bytes, False, stxn_flags=STXN_VISUALIZE)
         if sh_checks is True:
             # checks enabled
             if consolidation and not_all_ALL:
-                assert title == "Failure"
-                assert "Only sighash ALL is allowed for pure consolidation transaction" in story
+                with pytest.raises(Exception) as e:
+                    end_sign(accept=None, expect_txn=False).decode()
+                # assert title == "Failure"
+                assert "Only sighash ALL is allowed for pure consolidation transaction" in e.value.args[0]
                 return
 
             elif not consolidation and any("NONE" in sh for sh in sighash if isinstance(sh, str)):
-                assert title == "Failure"
-                assert "Sighash NONE is not allowed as funds could be going anywhere" in story
+                with pytest.raises(Exception) as e:
+                    end_sign(accept=None, expect_txn=False).decode()
+                # assert title == "Failure"
+                assert "Sighash NONE is not allowed as funds could be going anywhere" in e.value.args[0]
                 return
 
-        assert title == "OK TO SEND?"
+        story = end_sign(accept=None, expect_txn=False).decode()
+
+        # assert title == "OK TO SEND?"
         if any("NONE" in sh for sh in sighash):
             assert "(1 warning below)" in story
             assert "---WARNING---" in story
@@ -1989,29 +1998,20 @@ def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, p
             assert "Caution" in story
             assert "Some inputs have unusual SIGHASH values not used in typical cases." in story
 
-        press_select()
-        time.sleep(0.5)
-        title, story = cap_story()
-        time.sleep(0.1)
-        press_select()  # confirm success or failure
+        # sign and get PSBT out
+        start_sign(psbt_sh_bytes)
         # now not just legacy but also segwit prohibits SINGLE out of bounds
         # consensus allows it but it really is just bad usage - restricted
         if (num_outputs < num_inputs) and any("SINGLE" in sh for sh in sighash):
-            assert "SINGLE corresponding output" in story
-            assert "missing" in story
+            with pytest.raises(Exception) as e:
+                end_sign(accept=True)
+            assert "Signing failed late" in e.value.args[0]
+            # assert "SINGLE corresponding output" in story
+            # assert "missing" in story
             return
 
-        split_story = story.split("\n\n")
-        signed_fname = split_story[1]
-        txn_fname = split_story[3]
-        tx_id = split_story[4].split("\n")[-1]
-
-        with open(microsd_path(signed_fname), "r") as f:
-            cc_psbt = f.read().strip()
-        with open(microsd_path(txn_fname), "r") as f:
-            cc_tx_hex = f.read().strip()
-
-        y = BasicPSBT().parse(base64.b64decode(cc_psbt))
+        psbt_out = end_sign(accept=True)
+        y = BasicPSBT().parse(psbt_out)
 
         for idx, i in enumerate(y.inputs):
             if len(sighash) == 1:
@@ -2026,11 +2026,18 @@ def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, p
 
         assert resp["complete"] is True
         tx_hex = resp["hex"]
-        assert tx_hex == cc_tx_hex
+
+        # sign again - this time get finalized tx ready for broadcast out
+        start_sign(psbt_sh_bytes, finalize=True)
+        cc_tx_hex = end_sign(accept=True, finalize=True).hex()
+        if addr_fmt != "bech32m":
+            # schnorr signatures are not deterministic
+            # any subsequent sign will produce different witness
+            assert tx_hex == cc_tx_hex
 
         if psbt_v2:
             # check txn_modifiable properly set
-            po = BasicPSBT().parse(base64.b64decode(cc_psbt))
+            po = BasicPSBT().parse(psbt_out)
             mod = po.txn_modifiable
             used_sh = [SIGHASH_MAP[sh] for sh in sighash]
             if all(sh > 128 for sh in used_sh):
@@ -2055,7 +2062,7 @@ def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, p
         res = bitcoind.supply_wallet.testmempoolaccept([cc_tx_hex])
         assert res[0]["allowed"]
         txn_id = bitcoind.supply_wallet.sendrawtransaction(cc_tx_hex)
-        assert tx_id == txn_id
+        assert txn_id
 
     return doit
 
@@ -2112,10 +2119,10 @@ def test_sighash_disallowed_NONE(sighash, _test_single_sig_sighash):
 @pytest.mark.bitcoind
 def test_sighash_nonexistent(_test_single_sig_sighash):
     # invalid sighash value
-    with pytest.raises(AssertionError) as exc:
+    with pytest.raises(Exception) as exc:
         _test_single_sig_sighash("legacy", [0xe2], num_inputs=2, num_outputs=2,
                                  consolidation=True, sh_checks=False)
-    assert "'Failure' == 'OK TO SEND?'" in exc.value.args[0]
+    assert "Unsupported sighash flag 0xe2" in exc.value.args[0]
 
 
 def test_no_outputs_tx(fake_txn, microsd_path, goto_home, press_select, pick_menu_item, cap_story):
@@ -2143,7 +2150,8 @@ def test_no_outputs_tx(fake_txn, microsd_path, goto_home, press_select, pick_men
     except: pass
 
 
-def test_send2taproot_addresss(fake_txn , start_sign, end_sign, cap_story):
+def test_send2taproot_addresss(fake_txn , start_sign, end_sign, cap_story, use_testnet):
+    use_testnet()
     psbt = fake_txn(2, 2, segwit_in=True, change_outputs=[0], outstyles=["p2tr"])
     start_sign(psbt)
     title, story = cap_story()
@@ -2163,7 +2171,7 @@ def test_send2taproot_addresss(fake_txn , start_sign, end_sign, cap_story):
 @pytest.mark.parametrize("action", ["sign", "skip", "refuse"])
 def test_batch_sign(num_tx, ui_path, action, fake_txn, need_keypress,
                     pick_menu_item, cap_story, microsd_path, cap_menu,
-                    microsd_wipe, goto_home, press_select, press_cancel):
+                    microsd_wipe, goto_home, press_select, press_cancel, X):
 
     goto_home()
     microsd_wipe()
@@ -2200,7 +2208,7 @@ def test_batch_sign(num_tx, ui_path, action, fake_txn, need_keypress,
     for i in range(num_tx):
         assert "Sign" in story
         assert "(1) to skip" in story
-        assert "X to quit and exit" in story
+        assert f"{X} to quit and exit" in story
         if action == "skip":
             need_keypress("1")  # skip this PSBT
             time.sleep(.5)
@@ -2333,9 +2341,6 @@ def test_psbt_v2_global_quantities(way, fake_txn, start_sign, end_sign, cap_stor
     psbt = fake_txn(2, 2, segwit_in=True, wrapped=True, change_outputs=[0],
                     outstyles=["p2pkh", "p2wpkh"], psbt_v2=True,
                     psbt_hacker=lambda psbt: hacker(psbt, way))
-
-    with open(f"/home/scg/PycharmProjects/afirmware/unix/work/MicroSD/{way}.psbt", "wb") as f:
-        f.write(psbt)
 
     start_sign(psbt)
     title, story = cap_story()
@@ -3032,6 +3037,47 @@ def test_txout_explorer_op_return(fake_txn, start_sign, cap_story, is_q1,
     press_cancel()
     press_cancel()
 
+
+def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_ms_import,
+                        cap_story, try_sign, reset_seed_words, clear_ms):
+    reset_seed_words()
+    clear_ms()
+    desc = "sh(sortedmulti(2,[6ba6cfd0/45h]tpubD9429UXFGCTKJ9NdiNK4rC5ygqSUkginycYHccqSg5gkmyQ7PZRHNjk99M6a6Y3NY8ctEUUJvCu6iCCui8Ju3xrHRu3Ez1CKB4ZFoRZDdP9/0/*,[747b698e/45h]tpubD97nVL37v5tWyMf9ofh5rznwhh1593WMRg6FT4o6MRJkKWANtwAMHYLrcJFsFmPfYbY1TE1LLQ4KBb84LBPt1ubvFwoosvMkcWJtMwvXgSc/0/*,[7bb026be/45h]tpubD9ArfXowvGHnuECKdGXVKDMfZVGdephVWg8fWGWStH3VKHzT4ph3A4ZcgXWqFu1F5xGTfxncmrnf3sLC86dup2a8Kx7z3xQ3AgeNTQeFxPa/0/*,[0f056943/45h]tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n/0/*))#up0sw2xp"
+    # PSBT created via fake_ms_txn, grinded in test_ms_sign_myself
+    psbt_fname = "myself-72sig.psbt"
+    with open(f"data/{psbt_fname}", "r") as f:
+        b64psbt = f.read()
+
+    goto_home()
+    passphrase = "Myself"
+    dev.send_recv(CCProtocolPacker.bip39_passphrase(passphrase), timeout=None)
+    press_select()
+    time.sleep(.1)
+    title, story = cap_story()
+
+    assert "[747B698E]" in title
+    press_select()
+
+    time.sleep(.1)
+    _, story = offer_ms_import(desc)
+    assert "Create new multisig wallet?" in story
+    time.sleep(.1)
+    press_select()
+
+    # below raises for 72 bytes long signature
+    # only on firmware versions that do only 10 grinding iterations
+    try_sign(base64.b64decode(b64psbt), accept=True)
+
+
+def test_null_data_op_return(fake_txn, start_sign, end_sign, reset_seed_words):
+    reset_seed_words()
+    psbt = fake_txn(1, 1, op_return=[(50, b"")])
+    start_sign(psbt, False, stxn_flags=STXN_VISUALIZE)
+    story = end_sign(accept=None, expect_txn=False).decode()
+    assert "null-data" in story
+    assert "OP_RETURN" in story
+
+# EOF
 
 @pytest.mark.bitcoind
 def test_taproot_keyspend(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign, microsd_path, cap_story, goto_home,

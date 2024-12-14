@@ -275,7 +275,11 @@ class ChainsBase:
         gen = disassemble(script)
         script_type = next(gen)
         if OP_RETURN in script_type:
-            data = next(gen)[0]
+            try:
+                data = next(gen)[0]
+                if data is None: raise RuntimeError
+            except (RuntimeError, StopIteration):
+                return "null-data", ""
             data_hex = b2a_hex(data).decode()
             data_ascii = None
             if min(data) >= 32 and max(data) < 127:  # printable

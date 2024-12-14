@@ -463,7 +463,7 @@ class USBHandler:
             assert offset == len(args)
 
             return b'asci' + start_show_p2sh_address(M, N, addr_fmt, xfp_paths,
-                                                        witdeem_script)
+                                                     witdeem_script)
 
         if cmd == 'show':
             # simple cases, older code: text subpath

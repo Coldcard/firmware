@@ -467,6 +467,8 @@ class PinAttempt:
 
         except stash.ZeroSecretException:
             settings.return_to_master_seed()
+            # full re-draw, user has no master seed & is returning from tmp
+            dis.draw_status(full=True)
 
     def tmp_secret(self, encoded, chain=None, bip39pw=''):
         # Use indicated secret and stop using the SE; operate like this until reboot
