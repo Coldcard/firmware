@@ -250,8 +250,12 @@ class BaseStorageWallet(WalletABC):
         lst = settings.get(self.key_name, [])
         try:
             del lst[self.storage_idx]
-            settings.set(self.key_name, lst)
-            settings.save()
+            if lst:
+                settings.set(self.key_name, lst)
+            else:
+                settings.remove_key(self.key_name)
+
+            settings.save()  # actual write
         except IndexError: pass
         self.storage_idx = -1
 
