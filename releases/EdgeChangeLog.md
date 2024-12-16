@@ -13,30 +13,33 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
-- New Feature: Ranged provably unspendable keys and `unspend(` support for Taproot descriptors
-- New Feature: Address ownership for miniscript and tapscript wallets
-- Enhancement: Address explorer simplified UI for tapscript addresses
-- Bugfix: Constant `AFC_BECH32M` incorrectly set `AFC_WRAPPED` and `AFC_BECH32`.
-- Bugfix: Trying to set custom URL for NFC push transaction caused yikes
+- Bugfix: Complex miniscript wallets with keys in policy that are not in strictly ascending order were incorrectly filled
+  upon load from settings. All users on versions `6.2.2X`+ needs to update. 
+- Bugfix: Single key miniscript descriptor support
+- Enhancement: Hide Secure Notes & Passwords in Deltamode. Wipe seed if notes menu accessed. 
+- Enhancement: Hide Seed Vault in Deltamode. Wipe seed if Seed Vault menu accessed. 
+- Bugfix: Sometimes see a struck screen after _Verifying..._ in boot up sequence.
+  On Q, result is blank screen, on Mk4, result is three-dots screen.
+- Bugfix: Do not allow to enable/disable Seed Vault feature when in temporary seed mode
+- Bugfix: Bless Firmware causes hanging progress bar
+- Bugfix: Prevent yikes in ownership search
+- Change: Do not allow to purge settings of current active tmp seed when deleting it from Seed Vault
 
 
 # Mk4 Specific Changes
 
-## 6.3.3X - 2024-07-04
+## 6.3.4X - 2024-07-04
 
-- Bugfix: Fix yikes displaying BIP-85 WIF when both NFC and VDisk are OFF
-- Bugfix: Fix inability to export change addresses when both NFC and Vdisk id OFF
-- Bugfix: In BIP-39 words menu, show space character rather than Nokia-style placeholder
-  which could be confused for an underscore.
+- all updates from `5.4.0`
+- Enhancement: Export single sig descriptor with simple QR
 
 
 # Q Specific Changes
 
-## 6.3.3QX - 2024-07-04
+## 6.3.4QX - 2024-07-04
 
-- Enhancement: Miniscript and (BB)Qr codes
-- Bugfix: Properly clear LCD screen after simple QR code is shown
-
+- all updates from version `1.3.0Q`
+- Bugfix: Properly re-draw status bar after Restore Master on COLDCARD without master seed.
 
 
 # Release History
