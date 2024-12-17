@@ -239,7 +239,6 @@ def bitcoind_d_sim_watch(bitcoind):
     descriptors = [
         {
             "timestamp": "now",
-            "label": "Coldcard 0f056943 segwit v0",
             "active": True,
             "desc": "wpkh([0f056943/84h/1h/0h]tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/0/*)#erexmnep",
             "internal": False
@@ -252,7 +251,6 @@ def bitcoind_d_sim_watch(bitcoind):
         },
         {
             "timestamp": "now",
-            "label": "Coldcard 0f056943 segwit v1",
             "active": True,
             "desc": "tr([0f056943/86h/1h/0h]tpubDCeEX49avtiXrBTv3JWTtco99Ka499jXdZHBRtm7va2gkMAui11ctZjqNAT9dLVNaEozt2C1kfTM88cnvZCXsWLJN2p4viGvsyGjtKVV7A1/0/*)#6ghw47ge",
             "internal": False
@@ -265,7 +263,6 @@ def bitcoind_d_sim_watch(bitcoind):
         },
         {
             "timestamp": "now",
-            "label": "Coldcard 0f056943 p2pkh",
             "active": True,
             "desc": "pkh([0f056943/44h/1h/0h]tpubDCiHGUNYdRRBPNYm7CqeeLwPWfeb2ZT2rPsk4aEW3eUoJM93jbBa7hPpB1T9YKtigmjpxHrB1522kSsTxGm9V6cqKqrp1EDaYaeJZqcirYB/0/*)#fxwk08tc",
             "internal": False
@@ -278,7 +275,6 @@ def bitcoind_d_sim_watch(bitcoind):
         },
         {
             "timestamp": "now",
-            "label": "Coldcard 0f056943 p2sh-p2wpkh",
             "active": True,
             "desc": "sh(wpkh([0f056943/49h/1h/0h]tpubDCDqt7XXvhAYY9HSwrCXB7BXqYM4RXB8WFtKgtTXGa6u3U6EV1NJJRFTcuTRyhSY5Vreg1LP8aPdyiAPQGrDJLikkHoc7VQg6DA9NtUxHtj/0/*))#weah3vek",
             "internal": False
@@ -324,7 +320,6 @@ def bitcoind_d_sim_sign(bitcoind):
     descriptors = [
         {
             "timestamp": "now",
-            "label": "Coldcard 0f056943",
             "active": True,
             "desc": "wpkh([0f056943/84h/1h/0h]tprv8fRh8AYC5iQitbbtzwVaUUyXVZh3Y7HxVYSbqzf45eao9SMfEc3MexJx4y6pU1WjjxcEiYArEjhRTSy5mqfXzBtSncTYhKfxQWywcfeqxFE/0/*)#mzg0pna0",
             "internal": False
@@ -337,7 +332,6 @@ def bitcoind_d_sim_sign(bitcoind):
         },
         {
             "timestamp": "now",
-            "label": "Coldcard 0f056943 segwit v1",
             "active": True,
             "desc": "tr([0f056943/86h/1h/0h]tprv8fxCNe7LnX2rxiS89eqsVD92aJ47ypYd4FgQ9NipWJEHurv95cC2i57yC2mRHnpuHfmgdb17GV9wfSNjswUQXmaY7Qs2Jaa5hEdkxaHy4BK/0/*)#x7dfk9mw",
             "internal": False
@@ -350,7 +344,6 @@ def bitcoind_d_sim_sign(bitcoind):
         },
         {
             "timestamp": "now",
-            "label": "Coldcard 0f056943",
             "active": True,
             "desc": "pkh([0f056943/44h/1h/0h]tprv8g2F84LJV3jWVuWyDZB4EwHGwe8esEG8H6Gxn4CCdNgQTrtH7CMywCmwzuMGZjz13sQ9rcCZucCm6i2zigkYGSPUvCzDQxGW8RCy7FpPdrg/0/*)#kjnlnm3v",
             "internal": False
@@ -363,7 +356,6 @@ def bitcoind_d_sim_sign(bitcoind):
         },
         {
             "timestamp": "now",
-            "label": "Coldcard 0f056943",
             "active": True,
             "desc": "sh(wpkh([0f056943/49h/1h/0h]tprv8fXojhVHnKUsegFf4CXvmhXRGWq8GBzDvxHYQNRDrJJWCyqTrcYi7vdbSn65CHETVPdw4sxc75v23Ev7o8fCePazRf917CMt1C3mjnKV4Jq/0/*))#0qf5gv2y",
             "internal": False
