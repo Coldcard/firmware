@@ -17,9 +17,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
   upon load from settings. All users on versions `6.2.2X`+ needs to update. 
 - Bugfix: Single key miniscript descriptor support
 - Enhancement: Hide Secure Notes & Passwords in Deltamode. Wipe seed if notes menu accessed. 
-- Enhancement: Hide Seed Vault in Deltamode. Wipe seed if Seed Vault menu accessed. 
-- Bugfix: Sometimes see a struck screen after _Verifying..._ in boot up sequence.
-  On Q, result is blank screen, on Mk4, result is three-dots screen.
+- Enhancement: Hide Seed Vault in Deltamode. Wipe seed if Seed Vault menu accessed.
 - Bugfix: Do not allow to enable/disable Seed Vault feature when in temporary seed mode
 - Bugfix: Bless Firmware causes hanging progress bar
 - Bugfix: Prevent yikes in ownership search
