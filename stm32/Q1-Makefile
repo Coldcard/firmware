@@ -16,7 +16,7 @@ BOOTLOADER_DIR = q1-bootloader
 LATEST_RELEASE = $(shell ls -t1 ../releases/*-q1-*.dfu | head -1)
 
 # Our version for this release.
-VERSION_STRING = 1.3.0QX
+VERSION_STRING = 6.3.4QX
 
 # Remove this closer to shipping.
 #$(warning "Forcing debug build")
