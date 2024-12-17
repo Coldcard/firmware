@@ -1574,7 +1574,7 @@ class NewMiniscriptEnrollRequest(UserAuthorizedAction):
         ms = self.wallet
         try:
             ch = await ms.confirm_import()
-            if ch != 'y':
+            if ch not in ('y'+KEY_ENTER):
                 # they don't want to!
                 self.refused = True
                 await ux_dramatic_pause("Refused.", 2)
