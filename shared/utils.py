@@ -769,11 +769,18 @@ def check_xpub(xfp, xpub, deriv, expect_chain, my_xfp, disable_checks=False):
     # path length of derivation given needs to match xpub's depth
     if not disable_checks:
         p_len = deriv.count('/')
-        assert p_len == depth, 'deriv %d != %d xpub depth (xfp=%s)' % (
-                                    p_len, depth, xfp2str(xfp))
+        if p_len:
+            # only check this for keys that have origin derivation
+            # originless keys are expected to be blinded
+            assert p_len == depth, 'deriv %d != %d xpub depth (xfp=%s)' % (
+                p_len, depth, xfp2str(xfp)
+            )
+        else:
+            # depth can be more than zero here - keys can be blinded
+            assert xfp == swab32(node.my_fp()), "xpub xfp wrong %s" % xfp2str(xfp)
 
         if xfp == my_xfp:
-            # its supposed to be my key, so I should be able to generate pubkey
+            # it's supposed to be my key, so I should be able to generate pubkey
             # - might indicate collision on xfp value between co-signers,
             #   and that's not supported
             with stash.SensitiveValues() as sv:

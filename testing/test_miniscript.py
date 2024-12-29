@@ -2769,11 +2769,13 @@ def test_expanding_multisig(tmplt, clear_miniscript, goto_home, pick_menu_item, 
     address_explorer_check("sd", af, wo, wname)
 
 
+@pytest.mark.parametrize("blinded", [True, False])
 def test_big_boy(use_regtest, clear_miniscript, bitcoin_core_signer, get_cc_key, microsd_path,
                  garbage_collector, pick_menu_item, bitcoind, import_miniscript, press_select,
-                 cap_story, cap_menu, load_export, start_sign, end_sign):
+                 cap_story, cap_menu, load_export, start_sign, end_sign, blinded):
     # keys (@0,@4,@5) are more important (primary) than keys (@1,@2,@3) (secondary)
     # currently requires to tweak MAX_TR_SIGNERS = 33
+    # with blinded=True, all co-signer keys are blinded (have no key origin info)
     tmplt = (
         "tr("
         "tpubD6NzVbkrYhZ4XgXS51CV3bhoP5dJeQqPhEyhKPDXBgEs64VdSyAfku99gtDXQzY6HEXY5Dqdw8Qud1fYiyewDmYjKe9gGJeDx7x936ur4Ju/<0;1>/*,"  # unspendable
@@ -2797,6 +2799,10 @@ def test_big_boy(use_regtest, clear_miniscript, bitcoin_core_signer, get_cc_key,
     for i in range(1, 6):
         csigner, ckey = bitcoin_core_signer(f"co-signer-{i}")
         ckey = ckey.replace("/0/*", "")
+
+        if blinded:
+            ckey = ckey.split("]")[-1]
+
         csigner.keypoolrefill(20)
         cosigners.append(csigner)
         desc = desc.replace(f"@{i}", ckey)
@@ -3009,3 +3015,118 @@ def test_single_key_miniscript(af, settings_set, clear_miniscript, goto_home, ge
 
     unspent = wo.listunspent()
     assert len(unspent) == 1
+
+
+@pytest.mark.parametrize("tmplt", [
+    "wsh(or_d(pk(@0),and_v(v:pkh(@1),older(100))))",
+    f"tr({H},or_d(pk(@0),and_v(v:pk(@1),older(100))))"
+])
+@pytest.mark.parametrize("cc_sign", [False, True])
+@pytest.mark.parametrize("has_orig", [False, True])
+def test_originless_keys(tmplt, offer_minsc_import, get_cc_key, bitcoin_core_signer, bitcoind,
+                         pick_menu_item, load_export, goto_home, cap_menu, clear_miniscript,
+                         use_regtest, press_select, start_sign, end_sign, cap_story, cc_sign,
+                         has_orig, address_explorer_check):
+    # can be both:
+    #   a.) just ranged xpub without origin info -> xpub1/<0;1>/*
+    #   b.) ranged xpub with its fp -> [xpub1_fp]xpub1/<0;1>/*
+    sequence = 100
+    use_regtest()
+    clear_miniscript()
+    af = "bech32m" if "tr(" in tmplt else "bech32"
+    name = "originless"
+
+    cc_key = get_cc_key("m/84h/1h/0h")
+    cs, ck = bitcoin_core_signer(name+"_signer")
+    originless_ck = ck.split("]")[-1]
+
+    n = BIP32Node.from_hwif(originless_ck.split("/")[0])  # just extended key
+    fp_str = "[" + n.fingerprint().hex() + "]"
+    if has_orig:
+        originless_ck = fp_str + originless_ck
+
+    desc = tmplt.replace("@0", cc_key)
+    desc = desc.replace("@1", originless_ck)
+    to_import = {"desc": desc, "name": name}
+    offer_minsc_import(json.dumps(to_import))
+    press_select()
+
+    wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
+                                passphrase=None, avoid_reuse=False, descriptors=True)
+
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Miniscript")
+    menu = cap_menu()
+    assert menu[0] == name
+    pick_menu_item(menu[0])  # pick imported descriptor miniscript wallet
+    pick_menu_item("Descriptors")
+    pick_menu_item("Bitcoin Core")
+    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
+    text = text.replace("importdescriptors ", "").strip()
+    # remove junk
+    r1 = text.find("[")
+    r2 = text.find("]", -1, 0)
+    text = text[r1: r2]
+    core_desc_object = json.loads(text)
+    res = wo.importdescriptors(core_desc_object)
+    for obj in res:
+        assert obj["success"]
+
+    # fund wallet
+    addr = wo.getnewaddress("", af)
+    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    unspent = wo.listunspent()
+    assert len(unspent) == 1
+
+    if cc_sign:
+        inputs = []
+    else:
+        inputs = [{"txid": unspent[0]["txid"], "vout": unspent[0]["vout"], "sequence": sequence}]
+
+    # split to 10 utxos
+    dest_addrs = [wo.getnewaddress(f"a{i}", af) for i in range(10)]
+    psbt_resp = wo.walletcreatefundedpsbt(
+        inputs,
+        [{a: 4} for a in dest_addrs] + [{bitcoind.supply_wallet.getnewaddress(): 5}],
+        0,
+        {"fee_rate": 3, "change_type": af, "subtractFeeFromOutputs": [0]},
+    )
+    psbt = psbt_resp.get("psbt")
+
+    if cc_sign:
+        start_sign(base64.b64decode(psbt))
+        time.sleep(.1)
+        title, story = cap_story()
+        assert title == "OK TO SEND?"
+        assert "Consolidating" not in story
+        final_psbt = end_sign(True)
+        final_psbt = base64.b64encode(final_psbt).decode()
+    else:
+        final_psbt_o = cs.walletprocesspsbt(psbt, True, "DEFAULT" if af == "bech32m" else "ALL")
+        final_psbt = final_psbt_o["psbt"]
+        assert psbt != final_psbt
+
+    res = wo.finalizepsbt(final_psbt)
+    assert res["complete"]
+    tx_hex = res["hex"]
+    res = wo.testmempoolaccept([tx_hex])
+    if not cc_sign:
+        # timelocked
+        assert not res[0]["allowed"]
+        assert res[0]["reject-reason"] == 'non-BIP68-final'
+
+        # mines some blocks to release the lock
+        bitcoind.supply_wallet.generatetoaddress(sequence, bitcoind.supply_wallet.getnewaddress())
+
+        res = wo.testmempoolaccept([tx_hex])
+    assert res[0]["allowed"]
+    res = wo.sendrawtransaction(tx_hex)
+    assert len(res) == 64  # tx id
+
+    # check addresses
+    address_explorer_check("sd", af, wo, name)
+
+# EOF

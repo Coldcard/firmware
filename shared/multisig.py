@@ -552,7 +552,7 @@ class MultisigWallet(BaseStorageWallet):
                     # obscure case: xpub isn't deep enough to represent
                     # indicated path... not wrong really.
                     too_shallow = True
-                    continue
+                    dp = 0
 
                 for sp in path[dp:]:
                     assert not (sp & 0x80000000), 'hard deriv'

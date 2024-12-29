@@ -878,7 +878,6 @@ class Miniscript:
         keys = self.keys
         # provably unspendable taproot internal key is not covered here
         # all other keys (miniscript,tapscript) require key origin info
-        assert all(k.origin for k in keys), "Key origin info is required"
         assert len(keys) == len(set(keys)), "Insane"
         if taproot:
             forbiden = (Sortedmulti, Multi)

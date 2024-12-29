@@ -146,8 +146,10 @@ class KeyOriginInfo:
         return cls(xfp, derivation)
 
     def __str__(self):
-        return "%s/%s" % (b2a_hex(self.fingerprint).decode(),
-                          keypath_to_str(self.derivation, prefix='', skip=0).replace("'", "h"))
+        rv = "%s" % b2a_hex(self.fingerprint).decode()
+        if self.derivation:
+            rv += "/%s" % keypath_to_str(self.derivation, prefix='', skip=0).replace("'", "h")
+        return rv
 
 
 class KeyDerivationInfo:
@@ -303,6 +305,8 @@ class Key:
         # parse key
         node, chain_type = cls.parse_key(k)
         der = KeyDerivationInfo.from_string(der.decode())
+        if origin is None and not isinstance(node, bytes):
+            origin = KeyOriginInfo(ustruct.pack('<I', swab32(node.my_fp())), [])
         return cls(node, origin, der, chain_type=chain_type)
 
     @classmethod
@@ -405,8 +409,10 @@ class Key:
 
     @property
     def prefix(self):
-        if self.origin:
+        if self.origin and self.origin.derivation:
             return "[%s]" % self.origin
+        # jut a bare [xfp]key - omit origin info (jut xfp)
+        # or no origin at all
         return ""
 
     def key_bytes(self):
@@ -495,9 +501,12 @@ def fill_policy(policy, keys, external=True, internal=True):
             k_orig = k.to_string(external, internal, subderiv=False)
         else:
             _idx = k.find("]")  # end of key origin info - no more / expected besides subderivation
-            assert _idx != -1
-            ek = k[_idx+1:].split("/")[0]
-            k_orig = k[:_idx+1] + ek
+            if _idx != -1:
+                ek = k[_idx+1:].split("/")[0]
+                k_orig = k[:_idx+1] + ek
+            else:
+                # no origin info
+                k_orig = k.split("/")[0]
 
         if k_orig not in orig_keys:
             orig_keys.append(k_orig)
