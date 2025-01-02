@@ -31,6 +31,11 @@ def xor(*args):
 
 async def xor_split_start(*a):
 
+    from pincodes import pa
+    if pa.is_deltamode():
+        import callgate
+        callgate.fast_wipe()
+
     ch = await ux_show_story('''\
 Seed XOR Split
 
