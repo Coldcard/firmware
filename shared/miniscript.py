@@ -158,9 +158,8 @@ class MiniScriptWallet(BaseStorageWallet):
                 ik = Key.from_string(self.key)
                 if ik.origin:
                     res.append(ik.origin.psbt_derivation())
-                elif not isinstance(ik.node, bytes):
-                    if ik.is_provably_unspendable:
-                        res.append([swab32(ik.node.my_fp())])
+                elif ik.is_provably_unspendable:
+                    res.append([swab32(ik.node.my_fp())])
 
             for k in self.keys:
                 k = Key.from_string(k)
@@ -281,14 +280,10 @@ class MiniScriptWallet(BaseStorageWallet):
                 if short:
                     s += note
                 else:
-                    if isinstance(key.node, bytes):
-                        s += b2a_hex(key.node).decode()
+                    s += self.key
+                    if type(key) is Key:
+                        # it is unspendable, BUT not unspend(
                         s += "\n (%s)" % note
-                    else:
-                        s += self.key
-                        if type(key) is Key:
-                            # it is unspendable, BUT not unspend(
-                            s += "\n (%s)" % note
                 s += "\n\n"
             else:
                 xfp, deriv, xpub = key.to_cc_data()
