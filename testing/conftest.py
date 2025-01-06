@@ -557,7 +557,7 @@ def cap_screen_qr(cap_image):
 
         if orig_img.width == 128:
             # Mk3/4 - pull out just the QR, blow it up 16x
-            x, w = 2, 64
+            x, w = 2, 66
             img = orig_img.crop( (x, 0, x+w, w) )
             img = ImageOps.expand(img, 16, 0)       # add border
             img = img.resize( (256, 256))
@@ -1817,6 +1817,7 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
             need_keypress(key_map["qr"])
             time.sleep(0.3)
             try:
+                assert is_q1
                 file_type, data = readback_bbqr()
                 if file_type == "J":
                     return json.loads(data)
@@ -1825,7 +1826,6 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 else:
                     raise NotImplementedError
             except:
-                raise
                 res = cap_screen_qr().decode('ascii')
                 try:
                     return json.loads(res)
