@@ -367,8 +367,6 @@ class OwnershipCache:
         # - if they explore it (non-zero subaccount)
         # - if they sign those paths
         # - but ignore testnet vs. not
-        from glob import settings
-
         if subaccount == 0:
             # only interested in non-zero subaccounts
             return

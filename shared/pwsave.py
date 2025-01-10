@@ -7,6 +7,7 @@ from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_dramatic_pause, ux_confirm, ux_show_story, OK, X
 from utils import xfp2str, problem_file_line, B2A
 from menu import MenuItem, MenuSystem
+from glob import settings
 
 
 class PassphraseSaver:
@@ -110,7 +111,6 @@ class PassphraseSaverMenu(MenuSystem):
         from ux import ux_show_story
         from seed import set_bip39_passphrase
         from pincodes import pa
-        from glob import settings
 
         bypass_tmp = True
         pw, expect_xfp = item.arg
@@ -253,7 +253,6 @@ class MicroSD2FA(PassphraseSaver):
     @classmethod
     def get_nonces(cls):
         # this is the only setting: list of nonce values we have saved to various cards
-        from glob import settings
         return settings.get('sd2fa') or []
 
     def read_card(self):
@@ -288,7 +287,6 @@ class MicroSD2FA(PassphraseSaver):
         except:
             # die. wrong
             import callgate
-            from glob import settings
             settings.remove_key("sd2fa")
             settings.save()
             callgate.fast_wipe(silent=False)
@@ -353,8 +351,6 @@ class MicroSD2FA(PassphraseSaver):
     async def remove(self, nonce):
         # remove indicated nonce from records
         # - doesn't delete file, since might not have card anymore and useless w/o nonce
-        from glob import settings
-
         v = self.get_nonces()
         assert nonce in v, 'missing card nonce'
         v2 = [i for i in v if i != nonce]
