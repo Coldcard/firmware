@@ -964,7 +964,6 @@ class SeedVaultMenu(MenuSystem):
     @classmethod
     def construct(cls):
         # Dynamic menu with user-defined names of seeds shown
-        from glob import settings
         from pincodes import pa
 
         if pa.is_deltamode():
