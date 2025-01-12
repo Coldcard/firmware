@@ -1988,15 +1988,14 @@ class psbtObject(psbtProxy):
 
                 inp.added_sig = (which_key, der_sig)
 
-                # Could remove sighash from input object - it is not required, takes space,
-                # and is already in signature or is implicit by not being part of the
-                # signature (taproot SIGHASH_DEFAULT)
-                ## inp.sighash = None
-
                 success.add(in_idx)
 
                 if self.is_v2:
                     self.set_modifiable_flag(inp)
+
+                # drop sighash if default (SIGHASH_ALL)
+                if inp.sighash == SIGHASH_ALL:
+                    inp.sighash = None
 
                 # memory cleanup
                 del result, r, s
