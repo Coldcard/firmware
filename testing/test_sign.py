@@ -2015,12 +2015,22 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
 
         for idx, i in enumerate(y.inputs):
             if len(sighash) == 1:
-                assert i.sighash == SIGHASH_MAP[sighash[0]]
+                target = sighash[0]
+                sh_num = SIGHASH_MAP[target]
+                if target == "ALL":
+                    assert i.sighash is None
+                else:
+                    assert i.sighash == sh_num
             else:
-                assert i.sighash == SIGHASH_MAP[sighash[idx]]
-            # check signature hash correct checkusm appended
+                target = sighash[idx]
+                sh_num = SIGHASH_MAP[target]
+                if target == "ALL":
+                    assert i.sighash is None
+                else:
+                    assert i.sighash == sh_num
+            # check signature hash correct checksum appended
             for _, sig in i.part_sigs.items():
-                assert sig[-1] == i.sighash
+                assert sig[-1] == sh_num
 
         resp = finalize_v2_v0_convert(y)
 
