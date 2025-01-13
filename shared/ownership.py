@@ -216,8 +216,7 @@ class OwnershipCache:
         addr_fmt = ch.possible_address_fmt(addr)
         if not addr_fmt:
             # might be valid address over on testnet vs mainnet
-            nm = ch.name if ch.ctype != 'BTC' else 'Bitcoin Mainnet'
-            raise UnknownAddressExplained('That address is not valid on ' + nm)
+            raise UnknownAddressExplained('That address is not valid on ' + ch.name)
 
         possibles = []
 
