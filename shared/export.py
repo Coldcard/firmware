@@ -73,14 +73,7 @@ be needed for different systems.
             sym=chain.ctype, ct=chain.b44_cointype, xfp=xfp))
 
         for name, path, addr_fmt in chains.CommonDerivations:
-
-            if '{coin_type}' in path:
-                path = path.replace('{coin_type}', str(chain.b44_cointype))
-
-            if '{' in name:
-                name = name.format(core_name=chain.core_name)
-
-            show_slip132 = ('Core' not in name)
+            path = path.replace('{coin_type}', str(chain.b44_cointype))
 
             yield ('''## For {name}: {path}\n\n'''.format(name=name, path=path))
             yield ('''First %d receive addresses (account=0, change=0):\n\n''' % num_rx)
@@ -103,7 +96,7 @@ be needed for different systems.
 
                     node = sv.derive_path(hard_sub, register=False)
                     yield ("%s => %s\n" % (hard_sub, chain.serialize_public(node)))
-                    if show_slip132 and addr_fmt not in (AF_CLASSIC, AF_P2TR) and (addr_fmt in chain.slip132):
+                    if addr_fmt not in (AF_CLASSIC, AF_P2TR) and (addr_fmt in chain.slip132):
                         yield ("%s => %s   ##SLIP-132##\n" % (
                                     hard_sub, chain.serialize_public(node, addr_fmt)))
 

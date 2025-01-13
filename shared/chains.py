@@ -51,8 +51,6 @@ def tapleaf_hash(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
 class ChainsBase:
 
     curve = 'secp256k1'
-    menu_name = None        # use 'name' if this isn't defined
-    core_name = None        # name of chain's "core" p2p software
 
     # b44_cointype comes from
     #    <https://github.com/satoshilabs/slips/blob/master/slip-0044.md>
@@ -319,8 +317,7 @@ class ChainsBase:
 class BitcoinMain(ChainsBase):
     # see <https://github.com/bitcoin/bitcoin/blob/master/src/chainparams.cpp#L140>
     ctype = 'BTC'
-    name = 'Bitcoin'
-    core_name = 'Bitcoin Core'
+    name = 'Bitcoin Mainnet'
 
     slip132 = {
         AF_CLASSIC:     Slip132Version(0x0488B21E, 0x0488ADE4, 'x'),
@@ -340,9 +337,9 @@ class BitcoinMain(ChainsBase):
     b44_cointype = 0
 
 class BitcoinTestnet(BitcoinMain):
+    # testnet4 (was testnet3 up until 2025 but all parameters are the same)
     ctype = 'XTN'
-    name = 'Bitcoin Testnet'
-    menu_name = 'Testnet: BTC'
+    name = 'Bitcoin Testnet 4'
 
     slip132 = {
         AF_CLASSIC:     Slip132Version(0x043587cf, 0x04358394, 't'),
@@ -365,7 +362,6 @@ class BitcoinTestnet(BitcoinMain):
 class BitcoinRegtest(BitcoinMain):
     ctype = 'XRT'
     name = 'Bitcoin Regtest'
-    menu_name = 'Regtest: BTC'
 
     slip132 = {
         AF_CLASSIC:     Slip132Version(0x043587cf, 0x04358394, 't'),

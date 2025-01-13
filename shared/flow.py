@@ -308,7 +308,7 @@ If you disable sighash flag restrictions, and ignore the \
 warnings, funds can be stolen by specially crafted PSBT or MitM.
 
 Keep blocked unless you intend to sign special transactions.'''),
-    ToggleMenuItem('Testnet Mode', 'chain', ['Bitcoin', 'Testnet3', 'Regtest'],
+    ToggleMenuItem('Testnet Mode', 'chain', ['Bitcoin', 'Testnet4', 'Regtest'],
         value_map=['BTC', 'XTN', 'XRT'],
         on_change=change_which_chain,
         story="Testnet must only be used by developers because \
