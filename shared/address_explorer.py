@@ -179,8 +179,7 @@ class AddressListMenu(MenuSystem):
             # Create list of choices (address_index_0, path, addr_fmt)
             choices = []
             for name, path, addr_fmt in chains.CommonDerivations:
-                if '{coin_type}' in path:
-                    path = path.replace('{coin_type}', str(chain.b44_cointype))
+                path = path.replace('{coin_type}', str(chain.b44_cointype))
 
                 if self.account_num != 0 and '{account}' not in path:
                     # skip derivations that are not affected by account number
