@@ -362,12 +362,6 @@ class MenuSystem:
         self.cursor = 0
         self.ypos = 0
 
-    def goto_n(self, n):
-        # goto N from top of (current) screen
-        # change scroll only if needed to make it visible
-        self.cursor = max(min(n + self.ypos, self.count-1), 0)
-        self.ypos = max(self.cursor - n, 0)
-
     def goto_idx(self, n):
         # skip to any item, force cusor near middle of screen
         n = self.count-1 if n >= self.count else n
@@ -474,7 +468,7 @@ class MenuSystem:
                 self.ypos = 0
             elif '1' <= key <= '9':
                 # jump down, based on screen postion
-                self.goto_n(ord(key)-ord('1'))
+                self.goto_idx(ord(key)-ord('1'))
             elif key in self.shortcuts:
                 # run the function, if predicate allows
                 m = self.shortcuts[key]
@@ -489,7 +483,7 @@ class MenuSystem:
                         return self.items[self.cursor]
 
                 # search downwards for a menu item that starts with indicated letter
-                # if found, select it but dont drill down
+                # if found, select it but don't drill down
                 lst = list(range(self.cursor+1, self.count)) + list(range(0, self.cursor))
                 for n in lst:
                     if self.items[n].label[0].upper() == key.upper():
