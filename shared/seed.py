@@ -1209,7 +1209,7 @@ class PassphraseMenu(MenuSystem):
     @classmethod
     async def add_numbers(cls, *a):
         # Mk4 only: add some digits (quick, easy)
-        pw = await ux_input_numbers(cls.pp_sofar, cls.check_length)
+        pw = await ux_input_numbers(cls.pp_sofar)
         if pw is not None:
             cls.pp_sofar = pw
             cls.check_length()
