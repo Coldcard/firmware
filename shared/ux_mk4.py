@@ -122,7 +122,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
             # cleanup leading zeros and such
             value = str(min(int(value), max_value))
 
-async def ux_input_numbers(val, validate_func):
+async def ux_input_numbers(val):
     # collect a series of digits
     from glob import dis
     from display import FontTiny
@@ -161,7 +161,6 @@ async def ux_input_numbers(val, validate_func):
         ch = await press.wait()
         if ch == 'y':
             val += here
-            validate_func()
             return val
         elif ch == 'x':
             if here:
