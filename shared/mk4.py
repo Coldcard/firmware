@@ -11,7 +11,6 @@ def make_flash_fs():
     os.VfsLfs2.mkfs(fl)
 
     os.mount(fl, '/flash')
-
     os.mkdir('/flash/settings')
 
 def make_psram_fs():
