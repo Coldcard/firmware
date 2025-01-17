@@ -83,7 +83,6 @@ def probe_system():
 
     hw_label = 'mk4'
     has_608 = True
-    nfc_presence_check()  # hardware present; they might not be using it
     has_qr = False          # QR scanner
     num_sd_slots = 1        # might have dual slots on Q1
     mk_num = 4
@@ -91,7 +90,7 @@ def probe_system():
     has_qwerty = False
     is_edge = False
     supports_hsm = True
-    has_nfc = True
+    has_nfc = nfc_presence_check()      # hardware present; they might not use it.
 
     cpuid = ckcc.get_cpu_id()
     assert cpuid == 0x470  # STM32L4S5VI

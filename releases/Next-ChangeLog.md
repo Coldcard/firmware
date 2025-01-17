@@ -14,6 +14,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Prevent yikes in ownership search
 - Change: Do not allow to purge settings of current active tmp seed when deleting it from Seed Vault
 - Change: Do not include sighash in PSBT input data, if sighash value is SIGHASH_ALL
+- Bugfix: Factory-disabled NFC was not recognized correctly.
 
 
 # Mk4 Specific Changes
