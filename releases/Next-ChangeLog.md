@@ -14,6 +14,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Do not allow to enable/disable Seed Vault feature when in temporary seed mode
 - Bugfix: Bless Firmware causes hanging progress bar
 - Bugfix: Prevent yikes in ownership search
+- Bugfix: Factory-disabled NFC was not recognized correctly.
 - Change: Do not allow to purge settings of current active tmp seed when deleting it from Seed Vault
 - Change: Do not include sighash in PSBT input data, if sighash value is SIGHASH_ALL
 - Change: Testnet3 -> Testnet4 (all parameters are the same)
