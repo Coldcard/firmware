@@ -1405,6 +1405,7 @@ def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
     title, story = cap_story()
     assert "FAILED" == title
     assert 'Cannot use master seed as temporary.' in story
+    assert 'tested recovery of your master seed' in story
     press_cancel()
 
     # go to ephemeral seed and then try to create new ephemeral seed from master
@@ -1433,6 +1434,7 @@ def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
     title, story = cap_story()
     assert "FAILED" == title
     assert 'Cannot use master seed as temporary.' in story
+    assert 'tested recovery of your master seed' in story
     press_cancel()
 
     # now import same seed but represented as master extended key
