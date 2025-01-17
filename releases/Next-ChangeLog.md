@@ -6,25 +6,27 @@ This lists the new changes that have not yet been published in a normal release.
 
 - Enhancement: Hide Secure Notes & Passwords in Deltamode. Wipe seed if notes menu accessed. 
 - Enhancement: Hide Seed Vault in Deltamode. Wipe seed if Seed Vault menu accessed. 
-- Enhancement: Ability to switch between BIP-32 XPUB and SLIP-132 garbage in `Export XPUB`
-- Enhancement: Use the fact that master seed cannot be used as ephemeral and add UX message 
-  for successful master seed verification.
+- Enhancement: Add ability to switch between BIP-32 xpub, and obsolete
+  SLIP-132 format in `Export XPUB`
+- Enhancement: Use the fact that master seed cannot be used as ephemeral seed, to show message 
+  about successful master seed verification.
 - Bugfix: Sometimes see a struck screen after _Verifying..._ in boot up sequence.
   On Q, result is blank screen, on Mk4, result is three-dots screen.
-- Bugfix: Do not allow to enable/disable Seed Vault feature when in temporary seed mode
-- Bugfix: Bless Firmware causes hanging progress bar
-- Bugfix: Prevent yikes in ownership search
+- Bugfix: Do not allow to enable/disable Seed Vault feature when in temporary seed mode.
+- Bugfix: Bless Firmware causes hanging progress bar.
+- Bugfix: Prevent yikes in ownership search.
 - Bugfix: Factory-disabled NFC was not recognized correctly.
-- Change: Do not allow to purge settings of current active tmp seed when deleting it from Seed Vault
-- Change: Do not include sighash in PSBT input data, if sighash value is SIGHASH_ALL
-- Change: Testnet3 -> Testnet4 (all parameters are the same)
+- Bugfix: Be more robust about flash filesystem holding the settings.
+- Change: Do not purge settings of current active tmp seed when deleting it from Seed Vault.
+- Change: Do not include sighash in PSBT input data, if sighash value is `SIGHASH_ALL`.
+- Change: Rename Testnet3 -> Testnet4 (all parameters unchanged).
 
 
 # Mk4 Specific Changes
 
 ## 5.4.1 - 2024-??-??
 
-- Enhancement: Export single sig descriptor with simple QR
+- Enhancement: Export single sig descriptor with simple QR.
 
 
 # Q Specific Changes
@@ -32,3 +34,4 @@ This lists the new changes that have not yet been published in a normal release.
 ## 1.3.1Q - 2024-??-??
 
 - Bugfix: Properly re-draw status bar after Restore Master on COLDCARD without master seed.
+
