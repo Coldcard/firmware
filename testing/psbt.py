@@ -138,7 +138,8 @@ class BasicPSBTInput(PSBTSection):
 
     def __eq__(a, b):
         if a.sighash != b.sighash:
-            if a.sighash is not None and b.sighash is not None:
+            # no sighash == SIGHASH_ALL
+            if {a.sighash, b.sighash} != {None, 1}:
                 return False
 
         rv = a.utxo == b.utxo and \
