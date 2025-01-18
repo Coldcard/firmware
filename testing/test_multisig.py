@@ -2034,7 +2034,7 @@ def test_iss6743(repeat, set_seed_words, sim_execfile, try_sign):
     # sign a multisig, with xpubs in globals
     _, out_psbt = try_sign(psbt_b4, accept=True, accept_ms_import=True)
     assert out_psbt != psbt_wrong
-    assert out_psbt == psbt_right
+    assert BasicPSBT().parse(out_psbt) == BasicPSBT().parse(psbt_right)
 
     open('debug/i6.psbt', 'wt').write(out_psbt.hex())
 
