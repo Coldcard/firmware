@@ -70,6 +70,11 @@ Otherwise, press {ok} to continue.'''.format(n=num_parts, ok=OK), escape='2')
     raw_secret = bytes(32)
     try:
         with stash.SensitiveValues() as sv:
+            if sv.deltamode:
+                # die rather than give up our secrets
+                import callgate
+                callgate.fast_wipe()
+
             words = None
             if sv.mode == 'words':
                 words = bip39.b2a_words(sv.raw).split(' ')
@@ -290,6 +295,11 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
         if ch == '1':
             dis.fullscreen("Wait...")
             with stash.SensitiveValues() as sv:
+                if sv.deltamode:
+                    # die rather than give up our secrets
+                    import callgate
+                    callgate.fast_wipe()
+
                 if sv.mode == 'words':
                     # needs copy here [:] otherwise rewritten with zeros in __exit__
                     import_xor_parts.append(sv.raw[:])
@@ -297,17 +307,20 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
         # Add from Seed Vault?
         # filter only those that are correct length and type from seed vault
         opt = []
-        for i, (xfp_str, hex_str, _, _) in enumerate(settings.master_get("seeds", [])):
+        seeds = [] if pa.is_deltamode() else settings.master_get("seeds", [])
+        for i, (xfp_str, hex_str, _, _) in enumerate(seeds):
             raw = pad_raw_secret(hex_str)
             if raw[0] & 0x80:
                 # seed phrase
                 sk = raw[1:1 + stash.len_from_marker(raw[0])]
                 if stash.len_to_numwords(len(sk)) == desired_num_words:
                     opt.append((i, xfp_str, sk))
+        del seeds
         if opt:
             escape = "2"
             msg = ("Seed Vault is enabled. %d stored seeds have suitable type and length."
-                   "\n\nPress (2) to add from Seed Vault, press %s to continue normally.") % (len(opt), OK)
+                   "\n\nPress (2) to add from Seed Vault and then (1) to select seeds,"
+                   " press %s to continue normally.") % (len(opt), OK)
             ch = await ux_show_story(msg, escape=escape)
             if ch == 'x': return
             if ch == "2":
