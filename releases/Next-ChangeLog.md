@@ -15,6 +15,8 @@ This lists the new changes that have not yet been published in a normal release.
   SLIP-132 format in `Export XPUB`
 - Enhancement: Use the fact that master seed cannot be used as ephemeral seed, to show message 
   about successful master seed verification.
+- Enhancement: Catch more DeltaMode cases in XOR path.
+  Thanks to [@dmonakhov](https://github.com/dmonakhov))
 - Change: If derivation path is omitted during message signing, default is used 
   based on address format (`m/44h/0h/0h/0/0` for p2pkh, and `m/84h/0h/0h/0/0` for p2wpkh). 
   Default is no longer root (m).
