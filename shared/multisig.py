@@ -22,7 +22,6 @@ TRUST_VERIFY = const(0)
 TRUST_OFFER = const(1)
 TRUST_PSBT = const(2)
 
-
 class MultisigOutOfSpace(RuntimeError):
     pass
 

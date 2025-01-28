@@ -7,6 +7,7 @@ from ssd1306 import SSD1306_SPI
 from version import is_devmode
 import framebuf
 from graphics_mk4 import Graphics
+from charcodes import OUT_CTRL_TITLE, OUT_CTRL_ADDRESS
 
 # we support 4 fonts
 from zevvpeep import FontSmall, FontLarge, FontTiny
@@ -304,9 +305,14 @@ class Display:
         for ln in lines:
             if ln == 'EOT':
                 self.hline(y+3)
-            elif ln and ln[0] == '\x01':
+            elif ln and ln[0] == OUT_CTRL_TITLE:
                 self.text(0, y, ln[1:], FontLarge)
                 y += 21
+            elif ln and ln[0] == OUT_CTRL_ADDRESS:
+                from utils import chunk_address
+                fmt = '\u2009'.join(chunk_address(ln[1:]))
+                self.text(14, y, fmt)       # fixed indent, to be centered
+                y += 15                     # a bit extra vertical line height
             else:
                 self.text(0, y, ln)
 
@@ -322,9 +328,10 @@ class Display:
         # no status bar on Mk4
         return
 
-    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert):
+    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, is_addr=False):
         # 'sidebar' is a pre-formated obj to show to right of QR -- oled life
         # - 'msg' will appear to right if very short, else under in tiny
+        # - ignores "is_addr" because exactly zero space to do anything special
         from utils import word_wrap
 
         self.clear()

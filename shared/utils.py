@@ -2,10 +2,11 @@
 #
 # utils.py - Misc utils. My favourite kind of source file.
 #
-import gc, sys, ustruct, ngu, chains, ure, time, bip39
+import gc, sys, ustruct, ngu, chains, ure, time, bip39, version
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
+from charcodes import OUT_CTRL_ADDRESS
 from uhashlib import sha256
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
@@ -481,11 +482,26 @@ def word_wrap(ln, w):
         return
 
     while ln:
-
         # find a space in (width) first part of remainder
         sp = ln.rfind(' ', 0, w-1)
-
         if sp == -1:
+            if ln[0] == OUT_CTRL_ADDRESS:
+                # special handling for lines w/ payment address in them
+                # - add same marker to newly split lines
+                addr = ln[1:]
+                if version.has_qwerty:
+                    # - do line break in middle, on mod4 boundry
+                    # - will not work if addresses are > 2 lines long (34*2 chars)
+                    aw = ((len(addr) // 2) + 3) & ~3
+                else:
+                    # - simply 3 4-char groups on Mk4
+                    aw = 12
+                pos = 0
+                while pos < len(addr):
+                    yield OUT_CTRL_ADDRESS + addr[pos:pos+aw]
+                    pos += aw
+                return
+                
             # bad-break the line
             sp = min(txtlen(ln), w)
             nsp = sp
@@ -502,6 +518,9 @@ def word_wrap(ln, w):
             # not clear when this would happen? final bit??
             left = left + ' ' + ln
             ln = ''
+        else:
+            if ln and ln[0] == ' ' and version.has_qwerty:
+                ln = " " + ln
 
         yield left
 
@@ -668,5 +687,14 @@ def decode_bip21_text(got):
 
 def encode_seed_qr(words):
     return ''.join('%04d' % bip39.get_word_index(w) for w in words)
+
+def show_single_address(addr):
+    # insert some metadata so display layer can do special rendering
+    # of addresses (based on hardware capabilities)
+    return OUT_CTRL_ADDRESS + addr
+
+def chunk_address(addr):
+    # useful to show payment addresses specially
+    return [addr[i:i+4] for i in range(0, len(addr), 4)]
 
 # EOF

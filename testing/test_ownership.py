@@ -5,7 +5,7 @@
 import pytest, time, io, csv
 from txn import fake_address
 from base58 import encode_base58_checksum
-from helpers import hash160
+from helpers import hash160, addr_from_display_format
 from bip32 import BIP32Node
 from constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 from constants import simulator_fixed_xprv, simulator_fixed_tprv, addr_fmt_names
@@ -193,7 +193,7 @@ def test_ux(valid, testnet, method,
 
         title, story = cap_story()
 
-        assert addr in story
+        assert addr == addr_from_display_format(story.split("\n\n")[0])
         assert '(1) to verify ownership' in story
         need_keypress('1')
 
@@ -218,8 +218,7 @@ def test_ux(valid, testnet, method,
 
     time.sleep(1)
     title, story = cap_story()
-
-    assert addr in story
+    assert addr == addr_from_display_format(story.split("\n\n")[0])
 
     if title == 'Unknown Address' and not testnet:
         assert 'That address is not valid on Bitcoin Testnet' in story
@@ -299,7 +298,7 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
     time.sleep(1)
     title, story = cap_story()
 
-    assert addr in story
+    assert addr == addr_from_display_format(story.split("\n\n")[0])
     assert title == 'Verified Address'
     assert 'Found in wallet' in story
     assert 'Derivation path' in story

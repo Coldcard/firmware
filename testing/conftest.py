@@ -3,7 +3,7 @@
 import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, io, math, pdb
 from subprocess import check_output
 from ckcc.protocol import CCProtocolPacker
-from helpers import B2A, U2SAT, hash160
+from helpers import B2A, U2SAT, hash160, addr_from_display_format
 from base58 import decode_base58_checksum
 from bip32 import BIP32Node
 from msg import verify_message
@@ -2145,6 +2145,7 @@ def txout_explorer(cap_story, press_cancel, need_keypress, is_q1):
                     assert f"Output {i}:" == sa
 
                 txt_amount, _, addr = sb.split("\n")
+                addr = addr_from_display_format(addr)
                 assert txt_amount == f'{amount / 100000000:.8f} {chain}'
                 if af == "p2pkh":
                     if chain == "BTC":

@@ -107,4 +107,9 @@ if has_qwerty:
     assert DECODER[KEYNUM_SYMBOL] == KEY_SYMBOL
     assert DECODER[KEYNUM_LAMP] == KEY_LAMP
 
+# These affect how 'ux stories' are rendered; they are control
+# characters on the output side of things, not input.
+OUT_CTRL_TITLE = '\x01'     # must be first char in line: be a title line
+OUT_CTRL_ADDRESS = '\x02'   # must be first char in line: it's a payment address
+
 # EOF
