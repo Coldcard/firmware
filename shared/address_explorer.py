@@ -8,14 +8,13 @@ import chains, stash, version
 from ux import ux_show_story, the_ux, ux_enter_bip32_index
 from ux import export_prompt_builder, import_export_prompt_decode
 from menu import MenuSystem, MenuItem
-from public_constants import AFC_BECH32, AFC_BECH32M, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
+from public_constants import AFC_BECH32, AFC_BECH32M, AF_P2WPKH, AF_P2TR
 from multisig import MultisigWallet
 from miniscript import MiniScriptWallet
 from uasyncio import sleep_ms
 from uhashlib import sha256
 from glob import settings
 from auth import write_sig_file
-from utils import censor_address
 from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME, KEY_LEFT, KEY_RIGHT
 from charcodes import KEY_CANCEL
 
@@ -188,7 +187,7 @@ class AddressListMenu(MenuSystem):
                 deriv = path.format(account=self.account_num, change=0, idx=self.start)
                 node = sv.derive_path(deriv, register=False)
                 address = chain.address(node, addr_fmt)
-                choices.append( (truncate_address(address), path, addr_fmt) )
+                choices.append((truncate_address(address), path, addr_fmt))
 
                 dis.progress_sofar(len(choices), len(chains.CommonDerivations))
 

@@ -13,7 +13,7 @@ from descriptor import Descriptor
 from miniscript import Key, Sortedmulti, Number, Multi
 from desc_utils import multisig_descriptor_template
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS, AF_P2TR
-from menu import MenuSystem, MenuItem, NonDefaultMenuItem
+from menu import MenuSystem, MenuItem, NonDefaultMenuItem, start_chooser, ToggleMenuItem
 from opcodes import OP_CHECKMULTISIG
 from exceptions import FatalPSBTIssue
 from glob import settings
@@ -1172,7 +1172,6 @@ def disable_checks_chooser():
     return int(MultisigWallet.disable_checks), ch, xset
 
 async def disable_checks_menu(*a):
-    from menu import start_chooser
 
     if not MultisigWallet.disable_checks:
         ch = await ux_show_story('''\
@@ -1205,7 +1204,6 @@ def psbt_xpubs_policy_chooser():
 
 async def trust_psbt_menu(*a):
     # show a story then go into chooser
-    from menu import start_chooser
 
     ch = await ux_show_story('''\
 This setting controls what the Coldcard does \
@@ -1230,18 +1228,16 @@ exists, otherwise 'Verify'.''')
     if ch == 'x': return
     start_chooser(psbt_xpubs_policy_chooser)
 
-def unsorted_ms_chooser():
-    ch = ['Do Not Allow', 'Allow']
-
+def unsort_ms_chooser():
     def xset(idx, text):
-        settings.set('unsort_ms', idx)
-        from actions import goto_top_menu
-        goto_top_menu()
+        if idx:
+            settings.set('unsort_ms', idx)
+        else:
+            settings.remove_key('unsort_ms')
 
-    return settings.get('unsort_ms', 0), ch, xset
+    return settings.get('unsort_ms', 0), ['Do Not Allow', 'Allow'], xset
 
 async def unsorted_ms_menu(*a):
-    from menu import start_chooser
 
     if not settings.get("unsort_ms", None):
         ch = await ux_show_story(
@@ -1269,7 +1265,7 @@ async def unsorted_ms_menu(*a):
             )
             return
 
-    start_chooser(unsorted_ms_chooser)
+    start_chooser(unsort_ms_chooser)
 
 class MultisigMenu(MenuSystem):
 

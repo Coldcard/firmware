@@ -12,7 +12,7 @@ from ckcc.protocol import CCProtocolPacker, MAX_TXN_LEN
 from pprint import pprint
 from base64 import b64encode, b64decode
 from base58 import encode_base58_checksum
-from helpers import B2A, fake_dest_addr, xfp2str, detruncate_address
+from helpers import B2A, fake_dest_addr, xfp2str
 from helpers import path_to_str, str_to_path, slip132undo, swab32, hash160
 from struct import unpack, pack
 from constants import *
@@ -1266,7 +1266,7 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, press_select, clear_m
             title, story = offer_ms_import(config)
             #print(story)
 
-            # dont care if update or create; accept it.
+            # don't care if update or create; accept it.
             time.sleep(.1)
             press_select()
 
@@ -2288,11 +2288,12 @@ def test_bitcoind_ms_address(change, M_N, addr_fmt, clear_ms, goto_home, need_ke
                              pick_menu_item, cap_menu, cap_story, make_multisig, import_ms_wallet,
                              microsd_path, bitcoind_d_wallet_w_sk, use_regtest, load_export, way,
                              is_q1, press_select, start_idx, settings_set, set_addr_exp_start_idx,
-                             desc):
+                             desc, garbage_collector, virtdisk_path):
     use_regtest()
     clear_ms()
     bitcoind = bitcoind_d_wallet_w_sk
     M, N = M_N
+    path_f = microsd_path if way == "sd" else virtdisk_path
     # whether to import as descriptor or old school to CC
     descriptor = random.choice([True, False])
     bip67 = True
@@ -2343,7 +2344,12 @@ def test_bitcoind_ms_address(change, M_N, addr_fmt, clear_ms, goto_home, need_ke
         assert "change addresses." not in story
         assert "(0)" not in story
 
-    contents = load_export(way, label="Address summary", is_json=False, sig_check=False)
+    if way != "nfc":
+        contents, exp_fname = load_export(way, label="Address summary", is_json=False,
+                                          sig_check=False, ret_fname=True)
+        garbage_collector.append(path_f(exp_fname))
+    else:
+        contents = load_export(way, label="Address summary", is_json=False, sig_check=False)
     addr_cont = contents.strip()
     goto_home()
     pick_menu_item('Settings')
@@ -2351,7 +2357,12 @@ def test_bitcoind_ms_address(change, M_N, addr_fmt, clear_ms, goto_home, need_ke
     press_select()  # only one enrolled multisig - choose it
     pick_menu_item('Descriptors')
     pick_menu_item("Bitcoin Core")
-    contents = load_export(way, label="Bitcoin Core multisig setup", is_json=False, sig_check=False)
+    if way != "nfc":
+        contents, exp_fname = load_export(way, label="Bitcoin Core multisig setup", is_json=False,
+                                          sig_check=False, ret_fname=True)
+        garbage_collector.append(path_f(exp_fname))
+    else:
+        contents = load_export(way, label="Bitcoin Core multisig setup", is_json=False, sig_check=False)
     text = contents.replace("importdescriptors ", "").strip()
     # remove junk
     r1 = text.find("[")
@@ -2521,7 +2532,6 @@ def bitcoind_multisig(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story, 
 def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, microsd_wipe, goto_home, need_keypress,
                                               pick_menu_item, cap_story, load_export, microsd_path, cap_menu, try_sign,
                                               is_q1, press_select):
-
     use_regtest()
     clear_ms()
     microsd_wipe()

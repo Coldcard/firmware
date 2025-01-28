@@ -945,8 +945,9 @@ def reset_seed_words(sim_exec, sim_execfile, simulator):
 @pytest.fixture()
 def settings_set(sim_exec):
 
-    def doit(key, val):
-        x = sim_exec("settings.set('%s', %r)" % (key, val))
+    def doit(key, val, prelogin=False):
+        source = "from nvstore import SettingsObject;SettingsObject.prelogin()" if prelogin else "settings"
+        x = sim_exec("%s.set('%s', %r)" % (source, key, val))
         assert x == ''
 
     return doit
@@ -954,8 +955,9 @@ def settings_set(sim_exec):
 @pytest.fixture()
 def settings_get(sim_exec):
 
-    def doit(key, def_val=None):
-        cmd = f"RV.write(repr(settings.get('{key}', {def_val!r})))"
+    def doit(key, def_val=None, prelogin=False):
+        source = "from nvstore import SettingsObject;SettingsObject.prelogin()" if prelogin else "settings"
+        cmd = f"RV.write(repr({source}.get('{key}', {def_val!r})))"
         resp = sim_exec(cmd)
         assert 'Traceback' not in resp, resp
         return eval(resp)

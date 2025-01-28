@@ -65,6 +65,7 @@ from utils import call_later_ms
 #   ptxurl = (str) URL for PushTx feature, clear to disable feature
 #   hmx    = (bool) Force display of current XFP in home menu, even w/o tmp seed active
 #   unsort_ms = (bool) Allow unsorted multisig with BIP-67 disabled
+#   msas = multisig address show (do not censor multisig addresses)
 
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
@@ -86,7 +87,7 @@ from utils import call_later_ms
 # keep these settings only if unspecified on the other end
 KEEP_IF_BLANK_SETTINGS = ["wa", "sighshchk", "emu", "rz", "b39skip",
                           "axskip", "del", "pms", "idle_to", "batt_to",
-                          "bright"]
+                          "bright", "msas"]
 
 SEEDVAULT_FIELDS = ['seeds', 'seedvault', 'xfp', 'words', "bkpw"]
 
