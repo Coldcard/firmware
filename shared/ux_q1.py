@@ -14,7 +14,7 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import b2a_base64
 
-from utils import problem_file_line
+from utils import problem_file_line, show_single_address
 from public_constants import MSG_SIGNING_MAX_LENGTH
 from glob import numpad         # may be None depending on import order, careful
 
@@ -1084,7 +1084,7 @@ async def ux_visualize_bip21(proto, addr, args):
     # - validate address ownership on request
     from ux import ux_show_story
 
-    msg = addr + '\n\n'
+    msg = show_single_address(addr) + '\n\n'
     args = args or {}
 
     if 'amount' in args:

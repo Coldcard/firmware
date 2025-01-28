@@ -7,7 +7,7 @@ from glob import settings
 from ucollections import namedtuple
 from ubinascii import hexlify as b2a_hex
 from exceptions import UnknownAddressExplained
-from utils import problem_file_line
+from utils import problem_file_line, show_single_address
 
 # Track many addresses, but in compressed form
 # - map from random Bech32/Base58 payment address to (wallet) + keypath
@@ -315,7 +315,7 @@ class OwnershipCache:
             is_ms = isinstance(wallet, MultisigWallet)
             sp = wallet.render_path(*subpath)
 
-            msg = addr
+            msg = show_single_address(addr)
             msg += '\n\nFound in wallet:\n  ' + wallet.name
             msg += '\nDerivation path:\n  ' + sp
             if is_ms:
@@ -346,7 +346,7 @@ class OwnershipCache:
                     break
 
         except UnknownAddressExplained as exc:
-            await ux_show_story(addr + '\n\n' + str(exc), title="Unknown Address")
+            await ux_show_story(show_single_address(addr) + '\n\n' + str(exc), title="Unknown Address")
         except Exception as e:
             await ux_show_story('Ownership search failed.\n\n%s\n%s' % (e, problem_file_line(e)))
 

@@ -10,6 +10,7 @@ from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
 from constants import addr_fmt_names, msg_sign_unmap_addr_fmt
 from charcodes import KEY_QR, KEY_NFC
+from helpers import addr_from_display_format
 
 
 def default_derivation_by_af(addr_fmt, testnet=True):
@@ -77,7 +78,7 @@ def verify_msg_sign_story():
         assert 'Using the key associated' in story
 
         if addr:
-            assert addr in story
+            assert addr == addr_from_display_format(story.split("\n\n")[2].split("\n")[-1])
 
         if not subpath:
             assert 'm =>' not in story
@@ -648,7 +649,7 @@ def test_verify_signature_file(way, addr_fmt, path, msg, sign_on_microsd, goto_h
     title, story = verify_armored_signature(way, fname, should)
     assert title == "CORRECT"
     assert "Good signature" in story
-    assert addr in story
+    assert addr == addr_from_display_format(story.split("\n")[-1])
     if (addr_fmt == "p2pkh") and (chain != "BTC"):
         res = bitcoind.rpc.verifymessage(addr, sig, msg)
         assert res is True
@@ -999,5 +1000,6 @@ def test_verify_scanned_signed_msg(msg, scan_a_qr, need_keypress, goto_home, cap
     title, story = cap_story()
     assert title == "CORRECT"
     assert "Good signature by address" in story
+    assert addr == addr_from_display_format(story.split("\n")[-1])
 
 # EOF
