@@ -8,6 +8,7 @@ This lists the new changes that have not yet been published in a normal release.
 - New Feature: Sign message from note text, or password note
 - New Feature: Sign message with key resulting from positive ownership check. Press (0) + enter/scan message text
 - New Feature: Sign message with key selected from Address Explorer Custom Path menu. Press (2) + enter/scan message text
+- Enhancement: New address display format improves address verification on screen 
 - Enhancement: Hide Secure Notes & Passwords in Deltamode. Wipe seed if notes menu accessed. 
 - Enhancement: Hide Seed Vault in Deltamode. Wipe seed if Seed Vault menu accessed. 
 - Enhancement: Add ability to switch between BIP-32 xpub, and obsolete

@@ -17,6 +17,7 @@ from glob import settings
 from auth import write_sig_file
 from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME, KEY_LEFT, KEY_RIGHT
 from charcodes import KEY_CANCEL
+from utils import show_single_address, problem_file_line
 
 def truncate_address(addr):
     # Truncates address to width of screen, replacing middle chars
@@ -306,7 +307,7 @@ Press (3) if you really understand and accept these risks.
 
                 for idx, addr, deriv in main.yield_addresses(start, n, change if allow_change else None):
                     addrs.append(addr)
-                    msg += "%s =>\n%s\n\n" % (deriv, addr)
+                    msg += "%s =>\n%s\n\n" % (deriv, show_single_address(addr))
                     dis.progress_sofar(idx-start+1, n or 1)
 
             # export options
@@ -353,10 +354,10 @@ Press (3) if you really understand and accept these risks.
                 # continue on same screen in case they want to write to multiple cards
 
             elif choice == KEY_QR:
-                # switch into a mode that shows them as QR codes
                 from ux import show_qr_codes
+                addr_fmt = addr_fmt or ms_wallet.addr_fmt
                 is_alnum = bool(addr_fmt & (AFC_BECH32 | AFC_BECH32M))
-                await show_qr_codes(addrs, is_alnum, start)
+                await show_qr_codes(addrs, is_alnum, start, is_addrs=True)
                 continue
 
             elif NFC and (choice == KEY_NFC):
@@ -480,7 +481,6 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
         await needs_microsd()
         return
     except Exception as e:
-        from utils import problem_file_line
         await ux_show_story('Failed to write!\n\n\n%s\n%s' % (e, problem_file_line(e)))
         return
 

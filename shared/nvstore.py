@@ -77,6 +77,7 @@ from utils import call_later_ms
 #   cd_pin = [<=mk3] pin code which enables "countdown to brick" mode
 #   kbtn =  (1 char str) button will wipe seed during login process (mk4+, Q)
 #   terms_ok = customer has signed-off on the terms of sale
+#   msas = multisig address show (do not censor multisig addresses)
 
 # settings linked to seed
 # LINKED_SETTINGS = ["multisig","miniscript", "tp", "ovc", "xfp", "xpub", "words"]

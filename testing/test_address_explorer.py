@@ -8,7 +8,7 @@ import pytest, time, io, csv, bech32
 from ckcc_protocol.constants import *
 from bip32 import BIP32Node
 from base58 import decode_base58_checksum
-from helpers import detruncate_address, hash160
+from helpers import detruncate_address, hash160, addr_from_display_format
 from charcodes import KEY_QR, KEY_LEFT, KEY_RIGHT
 from constants import MAX_BIP32_IDX
 
@@ -53,7 +53,7 @@ def parse_display_screen(cap_story, is_mark3):
         d = dict()
         for path_raw, addr, empty in zip(*[iter(raw_addrs)]*3):
             path = path_raw.split(" =>")[0]
-            d[path] = addr
+            d[path] = addr_from_display_format(addr)
         assert len(d) == n
         return d
     return doit
@@ -469,7 +469,7 @@ def test_custom_path(path_sidx, which_fmt, addr_vs_path, pick_menu_item, goto_ad
         assert 'Showing single addr' in body
         assert path in body
 
-        addr = body.split("\n")[3]
+        addr = addr_from_display_format(body.split("\n")[3])
 
         addr_vs_path(addr, path, addr_fmt=which_fmt)
 

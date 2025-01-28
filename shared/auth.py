@@ -16,7 +16,7 @@ from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_
 from ux import show_qr_code, OK, X, ux_input_text, ux_enter_bip32_index
 from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
-from utils import B2A, to_ascii_printable
+from utils import B2A, to_ascii_printable, show_single_address
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from files import CardSlot, CardMissingError, needs_microsd
 from exceptions import HSMDenied
@@ -372,14 +372,14 @@ class ApproveMessageSign(UserAuthorizedAction):
         if hsm_active:
             ch = await hsm_active.approve_msg_sign(self.text, self.address, self.subpath)
         else:
-            story = MSG_SIG_TEMPLATE.format(msg=self.text, addr=self.address, subpath=self.subpath)
+            story = MSG_SIG_TEMPLATE.format(msg=self.text, addr=show_single_address(self.address),
+                                            subpath=self.subpath)
             ch = await ux_show_story(story)
 
         if ch != 'y':
             # they don't want to!
             self.refused = True
         else:
-
             # perform signing (progress bar shown)
             digest = chains.current_chain().hash_message(self.text.encode())
             self.result = sign_message_digest(digest, self.subpath, "Signing...", self.addr_fmt)[0]
@@ -665,7 +665,7 @@ async def verify_armored_signed_msg(contents, digest_check=True):
     title = "CORRECT"
     warn_msg = ""
     err_msg = ""
-    story = "Good signature by address:\n %s" % addr
+    story = "Good signature by address:\n%s" % show_single_address(addr)
 
     if digest_check:
         digest_prob = verify_signed_file_digest(msg)
@@ -748,7 +748,7 @@ class ApproveTransaction(UserAuthorizedAction):
         try:
             dest = self.chain.render_address(o.scriptPubKey)
 
-            return '%s\n - to address -\n%s\n' % (val, dest)
+            return '%s\n - to address -\n%s\n' % (val, show_single_address(dest))
         except ValueError:
             pass
 
@@ -1050,8 +1050,10 @@ class ApproveTransaction(UserAuthorizedAction):
             msg = make_msg(start, n)
 
     async def save_visualization(self, msg, sign_text=False):
-        # write text into spi flash, maybe signing it as we go
+        # write story text out, maybe signing it as we go
         # - return length and checksum
+        from charcodes import OUT_CTRL_ADDRESS
+
         txt_len = msg.seek(0, 2)
         msg.seek(0)
 
@@ -1059,7 +1061,8 @@ class ApproveTransaction(UserAuthorizedAction):
 
         with SFFile(TXN_OUTPUT_OFFSET, max_size=txt_len+300, message="Visualizing...") as fd:
             while 1:
-                blk = msg.read(256).encode('ascii')
+                # replace with empty space, to keep correct txt_len - already hashed
+                blk = msg.read(256).replace(OUT_CTRL_ADDRESS, ' ').encode('ascii')
                 if not blk: break
                 if chk:
                     chk.update(blk)
@@ -1072,7 +1075,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 fd.write(b2a_base64(sig).decode('ascii').strip())
                 fd.write('\n')
 
-            return (fd.tell(), fd.checksum.digest())
+            return fd.tell(), fd.checksum.digest()
 
     def output_summary_text(self, msg):
         # Produce text report of where their cash is going. This is what
@@ -1150,13 +1153,13 @@ class ApproveTransaction(UserAuthorizedAction):
             visible_change_sum = 0
             if len(largest_change) == 1:
                 visible_change_sum += largest_change[0][0]
-                msg.write(' - to address -\n%s\n' % largest_change[0][1])
+                msg.write(' - to address -\n%s\n' % show_single_address(largest_change[0][1]))
             else:
                 msg.write(' - to addresses -\n')
                 for val, addr in largest_change:
                     visible_change_sum += val
-                    msg.write(addr)
-                    msg.write('\n')
+                    msg.write(show_single_address(addr))
+                    msg.write('\n\n')
 
             left_c = self.psbt.num_change_outputs - len(largest_change)
             if left_c:
@@ -1543,7 +1546,8 @@ class ShowPKHAddress(ShowAddressBase):
             self.address = sv.chain.address(node, addr_fmt)
 
     def get_msg(self):
-        return '''{addr}\n\n= {sp}''' .format(addr=self.address, sp=self.subpath)
+        return '''{addr}\n\n= {sp}''' .format(addr=show_single_address(self.address),
+                                              sp=self.subpath)
 
 
 class ShowP2SHAddress(ShowAddressBase):
@@ -1570,8 +1574,8 @@ Wallet:
 
 Paths:
 
-{sp}'''.format(addr=self.address, name=self.ms.name,
-                        M=self.ms.M, N=self.ms.N, sp='\n\n'.join(self.subpath_help))
+{sp}'''.format(addr=show_single_address(self.address), name=self.ms.name,
+               M=self.ms.M, N=self.ms.N, sp='\n\n'.join(self.subpath_help))
 
 
 class ShowMiniscriptAddress(ShowAddressBase):

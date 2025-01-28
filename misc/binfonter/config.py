@@ -74,4 +74,9 @@ special_chars = dict(small=[
   x x x x x
 '''),
 
+# thin space
+('\u2009', dict(y=0, w=5), '''\
+
+'''),
+
 ])

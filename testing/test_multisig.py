@@ -12,7 +12,7 @@ from ckcc.protocol import CCProtocolPacker, MAX_TXN_LEN
 from pprint import pprint
 from base64 import b64encode, b64decode
 from base58 import encode_base58_checksum
-from helpers import B2A, fake_dest_addr, xfp2str
+from helpers import B2A, fake_dest_addr, xfp2str, addr_from_display_format
 from helpers import path_to_str, str_to_path, slip132undo, swab32, hash160
 from struct import unpack, pack
 from constants import *
@@ -519,7 +519,7 @@ def test_ms_show_addr(dev, cap_story, press_select, addr_vs_path, bitcoind_p2sh,
         #print(story)
 
         if not has_ms_checks:
-            assert got_addr in story
+            assert got_addr == addr_from_display_format(story.split("\n\n")[0])
             assert all((xfp2str(xfp) in story) for xfp,_,_ in keys)
             if bip45:
                 for i in range(len(keys)):
@@ -2184,7 +2184,7 @@ def test_ms_addr_explorer(change, M_N, addr_fmt, start_idx, clear_ms, cap_menu,
     for ln in story.split('\n'):
         if '=>' not in ln: continue
 
-        path,chk,addr = ln.split()
+        path,chk,addr = ln.split(" ", 2)
         assert chk == '=>'
         assert '/' in path
         path = path.replace("[", "").replace("]", "")
