@@ -15,7 +15,7 @@ from ckcc.protocol import CCProtocolPacker, MAX_TXN_LEN
 from pprint import pprint
 from base64 import b64encode, b64decode
 from base58 import encode_base58_checksum
-from helpers import B2A, fake_dest_addr, xfp2str, detruncate_address
+from helpers import B2A, fake_dest_addr, xfp2str
 from helpers import path_to_str, str_to_path, slip132undo, swab32, hash160
 from struct import unpack, pack
 from constants import *
@@ -1052,7 +1052,7 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import,
         menu = cap_menu()
         assert f'{M}/{N}: {name}' in menu
         # depending if NFC enabled or not, and if Q (has QR)
-        assert (len(menu) - num_wallets) in [6, 7, 8]
+        assert (len(menu) - num_wallets) in [7,8,9]
 
     title, story = offer_ms_import(make_named('xxx-orig'))
     assert 'Create new multisig wallet' in story
@@ -1266,7 +1266,7 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, press_select, clear_m
             title, story = offer_ms_import(config)
             #print(story)
 
-            # dont care if update or create; accept it.
+            # don't care if update or create; accept it.
             time.sleep(.1)
             press_select()
 
@@ -2150,6 +2150,7 @@ def test_danger_warning(request, descriptor, clear_ms, import_ms_wallet, cap_sto
     else:
         assert 'WARNING' not in story
 
+@pytest.mark.parametrize('msas', [True, False])
 @pytest.mark.parametrize('change', [True, False])
 @pytest.mark.parametrize('desc', ["multi", "sortedmulti"])
 @pytest.mark.parametrize('start_idx', [1000, MAX_BIP32_IDX, 0])
@@ -2158,12 +2159,13 @@ def test_danger_warning(request, descriptor, clear_ms, import_ms_wallet, cap_sto
 def test_ms_addr_explorer(change, M_N, addr_fmt, start_idx, clear_ms, cap_menu,
                           need_keypress, goto_home, pick_menu_item, cap_story,
                           import_ms_wallet, make_multisig, settings_set,
-                          enter_number, set_addr_exp_start_idx, desc):
+                          enter_number, set_addr_exp_start_idx, desc, msas):
     clear_ms()
     M, N = M_N
     wal_name = f"ax{M}-{N}-{addr_fmt}"
 
     settings_set("aei", True if start_idx else False)
+    settings_set("msas", 1 if msas else 0)
 
     dd = {
         AF_P2WSH: ("m/48h/1h/0h/2h/{idx}", 'p2wsh'),
@@ -2240,9 +2242,12 @@ def test_ms_addr_explorer(change, M_N, addr_fmt, start_idx, clear_ms, cap_menu,
         assert int(subpath.split('/')[-1]) == idx
         #print('../0/%s => \n %s' % (idx, B2A(script)))
 
-        start, end = detruncate_address(addr)
-        assert expect.startswith(start)
-        assert expect.endswith(end)
+        if msas:
+            assert addr == expect
+        else:
+            start, end = addr.strip().split('___')
+            assert expect.startswith(start)
+            assert expect.endswith(end)
 
 
 def test_dup_ms_wallet_bug(goto_home, pick_menu_item, press_select, import_ms_wallet,
@@ -2322,11 +2327,12 @@ def test_bitcoind_ms_address(change, M_N, addr_fmt, clear_ms, goto_home, need_ke
                              pick_menu_item, cap_menu, cap_story, make_multisig, import_ms_wallet,
                              microsd_path, bitcoind_d_wallet_w_sk, use_regtest, load_export, way,
                              is_q1, press_select, start_idx, settings_set, set_addr_exp_start_idx,
-                             desc):
+                             desc, garbage_collector, virtdisk_path):
     use_regtest()
     clear_ms()
     bitcoind = bitcoind_d_wallet_w_sk
     M, N = M_N
+    path_f = microsd_path if way == "sd" else virtdisk_path
     # whether to import as descriptor or old school to CC
     descriptor = random.choice([True, False])
     bip67 = True
@@ -2335,6 +2341,9 @@ def test_bitcoind_ms_address(change, M_N, addr_fmt, clear_ms, goto_home, need_ke
         descriptor = True
 
     settings_set("aei", True if start_idx else False)
+    # adding this as parameter doubles the time this runs
+    msas = random.getrandbits(1)
+    settings_set("msas", 1 if msas else 0)
 
     wal_name = f"ax{M}-{N}-{addr_fmt}"
 
@@ -2377,7 +2386,12 @@ def test_bitcoind_ms_address(change, M_N, addr_fmt, clear_ms, goto_home, need_ke
         assert "change addresses." not in story
         assert "(0)" not in story
 
-    contents = load_export(way, label="Address summary", is_json=False, sig_check=False)
+    if way != "nfc":
+        contents, exp_fname = load_export(way, label="Address summary", is_json=False,
+                                          sig_check=False, ret_fname=True)
+        garbage_collector.append(path_f(exp_fname))
+    else:
+        contents = load_export(way, label="Address summary", is_json=False, sig_check=False)
     addr_cont = contents.strip()
     goto_home()
     pick_menu_item('Settings')
@@ -2385,7 +2399,12 @@ def test_bitcoind_ms_address(change, M_N, addr_fmt, clear_ms, goto_home, need_ke
     press_select()  # only one enrolled multisig - choose it
     pick_menu_item('Descriptors')
     pick_menu_item("Bitcoin Core")
-    contents = load_export(way, label="Bitcoin Core multisig setup", is_json=False, sig_check=False)
+    if way != "nfc":
+        contents, exp_fname = load_export(way, label="Bitcoin Core multisig setup", is_json=False,
+                                          sig_check=False, ret_fname=True)
+        garbage_collector.append(path_f(exp_fname))
+    else:
+        contents = load_export(way, label="Bitcoin Core multisig setup", is_json=False, sig_check=False)
     text = contents.replace("importdescriptors ", "").strip()
     # remove junk
     r1 = text.find("[")
@@ -2421,19 +2440,24 @@ def test_bitcoind_ms_address(change, M_N, addr_fmt, clear_ms, goto_home, need_ke
     bitcoind_addrs = bitcoind.deriveaddresses(desc_export, addr_range)
     for idx, cc_item in enumerate(cc_addrs):
         cc_item = cc_item.split(",")
-        partial_address = cc_item[part_addr_index]
-        _start, _end = partial_address.split("___")
-        if way != "nfc":
-            _start, _end = _start[1:], _end[:-1]
-        assert bitcoind_addrs[idx].startswith(_start)
-        assert bitcoind_addrs[idx].endswith(_end)
+        if msas:
+            addr = cc_item[part_addr_index]
+            if way != "nfc":
+                addr = addr[1:-1]
+            assert bitcoind_addrs[idx] == addr
+        else:
+            partial_address = cc_item[part_addr_index]
+            _start, _end = partial_address.split("___")
+            if way != "nfc":
+                _start, _end = _start[1:], _end[:-1]
+            assert bitcoind_addrs[idx].startswith(_start)
+            assert bitcoind_addrs[idx].endswith(_end)
 
 
 @pytest.mark.bitcoind
 def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, microsd_wipe, goto_home, need_keypress,
                                               pick_menu_item, cap_story, load_export, microsd_path, cap_menu, try_sign,
                                               is_q1, press_select):
-
     use_regtest()
     clear_ms()
     microsd_wipe()
@@ -3383,5 +3407,54 @@ def test_json_import_failures(err, config, offer_ms_import):
     with pytest.raises(Exception) as e:
         offer_ms_import(json.dumps(config))
     assert err in e.value.args[0]
+
+
+def test_msas_enable_disable(import_ms_wallet, pick_menu_item, cap_story, goto_home, is_q1,
+                             settings_set, need_keypress, press_select):
+    goto_home()
+    settings_set("msas", 0, prelogin=True)  # default
+    name = "msas_test"
+    import_ms_wallet(2,3,"p2wsh", accept=True, name=name)
+    goto_home()
+    pick_menu_item("Address Explorer")
+    need_keypress("4")  # confirm msg
+    pick_menu_item(name)  # ms wallet
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "___" in story
+
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Multisig Wallets")
+    pick_menu_item("Full %s View" % ("Address" if is_q1 else "Addr"))
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "full multisig addresses are shown" in story
+    press_select()
+    time.sleep(.1)
+    pick_menu_item("Show Full")
+
+    goto_home()
+    pick_menu_item("Address Explorer")
+    need_keypress("4")  # confirm msg
+    pick_menu_item(name)  # ms wallet
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "___" not in story
+
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Multisig Wallets")
+    pick_menu_item("Full %s View" % ("Address" if is_q1 else "Addr"))
+    # now enabled - so no story
+    pick_menu_item("Hide Chars")
+
+    goto_home()
+    pick_menu_item("Address Explorer")
+    need_keypress("4")  # confirm msg
+    pick_menu_item(name)  # ms wallet
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "___" in story
 
 # EOF
