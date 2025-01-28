@@ -15,7 +15,6 @@ from uhashlib import sha256
 from ubinascii import hexlify as b2a_hex
 from glob import settings
 from auth import write_sig_file
-from utils import censor_address
 from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME, KEY_LEFT, KEY_RIGHT
 from charcodes import KEY_CANCEL
 
@@ -29,6 +28,16 @@ def truncate_address(addr):
     else:
         # tons of space on Q1
         return addr[0:12] + '⋯' + addr[-12:]
+
+def censor_address(addr):
+    # We don't like to show the user full multisig addresses because we cannot be certain
+    # they could actually be signed. And yet, don't blank too many
+    # spots or else an attacker could grind out a suitable replacement.
+    # 3 chars in the middle hidden by default
+    # censoring can be disabled by msas setting
+    if settings.get("msas", 0):
+        return addr
+    return addr[0:12] + '___' + addr[12+3:]
 
 class KeypathMenu(MenuSystem):
     def __init__(self, path=None, nl=0):
@@ -187,7 +196,7 @@ class AddressListMenu(MenuSystem):
                 deriv = path.format(account=self.account_num, change=0, idx=self.start)
                 node = sv.derive_path(deriv, register=False)
                 address = chain.address(node, addr_fmt)
-                choices.append( (truncate_address(address), path, addr_fmt) )
+                choices.append((truncate_address(address), path, addr_fmt))
 
                 dis.progress_sofar(len(choices), len(chains.CommonDerivations))
 
@@ -291,20 +300,21 @@ Press (3) if you really understand and accept these risks.
             dis.fullscreen('Wait...')
 
             if ms_wallet:
-                # IMPORTANT safety feature: never show complete address
+                # IMPORTANT safety feature: do not show complete address unless user opt-in
                 # but show enough they can verify addrs shown elsewhere.
                 # - makes a redeem script
                 # - converts into addr
                 # - assumes 0/0 is first address.
                 for idx, addr, paths, script in ms_wallet.yield_addresses(start, n, change):
-                    addrs.append(censor_address(addr))
+                    addr = censor_address(addr)
+                    addrs.append(addr)
 
                     if idx == 0 and ms_wallet.N <= 4:
                         msg += '\n'.join(paths) + '\n =>\n'
                     else:
                         msg += '⋯/%d/%d =>\n' % (change, idx)
 
-                    msg += truncate_address(addr) + '\n\n'
+                    msg += addr + '\n\n'
                     dis.progress_sofar(idx-start+1, n)
 
             else:

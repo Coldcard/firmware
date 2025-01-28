@@ -18,6 +18,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Enhancement: Catch more DeltaMode cases in XOR path.
   Thanks to [@dmonakhov](https://github.com/dmonakhov))
 - Enhancement: BKPW override (for "developers")
+- Enhancement: Add option to show/export full multisg addresses. Enable in `Settings->Multisig Wallets->Full Address View`.
 - Change: If derivation path is omitted during message signing, default is used 
   based on address format (`m/44h/0h/0h/0/0` for p2pkh, and `m/84h/0h/0h/0/0` for p2wpkh). 
   Default is no longer root (m).

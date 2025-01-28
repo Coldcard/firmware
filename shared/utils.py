@@ -589,12 +589,6 @@ def datetime_to_str(dt, fmt="%d-%02d-%02d %02d:%02d:%02d"):
     dts = fmt % (y, mo, d, h, mi, s)
     return dts + " UTC"
 
-def censor_address(addr):
-    # We don't like to show the user multisig addresses because we cannot be certain
-    # they are valid and could actually be signed. And yet, dont blank too many
-    # spots or else an attacker could grind out a suitable replacement.
-    return addr[0:12] + '___' + addr[12+3:]
-
 def txid_from_fname(fname):
     if len(fname) >= 64:
         txid = fname[:64]
