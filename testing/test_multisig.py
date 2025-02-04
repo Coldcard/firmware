@@ -2121,7 +2121,8 @@ def test_danger_warning(request, descriptor, clear_ms, import_ms_wallet, cap_sto
 def test_ms_addr_explorer(change, M_N, addr_fmt, start_idx, clear_ms, cap_menu,
                           need_keypress, goto_home, pick_menu_item, cap_story,
                           import_ms_wallet, make_multisig, settings_set,
-                          enter_number, set_addr_exp_start_idx, desc):
+                          enter_number, set_addr_exp_start_idx, desc,
+                          cap_screen_qr, press_cancel, press_right):
     clear_ms()
     M, N = M_N
     wal_name = f"ax{M}-{N}-{addr_fmt}"
@@ -2195,6 +2196,19 @@ def test_ms_addr_explorer(change, M_N, addr_fmt, start_idx, clear_ms, cap_menu,
     else:
         assert len(maps) == (MAX_BIP32_IDX - start_idx) + 1
 
+    need_keypress(KEY_QR)
+    qr_addrs = []
+    for i in range(10):
+        addr_qr = cap_screen_qr().decode()
+        if addr_fmt == AF_P2WSH:
+            # segwit addresses are case insensitive
+            addr_qr = addr_qr.lower()
+        qr_addrs.append(addr_qr)
+        press_right()
+        time.sleep(.2)
+    press_cancel()
+
+    c = 0
     for idx, (subpath, addr) in enumerate(maps, start=start_idx):
         chng_idx = 1 if change else 0
         path_mapper = lambda co_idx: str_to_path(derivs[co_idx]) + [chng_idx, idx]
@@ -2206,9 +2220,9 @@ def test_ms_addr_explorer(change, M_N, addr_fmt, start_idx, clear_ms, cap_menu,
         assert int(subpath.split('/')[-2]) == chng_idx
         #print('../0/%s => \n %s' % (idx, B2A(script)))
 
-        start, end = detruncate_address(addr)
-        assert expect.startswith(start)
-        assert expect.endswith(end)
+        assert addr == expect == qr_addrs[c]
+        c += 1
+
 
 
 def test_dup_ms_wallet_bug(goto_home, pick_menu_item, press_select, import_ms_wallet,
