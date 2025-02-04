@@ -2,7 +2,7 @@
 #
 # Test the address explorer.
 #
-# Only single-sig here. Multisig cases are elsewhere.
+# Only single-sig here. Multisig cases are in test_multisig.py.
 #
 import pytest, time, io, csv, bech32
 from ckcc_protocol.constants import *

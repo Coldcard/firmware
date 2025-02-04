@@ -286,6 +286,7 @@ Press (3) if you really understand and accept these risks.
         from wallet import MAX_BIP32_IDX
 
         start = self.start
+        allow_qr = (not ms_wallet) or settings.get("msas", 0)
 
         def make_msg(change=0):
             # Build message and CTA about export, plus the actual addresses.
@@ -332,9 +333,11 @@ Press (3) if you really understand and accept these risks.
 
             # export options
             k0 = 'to show change addresses' if allow_change and change == 0 else None
-            export_msg, escape = export_prompt_builder('address summary file',
-                                                       no_qr=bool(ms_wallet), key0=k0,
-                                                       force_prompt=True)
+            export_msg, escape = export_prompt_builder(
+                'address summary file',
+                no_qr=not allow_qr,
+                key0=k0, force_prompt=True
+            )
             if version.has_qwerty:
                 escape += KEY_LEFT+KEY_RIGHT+KEY_HOME+KEY_PAGE_UP+KEY_PAGE_DOWN
             else:
@@ -375,14 +378,11 @@ Press (3) if you really understand and accept these risks.
                 # continue on same screen in case they want to write to multiple cards
 
             elif choice == KEY_QR:
-                # switch into a mode that shows them as QR codes
-                if ms_wallet:
-                    # requires not multisig
-                    continue
-
                 from ux import show_qr_codes
-                is_alnum = bool(addr_fmt & (AFC_BECH32 | AFC_BECH32M))
-                await show_qr_codes(addrs, is_alnum, start)
+                if allow_qr:
+                    addr_fmt = addr_fmt or ms_wallet.addr_fmt
+                    is_alnum = bool(addr_fmt & (AFC_BECH32 | AFC_BECH32M))
+                    await show_qr_codes(addrs, is_alnum, start)
 
                 continue
 
