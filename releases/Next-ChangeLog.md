@@ -53,6 +53,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 - New Feature: Verify Signed RFC messages via BBQr
 - New Feature: Sign message from QR scan (format has to be JSON)
+- Enhancement: Sign/Verify Address in Sparrow via QR
 - Enhancement: Sign scanned Simple Text by pressing (0). Next screens query information
   about key to use. 
 - Bugfix: Properly re-draw status bar after Restore Master on COLDCARD without master seed.
