@@ -3430,9 +3430,10 @@ def test_json_import_failures(err, config, offer_ms_import):
 
 
 def test_msas_enable_disable(import_ms_wallet, pick_menu_item, cap_story, goto_home, is_q1,
-                             settings_set, need_keypress, press_select):
+                             settings_remove, need_keypress, press_select, clear_ms):
+    clear_ms()
     goto_home()
-    settings_set("msas", 0, prelogin=True)  # default
+    settings_remove("msas")  # default
     name = "msas_test"
     import_ms_wallet(2,3,"p2wsh", accept=True, name=name)
     goto_home()
