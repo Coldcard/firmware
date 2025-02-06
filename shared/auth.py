@@ -305,6 +305,19 @@ def parse_msg_sign_request(data):
     subpath = ""
     addr_fmt = "p2pkh"
     is_json = False
+
+    # sparrow compat
+    if "signmessage" in data:
+        try:
+            mark, subpath, *msg_line = data.split(" ", 2)
+            assert mark == "signmessage"
+            # subpath will be verified & cleaned later
+            assert msg_line[0][:6] == "ascii:"
+            text = msg_line[0][6:]
+            return text, subpath, addr_fmt, is_json
+        except: pass
+    # ===
+
     try:
         data_dict = ujson.loads(data.strip())
         text = data_dict.get("msg", None)

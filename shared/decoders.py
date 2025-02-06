@@ -169,6 +169,10 @@ def decode_qr_result(got, expect_secret=False, expect_text=False, expect_bbqr=Fa
             return "smsg", (got,)
     except: pass
 
+    # Sparrow compat
+    if "signmessage" in got:
+        return "smsg", (got,)
+
     # try to recognize various bitcoin-related text strings...
     return decode_short_text(got)
 
