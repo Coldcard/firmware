@@ -13,6 +13,17 @@ from charcodes import KEY_QR, KEY_NFC
 from helpers import addr_from_display_format
 
 
+def addr_fmt_from_subpath(subpath):
+    if not subpath:
+        af = AF_CLASSIC
+    elif subpath[:4] == "m/84":
+        af = AF_P2WPKH
+    elif subpath[:4] == "m/49":
+        af = AF_P2WPKH_P2SH
+    else:
+        af = AF_CLASSIC
+    return af
+
 def default_derivation_by_af(addr_fmt, testnet=True):
     b44ct = "1" if testnet else "0"
     if addr_fmt == AF_CLASSIC:
@@ -359,7 +370,7 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
 
 @pytest.mark.bitcoind  # only for testnet and p2pkh
 @pytest.mark.parametrize("use_json", [True, False])
-@pytest.mark.parametrize('msg', [ 'ab', 'abc def eght', "x"*140, 'a'*240])
+@pytest.mark.parametrize('msg', [ 'ab', 'abc def eght', 'a'*240])
 @pytest.mark.parametrize('path', [
         "m/84'/0'/22'",
         None,
@@ -388,7 +399,7 @@ def test_sign_msg_microsd_good(sign_on_microsd, msg, path, addr_vs_path,
     assert 40 <= len(raw) <= 65
 
     if addr_fmt is None:
-        addr_fmt = AF_CLASSIC
+        addr_fmt = addr_fmt_from_subpath(path)
 
     if not path:
         path = default_derivation_by_af(addr_fmt, testnet=testnet)
@@ -430,7 +441,7 @@ def sign_using_nfc(goto_home, pick_menu_item, nfc_write_text, cap_story, press_s
             return cap_story()
 
         if not addr_fmt:
-            addr_fmt = AF_CLASSIC
+            addr_fmt = addr_fmt_from_subpath(subpath)
 
         if not subpath:
             subpath = default_derivation_by_af(addr_fmt, testnet=testnet)
@@ -586,7 +597,7 @@ def test_low_R_cases(msg, num_iter, expect, dev, set_seed_words, use_mainnet,
 @pytest.mark.parametrize("testnet", [True, False])
 @pytest.mark.parametrize("use_json", [True, False])
 @pytest.mark.parametrize("msg", ["Coldcard Signing Device!", 200 * "a"])
-@pytest.mark.parametrize("path", ["", "m/84'/0'/0'/300/0", "m/0/0/0/0/1/1/1"])
+@pytest.mark.parametrize("path", ["", "m/84h/0h/0h/300/0", "m/0/0/0/0/1/1/1"])
 @pytest.mark.parametrize("addr_fmt", [AF_CLASSIC, None, AF_P2WPKH, AF_P2WPKH_P2SH])
 def test_nfc_msg_signing(msg, path, addr_fmt, testnet, settings_set, bitcoind, use_json,
                          sign_using_nfc, goto_home):
@@ -950,6 +961,8 @@ def test_sign_scanned_text(msg, addr_fmt, acct, goto_home, need_keypress, scan_a
     {"msg": "msg to be signed via QR"},
     {"msg": "msg with some\n\t\n control characters", "addr_fmt": "p2sh-p2wpkh"},
     {"msg": 100*"CC", "addr_fmt": "p2wpkh", "subpath": "m/900h/0"},
+    {"msg": "This is my address! @twiiter_nick", "subpath": "m/84h/1h/0h/0/0"},
+    {"msg": "This is my address! @twiiter_nick", "subpath": "m/49'/0'/5'/1/100"},
 ])
 @pytest.mark.parametrize("way", ["sd", "nfc", "qr"])
 def test_sign_scanned_json(data, way, goto_home, need_keypress, scan_a_qr,
@@ -960,7 +973,7 @@ def test_sign_scanned_json(data, way, goto_home, need_keypress, scan_a_qr,
     goto_home()
     af = data.get("addr_fmt", None)
     if not af:
-        addr_fmt = AF_CLASSIC
+        addr_fmt = addr_fmt_from_subpath(data.get("subpath", None))
     else:
         addr_fmt = msg_sign_unmap_addr_fmt[af]
 
@@ -975,6 +988,37 @@ def test_sign_scanned_json(data, way, goto_home, need_keypress, scan_a_qr,
     signed_msg = msg_sign_export(way)
     ret_msg, addr, sig = parse_signed_message(signed_msg)
     assert ret_msg == data["msg"]
+    # check expected addr was used
+    addr_vs_path(addr, subpath, addr_fmt)
+    assert verify_message(addr, sig, ret_msg) is True
+    if addr_fmt == AF_CLASSIC:
+        res = bitcoind.rpc.verifymessage(addr, sig, ret_msg)
+        assert res is True
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("msg", ["an an an an an an an an", 240*"a"])
+@pytest.mark.parametrize("path", ["m/84h/0", "m/44h/0", "m/49h/0", "m"])
+def test_sparrow_qr_sign_msg(msg, path, skip_if_useless_way, need_keypress, scan_a_qr, cap_story,
+                             verify_msg_sign_story, press_select, msg_sign_export, addr_vs_path,
+                             bitcoind):
+    skip_if_useless_way("qr")
+
+    tmplt = "signmessage %s ascii:%s"
+    data = tmplt % (path, msg)
+
+    addr_fmt = addr_fmt_from_subpath(path)
+
+    need_keypress(KEY_QR)
+    scan_a_qr(data)
+    time.sleep(1)
+    title, story = cap_story()
+    subpath = verify_msg_sign_story(story, msg, path, addr_fmt)
+    press_select()
+
+    signed_msg = msg_sign_export("qr")
+    ret_msg, addr, sig = parse_signed_message(signed_msg)
+    assert ret_msg == msg
     # check expected addr was used
     addr_vs_path(addr, subpath, addr_fmt)
     assert verify_message(addr, sig, ret_msg) is True

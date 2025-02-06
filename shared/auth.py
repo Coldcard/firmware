@@ -301,9 +301,20 @@ def validate_text_for_signing(text, only_printable=True):
     # looks ok
     return result
 
+def addr_fmt_from_subpath(subpath):
+    if not subpath:
+        af = "p2pkh"
+    elif subpath[:4] == "m/84":
+        af = "p2wpkh"
+    elif subpath[:4] == "m/49":
+        af = "p2sh-p2wpkh"
+    else:
+        af = "p2pkh"
+    return af
+
 def parse_msg_sign_request(data):
     subpath = ""
-    addr_fmt = "p2pkh"
+    addr_fmt = None
     is_json = False
 
     # sparrow compat
@@ -314,8 +325,8 @@ def parse_msg_sign_request(data):
             # subpath will be verified & cleaned later
             assert msg_line[0][:6] == "ascii:"
             text = msg_line[0][6:]
-            return text, subpath, addr_fmt, is_json
-        except: pass
+            return text, subpath, addr_fmt_from_subpath(subpath), is_json
+        except:pass
     # ===
 
     try:
@@ -337,8 +348,9 @@ def parse_msg_sign_request(data):
             text, subpath = lines
         else:
             text, subpath, addr_fmt = lines
-            if not addr_fmt:
-                addr_fmt = "p2pkh"
+
+    if not addr_fmt:
+        addr_fmt = addr_fmt_from_subpath(subpath)
 
     if not subpath:
         subpath = chains.STD_DERIVATIONS[addr_fmt]
@@ -406,7 +418,6 @@ class ApproveMessageSign(UserAuthorizedAction):
     
 
 def sign_msg(text, subpath, addr_fmt):
-    subpath = cleanup_deriv_path(subpath)
     UserAuthorizedAction.check_busy()
     UserAuthorizedAction.active_request = ApproveMessageSign(text, subpath, addr_fmt)
     # kill any menu stack, and put our thing at the top
