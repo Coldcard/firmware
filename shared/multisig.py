@@ -1306,10 +1306,10 @@ async def unsorted_ms_menu(*a):
 
     if not settings.get("unsort_ms", None):
         ch = await ux_show_story(
-            'With this setting ON, it is allowed to import and operate'
-            ' "multi(...)" unsorted multisig wallets that do not follow BIP-67.'
-            ' It is of CRUCIAL importance for unsorted wallets, to backup multisig descriptor'
-            ' and preserve order of the keys in it.'
+            'Enable this to allow import and operation with'
+            ' "multi(...)" unsorted multisig wallets that DO NOT follow BIP-67.'
+            ' It is of CRUCIAL importance to backup multisig descriptor for unsorted wallets'
+            ' in order to preserve key ordering.'
             ' Many popular wallets like Sparrow and Electrum do NOT support "multi(...)".'
             '\n\nUSE AT YOUR OWN RISK. Disabling BIP-67 is discouraged!'
             '\n\nPress (4) to confirm allowing "multi(...)"', escape='4')
@@ -1355,14 +1355,15 @@ class MultisigMenu(MenuSystem):
         rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
         rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
         rv.append(MenuItem('Skip Checks?', f=disable_checks_menu))
-        rv.append(ToggleMenuItem('Full %s View' % ("Address" if version.has_qwerty else "Addr"),
-                                 'msas', ["Hide Chars", "Show Full"], story=(
-                                 "With this setting ON, full multisig addresses are shown."
-                                 " This should not discourage you to cross-verify multisig addresses"
-                                 " with your coordinator software.")))
-        rv.append(NonDefaultMenuItem('Unsorted Multisig' if version.has_qwerty else "Unsorted Multi",
-                                     'unsort_ms',
-                                     f=unsorted_ms_menu))
+        rv.append(ToggleMenuItem('Full %s View?' % ('Address' if version.has_qwerty else 'Addr'),
+                                 'msas', ['Partly Censor', 'Show Full'], story=(
+                         'When enabled, full multisig addresses are shown without censorship.'
+                         ' You MUST verify all addresses with your coordinator software,'
+                         ' BEFORE sending to them, because COLDCARD'
+                         ' cannot know if other co-signers will accept the address.')))
+        rv.append(NonDefaultMenuItem(
+                         'Unsorted Multisig?' if version.has_qwerty else 'Unsorted Multi?',
+                         'unsort_ms', f=unsorted_ms_menu))
 
         return rv
 
