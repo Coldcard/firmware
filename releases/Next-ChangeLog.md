@@ -5,21 +5,26 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk4 and Q
 
-- New Feature: JSON message signing. Use JSON object to pass data to sign in form `{"msg":"<required msg>","subpath":"<optional sp>","addr_fmt": "<optional af>"}`
-- New Feature: Sign message from note text, or password note
-- New Feature: Sign message with key resulting from positive ownership check. Press (0) + enter/scan message text
-- New Feature: Sign message with key selected from Address Explorer Custom Path menu. Press (2) + enter/scan message text
-- Enhancement: New address display format improves address verification on screen 
-- Enhancement: Hide Secure Notes & Passwords in Deltamode. Wipe seed if notes menu accessed. 
-- Enhancement: Hide Seed Vault in Deltamode. Wipe seed if Seed Vault menu accessed. 
+- New signing features:
+    - JSON message signing. Use JSON object to pass data to sign in form
+        `{"msg":"<required msg>","subpath":"<optional sp>","addr_fmt": "<optional af>"}`
+    - Sign message from note text, or password note
+    - Sign message with key resulting from positive ownership check. Press (0) and
+      enter or scan message text to be signed.
+    - Sign message with key selected from Address Explorer Custom Path menu. Press (2) and
+      enter or scan message text to be signed.
+- Enhancement: New address display format improves address verification on screen (groups of 4).
+- Deltamode enhancements:
+    - Hide Secure Notes & Passwords in Deltamode. Wipe seed if notes menu accessed. 
+    - Hide Seed Vault in Deltamode. Wipe seed if Seed Vault menu accessed. 
+    - Catch more DeltaMode cases in XOR submenus. Thanks [@dmonakhov](https://github.com/dmonakhov)
 - Enhancement: Add ability to switch between BIP-32 xpub, and obsolete
   SLIP-132 format in `Export XPUB`
 - Enhancement: Use the fact that master seed cannot be used as ephemeral seed, to show message 
   about successful master seed verification.
-- Enhancement: Catch more DeltaMode cases in XOR path.
-  Thanks to [@dmonakhov](https://github.com/dmonakhov))
-- Enhancement: BKPW override (for "developers")
-- Enhancement: Add option to show/export full multisg addresses. Enable in `Settings->Multisig Wallets->Full Address View`.
+- Enhancement: Allow devs to override backup password.
+- Enhancement: Add option to show/export full multisg addresses without censorship. Enable
+  in `Settings > Multisig Wallets > Full Address View`.
 - Change: If derivation path is omitted during message signing, default is used 
   based on address format (`m/44h/0h/0h/0/0` for p2pkh, and `m/84h/0h/0h/0/0` for p2wpkh). 
   Default is no longer root (m).
@@ -30,8 +35,8 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Prevent yikes in ownership search.
 - Bugfix: Factory-disabled NFC was not recognized correctly.
 - Bugfix: Be more robust about flash filesystem holding the settings.
+- Bugfix: Do not include sighash in PSBT input data, if sighash value is `SIGHASH_ALL`.
 - Change: Do not purge settings of current active tmp seed when deleting it from Seed Vault.
-- Change: Do not include sighash in PSBT input data, if sighash value is `SIGHASH_ALL`.
 - Change: Rename Testnet3 -> Testnet4 (all parameters unchanged).
 
 
