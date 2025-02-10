@@ -349,7 +349,7 @@ class OwnershipCache:
                     await show_qr_code(
                         addr,
                         is_alnum=(wallet.addr_fmt & (AFC_BECH32 | AFC_BECH32M)),
-                        msg=addr
+                        msg=addr, is_addrs=True
                     )
                 elif not is_complex and (ch == "0"):  # only singlesig
                     from auth import sign_with_own_address

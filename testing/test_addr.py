@@ -30,7 +30,7 @@ def test_show_addr_usb(dev, press_select, addr_vs_path, path, addr_fmt, is_simul
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'", "m/0h/500h"])
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR ])
 def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt,
-                             cap_story, cap_screen_qr, qr_quality_check,
+                             cap_story, verify_qr_address, qr_quality_check,
                              press_cancel, is_q1):
     time.sleep(0.1)
 
@@ -55,9 +55,8 @@ def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt,
 
     need_keypress(KEY_QR if is_q1 else '4')
     time.sleep(0.1)
-    qr = cap_screen_qr().decode('ascii')
 
-    assert qr == addr or qr == addr.upper()
+    verify_qr_address(addr_fmt, addr)
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("addr_fmt", [
