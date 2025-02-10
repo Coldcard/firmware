@@ -44,18 +44,18 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Mk4 Specific Changes
 
-## 5.4.1 - 2024-??-??
+## 5.4.1 - 2024-02-12
 
 - Enhancement: Export single sig descriptor with simple QR.
 
 
 # Q Specific Changes
 
-## 1.3.1Q - 2024-??-??
+## 1.3.1Q - 2024-02-12
 
 - New Feature: Verify Signed RFC messages via BBQr
 - New Feature: Sign message from QR scan (format has to be JSON)
 - Enhancement: Sign/Verify Address in Sparrow via QR
 - Enhancement: Sign scanned Simple Text by pressing (0). Next screens query information
-  about key to use. 
+  about key to use.
 - Bugfix: Properly re-draw status bar after Restore Master on COLDCARD without master seed.
