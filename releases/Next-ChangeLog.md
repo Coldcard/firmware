@@ -24,11 +24,11 @@ This lists the new changes that have not yet been published in a normal release.
 - Enhancement: Allow devs to override backup password.
 - Enhancement: Add option to show/export full multisg addresses without censorship. Enable
   in `Settings > Multisig Wallets > Full Address View`.
-- Change: If derivation path is omitted during message signing, default is used 
-  based on address format (`m/44h/0h/0h/0/0` for p2pkh, and `m/84h/0h/0h/0/0` for p2wpkh). 
-  Default is no longer root (m).
-- Change: If address format is not provided during msg signing and subpath derivation starts with:
-  a.) `m/84h/...` p2wpkh address format is implied b.) `m/49h/...` p2sh-p2wpkh is implied. 
+- Enhancement: If derivation path is omitted during message signing, derivation path
+  default is no longer root (m), instead it is based on requested address format
+  (`m/44h/0h/0h/0/0` for p2pkh, and `m/84h/0h/0h/0/0` for p2wpkh). Conversely,
+  if address format is not provided but subpath derivation starts with:
+  `m/84h/...` or `m/49h/...`, then p2wpkh or p2sh-p2wpkh respectively, is used.
 - Bugfix: Sometimes see a struck screen after _Verifying..._ in boot up sequence.
   On Q, result is blank screen, on Mk4, result is three-dots screen.
 - Bugfix: Do not allow to enable/disable Seed Vault feature when in temporary seed mode.
