@@ -1039,7 +1039,7 @@ async def export_xpub(label, _2, item):
         esc = ""
         if path != "m":
             esc += "1"
-            msg += "Press (1) to select account other than %s. " % (acct or "zero")
+            msg += "Press (1) to select account other than %s." % (acct or "zero")
             if addr_fmt != AF_CLASSIC:
                 esc += "2"
                 slp_af = addr_fmt
