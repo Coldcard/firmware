@@ -646,12 +646,12 @@ class Display:
             # left justify (for stories)
             prev_x = x = 1 
         elif prev_x == 0:
-            # center first line, following line will be left-justified to match that
+            # center first line, following line(s) will be left-justified to match that
             prev_x = x = max(((CHARS_W - (len(addr) * 5) // 4) // 2), 0)
         else:
             x = prev_x
 
-        self.text(x, y, ' '+' '.join(chunk_address(addr))+' ', invert=1)
+        self.text(x, y, ' '+' '.join(chunk_address(addr))+' ', invert=True)
 
         return prev_x
 
@@ -663,15 +663,19 @@ class Display:
         assert not sidebar
 
         # maybe show something other than QR contents under it
-        if msg:
+        if is_addr:
+            # With fancy display, no address, even classic can fit in single line,
+            # so always split nicely in middle and at mod4
+            hh = len(msg) // 2
+            hh = (hh + 3) & ~0x3
+            parts = [msg[0:hh], msg[hh:]]
+            num_lines = 2
+        elif msg:
             if len(msg) <= CHARS_W:
                 parts = [msg]
             elif ' ' not in msg and (len(msg) <= CHARS_W*2):
-                # fits in two lines, but has no spaces (ie. payment addr)
-                # - so split nicely in middle and/or at mod4 if address
+                # fits in two lines, but has no spaces
                 hh = len(msg) // 2
-                if is_addr:
-                    hh = (hh + 3) & ~0x3
                 parts = [msg[0:hh], msg[hh:]]
             else:
                 # do word wrap
