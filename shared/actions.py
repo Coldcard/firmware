@@ -1426,6 +1426,8 @@ async def bkpw_override(*A):
     #   1.) manually set bkpw
     #   2.) remove existing bkpw setting
     #   3.) view current active bkpw
+    # - some truncation of titles here on Mk4,
+    #   which is okay because re-using strings to save space.
     from backups import bkpw_min_len
 
     if pa.is_secret_blank():
@@ -1438,14 +1440,16 @@ async def bkpw_override(*A):
     while True:
         pwd = settings.get("bkpw", None)
 
-        msg = ("Password used to encrypt COLDCARD backup."
+        msg = ("Password used to encrypt COLDCARD backup files."
                "\n\nPress (0) to change backup password")
         esc = "0"
         if pwd:
             esc += "12"
             msg += ", (1) to forget current password, (2) to show current active backup password."
+        else:
+            msg += "."
 
-        ch = await ux_show_story(title="BKPW", msg=msg, escape=esc)
+        ch = await ux_show_story(title="BKPW Override", msg=msg, escape=esc)
         if ch == "x": return
         elif ch == "1":
             if await ux_confirm("Delete current stored password?"):
@@ -1457,7 +1461,7 @@ async def bkpw_override(*A):
             if await ux_confirm('The next screen will show current active backup password.'
                                 '\n\nAnyone with knowledge of the password will '
                                 'be able to decrypt your backups.'):
-                await ux_show_story(pwd)
+                await ux_show_story(pwd, title="Your Backup Password")
 
         elif ch == "0":
             if version.has_qwerty:
