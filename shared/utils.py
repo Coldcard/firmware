@@ -714,4 +714,15 @@ def cleanup_payment_address(s):
 
     raise ValueError('bad address value: ' + s)
 
+def truncate_address(addr):
+    # Truncates address to width of screen, replacing middle chars
+    if not version.has_qwerty:
+        # - 16 chars screen width
+        # - but 2 lost at left (menu arrow, corner arrow)
+        # - want to show not truncated on right side
+        return addr[0:6] + '⋯' + addr[-6:]
+    else:
+        # tons of space on Q1
+        return addr[0:12] + '⋯' + addr[-12:]
+
 # EOF

@@ -69,7 +69,7 @@ Otherwise, press {ok} to continue.'''.format(n=num_parts, ok=OK), escape='2')
 
     raw_secret = bytes(32)
     try:
-        with stash.SensitiveValues() as sv:
+        with SensitiveValues() as sv:
             if sv.deltamode:
                 # die rather than give up our secrets
                 import callgate
@@ -294,7 +294,7 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
         if ch == 'x': return
         if ch == '1':
             dis.fullscreen("Wait...")
-            with stash.SensitiveValues() as sv:
+            with SensitiveValues() as sv:
                 if sv.deltamode:
                     # die rather than give up our secrets
                     import callgate

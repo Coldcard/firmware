@@ -72,16 +72,8 @@ async def perform_web2fa(label, shared_secret):
         #
         from ux_mk4 import ux_input_digits
 
-        def limit_len(n):
-            ll = len(n)
-            if ll == 8:
-                return n
-            if ll > 8:
-                return n[0:8]
-            return ''
-
         while 1:
-            got = await ux_input_digits('', limit_len, maxlen=8,
+            got = await ux_input_digits('', maxlen=8,
                                         prompt="8-digits From Web")
 
             if not got:

@@ -38,7 +38,7 @@ class ChainsBase:
     curve = 'secp256k1'
     menu_name = None        # use 'name' if this isn't defined
     core_name = None        # name of chain's "core" p2p software
-    CCC_MIN_BLOCK = 0
+    ccc_min_block = 0
 
     # b44_cointype comes from
     #    <https://github.com/satoshilabs/slips/blob/master/slip-0044.md>
@@ -299,7 +299,7 @@ class BitcoinMain(ChainsBase):
     # see <https://github.com/bitcoin/bitcoin/blob/master/src/chainparams.cpp#L140>
     ctype = 'BTC'
     name = 'Bitcoin Mainnet'
-    CCC_MIN_BLOCK = 865572
+    ccc_min_block = 865572
 
     slip132 = {
         AF_CLASSIC:     Slip132Version(0x0488B21E, 0x0488ADE4, 'x'),

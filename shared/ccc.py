@@ -4,7 +4,7 @@
 #
 import gc, chains, version, ngu, web2fa, bip39, re
 from chains import NLOCK_IS_TIME
-from utils import swab32, a2b_hex, b2a_hex, xfp2str, truncate_address, pad_raw_secret
+from utils import swab32, xfp2str, truncate_address, pad_raw_secret
 from glob import settings
 from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number, ux_aborted
 from menu import MenuSystem, MenuItem, start_chooser
@@ -364,9 +364,9 @@ be ready to show it as a QR, before proceeding.'''
         # - just a shortcut, since they have the words, and could enter them
         # - one-way trip because the CCC feature won't be enabled inside the temp seed settings
         if await ux_show_story(
-                'Loads the CCC controlled seed (key C) as a Temporary Seed and allows '
-                'easy use of all Coldcard features on that key.\n\nIf you save into Seed Vault, '
-                'access to CCC Config menu is quick and easy.') != 'y':
+            'Loads the CCC controlled seed (key C) as a Temporary Seed and allows '
+            'easy use of all Coldcard features on that key.\n\nIf you save into Seed Vault, '
+            'access to CCC Config menu is quick and easy.') != 'y':
             return
 
         from seed import set_ephemeral_seed
