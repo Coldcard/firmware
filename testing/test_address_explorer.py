@@ -381,7 +381,7 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item,
 @pytest.mark.parametrize('which_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
 def test_custom_path(path_sidx, which_fmt, addr_vs_path, pick_menu_item, goto_address_explorer,
                      need_keypress, cap_menu, parse_display_screen, validate_address,
-                     cap_screen_qr, qr_quality_check, nfc_read_text, get_setting,
+                     verify_qr_address, qr_quality_check, nfc_read_text, get_setting,
                      press_select, press_cancel, is_q1, press_nfc, cap_story,
                      generate_addresses_file, settings_set, set_addr_exp_start_idx,
                      sign_msg_from_address):
@@ -479,11 +479,7 @@ def test_custom_path(path_sidx, which_fmt, addr_vs_path, pick_menu_item, goto_ad
         addr_vs_path(addr, path, addr_fmt=which_fmt)
 
         need_keypress(KEY_QR if is_q1 else '4')
-        qr = cap_screen_qr().decode('ascii')
-        if which_fmt == AF_P2WPKH:
-            assert qr == addr.upper()
-        else:
-            assert qr == addr
+        qr = verify_qr_address(which_fmt, addr)
 
         if get_setting('nfc', 0):
             # this is actually testing NFC export in qr code menu
@@ -539,9 +535,7 @@ def test_custom_path(path_sidx, which_fmt, addr_vs_path, pick_menu_item, goto_ad
         qr_addr_list = []
         need_keypress(KEY_QR if is_q1 else '4')
         for i in range(n):
-            qr = cap_screen_qr().decode('ascii')
-            if which_fmt == AF_P2WPKH:
-                qr = qr.lower()
+            qr = verify_qr_address(which_fmt)
             qr_addr_list.append(qr)
             need_keypress(KEY_RIGHT if is_q1 else "9")
             time.sleep(.5)

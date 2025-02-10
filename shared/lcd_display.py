@@ -667,9 +667,13 @@ class Display:
             # With fancy display, no address, even classic can fit in single line,
             # so always split nicely in middle and at mod4
             hh = len(msg) // 2
-            hh = (hh + 3) & ~0x3
-            parts = [msg[0:hh], msg[hh:]]
-            num_lines = 2
+            if hh <= 20:
+                hh = (hh + 3) & ~0x3
+                parts = [msg[0:hh], msg[hh:]]
+                num_lines = 2
+            else:
+                # p2wsh address would need 3 lines to show, so we won't
+                num_lines = 0
         elif msg:
             if len(msg) <= CHARS_W:
                 parts = [msg]

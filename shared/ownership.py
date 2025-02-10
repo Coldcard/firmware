@@ -334,11 +334,9 @@ class OwnershipCache:
                 ch = await ux_show_story(msg, title="Verified Address",
                                          escape=esc, hint_icons=KEY_QR)
                 if ch in ("1"+KEY_QR):
-                    await show_qr_code(
-                        addr,
-                        is_alnum=(wallet.addr_fmt & (AFC_BECH32 | AFC_BECH32M)),
-                        msg=addr
-                    )
+                    await show_qr_code(addr,
+                                        is_alnum=(wallet.addr_fmt & (AFC_BECH32 | AFC_BECH32M)),
+                                        msg=addr, is_addrs=True)
                 elif not is_ms and (ch == "0"):  # only singlesig
                     from auth import sign_with_own_address
                     await sign_with_own_address(sp, wallet.addr_fmt)

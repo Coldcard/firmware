@@ -9,6 +9,7 @@ from helpers import hash160, addr_from_display_format
 from bip32 import BIP32Node
 from constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 from constants import simulator_fixed_xprv, simulator_fixed_tprv, addr_fmt_names
+from charcodes import KEY_QR
 
 @pytest.fixture
 def wipe_cache(sim_exec):
@@ -158,7 +159,7 @@ def test_ux(valid, testnet, method,
     sim_exec, wipe_cache, make_myself_wallet, use_testnet, goto_home, pick_menu_item,
     press_cancel, press_select, settings_set, is_q1, nfc_write, need_keypress,
     cap_screen, cap_story, load_shared_mod, scan_a_qr, skip_if_useless_way,
-    sign_msg_from_address, multisig, import_ms_wallet, clear_ms,
+    sign_msg_from_address, multisig, import_ms_wallet, clear_ms, verify_qr_address
 ):
     skip_if_useless_way(method)
     addr_fmt = AF_CLASSIC
@@ -177,6 +178,7 @@ def test_ux(valid, testnet, method,
                 M, keys, is_change=0, idx=50, addr_fmt=AF_P2WSH,
                 testnet=int(testnet), path_mapper=lambda cosigner: [HARD(45), 0, 50]
             )
+            addr_fmt = AF_P2WSH
         else:
             mk = BIP32Node.from_wallet_key(simulator_fixed_tprv if testnet else simulator_fixed_xprv)
             path = "m/44h/{ct}h/{acc}h/0/3".format(acc=0, ct=(1 if testnet else 0))
@@ -226,6 +228,12 @@ def test_ux(valid, testnet, method,
         assert title == 'Verified Address'
         assert 'Found in wallet' in story
         assert 'Derivation path' in story
+
+        if is_q1:
+            # check it can display as QR from here
+            need_keypress(KEY_QR)
+            verify_qr_address(addr_fmt, addr)
+            press_cancel()
 
         if multisig:
             assert expect_name in story

@@ -1534,7 +1534,7 @@ class ShowAddressBase(UserAuthorizedAction):
                                         hint_icons=KEY_QR+(KEY_NFC if NFC else ''))
 
                 if ch in '4'+KEY_QR:
-                    await show_qr_code(self.address, (self.addr_fmt & AFC_BECH32))
+                    await show_qr_code(self.address, (self.addr_fmt & AFC_BECH32), is_addrs=True)
                     continue
 
                 if NFC and (ch in '3'+KEY_NFC):

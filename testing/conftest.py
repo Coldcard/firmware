@@ -592,6 +592,42 @@ def cap_screen_qr(cap_image):
 
     return doit
 
+@pytest.fixture
+def verify_qr_address(cap_screen_qr, cap_screen, is_q1):
+    # check we can read QR and that it has exact value expected
+    # plus text version of address, if any, is right.
+    from ckcc_protocol.constants import AFC_BECH32
+
+    def doit(addr_fmt, expect_addr=None):
+        qr = cap_screen_qr().decode('ascii')
+
+        if addr_fmt & AFC_BECH32:
+            qr = qr.lower()
+
+        # check text --if any-- matches QR contents
+        # - remove spaces and newlines
+        # - ok if no text, which happens when QR is productively using screen space
+        # - skips first line, which on Q shows the index number sometimes
+        # - insists on some spaces
+        full = cap_screen()
+        if is_q1:
+            txt = ''.join(full.split()[1:]).replace('~', '')
+        else:
+            txt = ''.join(full.split())
+
+        if txt:
+            assert txt == qr
+            if is_q1:
+                # addr is not spaced out on Mk4, but check it was on Q
+                assert (qr[0:4] + ' ' + qr[4:8]) in full, 'was not spaced out'
+
+        if expect_addr is not None:
+            assert qr == expect_addr
+
+        return qr
+
+    return doit
+
 @pytest.fixture(scope='module')
 def get_pp_sofar(sim_exec):
     # get entry value for bip39 passphrase
