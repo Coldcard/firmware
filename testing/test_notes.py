@@ -93,7 +93,7 @@ def delete_note(press_select, goto_notes, cap_menu, pick_menu_item,
 @pytest.fixture
 def build_note(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
                need_keypress, cap_screen_qr, readback_bbqr, nfc_read_text,
-               press_select, press_cancel, is_headless):
+               press_select, press_cancel, is_headless, nfc_disabled):
 
     def doit(n_title, n_body):
         # we don't try to preserve leading/trailing spaces on note bodies
@@ -142,12 +142,13 @@ def build_note(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
         # hidden NFC button on menu feature
         m = cap_menu()
         assert m[1] == 'View Note'
-        need_keypress(KEY_NFC)
-        time.sleep(.1)
-        nfc_rb = nfc_read_text()
-        time.sleep(.1)
-        assert nfc_rb == n_body
-        press_cancel()
+        if not nfc_disabled:
+            need_keypress(KEY_NFC)
+            time.sleep(.1)
+            nfc_rb = nfc_read_text()
+            time.sleep(.1)
+            assert nfc_rb == n_body
+            press_cancel()
 
         # export
         pick_menu_item('Export')
@@ -181,7 +182,7 @@ def build_password(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
                    cap_text_box, settings_get, settings_set, scan_a_qr,
                    press_select, press_cancel, is_headless):
 
-    def doit(n_title, n_user=None, n_pw=None, n_site=None, n_body=None, key_pw=None):
+    def doit(n_title, n_user=None, n_pw='secret', n_site=None, n_body=None, key_pw=None):
         goto_notes('New Password')
         enter_text(n_title)
         if n_user:
@@ -447,6 +448,33 @@ def test_top_export(goto_notes, pick_menu_item, cap_story, need_keypress, settin
     assert obj.keys() == {'coldcard_notes'}
     assert obj['coldcard_notes'] == notes
     need_keypress(KEY_ENTER)
+
+def test_sort_by_title(goto_notes, pick_menu_item, cap_story, need_keypress, settings_get,
+                    settings_set, build_note, cap_menu, build_password):
+
+    settings_set('notes', [])
+
+    build_note('ZZZ', 'b1')
+
+    goto_notes()
+    assert 'Sort By Title' not in cap_menu()
+
+    build_note('MMM', 'b2')
+    build_note('AAA', 'b3')
+    build_note('mmm', 'b2')
+    build_note('Aaa', 'b3')
+    build_password('Bbb')
+
+    notes = settings_get('notes')
+
+    goto_notes()
+    pick_menu_item('Sort By Title')
+
+    # effect is immedate
+    after = settings_get('notes', [])
+
+    assert sorted((i['title'] for i in after), key=lambda i:i.lower()) \
+                    == [i['title'] for i in after]
 
 def test_top_import(goto_notes, cap_menu, cap_story, need_keypress, settings_get,
                     settings_set, scan_a_qr, need_some_notes):

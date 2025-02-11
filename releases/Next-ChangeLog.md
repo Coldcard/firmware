@@ -57,4 +57,6 @@ This lists the new changes that have not yet been published in a normal release.
 - Enhancement: Sign/Verify Address in Sparrow via QR
 - Enhancement: Sign scanned Simple Text by pressing (0). Next screens query information
   about key to use.
+- Enhancement: Add option to "Sort By Title" in Secure Notes and Passwords. Thanks to
+  [@MTRitchey](https://x.com/MTRitchey) for suggestion.
 - Bugfix: Properly re-draw status bar after Restore Master on COLDCARD without master seed.
