@@ -3450,7 +3450,7 @@ def test_unsort_multisig_setting(settings_set, import_ms_wallet, goto_home,
                                  pick_menu_item, cap_story, need_keypress,
                                  settings_get, clear_ms, press_select, is_q1):
     clear_ms()
-    mi = "Unsorted Multisig" if is_q1 else "Unsorted Multi"
+    mi = "Unsorted Multisig?" if is_q1 else "Unsorted Multi?"
     settings_set("unsort_ms", 0)  # OFF by default
     with pytest.raises(Exception) as e:
         import_ms_wallet(2, 3, "p2wsh", descriptor=True, bip67=False,
@@ -3463,8 +3463,9 @@ def test_unsort_multisig_setting(settings_set, import_ms_wallet, goto_home,
     pick_menu_item(mi)
     time.sleep(.1)
     title, story = cap_story()
-    assert '"multi(...)" unsorted multisig wallets that do not follow BIP-67.' in story
-    assert 'preserve order of the keys' in story
+    assert '"multi(...)" unsorted multisig wallets that DO NOT follow BIP-67.' in story
+    assert ("CRUCIAL importance to backup multisig descriptor"
+            " for unsorted wallets in order to preserve key ordering") in story
     assert 'USE AT YOUR OWN RISK' in story
     assert 'Press (4)' in story
     need_keypress("4")
