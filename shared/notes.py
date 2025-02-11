@@ -118,7 +118,8 @@ class NotesMenu(MenuSystem):
                  MenuItem('New Password', f=cls.new_note, arg='p'),
                  ShortcutItem(KEY_QR, f=cls.quick_create)]
 
-        if not NoteContent.count():
+        cnt = NoteContent.count()
+        if not cnt:
             rv = news + [ MenuItem('Disable Feature', f=cls.disable_notes) ]
         else:
             rv = []
@@ -129,6 +130,9 @@ class NotesMenu(MenuSystem):
 
             rv.append(MenuItem('Export All', f=cls.export_all))
 
+            if cnt >= 2:
+                rv.append(MenuItem('Sort By Title', f=cls.sort_titles))
+
         rv.append(MenuItem('Import', f=import_from_other))
 
         return rv
@@ -136,6 +140,14 @@ class NotesMenu(MenuSystem):
     @classmethod
     async def export_all(cls, *a):
         await start_export(NoteContent.get_all())
+
+    @classmethod
+    async def sort_titles(cls, menu, _, item):
+        # sort by title, one time and then reconstruct menu
+        NoteContent.sort_all()
+
+        # force redraw
+        menu.update_contents()
 
     @classmethod
     async def quick_create(cls, menu, _, item):
@@ -231,6 +243,17 @@ class NoteContentBase:
     def count(cls):
         # how many do we have?
         return len(settings.get('notes', []))
+
+    @classmethod
+    def sort_all(cls):
+        # sort and resave all notes based on title
+        # - careful: self.idx values will be wrong for any existing instances
+        # - 'title' is only common field to subclasses
+        notes = cls.get_all()
+        notes.sort(key=lambda j: j.title.lower())
+
+        settings.put('notes', [n.serialize() for n in notes])
+        settings.save()
 
     async def delete(self, *a):
         # Remove note
