@@ -160,7 +160,6 @@ class Descriptor:
             raise ValueError("Key origin info is required for %s" % (key))
         key_orig_info = key[1:close_index]  # remove brackets
         key = key[close_index + 1:]
-        assert "/" in key_orig_info, "Malformed key derivation info"
         return key_orig_info, key
 
     @staticmethod
