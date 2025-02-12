@@ -99,6 +99,19 @@ def make_multisig(dev, sim_execfile):
     # - but can provide str format for deriviation, use {idx} for cosigner idx
 
     def doit(M, N, unique=0, deriv=None, dev_key=False, chain="XTN"):
+
+        def _derive(master, origin_der, idx):
+            if origin_der == "m":
+                return master
+
+            d = origin_der.format(idx=idx) if origin_der else "m/45h"
+            try:
+                child = master.subkey_for_path(d)
+            except IndexError:
+                # some test cases are using bogus paths
+                child = master
+            return child
+
         keys = []
 
         for i in range(N-1):
@@ -106,16 +119,7 @@ def make_multisig(dev, sim_execfile):
 
             xfp = unpack("<I", pk.fingerprint())[0]
 
-            if not deriv:
-                sub = pk.subkey_for_path("m/45h")
-            else:
-                path = deriv.format(idx=i)
-                try:
-                    sub = pk.subkey_for_path(path)
-                except IndexError:
-                    # some test cases are using bogus paths
-                    sub = pk
-
+            sub = _derive(pk, deriv, i)
             keys.append((xfp, pk, sub))
 
         if dev_key:
@@ -127,17 +131,9 @@ def make_multisig(dev, sim_execfile):
             pk = BIP32Node.from_wallet_key(simulator_fixed_tprv if chain == "XTN" else simulator_fixed_xprv)
             xfp = simulator_fixed_xfp
 
-        if not deriv:
-            sub = pk.subkey_for_path("m/45h")
-        else:
-            path = deriv.format(idx=N-1)
-            try:
-                sub = pk.subkey_for_path(path)
-            except IndexError:
-                # some test cases are using bogus paths
-                sub = pk
+        dev_sim = _derive(pk, deriv, N-1)
 
-        keys.append((xfp, pk, sub))
+        keys.append((xfp, pk, dev_sim))
 
         return keys
 
@@ -3571,5 +3567,106 @@ def test_json_import_failures(err, config, offer_ms_import):
     with pytest.raises(Exception) as e:
         offer_ms_import(json.dumps(config))
     assert err in e.value.args[0]
+
+
+@pytest.mark.parametrize("desc", [True, False])
+def test_root_keys_import(desc, import_ms_wallet, clear_ms, fake_ms_txn, try_sign):
+    clear_ms()
+    M, N = 2, 3
+    import_ms_wallet(M, N, "p2wsh", accept=True, name="root",
+                     common="m", descriptor=desc)
+
+
+@pytest.mark.bitcoind
+def test_cc_root_key(import_ms_wallet, bitcoind, use_regtest, clear_ms, microsd_wipe, goto_home,
+                     pick_menu_item, cap_story, press_select, need_keypress, offer_ms_import,
+                     cap_menu, load_export, try_sign, goto_address_explorer, settings_set):
+    # only CC has root key here, not practical to attempt get xpub from core, if possible
+    settings_set("msas", 1)
+    use_regtest()
+    clear_ms()
+    microsd_wipe()
+    M, N = 2, 2
+    cosigner = bitcoind.create_wallet(wallet_name=f"bds", disable_private_keys=False, blank=False,
+                                      passphrase=None, avoid_reuse=False, descriptors=True)
+    ms = bitcoind.create_wallet(
+        wallet_name=f"watch_only_roots", disable_private_keys=True,
+        blank=True, passphrase=None, avoid_reuse=False, descriptors=True
+    )
+    goto_home()
+
+    # get key from bitcoind cosigner
+    target_desc = ""
+    bitcoind_descriptors = cosigner.listdescriptors()["descriptors"]
+    for desc in bitcoind_descriptors:
+        if desc["desc"].startswith("pkh(") and desc["internal"] is False:
+            target_desc = desc["desc"]
+    core_desc, checksum = target_desc.split("#")
+    # remove pkh(....)
+    core_key = core_desc[4:-1]
+    desc = f"wsh(sortedmulti(2,{core_key},[{xfp2str(simulator_fixed_xfp).lower()}]{simulator_fixed_tpub}/0/*))"
+    desc_info = ms.getdescriptorinfo(desc)
+    desc_w_checksum = desc_info["descriptor"]  # with checksum
+
+    title, story = offer_ms_import(desc_w_checksum)
+
+    assert "Create new multisig wallet?" in story
+    assert f"All {N} co-signers must approve spends" in story
+    assert "P2WSH" in story
+    press_select()  # approve multisig import
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+    menu = cap_menu()
+    pick_menu_item(menu[0])  # pick imported descriptor multisig wallet
+    pick_menu_item("Descriptors")
+    pick_menu_item("Bitcoin Core")
+    text = load_export("sd", label="Bitcoin Core multisig setup", is_json=False, sig_check=False)
+    text = text.replace("importdescriptors ", "").strip()
+    # remove junk
+    r1 = text.find("[")
+    r2 = text.find("]", -1, 0)
+    text = text[r1: r2]
+    core_desc_object = json.loads(text)
+    # import descriptors to watch only wallet
+    res = ms.importdescriptors(core_desc_object)
+    for obj in res:
+        assert obj["success"], obj
+
+    addr_type = "bech32"
+    multi_addr = ms.getnewaddress("", addr_type)
+    bitcoind.supply_wallet.sendtoaddress(address=multi_addr, amount=49)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())  # mining
+    dest_addr = ms.getnewaddress("", addr_type)
+    # create funded PSBT
+    psbt_resp = ms.walletcreatefundedpsbt(
+        [], [{dest_addr: 5}], 0, {"fee_rate": 2, "change_type": addr_type}
+    )
+
+    _, updated = try_sign(base64.b64decode(psbt_resp.get("psbt")))
+
+    done = cosigner.walletprocesspsbt(base64.b64encode(updated).decode(), True)["psbt"]
+
+    rr = ms.finalizepsbt(done)
+
+    assert rr['complete']
+    tx_hex = rr["hex"]
+    res = bitcoind.supply_wallet.testmempoolaccept([tx_hex])
+    assert res[0]["allowed"]
+    txn_id = bitcoind.supply_wallet.sendrawtransaction(rr['hex'])
+    assert len(txn_id) == 64
+
+    bitcoind_addrs = ms.deriveaddresses(desc_w_checksum, [0,250])
+
+    goto_address_explorer()
+    pick_menu_item("2-of-2")
+    need_keypress('1')  # SD
+    contents = load_export("sd", label="Address summary", is_json=False, sig_check=False)
+    cc_addrs = contents.strip().split("\n")[1:]
+
+    # Generate the addresses file and get each line in a list
+    for i, line in enumerate(cc_addrs):
+        addr = line.split(",")[1][1:-1]
+        assert addr == bitcoind_addrs[i]
 
 # EOF
