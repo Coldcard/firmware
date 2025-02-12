@@ -5,9 +5,9 @@ This lists the new changes that have not yet been published in a normal release.
 # Shared Improvements - Both Mk4 and Q
 
 - New signing features:
+    - Sign message from note text, or password note
     - JSON message signing. Use JSON object to pass data to sign in form
         `{"msg":"<required msg>","subpath":"<optional sp>","addr_fmt": "<optional af>"}`
-    - Sign message from note text, or password note
     - Sign message with key resulting from positive ownership check. Press (0) and
       enter or scan message text to be signed.
     - Sign message with key selected from Address Explorer Custom Path menu. Press (2) and
@@ -17,8 +17,8 @@ This lists the new changes that have not yet been published in a normal release.
     - Hide Secure Notes & Passwords in Deltamode. Wipe seed if notes menu accessed. 
     - Hide Seed Vault in Deltamode. Wipe seed if Seed Vault menu accessed. 
     - Catch more DeltaMode cases in XOR submenus. Thanks [@dmonakhov](https://github.com/dmonakhov)
-- Enhancement: Add ability to switch between BIP-32 xpub, and obsolete
-  SLIP-132 format in `Export XPUB`
+- Enhancement: Add ability to switch between BIP-32 xpub, and obsolete SLIP-132 format
+  in `Export XPUB`
 - Enhancement: Use the fact that master seed cannot be used as ephemeral seed, to show message 
   about successful master seed verification.
 - Enhancement: Allow devs to override backup password.
@@ -37,7 +37,8 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Factory-disabled NFC was not recognized correctly.
 - Bugfix: Be more robust about flash filesystem holding the settings.
 - Bugfix: Do not include sighash in PSBT input data, if sighash value is `SIGHASH_ALL`.
-- Bugfix: Allow to import multisig descriptor with root (m) keys in it. Thanks [@turkycat](https://github.com/turkycat)
+- Bugfix: Allow import of multisig descriptor with root (m) keys in it.
+  Thanks [@turkycat](https://github.com/turkycat)
 - Change: Do not purge settings of current active tmp seed when deleting it from Seed Vault.
 - Change: Rename Testnet3 -> Testnet4 (all parameters unchanged).
 
@@ -56,8 +57,8 @@ This lists the new changes that have not yet been published in a normal release.
 - New Feature: Verify Signed RFC messages via BBQr
 - New Feature: Sign message from QR scan (format has to be JSON)
 - Enhancement: Sign/Verify Address in Sparrow via QR
-- Enhancement: Sign scanned Simple Text by pressing (0). Next screens query information
-  about key to use.
+- Enhancement: Sign scanned Simple Text by pressing (0). Next screen query information
+  about which key to use.
 - Enhancement: Add option to "Sort By Title" in Secure Notes and Passwords. Thanks to
   [@MTRitchey](https://x.com/MTRitchey) for suggestion.
 - Bugfix: Properly re-draw status bar after Restore Master on COLDCARD without master seed.
