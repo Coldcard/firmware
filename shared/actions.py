@@ -1499,10 +1499,12 @@ Erases and reformats MicroSD card. This is not a secure erase but more of a quic
     wipe_microsd_card()
 
 
-async def qr_share_file(*A):
+async def qr_share_file(_1, _2, item):
     # Pick file from SD card and share as (BB)Qr
     from files import CardSlot, CardMissingError, needs_microsd
     from export import export_by_qr
+
+    force_bbqr = item.arg
 
     def is_suitable(fname):
         f = fname.lower()
@@ -1548,7 +1550,7 @@ async def qr_share_file(*A):
         else:
             raise ValueError(ext)
 
-        await export_by_qr(data, txid, tc)
+        await export_by_qr(data, txid, tc, force_bbqr=force_bbqr)
 
 
 async def nfc_share_file(*A):
