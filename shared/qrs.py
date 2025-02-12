@@ -68,8 +68,11 @@ class QRDisplaySingle(UserInteraction):
         # make the QR, if needed.
         if not self.qr_data:
             dis.busy_bar(True)
-
-            self.calc_qr(body)
+            try:
+                self.calc_qr(body)
+            except Exception:
+                dis.busy_bar(False)
+                raise
 
         # draw display
         dis.busy_bar(False)
