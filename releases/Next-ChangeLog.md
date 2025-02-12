@@ -38,6 +38,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Factory-disabled NFC was not recognized correctly.
 - Bugfix: Be more robust about flash filesystem holding the settings.
 - Bugfix: Do not include sighash in PSBT input data, if sighash value is `SIGHASH_ALL`.
+- Bugfix: Allow to import multisig descriptor with root (m) keys in it. Thanks [@turkycat](https://github.com/turkycat)
 - Change: Do not purge settings of current active tmp seed when deleting it from Seed Vault.
 - Change: Rename Testnet3 -> Testnet4 (all parameters unchanged).
 
