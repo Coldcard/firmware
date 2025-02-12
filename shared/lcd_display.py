@@ -769,10 +769,10 @@ class Display:
             if idx_hint:
                 lh = len(idx_hint)
                 assert lh <= 10
-                if lh > 6:
+                if lh > 5:
                     # needs 2 lines
-                    self.text(-1, 0, idx_hint[:6])
-                    self.text(-1, 1, idx_hint[6:])
+                    self.text(-1, 0, idx_hint[:5])
+                    self.text(-1, 1, idx_hint[5:])
                 else:
                     self.text(-1, 0, idx_hint)
 
