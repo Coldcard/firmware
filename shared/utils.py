@@ -503,13 +503,10 @@ def word_wrap(ln, w):
                 # special handling for lines w/ payment address in them
                 # - add same marker to newly split lines
                 addr = ln[1:]
-                if version.has_qwerty:
-                    # - do line break in middle, on mod4 boundry
-                    # - will not work if addresses are > 2 lines long (34*2 chars)
-                    aw = ((len(addr) // 2) + 3) & ~3
-                else:
-                    # - simply 3 4-char groups on Mk4
-                    aw = 12
+                # - 3 4-char groups on Mk4
+                # - 6 4-char groups on Q
+                aw = 24 if version.has_qwerty else 12
+
                 pos = 0
                 while pos < len(addr):
                     yield OUT_CTRL_ADDRESS + addr[pos:pos+aw]
