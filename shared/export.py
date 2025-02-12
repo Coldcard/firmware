@@ -13,13 +13,16 @@ from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF
 from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
 from ownership import OWNERSHIP
 
-async def export_by_qr(body, label, type_code):
+async def export_by_qr(body, label, type_code, force_bbqr=False):
     # render as QR and show on-screen
     from ux import show_qr_code
 
     try:
         # ignore label/title - provides no useful info
         # makes qr smaller and harder to read
+        if force_bbqr:
+            raise ValueError
+
         await show_qr_code(body)
     except (ValueError, RuntimeError, TypeError):
         if version.has_qwerty:
