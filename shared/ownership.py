@@ -336,15 +336,17 @@ class OwnershipCache:
                 esc = "0"
                 msg += "\n\nPress (0) to sign message with this key."
 
+            title = "Verified"
             if version.has_qwerty:
                 esc += KEY_QR
+                title += " Address"
             else:
                 msg += ' (1) for address QR'
                 esc += '1'
+                title += "!"
 
             while 1:
-                ch = await ux_show_story(msg, title="Verified Address",
-                                         escape=esc, hint_icons=KEY_QR)
+                ch = await ux_show_story(msg, title=title, escape=esc, hint_icons=KEY_QR)
                 if ch in ("1"+KEY_QR):
                     await show_qr_code(
                         addr,
