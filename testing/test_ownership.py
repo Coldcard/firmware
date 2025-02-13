@@ -225,7 +225,7 @@ def test_ux(valid, testnet, method,
     if title == 'Unknown Address' and not testnet:
         assert 'That address is not valid on Bitcoin Testnet' in story
     elif valid:
-        assert title == 'Verified Address'
+        assert title == ('Verified Address' if is_q1 else "Verified!")
         assert 'Found in wallet' in story
         assert 'Derivation path' in story
 
@@ -255,7 +255,7 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
                                 pick_menu_item, need_keypress, sim_exec, clear_ms,
                                 import_ms_wallet, press_select, goto_home, nfc_write,
                                 load_shared_mod, load_export_and_verify_signature,
-                                cap_story):
+                                cap_story, is_q1):
     goto_home()
     wipe_cache()
     settings_set('accts', [])
@@ -307,7 +307,7 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
     title, story = cap_story()
 
     assert addr == addr_from_display_format(story.split("\n\n")[0])
-    assert title == 'Verified Address'
+    assert title == ('Verified Address' if is_q1 else "Verified!")
     assert 'Found in wallet' in story
     assert 'Derivation path' in story
     if af == "Segwit P2WPKH":
