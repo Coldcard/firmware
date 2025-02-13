@@ -2220,7 +2220,6 @@ def test_ms_addr_explorer(change, M_N, addr_fmt, start_idx, clear_ms, cap_menu,
         c += 1
 
 
-
 def test_dup_ms_wallet_bug(goto_home, pick_menu_item, press_select, import_ms_wallet,
                            clear_ms, is_q1):
     M = 2

@@ -474,7 +474,7 @@ def test_custom_path(path_sidx, which_fmt, addr_vs_path, pick_menu_item, goto_ad
         addr_vs_path(addr, path, addr_fmt=which_fmt)
 
         need_keypress(KEY_QR if is_q1 else '4')
-        qr = verify_qr_address(which_fmt, addr)
+        verify_qr_address(which_fmt, addr)
 
         if get_setting('nfc', 0):
             # this is actually testing NFC export in qr code menu
