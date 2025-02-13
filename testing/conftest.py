@@ -611,7 +611,7 @@ def verify_qr_address(cap_screen_qr, cap_screen, is_q1):
         # - insists on some spaces
         full = cap_screen()
         if is_q1:
-            txt = ''.join(full.split()[1:]).replace('~', '')
+            txt = ''.join(full.split()[2:]).replace('~', '')
         else:
             txt = ''.join(full.split())
 
