@@ -1,5 +1,34 @@
 *See ChangeLog.md for more recent changes, these are historic versions*
 
+## 5.4.0 - 2024-09-12
+
+- New Feature: Opt-in support for unsorted multisig, which ignores BIP-67 policy. Use
+  descriptor with `multi(...)`. Disabled by default, Enable in 
+  `Settings > Multisig Wallets > Legacy Multisig`. Recommended for existing multisig
+  wallets, not new ones.
+- New Feature: Named multisig descriptor imports. Wrap descriptor in json:
+    `{"name:"ms0", "desc":"<descriptor>"}` to provide a name for the menu in `name`.
+  instead of the filename. Most useful for USB and NFC imports which have no filename, 
+  (name is created from descriptor checksum in those cases).
+- New Feature: XOR from Seed Vault (select other parts of the XOR from seeds in the vault).
+- Enhancement: upgrade to latest 
+  [libsecp256k1: 0.5.0](https://github.com/bitcoin-core/secp256k1/releases/tag/v0.5.0) 
+- Enhancement: Signature grinding optimizations. Now about 30% faster signing!
+- Enhancement: Improve side-channel protection: libsecp256k1 context randomization now happens
+  before each signing session.
+- Enhancement: Allow JSON files in `NFC File Share`.
+- Change: Do not require descriptor checksum when importing multisig wallets.
+- Bugfix: Do not allow import of multisig wallet when same keys are shuffled.
+- Bugfix: Do not read whole PSBT into memory when writing finalized transaction (performance).
+- Bugfix: Prevent user from restoring Seed XOR when number of parts is smaller than 2.
+- Bugfix: Fix display alignment of Seed Vault menu.
+- Bugfix: Properly handle null data in `OP_RETURN`.
+- Bugfix: Do not allow lateral scroll in Address Explorer when showing single address
+  from custom path.
+- Change: Remove Lamp Test from Debug Options (covered by selftest).
+- Shared enhancements and fixes listed above.
+- Bugfix: Correct intermittent card inserted/not inserted detection error.
+
 
 ## 5.3.3 - 2024-07-05
 
