@@ -985,7 +985,7 @@ SENSITIVE_NOT_SECRET = '''
 The file created is sensitive--in terms of privacy--but should not \
 compromise your funds directly.'''
 
-PICK_ACCOUNT = '''\n\nPress (1) to enter a non-zero account number.'''
+PICK_ACCOUNT = '\n\nPress %s to continue. Press (1) to enter a non-zero account number.' % OK
 
 
 async def dump_summary(*A):
