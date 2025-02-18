@@ -875,10 +875,11 @@ async def start_login_sequence():
     # Version warning before HSM is offered
     if version.is_edge and not ckcc.is_simulator():
         await ux_show_story(
-             "This preview version of firmware has not yet been qualified and "
-             "tested to the same standard as normal Coinkite products."
-             "\n\nIt is recommended only for developers and early adopters for experimental use. "
-             "DO NOT use for large Bitcoin amounts.", title="Edge Version")
+            "This firmware version is qualified for use with wallets (such as
+            AnchorWatch, Liana, etc) that keep redundant key schemas for recovery
+            independant of COLDCARD. We support the very latest Bitcoin innovations
+            in the Edge Version."
+          title="Edge Version")
 
     dis.draw_status(xfp=settings.get('xfp'))
 
