@@ -482,11 +482,15 @@ def af_to_bip44_purpose(addr_fmt):
             AF_P2WPKH: 84,
             AF_P2TR: 86}[addr_fmt]
 
-
 def addr_fmt_label(addr_fmt):
-    return {AF_CLASSIC: "Classic P2PKH",
-            AF_P2WPKH_P2SH: "P2SH-Segwit",
-            AF_P2WPKH: "Segwit P2WPKH"}[addr_fmt]
+    return {
+        AF_CLASSIC: "Classic P2PKH",
+        AF_P2WPKH_P2SH: "P2SH-Segwit",
+        AF_P2WPKH: "Segwit P2WPKH",
+        AF_P2TR: "Taproot P2TR",
+        AF_P2WSH: "Segwit P2WSH",
+        AF_P2WSH_P2SH: "P2SH-P2WSH"
+    }[addr_fmt]
 
 def verify_recover_pubkey(sig, digest):
     # verifies a message digest against a signature and recovers

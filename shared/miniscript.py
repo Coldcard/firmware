@@ -13,7 +13,7 @@ from wallet import BaseStorageWallet
 from menu import MenuSystem, MenuItem
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 from files import CardSlot, CardMissingError, needs_microsd
-from utils import problem_file_line, xfp2str, addr_fmt_label, truncate_address, to_ascii_printable, swab32
+from utils import problem_file_line, xfp2str, truncate_address, to_ascii_printable, swab32
 from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC, KEY_ENTER
 
 
@@ -241,7 +241,7 @@ class MiniScriptWallet(BaseStorageWallet):
 
     async def _detail(self, new_wallet=False, is_duplicate=False, short=False):
 
-        s = addr_fmt_label(self.addr_fmt) + "\n\n"
+        s = chains.addr_fmt_label(self.addr_fmt) + "\n\n"
         if self.taproot:
             s += self.taproot_internal_key_detail(short=short)
 

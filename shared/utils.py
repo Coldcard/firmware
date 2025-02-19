@@ -585,17 +585,6 @@ def chunk_writer(fd, body):
     dis.progress_bar_show(1)
 
 
-def addr_fmt_label(addr_fmt):
-    return {
-        AF_CLASSIC: "Classic P2PKH",
-        AF_P2WPKH_P2SH: "P2SH-Segwit",
-        AF_P2WPKH: "Segwit P2WPKH",
-        AF_P2TR: "Taproot P2TR",
-        AF_P2WSH: "Segwit P2WSH",
-        AF_P2WSH_P2SH: "P2SH-P2WSH"
-    }[addr_fmt]
-
-
 def pad_raw_secret(raw_sec_str):
     # Chip can hold 72-bytes as a secret
     # every secret has 0th byte as marker
