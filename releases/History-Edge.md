@@ -7,6 +7,30 @@
 - for experimental use.  DO NOT use for large Bitcoin amounts.
 ```
 
+
+# 6.3.4X & 6.3.4QX Shared Improvements - Both Mk4 and Q
+
+- Bugfix: Complex miniscript wallets with keys in policy that are not in strictly ascending order were incorrectly filled
+  upon load from settings. All users on versions `6.2.2X`+ needs to update. 
+- Bugfix: Single key miniscript descriptor support
+- Enhancement: Hide Secure Notes & Passwords in Deltamode. Wipe seed if notes menu accessed. 
+- Enhancement: Hide Seed Vault in Deltamode. Wipe seed if Seed Vault menu accessed.
+- Bugfix: Do not allow to enable/disable Seed Vault feature when in temporary seed mode
+- Bugfix: Bless Firmware causes hanging progress bar
+- Bugfix: Prevent yikes in ownership search
+- Change: Do not allow to purge settings of current active tmp seed when deleting it from Seed Vault
+
+# Mk4 Specific Changes
+
+- all updates from `5.4.0`
+- Enhancement: Export single sig descriptor with simple QR
+
+# Q Specific Changes
+
+- all updates from version `1.3.0Q`
+- Bugfix: Properly re-draw status bar after Restore Master on COLDCARD without master seed.
+
+
 ## 6.3.3X & 6.3.3QX Shared Improvements - Both Mk4 and Q (2024-07-04)
 
 - New Feature: Ranged provably unspendable keys and `unspend(` support for Taproot descriptors
