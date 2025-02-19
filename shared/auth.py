@@ -456,7 +456,7 @@ async def ux_sign_msg(txt, approved_cb=None, kill_menu=True):
     # pick address format
     rv = [
         MenuItem(chains.addr_fmt_label(af), f=done, arg=(txt, af))
-        for af in chains.SINGLESIG_AF
+        for af in (AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH)  # cannot use SINGLE_AF here as it contains taproot
     ]
     the_ux.push(MenuSystem(rv))
 

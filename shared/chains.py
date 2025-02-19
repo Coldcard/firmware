@@ -14,7 +14,7 @@ from ucollections import namedtuple
 from opcodes import OP_RETURN, OP_1, OP_16
 
 
-SINGLESIG_AF = (AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH)
+SINGLESIG_AF = (AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2TR)
 
 # See SLIP 132 <https://github.com/satoshilabs/slips/blob/master/slip-0132.md>
 # for background on these version bytes. Not to be confused with SLIP-32 which involves Bech32.
@@ -479,7 +479,8 @@ def af_to_bip44_purpose(addr_fmt):
     # single signature only
     return {AF_CLASSIC: 44,
             AF_P2WPKH_P2SH: 49,
-            AF_P2WPKH: 84}[addr_fmt]
+            AF_P2WPKH: 84,
+            AF_P2TR: 86}[addr_fmt]
 
 
 def addr_fmt_label(addr_fmt):

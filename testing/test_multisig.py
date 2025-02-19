@@ -3581,7 +3581,6 @@ def test_cc_root_key(import_ms_wallet, bitcoind, use_regtest, clear_ms, microsd_
                      pick_menu_item, cap_story, press_select, need_keypress, offer_ms_import,
                      cap_menu, load_export, try_sign, goto_address_explorer, settings_set):
     # only CC has root key here, not practical to attempt get xpub from core, if possible
-    settings_set("msas", 1)
     use_regtest()
     clear_ms()
     microsd_wipe()
