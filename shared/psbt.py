@@ -2425,15 +2425,15 @@ class psbtObject(psbtProxy):
                     stash.blank_object(node)
                     del sk, node
 
-                    # drop sighash if default (SIGHASH_ALL)
-                    if inp.sighash == SIGHASH_ALL:
-                        inp.sighash = None
-
                     success.add(in_idx)
                     gc.collect()
 
                     if self.is_v2:
                         self.set_modifiable_flag(inp)
+
+                # drop sighash if default (SIGHASH_ALL)
+                if inp.sighash == SIGHASH_ALL:
+                    inp.sighash = None
 
         # done.
         dis.progress_bar_show(1)

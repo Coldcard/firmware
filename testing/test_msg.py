@@ -241,7 +241,7 @@ def sign_msg_from_text(pick_menu_item, enter_number, press_select,
         signed_msg = msg_sign_export(way, qr_only)
 
         ret_msg, addr, sig = parse_signed_message(signed_msg)
-        addr_vs_path(addr, path, addr_fmt, testnet=True if chain == "XTN" else False)
+        addr_vs_path(addr, path, addr_fmt, chain=chain)
         assert verify_message(addr, sig, ret_msg) is True
         if addr_fmt == AF_CLASSIC and chain == "XTN":
             res = bitcoind.rpc.verifymessage(addr, sig, ret_msg)
@@ -270,7 +270,7 @@ def sign_msg_from_address(need_keypress, scan_a_qr, press_select, enter_complex,
         time.sleep(.1)
         signed_msg = msg_sign_export(way)
         ret_msg, addr, sig = parse_signed_message(signed_msg)
-        addr_vs_path(addr, subpath, addr_fmt, testnet=testnet)
+        addr_vs_path(addr, subpath, addr_fmt, chain="XTN" if testnet else "BTC")
 
     return doit
 
@@ -405,7 +405,7 @@ def test_sign_msg_microsd_good(sign_on_microsd, msg, path, addr_vs_path,
         path = default_derivation_by_af(addr_fmt, testnet=testnet)
 
     # check expected addr was used
-    addr_vs_path(addr, path, addr_fmt, testnet=testnet)
+    addr_vs_path(addr, path, addr_fmt, chain="XTN" if testnet else "BTC")
     assert verify_message(addr, sig, msg) is True
     if addr_fmt == AF_CLASSIC and testnet:
         res = bitcoind.rpc.verifymessage(addr, sig, ret_msg)
@@ -456,7 +456,7 @@ def sign_using_nfc(goto_home, pick_menu_item, nfc_write_text, cap_story, press_s
         press_select()  # exit NFC animation
         pmsg, addr, sig = parse_signed_message(signed_msg)
         assert pmsg == msg
-        addr_vs_path(addr, subpath, addr_fmt, testnet=testnet)
+        addr_vs_path(addr, subpath, addr_fmt, chain="XTN" if testnet else "BTC")
         assert verify_message(addr, sig, msg) is True
         time.sleep(0.5)
         _, story = cap_story()
@@ -505,9 +505,9 @@ def test_sign_msg_with_ascii_non_printable_chars(msg, way, sign_on_microsd, addr
     ('hello%20sworld'%'', "m", AF_CLASSIC, 'many spaces', 0, 0),  # spaces
     ('hello%10sworld'%'', "m/1h/3h", AF_P2WPKH_P2SH, 'many spaces', 0, 0),  # spaces
     ('hello%5sworld'%'', "m", AF_CLASSIC, 'many spaces', 0, 0),  # spaces
-    ("coinkite", "m", AF_P2WSH, "Invalid address format", 0, 0),  # invalid address format
-    ("coinkite", "m", AF_P2WSH_P2SH, "Invalid address format", 0, 0),  # invalid address format
-    ("coinkite", " m", AF_P2TR, "Invalid address format", 0, 0),  # invalid address format
+    ("coinkite", "m", AF_P2WSH, "Unsupported address format", 0, 0),  # invalid address format
+    ("coinkite", "m", AF_P2WSH_P2SH, "Unsupported address format", 0, 0),  # invalid address format
+    ("coinkite", " m", AF_P2TR, "Unsupported address format", 0, 0),  # invalid address format
     ("coinkite", "m/0/0/0/0/0/0/0/0/0/0/0/0/0", AF_CLASSIC, "too deep", 0, 0),  # invalid path
     ("coinkite", "m/0/0/0/0/0/q/0/0/0", AF_P2WPKH, "invalid characters in path", 0, 0),  # invalid path
     ("coinkite ", "m", AF_CLASSIC, "trailing space(s)", 0, 0),  # invalid msg - trailing space

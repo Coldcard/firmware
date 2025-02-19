@@ -5,7 +5,7 @@
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson, version
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, str2xfp, cleanup_deriv_path, keypath_to_str, to_ascii_printable
-from utils import str_to_keypath, problem_file_line, check_xpub, truncate_address, get_filesize
+from utils import str_to_keypath, problem_file_line, check_xpub, get_filesize, show_single_address
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
 from ux import import_export_prompt, ux_enter_bip32_index, show_qr_code, ux_enter_number, OK, X
 from files import CardSlot, CardMissingError, needs_microsd
@@ -473,7 +473,7 @@ class MultisigWallet(BaseStorageWallet):
                 msg += '.../%d/%d =>\n' % (change, idx)
 
             addrs.append(addr)
-            msg += truncate_address(addr) + '\n\n'
+            msg += show_single_address(addr) + '\n\n'
             dis.progress_sofar(idx - start + 1, n)
 
         return msg, addrs

@@ -874,9 +874,9 @@ async def start_login_sequence():
     # Version warning before HSM is offered
     if version.is_edge and not ckcc.is_simulator():
         await ux_show_story("This firmware version is qualified for use with wallets (such as"
-                            "AnchorWatch, Liana, etc) that keep redundant key schemas for recovery"
-                            "independent of COLDCARD. We support the very latest Bitcoin innovations"
-                            "in the Edge Version.", title="Edge Version")
+                            " AnchorWatch) that keep redundant key schemas for recovery"
+                            " independent of COLDCARD. We support the very latest Bitcoin innovations"
+                            " in the Edge Version.", title="Edge Version")
 
     dis.draw_status(xfp=settings.get('xfp'))
 

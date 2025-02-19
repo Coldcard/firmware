@@ -14,7 +14,7 @@ from ucollections import namedtuple
 from opcodes import OP_RETURN, OP_1, OP_16
 
 
-SINGLESIG_AF = (AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2TR)
+SINGLESIG_AF = (AF_P2WPKH, AF_CLASSIC, AF_P2TR, AF_P2WPKH_P2SH)
 
 # See SLIP 132 <https://github.com/satoshilabs/slips/blob/master/slip-0132.md>
 # for background on these version bytes. Not to be confused with SLIP-32 which involves Bech32.
@@ -468,11 +468,12 @@ def parse_addr_fmt_str(addr_fmt):
             return AF_CLASSIC
         elif addr_fmt == "p2wpkh":
             return AF_P2WPKH
+        elif addr_fmt == "p2tr":
+            return AF_P2TR
         else:
             raise ValueError
     except ValueError:
-        raise ValueError("Invalid address format: '%s'\n\n"
-                         "Choose from p2pkh, p2wpkh, p2sh-p2wpkh." % addr_fmt)
+        raise ValueError("Unsupported address format: '%s'" % addr_fmt)
 
 
 def af_to_bip44_purpose(addr_fmt):

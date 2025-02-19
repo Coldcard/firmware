@@ -179,7 +179,7 @@ XpubExportMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Segwit (BIP-84)", f=export_xpub, arg=84),
     MenuItem("Classic (BIP-44)", f=export_xpub, arg=44),
-    MenuItem("Taproot/P2TR(86)", f=export_xpub, arg=86),
+    MenuItem("Taproot/P2TR"+("(BIP-86)" if version.has_qwerty else "(86)"), f=export_xpub, arg=86),
     MenuItem("P2WPKH/P2SH "+("(BIP-49)"if version.has_qwerty else "(49)"), f=export_xpub, arg=49),
     MenuItem("Master XPUB", f=export_xpub, arg=0),
     MenuItem("Current XFP", f=export_xpub, arg=-1),

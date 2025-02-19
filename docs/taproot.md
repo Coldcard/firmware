@@ -35,7 +35,7 @@ There are 2 methods to provide provably unspendable internal key, if users wish 
 
     `tr(unspend(77ec0c0fdb9733e6a3c753b1374c4a465cba80dff52fc196972640a26dd08b76)/<0:1>/*, sortedmulti_a(2,@0,@1))`
 
-### Below option were deprecated in version 6.3.5X ?
+### Below option were deprecated in version 6.3.5X & 6.3.5QX
 3. use **static** provably unspendable internal key H from [BIP-0341](https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#constructing-and-spending-taproot-outputs).
 
     `tr(50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0, sortedmulti_a(2,@0,@1))`

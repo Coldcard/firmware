@@ -3120,7 +3120,7 @@ def test_taproot_keyspend(use_regtest, bitcoind_d_sim_watch, start_sign, end_sig
     assert title == 'OK TO SEND?'
     assert "Consolidating" in story  # self-spend
     assert " 1 input\n 2 outputs" in story
-    addrs = story.split("\n\n")[3].split("\n")[-2:]
+    addrs = [addr_from_display_format(l) for l in story.split("\n") if l and (l[0] == '\x02')]
     assert len(addrs) == 2
     for addr in addrs:
         assert addr.startswith("bcrt1p")

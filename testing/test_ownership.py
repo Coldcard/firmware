@@ -332,10 +332,9 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
     assert addr == addr_from_display_format(story.split("\n\n")[0])
     assert title == ('Verified Address' if is_q1 else "Verified!")
     assert 'Found in wallet' in story
-    assert 'Derivation path' in story
-    if af == "P2SH-Segwit":
-        assert "P2WPKH-in-P2SH" in story
-    elif af == "Segwit P2WPKH":
+    if "msc" not in af:
+        assert 'Derivation path' in story
+    if af == "Segwit P2WPKH":
         assert " P2WPKH " in story
     else:
         assert af in story

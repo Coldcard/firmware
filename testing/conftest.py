@@ -604,7 +604,7 @@ def verify_qr_address(cap_screen_qr, cap_screen, is_q1):
     def doit(addr_fmt, expect_addr=None):
         qr = cap_screen_qr().decode('ascii')
 
-        if addr_fmt & AFC_BECH32:
+        if (addr_fmt & AFC_BECH32) or (addr_fmt & AFC_BECH32M):
             qr = qr.lower()
 
         # check text --if any-- matches QR contents

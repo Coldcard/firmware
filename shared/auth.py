@@ -1616,6 +1616,7 @@ class ShowMiniscriptAddress(ShowAddressBase):
     def get_msg(self):
         return '''\
 {addr}
+
 Wallet:
   {name}
 
@@ -1623,7 +1624,8 @@ Index:
   {idx}
 
 Change:
-  {change}'''.format(addr=self.address, name=self.msc.name, idx=self.idx, change=bool(self.change))
+  {change}'''.format(addr=show_single_address(self.address), name=self.msc.name,
+                     idx=self.idx, change=bool(self.change))
 
 
 def start_show_miniscript_address(msc, change, index):

@@ -532,23 +532,6 @@ def word_wrap(ln, w):
 
         yield left
 
-def parse_addr_fmt_str(addr_fmt):
-    # accepts strings and also integers if already parsed
-    if addr_fmt in [AF_P2WPKH_P2SH, AF_P2WPKH, AF_CLASSIC, AF_P2TR]:
-        return addr_fmt
-
-    addr_fmt = addr_fmt.lower()
-    if addr_fmt in ("p2sh-p2wpkh", "p2wpkh-p2sh"):
-        return AF_P2WPKH_P2SH
-    elif addr_fmt == "p2pkh":
-        return AF_CLASSIC
-    elif addr_fmt == "p2wpkh":
-        return AF_P2WPKH
-    elif addr_fmt == "p2tr":
-        return AF_P2TR
-    else:
-        raise ValueError("Unsupported address format: '%s'" % addr_fmt)
-
 def parse_extended_key(ln, private=False):
     # read an xpub/ypub/etc and return BIP-32 node and what chain it's on.
     # - can handle any garbage line
@@ -791,19 +774,6 @@ def check_xpub(xfp, xpub, deriv, expect_chain, my_xfp, disable_checks=False):
     # serialize xpub w/ BIP-32 standard now.
     # - this has effect of stripping SLIP-132 confusion away
     return xfp == my_xfp, (xfp, deriv, chain.serialize_public(node, AF_P2SH))
-
-
-def truncate_address(addr):
-    # Truncates address to width of screen, replacing middle chars
-    if not version.has_qwerty:
-        # - 16 chars screen width
-        # - but 2 lost at left (menu arrow, corner arrow)
-        # - want to show not truncated on right side
-        return addr[0:6] + '⋯' + addr[-6:]
-    else:
-        # tons of space on Q1
-        return addr[0:12] + '⋯' + addr[-12:]
-
 
 def encode_seed_qr(words):
     return ''.join('%04d' % bip39.get_word_index(w) for w in words)

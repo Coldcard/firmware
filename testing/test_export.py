@@ -566,7 +566,7 @@ def test_export_xpub(chain, acct_num, dev, cap_menu, pick_menu_item, goto_home,
         is_xfp = False
         if '-84' in m:
             expect = f"m/84h/{chain_num}h/{{acct}}h"
-        elif '-86' in m:
+        elif '86' in m:
             expect = f"m/86h/{chain_num}h/{{acct}}h"
         elif '-44' in m:
             expect = f"m/44h/{chain_num}h/{{acct}}h"

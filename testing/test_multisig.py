@@ -2224,6 +2224,7 @@ def test_ms_addr_explorer(change, M_N, addr_fmt, start_idx, clear_ms, cap_menu,
         assert int(subpath.split('/')[-2]) == chng_idx
         #print('../0/%s => \n %s' % (idx, B2A(script)))
 
+        addr = addr_from_display_format(addr)
         assert addr == expect == qr_addrs[c]
         c += 1
 

@@ -13,7 +13,7 @@ from wallet import BaseStorageWallet
 from menu import MenuSystem, MenuItem
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 from files import CardSlot, CardMissingError, needs_microsd
-from utils import problem_file_line, xfp2str, truncate_address, to_ascii_printable, swab32
+from utils import problem_file_line, xfp2str, to_ascii_printable, swab32, show_single_address
 from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC, KEY_ENTER
 
 
@@ -416,7 +416,7 @@ class MiniScriptWallet(BaseStorageWallet):
                     msg += '.../%d =>\n' % idx
 
             addrs.append(addr)
-            msg += truncate_address(addr) + '\n\n'
+            msg += show_single_address(addr) + '\n\n'
             dis.progress_sofar(idx - start + 1, n)
 
         return msg, addrs

@@ -3084,7 +3084,6 @@ def test_originless_keys(tmplt, offer_minsc_import, get_cc_key, bitcoin_core_sig
     address_explorer_check("sd", af, wo, name)
 
 
-
 @pytest.mark.parametrize("internal_key", [
     H,
     "r=@",

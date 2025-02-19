@@ -502,11 +502,14 @@ def test_custom_path(path_sidx, which_fmt, addr_vs_path, pick_menu_item, goto_ad
         # msg sign
         time.sleep(.1)
         title, body = cap_story()
-        assert "Press (0) to sign message with this key" in body
-        need_keypress('0')
-        msg = "COLDCARD the rock solid HWW"
-        sign_msg_from_address(msg, addr, path, which_fmt, "sd", True)
-        press_cancel()
+        if which_fmt == AF_P2TR:
+            assert "Press (0) to sign message with this key" not in body
+        else:
+            assert "Press (0) to sign message with this key" in body
+            need_keypress('0')
+            msg = "COLDCARD the rock solid HWW"
+            sign_msg_from_address(msg, addr, path, which_fmt, "sd", True)
+            press_cancel()
     else:
         n = 10
         if (start_idx + n) > MAX_BIP32_IDX:
