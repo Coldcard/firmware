@@ -4,7 +4,6 @@
 #
 import chains
 from glob import settings
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from stash import SensitiveValues
 
 
@@ -45,20 +44,10 @@ class MasterSingleSigWallet(WalletABC):
         # Construct a wallet based on current master secret, and chain.
         # - path is optional, and then we use standard path for addr_fmt
         # - path can be overriden when we come here via address explorer
-        if addr_fmt == AF_P2TR:
-            n = 'Taproot P2TR'
-            prefix = path or 'm/86h/{coin_type}h/{account}h'
-        elif addr_fmt == AF_P2WPKH:
-            n = 'Segwit P2WPKH'
-            prefix = path or 'm/84h/{coin_type}h/{account}h'
-        elif addr_fmt == AF_CLASSIC:
-            n = 'Classic P2PKH'
-            prefix = path or 'm/44h/{coin_type}h/{account}h'
-        elif addr_fmt == AF_P2WPKH_P2SH:
-            n =  'P2WPKH-in-P2SH'
-            prefix = path or 'm/49h/{coin_type}h/{account}h'
-        else:
-            raise ValueError(addr_fmt)
+
+        n = chains.addr_fmt_label(addr_fmt)
+        purpose = chains.af_to_bip44_purpose(addr_fmt)
+        prefix = path or 'm/%dh/{coin_type}h/{account}h' % purpose
 
         if chain_name:
             self.chain = chains.get_chain(chain_name)

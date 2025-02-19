@@ -964,7 +964,6 @@ class SeedVaultMenu(MenuSystem):
     @classmethod
     def construct(cls):
         # Dynamic menu with user-defined names of seeds shown
-        from glob import settings
         from pincodes import pa
 
         if pa.is_deltamode():
@@ -1209,7 +1208,7 @@ class PassphraseMenu(MenuSystem):
     @classmethod
     async def add_numbers(cls, *a):
         # Mk4 only: add some digits (quick, easy)
-        pw = await ux_input_numbers(cls.pp_sofar, cls.check_length)
+        pw = await ux_input_numbers(cls.pp_sofar)
         if pw is not None:
             cls.pp_sofar = pw
             cls.check_length()

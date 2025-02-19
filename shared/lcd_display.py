@@ -3,11 +3,11 @@
 # lcd_display.py - LCD rendering for Q1's 320x240 pixel *colour* display!
 #
 import machine, uzlib, utime, array
-from uasyncio import sleep_ms
 from graphics_q1 import Graphics
 from st7788 import ST7788
-from utils import xfp2str, word_wrap
+from utils import xfp2str, word_wrap, chunk_address
 from ucollections import namedtuple
+from charcodes import OUT_CTRL_TITLE, OUT_CTRL_ADDRESS
 
 # the one font: fixed-width (except for a few double-width chars)
 from font_iosevka import CELL_W, CELL_H, TEXT_PALETTES, COL_TEXT, COL_DARK_TEXT, COL_SCROLL_DARK
@@ -612,25 +612,50 @@ class Display:
         self.clear()
 
         y=0
+        prev_x = None
         for ln in lines:
             if ln == 'EOT':
                 self.text(0, y, '┅'*CHARS_W, dark=True)
                 continue
-            elif ln and ln[0] == '\x01':
+
+            elif ln and ln[0] == OUT_CTRL_TITLE:
                 # title ... but we have no special font? Inverse!
                 self.text(0, y, ' '+ln[1:]+' ', invert=True)
                 if hint_icons:
                     # maybe show that [QR] can do something
                     self.text(-1, y, hint_icons, dark=True)
+
+            elif ln and ln[0] == OUT_CTRL_ADDRESS:
+                # we can assume this will be a single line for our display
+                # thanks to code in utils.word_wrap
+                prev_x = self._draw_addr(y, ln[1:], prev_x=prev_x)
+
             else:
                 self.text(0, y, ln)
+                prev_x = None
 
             y += 1
 
         self.scroll_bar(top, num_lines, CHARS_H)
         self.show()
 
-    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, partial_bar=None):
+    def _draw_addr(self, y, addr, prev_x=None):
+        # Draw a single-line of an address
+        # - use prev_x=0 to start centered 
+        if prev_x is None:
+            # left justify (for stories)
+            prev_x = x = 1 
+        elif prev_x == 0:
+            # center first line, following line(s) will be left-justified to match that
+            prev_x = x = max(((CHARS_W - (len(addr) * 5) // 4) // 2), 0)
+        else:
+            x = prev_x
+
+        self.text(x, y, ' '+' '.join(chunk_address(addr))+' ', invert=True)
+
+        return prev_x
+
+    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, partial_bar=None, is_addr=False):
         # Show a QR code on screen w/ some text under it
         # - invert not supported on Q1
         # - sidebar not supported here (see users.py)
@@ -638,14 +663,24 @@ class Display:
         assert not sidebar
 
         # maybe show something other than QR contents under it
-        if msg:
+        if is_addr:
+            # With fancy display, no address, even classic can fit in single line,
+            # so always split nicely in middle and at mod4
+            hh = len(msg) // 2
+            if hh <= 20:
+                hh = (hh + 3) & ~0x3
+                parts = [msg[0:hh], msg[hh:]]
+                num_lines = 2
+            else:
+                # p2wsh address would need 3 lines to show, so we won't
+                num_lines = 0
+        elif msg:
             if len(msg) <= CHARS_W:
                 parts = [msg]
             elif ' ' not in msg and (len(msg) <= CHARS_W*2):
-                # fits in two lines, but has no spaces (ie. payment addr)
-                # so split nicely, and shift off center
+                # fits in two lines, but has no spaces
                 hh = len(msg) // 2
-                parts = [msg[0:hh] + '  ', '  '+msg[hh:]]
+                parts = [msg[0:hh], msg[hh:]]
             else:
                 # do word wrap
                 parts = list(word_wrap(msg, CHARS_W))
@@ -723,17 +758,21 @@ class Display:
             if num_lines:
                 # centered text under that
                 y = CHARS_H - num_lines
+                prev_x = 0
                 for line in parts:
-                    self.text(None, y, line)
+                    if not is_addr:
+                        self.text(None, y, line)
+                    else:
+                        prev_x = self._draw_addr(y, line, prev_x=prev_x)
                     y += 1
 
             if idx_hint:
                 lh = len(idx_hint)
                 assert lh <= 10
-                if lh > 6:
+                if lh > 5:
                     # needs 2 lines
-                    self.text(-1, 0, idx_hint[:6])
-                    self.text(-1, 1, idx_hint[6:])
+                    self.text(-1, 0, idx_hint[:5])
+                    self.text(-1, 1, idx_hint[5:])
                 else:
                     self.text(-1, 0, idx_hint)
 

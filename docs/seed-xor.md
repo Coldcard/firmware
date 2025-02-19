@@ -22,7 +22,7 @@ This one more solution for your game-theory arsenal.
 
 - *Q*: I'm lazy, can I do this to my Existing Seed?
 - *A*: Yes. You can split the words you have already in your Coldcard, making
-  2, 3 or 4 new SEEDPLATES.  You could also any number of existing SEEDPLATES
+  2, 3 or 4 new SEEDPLATES. You could also use any number of existing SEEDPLATES
   you have, and combine them to make a new random wallet that is the XOR of
   their values. Effectively that makes a new random wallet.
 

@@ -50,7 +50,7 @@ Press ENTER to enable and get started otherwise CANCEL.''',
 
     return NotesMenu(NotesMenu.construct())
 
-async def get_a_password(old_value):
+async def get_a_password(old_value, min_len=0, max_len=128):
     # Get a (new) password as a string.
     # - does some fun generation as well.
 
@@ -104,9 +104,9 @@ async def get_a_password(old_value):
     handlers = {KEY_F1: _pick_12, KEY_F2: _pick_24, KEY_F3: _pick_dense,
                 KEY_F4: _do_dumb, KEY_F6: _toggle_case, KEY_F5: _bip85}
 
-    return await ux_input_text(old_value, confirm_exit=False, max_len=128, scan_ok=True,
-                    b39_complete=True, prompt='Password',  placeholder='(optional)',
-                    funct_keys=(fmsg, handlers))
+    return await ux_input_text(old_value, confirm_exit=False, max_len=max_len, min_len=min_len,
+                               scan_ok=True, b39_complete=True, prompt='Password',
+                               placeholder='(optional)', funct_keys=(fmsg, handlers))
 
 class NotesMenu(MenuSystem):
 
@@ -118,7 +118,8 @@ class NotesMenu(MenuSystem):
                  MenuItem('New Password', f=cls.new_note, arg='p'),
                  ShortcutItem(KEY_QR, f=cls.quick_create)]
 
-        if not NoteContent.count():
+        cnt = NoteContent.count()
+        if not cnt:
             rv = news + [ MenuItem('Disable Feature', f=cls.disable_notes) ]
         else:
             rv = []
@@ -129,6 +130,9 @@ class NotesMenu(MenuSystem):
 
             rv.append(MenuItem('Export All', f=cls.export_all))
 
+            if cnt >= 2:
+                rv.append(MenuItem('Sort By Title', f=cls.sort_titles))
+
         rv.append(MenuItem('Import', f=import_from_other))
 
         return rv
@@ -136,6 +140,14 @@ class NotesMenu(MenuSystem):
     @classmethod
     async def export_all(cls, *a):
         await start_export(NoteContent.get_all())
+
+    @classmethod
+    async def sort_titles(cls, menu, _, item):
+        # sort by title, one time and then reconstruct menu
+        NoteContent.sort_all()
+
+        # force redraw
+        menu.update_contents()
 
     @classmethod
     async def quick_create(cls, menu, _, item):
@@ -232,6 +244,17 @@ class NoteContentBase:
         # how many do we have?
         return len(settings.get('notes', []))
 
+    @classmethod
+    def sort_all(cls):
+        # sort and resave all notes based on title
+        # - careful: self.idx values will be wrong for any existing instances
+        # - 'title' is only common field to subclasses
+        notes = cls.get_all()
+        notes.sort(key=lambda j: j.title.lower())
+
+        settings.put('notes', [n.serialize() for n in notes])
+        settings.save()
+
     async def delete(self, *a):
         # Remove note
         ok = await ux_confirm("Everything about this note/password will be lost.")
@@ -298,6 +321,15 @@ class NoteContentBase:
         # single export
         await start_export([self])
 
+    async def sign_txt_msg(self, a, b, item):
+        from auth import ux_sign_msg, msg_signing_done
+        txt = item.arg
+        await ux_sign_msg(txt, approved_cb=msg_signing_done, kill_menu=False)
+
+    def sign_misc_menu_item(self):
+        return MenuItem("Sign Note Text", f=self.sign_txt_msg, arg=self.misc)
+
+
 class PasswordContent(NoteContentBase):
     # "Passwords" have a few more fields and are more structured
     flds = ['title', 'user', 'password', 'site', 'misc' ]
@@ -317,6 +349,7 @@ class PasswordContent(NoteContentBase):
             MenuItem('Edit Metadata', f=self.edit),
             MenuItem('Delete', f=self.delete),
             MenuItem('Change Password', f=self.change_pw),
+            self.sign_misc_menu_item(),
             ShortcutItem(KEY_QR, f=self.view_qr),
             ShortcutItem(KEY_NFC, f=self.share_nfc, arg='password'),
         ]
@@ -446,6 +479,7 @@ class NoteContent(NoteContentBase):
             MenuItem('Edit', f=self.edit),
             MenuItem('Delete', f=self.delete),
             MenuItem('Export', f=self.export),
+            self.sign_misc_menu_item(),
             ShortcutItem(KEY_QR, f=self.view_qr),
             ShortcutItem(KEY_NFC, f=self.share_nfc, arg='misc'),
         ]

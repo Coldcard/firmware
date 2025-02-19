@@ -10,6 +10,7 @@ from ckcc_protocol.protocol import CCProtocolPacker
 from ckcc_protocol.constants import *
 from charcodes import KEY_QR
 from constants import msg_sign_unmap_addr_fmt
+from helpers import addr_from_display_format
 
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'"])
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR ])
@@ -29,7 +30,7 @@ def test_show_addr_usb(dev, press_select, addr_vs_path, path, addr_fmt, is_simul
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'", "m/0h/500h"])
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR ])
 def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt,
-                             cap_story, cap_screen_qr, qr_quality_check,
+                             cap_story, verify_qr_address, qr_quality_check,
                              press_cancel, is_q1):
     time.sleep(0.1)
 
@@ -45,8 +46,7 @@ def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt,
     else:
         assert path in story
 
-    assert addr in story
-    assert addr in story.split('\n')
+    assert addr in addr_from_display_format(story.split("\n\n")[0])
 
     # check expected addr was used
     addr_vs_path(addr, path, addr_fmt)
@@ -55,9 +55,8 @@ def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt,
 
     need_keypress(KEY_QR if is_q1 else '4')
     time.sleep(0.1)
-    qr = cap_screen_qr().decode('ascii')
 
-    assert qr == addr or qr == addr.upper()
+    verify_qr_address(addr_fmt, addr)
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("addr_fmt", [
@@ -137,7 +136,7 @@ def test_show_addr_nfc(path, str_addr_fmt, nfc_write_text, nfc_read_text, pick_m
     _, story = cap_story()
 
     split_story = story.split("\n\n")
-    story_addr = split_story[0]
+    story_addr = addr_from_display_format(split_story[0])
     story_path = split_story[1][2:]  # remove "= "
     if not is_q1:
         assert "Press (3) to share via NFC" in story

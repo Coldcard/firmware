@@ -103,8 +103,11 @@ def xfp2str(xfp):
     from struct import pack
     return b2a_hex(pack('<I', xfp)).decode('ascii').upper()
 
-def parse_change_back(story):
+def addr_from_display_format(dis_addr):
+    assert dis_addr[0] == '\x02'        # OUT_CTRL_ADDRESS
+    return dis_addr[1:]
 
+def parse_change_back(story):
     lines = story.split('\n')
     s = lines.index('Change back:')
     assert s > 3
@@ -113,8 +116,12 @@ def parse_change_back(story):
     assert 'address' in lines[s+2]
     addrs = []
     for y in range(s+3, len(lines)):
-        if not lines[y]: break
-        addrs.append(lines[y])
+        line = lines[y].strip()
+        if line:
+            if line[0] == "\x02":
+                addrs.append(addr_from_display_format(line))
+            if line.startswith(("3","2","1","m","n","tb1","bc1","bcrt")):
+                addrs.append(line)
 
     if len(addrs) >= 2:
         assert 'to addresses' in lines[s+2]

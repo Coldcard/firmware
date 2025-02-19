@@ -8,13 +8,13 @@
 # - recover from empty/blank/failed chips w/o user action
 #
 # Result:
-# - up to 4k of values supported (after json encoding)
-# - encrypted and stored in SPI flash, in last 128k area
+# - up to a few k of values supported (after json encoding)
+# - encrypted and stored in main flash, in a dedicated 512k area
 # - AES encryption key is derived from actual wallet secret
 # - if logged out, then use fixed key instead (ie. it's public)
 # - you cannot move data between slots because AES-CTR with CTR seed based on slot #
 # - SHA-256 check on decrypted data
-# - (Mk4) each slot is a file on /flash/settings 
+# - each "slot" is a file in /flash/settings; in Mk1-3 was SPI flash block
 # - os.sync() not helpful because block device under filesystem doesnt implement it
 #
 import os, ujson, ustruct, ckcc, gc, ngu, aes256ctr, version
@@ -84,10 +84,11 @@ from utils import call_later_ms
 # prelogin settings - do not need to be part of other saved settings
 # PRELOGIN_SETTINGS = ["_skip_pin", "nick", "rngk", "lgto", "kbtn", "terms_ok"]
 # keep these settings only if unspecified on the other end
-KEEP_IF_BLANK_SETTINGS = ["bkpw", "wa", "sighshchk", "emu", "rz", "b39skip",
-                          "axskip", "del", "pms", "idle_to", "batt_to", "bright"]
+KEEP_IF_BLANK_SETTINGS = ["wa", "sighshchk", "emu", "rz", "b39skip",
+                          "axskip", "del", "pms", "idle_to", "batt_to",
+                          "bright"]
 
-SEEDVAULT_FIELDS = ['seeds', 'seedvault', 'xfp', 'words']
+SEEDVAULT_FIELDS = ['seeds', 'seedvault', 'xfp', 'words', "bkpw"]
 
 NUM_SLOTS = const(100)
 SLOTS = range(NUM_SLOTS)
@@ -177,6 +178,13 @@ class SettingsObject:
         return (blocks-bfree) / blocks
 
     def _open_file(self, pos, mode='rb'):
+        if 'w' in mode:
+            # make directory, when needed (recovery/robustness)
+            try:
+                os.stat(MK4_WORKDIR)
+            except OSError:     # ENOENT
+                os.mkdir(MK4_WORKDIR[:-1])
+
         return open(MK4_FILENAME(pos), mode)
 
     def _slot_is_blank(self, pos, buf):
@@ -193,13 +201,13 @@ class SettingsObject:
         fn = MK4_FILENAME(pos)
         try:
             os.remove(fn)
-        except Exception:
-            # Error (ENOENT) expected here when saving first time, because the
+        except:
+            # OSError (ENOENT) expected here when saving first time, because the
             # "old" slot was not in use
             pass
 
     def _read_slot(self, pos, decryptor):
-        # Mk4 is just reading a binary file and decrypt as we go.
+        # read a binary file and decrypt as we go.
         with self._open_file(pos) as fd:
             # missing ftell(), so emulate
             ln = fd.seek(0, 2)
@@ -244,9 +252,12 @@ class SettingsObject:
             fd.write(aes(chk.digest()))
 
     def _used_slots(self):
-        # mk4: faster list of slots in use; doesn't open them
-        files = os.listdir(MK4_WORKDIR)
-        return [int(fn[0:-4], 16) for fn in files if fn.endswith('.aes')]
+        # list of slots in use; doesn't open them
+        try:
+            files = os.listdir(MK4_WORKDIR)
+            return [int(fn[0:-4], 16) for fn in files if fn.endswith('.aes')]
+        except:
+            return []
 
     def _nonempty_slots(self, dis=None):
         # generate slots that are non-empty
@@ -393,8 +404,9 @@ class SettingsObject:
     set = put
 
     def remove_key(self, kn):
-        self.current.pop(kn, None)
-        self.changed()
+        if kn in self.current:
+            self.current.pop(kn, None)
+            self.changed()
 
     def merge_previous_active(self, previous):
         import pyb
@@ -452,11 +464,8 @@ class SettingsObject:
             call_later_ms(250, self.write_out)
 
     def find_spot(self, not_here=0):
-        # search for a blank sector to use
-        # - check randomly and pick first blank one (wear leveling, deniability)
-        # - we will write and then erase old slot
+        # search for a blank slot to use
         # - if "full", blow away a random one
-        # on mk4, use the filesystem to see what's already taken
         avail = set(SLOTS) - set(self._used_slots())
         avail.discard(not_here)
 

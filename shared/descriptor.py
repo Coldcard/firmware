@@ -281,9 +281,8 @@ class Descriptor:
             if self.key.origin:
                 # spendable internal key
                 res.append(self.key.origin.psbt_derivation())
-            elif not isinstance(self.key.node, bytes):
-                if self.key.is_provably_unspendable:
-                    res.append([swab32(self.key.node.my_fp())])
+            elif self.key.is_provably_unspendable:
+                res.append([swab32(self.key.node.my_fp())])
 
         for k in self.keys:
             if k.origin:

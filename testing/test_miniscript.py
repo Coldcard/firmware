@@ -769,7 +769,7 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
                         use_regtest, get_cc_key, import_miniscript,
                         bitcoin_core_signer, import_duplicate, press_select,
                         virtdisk_path, garbage_collector):
-    def doit(M, N, script_type, internal_key=None, cc_account=0, funded=True, r=None,
+    def doit(M, N, script_type, internal_key=None, cc_account=0, funded=True,
              tapscript_threshold=False, add_own_pk=False, same_account=False, way="sd"):
 
         use_regtest()
@@ -786,29 +786,14 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
             wallet_name=f"watch_only_{script_type}_{M}of{N}", disable_private_keys=True,
             blank=True, passphrase=None, avoid_reuse=False, descriptors=True
         )
-        goto_home()
-        pick_menu_item('Settings')
-        pick_menu_item('Multisig Wallets')
-        pick_menu_item('Export XPUB')
-        time.sleep(0.5)
-        title, story = cap_story()
-        assert "extended public keys (XPUB) you would need to join a multisig wallet" in story
-        press_select()
-        need_keypress(str(cc_account))  # account
-        press_select()
-        xpub_obj = load_export(way, label="Multisig XPUB", is_json=True, sig_check=False)
-        template = xpub_obj[script_type +"_desc"]
-        acct_deriv = xpub_obj[script_type + '_deriv']
+        me_pth = f"m/48h/1h/{cc_account}h/3h"
+        me = get_cc_key(me_pth)
+        ik = internal_key or ranged_unspendable_internal_key()
 
         if tapscript_threshold:
-            me = f"[{xpub_obj['xfp']}/{acct_deriv.replace('m/','')}]{xpub_obj[script_type]}/<0;1>/*"
             signers_xp = [me] + bitcoind_signers_xpubs
             assert len(signers_xp) == N
-            desc = f"tr({H},%s)"
-            if internal_key:
-                desc = desc.replace(H, internal_key)
-            elif r:
-                desc = desc.replace(H, f"r={r}")
+            desc = f"tr({ik},%s)"
 
             scripts = []
             for c in itertools.combinations(signers_xp, M):
@@ -826,7 +811,7 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
             if add_own_pk:
                 if len(scripts) < 8:
                     if same_account:
-                        cc_key = get_cc_key("m/86h/1h/0h", subderiv="/<2;3>/*")
+                        cc_key = get_cc_key(me_pth, subderiv="/<2;3>/*")
                     else:
                         cc_key = get_cc_key("m/86h/1h/1000h")
                     cc_pk_leaf = f"pk({cc_key})"
@@ -842,22 +827,17 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
         else:
             if add_own_pk:
                 if same_account:
-                    ss = [get_cc_key("m/86h/1h/0h", subderiv="/<4;5>/*")] + bitcoind_signers_xpubs
-                    cc_key = get_cc_key("m/86h/1h/0h", subderiv="/<6;7>/*")
+                    ss = [get_cc_key(me_pth, subderiv="/<4;5>/*")] + bitcoind_signers_xpubs
+                    cc_key = get_cc_key(me_pth, subderiv="/<6;7>/*")
                 else:
                     ss = [get_cc_key("m/86h/1h/0h")] + bitcoind_signers_xpubs
                     cc_key = get_cc_key("m/86h/1h/1000h")
 
                 tmplt = f"sortedmulti_a({M},{','.join(ss)})"
                 cc_pk_leaf = f"pk({cc_key})"
-                desc = f"tr({H},{{{tmplt},{cc_pk_leaf}}})"
+                desc = f"tr({ik},{{{tmplt},{cc_pk_leaf}}})"
             else:
-                desc = template.replace("M", str(M), 1).replace("...", ",".join(bitcoind_signers_xpubs))
-
-            if internal_key:
-                desc = desc.replace(H, internal_key)
-            elif r:
-                desc = desc.replace(H, f"r={r}")
+                desc = f"tr({ik},sortedmulti_a({M},{me},{','.join(bitcoind_signers_xpubs)}))"
 
         name = "minisc"
         fname = None
@@ -889,13 +869,7 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
             assert "P2SH-P2WSH" in story
         # assert "Derivation:\n  Varies (2)" in story
         press_select()  # approve multisig import
-        if r == "@":
-            # unspendable key is generated randomly
-            # descriptors will differ
-            with pytest.raises(AssertionError):
-                import_duplicate(fname, way=way, data=data)
-        else:
-            import_duplicate(fname, way=way, data=data)
+        import_duplicate(fname, way=way, data=data)
         goto_home()
         pick_menu_item('Settings')
         pick_menu_item('Miniscript')
@@ -914,20 +888,6 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
         res = ms.importdescriptors(core_desc_object)
         assert res[0]["success"]
         assert res[1]["success"]
-
-        if r and r != "@":
-            from pysecp256k1.extrakeys import keypair_create, keypair_xonly_pub, xonly_pubkey_parse
-            from pysecp256k1.extrakeys import xonly_pubkey_tweak_add, xonly_pubkey_serialize, xonly_pubkey_from_pubkey
-            H_xo = xonly_pubkey_parse(bytes.fromhex(H))
-            r_bytes = bytes.fromhex(r)
-            kp = keypair_create(r_bytes)
-            kp_xo, kp_parity = keypair_xonly_pub(kp)
-            pk = xonly_pubkey_tweak_add(H_xo, xonly_pubkey_serialize(kp_xo))
-            xo, xo_parity = xonly_pubkey_from_pubkey(pk)
-            internal_key_bytes = xonly_pubkey_serialize(xo)
-            internal_key_hex = internal_key_bytes.hex()
-            assert internal_key_hex in core_desc_object[0]["desc"]
-            assert internal_key_hex in core_desc_object[1]["desc"]
 
         if funded:
             if script_type == "p2wsh":
@@ -961,7 +921,7 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
 @pytest.mark.parametrize("add_pk", [True, False])
 @pytest.mark.parametrize("same_acct", [None, True, False])
 @pytest.mark.parametrize("way", ["qr", "sd"])
-@pytest.mark.parametrize("M_N", [(3,4),(4,5),(5,6)])
+@pytest.mark.parametrize("M_N", [(3,4),(5,6)])
 def test_tapscript(M_N, cc_first, clear_miniscript, goto_home, pick_menu_item,
                    cap_menu, cap_story, microsd_path, use_regtest, bitcoind, microsd_wipe,
                    load_export, bitcoind_miniscript, add_pk, same_acct, get_cc_key,
@@ -1032,7 +992,7 @@ def test_tapscript(M_N, cc_first, clear_miniscript, goto_home, pick_menu_item,
 @pytest.mark.parametrize("add_pk", [True, False])
 @pytest.mark.parametrize('M_N', [(3, 15), (2, 2), (3, 5)])
 @pytest.mark.parametrize('way', ["qr", "sd", "vdisk", "nfc"])
-@pytest.mark.parametrize('internal_type', ["unspend(", "xpub", "static"])
+@pytest.mark.parametrize('internal_type', ["unspend(", "xpub"])
 def test_bitcoind_tapscript_address(M_N, clear_miniscript, bitcoind_miniscript,
                                     use_regtest, way, csa, address_explorer_check,
                                     add_pk, internal_type, skip_if_useless_way):
@@ -1054,13 +1014,11 @@ def test_bitcoind_tapscript_address(M_N, clear_miniscript, bitcoind_miniscript,
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("cc_first", [True, False])
-@pytest.mark.parametrize("m_n", [(2,2), (3, 5), (32, 32)])
+@pytest.mark.parametrize("m_n", [(2,3), (32, 32)])
 @pytest.mark.parametrize("way", ["qr", "sd"])
 @pytest.mark.parametrize("internal_key_spendable", [
     True,
     False,
-    "77ec0c0fdb9733e6a3c753b1374c4a465cba80dff52fc196972640a26dd08b76",
-    "@",
     "tpubD6NzVbkrYhZ4WhUnV3cPSoRWGf9AUdG2dvNpsXPiYzuTnxzAxemnbajrATDBWhaAVreZSzoGSe3YbbkY2K267tK3TrRmNiLH2pRBpo8yaWm/<2;3>/*",
     "unspend(c72231504cf8c1bbefa55974db4e0cdac781049a9a81a87e7ff5beeb45b34d3d)/<0;1>/*"
 ])
@@ -1073,19 +1031,14 @@ def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, 
     clear_miniscript()
     microsd_wipe()
     internal_key = None
-    r = None
     if internal_key_spendable is True:
         internal_key = get_cc_key("86h/0h/3h")
-    elif internal_key_spendable == "@":
-        r = "@"
+
     elif isinstance(internal_key_spendable, str):
-        if len(internal_key_spendable) == 64:
-            r = internal_key_spendable
-        else:
-            internal_key = internal_key_spendable
+        internal_key = internal_key_spendable
 
     tapscript_wo, bitcoind_signers = bitcoind_miniscript(
-        M, N, "p2tr", internal_key=internal_key, r=r,
+        M, N, "p2tr", internal_key=internal_key,
         way=way
     )
 
@@ -1274,11 +1227,11 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
 
 
 @pytest.mark.parametrize("desc", [
-    "tr(50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0,{{sortedmulti_a(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*),sortedmulti_a(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)},sortedmulti_a(2,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)})#tpm3afjn",
-    "tr(50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0,{sortedmulti_a(2,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)}})",
+    "tr(unspend(61350cde0f20e0268d0f33c22967863d9ebcbc3f448b78c9e83810d2152692e0)/<0;1>/*,{{sortedmulti_a(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*),sortedmulti_a(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)},sortedmulti_a(2,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)})",
+    "tr(unspend(af042dea4fdb855b7b66732ce8512829d95bbf4963a7b28279d5a0b5b48e5bea)/<0;1>/*,{sortedmulti_a(2,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)}})",
     "tr(tpubD6NzVbkrYhZ4XB7hZjurMYsPsgNY32QYGZ8YFVU7cy1VBRNoYpKAVuUfqfUFss6BooXRrCeYAdK9av2yFnqWXZaUMJuZdpE9Kuh6gubCVHu/<0;1>/*,{sortedmulti_a(2,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)}})",
-    "tr(50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0,{{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)},sortedmulti_a(2,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)})",
-    "tr(50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0,{{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)},or_d(pk([0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*),and_v(v:pkh([30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),older(500)))})",
+    "tr(unspend(f19573a10866ee9881769e24464f9a0e989c2cb8e585db385934130462abed90)/<0;1>/*,{{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)},sortedmulti_a(2,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)})",
+    "tr(unspend(dfed64ff493dca2ab09eadefaa0c88be8404908fa6eff869ff71c0d359d086b9)/<2;3>/*,{{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)},or_d(pk([0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*),and_v(v:pkh([30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),older(500)))})",
     "tr(unspend(b320077905d0954b01a8a328ea08c0ac3b4b066d1240f47a1b2c58651dcda4eb)/<0;1>/*,{{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)},or_d(pk([0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*),and_v(v:pkh([30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),older(500)))})",
 ])
 def test_tapscript_import_export(clear_miniscript, pick_menu_item, cap_story,
@@ -1543,7 +1496,7 @@ CHANGE_BASED_DESCS = [
             ")"
         "))#a4nfkskx"
     ),
-    "tr(50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0,{or_d(pk([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*),and_v(v:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<2;3>/*),older(5))),or_i(and_v(v:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<2147483646;2147483647>/*),older(10)),or_d(multi_a(3,[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<100;101>/*,[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<26;27>/*,[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<4;5>/*),and_v(v:thresh(2,pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<20;21>/*),a:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<104;105>/*),a:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<22;23>/*)),older(5))))})#z5x7409w",
+    "tr(tpubD6NzVbkrYhZ4WhUnV3cPSoRWGf9AUdG2dvNpsXPiYzuTnxzAxemnbajrATDBWhaAVreZSzoGSe3YbbkY2K267tK3TrRmNiLH2pRBpo8yaWm/<2;3>/*,{or_d(pk([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*),and_v(v:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<2;3>/*),older(5))),or_i(and_v(v:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<2147483646;2147483647>/*),older(10)),or_d(multi_a(3,[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<100;101>/*,[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<26;27>/*,[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<4;5>/*),and_v(v:thresh(2,pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<20;21>/*),a:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<104;105>/*),a:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<22;23>/*)),older(5))))})",
     "tr([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<66;67>/*,{or_d(pk([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*),and_v(v:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<2;3>/*),older(5))),or_i(and_v(v:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<2147483646;2147483647>/*),older(10)),or_d(multi_a(3,[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<100;101>/*,[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<26;27>/*,[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<4;5>/*),and_v(v:thresh(2,pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<20;21>/*),a:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<104;105>/*),a:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<22;23>/*)),older(5))))})#qqcy9jlr",
 ]
 
@@ -1708,9 +1661,9 @@ def test_same_key_account_based_multisig(goto_home, pick_menu_item, cap_story,
 
 @pytest.mark.parametrize("desc", [
     "wsh(or_d(pk(@A),and_v(v:pkh(@A),older(5))))",
-    "tr(%s,multi_a(2,@A,@A))" % H,
-    "tr(%s,{sortedmulti_a(2,@A,@A),pk(@A)})" % H,
-    "tr(%s,or_d(pk(@A),and_v(v:pkh(@A),older(5))))" % H,
+    "tr(@ik,multi_a(2,@A,@A))",
+    "tr(@ik,{sortedmulti_a(2,@A,@A),pk(@A)})",
+    "tr(@ik,or_d(pk(@A),and_v(v:pkh(@A),older(5))))",
 ])
 def test_insane_miniscript(get_cc_key, pick_menu_item, cap_story,
                            microsd_path, desc, import_miniscript,
@@ -1718,6 +1671,7 @@ def test_insane_miniscript(get_cc_key, pick_menu_item, cap_story,
 
     cc_key = get_cc_key("84h/0h/0h")
     desc = desc.replace("@A", cc_key)
+    desc = desc.replace("@ik", ranged_unspendable_internal_key())
     fname = "insane.txt"
     fpath = microsd_path(fname)
     with open(fpath, "w") as f:
@@ -1737,7 +1691,7 @@ def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
         scripts.append(f"pk({k})")
 
     tree = TREE[leaf_num] % tuple(scripts)
-    desc = f"tr({H},{tree})"
+    desc = f"tr({ranged_unspendable_internal_key()},{tree})"
     fname = "9leafs.txt"
     fpath = microsd_path(fname)
     with open(fpath, "w") as f:
@@ -1752,7 +1706,7 @@ def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
 @pytest.mark.parametrize("same_acct", [True, False])
 @pytest.mark.parametrize("recovery", [True, False])
 @pytest.mark.parametrize("leaf2_mine", [True, False])
-@pytest.mark.parametrize("internal_type", ["unspend(", "xpub", "static"])
+@pytest.mark.parametrize("internal_type", ["unspend(", "xpub"])
 @pytest.mark.parametrize("minisc", [
     "or_d(pk(@A),and_v(v:pkh(@B),locktime(N)))",
 
@@ -1816,10 +1770,10 @@ def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home
     if "@C" in minisc:
         minisc = minisc.replace("@C", core_keys[1])
 
-    ik = H
     if internal_type == "unspend(":
         ik = f"unspend({os.urandom(32).hex()})/<2;3>/*"
-    elif internal_type == "xpub":
+    else:
+        assert internal_type == "xpub"
         ik = ranged_unspendable_internal_key(os.urandom(32))
 
     if leaf2_mine:
@@ -1932,7 +1886,7 @@ def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home
     address_explorer_check("sd", "bech32m", wo, "minitapscript")
 
 @pytest.mark.parametrize("desc", [
-    "tr(50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0,{{sortedmulti(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*),sortedmulti(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)},sortedmulti(2,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)})",
+    "tr(tpubD6NzVbkrYhZ4WhUnV3cPSoRWGf9AUdG2dvNpsXPiYzuTnxzAxemnbajrATDBWhaAVreZSzoGSe3YbbkY2K267tK3TrRmNiLH2pRBpo8yaWm/<2;3>/*,{{sortedmulti(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*),sortedmulti(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)},sortedmulti(2,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)})",
     "wsh(sortedmulti_a(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*))",
     "sh(wsh(or_d(pk([30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*),and_v(v:multi_a(2,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*),older(500)))))",
 ])
@@ -1982,7 +1936,7 @@ def test_d_wrapper(addr_fmt, bitcoind, get_cc_key, goto_home, pick_menu_item, ca
     if addr_fmt == "bech32":
         desc = f"wsh({minsc})"
     else:
-        desc = f"tr({H},{minsc})"
+        desc = f"tr({ranged_unspendable_internal_key()},{minsc})"
 
     name = "d_wrapper"
     fname = f"{name}.txt"
@@ -2109,7 +2063,7 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
 
     x = "wsh(or_d(pk([0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*),and_v(v:pkh([30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*),older(100))))"
     z = "wsh(or_d(pk([0f056943/48'/0'/0'/3']xpub6FQgdFZAHcAeDMVe9KxWoLMxziCjscCExzuKJhRSjM71CA9dUDZEGNgPe4S2SsRumCBXeaTBZ5nKz2cMDiK4UEbGkFXNipHLkm46inpjE9D/0/*),and_v(v:pkh([0f056943/48'/0'/0'/2']xpub6FQgdFZAHcAeAhQX2VvQ42CW2fDdKDhgwzhzXuUhWb4yfArmaZXkLbGS9W1UcgHwNxVESCS1b8BK8tgNYEF8cgmc9zkmsE45QSEvbwdp6Kr/0/*),older(100))))"
-    y = f"tr({H},or_d(pk([30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*),and_v(v:pk([0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*),after(800000))))"
+    y = f"tr({ranged_unspendable_internal_key()},or_d(pk([30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*),and_v(v:pk([0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*),after(800000))))"
 
     fname_btc = "BTC.txt"
     fname_xtn = "XTN.txt"
@@ -2201,7 +2155,7 @@ def test_import_same_policy_same_keys_diff_order(taproot_ikspendable, minisc,
             ik = get_cc_key("84h/1h/100h", subderiv="/0/*")
             desc = f"tr({ik},{minisc})"
         else:
-            desc = f"tr({H},{minisc})"
+            desc = f"tr({ranged_unspendable_internal_key()},{minisc})"
     else:
         desc = f"wsh({minisc})"
 
@@ -2251,7 +2205,7 @@ def test_import_miniscript_usb_json(use_regtest, cs, way, cap_menu,
                                     virtdisk_path, import_miniscript, goto_home,
                                     press_select):
     name = "my_minisc"
-    minsc = f"tr({H},or_d(multi_a(2,@A,@C),and_v(v:pkh(@B),after(100))))"
+    minsc = f"tr({ranged_unspendable_internal_key()},or_d(multi_a(2,@A,@C),and_v(v:pkh(@B),after(100))))"
     use_regtest()
     clear_miniscript()
 
@@ -2332,7 +2286,7 @@ def test_unique_name(clear_miniscript, use_regtest, offer_minsc_import,
 
     name = "my_name"
     x = "wsh(or_d(pk([0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*),and_v(v:pkh([30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*),older(100))))"
-    y = f"tr({H},or_d(pk([30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*),and_v(v:pk([0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*),after(800000))))"
+    y = f"tr({ranged_unspendable_internal_key()},or_d(pk([30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*),and_v(v:pk([0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*),after(800000))))"
 
     xd = json.dumps({"name": name, "desc": x})
     title, story = offer_minsc_import(xd)
@@ -2769,11 +2723,13 @@ def test_expanding_multisig(tmplt, clear_miniscript, goto_home, pick_menu_item, 
     address_explorer_check("sd", af, wo, wname)
 
 
+@pytest.mark.parametrize("blinded", [True, False])
 def test_big_boy(use_regtest, clear_miniscript, bitcoin_core_signer, get_cc_key, microsd_path,
                  garbage_collector, pick_menu_item, bitcoind, import_miniscript, press_select,
-                 cap_story, cap_menu, load_export, start_sign, end_sign):
+                 cap_story, cap_menu, load_export, start_sign, end_sign, blinded):
     # keys (@0,@4,@5) are more important (primary) than keys (@1,@2,@3) (secondary)
     # currently requires to tweak MAX_TR_SIGNERS = 33
+    # with blinded=True, all co-signer keys are blinded (have no key origin info)
     tmplt = (
         "tr("
         "tpubD6NzVbkrYhZ4XgXS51CV3bhoP5dJeQqPhEyhKPDXBgEs64VdSyAfku99gtDXQzY6HEXY5Dqdw8Qud1fYiyewDmYjKe9gGJeDx7x936ur4Ju/<0;1>/*,"  # unspendable
@@ -2797,6 +2753,10 @@ def test_big_boy(use_regtest, clear_miniscript, bitcoin_core_signer, get_cc_key,
     for i in range(1, 6):
         csigner, ckey = bitcoin_core_signer(f"co-signer-{i}")
         ckey = ckey.replace("/0/*", "")
+
+        if blinded:
+            ckey = ckey.split("]")[-1]
+
         csigner.keypoolrefill(20)
         cosigners.append(csigner)
         desc = desc.replace(f"@{i}", ckey)
@@ -3009,3 +2969,138 @@ def test_single_key_miniscript(af, settings_set, clear_miniscript, goto_home, ge
 
     unspent = wo.listunspent()
     assert len(unspent) == 1
+
+
+@pytest.mark.parametrize("tmplt", [
+    "wsh(or_d(pk(@0),and_v(v:pkh(@1),older(100))))",
+    f"tr({ranged_unspendable_internal_key()},or_d(pk(@0),and_v(v:pk(@1),older(100))))"
+])
+@pytest.mark.parametrize("cc_sign", [False, True])
+@pytest.mark.parametrize("has_orig", [False, True])
+def test_originless_keys(tmplt, offer_minsc_import, get_cc_key, bitcoin_core_signer, bitcoind,
+                         pick_menu_item, load_export, goto_home, cap_menu, clear_miniscript,
+                         use_regtest, press_select, start_sign, end_sign, cap_story, cc_sign,
+                         has_orig, address_explorer_check):
+    # can be both:
+    #   a.) just ranged xpub without origin info -> xpub1/<0;1>/*
+    #   b.) ranged xpub with its fp -> [xpub1_fp]xpub1/<0;1>/*
+    sequence = 100
+    use_regtest()
+    clear_miniscript()
+    af = "bech32m" if "tr(" in tmplt else "bech32"
+    name = "originless"
+
+    cc_key = get_cc_key("m/84h/1h/0h")
+    cs, ck = bitcoin_core_signer(name+"_signer")
+    originless_ck = ck.split("]")[-1]
+
+    n = BIP32Node.from_hwif(originless_ck.split("/")[0])  # just extended key
+    fp_str = "[" + n.fingerprint().hex() + "]"
+    if has_orig:
+        originless_ck = fp_str + originless_ck
+
+    desc = tmplt.replace("@0", cc_key)
+    desc = desc.replace("@1", originless_ck)
+    to_import = {"desc": desc, "name": name}
+    offer_minsc_import(json.dumps(to_import))
+    press_select()
+
+    wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
+                                passphrase=None, avoid_reuse=False, descriptors=True)
+
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Miniscript")
+    menu = cap_menu()
+    assert menu[0] == name
+    pick_menu_item(menu[0])  # pick imported descriptor miniscript wallet
+    pick_menu_item("Descriptors")
+    pick_menu_item("Bitcoin Core")
+    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
+    text = text.replace("importdescriptors ", "").strip()
+    # remove junk
+    r1 = text.find("[")
+    r2 = text.find("]", -1, 0)
+    text = text[r1: r2]
+    core_desc_object = json.loads(text)
+    res = wo.importdescriptors(core_desc_object)
+    for obj in res:
+        assert obj["success"]
+
+    # fund wallet
+    addr = wo.getnewaddress("", af)
+    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    unspent = wo.listunspent()
+    assert len(unspent) == 1
+
+    if cc_sign:
+        inputs = []
+    else:
+        inputs = [{"txid": unspent[0]["txid"], "vout": unspent[0]["vout"], "sequence": sequence}]
+
+    # split to 10 utxos
+    dest_addrs = [wo.getnewaddress(f"a{i}", af) for i in range(10)]
+    psbt_resp = wo.walletcreatefundedpsbt(
+        inputs,
+        [{a: 4} for a in dest_addrs] + [{bitcoind.supply_wallet.getnewaddress(): 5}],
+        0,
+        {"fee_rate": 3, "change_type": af, "subtractFeeFromOutputs": [0]},
+    )
+    psbt = psbt_resp.get("psbt")
+
+    if cc_sign:
+        start_sign(base64.b64decode(psbt))
+        time.sleep(.1)
+        title, story = cap_story()
+        assert title == "OK TO SEND?"
+        assert "Consolidating" not in story
+        final_psbt = end_sign(True)
+        final_psbt = base64.b64encode(final_psbt).decode()
+    else:
+        final_psbt_o = cs.walletprocesspsbt(psbt, True, "DEFAULT" if af == "bech32m" else "ALL")
+        final_psbt = final_psbt_o["psbt"]
+        assert psbt != final_psbt
+
+    res = wo.finalizepsbt(final_psbt)
+    assert res["complete"]
+    tx_hex = res["hex"]
+    res = wo.testmempoolaccept([tx_hex])
+    if not cc_sign:
+        # timelocked
+        assert not res[0]["allowed"]
+        assert res[0]["reject-reason"] == 'non-BIP68-final'
+
+        # mines some blocks to release the lock
+        bitcoind.supply_wallet.generatetoaddress(sequence, bitcoind.supply_wallet.getnewaddress())
+
+        res = wo.testmempoolaccept([tx_hex])
+    assert res[0]["allowed"]
+    res = wo.sendrawtransaction(tx_hex)
+    assert len(res) == 64  # tx id
+
+    # check addresses
+    address_explorer_check("sd", af, wo, name)
+
+
+@pytest.mark.parametrize("internal_key", [
+    H,
+    "r=@",
+    "r=dfed64ff493dca2ab09eadefaa0c88be8404908fa6eff869ff71c0d359d086b9",
+    "f19573a10866ee9881769e24464f9a0e989c2cb8e585db385934130462abed90"
+])
+def test_static_internal_key(internal_key, clear_miniscript, microsd_path, pick_menu_item,
+                             cap_story, import_miniscript, garbage_collector):
+    clear_miniscript()
+    desc = "tr(@ik,{{sortedmulti(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*),sortedmulti(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)},sortedmulti(2,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)})"
+    desc = desc.replace("@ik", internal_key)
+    fname = "imdesc.txt"
+    fpath = microsd_path(fname)
+    with open(microsd_path(fname), "w") as f:
+        f.write(desc)
+    garbage_collector.append(fpath)
+
+    title, story = import_miniscript(fname)
+    assert "Failed to import" in story
+    assert "only extended keys allowed" in story

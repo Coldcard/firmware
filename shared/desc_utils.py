@@ -146,8 +146,10 @@ class KeyOriginInfo:
         return cls(xfp, derivation)
 
     def __str__(self):
-        return "%s/%s" % (b2a_hex(self.fingerprint).decode(),
-                          keypath_to_str(self.derivation, prefix='', skip=0).replace("'", "h"))
+        rv = "%s" % b2a_hex(self.fingerprint).decode()
+        if self.derivation:
+            rv += "/%s" % keypath_to_str(self.derivation, prefix='', skip=0).replace("'", "h")
+        return rv
 
 
 class KeyDerivationInfo:
@@ -303,52 +305,27 @@ class Key:
         # parse key
         node, chain_type = cls.parse_key(k)
         der = KeyDerivationInfo.from_string(der.decode())
+        if origin is None:
+            origin = KeyOriginInfo(ustruct.pack('<I', swab32(node.my_fp())), [])
         return cls(node, origin, der, chain_type=chain_type)
 
     @classmethod
     def parse_key(cls, key_str):
-        chain_type = None
-        if key_str[1:4].lower() == b"pub":
-            # extended key
-            # or xpub or tpub as we use descriptors (SLIP-132 NOT allowed)
-            hint = key_str[0:1].lower()
-            if hint == b"x":
-                chain_type = "BTC"
-            else:
-                assert hint == b"t", "no slip"
-                chain_type = "XTN"
-            node = ngu.hdnode.HDNode()
-            node.deserialize(key_str)
+        assert key_str[1:4].lower() == b"pub", "only extended keys allowed"
+        # extended key
+        # or xpub or tpub as we use descriptors (SLIP-132 NOT allowed)
+        hint = key_str[0:1].lower()
+        if hint == b"x":
+            chain_type = "BTC"
         else:
-            # only unspendable keys can be bare pubkeys - for now
-            H = PROVABLY_UNSPENDABLE[1:]
-            if b"r=" in key_str:
-                _, r = key_str.split(b"=")
-                if r == b"@":
-                    # pick a fresh integer r in the range 0...n-1 uniformly at random and use H + rG
-                    kp = ngu.secp256k1.keypair()
-                else:
-                    # H + rG where r is provided from user
-                    r = a2b_hex(r)
-                    assert len(r) == 32, "r != 32"
-                    kp = ngu.secp256k1.keypair(r)
-
-                H_xo = ngu.secp256k1.xonly_pubkey(H)
-
-                node = H_xo.tweak_add(kp.xonly_pubkey().to_bytes()).to_bytes()
-
-            elif a2b_hex(key_str) == H:
-                node = H
-            else:
-                node = a2b_hex(key_str)
-
-            assert len(node) == 32, "invalid pk %d %s" % (len(node), node)
+            assert hint == b"t", "no slip"
+            chain_type = "XTN"
+        node = ngu.hdnode.HDNode()
+        node.deserialize(key_str)
 
         return node, chain_type
 
     def derive(self, idx=None, change=False):
-        if isinstance(self.node, bytes):
-            return self
         if isinstance(idx, list):
             for i in idx:
                 mp_i = self.derivation.multi_path_index or 0
@@ -397,22 +374,20 @@ class Key:
 
     @property
     def is_provably_unspendable(self):
-        if isinstance(self.node, bytes):
-            return True
         if PROVABLY_UNSPENDABLE == self.node.pubkey():
             return True
         return False
 
     @property
     def prefix(self):
-        if self.origin:
+        if self.origin and self.origin.derivation:
             return "[%s]" % self.origin
+        # jut a bare [xfp]key - omit origin info (jut xfp)
+        # or no origin at all
         return ""
 
     def key_bytes(self):
-        kb = self.node
-        if not isinstance(kb, bytes):
-            kb = self.node.pubkey()
+        kb = self.node.pubkey()
         if self.taproot:
             if len(kb) == 33:
                 kb = kb[1:]
@@ -424,12 +399,9 @@ class Key:
 
     def to_string(self, external=True, internal=True, subderiv=True):
         key = self.prefix
-        if isinstance(self.node, ngu.hdnode.HDNode):
-            key += self.extended_public_key()
-            if self.derivation and subderiv:
-                key += "/" + self.derivation.to_string(external, internal)
-        else:
-            key += b2a_hex(self.node).decode()
+        key += self.extended_public_key()
+        if self.derivation and subderiv:
+            key += "/" + self.derivation.to_string(external, internal)
 
         return key
 
@@ -495,9 +467,12 @@ def fill_policy(policy, keys, external=True, internal=True):
             k_orig = k.to_string(external, internal, subderiv=False)
         else:
             _idx = k.find("]")  # end of key origin info - no more / expected besides subderivation
-            assert _idx != -1
-            ek = k[_idx+1:].split("/")[0]
-            k_orig = k[:_idx+1] + ek
+            if _idx != -1:
+                ek = k[_idx+1:].split("/")[0]
+                k_orig = k[:_idx+1] + ek
+            else:
+                # no origin info
+                k_orig = k.split("/")[0]
 
         if k_orig not in orig_keys:
             orig_keys.append(k_orig)

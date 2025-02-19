@@ -35,7 +35,10 @@ if 'destinations' in expect:
     for (val, addr), (idx, txo) in zip(expect['destinations'], p.output_iter()):
         assert val == txo.nValue
         txt = active_request.render_output(txo)
-        assert addr in txt
+        # normalize from display format
+        address = txt.split("\n")[-2]
+        assert address[0] == "\x02"
+        assert addr == address[1:]
         assert '%.8f'%(val/1E8) in txt
 
 if 'sw_inputs' in expect:

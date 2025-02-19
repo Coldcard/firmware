@@ -13,13 +13,16 @@ from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF
 from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
 from ownership import OWNERSHIP
 
-async def export_by_qr(body, label, type_code):
+async def export_by_qr(body, label, type_code, force_bbqr=False):
     # render as QR and show on-screen
     from ux import show_qr_code
 
     try:
         # ignore label/title - provides no useful info
         # makes qr smaller and harder to read
+        if force_bbqr:
+            raise ValueError
+
         await show_qr_code(body)
     except (ValueError, RuntimeError, TypeError):
         if version.has_qwerty:
@@ -73,14 +76,7 @@ be needed for different systems.
             sym=chain.ctype, ct=chain.b44_cointype, xfp=xfp))
 
         for name, path, addr_fmt in chains.CommonDerivations:
-
-            if '{coin_type}' in path:
-                path = path.replace('{coin_type}', str(chain.b44_cointype))
-
-            if '{' in name:
-                name = name.format(core_name=chain.core_name)
-
-            show_slip132 = ('Core' not in name)
+            path = path.replace('{coin_type}', str(chain.b44_cointype))
 
             yield ('''## For {name}: {path}\n\n'''.format(name=name, path=path))
             yield ('''First %d receive addresses (account=0, change=0):\n\n''' % num_rx)
@@ -103,7 +99,7 @@ be needed for different systems.
 
                     node = sv.derive_path(hard_sub, register=False)
                     yield ("%s => %s\n" % (hard_sub, chain.serialize_public(node)))
-                    if show_slip132 and addr_fmt not in (AF_CLASSIC, AF_P2TR) and (addr_fmt in chain.slip132):
+                    if addr_fmt not in (AF_CLASSIC, AF_P2TR) and (addr_fmt in chain.slip132):
                         yield ("%s => %s   ##SLIP-132##\n" % (
                                     hard_sub, chain.serialize_public(node, addr_fmt)))
 
@@ -449,14 +445,7 @@ def generate_electrum_wallet(addr_type, account_num):
     xfp = settings.get('xfp')
 
     # Must get the derivation path, and the SLIP32 version bytes right!
-    if addr_type == AF_CLASSIC:
-        mode = 44
-    elif addr_type == AF_P2WPKH:
-        mode = 84
-    elif addr_type == AF_P2WPKH_P2SH:
-        mode = 49
-    else:
-        raise ValueError(addr_type)
+    mode = chains.af_to_bip44_purpose(addr_type)
 
     OWNERSHIP.note_wallet_used(addr_type, account_num)
 
@@ -552,16 +541,7 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
     xfp = settings.get('xfp')
     dis.progress_bar_show(0.1)
     if mode is None:
-        if addr_type == AF_CLASSIC:
-            mode = 44
-        elif addr_type == AF_P2WPKH:
-            mode = 84
-        elif addr_type == AF_P2WPKH_P2SH:
-            mode = 49
-        elif addr_type == AF_P2TR:
-            mode = 86
-        else:
-            raise ValueError(addr_type)
+        mode = chains.af_to_bip44_purpose(addr_type)
 
     OWNERSHIP.note_wallet_used(addr_type, account_num)
 

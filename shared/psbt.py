@@ -2185,6 +2185,7 @@ class psbtObject(psbtProxy):
                             # check the pubkey of this BIP-32 node
                             if pubkey == node.pubkey():
                                 good += 1
+                                OWNERSHIP.note_subpath_used(subpath)
 
                     if oup.taproot_subpaths:
                         for xonly_pk, val in oup.taproot_subpaths.items():
@@ -2201,7 +2202,6 @@ class psbtObject(psbtProxy):
                             # check the pubkey of this BIP-32 node
                             if xonly_pk == node.pubkey()[1:]:
                                 good += 1
-
                                 OWNERSHIP.note_subpath_used(subpath)
 
                     if not good:
@@ -2425,16 +2425,15 @@ class psbtObject(psbtProxy):
                     stash.blank_object(node)
                     del sk, node
 
-                    # Could remove sighash from input object - it is not required, takes space,
-                    # and is already in signature or is implicit by not being part of the
-                    # signature (taproot SIGHASH_DEFAULT)
-                    ## inp.sighash = None
-
                     success.add(in_idx)
                     gc.collect()
 
                     if self.is_v2:
                         self.set_modifiable_flag(inp)
+
+                # drop sighash if default (SIGHASH_ALL)
+                if inp.sighash == SIGHASH_ALL:
+                    inp.sighash = None
 
         # done.
         dis.progress_bar_show(1)

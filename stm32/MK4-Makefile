@@ -19,7 +19,7 @@ LATEST_RELEASE = $(shell ls -t1 ../releases/*-mk4-*.dfu | head -1)
 
 # Our version for this release.
 # - caution, the bootrom will not accept version < 3.0.0
-VERSION_STRING = 6.3.4X
+VERSION_STRING = 6.3.5X
 
 # keep near top, because defined default target (all)
 include shared.mk

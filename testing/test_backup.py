@@ -2,7 +2,7 @@
 #
 # Testing backups.
 #
-import pytest, time, json, os, shutil
+import pytest, time, json, os, shutil, re
 from constants import simulator_fixed_words, simulator_fixed_tprv
 from charcodes import KEY_QR
 from bip32 import BIP32Node
@@ -10,15 +10,96 @@ from mnemonic import Mnemonic
 
 
 @pytest.fixture
+def override_bkpw(goto_home, pick_menu_item, cap_story, need_keypress, seed_story_to_words,
+                  cap_menu, press_select, press_cancel, enter_complex, is_q1):
+
+    def purge_current(exit=False):
+        time.sleep(.1)
+        title, story = cap_story()
+        if "(1) to forget current" in story:
+            need_keypress("1")
+            time.sleep(.1)
+            title, story = cap_story()
+            assert "Delete current stored password?" in story
+            press_select()
+            time.sleep(.1)
+            title, story = cap_story()
+            assert "(1) to forget current" not in story
+            if exit:
+                press_cancel()
+
+    def doit(password=None, old_password=None):
+        goto_home()
+        pick_menu_item("Advanced/Tools")
+        pick_menu_item("Danger Zone")
+        pick_menu_item("I Am Developer.")
+        pick_menu_item("BKPW Override")
+        time.sleep(.1)
+        title, story = cap_story()
+        current_bkpw = None
+        if "(2) to show current active backup password" in story:
+            need_keypress("2")
+            time.sleep(.1)
+            title, story = cap_story()
+            assert 'Anyone with knowledge of the password will be able to decrypt your backups.' in story
+            press_select()
+            time.sleep(.1)
+            title, current_bkpw = cap_story()
+            current_bkpw = current_bkpw.strip()
+            press_select()
+
+        if old_password:
+            assert current_bkpw == old_password, "old_password mismatch"
+
+        if password is None:
+            # purge current bkpw
+            purge_current(exit=True)
+            return
+
+        # purge what was there from before
+        purge_current()
+
+        need_keypress("0")
+        enter_complex(password, apply=False, b39pass=False)
+
+        time.sleep(.1)
+        title, story = cap_story()
+        assert "(2) to show current active backup password" in story
+        need_keypress("2")
+        press_select()  # are you sure?
+        time.sleep(.1)
+        title, story = cap_story()
+        new_current_bkpw = story.strip()
+        press_select()
+
+        time.sleep(.1)
+        title, story = cap_story()
+        if ((3*" ") in password) and not is_q1:
+            assert password.replace("   ", "  ") == new_current_bkpw
+        else:
+            assert new_current_bkpw == password
+
+        assert "(1) to forget current password" in story
+        assert "(0) to change" in story
+
+    return doit
+
+@pytest.fixture
 def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
                   cap_story, need_keypress, cap_screen_qr, pass_word_quiz,
                   get_setting, seed_story_to_words, press_cancel, is_q1,
                   press_select, is_headless):
-    def doit(reuse_pw=False, save_pw=False, st=None, ct=False):
+    def doit(reuse_pw=None, save_pw=False, st=None, ct=False):
         # st -> seed type
         # ct -> cleartext backup
         if reuse_pw:
-            settings_set('bkpw', ' '.join('zoo' for _ in range(12)))
+            if isinstance(reuse_pw, list):
+                assert len(reuse_pw) == 12
+            else:
+                assert reuse_pw is True  # default
+                reuse_pw = ['zoo' for _ in range(12)]
+
+            settings_set('bkpw', ' '.join(reuse_pw))
         else:
             settings_remove('bkpw')
 
@@ -55,13 +136,10 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
             return  # nothing more to be done
 
         if reuse_pw:
-            assert ' 1: zoo' in body
-            assert '12: zoo' in body
+            assert (' 1: %s' % reuse_pw[0]) in body
+            assert ('12: %s' % reuse_pw[-1]) in body
             press_select()
             words = ['zoo'] * 12
-
-            time.sleep(0.1)
-            title, body = cap_story()
         else:
             assert title == 'NO-TITLE'
             assert 'Record this' in body
@@ -102,7 +180,7 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
 @pytest.mark.qrcode
 @pytest.mark.parametrize('multisig', [False, 'multisig'])
 @pytest.mark.parametrize('st', ["b39pass", "eph", None])
-@pytest.mark.parametrize('reuse_pw', [False, True])
+@pytest.mark.parametrize('reuse_pw', [True, False])
 @pytest.mark.parametrize('save_pw', [False, True])
 @pytest.mark.parametrize('seedvault', [False, True])
 @pytest.mark.parametrize('pass_way', ["qr", None])
@@ -113,7 +191,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
                      generate_ephemeral_words, set_bip39_pw, verify_backup_file,
                      check_and_decrypt_backup, restore_backup_cs, clear_ms, seedvault,
                      restore_main_seed, import_ephemeral_xprv, backup_system,
-                     press_cancel, sim_exec, pass_way):
+                     press_cancel, sim_exec, pass_way, garbage_collector):
     # Make an encrypted 7z backup, verify it, and even restore it!
     clear_ms()
     reset_seed_words()
@@ -146,6 +224,10 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         press_select()
         time.sleep(.1)
         assert len(get_setting('multisig')) == 1
+
+    if not reuse_pw:
+        # drop saved bkpw before we get to ephemeral settings
+        settings_remove("bkpw")
 
     if st == "b39pass":
         xfp_pass = set_bip39_pw("coinkite", reset=False, seed_vault=seedvault)
@@ -193,9 +275,12 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         print("filename %d: %s" % (copy, fn))
 
         files.append(fn)
+        garbage_collector.append(microsd_path(fn))
 
         # write extra copy.
-        need_keypress('2')
+        if not copy:
+            need_keypress('2')
+
         time.sleep(.01)
 
     bk_a = open_microsd(files[0]).read()
@@ -438,7 +523,6 @@ def test_seed_vault_backup(settings_set, reset_seed_words, generate_ephemeral_wo
     assert "Press (1) to save" in body
     press_cancel()
     time.sleep(.01)
-    assert get_setting('bkpw', 'xxx') == 'xxx'
     title, story = cap_story()
     assert "Backup file written:" in story
     fn = story.split("\n\n")[1]
@@ -512,5 +596,41 @@ def test_clone_start(reset_seed_words, pick_menu_item, cap_story, goto_home):
 
     # TODO check file made is a good backup, with correct password
 
+
+def test_bkpw_override(reset_seed_words, override_bkpw, goto_home, pick_menu_item,
+                       cap_story, press_select, garbage_collector, microsd_path):
+    reset_seed_words()  # clean slate
+    old_pw = None
+    test_cases = [
+        " ".join(12 * ["elevator"]),
+        " ".join(12 * ["fever"]),
+        32 * "a",
+        (16 * "0") + "   " + (16 *"1"),
+        64 * "Q",
+        (26 * "?") + "!@#$%^&*()",
+    ]
+    for pw in test_cases:
+        override_bkpw(pw, old_pw)
+
+        goto_home()
+        pick_menu_item("Advanced/Tools")
+        pick_menu_item("Backup")
+        pick_menu_item("Backup System")
+        time.sleep(1)
+        title, story = cap_story()
+        split_pw = pw.split(" ")
+        if len(split_pw) == 12:
+            assert (' 1: %s' % split_pw[0]) in story
+            assert ('12: %s' % split_pw[-1]) in story
+        else:
+            # not words of len 12
+            assert ("%s...%s" % (pw[0], pw[-1])) in story
+
+        press_select()
+        time.sleep(1)
+        title, story = cap_story()
+        assert "Backup file written" in story
+        garbage_collector.append(microsd_path(story.split("\n\n")[1]))
+        press_select()
 
 # EOF

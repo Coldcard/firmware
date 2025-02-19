@@ -13,6 +13,9 @@ from serializations import hash160, ser_compact_size, disassemble, ser_string
 from ucollections import namedtuple
 from opcodes import OP_RETURN, OP_1, OP_16
 
+
+SINGLESIG_AF = (AF_P2WPKH, AF_CLASSIC, AF_P2TR, AF_P2WPKH_P2SH)
+
 # See SLIP 132 <https://github.com/satoshilabs/slips/blob/master/slip-0132.md>
 # for background on these version bytes. Not to be confused with SLIP-32 which involves Bech32.
 Slip132Version = namedtuple('Slip132Version', ('pub', 'priv', 'hint'))
@@ -51,8 +54,6 @@ def tapleaf_hash(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
 class ChainsBase:
 
     curve = 'secp256k1'
-    menu_name = None        # use 'name' if this isn't defined
-    core_name = None        # name of chain's "core" p2p software
 
     # b44_cointype comes from
     #    <https://github.com/satoshilabs/slips/blob/master/slip-0044.md>
@@ -319,8 +320,7 @@ class ChainsBase:
 class BitcoinMain(ChainsBase):
     # see <https://github.com/bitcoin/bitcoin/blob/master/src/chainparams.cpp#L140>
     ctype = 'BTC'
-    name = 'Bitcoin'
-    core_name = 'Bitcoin Core'
+    name = 'Bitcoin Mainnet'
 
     slip132 = {
         AF_CLASSIC:     Slip132Version(0x0488B21E, 0x0488ADE4, 'x'),
@@ -340,9 +340,9 @@ class BitcoinMain(ChainsBase):
     b44_cointype = 0
 
 class BitcoinTestnet(BitcoinMain):
+    # testnet4 (was testnet3 up until 2025 but all parameters are the same)
     ctype = 'XTN'
-    name = 'Bitcoin Testnet'
-    menu_name = 'Testnet: BTC'
+    name = 'Bitcoin Testnet 4'
 
     slip132 = {
         AF_CLASSIC:     Slip132Version(0x043587cf, 0x04358394, 't'),
@@ -365,7 +365,6 @@ class BitcoinTestnet(BitcoinMain):
 class BitcoinRegtest(BitcoinMain):
     ctype = 'XRT'
     name = 'Bitcoin Regtest'
-    menu_name = 'Regtest: BTC'
 
     slip132 = {
         AF_CLASSIC:     Slip132Version(0x043587cf, 0x04358394, 't'),
@@ -446,6 +445,53 @@ CommonDerivations = [
             AF_P2TR),  # generates bc1p bech32m addresses
 ]
 
+STD_DERIVATIONS = {
+    "p2pkh": CommonDerivations[0][1],
+    "p2sh-p2wpkh": CommonDerivations[1][1],
+    "p2wpkh-p2sh": CommonDerivations[1][1],
+    "p2wpkh": CommonDerivations[2][1],
+}
+
+def parse_addr_fmt_str(addr_fmt):
+    # accepts strings and also integers if already parsed
+    try:
+        if isinstance(addr_fmt, int):
+            if addr_fmt in [AF_P2WPKH_P2SH, AF_P2WPKH, AF_CLASSIC]:
+                return addr_fmt
+            else:
+                raise ValueError
+
+        addr_fmt = addr_fmt.lower()
+        if addr_fmt in ("p2sh-p2wpkh", "p2wpkh-p2sh"):
+            return AF_P2WPKH_P2SH
+        elif addr_fmt == "p2pkh":
+            return AF_CLASSIC
+        elif addr_fmt == "p2wpkh":
+            return AF_P2WPKH
+        elif addr_fmt == "p2tr":
+            return AF_P2TR
+        else:
+            raise ValueError
+    except ValueError:
+        raise ValueError("Unsupported address format: '%s'" % addr_fmt)
+
+
+def af_to_bip44_purpose(addr_fmt):
+    # single signature only
+    return {AF_CLASSIC: 44,
+            AF_P2WPKH_P2SH: 49,
+            AF_P2WPKH: 84,
+            AF_P2TR: 86}[addr_fmt]
+
+def addr_fmt_label(addr_fmt):
+    return {
+        AF_CLASSIC: "Classic P2PKH",
+        AF_P2WPKH_P2SH: "P2SH-Segwit",
+        AF_P2WPKH: "Segwit P2WPKH",
+        AF_P2TR: "Taproot P2TR",
+        AF_P2WSH: "Segwit P2WSH",
+        AF_P2WSH_P2SH: "P2SH-P2WSH"
+    }[addr_fmt]
 
 def verify_recover_pubkey(sig, digest):
     # verifies a message digest against a signature and recovers

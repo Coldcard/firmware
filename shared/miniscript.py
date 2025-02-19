@@ -13,7 +13,7 @@ from wallet import BaseStorageWallet
 from menu import MenuSystem, MenuItem
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 from files import CardSlot, CardMissingError, needs_microsd
-from utils import problem_file_line, xfp2str, addr_fmt_label, truncate_address, to_ascii_printable, swab32
+from utils import problem_file_line, xfp2str, to_ascii_printable, swab32, show_single_address
 from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC, KEY_ENTER
 
 
@@ -158,9 +158,8 @@ class MiniScriptWallet(BaseStorageWallet):
                 ik = Key.from_string(self.key)
                 if ik.origin:
                     res.append(ik.origin.psbt_derivation())
-                elif not isinstance(ik.node, bytes):
-                    if ik.is_provably_unspendable:
-                        res.append([swab32(ik.node.my_fp())])
+                elif ik.is_provably_unspendable:
+                    res.append([swab32(ik.node.my_fp())])
 
             for k in self.keys:
                 k = Key.from_string(k)
@@ -241,7 +240,7 @@ class MiniScriptWallet(BaseStorageWallet):
 
     async def _detail(self, new_wallet=False, is_duplicate=False, short=False):
 
-        s = addr_fmt_label(self.addr_fmt) + "\n\n"
+        s = chains.addr_fmt_label(self.addr_fmt) + "\n\n"
         if self.taproot:
             s += self.taproot_internal_key_detail(short=short)
 
@@ -281,14 +280,10 @@ class MiniScriptWallet(BaseStorageWallet):
                 if short:
                     s += note
                 else:
-                    if isinstance(key.node, bytes):
-                        s += b2a_hex(key.node).decode()
+                    s += self.key
+                    if type(key) is Key:
+                        # it is unspendable, BUT not unspend(
                         s += "\n (%s)" % note
-                    else:
-                        s += self.key
-                        if type(key) is Key:
-                            # it is unspendable, BUT not unspend(
-                            s += "\n (%s)" % note
                 s += "\n\n"
             else:
                 xfp, deriv, xpub = key.to_cc_data()
@@ -421,7 +416,7 @@ class MiniScriptWallet(BaseStorageWallet):
                     msg += '.../%d =>\n' % idx
 
             addrs.append(addr)
-            msg += truncate_address(addr) + '\n\n'
+            msg += show_single_address(addr) + '\n\n'
             dis.progress_sofar(idx - start + 1, n)
 
         return msg, addrs
@@ -878,7 +873,6 @@ class Miniscript:
         keys = self.keys
         # provably unspendable taproot internal key is not covered here
         # all other keys (miniscript,tapscript) require key origin info
-        assert all(k.origin for k in keys), "Key origin info is required"
         assert len(keys) == len(set(keys)), "Insane"
         if taproot:
             forbiden = (Sortedmulti, Multi)

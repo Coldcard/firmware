@@ -2,13 +2,13 @@
 #
 # Test the address explorer.
 #
-# Only single-sig here. Multisig cases are elsewhere.
+# Only single-sig here. Multisig cases are in test_multisig.py.
 #
 import pytest, time, io, csv, bech32
 from ckcc_protocol.constants import *
 from bip32 import BIP32Node
 from base58 import decode_base58_checksum
-from helpers import detruncate_address, hash160
+from helpers import detruncate_address, hash160, addr_from_display_format
 from charcodes import KEY_QR, KEY_LEFT, KEY_RIGHT
 from constants import MAX_BIP32_IDX
 
@@ -53,7 +53,7 @@ def parse_display_screen(cap_story, is_mark3):
         d = dict()
         for path_raw, addr, empty in zip(*[iter(raw_addrs)]*3):
             path = path_raw.split(" =>")[0]
-            d[path] = addr
+            d[path] = addr_from_display_format(addr)
         assert len(d) == n
         return d
     return doit
@@ -374,9 +374,10 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item,
 @pytest.mark.parametrize('which_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR])
 def test_custom_path(path_sidx, which_fmt, addr_vs_path, pick_menu_item, goto_address_explorer,
                      need_keypress, cap_menu, parse_display_screen, validate_address,
-                     cap_screen_qr, qr_quality_check, nfc_read_text, get_setting,
+                     verify_qr_address, qr_quality_check, nfc_read_text, get_setting,
                      press_select, press_cancel, is_q1, press_nfc, cap_story,
-                     generate_addresses_file, settings_set, set_addr_exp_start_idx):
+                     generate_addresses_file, settings_set, set_addr_exp_start_idx,
+                     sign_msg_from_address):
 
     path, start_idx = path_sidx
     settings_set('aei', True if start_idx else False)
@@ -436,8 +437,8 @@ def test_custom_path(path_sidx, which_fmt, addr_vs_path, pick_menu_item, goto_ad
 
     time.sleep(.5)          # .2 not enuf
     m = cap_menu()
-    assert m[0] == 'Classic P2PKH'
-    assert m[1] == 'Segwit P2WPKH'
+    assert m[1] == 'Classic P2PKH'
+    assert m[0] == 'Segwit P2WPKH'
     assert m[2] == 'Taproot P2TR'
     assert m[3] == 'P2SH-Segwit'
 
@@ -468,16 +469,12 @@ def test_custom_path(path_sidx, which_fmt, addr_vs_path, pick_menu_item, goto_ad
         assert 'Showing single addr' in body
         assert path in body
 
-        addr = body.split("\n")[3]
+        addr = addr_from_display_format(body.split("\n")[3])
 
         addr_vs_path(addr, path, addr_fmt=which_fmt)
 
         need_keypress(KEY_QR if is_q1 else '4')
-        qr = cap_screen_qr().decode('ascii')
-        if which_fmt in (AF_P2WPKH, AF_P2TR):
-            assert qr == addr.upper()
-        else:
-            assert qr == addr
+        verify_qr_address(which_fmt, addr)
 
         if get_setting('nfc', 0):
             # this is actually testing NFC export in qr code menu
@@ -500,6 +497,19 @@ def test_custom_path(path_sidx, which_fmt, addr_vs_path, pick_menu_item, goto_ad
         f_path, f_addr = next(addr_gen)
         assert f_path == path
         assert f_addr == addr
+        press_select()  # file written
+
+        # msg sign
+        time.sleep(.1)
+        title, body = cap_story()
+        if which_fmt == AF_P2TR:
+            assert "Press (0) to sign message with this key" not in body
+        else:
+            assert "Press (0) to sign message with this key" in body
+            need_keypress('0')
+            msg = "COLDCARD the rock solid HWW"
+            sign_msg_from_address(msg, addr, path, which_fmt, "sd", True)
+            press_cancel()
     else:
         n = 10
         if (start_idx + n) > MAX_BIP32_IDX:
@@ -523,9 +533,7 @@ def test_custom_path(path_sidx, which_fmt, addr_vs_path, pick_menu_item, goto_ad
         qr_addr_list = []
         need_keypress(KEY_QR if is_q1 else '4')
         for i in range(n):
-            qr = cap_screen_qr().decode('ascii')
-            if which_fmt in (AF_P2WPKH, AF_P2TR):
-                qr = qr.lower()
+            qr = verify_qr_address(which_fmt)
             qr_addr_list.append(qr)
             need_keypress(KEY_RIGHT if is_q1 else "9")
             time.sleep(.5)

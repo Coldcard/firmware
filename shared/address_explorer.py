@@ -8,17 +8,27 @@ import chains, stash, version
 from ux import ux_show_story, the_ux, ux_enter_bip32_index
 from ux import export_prompt_builder, import_export_prompt_decode
 from menu import MenuSystem, MenuItem
-from public_constants import AFC_BECH32, AFC_BECH32M, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
+from public_constants import AFC_BECH32, AFC_BECH32M, AF_P2WPKH, AF_P2TR
 from multisig import MultisigWallet
 from miniscript import MiniScriptWallet
 from uasyncio import sleep_ms
 from uhashlib import sha256
 from glob import settings
 from auth import write_sig_file
-from utils import addr_fmt_label, truncate_address
 from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME, KEY_LEFT, KEY_RIGHT
 from charcodes import KEY_CANCEL
+from utils import show_single_address, problem_file_line
 
+def truncate_address(addr):
+    # Truncates address to width of screen, replacing middle chars
+    if not version.has_qwerty:
+        # - 16 chars screen width
+        # - but 2 lost at left (menu arrow, corner arrow)
+        # - want to show not truncated on right side
+        return addr[0:6] + '⋯' + addr[-6:]
+    else:
+        # tons of space on Q1
+        return addr[0:12] + '⋯' + addr[-12:]
 
 class KeypathMenu(MenuSystem):
     def __init__(self, path=None, nl=0):
@@ -103,8 +113,8 @@ class PickAddrFmtMenu(MenuSystem):
     def __init__(self, path, parent):
         self.parent = parent
         items = [
-            MenuItem(addr_fmt_label(af), f=self.done, arg=(path, af))
-            for af in [AF_CLASSIC, AF_P2WPKH, AF_P2TR, AF_P2WPKH_P2SH]
+            MenuItem(chains.addr_fmt_label(af), f=self.done, arg=(path, af))
+            for af in chains.SINGLESIG_AF
         ]
         super().__init__(items)
         if path.startswith("m/84h"):
@@ -169,8 +179,7 @@ class AddressListMenu(MenuSystem):
             # Create list of choices (address_index_0, path, addr_fmt)
             choices = []
             for name, path, addr_fmt in chains.CommonDerivations:
-                if '{coin_type}' in path:
-                    path = path.replace('{coin_type}', str(chain.b44_cointype))
+                path = path.replace('{coin_type}', str(chain.b44_cointype))
 
                 if self.account_num != 0 and '{account}' not in path:
                     # skip derivations that are not affected by account number
@@ -179,7 +188,7 @@ class AddressListMenu(MenuSystem):
                 deriv = path.format(account=self.account_num, change=0, idx=self.start)
                 node = sv.derive_path(deriv, register=False)
                 address = chain.address(node, addr_fmt)
-                choices.append( (truncate_address(address), path, addr_fmt) )
+                choices.append((truncate_address(address), path, addr_fmt))
 
                 dis.progress_sofar(len(choices), len(chains.CommonDerivations))
 
@@ -189,7 +198,7 @@ class AddressListMenu(MenuSystem):
         indent = ' ↳ ' if version.has_qwerty else '↳'
         for i, (address, path, addr_fmt) in enumerate(choices):
             axi = address[-4:]  # last 4 address characters
-            items.append(MenuItem(addr_fmt_label(addr_fmt), f=self.pick_single,
+            items.append(MenuItem(chains.addr_fmt_label(addr_fmt), f=self.pick_single,
                                   arg=(path, addr_fmt, axi)))
             items.append(MenuItem(indent+address, f=self.pick_single,
                                   arg=(path, addr_fmt, axi)))
@@ -298,7 +307,7 @@ Press (3) if you really understand and accept these risks.
 
                 for idx, addr, deriv in main.yield_addresses(start, n, change if allow_change else None):
                     addrs.append(addr)
-                    msg += "%s =>\n%s\n\n" % (deriv, addr)
+                    msg += "%s =>\n%s\n\n" % (deriv, show_single_address(addr))
                     dis.progress_sofar(idx-start+1, n or 1)
 
             # export options
@@ -317,6 +326,10 @@ Press (3) if you really understand and accept these risks.
                     msg += '\n\n'
             if n:
                 msg += "Press RIGHT to see next group, LEFT to go back. X to quit."
+            else:
+                if addr_fmt != AF_P2TR:
+                    escape += "0"
+                    msg += " Press (0) to sign message with this key."
 
             return msg, addrs, escape
 
@@ -342,10 +355,10 @@ Press (3) if you really understand and accept these risks.
                 # continue on same screen in case they want to write to multiple cards
 
             elif choice == KEY_QR:
-                # switch into a mode that shows them as QR codes
                 from ux import show_qr_codes
+                addr_fmt = addr_fmt or ms_wallet.addr_fmt
                 is_alnum = bool(addr_fmt & (AFC_BECH32 | AFC_BECH32M))
-                await show_qr_codes(addrs, is_alnum, start)
+                await show_qr_codes(addrs, is_alnum, start, is_addrs=True)
                 continue
 
             elif NFC and (choice == KEY_NFC):
@@ -357,8 +370,15 @@ Press (3) if you really understand and accept these risks.
 
                 continue
 
-            elif choice == '0' and allow_change:
-                change = 1
+            elif choice == '0':
+                if allow_change:
+                    change = 1
+                else:
+                    # only custom path sets allow_change to False
+                    # msg sign
+                    from auth import sign_with_own_address
+                    await sign_with_own_address(path, addr_fmt)
+
             elif n is None:
                 # makes no sense to do any of below, showing just single address
                 continue
@@ -462,7 +482,6 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
         await needs_microsd()
         return
     except Exception as e:
-        from utils import problem_file_line
         await ux_show_story('Failed to write!\n\n\n%s\n%s' % (e, problem_file_line(e)))
         return
 

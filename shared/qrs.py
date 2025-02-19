@@ -17,13 +17,14 @@ MAX_V11_CHAR_LIMIT = const(321)
 class QRDisplaySingle(UserInteraction):
     # Show a single QR code for (typically) a list of addresses, or a single value.
 
-    def __init__(self, addrs, is_alnum, start_n=0, sidebar=None, msg=None):
+    def __init__(self, addrs, is_alnum, start_n=0, sidebar=None, msg=None, is_addrs=False):
         self.is_alnum = is_alnum
         self.idx = 0             # start with first address
         self.invert = False      # looks better, but neither mode is ideal
         self.addrs = addrs
         self.sidebar = sidebar
         self.start_n = start_n
+        self.is_addrs = is_addrs
         self.msg = msg
         self.qr_data = None
 
@@ -67,13 +68,16 @@ class QRDisplaySingle(UserInteraction):
         # make the QR, if needed.
         if not self.qr_data:
             dis.busy_bar(True)
-
-            self.calc_qr(body)
+            try:
+                self.calc_qr(body)
+            except Exception:
+                dis.busy_bar(False)
+                raise
 
         # draw display
         dis.busy_bar(False)
         dis.draw_qr_display(self.qr_data, self.msg or body, self.is_alnum,
-                            self.sidebar, self.idx_hint(), self.invert)
+                            self.sidebar, self.idx_hint(), self.invert, is_addr=self.is_addrs)
 
     async def interact_bare(self):
         from glob import NFC, dis

@@ -3,7 +3,7 @@
 import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, io, math, bech32, pdb
 from subprocess import check_output
 from ckcc.protocol import CCProtocolPacker
-from helpers import B2A, U2SAT, hash160, taptweak
+from helpers import B2A, U2SAT, hash160, taptweak, addr_from_display_format
 from base58 import decode_base58_checksum
 from bip32 import BIP32Node
 from msg import verify_message
@@ -560,7 +560,7 @@ def cap_screen_qr(cap_image):
 
         if orig_img.width == 128:
             # Mk3/4 - pull out just the QR, blow it up 16x
-            x, w = 2, 64
+            x, w = 2, 66
             img = orig_img.crop( (x, 0, x+w, w) )
             img = ImageOps.expand(img, 16, 0)       # add border
             img = img.resize( (256, 256))
@@ -592,6 +592,42 @@ def cap_screen_qr(cap_image):
 
         # for debug, check debug/last-qr.png
         raise RuntimeError('qr code not found')
+
+    return doit
+
+@pytest.fixture
+def verify_qr_address(cap_screen_qr, cap_screen, is_q1):
+    # check we can read QR and that it has exact value expected
+    # plus text version of address, if any, is right.
+    from ckcc_protocol.constants import AFC_BECH32
+
+    def doit(addr_fmt, expect_addr=None):
+        qr = cap_screen_qr().decode('ascii')
+
+        if (addr_fmt & AFC_BECH32) or (addr_fmt & AFC_BECH32M):
+            qr = qr.lower()
+
+        # check text --if any-- matches QR contents
+        # - remove spaces and newlines
+        # - ok if no text, which happens when QR is productively using screen space
+        # - skips first line, which on Q shows the index number sometimes
+        # - insists on some spaces
+        full = cap_screen()
+        if is_q1:
+            txt = ''.join(full.split()[2:]).replace('~', '')
+        else:
+            txt = ''.join(full.split())
+
+        if txt:
+            assert txt == qr
+            if is_q1:
+                # addr is not spaced out on Mk4, but check it was on Q
+                assert (qr[0:4] + ' ' + qr[4:8]) in full, 'was not spaced out'
+
+        if expect_addr is not None:
+            assert qr == expect_addr
+
+        return qr
 
     return doit
 
@@ -945,8 +981,9 @@ def reset_seed_words(sim_exec, sim_execfile, simulator):
 @pytest.fixture()
 def settings_set(sim_exec):
 
-    def doit(key, val):
-        x = sim_exec("settings.set('%s', %r)" % (key, val))
+    def doit(key, val, prelogin=False):
+        source = "from nvstore import SettingsObject;SettingsObject.prelogin()" if prelogin else "settings"
+        x = sim_exec("%s.set('%s', %r)" % (source, key, val))
         assert x == ''
 
     return doit
@@ -954,8 +991,9 @@ def settings_set(sim_exec):
 @pytest.fixture()
 def settings_get(sim_exec):
 
-    def doit(key, def_val=None):
-        cmd = f"RV.write(repr(settings.get('{key}', {def_val!r})))"
+    def doit(key, def_val=None, prelogin=False):
+        source = "from nvstore import SettingsObject;SettingsObject.prelogin()" if prelogin else "settings"
+        cmd = f"RV.write(repr({source}.get('{key}', {def_val!r})))"
         resp = sim_exec(cmd)
         assert 'Traceback' not in resp, resp
         return eval(resp)
@@ -1829,6 +1867,7 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 need_keypress(key_map["qr"])
                 time.sleep(0.3)
                 try:
+                    assert is_q1
                     file_type, data = readback_bbqr()
                     if file_type == "J":
                         return json.loads(data)
@@ -1837,7 +1876,6 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                     else:
                         raise NotImplementedError
                 except:
-                    raise
                     res = cap_screen_qr().decode('ascii')
                     try:
                         return json.loads(res)
@@ -1979,6 +2017,7 @@ def check_and_decrypt_backup(microsd_path):
         with open(xfn_path, "r") as f:
             res = f.read()
 
+        os.remove(xfn_path)
         return res
 
     return doit
@@ -2156,6 +2195,7 @@ def txout_explorer(cap_story, press_cancel, need_keypress, is_q1):
                     assert f"Output {i}:" == sa
 
                 txt_amount, _, addr = sb.split("\n")
+                addr = addr_from_display_format(addr)
                 assert txt_amount == f'{amount / 100000000:.8f} {chain}'
                 if af == "p2pkh":
                     if chain == "BTC":
@@ -2298,8 +2338,9 @@ from test_drv_entro import derive_bip85_secret, activate_bip85_ephemeral
 from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto_eph_seed_menu
 from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed, confirm_tmp_seed
 from test_ephemeral import verify_ephemeral_secret_ui, get_identity_story, get_seed_value_ux, seed_vault_enable
+from test_msg import verify_msg_sign_story, sign_msg_from_text, msg_sign_export, sign_msg_from_address
 from test_multisig import import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn
-from test_miniscript import offer_minsc_import
+from test_miniscript import offer_minsc_import, get_cc_key, bitcoin_core_signer
 from test_multisig import make_ms_address, clear_ms, make_myself_wallet, import_multisig
 from test_se2 import goto_trick_menu, clear_all_tricks, new_trick_pin, se2_gate, new_pin_confirmed
 from test_seed_xor import restore_seed_xor

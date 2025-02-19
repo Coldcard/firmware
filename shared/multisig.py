@@ -5,7 +5,7 @@
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson, version
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, str2xfp, cleanup_deriv_path, keypath_to_str, to_ascii_printable
-from utils import str_to_keypath, problem_file_line, check_xpub, truncate_address, get_filesize
+from utils import str_to_keypath, problem_file_line, check_xpub, get_filesize, show_single_address
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
 from ux import import_export_prompt, ux_enter_bip32_index, show_qr_code, ux_enter_number, OK, X
 from files import CardSlot, CardMissingError, needs_microsd
@@ -13,7 +13,7 @@ from descriptor import Descriptor
 from miniscript import Key, Sortedmulti, Number, Multi
 from desc_utils import multisig_descriptor_template
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS, AF_P2TR
-from menu import MenuSystem, MenuItem, NonDefaultMenuItem
+from menu import MenuSystem, MenuItem, NonDefaultMenuItem, start_chooser, ToggleMenuItem
 from opcodes import OP_CHECKMULTISIG
 from exceptions import FatalPSBTIssue
 from glob import settings
@@ -473,7 +473,7 @@ class MultisigWallet(BaseStorageWallet):
                 msg += '.../%d/%d =>\n' % (change, idx)
 
             addrs.append(addr)
-            msg += truncate_address(addr) + '\n\n'
+            msg += show_single_address(addr) + '\n\n'
             dis.progress_sofar(idx - start + 1, n)
 
         return msg, addrs
@@ -552,7 +552,7 @@ class MultisigWallet(BaseStorageWallet):
                     # obscure case: xpub isn't deep enough to represent
                     # indicated path... not wrong really.
                     too_shallow = True
-                    continue
+                    dp = 0
 
                 for sp in path[dp:]:
                     assert not (sp & 0x80000000), 'hard deriv'
@@ -1172,7 +1172,6 @@ def disable_checks_chooser():
     return int(MultisigWallet.disable_checks), ch, xset
 
 async def disable_checks_menu(*a):
-    from menu import start_chooser
 
     if not MultisigWallet.disable_checks:
         ch = await ux_show_story('''\
@@ -1205,7 +1204,6 @@ def psbt_xpubs_policy_chooser():
 
 async def trust_psbt_menu(*a):
     # show a story then go into chooser
-    from menu import start_chooser
 
     ch = await ux_show_story('''\
 This setting controls what the Coldcard does \
@@ -1230,25 +1228,23 @@ exists, otherwise 'Verify'.''')
     if ch == 'x': return
     start_chooser(psbt_xpubs_policy_chooser)
 
-def unsorted_ms_chooser():
-    ch = ['Do Not Allow', 'Allow']
-
+def unsort_ms_chooser():
     def xset(idx, text):
-        settings.set('unsort_ms', idx)
-        from actions import goto_top_menu
-        goto_top_menu()
+        if idx:
+            settings.set('unsort_ms', idx)
+        else:
+            settings.remove_key('unsort_ms')
 
-    return settings.get('unsort_ms', 0), ch, xset
+    return settings.get('unsort_ms', 0), ['Do Not Allow', 'Allow'], xset
 
 async def unsorted_ms_menu(*a):
-    from menu import start_chooser
 
     if not settings.get("unsort_ms", None):
         ch = await ux_show_story(
-            'With this setting ON, it is allowed to import and operate'
-            ' "multi(...)" unsorted multisig wallets that do not follow BIP-67.'
-            ' It is of CRUCIAL importance for unsorted wallets, to backup multisig descriptor'
-            ' and preserve order of the keys in it.'
+            'Enable this to allow import and operation with'
+            ' "multi(...)" unsorted multisig wallets that DO NOT follow BIP-67.'
+            ' It is of CRUCIAL importance to backup multisig descriptor for unsorted wallets'
+            ' in order to preserve key ordering.'
             ' Many popular wallets like Sparrow and Electrum do NOT support "multi(...)".'
             '\n\nUSE AT YOUR OWN RISK. Disabling BIP-67 is discouraged!'
             '\n\nPress (4) to confirm allowing "multi(...)"', escape='4')
@@ -1269,7 +1265,7 @@ async def unsorted_ms_menu(*a):
             )
             return
 
-    start_chooser(unsorted_ms_chooser)
+    start_chooser(unsort_ms_chooser)
 
 class MultisigMenu(MenuSystem):
 
@@ -1298,9 +1294,9 @@ class MultisigMenu(MenuSystem):
         rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
         rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
         rv.append(MenuItem('Skip Checks?', f=disable_checks_menu))
-        rv.append(NonDefaultMenuItem('Unsorted Multisig' if version.has_qwerty else "Unsorted Multi",
-                                     'unsort_ms',
-                                     f=unsorted_ms_menu))
+        rv.append(NonDefaultMenuItem(
+                         'Unsorted Multisig?' if version.has_qwerty else 'Unsorted Multi?',
+                         'unsort_ms', f=unsorted_ms_menu))
 
         return rv
 

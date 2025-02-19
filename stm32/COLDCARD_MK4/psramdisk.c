@@ -501,28 +501,31 @@ static void psram_init_vfs(fs_user_mount_t *vfs, bool readonly) {
 
 // psram_memset4()
 //
-    static inline void
-psram_memset4(void *dest_addr, uint32_t value, uint32_t byte_len)
+    static void
+psram_memset4(void *dest_addr, uint32_t byte_len)
 {
     // Fast, aligned, and bug-fixing memset
     // - PSRAM can starve the internal bus with too many writes, too fast
     // - leads to a weird crash where SRAM bus (at least) is locked up, but flash works
+    // - and/or just call w/ interrupts off for reliable non-crashing behaviour
     uint32_t *dest = (uint32_t *)dest_addr;
 
     for(; byte_len; byte_len-=4, dest++) {
-        *dest = value;
-
-        asm("nop; nop; nop;");           // tested value, do not reduce
+        *dest = 0x12345678;
     }
 }
 
+// mp_obj_t psram_wipe_and_setup()
+//
 mp_obj_t psram_wipe_and_setup(mp_obj_t unused_self)
 {
     // Erase and reformat filesystem
     //  - you probably should unmount it, before calling this 
 
     // Wipe contents for security.
-    psram_memset4(PSRAM_TOP_BASE, 0x12345678, BLOCK_SIZE * BLOCK_COUNT);
+    mp_uint_t before = disable_irq();
+        psram_memset4(PSRAM_TOP_BASE, BLOCK_SIZE * BLOCK_COUNT);
+    enable_irq(before);
 
     // Build obj to handle blockdev protocol
     fs_user_mount_t vfs = {0};

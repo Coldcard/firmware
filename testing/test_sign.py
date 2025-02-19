@@ -4,22 +4,22 @@
 #
 
 import time, pytest, os, random, pdb, struct, base64, binascii, itertools, datetime
-from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
+from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
 from binascii import b2a_hex, a2b_hex
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
 from io import BytesIO
-from pprint import pprint, pformat
+from pprint import pprint
 from decimal import Decimal
 from base64 import b64encode, b64decode
 from base58 import encode_base58_checksum
-from helpers import B2A, fake_dest_addr, parse_change_back
+from helpers import B2A, fake_dest_addr, parse_change_back, addr_from_display_format
 from helpers import xfp2str, seconds2human_readable, hash160
 from msg import verify_message
 from bip32 import BIP32Node
-from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP, simulator_fixed_tpub
+from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP
 from txn import *
 from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint
-from ckcc_protocol.constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
+from ckcc_protocol.constants import STXN_VISUALIZE, STXN_SIGNED
 from charcodes import KEY_QR, KEY_RIGHT
 
 
@@ -560,7 +560,9 @@ def test_change_case(start_sign, use_regtest, end_sign, check_against_bitcoind, 
 
     time.sleep(.1)
     _, story = cap_story()
-    assert chg_addr in story
+    split_sory = story.split("\n\n")[3].split("\n")
+    assert split_sory[0] == "Change back:"
+    assert chg_addr == addr_from_display_format(split_sory[-1])
 
     b4 = BasicPSBT().parse(psbt)
     check_against_bitcoind(B2A(b4.txn), Decimal('0.00000294'), change_outs=[1,])
@@ -630,7 +632,7 @@ def test_change_fraud_path(start_sign, use_regtest, end_sign, case, check_agains
 
         time.sleep(.1)
         _, story = cap_story()
-        assert chg_addr in story
+        assert chg_addr == addr_from_display_format(story.split("\n\n")[3].split("\n")[-1])
         assert 'Change back:' not in story
         end_sign(True)
 
@@ -738,7 +740,9 @@ def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, use_re
     check_against_bitcoind(B2A(b4.txn), Decimal('0.00000294'), change_outs=[1,],
             dests=[(1, expect_addr)])
 
-    assert expect_addr in story
+    split_sory = story.split("\n\n")[3].split("\n")
+    assert split_sory[0] == "Change back:"
+    assert expect_addr == addr_from_display_format(split_sory[-1])
     assert parse_change_back(story) == (Decimal('1.09997082'), [expect_addr])
 
     end_sign(True)
@@ -2015,12 +2019,22 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
 
         for idx, i in enumerate(y.inputs):
             if len(sighash) == 1:
-                assert i.sighash == SIGHASH_MAP[sighash[0]]
+                target = sighash[0]
+                sh_num = SIGHASH_MAP[target]
+                if target == "ALL":
+                    assert i.sighash is None
+                else:
+                    assert i.sighash == sh_num
             else:
-                assert i.sighash == SIGHASH_MAP[sighash[idx]]
-            # check signature hash correct checkusm appended
+                target = sighash[idx]
+                sh_num = SIGHASH_MAP[target]
+                if target == "ALL":
+                    assert i.sighash is None
+                else:
+                    assert i.sighash == sh_num
+            # check signature hash correct checksum appended
             for _, sig in i.part_sigs.items():
-                assert sig[-1] == i.sighash
+                assert sig[-1] == sh_num
 
         resp = finalize_v2_v0_convert(y)
 
@@ -3106,7 +3120,7 @@ def test_taproot_keyspend(use_regtest, bitcoind_d_sim_watch, start_sign, end_sig
     assert title == 'OK TO SEND?'
     assert "Consolidating" in story  # self-spend
     assert " 1 input\n 2 outputs" in story
-    addrs = story.split("\n\n")[3].split("\n")[-2:]
+    addrs = [addr_from_display_format(l) for l in story.split("\n") if l and (l[0] == '\x02')]
     assert len(addrs) == 2
     for addr in addrs:
         assert addr.startswith("bcrt1p")

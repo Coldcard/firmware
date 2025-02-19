@@ -7,8 +7,8 @@ from glob import settings
 from ucollections import namedtuple
 from ubinascii import hexlify as b2a_hex
 from exceptions import UnknownAddressExplained
+from utils import problem_file_line, show_single_address
 from public_constants import AFC_SCRIPT, AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH_P2SH, AF_P2TR
-from utils import problem_file_line
 
 # Track many addresses, but in compressed form
 # - map from random Bech32/Base58 payment address to (wallet) + keypath
@@ -217,8 +217,7 @@ class OwnershipCache:
         addr_fmt = ch.possible_address_fmt(addr)
         if not addr_fmt:
             # might be valid address over on testnet vs mainnet
-            nm = ch.name if ch.ctype != 'BTC' else 'Bitcoin Mainnet'
-            raise UnknownAddressExplained('That address is not valid on ' + nm)
+            raise UnknownAddressExplained('That address is not valid on ' + ch.name)
 
         possibles = []
 
@@ -256,7 +255,7 @@ class OwnershipCache:
                 if af == addr_fmt and acct_num:
                     w = MasterSingleSigWallet(addr_fmt, account_idx=acct_num)
                     possibles.append(w)
-        except ValueError: pass  # if not single sig address format
+        except (KeyError, ValueError): pass  # if not single sig address format
 
         if not possibles:
             # can only happen w/ scripts; for single-signer we have things to check
@@ -316,31 +315,52 @@ class OwnershipCache:
         # Provide a simple UX. Called functions do fullscreen, progress bar stuff.
         from ux import ux_show_story, show_qr_code
         from charcodes import KEY_QR
+        from multisig import MultisigWallet
+        from miniscript import MiniScriptWallet
         from public_constants import AFC_BECH32, AFC_BECH32M
 
         try:
             wallet, subpath = OWNERSHIP.search(addr)
+            is_complex = isinstance(wallet, MultisigWallet) or isinstance(wallet, MiniScriptWallet)
 
-            msg = addr
+            sp = None
+            msg = show_single_address(addr)
             msg += '\n\nFound in wallet:\n  ' + wallet.name
             if hasattr(wallet, "render_path"):
-                msg += '\nDerivation path:\n  ' + wallet.render_path(*subpath)
-            if version.has_qwerty:
-                esc = KEY_QR
+                sp = wallet.render_path(*subpath)
+                msg += '\nDerivation path:\n  ' + sp
+
+            if is_complex:
+                esc = ""
             else:
-                msg += '\n\nPress (1) for QR'
-                esc = '1'
+                esc = "0"
+                msg += "\n\nPress (0) to sign message with this key."
+
+            title = "Verified"
+            if version.has_qwerty:
+                esc += KEY_QR
+                title += " Address"
+            else:
+                msg += ' (1) for address QR'
+                esc += '1'
+                title += "!"
 
             while 1:
-                ch = await ux_show_story(msg, title="Verified Address",
-                                                        escape=esc, hint_icons=KEY_QR)
-                if ch != esc: break
-                await show_qr_code(addr,
-                                   is_alnum=(wallet.addr_fmt & (AFC_BECH32 | AFC_BECH32M)),
-                                   msg=addr)
+                ch = await ux_show_story(msg, title=title, escape=esc, hint_icons=KEY_QR)
+                if ch in ("1"+KEY_QR):
+                    await show_qr_code(
+                        addr,
+                        is_alnum=(wallet.addr_fmt & (AFC_BECH32 | AFC_BECH32M)),
+                        msg=addr, is_addrs=True
+                    )
+                elif not is_complex and (ch == "0"):  # only singlesig
+                    from auth import sign_with_own_address
+                    await sign_with_own_address(sp, wallet.addr_fmt)
+                else:
+                    break
 
         except UnknownAddressExplained as exc:
-            await ux_show_story(addr + '\n\n' + str(exc), title="Unknown Address")
+            await ux_show_story(show_single_address(addr) + '\n\n' + str(exc), title="Unknown Address")
         except Exception as e:
             await ux_show_story('Ownership search failed.\n\n%s\n%s' % (e, problem_file_line(e)))
 
@@ -377,8 +397,6 @@ class OwnershipCache:
         # - if they explore it (non-zero subaccount)
         # - if they sign those paths
         # - but ignore testnet vs. not
-        from glob import settings
-
         if subaccount == 0:
             # only interested in non-zero subaccounts
             return

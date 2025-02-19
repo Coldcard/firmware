@@ -37,7 +37,17 @@ if not has_lcd:
         x, y, msg = a[0:3]
 
         global contents
-        contents[y] = msg
+        is_idx = False
+        if x == 0 and len(msg) == 1:
+            # something on index zero - is it index num in top right with QR display?
+            # msg will just single int without any dot or smthg
+            try:
+                int(msg)
+                is_idx = True
+            except: pass
+
+        if not is_idx:
+            contents[y] = msg
 
         #print('text (%s, %s): %s' % (x,y, msg))
 

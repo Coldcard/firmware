@@ -6,12 +6,21 @@ import gc, sys, ustruct, ngu, chains, ure, time, version, uos, uio, bip39
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
+from charcodes import OUT_CTRL_ADDRESS
 from uhashlib import sha256
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR, MAX_PATH_DEPTH
 from public_constants import AF_P2WSH, AF_P2WSH_P2SH
 
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
+
+STD_DERIVATIONS = {
+    "p2pkh": "m/44h/{chain}h/0h/0/0",
+    "p2sh-p2wpkh": "m/49h/{chain}h/0h/0/0",
+    "p2wpkh-p2sh": "m/49h/{chain}h/0h/0/0",
+    "p2wpkh": "m/84h/{chain}h/0h/0/0",
+    "p2tr": "m/86h/{chain}h/0h/0/0",
+}
 
 try:
     from font_iosevka import FontIosevka
@@ -206,16 +215,17 @@ def is_printable(s):
             return False
     return True
 
-def to_ascii_printable(s, strip=False):
+def to_ascii_printable(s, strip=False, only_printable=True):
     try:
         s = str(s, 'ascii')
         if strip:
             s = s.strip()
         assert is_ascii(s)
-        assert is_printable(s)
+        if only_printable:
+            assert is_printable(s)
         return s
     except:
-        raise AssertionError('must be ascii printable')
+        raise AssertionError("must be ascii" + (" printable" if only_printable else ""))
 
 
 def problem_file_line(exc):
@@ -262,7 +272,7 @@ def cleanup_deriv_path(bin_path, allow_star=False):
 
     # regex for valid chars, m at start, maybe /*h or /* at end sometimes
     mat = ure.match(r"(m|m/|)[0-9/h]*" + ('' if not allow_star else r"(\*h|\*|)"), s)
-    assert mat.group(0) == s, "invalid characters"
+    assert mat.group(0) == s, "invalid characters in path"
 
     parts = s.split('/')
 
@@ -421,7 +431,7 @@ def check_firmware_hdr(hdr, binary_size):
             ok = (hw_compat & MK_4_OK)
         elif hw_label == 'q1':
             ok = (hw_compat & MK_Q1_OK)
-        
+
         if not ok:
             return "That firmware doesn't support this version of Coldcard hardware (%s)."%hw_label
 
@@ -486,11 +496,23 @@ def word_wrap(ln, w):
         return
 
     while ln:
-
         # find a space in (width) first part of remainder
         sp = ln.rfind(' ', 0, w-1)
-
         if sp == -1:
+            if ln[0] == OUT_CTRL_ADDRESS:
+                # special handling for lines w/ payment address in them
+                # - add same marker to newly split lines
+                addr = ln[1:]
+                # - 3 4-char groups on Mk4
+                # - 6 4-char groups on Q
+                aw = 24 if version.has_qwerty else 12
+
+                pos = 0
+                while pos < len(addr):
+                    yield OUT_CTRL_ADDRESS + addr[pos:pos+aw]
+                    pos += aw
+                return
+
             # bad-break the line
             sp = min(txtlen(ln), w)
             nsp = sp
@@ -509,23 +531,6 @@ def word_wrap(ln, w):
             ln = ''
 
         yield left
-
-def parse_addr_fmt_str(addr_fmt):
-    # accepts strings and also integers if already parsed
-    if addr_fmt in [AF_P2WPKH_P2SH, AF_P2WPKH, AF_CLASSIC, AF_P2TR]:
-        return addr_fmt
-
-    addr_fmt = addr_fmt.lower()
-    if addr_fmt in ("p2sh-p2wpkh", "p2wpkh-p2sh"):
-        return AF_P2WPKH_P2SH
-    elif addr_fmt == "p2pkh":
-        return AF_CLASSIC
-    elif addr_fmt == "p2wpkh":
-        return AF_P2WPKH
-    elif addr_fmt == "p2tr":
-        return AF_P2TR
-    else:
-        raise ValueError("Unsupported address format: '%s'" % addr_fmt)
 
 def parse_extended_key(ln, private=False):
     # read an xpub/ypub/etc and return BIP-32 node and what chain it's on.
@@ -561,17 +566,6 @@ def chunk_writer(fd, body):
         fd.write(body[i:i + chunk])
         dis.progress_bar_show(idx / 10)
     dis.progress_bar_show(1)
-
-
-def addr_fmt_label(addr_fmt):
-    return {
-        AF_CLASSIC: "Classic P2PKH",
-        AF_P2WPKH_P2SH: "P2SH-Segwit",
-        AF_P2WPKH: "Segwit P2WPKH",
-        AF_P2TR: "Taproot P2TR",
-        AF_P2WSH: "Segwit P2WSH",
-        AF_P2WSH_P2SH: "P2SH-P2WSH"
-    }[addr_fmt]
 
 
 def pad_raw_secret(raw_sec_str):
@@ -758,11 +752,18 @@ def check_xpub(xfp, xpub, deriv, expect_chain, my_xfp, disable_checks=False):
     # path length of derivation given needs to match xpub's depth
     if not disable_checks:
         p_len = deriv.count('/')
-        assert p_len == depth, 'deriv %d != %d xpub depth (xfp=%s)' % (
-                                    p_len, depth, xfp2str(xfp))
+        if p_len:
+            # only check this for keys that have origin derivation
+            # originless keys are expected to be blinded
+            assert p_len == depth, 'deriv %d != %d xpub depth (xfp=%s)' % (
+                p_len, depth, xfp2str(xfp)
+            )
+        else:
+            # depth can be more than zero here - keys can be blinded
+            assert xfp == swab32(node.my_fp()), "xpub xfp wrong %s" % xfp2str(xfp)
 
         if xfp == my_xfp:
-            # its supposed to be my key, so I should be able to generate pubkey
+            # it's supposed to be my key, so I should be able to generate pubkey
             # - might indicate collision on xfp value between co-signers,
             #   and that's not supported
             with stash.SensitiveValues() as sv:
@@ -774,21 +775,16 @@ def check_xpub(xfp, xpub, deriv, expect_chain, my_xfp, disable_checks=False):
     # - this has effect of stripping SLIP-132 confusion away
     return xfp == my_xfp, (xfp, deriv, chain.serialize_public(node, AF_P2SH))
 
-
-def truncate_address(addr):
-    # Truncates address to width of screen, replacing middle chars
-    if not version.has_qwerty:
-        # - 16 chars screen width
-        # - but 2 lost at left (menu arrow, corner arrow)
-        # - want to show not truncated on right side
-        return addr[0:6] + '⋯' + addr[-6:]
-    else:
-        # tons of space on Q1
-        return addr[0:12] + '⋯' + addr[-12:]
-
-
 def encode_seed_qr(words):
     return ''.join('%04d' % bip39.get_word_index(w) for w in words)
 
+def show_single_address(addr):
+    # insert some metadata so display layer can do special rendering
+    # of addresses (based on hardware capabilities)
+    return OUT_CTRL_ADDRESS + addr
+
+def chunk_address(addr):
+    # useful to show payment addresses specially
+    return [addr[i:i+4] for i in range(0, len(addr), 4)]
 
 # EOF

@@ -1385,10 +1385,13 @@ def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
                               need_keypress, word_menu_entry, settings_set,
                               confirm_tmp_seed, cap_menu, microsd_path,
                               restore_main_seed, get_identity_story, press_select,
-                              press_cancel):
+                              press_cancel, settings_remove):
     
     
     reset_seed_words()
+    # disable seed vault
+    settings_remove("seedvault")
+    settings_remove("seeds")
 
     goto_eph_seed_menu()
     ephemeral_seed_disabled()
@@ -1405,6 +1408,7 @@ def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
     title, story = cap_story()
     assert "FAILED" == title
     assert 'Cannot use master seed as temporary.' in story
+    assert 'tested recovery of your master seed' in story
     press_cancel()
 
     # go to ephemeral seed and then try to create new ephemeral seed from master
@@ -1433,6 +1437,7 @@ def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
     title, story = cap_story()
     assert "FAILED" == title
     assert 'Cannot use master seed as temporary.' in story
+    assert 'tested recovery of your master seed' in story
     press_cancel()
 
     # now import same seed but represented as master extended key
@@ -1482,8 +1487,13 @@ def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_m
     time.sleep(0.1)
     need_keypress("6")  # skip words
     press_select()
-    press_select()
-    time.sleep(.3)
+    time.sleep(.1)
+    _, story = cap_story()
+    if "Press (1) to store temporary seed" in story:
+        # seed vault enabled
+        press_select()  # do not save
+    press_select()  # new tmp seed
+    time.sleep(.2)
     m = cap_menu()
     assert m[1] == "Ready To Sign"
     assert m[0] == "[" + xfp2str(settings_get("xfp")) + "]"
@@ -1509,9 +1519,11 @@ def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_m
 def test_seed_vault_enable_on_tmp(generate_ephemeral_words, reset_seed_words,
                                   goto_eph_seed_menu, ephemeral_seed_disabled,
                                   verify_ephemeral_secret_ui, goto_home, cap_menu,
-                                  restore_main_seed, pick_menu_item, settings_set):
-    settings_set("seedvault", None)  # disable seed vault
+                                  restore_main_seed, pick_menu_item, settings_remove):
     reset_seed_words()
+    # disable seed vault
+    settings_remove("seedvault")
+    settings_remove("seeds")
     goto_eph_seed_menu()
     ephemeral_seed_disabled()
     e_seed_words = generate_ephemeral_words(num_words=12, dice=False,

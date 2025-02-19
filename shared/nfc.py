@@ -7,7 +7,7 @@
 # - has GPIO signal "??" which is multipurpose on its own pin
 # - this chip chosen because it can disable RF interaction
 #
-import utime, ngu, ndef, stash
+import utime, ngu, ndef, stash, chains
 from uasyncio import sleep_ms
 import uasyncio as asyncio
 from ustruct import pack, unpack
@@ -15,7 +15,7 @@ from ubinascii import unhexlify as a2b_hex
 from ubinascii import b2a_base64, a2b_base64
 
 from ux import ux_show_story, ux_wait_keydown, OK, X
-from utils import B2A, problem_file_line, parse_addr_fmt_str, txid_from_fname
+from utils import B2A, problem_file_line, txid_from_fname
 from public_constants import AF_CLASSIC
 from charcodes import KEY_ENTER, KEY_CANCEL
 
@@ -726,7 +726,7 @@ class NFCHandler:
         else:
             subpath, addr_fmt_str = winner
             try:
-                addr_fmt = parse_addr_fmt_str(addr_fmt_str)
+                addr_fmt = chains.parse_addr_fmt_str(addr_fmt_str)
             except AssertionError as e:
                 await ux_show_story(str(e))
                 return
@@ -737,42 +737,21 @@ class NFCHandler:
         await the_ux.interact()  # need this otherwise NFC animation takes over
 
     async def start_msg_sign(self):
-        from auth import UserAuthorizedAction, ApproveMessageSign
-        from ux import the_ux
-
-        UserAuthorizedAction.cleanup()
+        from auth import approve_msg_sign
 
         def f(m):
             m = m.decode()
             split_msg = m.split("\n")
             if 1 <= len(split_msg) <= 3:
-                return split_msg
+                return m
 
         winner = await self._nfc_reader(f, 'Unable to find correctly formated message to sign.')
-
         if not winner:
             return
 
-        if len(winner) == 1:
-            text = winner[0]
-            subpath = "m"
-            addr_fmt = AF_CLASSIC
-        elif len(winner) == 2:
-            text, subpath = winner
-            addr_fmt = AF_CLASSIC  # maybe default to native segwit?
-        else:
-            # len(winner) == 3
-            text, subpath, addr_fmt = winner
+        await approve_msg_sign(None, None, None, approved_cb=self.msg_sign_done,
+                               msg_sign_request=winner)
 
-        UserAuthorizedAction.check_busy(ApproveMessageSign)
-        try:
-            UserAuthorizedAction.active_request = ApproveMessageSign(
-                text, subpath, addr_fmt, approved_cb=self.msg_sign_done
-            )
-            the_ux.push(UserAuthorizedAction.active_request)
-        except AssertionError as exc:
-            await ux_show_story("Problem: %s\n\nMessage to be signed must be a single line of ASCII text." % exc)
-            return
 
     async def msg_sign_done(self, signature, address, text):
         from auth import rfc_signature_template_gen

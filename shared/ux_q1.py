@@ -2,7 +2,7 @@
 #
 # ux_q1.py - UX/UI interactions that are Q1 specific and use big screen, keyboard.
 #
-import utime, gc, ngu, sys
+import utime, gc, ngu, sys, chains
 import uasyncio as asyncio
 from uasyncio import sleep_ms
 from charcodes import *
@@ -12,7 +12,10 @@ import bip39
 from decoders import decode_qr_result
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
-from utils import problem_file_line
+from ubinascii import b2a_base64
+
+from utils import problem_file_line, show_single_address
+from public_constants import MSG_SIGNING_MAX_LENGTH
 from glob import numpad         # may be None depending on import order, careful
 
 class PressRelease:
@@ -138,7 +141,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
             # cleanup leading zeros and such
             value = str(min(int(value), max_value))
 
-async def ux_input_numbers(val, validate_func):
+async def ux_input_numbers(val):
     # collect a series of digits
     # - not wanted on Q1; just get the digits mixed in w/ the text.
     pass
@@ -159,7 +162,6 @@ async def ux_input_text(value, confirm_exit=False, hex_only=False, max_len=100,
     #   to make longer single-line value onto screen
      # - confirm_exit default False here, because so easy to re-enter w/ qwerty, True on mk4
     from glob import dis
-    from ux import ux_show_story
 
     MAX_LINES = 7        # without scroll
     can_scroll = False
@@ -952,6 +954,20 @@ class QRScannerInteraction:
                 await ux_visualize_wif(wif_str, key_pair, compressed, testnet)
                 return
 
+            if what == "vmsg":
+                data, = vals
+                from auth import verify_armored_signed_msg
+                await verify_armored_signed_msg(data)
+                return
+
+            if what == "smsg":
+                data, = vals
+                from auth import approve_msg_sign, msg_signing_done
+                await approve_msg_sign(None, None, None,
+                                       msg_sign_request=data, kill_menu=True,
+                                       approved_cb=msg_signing_done)
+                return
+
             if what == 'text' or what == 'xpub':
                 # we couldn't really decode it.
                 txt, = vals
@@ -1069,7 +1085,7 @@ async def ux_visualize_bip21(proto, addr, args):
     # - validate address ownership on request
     from ux import ux_show_story
 
-    msg = addr + '\n\n'
+    msg = show_single_address(addr) + '\n\n'
     args = args or {}
 
     if 'amount' in args:
@@ -1108,15 +1124,49 @@ async def ux_visualize_wif(wif_str, kp, compressed, testnet):
     msg += "public key sec:\n" + b2a_hex(kp.pubkey().to_bytes(not compressed)).decode() + "\n\n"
     await ux_show_story(msg, title="WIF")
 
-async def ux_visualize_textqr(txt, maxlen=200):
+async def qr_msg_sign_done(signature, address, text):
+    from ux import ux_show_story
+    from auth import rfc_signature_template_gen
+    from export import export_by_qr
+
+    sig = b2a_base64(signature).decode('ascii').strip()
+    while True:
+        ch = await ux_show_story("Press ENTER to export signature QR only, "
+                                 "(0) to export full RFC template, "
+                                 "CANCEL if done.", escape="0")
+        if ch == "x": break
+        if ch == "y":
+            await export_by_qr(sig, "Signature", "U")
+        if ch == "0":
+            armored_str = "".join(rfc_signature_template_gen(addr=address, msg=text,
+                                                             sig=sig))
+            await show_bbqr_codes("U", armored_str, "Armored MSG")
+
+async def qr_sign_msg(txt):
+    from auth import ux_sign_msg
+    await ux_sign_msg(txt, approved_cb=qr_msg_sign_done, kill_menu=True)
+
+async def ux_visualize_textqr(txt, maxlen=MSG_SIGNING_MAX_LENGTH):
     # Show simple text. Don't crash on huge things, but be
     # able to show a full xpub.
     from ux import ux_show_story
-    if len(txt) > maxlen:
+
+    txt_len = len(txt)
+    escape = "0"
+    if txt_len > maxlen:
+        escape = None
         txt = txt[0:maxlen] + '...'
 
-    await ux_show_story("%s\n\nAbove is text that was scanned. "
-            "We can't do any more with it." % txt, title="Simple Text")
+    msg = "%s\n\nAbove is text that was scanned. " % txt
+    if escape:
+        msg += " Press (0) to sign the text. "
+    else:
+        msg += "We can't do any more with it."
+
+    ch = await ux_show_story(title="Simple Text", msg=msg, escape=escape)
+    if escape and (ch == "0"):
+        await qr_sign_msg(txt)
+
 
 async def show_bbqr_codes(type_code, data, msg, already_hex=False):
     # Compress, encode and split data, then show it animated...

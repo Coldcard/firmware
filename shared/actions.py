@@ -4,14 +4,14 @@
 #
 # Every function here is called directly by a menu item. They should all be async.
 #
-import ckcc, pyb, version, uasyncio, sys, uos
+import ckcc, pyb, version, uasyncio, sys, uos, chains
 from uhashlib import sha256
 from uasyncio import sleep_ms
 from ubinascii import hexlify as b2a_hex
 from utils import imported, problem_file_line, get_filesize, encode_seed_qr
-from utils import xfp2str, B2A, addr_fmt_label, txid_from_fname
+from utils import xfp2str, B2A, txid_from_fname
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
-from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt, OK, X
+from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt, OK, X, ux_render_words
 from export import make_json_wallet, make_summary_file, make_descriptor_wallet_export
 from export import make_bitcoin_core_wallet, generate_wasabi_wallet, generate_generic_export
 from export import generate_unchained_export, generate_electrum_wallet
@@ -579,7 +579,7 @@ async def clear_seed(*a):
 
     if not await ux_confirm('Wipe seed words and reset wallet. '
                             'All funds will be lost. '
-                            'You better have a backup of the seed words.'
+                            'You better have a backup of the seed words. '
                             'All settings like multisig wallets are also wiped. '
                             'Saved temporary seed settings and Seed Vault are lost.'):
         return await ux_aborted()
@@ -603,7 +603,6 @@ consequences.''', escape='4')
 def render_master_secrets(mode, raw, node):
     # Render list of words, or XPRV / master secret to text.
     import stash, chains
-    from ux import ux_render_words
 
     c = chains.current_chain()
     qr_alnum = False
@@ -874,12 +873,10 @@ async def start_login_sequence():
 
     # Version warning before HSM is offered
     if version.is_edge and not ckcc.is_simulator():
-        await ux_show_story(
-            "This firmware version is qualified for use with wallets (such as
-            AnchorWatch, Liana, etc) that keep redundant key schemas for recovery
-            independant of COLDCARD. We support the very latest Bitcoin innovations
-            in the Edge Version."
-          title="Edge Version")
+        await ux_show_story("This firmware version is qualified for use with wallets (such as"
+                            " AnchorWatch) that keep redundant key schemas for recovery"
+                            " independent of COLDCARD. We support the very latest Bitcoin innovations"
+                            " in the Edge Version.", title="Edge Version")
 
     dis.draw_status(xfp=settings.get('xfp'))
 
@@ -1018,6 +1015,7 @@ async def export_xpub(label, _2, item):
 
     chain = chains.current_chain()
     acct = 0
+    slip132 = False  # non-slip is default from Oct 2024
 
     # decode menu code => standard derivation
     mode = item.arg
@@ -1033,24 +1031,44 @@ async def export_xpub(label, _2, item):
     else:
         remap = {44:0, 49:1, 84:2,86:3}[mode]
         _, path, addr_fmt = chains.CommonDerivations[remap]
-        path = path.format(account='{acct}', coin_type=chain.b44_cointype, change=0, idx=0)[:-4]
-
-    # always show SLIP-132 style, because defacto
-    show_slip132 = (addr_fmt != AF_CLASSIC)
+        path = path.format(account=acct, coin_type=chain.b44_cointype,
+                           change=0, idx=0)[:-4]
 
     while 1:
-        msg = '''Show QR of the XPUB for path:\n\n%s\n\n''' % path
+        msg = 'Show QR of the XPUB for path:\n\n%s\n\n' % path
+        esc = ""
+        if path != "m":
+            esc += "1"
+            msg += "Press (1) to select account other than %s." % (acct or "zero")
+            if addr_fmt not in (AF_CLASSIC, AF_P2TR):
+                esc += "2"
+                slp_af = addr_fmt
+                if slip132:
+                    slp_af = AF_CLASSIC
 
-        if '{acct}' in path:
-            msg += "Press (1) to select account other than zero. "
+                slp = chain.slip132[slp_af].hint + "pub"
+                msg += " Press (2) to show %s %s." % (
+                    slp, "(BIP-32)" if slip132 else "(SLIP-132)"
+                )
         if glob.NFC:
-            msg += "Press %s to share via NFC. " % (KEY_NFC if version.has_qwerty else "(3)")
+            if version.has_qwerty:
+                esc += KEY_NFC
+                key_hint = KEY_NFC
+            else:
+                esc += "3"
+                key_hint = "(3)"
+            msg += " Press %s to share via NFC. " % key_hint
 
-        ch = await ux_show_story(msg, escape='13')
+        ch = await ux_show_story(msg, escape=esc)
         if ch == 'x': return
+        if ch == "2":
+            slip132 = not slip132
+            continue
         if ch == '1':
             acct = await ux_enter_bip32_index('Account Number:') or 0
-            path = path.format(acct=acct)
+            pth_split = path.split("/")
+            pth_split[-1] = ("%dh" % acct)
+            path = "/".join(pth_split)
             continue
 
         # assume zero account if not picked
@@ -1062,7 +1080,7 @@ async def export_xpub(label, _2, item):
         # render xpub/ypub/zpub
         with stash.SensitiveValues() as sv:
             node = sv.derive_path(path) if path != 'm' else sv.node
-            xpub = chain.serialize_public(node, addr_fmt)
+            xpub = chain.serialize_public(node, addr_fmt if slip132 else AF_CLASSIC)
 
         from ownership import OWNERSHIP
         OWNERSHIP.note_wallet_used(addr_fmt, acct)
@@ -1071,8 +1089,6 @@ async def export_xpub(label, _2, item):
             await glob.NFC.share_text(xpub)
         else:
             await show_qr_code(xpub, False)
-
-        break
 
 
 def electrum_export_story(background=False):
@@ -1096,9 +1112,9 @@ async def electrum_skeleton(*a):
         return
 
     rv = [
-        MenuItem(addr_fmt_label(af), f=electrum_skeleton_step2,
+        MenuItem(chains.addr_fmt_label(af), f=electrum_skeleton_step2,
                  arg=(af, account_num))
-        for af in [AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH]
+        for af in chains.SINGLESIG_AF
     ]
     the_ux.push(MenuSystem(rv))
 
@@ -1112,7 +1128,7 @@ def ss_descriptor_export_story(addition="", background="", acct=True):
 async def ss_descriptor_skeleton(_0, _1, item):
     # Export of descriptor data (wallet)
     int_ext, addition, f_pattern = None, "", "descriptor.txt"
-    allowed_af = [AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2TR]
+    allowed_af = chains.SINGLESIG_AF
     if item.arg:
         int_ext, allowed_af, ll, f_pattern = item.arg
         addition = " for " + ll
@@ -1139,7 +1155,7 @@ async def ss_descriptor_skeleton(_0, _1, item):
                                             fname_pattern=f_pattern)
     else:
         rv = [
-            MenuItem(addr_fmt_label(af), f=descriptor_skeleton_step2,
+            MenuItem(chains.addr_fmt_label(af), f=descriptor_skeleton_step2,
                      arg=(af, account_num, int_ext, f_pattern))
             for af in allowed_af
         ]
@@ -1405,6 +1421,63 @@ async def restore_everything_cleartext(*A):
         if prob:
             await ux_show_story(prob, title='FAILED')
 
+async def bkpw_override(*A):
+    # allows user to:
+    #   1.) manually set bkpw
+    #   2.) remove existing bkpw setting
+    #   3.) view current active bkpw
+    # - some truncation of titles here on Mk4,
+    #   which is okay because re-using strings to save space.
+    from backups import bkpw_min_len
+
+    if pa.is_secret_blank():
+        return
+
+    if pa.is_deltamode():
+        import callgate
+        callgate.fast_wipe()
+
+    while True:
+        pwd = settings.get("bkpw", None)
+
+        msg = ("Password used to encrypt COLDCARD backup files."
+               "\n\nPress (0) to change backup password")
+        esc = "0"
+        if pwd:
+            esc += "12"
+            msg += ", (1) to forget current password, (2) to show current active backup password."
+        else:
+            msg += "."
+
+        ch = await ux_show_story(title="BKPW Override", msg=msg, escape=esc)
+        if ch == "x": return
+        elif ch == "1":
+            if await ux_confirm("Delete current stored password?"):
+                settings.remove_key("bkpw")
+                settings.save()
+                await ux_dramatic_pause("Deleted.", 2)
+
+        elif ch == "2":
+            if await ux_confirm('The next screen will show current active backup password.'
+                                '\n\nAnyone with knowledge of the password will '
+                                'be able to decrypt your backups.'):
+                await ux_show_story(pwd, title="Your Backup Password")
+
+        elif ch == "0":
+            if version.has_qwerty:
+                from notes import get_a_password
+                npwd = await get_a_password(pwd, min_len=bkpw_min_len)
+            else:
+                npwd = await ux_input_text(pwd, prompt="Your Backup Password",
+                                           min_len=bkpw_min_len, max_len=128)
+
+            if (npwd is None) or (npwd == pwd): continue
+
+            settings.set('bkpw', npwd)
+            settings.save()
+            await ux_dramatic_pause("Saved.", 2)
+
+
 async def wipe_filesystem(*A):
     if not await ux_confirm('''\
 Erase internal filesystem and rebuild it. Resets contents of internal flash area \
@@ -1433,10 +1506,12 @@ Erases and reformats MicroSD card. This is not a secure erase but more of a quic
     wipe_microsd_card()
 
 
-async def qr_share_file(*A):
+async def qr_share_file(_1, _2, item):
     # Pick file from SD card and share as (BB)Qr
     from files import CardSlot, CardMissingError, needs_microsd
     from export import export_by_qr
+
+    force_bbqr = item.arg
 
     def is_suitable(fname):
         f = fname.lower()
@@ -1482,7 +1557,7 @@ async def qr_share_file(*A):
         else:
             raise ValueError(ext)
 
-        await export_by_qr(data, txid, tc)
+        await export_by_qr(data, txid, tc, force_bbqr=force_bbqr)
 
 
 async def nfc_share_file(*A):
@@ -1880,10 +1955,11 @@ async def sign_message_on_sd(*a):
             # min 1 line max 3 lines
             return 1 <= len(lines) <= 3
 
-    fn = await file_picker(suffix='txt', min_size=2, max_size=500, taster=is_signable,
-                           none_msg=('Must be one line of text, optionally '
+    fn = await file_picker(suffix=['txt', "json"], min_size=2, max_size=500, taster=is_signable,
+                           none_msg=('Must be txt file with one msg line, optionally '
                                      'followed by a subkey derivation path on a second line '
-                                     'and/or address format on third line.'))
+                                     'and/or address format on third line. JSON msg signing '
+                                     'format also supported'))
 
     if not fn:
         return
@@ -2191,14 +2267,11 @@ async def change_virtdisk_enable(enable):
 
 async def change_seed_vault(is_enabled):
     # user has changed seed vault enable/disable flag
-    from glob import settings
-
     if (not is_enabled) and settings.master_get('seeds'):
         # problem: they still have some seeds... also this path blocks
         # disable from within a tmp seed
         settings.set('seedvault', 1)        # restore it
         await ux_show_story("Please remove all seeds from the vault before disabling.")
-
         return
 
     goto_top_menu()

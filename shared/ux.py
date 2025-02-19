@@ -7,7 +7,8 @@ from queues import QueueEmpty
 import utime, gc, version
 from utils import word_wrap
 from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME, KEY_NFC, KEY_QR,
-                        KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ENTER, KEY_CANCEL)
+            KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ENTER, KEY_CANCEL, OUT_CTRL_TITLE)
+
 from exceptions import AbortInteraction
 
 DEFAULT_IDLE_TIMEOUT = const(4*3600)      # (seconds) 4 hours
@@ -181,8 +182,8 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False,
 
     lines = []
     if title:
-        # kinda weak rendering but it works.
-        lines.append('\x01' + title)
+        # render the title line specially, see display/lcd_display.py
+        lines.append(OUT_CTRL_TITLE + title)
 
         if version.has_qwerty:
             # big screen always needs blank after title
@@ -321,14 +322,14 @@ def abort_and_push(m):
     the_ux.push(m)
     numpad.abort_ux()
 
-async def show_qr_codes(addrs, is_alnum, start_n):
+async def show_qr_codes(addrs, is_alnum, start_n, **kw):
     from qrs import QRDisplaySingle
-    o = QRDisplaySingle(addrs, is_alnum, start_n, sidebar=None)
+    o = QRDisplaySingle(addrs, is_alnum, start_n, **kw)
     await o.interact_bare()
 
-async def show_qr_code(data, is_alnum=False, msg=None):
+async def show_qr_code(data, is_alnum=False, msg=None, **kw):
     from qrs import QRDisplaySingle
-    o = QRDisplaySingle([data], is_alnum, msg=msg)
+    o = QRDisplaySingle([data], is_alnum, msg=msg, **kw)
     await o.interact_bare()
 
 async def ux_enter_bip32_index(prompt, can_cancel=False, unlimited=False):

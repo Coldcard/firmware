@@ -179,8 +179,8 @@ XpubExportMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Segwit (BIP-84)", f=export_xpub, arg=84),
     MenuItem("Classic (BIP-44)", f=export_xpub, arg=44),
-    MenuItem("Taproot/P2TR(86)", f=export_xpub, arg=86),
-    MenuItem("P2WPKH/P2SH (49)", f=export_xpub, arg=49),
+    MenuItem("Taproot/P2TR"+("(BIP-86)" if version.has_qwerty else "(86)"), f=export_xpub, arg=86),
+    MenuItem("P2WPKH/P2SH "+("(BIP-49)"if version.has_qwerty else "(49)"), f=export_xpub, arg=49),
     MenuItem("Master XPUB", f=export_xpub, arg=0),
     MenuItem("Current XFP", f=export_xpub, arg=-1),
 ]
@@ -218,6 +218,7 @@ FileMgmtMenu = [
     MenuItem('List Files', f=list_files),
     MenuItem('Verify Sig File', f=verify_sig_file),
     MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file, shortcut=KEY_NFC),
+    MenuItem('BBQr File Share', predicate=version.has_qr, f=qr_share_file, arg=True),
     MenuItem('QR File Share', predicate=version.has_qr, f=qr_share_file, shortcut=KEY_QR),
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
     MenuItem('Format SD Card', f=wipe_sd_card),
@@ -236,6 +237,7 @@ DevelopersMenu = [
     MenuItem("Serial REPL", f=dev_enable_repl),
     MenuItem('Warm Reset', f=reset_self),
     MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
+    MenuItem("BKPW Override", menu=bkpw_override),
 ]
 
 AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
@@ -308,7 +310,7 @@ If you disable sighash flag restrictions, and ignore the \
 warnings, funds can be stolen by specially crafted PSBT or MitM.
 
 Keep blocked unless you intend to sign special transactions.'''),
-    ToggleMenuItem('Testnet Mode', 'chain', ['Bitcoin', 'Testnet3', 'Regtest'],
+    ToggleMenuItem('Testnet Mode', 'chain', ['Bitcoin', 'Testnet4', 'Regtest'],
         value_map=['BTC', 'XTN', 'XRT'],
         on_change=change_which_chain,
         story="Testnet must only be used by developers because \
