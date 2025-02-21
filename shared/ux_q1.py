@@ -1031,13 +1031,11 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
         if txid and await try_push_tx(a2b_hex(here), txid, sha):
             return  # success, exit
 
+        msg = txid or "Partly Signed PSBT"
         try:
-            await show_qr_code(here.decode(), is_alnum=True,
-                               msg=(txid or 'Partly Signed PSBT'))
+            await show_qr_code(here.decode(), is_alnum=True, msg=msg)
         except (ValueError, RuntimeError):
-            await show_bbqr_codes('T' if txid else 'P', here,
-                                  (txid or 'Partly Signed PSBT'),
-                                  already_hex=True)
+            await show_bbqr_codes('T' if txid else 'P', here, msg, already_hex=True)
 
     UserAuthorizedAction.cleanup()
     UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done)

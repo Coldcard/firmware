@@ -851,13 +851,8 @@ class MultisigWallet(BaseStorageWallet):
                 if choice == KEY_NFC:
                     await NFC.share_text(fp.getvalue())
                 else:
-                    try:
-                        await show_qr_code(fp.getvalue())
-                    except (ValueError, RuntimeError):
-                        if version.has_qwerty:
-                            # do BBQr on Q
-                            from ux_q1 import show_bbqr_codes
-                            await show_bbqr_codes('U', fp.getvalue(), label)
+                    from export import export_by_qr
+                    await export_by_qr(fp.getvalue(), label, "U")
             return
 
         try:
