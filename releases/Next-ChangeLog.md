@@ -5,7 +5,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk4 and Q
 
-- tbd
+- Enhancement: Add `Bitcoin Safe` option to `Export Wallet` 
 
 
 # Mk4 Specific Changes
