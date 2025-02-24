@@ -309,11 +309,12 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
 @pytest.mark.parametrize('app', [
     # no need to run them all - just name check differs
     ("Generic JSON", "Generic Export"),
-    ("Nunchuk", "Nunchuk Wallet"),
+    # ("Nunchuk", "Nunchuk Wallet"),
     # These differ only in the menu title. If that changes, add them back here... test latest only
     # ("Lily Wallet", "Lily Wallet"),
     # ("Sparrow Wallet", "Sparrow Wallet"),
-    ("Theya", "Theya Wallet"),
+    # ("Theya", "Theya Wallet"),
+    ("Bitcoin Safe", "Bitcoin Safe Wallet"),
 ])
 def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap_story, need_keypress,
                          microsd_path, nfc_read_json, virtdisk_path, addr_vs_path, enter_number,
