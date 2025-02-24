@@ -19,4 +19,4 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 1.3.2Q - 2024-03-??
 
-- tbd
+- Enhancement: Always choose the biggest possible display size for QR
