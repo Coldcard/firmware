@@ -17,7 +17,8 @@ This lists the new changes that have not yet been published in a normal release.
     - cannot view or change the CCC spending policy once set, policy violations are not explained
     - existing multisig wallets can be used by importing the spending-policy-controlled key
 
-- Enhancement: Add `Bitcoin Safe` option to `Export Wallet` 
+- Enhancement: Add `Bitcoin Safe` option to `Export Wallet`
+- Bugfix: Hanging progress bar `Receiving...` after USB failure
 
 
 # Mk4 Specific Changes
