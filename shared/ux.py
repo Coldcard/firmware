@@ -18,19 +18,21 @@ if version.has_qwerty:
     from lcd_display import CHARS_W, CHARS_H
     CH_PER_W = CHARS_W
     STORY_H = CHARS_H
-    from ux_q1 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
-    from ux_q1 import ux_login_countdown, ux_confirm, ux_dice_rolling, ux_render_words
+    from ux_q1 import PressRelease, ux_enter_number, ux_input_text, ux_show_pin
+    from ux_q1 import ux_login_countdown, ux_dice_rolling, ux_render_words
     from ux_q1 import ux_show_phish_words
     OK = "ENTER"
     X = "CANCEL"
 
 else:
     # How many characters can we fit on each line? How many lines?
-    # (using FontSmall)
-    CH_PER_W = 17
+    # (using FontSmall) .. except it's an approximation since variable-width font.
+    # - even 19 could work sometimes, but not when line is completely full
+    # - really should look at rendered-width of text
+    CH_PER_W = 19
     STORY_H = 5
-    from ux_mk4 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
-    from ux_mk4 import ux_login_countdown, ux_confirm, ux_dice_rolling, ux_render_words
+    from ux_mk4 import PressRelease, ux_enter_number, ux_input_text, ux_show_pin
+    from ux_mk4 import ux_login_countdown, ux_dice_rolling, ux_render_words
     from ux_mk4 import ux_show_phish_words
     OK = "OK"
     X = "X"
@@ -246,7 +248,21 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False,
             if ch in { KEY_NFC, KEY_QR }:
                 return ch
 
-        
+async def ux_confirm(msg, title="Are you SURE ?!?", confirm_key=None):
+    # confirmation screen, with stock title and Y=of course.
+    if not version.has_qwerty and len(title) > 12:
+        msg = title + "\n\n" + msg
+        title = None
+
+    suffix = ""
+    if confirm_key:
+        suffix = ("\n\nPress (%s) to prove you read to the end of this message"
+                  " and accept all consequences.") % confirm_key
+
+    msg += suffix
+    r = await ux_show_story(msg, title=title, escape=confirm_key)
+
+    return r == (confirm_key or 'y')
 
 async def idle_logout():
     import glob

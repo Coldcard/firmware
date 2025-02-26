@@ -584,12 +584,10 @@ async def clear_seed(*a):
                             'Saved temporary seed settings and Seed Vault are lost.'):
         return await ux_aborted()
 
-    ch = await ux_show_story('''Are you REALLY sure though???\n\n\
+    if not await ux_confirm('''Are you REALLY sure though???\n\n\
 This action will certainly cause you to lose all funds associated with this wallet, \
 unless you have a backup of the seed words and know how to import them into a \
-new wallet.\n\nPress (4) to prove you read to the end of this message and accept all \
-consequences.''', escape='4')
-    if ch != '4':
+new wallet.''', confirm_key='4'):
         return await ux_aborted()
 
     # clear settings, address cache, settings from tmp seeds / seedvault seeds
@@ -1761,7 +1759,7 @@ async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
         if none_msg:
             msg += none_msg
         if suffix:
-            msg += '\n\nThe filename must end in "%s". ' % suffix
+            msg += '\n\nThe filename must end in %r. ' % suffix
 
         msg += '\n\nMaybe insert (another) SD card and try again?'
 
@@ -2330,6 +2328,21 @@ PUSHTX_SUPPLIERS = [
     ('mempool.space', 'https://mempool.space/pushtx#'),
 ]
 
+async def feature_requires_nfc():
+    # prompt them that it's need (iff not already enabled)
+    # - return F if they decline
+    if settings.get('nfc'):
+        return True
+
+    # force on NFC, so it works... but they can still turn it off later, etc.
+    if not await ux_confirm("This feature requires NFC to be enabled. %s to enable." % OK):
+        return False
+
+    settings.set("nfc", 1)
+    await change_nfc_enable(1)
+
+    return True
+
 async def pushtx_setup_menu(*a):
     # let them pick a URL from menu to enable "pushtx" feature, and provide
     # some background, and even let them enter a custom URL.
@@ -2348,12 +2361,9 @@ async def pushtx_setup_menu(*a):
         if ch != "y":
             return
 
-    if not settings.get('nfc'):
-        # force on NFC, so it works... but they can still turn it off later, etc.
-        if not await ux_confirm("This feature requires NFC to be enabled. %s to enable." % OK):
-            return
-        settings.set("nfc", 1)
-        await change_nfc_enable(1)
+    if not await feature_requires_nfc():
+        # they don't want to proceed
+        return 
 
     async def doit(menu, picked, xx_self):
         # using stock values, or Disable 

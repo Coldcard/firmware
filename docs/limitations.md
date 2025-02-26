@@ -198,3 +198,16 @@ We will summarize transaction outputs as "change" back into same wallet, however
 - if you have an XFP collision between multiple wallets in SeedVault (ie. two wallets
   with same descriptors, but different seeds) you will get false negatives
 
+# CCC Feature (ColdCard Cosigning)
+
+- only 12 or 24 word seeds (not XPRV) are accepted for "key C"
+- velocy limit:
+    - based on a max magnitude per txn, and a required minimum block height
+      gap, based on previous `nLockTime` value in last-signed PSBT.
+    - if you sign a transaction, but never broadcast it, you will still have to wait out 
+      the velocity policy.
+    - PSBT creator must put in `nLockTime` block heights (most already do to avoid fee sniping)
+- maximum of 25 whitelisted addresses can be stored
+- Web2FA: any number of mobile devices can be enrolled, but all will have the same shared secret
+- any warning from the PSBT, such as huge fees, will prevent CCC cosign.
+

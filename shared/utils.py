@@ -2,7 +2,7 @@
 #
 # utils.py - Misc utils. My favourite kind of source file.
 #
-import gc, sys, ustruct, ngu, chains, ure, time, bip39, version
+import gc, sys, ustruct, ngu, chains, ure, uos, uio, time, bip39, version, uasyncio
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
@@ -91,7 +91,6 @@ def pop_count(i):
 
 def get_filesize(fn):
     # like os.path.getsize()
-    import uos
     try:
         return uos.stat(fn)[6]
     except OSError:
@@ -221,7 +220,6 @@ def to_ascii_printable(s, strip=False, only_printable=True):
 def problem_file_line(exc):
     # return a string of just the filename.py and line number where
     # an exception occured. Best used on AssertionError.
-    import uio, sys, ure
 
     tmp = uio.StringIO()
     sys.print_exception(exc, tmp)
@@ -252,7 +250,6 @@ def cleanup_deriv_path(bin_path, allow_star=False):
     # - assume 'm' prefix, so '34' becomes 'm/34', etc
     # - do not assume /// is m/0/0/0
     # - if allow_star, then final position can be * or *h (wildcard)
-    import ure
     from public_constants import MAX_PATH_DEPTH
 
     s = to_ascii_printable(bin_path, strip=True).lower()
@@ -432,7 +429,7 @@ def clean_shutdown(style=0):
     # wipe SPI flash and shutdown (wiping main memory)
     # - mk4: SPI flash not used, but NFC may hold data (PSRAM cleared by bootrom)
     # - bootrom wipes every byte of SRAM, so no need to repeat here
-    import callgate, version, uasyncio
+    import callgate
 
     # save if anything pending
     from glob import settings
@@ -498,7 +495,7 @@ def word_wrap(ln, w):
                     yield OUT_CTRL_ADDRESS + addr[pos:pos+aw]
                     pos += aw
                 return
-                
+
             # bad-break the line
             sp = min(txtlen(ln), w)
             nsp = sp
@@ -554,16 +551,16 @@ def chunk_writer(fd, body):
     dis.progress_bar_show(1)
 
 
-def pad_raw_secret(raw_sec_str):
+def pad_raw_secret(text_sec_str):
     # Chip can hold 72-bytes as a secret
     # every secret has 0th byte as marker
     # then secret and padded to zero to AE_SECRET_LEN
     from pincodes import AE_SECRET_LEN
 
     raw = bytearray(AE_SECRET_LEN)
-    if len(raw_sec_str) % 2:
-        raw_sec_str += '0'
-    x = a2b_hex(raw_sec_str)
+    if len(text_sec_str) % 2:
+        text_sec_str += '0'
+    x = a2b_hex(text_sec_str)
     raw[0:len(x)] = x
     return raw
 
@@ -611,7 +608,7 @@ def txid_from_fname(fname):
         except: pass
     return None
 
-def url_decode(u):
+def url_unquote(u):
     # expand control chars from %XX and '+'
     # - equiv to urllib.parse.unquote_plus
     # - ure.sub is missing, so not being clever here.
@@ -631,10 +628,17 @@ def url_decode(u):
 
     return u
 
+def url_quote(u):
+    # convert non-text chars into %hex for URL usage
+    # - urllib.parse.quote() but w/o as much thought
+    return ''.join( (ch if 33 <= ord(ch) <= 127 else '%%%02x' % ord(ch)) \
+                    for ch in u)
+
 def decode_bip21_text(got):
     # Assume text is a BIP-21 payment address (url), with amount, description
     # and url protocol prefix ... all optional except the address.
     # - also will detect correctly encoded & checksummed xpubs
+    # - always verifies checksum of data it finds
 
     proto, args, addr = None, None, None
 
@@ -651,7 +655,7 @@ def decode_bip21_text(got):
         args = dict()
         for p in parts:
             k, v = p.split('=', 1)
-            args[k] = url_decode(v)
+            args[k] = url_unquote(v)
 
     # assume it's an bare address for now
     if not addr:
@@ -661,10 +665,12 @@ def decode_bip21_text(got):
     try:
         raw = ngu.codecs.b58_decode(addr)
 
-        # it's valid base58
-        # an address, P2PKH or xpub (xprv checked above)
+        # It's valid base58: could be
+        # an address, P2PKH or xpub/xprv
         if addr[1:4] == 'pub':
             return 'xpub', (addr,)
+        if addr[1:4] == 'prv':
+            return 'xprv', (addr,)
 
         return 'addr', (proto, addr, args)
     except:
@@ -690,5 +696,33 @@ def show_single_address(addr):
 def chunk_address(addr):
     # useful to show payment addresses specially
     return [addr[i:i+4] for i in range(0, len(addr), 4)]
+
+def cleanup_payment_address(s):
+    # Cleanup a payment  address, or raise if bad checksum
+    # - later matching is string-based, so just doing basic syntax check here
+    # - must be checksumed-base58 or bech32
+    try:
+        ngu.codecs.b58_decode(s)
+        assert len(s) < 40          # or else it's an xpub/xprv
+        return s
+    except: pass
+
+    try:
+        ngu.codecs.segwit_decode(s)
+        return s.lower()
+    except: pass
+
+    raise ValueError('bad address value: ' + s)
+
+def truncate_address(addr):
+    # Truncates address to width of screen, replacing middle chars
+    if not version.has_qwerty:
+        # - 16 chars screen width
+        # - but 2 lost at left (menu arrow, corner arrow)
+        # - want to show not truncated on right side
+        return addr[0:6] + '⋯' + addr[-6:]
+    else:
+        # tons of space on Q1
+        return addr[0:12] + '⋯' + addr[-12:]
 
 # EOF

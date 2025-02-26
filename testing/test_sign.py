@@ -1925,8 +1925,9 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
             psbt_sh = x.as_b64_str()
 
         # make useful reference psbt along the way
-        open(f'debug/sighash-{sighash[0] if len(sighash) == 1 else "MIX"}.psbt'\
-                .replace('|', '-'), 'wt').write(psbt_sh)
+        with open(f'debug/sighash-{sighash[0] if len(sighash) == 1 else "MIX"}.psbt'\
+                .replace('|', '-'), 'wt') as f:
+            f.write(psbt_sh)
 
         # get story out of CC via visualize feature
         start_sign(psbt_sh_bytes, False, stxn_flags=STXN_VISUALIZE)

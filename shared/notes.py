@@ -13,7 +13,7 @@ from files import CardMissingError, needs_microsd, CardSlot
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 from charcodes import KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6
 from lcd_display import CHARS_W
-from utils import problem_file_line, url_decode
+from utils import problem_file_line, url_unquote
 
 # title, username and such are limited that they fit on the one line both in
 # text entry (W-2) and also in menu display (W-3)
@@ -165,7 +165,7 @@ class NotesMenu(MenuSystem):
 
         if got.startswith('otpauth://totp/'):
             # see <https://github.com/google/google-authenticator/wiki/Key-Uri-Format>
-            tmp.title = url_decode(got[15:]).split('?', 1)[0]
+            tmp.title = url_unquote(got[15:]).split('?', 1)[0]
         elif got.startswith('otpauth-migration://offline'):
             # see <https://github.com/qistoph/otp_export>
             tmp.title = 'Google Auth'

@@ -4,13 +4,14 @@
 #
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, B2A, keypath_to_str, problem_file_line
+from utils import xfp2str, B2A, keypath_to_str
 from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str
-import stash, gc, history, sys, ngu, ckcc, chains
+import stash, gc, history, sys, ngu, ckcc
+from chains import NLOCK_IS_TIME
 from uhashlib import sha256
 from uio import BytesIO
 from sffile import SizerFile
-from multisig import MultisigWallet, disassemble_multisig, disassemble_multisig_mn
+from multisig import MultisigWallet, disassemble_multisig_mn
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160, hash256
 from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, ser_uint256, COutPoint
@@ -547,7 +548,7 @@ class psbtInputProxy(psbtProxy):
     blank_flds = (
         'unknown', 'utxo', 'witness_utxo', 'sighash', 'redeem_script', 'witness_script',
         'fully_signed', 'is_segwit', 'is_multisig', 'is_p2sh', 'num_our_keys',
-        'required_key', 'scriptSig', 'amount', 'scriptCode', 'added_sig', 'previous_txid',
+        'required_key', 'scriptSig', 'amount', 'scriptCode', 'previous_txid',
         'prevout_idx', 'sequence', 'req_time_locktime', 'req_height_locktime'
     )
 
@@ -556,7 +557,8 @@ class psbtInputProxy(psbtProxy):
 
         #self.utxo = None
         #self.witness_utxo = None
-        self.part_sig = {}
+        self.part_sigs = {}
+        self.added_sigs = {}  # signature that CC added (clearly separated from what can be already in part_sigs)
         #self.sighash = None
         self.subpaths = {}          # will typically be non-empty for all inputs
         #self.redeem_script = None
@@ -579,7 +581,6 @@ class psbtInputProxy(psbtProxy):
         #self.scriptCode = None      # only expected for segwit inputs
 
         # after signing, we'll have a signature to add to output PSBT
-        #self.added_sig = None
 
         #self.previous_txid = None
         #self.prevout_idx = None
@@ -629,13 +630,13 @@ class psbtInputProxy(psbtProxy):
         # rework the pubkey => subpath mapping
         self.parse_subpaths(my_xfp, parent.warnings)
 
-        if self.part_sig:
+        if self.part_sigs:
             # How complete is the set of signatures so far?
             # - assuming PSBT creator doesn't give us extra data not required
             # - seems harmless if they fool us into thinking already signed; we do nothing
             # - could also look at pubkey needed vs. sig provided
             # - could consider structure of MofN in p2sh cases
-            self.fully_signed = (len(self.part_sig) >= len(self.subpaths))
+            self.fully_signed = (len(self.part_sigs) >= len(self.subpaths))
         else:
             # No signatures at all yet for this input (typical non multisig)
             self.fully_signed = False
@@ -714,7 +715,7 @@ class psbtInputProxy(psbtProxy):
         return utxo
 
 
-    def determine_my_signing_key(self, my_idx, utxo, my_xfp, psbt):
+    def determine_my_signing_key(self, my_idx, utxo, my_xfp, psbt, cosign_xfp=None):
         # See what it takes to sign this particular input
         # - type of script
         # - which pubkey needed
@@ -756,18 +757,18 @@ class psbtInputProxy(psbtProxy):
                 which_key, = self.subpaths.keys()
             else:
                 # Assume we'll be signing with any key we know
-                # - limitation: we cannot be two legs of a multisig
+                # - limitation: we cannot be two legs of a multisig (only if CCC feature used)
                 # - but if partial sig already in place, ignore that one
+                if not which_key:
+                    which_key = set()
+
                 for pubkey, path in self.subpaths.items():
-                    if self.part_sig and (pubkey in self.part_sig):
+                    if self.part_sigs and (pubkey in self.part_sigs):
                         # pubkey has already signed, so ignore
                         continue
 
-                    if path[0] == my_xfp:
+                    if path[0] in (my_xfp, cosign_xfp):
                         # slight chance of dup xfps, so handle
-                        if not which_key:
-                            which_key = set()
-
                         which_key.add(pubkey)
 
             if not addr_is_segwit and \
@@ -881,7 +882,7 @@ class psbtInputProxy(psbtProxy):
         elif kt == PSBT_IN_WITNESS_UTXO:
             self.witness_utxo = val
         elif kt == PSBT_IN_PARTIAL_SIG:
-            self.part_sig[key[1:]] = val
+            self.part_sigs[key[1:]] = val
         elif kt == PSBT_IN_BIP32_DERIVATION:
             self.subpaths[key[1:]] = val
         elif kt == PSBT_IN_REDEEM_SCRIPT:
@@ -917,13 +918,13 @@ class psbtInputProxy(psbtProxy):
         if self.witness_utxo:
             wr(PSBT_IN_WITNESS_UTXO, self.witness_utxo)
 
-        if self.part_sig:
-            for pk in self.part_sig:
-                wr(PSBT_IN_PARTIAL_SIG, self.part_sig[pk], pk)
+        if self.part_sigs:
+            for pk, sig in self.part_sigs.items():
+                wr(PSBT_IN_PARTIAL_SIG, sig, pk)
 
-        if self.added_sig:
-            pubkey, sig = self.added_sig
-            wr(PSBT_IN_PARTIAL_SIG, sig, pubkey)
+        if self.added_sigs:
+            for pk, sig in self.added_sigs.items():
+                wr(PSBT_IN_PARTIAL_SIG, sig, pk)
 
         if self.sighash is not None:
             wr(PSBT_IN_SIGHASH_TYPE, pack('<I', self.sighash))
@@ -1404,9 +1405,9 @@ class psbtObject(psbtProxy):
                 assert inp.prevout_idx is not None
                 assert inp.previous_txid
                 if inp.req_time_locktime is not None:
-                    assert inp.req_time_locktime >= 500000000
+                    assert inp.req_time_locktime >= NLOCK_IS_TIME
                 if inp.req_height_locktime is not None:
-                    assert 0 < inp.req_height_locktime < 500000000
+                    assert 0 < inp.req_height_locktime < NLOCK_IS_TIME
             else:
                 # v0 requires exclusion
                 assert inp.prevout_idx is None
@@ -1435,7 +1436,7 @@ class psbtObject(psbtProxy):
                 ))
             else:
                 msg = "This tx can only be spent after "
-                if self.lock_time < 500000000:
+                if self.lock_time < NLOCK_IS_TIME:
                     msg += "block height of %d" % self.lock_time
                 else:
                     try:
@@ -1633,7 +1634,7 @@ class psbtObject(psbtProxy):
         for p in probs:
             self.warnings.append(('Troublesome Change Outs', p))
 
-    def consider_inputs(self):
+    def consider_inputs(self, cosign_xfp=None):
         # Look at the UTXO's that we are spending. Do we have them? Do the
         # hashes match, and what values are we getting?
         # Important: parse incoming UTXO to build total input value
@@ -1664,7 +1665,7 @@ class psbtObject(psbtProxy):
             # type of signing will be required, and which key we need.
             # - also validates redeem_script when present
             # - also finds appropriate multisig wallet to be used
-            inp.determine_my_signing_key(i, utxo, self.my_xfp, self)
+            inp.determine_my_signing_key(i, utxo, self.my_xfp, self, cosign_xfp)
 
             # iff to UTXO is segwit, then check it's value, and also
             # capture that value, since it's supposed to be immutable
@@ -1820,7 +1821,48 @@ class psbtObject(psbtProxy):
             outp.serialize(out_fd, self.is_v2)
             out_fd.write(b'\0')
 
-    def sign_it(self):
+    @staticmethod
+    def check_pubkey_at_path(sv, subpath, target_pk):
+        # derive actual pubkey from private
+        skp = keypath_to_str(subpath)
+        node = sv.derive_path(skp)
+
+        # check the pubkey of this BIP-32 node
+        if target_pk == node.pubkey():
+            return node
+        return None
+
+    @staticmethod
+    def ecdsa_grind_sign(sk, digest, sighash):
+        # Do the ACTUAL signature ... finally!!!
+
+        # We need to grind sometimes to get a positive R
+        # value that will encode (after DER) into a shorter string.
+        # - saves on miner's fee (which might be expected/required)
+        # - blends in with Bitcoin Core signatures which do this from 0.17.0
+
+        n = 0  # retry num
+        while True:
+            # time to produce signature on stm32: ~25.1ms
+            result = ngu.secp256k1.sign(sk, digest, n).to_bytes()
+
+            if result[1] < 0x80:
+                # - no need to check for low S value as those are generated by default
+                #   by secp256k1 lib
+                # - to produce 71 bytes long signature (both low S low R values),
+                #    we need on average 2 retries
+                # - worst case ~25 grinding iterations need to be performed total
+                break
+
+            n += 1
+
+        # DER serialization after we have low S and low R values in our signature
+        r = result[1:33]
+        s = result[33:65]
+        der_sig = ser_sig_der(r, s, sighash)
+        return der_sig
+
+    def sign_it(self, alternate_secret=None, my_xfp=None):
         # txn is approved. sign all inputs we can sign. add signatures
         # - hash the txn first
         # - sign all inputs we have the key for
@@ -1830,10 +1872,13 @@ class psbtObject(psbtProxy):
         from glob import dis
         from ownership import OWNERSHIP
 
-        with stash.SensitiveValues() as sv:
-            # Double check the change outputs are right. This is slow, but critical because
+        if my_xfp is None:
+            my_xfp = self.my_xfp
+
+        with stash.SensitiveValues(secret=alternate_secret) as sv:
+            # Double-check the change outputs are right. This is slow, but critical because
             # it detects bad actors, not bugs or mistakes.
-            # - equivilent check already done for p2sh outputs when we re-built the redeem script
+            # - equivalent check already done for p2sh outputs when we re-built the redeem script
             change_outs = [n for n,o in enumerate(self.outputs) if o.is_change]
             if change_outs:
                 dis.fullscreen('Change Check...')
@@ -1846,20 +1891,15 @@ class psbtObject(psbtProxy):
 
                     good = 0
                     for pubkey, subpath in oup.subpaths.items():
-                        if subpath[0] != self.my_xfp:
-                            # for multisig, will be N paths, and exactly one will
-                            # be our key. For single-signer, should always be my XFP
-                            continue
-                            
-                        # derive actual pubkey from private
-                        skp = keypath_to_str(subpath)
-                        node = sv.derive_path(skp)
-
-                        # check the pubkey of this BIP-32 node
-                        if pubkey == node.pubkey():
-                            good += 1
-
-                            OWNERSHIP.note_subpath_used(subpath)
+                        # for multisig, will be N paths, and exactly one will
+                        # be our key. For single-signer, should always be my XFP
+                        if subpath[0] == my_xfp:
+                            # derive actual pubkey from private
+                            res = self.check_pubkey_at_path(sv, subpath, pubkey)
+                            if res:
+                                good += 1
+                                # TODO is this needed if output is multisig?
+                                OWNERSHIP.note_subpath_used(subpath)
 
                     if not good:
                         raise FraudulentChangeOutput(out_idx, 
@@ -1871,7 +1911,6 @@ class psbtObject(psbtProxy):
             # randomize secp context before each signing session
             ngu.secp256k1.ctx_rnd()
             # Sign individual inputs
-            success = set()
             for in_idx, txi in self.input_iter():
                 dis.progress_sofar(in_idx, self.num_inputs)
 
@@ -1898,12 +1937,8 @@ class psbtObject(psbtProxy):
                     # need to consider a set of possible keys, since xfp may not be unique
                     for which_key in inp.required_key:
                         # get node required
-                        skp = keypath_to_str(inp.subpaths[which_key])
-                        node = sv.derive_path(skp, register=False)
-
-                        # expensive test, but works... and important
-                        pu = node.pubkey()
-                        if pu == which_key:
+                        node = self.check_pubkey_at_path(sv, inp.subpaths[which_key], which_key)
+                        if node:
                             break
                     else:
                         raise AssertionError("Input #%d needs pubkey I dont have" % in_idx)
@@ -1913,10 +1948,10 @@ class psbtObject(psbtProxy):
                     which_key = inp.required_key
 
     
-                    assert not inp.added_sig, "already done??"
+                    assert not inp.added_sigs, "already done??"
                     assert which_key in inp.subpaths, 'unk key'
 
-                    if inp.subpaths[which_key][0] != self.my_xfp:
+                    if inp.subpaths[which_key][0] != my_xfp:
                         # we don't have the key for this subkey
                         # (redundant, required_key wouldn't be set)
                         continue
@@ -1954,41 +1989,19 @@ class psbtObject(psbtProxy):
                 #print(" pubkey %s" % b2a_hex(which_key).decode('ascii'))
                 #print(" digest %s" % b2a_hex(digest).decode('ascii'))
 
-                # Do the ACTUAL signature ... finally!!!
-
-                # We need to grind sometimes to get a positive R
-                # value that will encode (after DER) into a shorter string.
-                # - saves on miner's fee (which might be expected/required)
-                # - blends in with Bitcoin Core signatures which do this from 0.17.0
-
-                n = 0  # retry num
-                while True:
-                    # time to produce signature on stm32: ~25.1ms
-                    result = ngu.secp256k1.sign(pk, digest, n).to_bytes()
-                    
-                    if result[1] < 0x80:
-                        # - no need to check for low S value as those are generated by default
-                        #   by secp256k1 lib
-                        # - to produce 71 bytes long signature (both low S low R values),
-                        #    we need on average 2 retries
-                        # - worst case ~25 grinding iterations need to be performed total
-                        break
-
-                    n += 1
-
-                # DER serialization after we have low S and low R values in our signature
-                r = result[1:33]
-                s = result[33:65]
-                der_sig = ser_sig_der(r, s, inp.sighash)
+                der_sig = self.ecdsa_grind_sign(pk, digest, inp.sighash)
 
                 # private key no longer required
                 stash.blank_object(pk)
                 stash.blank_object(node)
-                del pk, node, pu, skp, n
+                del pk, node
 
-                inp.added_sig = (which_key, der_sig)
+                inp.added_sigs[which_key] = der_sig
 
-                success.add(in_idx)
+                # Could remove sighash from input object - it is not required, takes space,
+                # and is already in signature or is implicit by not being part of the
+                # signature (taproot SIGHASH_DEFAULT)
+                ## inp.sighash = None
 
                 if self.is_v2:
                     self.set_modifiable_flag(inp)
@@ -1996,9 +2009,6 @@ class psbtObject(psbtProxy):
                 # drop sighash if default (SIGHASH_ALL)
                 if inp.sighash == SIGHASH_ALL:
                     inp.sighash = None
-
-                # memory cleanup
-                del result, r, s
 
                 gc.collect()
 
@@ -2187,7 +2197,7 @@ class psbtObject(psbtProxy):
                 # but we can't combine/finalize multisig stuff, so will never't be 'final'
                 return False
 
-            if inp.added_sig:
+            if inp.added_sigs:
                 signed += 1
 
         return signed == self.num_inputs
@@ -2230,10 +2240,10 @@ class psbtObject(psbtProxy):
 
             else:
                 # insert the new signature(s), assuming fully signed txn.
-                assert inp.added_sig, 'No signature on input #%d'%in_idx
+                assert inp.added_sigs, 'No signature on input #%d'%in_idx
                 assert not inp.is_multisig, 'Multisig PSBT combine not supported'
 
-                pubkey, der_sig = inp.added_sig
+                pubkey, der_sig = list(inp.added_sigs.items())[0]
 
                 s = b''
                 s += ser_push_data(der_sig)
@@ -2260,12 +2270,12 @@ class psbtObject(psbtProxy):
             for in_idx, wit in self.input_witness_iter():
                 inp = self.inputs[in_idx]
 
-                if inp.is_segwit and inp.added_sig:
+                if inp.is_segwit and inp.added_sigs:
                     # put in new sig: wit is a CTxInWitness
                     assert not wit.scriptWitness.stack, 'replacing non-empty?'
                     assert not inp.is_multisig, 'Multisig PSBT combine not supported'
 
-                    pubkey, der_sig = inp.added_sig
+                    pubkey, der_sig = list(inp.added_sigs.items())[0]
                     assert pubkey[0] in {0x02, 0x03} and len(pubkey) == 33, "bad v0 pubkey"
                     wit.scriptWitness.stack = [der_sig, pubkey]
 

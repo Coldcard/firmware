@@ -51,6 +51,8 @@ freeze_as_mpy('', [
 	'tapsigner.py',
 	'wallet.py',
 	'ownership.py',
+	'ccc.py',
+	'web2fa.py',
 ], opt=0)
 
 # Optimize data-like files, since no need to debug them.

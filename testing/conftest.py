@@ -31,6 +31,8 @@ def pytest_addoption(parser):
                      default=False, help="run on real dev")
     parser.addoption("--sim", action="store_true",
                      default=True, help="run on simulator")
+    parser.addoption("--localhost", action="store_true",
+                     default=False, help="test web stuff against coldcard.com code running on localhost:5070")
     parser.addoption("--manual", action="store_true",
                      default=False, help="operator must press keys on real CC")
 

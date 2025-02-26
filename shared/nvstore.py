@@ -65,6 +65,7 @@ from utils import call_later_ms
 #   hmx    = (bool) Force display of current XFP in home menu, even w/o tmp seed active
 #   unsort_ms = (bool) Allow unsorted multisig with BIP-67 disabled
 #   msas = multisig address show (do not censor multisig addresses)
+#   ccc = (complex) If present, CCC feature is enabled and key details stored here.
 
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
@@ -76,7 +77,6 @@ from utils import call_later_ms
 #   cd_pin = [<=mk3] pin code which enables "countdown to brick" mode
 #   kbtn =  (1 char str) button will wipe seed during login process (mk4+, Q)
 #   terms_ok = customer has signed-off on the terms of sale
-#   msas = multisig address show (do not censor multisig addresses)
 
 # settings linked to seed
 # LINKED_SETTINGS = ["multisig", "tp", "ovc", "xfp", "xpub", "words"]

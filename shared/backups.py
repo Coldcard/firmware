@@ -104,6 +104,7 @@ def render_backup_contents(bypass_tmp=False):
         if k == 'bkpw': continue        # confusing/circular
         if k == 'sd2fa': continue       # do NOT backup SD 2FA (card can be lost or damaged)
         if k == 'words': continue       # words length is recalculated from secret
+        if k == 'ccc': continue         # not supported, security issue
         if k == 'seedvault' and not v: continue
         if k == 'seeds' and not v: continue
         ADD('setting.' + k, v)
@@ -213,6 +214,11 @@ def restore_from_dict_ll(vals):
             # do NOT restore sd2fa as SD card can be lost or damaged
             # new version of firmware 5.1.3+ will not back sd2fa
             # old backups need this to function properly
+            continue
+
+        if k == 'ccc':
+            # CCC feature cannot be backed-up nor restored for security reasons
+            # (would allow replay attacks)
             continue
 
         if k == 'tp':

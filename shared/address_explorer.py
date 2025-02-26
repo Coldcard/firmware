@@ -17,18 +17,7 @@ from glob import settings
 from auth import write_sig_file
 from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME, KEY_LEFT, KEY_RIGHT
 from charcodes import KEY_CANCEL
-from utils import show_single_address, problem_file_line
-
-def truncate_address(addr):
-    # Truncates address to width of screen, replacing middle chars
-    if not version.has_qwerty:
-        # - 16 chars screen width
-        # - but 2 lost at left (menu arrow, corner arrow)
-        # - want to show not truncated on right side
-        return addr[0:6] + '⋯' + addr[-6:]
-    else:
-        # tons of space on Q1
-        return addr[0:12] + '⋯' + addr[-12:]
+from utils import show_single_address, problem_file_line, truncate_address
 
 def censor_address(addr):
     # We don't like to show the user full multisig addresses because we cannot be certain

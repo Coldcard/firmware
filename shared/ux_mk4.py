@@ -58,17 +58,9 @@ class PressRelease:
             else:
                 self.last_key = ch
                 return ch
-            
-            
-async def ux_confirm(msg):
-    # confirmation screen, with stock title and Y=of course.
-    from ux import ux_show_story
 
-    resp = await ux_show_story("Are you SURE ?!?\n\n" + msg)
 
-    return resp == 'y'
-
-async def ux_enter_number(prompt, max_value, can_cancel=False):
+async def ux_enter_number(prompt, max_value, can_cancel=False, value=''):
     # return the decimal number which the user has entered
     # - default/blank value assumed to be zero
     # - clamps large values to the max
@@ -80,7 +72,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
     press = PressRelease('1234567890y')
 
     y = 26
-    value = ''
+    value = str(value)
     max_w = int(log(max_value, 10) + 1)
 
     dis.clear()
@@ -122,8 +114,8 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
             # cleanup leading zeros and such
             value = str(min(int(value), max_value))
 
-async def ux_input_numbers(val):
-    # collect a series of digits
+async def ux_input_digits(val, prompt=None, maxlen=32):
+    # collect a series of digits.
     from glob import dis
     from display import FontTiny
 
@@ -137,6 +129,11 @@ async def ux_input_numbers(val):
 
     dis.clear()
     dis.text(None, -1, footer, FontTiny)
+
+    if prompt:
+        dis.text(0, 0, prompt)
+        y += 8
+
     dis.save()
 
     while 1:
@@ -169,7 +166,7 @@ async def ux_input_numbers(val):
                 # quit if they press X on empty screen
                 return
         else:
-            if len(here) < 32:
+            if len(here) < maxlen:
                 here += ch
 
 async def ux_input_text(pw, confirm_exit=True, hex_only=False, max_len=100, min_len=0, **_kws):

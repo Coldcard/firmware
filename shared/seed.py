@@ -10,15 +10,15 @@
 #    - 'abandon' * 17 + 'agent'
 #    - 'abandon' * 11 + 'about'
 #
-import ngu, uctypes, bip39, random, stash, version
+import ngu, uctypes, bip39, random, version
 from ucollections import OrderedDict
 from menu import MenuItem, MenuSystem
 from utils import xfp2str, parse_extended_key, swab32, pad_raw_secret, problem_file_line
 from uhashlib import sha256
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, OK, X
-from ux import PressRelease, ux_input_numbers, ux_input_text, show_qr_code
+from ux import PressRelease, ux_input_text, show_qr_code
 from actions import goto_top_menu
-from stash import SecretStash, ZeroSecretException
+from stash import SecretStash, ZeroSecretException, SensitiveValues
 from ubinascii import hexlify as b2a_hex
 from pwsave import PassphraseSaver, PassphraseSaverMenu
 from glob import settings, dis
@@ -26,6 +26,7 @@ from pincodes import pa
 from nvstore import SettingsObject
 from files import CardMissingError, needs_microsd, CardSlot
 from charcodes import KEY_QR, KEY_ENTER, KEY_CANCEL, KEY_CLEAR
+from uasyncio import sleep_ms
 
 
 # seed words lengths we support: 24=>256 bits, and recommended
@@ -215,7 +216,7 @@ class WordNestMenu(MenuSystem):
         while isinstance(the_ux.top_of_stack(), cls):
             the_ux.pop()
 
-    def on_cancel(self):
+    async def on_cancel(self):
         # user pressed cancel on a menu (so he's going upwards)
         # - if it's a step where we added to the word list, undo that.
         # - but keep them in our system until:
@@ -411,10 +412,10 @@ async def new_from_dice(nwords):
         await commit_new_words(words)
 
 def in_seed_vault(encoded):
-    # Test if indicated xfp (or currently active XFP) is in the seed vault already.
+    # Test if indicated secret is in the seed vault already.
     seeds = settings.master_get("seeds", [])
     if seeds:
-        ss = stash.SecretStash.storage_serialize(encoded)
+        ss = SecretStash.storage_serialize(encoded)
         if ss in [s[1] for s in seeds]:
             return True
     return False
@@ -460,7 +461,7 @@ async def add_seed_to_vault(encoded, meta=None):
 
     # Save it into master settings
     seeds.append((new_xfp_str,
-                  stash.SecretStash.storage_serialize(encoded),
+                  SecretStash.storage_serialize(encoded),
                   xfp_ui,
                   meta))
 
@@ -668,7 +669,7 @@ async def calc_bip39_passphrase(pw, bypass_tmp=False):
 
     current_xfp = settings.get("xfp", 0)
 
-    with stash.SensitiveValues(bip39pw=pw, bypass_tmp=bypass_tmp) as sv:
+    with SensitiveValues(bip39pw=pw, bypass_tmp=bypass_tmp) as sv:
         # can't do it without original seed words (late, but caller has checked)
         assert sv.mode == 'words', sv.mode
         nv = SecretStash.encode(xprv=sv.node)
@@ -950,7 +951,7 @@ class SeedVaultMenu(MenuSystem):
 
         # Save it into master settings
         seeds.append((new_xfp_str,
-                      stash.SecretStash.storage_serialize(pa.tmp_value),
+                      SecretStash.storage_serialize(pa.tmp_value),
                       xfp_ui,
                       "unknown origin"))
 
@@ -1026,6 +1027,47 @@ class SeedVaultMenu(MenuSystem):
         tmp = self.construct()
         self.replace_items(tmp)
 
+class SeedVaultChooserMenu(MenuSystem):
+    def __init__(self, words_only=False):
+        self.result = None
+
+        seeds = settings.master_get("seeds", [])
+        items = []
+
+        for i, (xfp_str, encoded, name, meta) in enumerate(seeds):
+            encoded = pad_raw_secret(encoded)
+            if words_only and not SecretStash.is_words(encoded):
+                continue
+
+            item = MenuItem('%2d: %s' % (i+1, name), arg=encoded, f=self.picked)
+            items.append(item)
+
+        if not items:
+            items.append(MenuItem("(none suitable)"))
+
+        super().__init__(items)
+
+    async def picked(self, menu, idx, mi):
+        assert menu == self
+
+        # show as "checked", for a touch
+        menu.chosen = idx
+        menu.show()
+        await sleep_ms(100)
+
+        self.result = mi.arg
+        the_ux.pop()            # causes interact to stop
+
+    @classmethod
+    async def pick(cls, **kws):
+        # nice simple blocking menu present and pick
+        m = cls(**kws)
+
+        the_ux.push(m)
+        await m.interact()
+
+        return m.result
+
 class EphemeralSeedMenu(MenuSystem):
 
     @staticmethod
@@ -1077,17 +1119,14 @@ class EphemeralSeedMenu(MenuSystem):
 async def make_ephemeral_seed_menu(*a):
     if (not pa.tmp_value) and (not settings.master_get("seedvault", False)):
         # force a warning on them, unless they are already doing it.
-        ch = await ux_show_story(
+        if not await ux_confirm(
             "Temporary seed is a secret completely separate "
             "from the master seed, typically held in device RAM and "
             "not persisted between reboots in the Secure Element. "
-            "Enable the Seed Vault feature to store these secrets longer-term."
-            "\n\nPress (4) to prove you read to the end"
-            " of this message and accept all consequences.",
+            "Enable the Seed Vault feature to store these secrets longer-term.",
             title="WARNING",
-            escape="4"
-        )
-        if ch != "4":
+            confirm_key="4"
+        ):
             return
 
     rv = EphemeralSeedMenu.construct()
@@ -1193,7 +1232,7 @@ class PassphraseMenu(MenuSystem):
 
         return PassphraseSaverMenu(items)
 
-    def on_cancel(self):
+    async def on_cancel(self):
         if not version.has_qwerty:
             # zip to cancel item when they fail to exit via X button
             self.goto_idx(self.count - 1)
@@ -1208,7 +1247,9 @@ class PassphraseMenu(MenuSystem):
     @classmethod
     async def add_numbers(cls, *a):
         # Mk4 only: add some digits (quick, easy)
-        pw = await ux_input_numbers(cls.pp_sofar)
+        from ux_mk4 import ux_input_digits
+
+        pw = await ux_input_digits(cls.pp_sofar)
         if pw is not None:
             cls.pp_sofar = pw
             cls.check_length()

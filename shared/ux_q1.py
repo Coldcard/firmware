@@ -77,16 +77,8 @@ class PressRelease:
             else:
                 self.last_key = ch
                 return ch
-            
-async def ux_confirm(msg):
-    # confirmation screen, with stock title and Y=of course.
-    from ux import ux_show_story
 
-    resp = await ux_show_story(msg, title="Are you SURE ?!?")
-
-    return resp == 'y'
-
-async def ux_enter_number(prompt, max_value, can_cancel=False):
+async def ux_enter_number(prompt, max_value, can_cancel=False, value=''):
     # return the decimal number which the user has entered
     # - default/blank value assumed to be zero
     # - clamps large values to the max
@@ -96,7 +88,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
     # allow key repeat on X only?
     press = PressRelease()
 
-    value = ''
+    value = str(value)
     max_w = int(log(max_value, 10) + 1)
 
     dis.clear()
@@ -125,6 +117,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
         elif ch == KEY_DELETE:
             if value:
                 value = value[0:-1]
+                dis.text(0, 4, ' '*CHARS_W)
         elif ch == KEY_CLEAR:
             value = ''
             dis.text(0, 4, ' '*CHARS_W)
@@ -140,11 +133,6 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
 
             # cleanup leading zeros and such
             value = str(min(int(value), max_value))
-
-async def ux_input_numbers(val):
-    # collect a series of digits
-    # - not wanted on Q1; just get the digits mixed in w/ the text.
-    pass
 
 async def ux_input_text(value, confirm_exit=False, hex_only=False, max_len=100,
             prompt='Enter value', min_len=0, b39_complete=False, scan_ok=False,
@@ -572,6 +560,7 @@ def ux_draw_words(y, num_words, words):
         cols = 2
         xpos = [2, 18]
     else:
+        assert num_words in (18, 24)
         cols = 3
         xpos = [0, 11, 23]
 
@@ -604,6 +593,7 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
     # - max word length is 8, min is 3
     # - useful: simulator.py --q1 --eff --seq 'aa ee 4i '
     from glob import dis
+    from ux import ux_confirm
 
     assert num_words and prompt and done_cb
 
@@ -695,8 +685,7 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
         elif ch == KEY_CANCEL:
             if word_num >= 2:
                 tmp = dis.save_state()
-                ok = await ux_confirm("Everything you've entered will be lost.")
-                if not ok: 
+                if not await ux_confirm("Everything you've entered will be lost."):
                     dis.restore_state(tmp)
                     continue
             return None
@@ -791,7 +780,7 @@ class QRScannerInteraction:
         pass
 
     @staticmethod
-    async def scan(prompt, line2=None):
+    async def scan(prompt, line2=None, enter_quits=False):
         # draw animation, while waiting for them to scan something
         # - CANCEL to abort
         # - returns a string, BBQr object or None.
@@ -810,6 +799,8 @@ class QRScannerInteraction:
 
         task = asyncio.create_task(SCAN.scan_once())
 
+        escape = KEY_CANCEL + (KEY_ENTER if enter_quits else '')
+
         ph = 0
         while 1:
             if task.done():
@@ -821,9 +812,9 @@ class QRScannerInteraction:
             ph  = (ph + 1) % len(frames)
 
             # wait for key or 250ms animation delay
-            ch = await ux_wait_keydown(KEY_CANCEL, 250)
+            ch = await ux_wait_keydown(escape, 250)
 
-            if ch == KEY_CANCEL:
+            if ch and (ch in escape):
                 data = None
                 break
 
@@ -835,14 +826,14 @@ class QRScannerInteraction:
 
         return data
 
-    async def scan_general(self, prompt, convertor):
+    async def scan_general(self, prompt, convertor, line2=None, enter_quits=False):
         # Scan stuff, and parse it .. raise QRDecodeExplained if you don't like it
         # continues until something is accepted
-        problem = None
+        problem = line2
 
         while 1:
             try:
-                got = await self.scan(prompt, line2=problem)
+                got = await self.scan(prompt, line2=problem, enter_quits=enter_quits)
                 if got is None:
                     return None
 
@@ -852,7 +843,7 @@ class QRScannerInteraction:
                 problem = str(exc)
                 continue
             except Exception as exc:
-                #import sys; sys.print_exception(exc)
+                # import sys; sys.print_exception(exc)
                 problem = "Unable to decode QR"
                 continue
 
@@ -881,6 +872,31 @@ class QRScannerInteraction:
                 raise QRDecodeExplained('Unable to decode JSON data')
             
         return await self.scan_general(prompt, convertor)
+
+    async def scan_for_addresses(self, prompt, line2=None):
+        # accept only payment addresses; strips BIP-21 junk that might be there
+        # - always a list result, might be size one
+        from utils import decode_bip21_text
+
+        def addr_taster(got):
+            # could be muliple-line text file via BBQR or single line
+            got = decode_qr_result(got, expect_text=True)
+
+            try:
+                rv = []
+                for ln in got.split():
+                    what, args = decode_bip21_text(ln)
+                    if what == 'addr':
+                        rv.append(args[1])
+                if rv:
+                    return rv
+            except QRDecodeExplained:
+                raise
+            except:
+                pass
+            raise QRDecodeExplained("Not a payment address?")
+
+        return await self.scan_general(prompt, addr_taster, line2=line2, enter_quits=True)
 
 
     async def scan_anything(self, expect_secret=False, tmp=False):

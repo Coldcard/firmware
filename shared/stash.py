@@ -49,8 +49,10 @@ def numwords_to_len(num_words):
     assert num_words in SEED_LEN_OPTS
     return (num_words * 8) // 6
 
-def len_from_marker(marker):
+def _len_from_marker(marker):
     # calculates length of entropy from CC marker
+    # - private detail of SecretStash
+    assert marker & 0x80        # wasn't actual words, might be xprv, etc
     return ((marker & 0x3) + 2) * 8
 
 class SecretStash:
@@ -107,7 +109,7 @@ class SecretStash:
 
         elif marker & 0x80:
             # seed phrase
-            ll = len_from_marker(marker)
+            ll = _len_from_marker(marker)
 
             # note: 
             # - byte length > number of words
@@ -139,6 +141,30 @@ class SecretStash:
             return 'master', ms, hd
 
     @staticmethod
+    def is_words(secret):
+        # return False or number of words: 12, 18, 24
+        marker = secret[0]
+        if marker & 0x80:
+            return len_to_numwords(_len_from_marker(marker))
+        return False
+
+    @staticmethod
+    def decode_words(secret, bin_mode=False):
+        # Give a list of BIP-39 words from an encoded secret. Must be "words" type.
+        # - if bin_mode, return binary string representing the words, based on BIP-39
+        ll = _len_from_marker(secret[0])
+
+        # note: 
+        # - byte length > number of words
+        # - not storing checksum
+        assert ll in [16, 24, 32]
+
+        # make master secret, using the memonic words, and passphrase (or empty string)
+        seed_bits = secret[1:1+ll]
+
+        return bip39.b2a_words(seed_bits).split() if not bin_mode else seed_bits
+
+    @staticmethod
     def storage_serialize(secret):
         # make it a JSON-compatible field
         return B2A(bytes(secret).rstrip(b"\x00"))
@@ -153,7 +179,7 @@ class SecretStash:
 
         if marker & 0x80:
             # seed phrase
-            ll = len_from_marker(marker)
+            ll = _len_from_marker(marker)
             return '%d words' % len_to_numwords(ll)
 
         if marker == 0x00:
@@ -182,7 +208,9 @@ class SensitiveValues:
 
         self._bip39pw = bip39pw
 
-        if secret is not None:
+        if secret is Ellipsis:
+            self.mode = self.raw = self.node = None
+        elif secret is not None:
             # sometimes we already know the secret
             self.secret = secret
             self.deltamode = False
@@ -325,6 +353,9 @@ class SensitiveValues:
         settings.put('words', nw)
 
         return xfp
+
+    def get_xfp(self):
+        return swab32(self.node.my_fp())
 
     def register(self, item):
         # Caller can add his own sensitive (derived?) data to our wiper

@@ -275,6 +275,7 @@ class NFCHandler:
 
             if done: break
 
+
     async def push_tx_from_file(self):
         # Pick (signed txn) file from SD card and broadcast via PushTx
         # - assumes .txn extension (required)
@@ -770,8 +771,8 @@ class NFCHandler:
         if winner:
             await verify_armored_signed_msg(winner, digest_check=False)
 
-    async def verify_address_nfc(self):
-        # Get an address or complete bip-21 url even and search it... slow.
+    async def read_address(self):
+        # Read an address or BIP-21 url and parse out addr (just one)
         from utils import decode_bip21_text
 
         def f(m):
@@ -782,6 +783,11 @@ class NFCHandler:
 
         winner = await self._nfc_reader(f, 'Unable to find address from NFC data.')
 
+        return winner
+
+    async def verify_address_nfc(self):
+        # Get an address or complete bip-21 url even and search it... slow.
+        winner = await self.read_address()
         if winner:
             from ownership import OWNERSHIP
             await OWNERSHIP.search_ux(winner)
