@@ -201,7 +201,7 @@ We will summarize transaction outputs as "change" back into same wallet, however
 # CCC Feature (ColdCard Cosigning)
 
 - only 12 or 24 word seeds (not XPRV) are accepted for "key C"
-- velocy limit:
+- velocity limit:
     - based on a max magnitude per txn, and a required minimum block height
       gap, based on previous `nLockTime` value in last-signed PSBT.
     - if you sign a transaction, but never broadcast it, you will still have to wait out 

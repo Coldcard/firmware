@@ -4,10 +4,11 @@ How to support [RFC 6238](https://www.rfc-editor.org/rfc/rfc6238)
 TOTP (Time based One Time Password) 2FA check, on our little embedded
 device without a real-time clock?
 
-Solution: Store the pre-shared secret in the Coldcard, and send that
+Solution: Store the pre-shared secret in the COLDCARD, and send that
 securely to a trusted webserver which knows the time and can do a
-fancy UX. The backend accepts the numeric code and reveals a secret
-that can be used back on the Coldcard to authorize an action.
+fancy UX. That webserver accepts the time-based-one-time 2FA numeric
+code from the user, and if correct, reveals a secret
+that can be used back on the COLDCARD to authorize an action.
 
 For the Mk4, the secret is 8 digit numeric code to be entered,
 for the COLDCARD Q, it is a QR code to be scanned.
@@ -17,7 +18,7 @@ for the COLDCARD Q, it is a QR code to be scanned.
 The HSM feature uses HOTP tokens, which do not require a backend,
 but are not as robust as time-based tokens.
 
-For now Web2FA is only being used as part of CCC spending policy (opt in),
+For now, Web2FA is only being used as part of CCC spending policy (opt-in),
 but we may find other uses for it.
 
 ## How It Works
@@ -32,7 +33,7 @@ but we may find other uses for it.
   - some text label for what's being approved, which is presented to user so they can pick
     correct 2fa shared secret.
   - above is all encrypted in transit, and only the server can decrypt
-- user is sent to that encrypted URL using NFC tap on the Coldcard
+- user is sent to that encrypted URL using NFC tap on the COLDCARD
 - user arrives at server:
   - shown label [which also indicates the server can be trusted, since only it could decrypt it]
   - prompt for 6 digits from authenticator app
@@ -45,10 +46,10 @@ but we may find other uses for it.
   - until a valid code is given, user is stuck here
 - when valid token received:
     - if Q, show a QR code to be scanned, with the full nonce
-    - for non-Q system, a 8-digit decimal value is given: user has to enter that into the Coldcard
+    - for non-Q system, a 8-digit decimal value is given: user has to enter that into the COLDCARD
     - web site shows instructions about what to do next on product.
 
-## From Coldcard PoV
+## From COLDCARD PoV
 
 - makes complex encrypted URL, which contains a nonce it wants, waits for that nonce back (or QR)
 - it's either the nonce from the URL, or fail
@@ -74,7 +75,7 @@ but we may find other uses for it.
 - MiTM and network snoopers get nothing because HTTPS is used and only your browser
   can see the nonce, and only after you've given the right digits.
 - Coinkite server could skip the 2FA checks and just give you the answer
-  you want to type into the Coldcard. Again, you have to trust us on that.
+  you want to type into the COLDCARD. Again, you have to trust us on that.
 
 ## URL Format 
 
