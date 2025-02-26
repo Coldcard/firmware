@@ -172,7 +172,6 @@ def ux_poll_key():
 
     return ch
 
-
 async def ux_show_story(msg, title=None, escape=None, sensitive=False,
                         strict_escape=False, hint_icons=None):
     # show a big long string, and wait for XY to continue

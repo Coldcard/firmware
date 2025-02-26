@@ -169,6 +169,7 @@ class USBHandler:
         msg_len = 0
 
         while 1:
+            success = False
             yield core._io_queue.queue_read(self.blockable)
 
             try:
@@ -212,14 +213,12 @@ class USBHandler:
                     # this saves memory over a simple slice (confirmed)
                     args = memoryview(self.msg)[4:msg_len]
                     resp = await self.handle(self.msg[0:4], args)
-                    msg_len = 0
+                    success = True
                 except CCBusyError:
                     # auth UX is doing something else
                     resp = b'busy'
-                    msg_len = 0
                 except HSMDenied:
                     resp = b'err_Not allowed in HSM mode'
-                    msg_len = 0
                 except HSMCMDDisabled:
                     # do NOT change below error msg as other applications depend on it
                     resp = b'err_HSM commands disabled'
@@ -227,16 +226,14 @@ class USBHandler:
                 except (ValueError, AssertionError) as exc:
                     # some limited invalid args feedback
                     #print("USB request caused assert: ", end='')
-                    #sys.print_exception(exc)
+                    # sys.print_exception(exc)
                     msg = str(exc)
                     if not msg:
                         msg = 'Assertion ' + problem_file_line(exc)
                     resp = b'err_' + msg.encode()[0:80]
-                    msg_len = 0
                 except MemoryError:
                     # prefer to catch at higher layers, but sometimes can't
                     resp = b'err_Out of RAM'
-                    msg_len = 0
                 except FramingError as exc:
                     raise exc
                 except Exception as exc:
@@ -245,9 +242,15 @@ class USBHandler:
                         print("USB request caused this: ", end='')
                         sys.print_exception(exc)
                     resp = b'err_Confused ' + problem_file_line(exc)
-                    msg_len = 0
 
-                # aways send a reply if they get this far
+                if not success:
+                    # do not let the progress screen hang on "Receiving..."
+                    from ux import restore_menu
+                    restore_menu()
+
+                msg_len = 0
+
+                # always send a reply if they get this far
                 await self.send_response(resp)
 
             except FramingError as exc:
