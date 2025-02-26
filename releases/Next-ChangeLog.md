@@ -14,7 +14,8 @@ This lists the new changes that have not yet been published in a normal release.
     - but will sign its part of a transaction automatically if those condition are met, 
       giving you 2 keys of the multisig and control over the funds
     - spending policy can be exceed with help of the other co-signer (3rd key), when needed
-    - you cannot change the CCC spending policy (easily) once set.
+    - cannot view or change the CCC spending policy once set, policy violations are not explained
+    - existing multisig wallets can be used by importing the spending-policy-controlled key
 
 - Enhancement: Add `Bitcoin Safe` option to `Export Wallet` 
 
