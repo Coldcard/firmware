@@ -165,15 +165,15 @@ def sign_message_digest(digest, subpath, prompt, addr_fmt=AF_CLASSIC, pk=None):
         # if private key is provided, derivation subpath is ignored
         # and provided private key is used for signing
             node = sv.derive_path(subpath)
-            dis.progress_bar_show(.50)
+            dis.progress_sofar(50, 100)
             pk = node.privkey()
             addr = ch.address(node, addr_fmt)
     else:
         node = ngu.hdnode.HDNode().from_chaincode_privkey(bytes(32), pk)
-        dis.progress_bar_show(.50)
+        dis.progress_sofar(50, 100)
         addr = ch.address(node, addr_fmt)
 
-    dis.progress_bar_show(.75)
+    dis.progress_sofar(75, 100)
     rv = ngu.secp256k1.sign(pk, digest, 0).to_bytes()
     # AF_CLASSIC header byte base 31 is returned by default from ngu - NOOP
     if addr_fmt != AF_CLASSIC:
@@ -278,7 +278,7 @@ def write_sig_file(content_list, derive=None, addr_fmt=AF_CLASSIC, pk=None, sig_
         for i, part in enumerate(sig_gen):
             fd.write(part)
             # rfc template generator has length of 6
-            dis.progress_bar_show(i / 6)
+            dis.progress_sofar(i, 6)
     return sig_nice
 
 def validate_text_for_signing(text, only_printable=True):
@@ -550,7 +550,7 @@ async def sd_sign_msg_done(signature, address, text, base=None, orig_path=None,
                         gen = rfc_signature_template_gen(addr=address, msg=text, sig=sig)
                         for i, part in enumerate(gen):
                             fd.write(part)
-                            dis.progress_bar_show(i / 6)
+                            dis.progress_sofar(i, 6)
 
                 # success and done!
                 break
@@ -812,18 +812,18 @@ class ApproveTransaction(UserAuthorizedAction):
         # Do some analysis/ validation
         try:
             await self.psbt.validate()      # might do UX: accept multisig import
-            dis.progress_bar_show(0.10)
+            dis.progress_sofar(10, 100)
             ccc_c_xfp = CCCFeature.get_xfp()  # can be None
             self.psbt.consider_inputs(cosign_xfp=ccc_c_xfp)
 
-            dis.progress_bar_show(0.33)
+            dis.progress_sofar(33, 100)
             self.psbt.consider_keys()
 
-            dis.progress_bar_show(0.66)
+            dis.progress_sofar(66, 100)
             self.psbt.consider_outputs()
             self.psbt.consider_dangerous_sighash()
 
-            dis.progress_bar_show(0.85)
+            dis.progress_sofar(85, 100)
 
         except FraudulentChangeOutput as exc:
             #print('FraudulentChangeOutput: ' + exc.args[0])
@@ -1253,14 +1253,14 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
     from glob import dis
     from ux import the_ux
 
-    tmp_buf = bytearray(1024)
+    tmp_buf = bytearray(4096)
 
     # copy file into PSRAM
     # - can't work in-place on the card because we want to support writing out to different card
     # - accepts hex or base64 encoding, but binary prefered
     with CardSlot(force_vdisk, readonly=True, slot_b=slot_b) as card:
         with card.open(filename, 'rb') as fd:
-            dis.fullscreen('Reading...')
+            dis.fullscreen('Reading...', 0)
 
             # see how long it is
             psbt_len = fd.seek(0, 2)
@@ -1291,7 +1291,7 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
                             out.write(here)
                             total += len(here)
 
-                    dis.progress_bar_show(total / psbt_len)
+                    dis.progress_sofar(total, psbt_len)
 
             # might have been whitespace inflating initial estimate of PSBT size
             assert total <= psbt_len
