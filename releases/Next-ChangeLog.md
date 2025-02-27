@@ -18,7 +18,8 @@ This lists the new changes that have not yet been published in a normal release.
     - existing multisig wallets can be used by importing the spending-policy-controlled key
 
 - Enhancement: Add `Bitcoin Safe` option to `Export Wallet`
-- Bugfix: Hanging progress bar `Receiving...` after USB failure
+- Enhancement: 10% performance improvement in USB upload speed for large files
+- Bugfix: Fix stuck progress bar under `Receiving...` after a USB communications failure
 
 
 # Mk4 Specific Changes

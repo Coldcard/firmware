@@ -747,6 +747,9 @@ class USBHandler:
         if offset == 0:
             self.file_checksum = sha256()
             self.is_fw_upgrade = False
+            dis.fullscreen("Receiving...", 0)
+        else:
+            dis.progress_sofar(offset, total_size)
 
         assert offset % 256 == 0, 'alignment'
         assert offset+len(data) <= total_size <= MAX_UPLOAD_LEN, 'long'
@@ -757,13 +760,12 @@ class USBHandler:
             if offset == 0:
                 assert data[0:5] == b'psbt\xff', 'psbt'
 
+        self.file_checksum.update(data)
+
         for pos in range(offset, offset+len(data), 256):
-            if pos % 4096 == 0:
-                dis.fullscreen("Receiving...", offset/total_size)
 
             # write up to 256 bytes
             here = data[pos-offset:pos-offset+256]
-            self.file_checksum.update(here)
 
             # Very special case for firmware upgrades: intercept and modify
             # header contents on the fly, and also fail faster if wouldn't work
