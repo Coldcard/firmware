@@ -6,6 +6,7 @@ import utime, uzlib, ngu
 from utils import problem_file_line
 from exceptions import QRDecodeExplained
 from ubinascii import unhexlify as a2b_hex
+from version import MAX_TXN_LEN
 
 b32encode = ngu.codecs.b32_encode
 b32decode = ngu.codecs.b32_decode
@@ -328,14 +329,12 @@ class BBQrPsramStorage(BBQrStorage):
     def alloc_buf(self, upper_bound):
         # using first part of PSRAM
 
-        from public_constants import MAX_TXN_LEN_MK4
-
-        if upper_bound >= MAX_TXN_LEN_MK4:
+        if upper_bound >= MAX_TXN_LEN:
             raise QRDecodeExplained("Too big")
 
         # If data is compressed, write tmp (compressed) copy into top half of PSRAM
         # and we'll put final, decompressed copy at zero offset (later)
-        self.psr_offset = MAX_TXN_LEN_MK4 if self.hdr.encoding == 'Z' else 0
+        self.psr_offset = MAX_TXN_LEN if self.hdr.encoding == 'Z' else 0
 
         self.buf = True
 
@@ -394,7 +393,6 @@ class BBQrPsramStorage(BBQrStorage):
         from glob import PSRAM, dis
         from uzlib import DecompIO
         from io import BytesIO
-        from public_constants import MAX_TXN_LEN_MK4
 
         dis.fullscreen('Decompressing...')
 
@@ -414,7 +412,7 @@ class BBQrPsramStorage(BBQrStorage):
                 buf += here
                 ln = len(buf) & ~3
 
-                if off+ln > MAX_TXN_LEN_MK4:
+                if off+ln > MAX_TXN_LEN:
                     # test with: `yes | dd bs=1000 count=2700 | bbqr make - | pbcopy`
                     raise QRDecodeExplained("Too big")
                 
