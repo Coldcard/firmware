@@ -120,7 +120,8 @@ async def web2fa_enroll(label, ss=None):
 
     while 1:
         # show QR for enroll
-        await show_qr_code(qr, is_alnum=False, msg="Import into 2FA Mobile App")
+        await show_qr_code(qr, is_alnum=False, msg="Import into 2FA Mobile App",
+                           force_msg=True)
 
         # important: force them to prove they store it correctly
         ok = await perform_web2fa('Enroll: ' + label, ss)

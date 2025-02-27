@@ -6,7 +6,7 @@ import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson, version
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, to_ascii_printable
 from utils import str_to_keypath, problem_file_line, parse_extended_key, get_filesize
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
-from ux import import_export_prompt, ux_enter_bip32_index, show_qr_code, ux_enter_number, OK, X
+from ux import import_export_prompt, ux_enter_bip32_index, ux_enter_number, OK, X
 from files import CardSlot, CardMissingError, needs_microsd
 from descriptor import MultisigDescriptor, multisig_descriptor_template
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS
