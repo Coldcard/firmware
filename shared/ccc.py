@@ -208,7 +208,7 @@ class CCCFeature:
 
     @classmethod
     async def web2fa_challenge(cls):
-        # they are trying to sign something, so make them get our their phone
+        # they are trying to sign something, so make them get out their phone
         # - at this point they have already ok'ed the details of the txn
         # - and we have approved other elements of the spending policy.
         # - could show MS wallet name, or txn details but will not because that is
