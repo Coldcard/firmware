@@ -328,7 +328,8 @@ class Display:
         # no status bar on Mk4
         return
 
-    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, is_addr=False):
+    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert,
+                        is_addr=False, force_msg=False):
         # 'sidebar' is a pre-formated obj to show to right of QR -- oled life
         # - 'msg' will appear to right if very short, else under in tiny
         # - ignores "is_addr" because exactly zero space to do anything special

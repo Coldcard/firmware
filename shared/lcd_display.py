@@ -655,7 +655,8 @@ class Display:
 
         return prev_x
 
-    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, partial_bar=None, is_addr=False):
+    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, partial_bar=None,
+                        is_addr=False, force_msg=False):
         # Show a QR code on screen w/ some text under it
         # - invert not supported on Q1
         # - sidebar not supported here (see users.py)
@@ -705,20 +706,21 @@ class Display:
         fullscreen = False
         trim_lines = 0
 
-        # always try to show the biggest possible QR code
-        if num_lines:
-            # better with text dropped?
-            e2 = max(1, ACTIVE_H // (w + 2))
-            if e2 > expand:
-                num_lines = 0
-                expand = e2
+        # always try to show the biggest possible QR code if not force_msg
+        if not force_msg:
+            if num_lines:
+                # better with text dropped?
+                e2 = max(1, ACTIVE_H // (w + 2))
+                if e2 > expand:
+                    num_lines = 0
+                    expand = e2
 
-        # fullscreen ?
-        e3 = (ACTIVE_H + 20) // (w + 2)
-        if expand < e3:
-            expand = e3
-            fullscreen = True
-            num_lines = 0
+            # fullscreen ?
+            e3 = (ACTIVE_H + 20) // (w + 2)
+            if expand < e3:
+                expand = e3
+                fullscreen = True
+                num_lines = 0
 
         # vert center in available space
         qw = (w+2) * expand
