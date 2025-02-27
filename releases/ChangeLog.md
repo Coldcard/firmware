@@ -45,14 +45,14 @@ This lists the changes in the most recent firmware, for each hardware platform.
 
 # Mk4 Specific Changes
 
-## 5.4.1 - 2024-02-13
+## 5.4.1 - 2025-02-13
 
 - Enhancement: Export single sig descriptor with simple QR.
 
 
 # Q Specific Changes
 
-## 1.3.1Q - 2024-02-13
+## 1.3.1Q - 2025-02-13
 
 - New Feature: Verify Signed RFC messages via BBQr
 - New Feature: Sign message from QR scan (format has to be JSON)
