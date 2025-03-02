@@ -143,10 +143,12 @@ def test_2fa_server(shared_secret, q_mode, make_2fa_url, enc, roundtrip_2fa):
 @pytest.mark.parametrize('shared_secret', [ '6SPAJXWD3XJTUQWO'])
 @pytest.mark.parametrize('label_len', [ 10] + list(range(20,25)))
 @pytest.mark.parametrize('q_mode', [ True, False] )
-def test_2fa_links(shared_secret, label_len, q_mode, roundtrip_2fa, sim_exec, request):
+def test_2fa_links(shared_secret, label_len, q_mode, roundtrip_2fa, sim_exec, request, is_q1):
     # Unit test for embedded encryption and padding of special links
     # NOTE: use '--localhost' command line flag to select local coldcard.com vs. production
     lh = request.config.getoption("--localhost")
+    if (not is_q1) and q_mode:
+        pytest.skip("no q_mode on Mk4")
 
     label = 'Z' * label_len
     z= sim_exec(f'from web2fa import make_web2fa_url; RV.write(repr(make_web2fa_url({label!r}, {shared_secret!r})))')
@@ -176,7 +178,7 @@ _skip_quiz = False
 @pytest.fixture
 def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz, is_q1,
               seed_story_to_words, cap_menu, OK, word_menu_entry, press_cancel, press_delete,
-              enter_number, scan_a_qr, cap_screen, settings_get, need_keypress):
+              enter_number, scan_a_qr, cap_screen, settings_get, need_keypress, microsd_path):
 
     def doit(c_words=None, mag=None, vel=None, whitelist=None, w2fa=None, first_time=True):
         if first_time:
@@ -185,7 +187,7 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
             pick_menu_item("Coldcard Co-Signing")
             time.sleep(.1)
             title, story = cap_story()
-            assert title == "Coldcard Co-Signing"
+            assert title == ("Coldcard Co-Signing" if is_q1 else "CC Co-Sign")
             press_select()
 
             time.sleep(.1)
@@ -305,28 +307,41 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
                     assert "ENTER to apply" in scr
 
                 press_select()
-                time.sleep(.1)
-                _, story = cap_story()
-                if len(whitelist) == 1:
-                    assert "Added new address to whitelist" in story
-                else:
-                    assert f"Added {len(whitelist)} new addresses to whitelist" in story
-
-                for addr in whitelist:
-                    assert addr in story
-
-                press_select()
-                time.sleep(.1)
-                m = cap_menu()
-                mi_addrs = [a for a in m if '⋯' in a]
-                for mia, addr in zip(mi_addrs, whitelist):
-                    _start, _end = mia.split('⋯')
-                    assert addr.startswith(_start)
-                    assert addr.endswith(_end)
-
-                press_cancel()
             else:
                 assert "Scan QR" not in m
+                fname = "ccc_addrs.txt"
+                with open(microsd_path(fname), "w") as f:
+                    for a in whitelist:
+                        f.write(f"{a}\n")
+
+                pick_menu_item("Import from File")
+                time.sleep(.1)
+                _, story = cap_story()
+                if "Press (1)" in story:
+                    need_keypress("1")
+                pick_menu_item(fname)
+
+            time.sleep(.1)
+            _, story = cap_story()
+            if len(whitelist) == 1:
+                assert "Added new address to whitelist" in story
+            else:
+                assert f"Added {len(whitelist)} new addresses to whitelist" in story
+
+            for addr in whitelist:
+                assert addr in story
+
+            # check menu correct
+            press_select()
+            time.sleep(.1)
+            m = cap_menu()
+            mi_addrs = [a for a in m if '⋯' in a]
+            for mia, addr in zip(mi_addrs, whitelist):
+                _start, _end = mia.split('⋯')
+                assert addr.startswith(_start)
+                assert addr.endswith(_end)
+
+            press_cancel()
 
             assert settings_get("ccc")["pol"]["addrs"] == whitelist
 
@@ -1055,6 +1070,7 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
 def test_remove_ccc(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, settings_get,
                     pick_menu_item, cap_story, press_select, need_keypress, policy_sign,
                     bitcoind_create_watch_only_wallet, bitcoind):
+
     settings_set("ccc", None)
     settings_set("multisig", [])
 
