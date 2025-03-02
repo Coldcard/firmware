@@ -4,7 +4,7 @@
 #
 import gc, chains, version, ngu, web2fa, bip39, re
 from chains import NLOCK_IS_TIME
-from utils import swab32, xfp2str, truncate_address, pad_raw_secret
+from utils import swab32, xfp2str, truncate_address, pad_raw_secret, show_single_address
 from glob import settings
 from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number, ux_aborted
 from menu import MenuSystem, MenuItem, start_chooser
@@ -427,7 +427,8 @@ class CCCAddrWhitelist(MenuSystem):
     async def edit_addr(self, menu, idx, item):
         # show detail and offer delete
         addr = item.arg
-        msg = 'Spends to this address will be permitted:\n\n%s\n\nPress (4) to delete.' % addr
+        msg = ('Spends to this address will be permitted:\n\n%s'
+               '\n\nPress (4) to delete.' % show_single_address(addr))
         ch = await ux_show_story(msg, escape='4')
         if ch == '4':
             self.delete_addr(addr)
@@ -524,7 +525,8 @@ class CCCAddrWhitelist(MenuSystem):
                 new.append(a)
 
         if not new:
-            await ux_show_story("Already in whitelist:\n\n" + '\n\n'.join(more_addrs))
+            await ux_show_story("Already in whitelist:\n\n" +
+                                '\n\n'.join(show_single_address(a) for a in more_addrs))
             return
 
         if len(addrs) > MAX_WHITELIST:
@@ -535,9 +537,9 @@ class CCCAddrWhitelist(MenuSystem):
 
         if len(new) > 1:
             await ux_show_story("Added %d new addresses to whitelist:\n\n%s" %
-                (len(new), '\n\n'.join(new)))
+                (len(new), '\n\n'.join(show_single_address(a) for a in new)))
         else:
-            await ux_show_story("Added new address to whitelist:\n\n%s" % new[0])
+            await ux_show_story("Added new address to whitelist:\n\n%s" % show_single_address(new[0]))
 
 class CCCPolicyMenu(MenuSystem):
     # Build menu stack that allows edit of all features of the spending
@@ -708,17 +710,20 @@ async def gen_or_import():
 
     ch = await ux_show_story(msg, escape='126', title="CCC Key C")
 
-    if ch == '1' or ch == '2':
+    if ch in '12':
         nwords = 24 if ch == '2' else 12
 
         async def done_key_C_import(words):
+            if not version.has_qwerty:
+                WordNestMenu.pop_all()
             await enable_step1(words)
 
         if version.has_qwerty:
             from ux_q1 import seed_word_entry
             await seed_word_entry('Key C Seed Words', nwords, done_cb=done_key_C_import)
         else:
-            words = WordNestMenu(nwords, done_cb=done_key_C_import)
+            nxt = WordNestMenu(nwords, done_cb=done_key_C_import)
+            the_ux.push(nxt)
 
         return None     # will call parent again
 
@@ -836,6 +841,10 @@ NUM_CHALLENGE_FAILS = 0
 async def key_c_challenge(words):
     # They entered some words, if they match our key C then allow edit of policy
     from glob import dis
+
+    if not version.has_qwerty:
+        from seed import WordNestMenu
+        WordNestMenu.pop_all()
 
     dis.fullscreen('Verifying...')
     
