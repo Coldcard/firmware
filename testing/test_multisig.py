@@ -3477,11 +3477,22 @@ def test_msas_enable_disable(import_ms_wallet, pick_menu_item, cap_story, goto_h
     assert "___" in story
 
 @pytest.mark.parametrize("desc", [True, False])
-def test_root_keys_import(desc, import_ms_wallet, clear_ms, fake_ms_txn, try_sign):
+def test_root_keys_import(desc, import_ms_wallet, clear_ms, goto_address_explorer,
+                          pick_menu_item, cap_story, cap_menu):
     clear_ms()
     M, N = 2, 3
-    import_ms_wallet(M, N, "p2wsh", accept=True, name="root",
-                     common="m", descriptor=desc)
+    keys = import_ms_wallet(M, N, "p2wsh", accept=True, name="root",
+                            common="m", descriptor=desc)
+
+    # just xfp + internal/external + index
+    target_der_paths = [f"[{xfp2str(tup[0])}/0/0]" for tup in keys]
+
+    goto_address_explorer()
+    pick_menu_item(cap_menu()[-1])
+    _, story = cap_story()
+    assert "//" not in story
+    der_paths = story.split("\n\n")[1].split("\n")[:N]
+    assert der_paths == target_der_paths
 
 
 @pytest.mark.bitcoind
@@ -3501,6 +3512,7 @@ def test_cc_root_key(import_ms_wallet, bitcoind, use_regtest, clear_ms, microsd_
         blank=True, passphrase=None, avoid_reuse=False, descriptors=True
     )
     goto_home()
+    target_first_der = []
 
     # get key from bitcoind cosigner
     target_desc = ""
@@ -3511,6 +3523,17 @@ def test_cc_root_key(import_ms_wallet, bitcoind, use_regtest, clear_ms, microsd_
     core_desc, checksum = target_desc.split("#")
     # remove pkh(....)
     core_key = core_desc[4:-1]
+
+    _idx = core_key.find("]")
+    assert _idx != -1
+    inner = core_key[1:_idx].split("/")
+    # xfp to upper
+    inner[0] = inner[0].upper()
+    core_der_base = f"[{'/'.join(inner)}/0/%d]"
+    cc_der_base = f"[{xfp2str(simulator_fixed_xfp)}/0/%d]"
+    target_first_der.append(core_der_base % 0)
+    target_first_der.append(cc_der_base % 0)
+
     desc = f"wsh(sortedmulti(2,{core_key},[{xfp2str(simulator_fixed_xfp).lower()}]{simulator_fixed_tpub}/0/*))"
     desc_info = ms.getdescriptorinfo(desc)
     desc_w_checksum = desc_info["descriptor"]  # with checksum
@@ -3535,6 +3558,11 @@ def test_cc_root_key(import_ms_wallet, bitcoind, use_regtest, clear_ms, microsd_
     r2 = text.find("]", -1, 0)
     text = text[r1: r2]
     core_desc_object = json.loads(text)
+    # bump range to be able to verify multisig scripts against bitcoind
+    # default exported range from us is just 100 addresses
+    for i in range(len(core_desc_object)):
+        core_desc_object[i]["range"] = [0,250]
+
     # import descriptors to watch only wallet
     res = ms.importdescriptors(core_desc_object)
     for obj in res:
@@ -3567,13 +3595,27 @@ def test_cc_root_key(import_ms_wallet, bitcoind, use_regtest, clear_ms, microsd_
 
     goto_address_explorer()
     pick_menu_item("2-of-2")
+    _, story = cap_story()
+    # 2of2 - full paths shown for first address
+    der_paths = story.split("\n\n")[1].split("\n")[:N]
+    assert der_paths == target_first_der
+
     need_keypress('1')  # SD
     contents = load_export("sd", label="Address summary", is_json=False, sig_check=False)
     cc_addrs = contents.strip().split("\n")[1:]
 
     # Generate the addresses file and get each line in a list
     for i, line in enumerate(cc_addrs):
-        addr = line.split(",")[1][1:-1]
+        split_line = line.split(",")
+        addr = split_line[1][1:-1]
+        script_hex = split_line[2][1:-1]
+        cc_der = split_line[-1][1:-1]
+        core_der = split_line[-2][1:-1]
+        assert cc_der == (cc_der_base % i)
+        assert core_der == (core_der_base % i)
         assert addr == bitcoind_addrs[i]
+        addr_info = ms.getaddressinfo(addr)
+        assert addr_info["ismine"]
+        assert addr_info["hex"] == script_hex
 
 # EOF
