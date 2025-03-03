@@ -483,7 +483,7 @@ class MultisigWallet(WalletABC):
             node = ch.deserialize_node(xpub, AF_P2SH)
             node.derive(change_idx, False)
             # indicate path used (for UX)
-            path = "[%s/%s/%d/{idx}]" % (xfp2str(xfp), deriv[2:], change_idx)
+            path = "[%s%s/%d/{idx}]" % (xfp2str(xfp), deriv.replace("m", ""), change_idx)
             nodes.append(node)
             paths.append(path)
 

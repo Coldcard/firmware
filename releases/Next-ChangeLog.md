@@ -20,6 +20,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Enhancement: Add `Bitcoin Safe` option to `Export Wallet`
 - Enhancement: 10% performance improvement in USB upload speed for large files
 - Bugfix: Fix stuck progress bar under `Receiving...` after a USB communications failure
+- Bugfix: Showing derivation path in Address Explorer for root key (m) showed double slash (//)
 
 
 # Mk4 Specific Changes
