@@ -24,8 +24,6 @@ from version import MAX_TXN_LEN
 from charcodes import KEY_NFC, KEY_QR, KEY_CANCEL
 
 
-CLEAR_PIN = '999999-999999'
-
 async def start_selftest(*args):
     # selftest is harmless, no need to warn anymore,
     # but this layer saves memory in typical cases
@@ -2022,7 +2020,7 @@ Write it down.'''
     while 1:
         lll.reset()
         lll.subtitle = "New " + title
-        pin = await lll.get_new_pin(title, allow_clear=False)
+        pin = await lll.get_new_pin(title)
 
         if pin is None:
             return await ux_aborted()
