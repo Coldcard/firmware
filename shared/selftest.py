@@ -194,6 +194,7 @@ async def test_secure_element():
             dis.fullscreen("Wait...")
             set_genuine()
             ux_clear_keys()
+            dis.busy_bar(False)
 
         ng = get_genuine()
         assert ng != gg     # "Could not invert LED"
