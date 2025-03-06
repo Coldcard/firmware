@@ -322,14 +322,25 @@ async def test_microsd():
     from files import CardSlot
     import os
 
+    def _is_inserted(slot_num):
+        if num_sd_slots > 1:
+            if slot_num == 0:
+                return CardSlot.sd_detect() == 0
+            elif slot_num == 1:
+                return CardSlot.sd_detect2() == 0
+            else:
+                assert False
+        else:
+            return CardSlot.is_inserted()
+
     async def wait_til_state(num, want):
         title = 'MicroSD Card'
         if num_sd_slots > 1:
             title += ' ' + chr(65+num)
-        label_test(title +':', 'Remove' if CardSlot.is_inserted() else 'Insert')
+        label_test(title +':', 'Remove' if _is_inserted(num) else 'Insert')
 
         while 1:
-            if want == CardSlot.is_inserted(): return
+            if want == _is_inserted(num): return
             await sleep_ms(100)
             if ux_poll_key():
                 raise RuntimeError("MicroSD test aborted")
@@ -337,19 +348,19 @@ async def test_microsd():
     for slot_num in range(num_sd_slots):
         # test presence switch
         for ph in range(7):
-            await wait_til_state(slot_num, not CardSlot.is_inserted())
+            await wait_til_state(slot_num, not _is_inserted(slot_num))
 
-            if ph >= 2 and CardSlot.is_inserted():
+            if ph >= 2 and _is_inserted(slot_num):
                 # debounce
                 await sleep_ms(100)
-                if CardSlot.is_inserted(): break
+                if _is_inserted(slot_num): break
                 if ux_poll_key():
                     raise RuntimeError("MicroSD test aborted")
 
         label_test('MicroSD Card:', 'Testing')
 
         # card inserted
-        assert CardSlot.is_inserted()     #, "SD not present?"
+        assert _is_inserted(slot_num)     #, "SD not present?"
 
         with CardSlot(slot_b=slot_num) as card:
 
@@ -366,9 +377,7 @@ async def test_microsd():
         await wait_til_state(slot_num, False)
 
 
-
 async def start_selftest():
-
     try:
         if version.has_battery:
             await test_battery()
@@ -404,6 +413,5 @@ async def start_selftest():
     except (RuntimeError, AssertionError) as e:
         e = str(e) or problem_file_line(e)
         await ux_show_story("Test failed:\n" + str(e), 'FAIL')
-        
     
 # EOF
