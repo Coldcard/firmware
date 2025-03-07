@@ -130,46 +130,50 @@ be needed for different systems.
             del fp
 
 async def write_text_file(fname_pattern, body, title, derive, addr_fmt,
-                          force_prompt=False):
+                          force_prompt=False, sig=True, no_qr=False):
     # Export data as a text file.
     from glob import dis, NFC
     from files import CardSlot, CardMissingError, needs_microsd
     from ux import import_export_prompt
 
-    choice = await import_export_prompt("%s file" % title, is_import=False,
-                                        force_prompt=force_prompt) # QR offered also on Mk4
-    if choice == KEY_CANCEL:
-        return
-    elif choice == KEY_QR:
-        await export_by_qr(body, title, "U")
-        return
-    elif choice == KEY_NFC:
-        await NFC.share_text(body)
-        return
+    while True:
+        choice = await import_export_prompt("%s file" % title, is_import=False,
+                                            force_prompt=force_prompt, no_qr=False) # QR offered also on Mk4
+        if choice == KEY_CANCEL:
+            break
+        elif choice == KEY_QR:
+            await export_by_qr(body, title, "U")
+            continue
+        elif choice == KEY_NFC:
+            await NFC.share_text(body)
+            continue
 
-    # choose a filename
-    try:
-        dis.fullscreen("Saving...")
-        with CardSlot(**choice) as card:
-            fname, nice = card.pick_filename(fname_pattern)
+        # choose a filename
+        try:
+            dis.fullscreen("Saving...")
+            with CardSlot(**choice) as card:
+                fname, nice = card.pick_filename(fname_pattern)
 
-            # do actual write
-            with open(fname, 'wb') as fd:
-                chunk_writer(fd, body)
+                # do actual write
+                with open(fname, 'wb') as fd:
+                    chunk_writer(fd, body)
 
-            h = ngu.hash.sha256s(body.encode())
-            sig_nice = write_sig_file([(h, fname)], derive, addr_fmt)
+                if sig:
+                    h = ngu.hash.sha256s(body.encode())
+                    sig_nice = write_sig_file([(h, fname)], derive, addr_fmt)
 
-    except CardMissingError:
-        await needs_microsd()
-        return
-    except Exception as e:
-        await ux_show_story('Failed to write!\n\n\n'+str(e))
-        return
+        except CardMissingError:
+            await needs_microsd()
+            continue
+        except Exception as e:
+            await ux_show_story('Failed to write!\n\n\n'+str(e))
+            continue
 
-    msg = '%s file written:\n\n%s\n\n%s signature file written:\n\n%s' % (title, nice, title,
-                                                                          sig_nice)
-    await ux_show_story(msg)
+        msg = '%s file written:\n\n%s' % (title, nice)
+        if sig:
+            msg += "\n\n%s signature file written:\n\n%s" % (title, sig_nice)
+
+        await ux_show_story(msg)
 
 async def make_summary_file(fname_pattern='public.txt'):
     from glob import dis
@@ -438,7 +442,7 @@ def generate_electrum_wallet(addr_type, account_num):
 
     return ujson.dumps(rv), derive + "/0/0", addr_type
 
-async def make_json_wallet(label, func, fname_pattern='new-wallet.json'):
+async def make_json_wallet(label, func, fname_pattern='new-wallet.json', force_bbqr=False):
     # Record **public** values and helpful data into a JSON file
     # - OWNERSHIP.note_wallet_used(..) should be called already by our caller or func
 
@@ -451,46 +455,47 @@ async def make_json_wallet(label, func, fname_pattern='new-wallet.json'):
     json_str, derive, addr_fmt = func()
     skip_sig = derive is False and addr_fmt is False
 
-    choice = await import_export_prompt("%s file" % label, is_import=False,
-                    no_qr=(not version.has_qwerty and len(json_str) >= MAX_V11_CHAR_LIMIT))
+    while True:
+        choice = await import_export_prompt("%s file" % label, is_import=False,
+                        no_qr=(not version.has_qwerty and len(json_str) >= MAX_V11_CHAR_LIMIT))
 
-    if choice == KEY_CANCEL:
-        return
-    elif choice == KEY_NFC:
-        await NFC.share_json(json_str)
-        return
-    elif choice == KEY_QR:
-        # render as QR and show on-screen
-        # - on mk4, this isn't offered if more than about 300 bytes because we can't
-        #   show that as a single QR
-        await export_by_qr(json_str, label, "J")
-        return
+        if choice == KEY_CANCEL:
+            break
+        elif choice == KEY_NFC:
+            await NFC.share_json(json_str)
+            continue
+        elif choice == KEY_QR:
+            # render as QR and show on-screen
+            # - on mk4, this isn't offered if more than about 300 bytes because we can't
+            #   show that as a single QR
+            await export_by_qr(json_str, label, "J", force_bbqr=force_bbqr)
+            continue
 
-    # choose a filename and save
-    try:
-        with CardSlot(**choice) as card:
-            fname, nice = card.pick_filename(fname_pattern)
+        # choose a filename and save
+        try:
+            with CardSlot(**choice) as card:
+                fname, nice = card.pick_filename(fname_pattern)
 
-            # do actual write
-            with open(fname, 'wt') as fd:
-                chunk_writer(fd, json_str)
+                # do actual write
+                with open(fname, 'wt') as fd:
+                    chunk_writer(fd, json_str)
 
-            if not skip_sig:
-                h = ngu.hash.sha256s(json_str.encode())
-                sig_nice = write_sig_file([(h, fname)], derive, addr_fmt)
+                if not skip_sig:
+                    h = ngu.hash.sha256s(json_str.encode())
+                    sig_nice = write_sig_file([(h, fname)], derive, addr_fmt)
 
-    except CardMissingError:
-        await needs_microsd()
-        return
-    except Exception as e:
-        await ux_show_story('Failed to write!\n\n\n'+str(e))
-        return
+        except CardMissingError:
+            await needs_microsd()
+            continue
+        except Exception as e:
+            await ux_show_story('Failed to write!\n\n\n'+str(e))
+            continue
 
-    msg = '%s file written:\n\n%s' % (label, nice)
-    if not skip_sig:
-        msg += '\n\n%s signature file written:\n\n%s' % (label, sig_nice)
+        msg = '%s file written:\n\n%s' % (label, nice)
+        if not skip_sig:
+            msg += '\n\n%s signature file written:\n\n%s' % (label, sig_nice)
 
-    await ux_show_story(msg)
+        await ux_show_story(msg)
 
 
 async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int_ext=True,

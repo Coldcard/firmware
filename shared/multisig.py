@@ -891,8 +891,6 @@ class MultisigWallet(WalletABC):
     async def export_wallet_file(self, mode="exported from", extra_msg=None, descriptor=False,
                                  core=False, desc_pretty=True):
         # create a text file with the details; ready for import to next Coldcard
-        from glob import NFC, dis
-
         my_xfp = xfp2str(settings.get('xfp'))
         if core:
             name = "Bitcoin Core"
@@ -907,51 +905,14 @@ class MultisigWallet(WalletABC):
         hdr = '%s %s' % (mode, my_xfp)
         label = "%s multisig setup" % name
 
-        choice = await import_export_prompt("%s file" % label, is_import=False,
-                                            no_qr=not version.has_qwerty)
-        if choice == KEY_CANCEL:
-            return
+        with uio.StringIO() as fp:
+            self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
+                               core=core, desc_pretty=desc_pretty)
+            body = fp.getvalue()
 
-        dis.fullscreen("Wait...")
-        if choice in (KEY_NFC, KEY_QR):
-            with uio.StringIO() as fp:
-                self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
-                                   core=core, desc_pretty=desc_pretty)
-                if choice == KEY_NFC:
-                    await NFC.share_text(fp.getvalue())
-                else:
-                    from export import export_by_qr
-                    await export_by_qr(fp.getvalue(), label, "U")
-            return
-
-        try:
-            with CardSlot(**choice) as card:
-                fname, nice = card.pick_filename(fname_pattern)
-
-                # do actual write
-                with open(fname, 'w+') as fp:
-                    self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
-                                       core=core, desc_pretty=desc_pretty)
-                #     fp.seek(0)
-                #     contents = fp.read()
-                # TODO re-enable once we know how to proceed with regards to with which key to sign
-                # from auth import write_sig_file
-                # h = ngu.hash.sha256s(contents.encode())
-                # sig_nice = write_sig_file([(h, fname)])
-
-            msg = '%s file written:\n\n%s' % (label, nice)
-            # msg += '\n\nColdcard multisig signature file written:\n\n%s' % sig_nice
-            if extra_msg:
-                msg += extra_msg
-
-            await ux_show_story(msg)
-
-        except CardMissingError:
-            await needs_microsd()
-            return
-        except Exception as e:
-            await ux_show_story('Failed to write!\n\n\n'+str(e))
-            return
+        from export import write_text_file
+        await write_text_file(fname_pattern, body, label, None, None,
+                              sig=False, no_qr=not version.has_qwerty)
 
     def render_export(self, fp, hdr_comment=None, descriptor=False, core=False, desc_pretty=True):
         if descriptor:
@@ -1493,9 +1454,6 @@ async def export_multisig_xpubs(*a, xfp=None, alt_secret=None, skip_prompt=False
     # - however some 3rd parties are making use of it as well.
     # - used for CCC feature now as well, but result looks just like normal export
     #
-    from glob import NFC, dis
-    from ux import import_export_prompt
-
     xfp = xfp2str(xfp or settings.get('xfp', 0))
     chain = chains.current_chain()
     
@@ -1521,75 +1479,37 @@ P2WSH:
         if ch != "y":
             return
 
-    acct_num = await ux_enter_bip32_index('Account Number:') or 0
+    acct = await ux_enter_bip32_index('Account Number:') or 0
 
-    choice = await import_export_prompt("%s file" % label, is_import=False,
-                                        no_qr=not version.has_qwerty)
-
-    if choice == KEY_CANCEL:
-        return
-
-    dis.fullscreen('Generating...')
-
-    todo = [
-        ( "m/45h", 'p2sh', AF_P2SH),       # iff acct_num == 0
-        ( "m/48h/{coin}h/{acct_num}h/1h", 'p2sh_p2wsh', AF_P2WSH_P2SH ),
-        ( "m/48h/{coin}h/{acct_num}h/2h", 'p2wsh', AF_P2WSH ),
-    ]
-
-    def render(fp):
-        fp.write('{\n')
-        with stash.SensitiveValues(secret=alt_secret) as sv:
-            for deriv, name, fmt in todo:
-                if fmt == AF_P2SH and acct_num:
-                    continue
-                dd = deriv.format(coin=chain.b44_cointype, acct_num=acct_num)
-                node = sv.derive_path(dd)
-                xp = chain.serialize_public(node, fmt)
-                fp.write('  "%s_deriv": "%s",\n' % (name, dd))
-                fp.write('  "%s": "%s",\n' % (name, xp))
-                xpub = chain.serialize_public(node)
-                descriptor_template = multisig_descriptor_template(xpub, dd, xfp, fmt)
-                if descriptor_template is None:
-                    continue
-                fp.write('  "%s_desc": "%s",\n' % (name, descriptor_template))
-
-        fp.write('  "account": "%d",\n' % acct_num)
-        fp.write('  "xfp": "%s"\n}\n' % xfp)
-
-    if choice in (KEY_NFC, KEY_QR):
+    def render(acct_num):
+        todo = [
+            ("m/45h", 'p2sh', AF_P2SH),  # iff acct_num == 0
+            ("m/48h/{coin}h/{acct_num}h/1h", 'p2sh_p2wsh', AF_P2WSH_P2SH),
+            ("m/48h/{coin}h/{acct_num}h/2h", 'p2wsh', AF_P2WSH),
+        ]
         with uio.StringIO() as fp:
-            render(fp)
-            if choice == KEY_NFC:
-                await NFC.share_json(fp.getvalue())
-            elif version.has_qwerty:
-                from ux_q1 import show_bbqr_codes
-                await show_bbqr_codes('J', fp.getvalue(), label)
-        return
+            fp.write('{\n')
+            with stash.SensitiveValues(secret=alt_secret) as sv:
+                for deriv, name, fmt in todo:
+                    if fmt == AF_P2SH and acct_num:
+                        continue
+                    dd = deriv.format(coin=chain.b44_cointype, acct_num=acct_num)
+                    node = sv.derive_path(dd)
+                    xp = chain.serialize_public(node, fmt)
+                    fp.write('  "%s_deriv": "%s",\n' % (name, dd))
+                    fp.write('  "%s": "%s",\n' % (name, xp))
+                    xpub = chain.serialize_public(node)
+                    descriptor_template = multisig_descriptor_template(xpub, dd, xfp, fmt)
+                    if descriptor_template is None:
+                        continue
+                    fp.write('  "%s_desc": "%s",\n' % (name, descriptor_template))
 
-    try:
-        with CardSlot(**choice) as card:
-            fname, nice = card.pick_filename(fname_pattern)
-            # do actual write: manual JSON here so more human-readable.
-            with open(fname, 'w+') as fp:
-                render(fp)
-            #     fp.seek(0)
-            #     contents = fp.read()
-            # TODO re-enable once we know how to proceed with regards to with which key to sign
-            # from auth import write_sig_file
-            # h = ngu.hash.sha256s(contents.encode())
-            # sig_nice = write_sig_file([(h, fname)])
+            fp.write('  "account": "%d",\n' % acct_num)
+            fp.write('  "xfp": "%s"\n}\n' % xfp)
+            return fp.getvalue(), False, False
 
-    except CardMissingError:
-        await needs_microsd()
-        return
-    except Exception as e:
-        await ux_show_story('Failed to write!\n\n\n'+str(e))
-        return
-
-    msg = '%s file written:\n\n%s' % (label, nice)
-
-    await ux_show_story(msg)
+    from export import make_json_wallet
+    await make_json_wallet(label, lambda: render(acct), fname_pattern, force_bbqr=True)
 
 async def validate_xpub_for_ms(obj, af_str, chain, my_xfp, xpubs):
     # Read xpub and validate from JSON received via SD card or BBQr

@@ -827,6 +827,7 @@ def test_samourai_vs_generic(chain, account, settings_set, pick_menu_item, goto_
     pick_menu_item("Segwit P2WPKH")  #  both postmix and premix are p2wpkh only
     file_desc_generic = load_export("sd", label="Descriptor", is_json=False, addr_fmt=AF_P2WPKH)
     press_select()  # written
+    press_cancel()  # leave export options
     press_cancel()  # back to export submenu
     press_cancel()  # back to advanced
     pick_menu_item("Export Wallet")

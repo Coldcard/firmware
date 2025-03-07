@@ -885,7 +885,8 @@ def test_import_ux(N, vdisk, goto_home, cap_story, pick_menu_item,
 @pytest.mark.parametrize('addr_fmt', ['p2sh-p2wsh', 'p2sh', 'p2wsh' ])
 @pytest.mark.parametrize('comm_prefix', ['m/1/2/3/4/5/6/7/8/9/10/11/12', None, "m/45h"])
 def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap_menu, press_select,
-                          microsd_path, import_ms_wallet, addr_fmt, clear_ms, way, load_export, is_q1):
+                          microsd_path, import_ms_wallet, addr_fmt, clear_ms, way, load_export, is_q1,
+                          press_cancel):
 
     # create a wallet, export to SD card, check file created.
     # - checks some values for derivation path, assuming MAX_PATH_DEPTH==12
@@ -950,6 +951,7 @@ def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap
     assert len(got) == 4 + N
 
     # test delete while we're here
+    press_cancel()
     pick_menu_item('Delete')
 
     time.sleep(.2)
@@ -2057,7 +2059,7 @@ def test_ms_import_nopath(N, xderiv, make_multisig, clear_ms, offer_ms_import):
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
 def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_import, press_select,
                                pick_menu_item, cap_story, microsd_path, virtdisk_path, nfc_read_text,
-                               goto_home, load_export, is_q1):
+                               goto_home, load_export, is_q1, press_cancel):
     # try config file with different derivation paths given, including None
     # - also check we can convert those into Electrum wallets
 
@@ -2100,6 +2102,7 @@ def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_impo
         m = xfp2str(xfp)
         assert any(m in ln for ln in lines)
 
+    press_cancel()
     pick_menu_item('Electrum Wallet')
 
     time.sleep(.25)
