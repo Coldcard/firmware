@@ -2014,15 +2014,20 @@ def check_and_decrypt_backup(microsd_path):
 @pytest.fixture
 def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
                       press_select, word_menu_entry, get_setting, is_q1,
-                      need_keypress, scan_a_qr, cap_screen):
+                      need_keypress, scan_a_qr, cap_screen, enter_complex):
     # restore backup with clear seed as first step
-    def doit(fn, passphrase, avail_settings=None, pass_way=None):
+    def doit(fn, passphrase, avail_settings=None, pass_way=None, custom_bkpw=False):
         unit_test('devtest/clear_seed.py')
 
         m = cap_menu()
         assert m[0] == 'New Seed Words'
-        pick_menu_item('Import Existing')
-        pick_menu_item('Restore Backup')
+        if custom_bkpw:
+            pick_menu_item('Advanced/Tools')
+            pick_menu_item('I Am Developer.')
+            pick_menu_item('Restore Bkup')
+        else:
+            pick_menu_item('Import Existing')
+            pick_menu_item('Restore Backup')
 
         time.sleep(.1)
         pick_menu_item(fn)
@@ -2039,6 +2044,8 @@ def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
                     break
                 time.sleep(.1)
             press_select()
+        elif custom_bkpw:
+            enter_complex(passphrase, b39pass=False)
         else:
             word_menu_entry(passphrase, has_checksum=False)
 

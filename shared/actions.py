@@ -1368,47 +1368,26 @@ async def import_xprv(_1, _2, item):
     await import_extended_key_as_secret(extended_key, ephemeral, meta='Imported XPRV')
     # not reached; will do reset.
 
-EMPTY_RESTORE_MSG = '''\
+async def need_clear_seed(*a):
+    await ux_show_story('''\
 You must clear the wallet seed before restoring a backup because it replaces \
 the seed value and the old seed would be lost.\n\n\
-Visit the advanced menu and choose 'Destroy Seed'.'''
+Visit the advanced menu and choose 'Destroy Seed'.''')
 
-async def restore_temporary(*A):
-
+async def restore_backup(a, b, item):
+    # normal word based imports (tmp or master depending on item.arg)
     fn = await file_picker(suffix=".7z")
-
     if fn:
         import backups
-        await backups.restore_complete(fn, temporary=True)
+        await backups.restore_complete(fn, item.arg, True)
 
-async def restore_everything(*A):
-
-    if not pa.is_secret_blank():
-        await ux_show_story(EMPTY_RESTORE_MSG)
-        return
-
-    # restore everything, using a password, from single encrypted 7z file
-    fn = await file_picker(suffix='.7z')
-
+async def restore_backup_dev(*a):
+    # used ONLY for Restore Bkup in I Am Developer
+    fn = await file_picker(suffix=[".7z", ".txt"])
     if fn:
+        words = False if fn[-3:] == ".7z" else None
         import backups
-        await backups.restore_complete(fn)
-
-async def restore_everything_cleartext(*A):
-    # Asssume no password on backup file; devs and crazy people only
-
-    if not pa.is_secret_blank():
-        await ux_show_story(EMPTY_RESTORE_MSG)
-        return
-
-    # restore everything, using NO password, from single text file, like would be wrapped in 7z
-    fn = await file_picker(suffix='.txt')
-
-    if fn:
-        import backups
-        prob = await backups.restore_complete_doit(fn, [])
-        if prob:
-            await ux_show_story(prob, title='FAILED')
+        await backups.restore_complete(fn, not pa.is_secret_blank(), words)
 
 async def bkpw_override(*A):
     # allows user to:
