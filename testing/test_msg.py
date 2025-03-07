@@ -125,8 +125,6 @@ def msg_sign_export(cap_story, press_nfc, nfc_read_text, press_select, press_can
                 time.sleep(0.3)
                 press_cancel()
                 time.sleep(.1)
-                title, story = cap_story()
-                assert f"Press {OK} to share again" in story
                 press_cancel()
 
         elif way == "qr":
@@ -459,13 +457,10 @@ def sign_using_nfc(goto_home, pick_menu_item, nfc_write_text, cap_story, press_s
         addr_vs_path(addr, subpath, addr_fmt, testnet=testnet)
         assert verify_message(addr, sig, msg) is True
         time.sleep(0.5)
-        _, story = cap_story()
-        assert f"Press {OK} to share again" in story
         press_select()
         signed_msg_again = nfc_read_text()
         assert signed_msg == signed_msg_again
         press_cancel()  # exit NFC animation
-        press_cancel()  # do not want to share again
 
         return sig, addr, msg
 

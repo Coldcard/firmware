@@ -17,6 +17,7 @@ This lists the new changes that have not yet been published in a normal release.
     - cannot view or change the CCC spending policy once set, policy violations are not explained
     - existing multisig wallets can be used by importing the spending-policy-controlled key
 
+- Enhancement: NFC export usability upgrade. NFC keeps exporting until CANCEL/X is pressed
 - Enhancement: Add `Bitcoin Safe` option to `Export Wallet`
 - Enhancement: 10% performance improvement in USB upload speed for large files
 - Bugfix: Fix stuck progress bar under `Receiving...` after a USB communications failure
