@@ -598,10 +598,12 @@ def test_clone_start(reset_seed_words, pick_menu_item, cap_story, goto_home):
 
 
 def test_bkpw_override(reset_seed_words, override_bkpw, goto_home, pick_menu_item,
-                       cap_story, press_select, garbage_collector, microsd_path):
+                       cap_story, press_select, garbage_collector, microsd_path,
+                       restore_backup_cs):
     reset_seed_words()  # clean slate
     old_pw = None
     test_cases = [
+        "arm prob slot merc hub fiel wing aver tale undo diar boos army cabl mous teac drif risk frow achi poet ecol boss grit",
         " ".join(12 * ["elevator"]),
         " ".join(12 * ["fever"]),
         32 * "a",
@@ -609,6 +611,7 @@ def test_bkpw_override(reset_seed_words, override_bkpw, goto_home, pick_menu_ite
         64 * "Q",
         (26 * "?") + "!@#$%^&*()",
     ]
+    fnames = []
     for pw in test_cases:
         override_bkpw(pw, old_pw)
 
@@ -630,7 +633,12 @@ def test_bkpw_override(reset_seed_words, override_bkpw, goto_home, pick_menu_ite
         time.sleep(1)
         title, story = cap_story()
         assert "Backup file written" in story
-        garbage_collector.append(microsd_path(story.split("\n\n")[1]))
+        fname = story.split("\n\n")[1]
+        garbage_collector.append(microsd_path(fname))
+        fnames.append(fname)
         press_select()
+
+    for pw, fn in zip(test_cases, fnames):
+        restore_backup_cs(fn, pw, custom_bkpw=True)
 
 # EOF

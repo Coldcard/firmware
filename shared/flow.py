@@ -234,8 +234,8 @@ DevelopersMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Serial REPL", f=dev_enable_repl),
     MenuItem('Warm Reset', f=reset_self),
-    MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
-    MenuItem("BKPW Override", menu=bkpw_override),
+    MenuItem("Restore Bkup", f=restore_backup_dev),
+    MenuItem("BKPW Override", menu=bkpw_override, predicate=has_secrets),
     MenuItem('Reflash GPU', f=reflash_gpu, predicate=version.has_qwerty),
 ]
 
@@ -335,7 +335,7 @@ BackupStuffMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Backup System", f=backup_everything),
     MenuItem("Verify Backup", f=verify_backup),
-    MenuItem("Restore Backup", f=restore_everything),   # just a redirect really
+    MenuItem("Restore Backup", f=need_clear_seed),   # just a UX msg really
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
 ]
 
@@ -389,7 +389,7 @@ ImportWallet = [
     MenuItem("24 Words", menu=start_seed_import, arg=24),
     MenuItem('Scan QR Code', predicate=version.has_qr,
              shortcut=KEY_QR, f=scan_any_qr, arg=(True, False)),
-    MenuItem("Restore Backup", f=restore_everything),
+    MenuItem("Restore Backup", f=restore_backup, arg=False),  # tmp=False
     MenuItem("Clone Coldcard", menu=clone_start),
     MenuItem("Import XPRV", f=import_xprv, arg=False),  # ephemeral=False
     MenuItem("Tapsigner Backup", f=import_tapsigner_backup_file, arg=False),

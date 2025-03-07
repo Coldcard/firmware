@@ -6,7 +6,7 @@ import compat7z, stash, ckcc, chains, gc, sys, bip39, uos, ngu
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from utils import pad_raw_secret
-from ux import ux_show_story, ux_confirm, ux_dramatic_pause, OK, X
+from ux import ux_show_story, ux_confirm, ux_dramatic_pause, OK, X, ux_input_text
 import version, ujson
 from uio import StringIO
 import seed
@@ -541,12 +541,13 @@ async def verify_backup_file(fname):
     await ux_show_story("Backup file CRC checks out okay.\n\nPlease note this is only a check against accidental truncation and similar. Targeted modifications can still pass this test.")
 
 
-async def restore_complete(fname_or_fd, temporary=False):
+async def restore_complete(fname_or_fd, temporary=False, words=True):
     from ux import the_ux
 
     async def done(words):
         # remove all pw-picking from menu stack
-        seed.WordNestMenu.pop_all()
+        if not version.has_qwerty and words:
+            seed.WordNestMenu.pop_all()
 
         prob = await restore_complete_doit(fname_or_fd, words,
                                            temporary=temporary)
@@ -554,14 +555,24 @@ async def restore_complete(fname_or_fd, temporary=False):
         if prob:
             await ux_show_story(prob, title='FAILED')
 
-    if version.has_qwerty:
-        from ux_q1 import seed_word_entry
-        return await seed_word_entry('Enter Password:', num_pw_words,
-                                     done_cb=done, has_checksum=False)
-    # give them a menu to pick from, and start picking
-    m = seed.WordNestMenu(num_words=num_pw_words, has_checksum=False, done_cb=done)
+    if words:
+        if version.has_qwerty:
+            from ux_q1 import seed_word_entry
+            return await seed_word_entry('Enter Password:', num_pw_words,
+                                         done_cb=done, has_checksum=False)
+        # give them a menu to pick from, and start picking
+        m = seed.WordNestMenu(num_words=num_pw_words, has_checksum=False, done_cb=done)
 
-    the_ux.push(m)
+        the_ux.push(m)
+
+    else:
+        pwd = []  # cleartext if words=None
+        if words is False:
+            ipw = await ux_input_text("", prompt="Your Backup Password",
+                                      min_len=bkpw_min_len, max_len=128)
+            pwd.append(ipw)
+
+        await done(pwd)
 
 async def restore_complete_doit(fname_or_fd, words, file_cleanup=None, temporary=False):
     # Open file, read it, maybe decrypt it; return string if any error
@@ -572,7 +583,6 @@ async def restore_complete_doit(fname_or_fd, words, file_cleanup=None, temporary
 
     # build password
     password = ' '.join(words)
-
     prob = None
 
     try:
