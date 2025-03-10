@@ -442,8 +442,8 @@ NormalSystem = [
 
 # Shown until unit is put into a numbered bag
 FactoryMenu = [
-    MenuItem('Version: ' + version.get_mpy_version()[1], f=show_version),
     MenuItem('Bag Me Now', f=scan_and_bag),
+    MenuItem('Version: ' + version.get_mpy_version()[1], f=show_version),
     MenuItem('DFU Upgrade', f=start_dfu, shortcut='u'),
     MenuItem('Ship W/O Bag', f=ship_wo_bag),
     MenuItem("Debug Functions", menu=DebugFunctionsMenu, shortcut='f'),
