@@ -136,9 +136,11 @@ release-products: built/production.bin
 	-git commit $(BOARD)/file_time.c -m "For $(NEW_VERSION)"
 	$(SIGNIT) sign -m $(HW_MODEL) $(VERSION_STRING) -r built/production.bin $(PROD_KEYNUM) -o built/production.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin $(RELEASE_FNAME)
+ifeq ($(findstring X,$(NEW_VERSION)),)
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin \
 		-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
 		$(RELEASE_FNAME:%.dfu=%-factory.dfu)
+endif
 	@echo
 	@echo 'Made release: ' $(RELEASE_FNAME)
 	@echo
