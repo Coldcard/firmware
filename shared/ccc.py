@@ -5,7 +5,7 @@
 import gc, chains, version, ngu, web2fa, bip39, re
 from chains import NLOCK_IS_TIME
 from utils import swab32, xfp2str, truncate_address, pad_raw_secret, show_single_address
-from glob import settings
+from glob import settings, dis
 from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number, ux_aborted
 from menu import MenuSystem, MenuItem, start_chooser
 from seed import seed_words_to_encoded_secret
@@ -780,11 +780,18 @@ async def enable_step1(words):
         words = await gen_or_import()
         if not words: return
 
-    # do BIP-32 basics: capture XFP and XPUB and encoded version of the secret
-    CCCFeature.init_setup(words)
+    dis.fullscreen("Wait...")
+    dis.busy_bar(True)
+    try:
+        # do BIP-32 basics: capture XFP and XPUB and encoded version of the secret
+        CCCFeature.init_setup(words)
 
-    # continue into config menu
-    m = CCCConfigMenu()
+        # continue into config menu
+        m = CCCConfigMenu()
+    except: raise
+    finally:
+        dis.busy_bar(False)
+
     the_ux.push(m)
 
 async def modify_ccc_settings():
@@ -840,7 +847,6 @@ NUM_CHALLENGE_FAILS = 0
 
 async def key_c_challenge(words):
     # They entered some words, if they match our key C then allow edit of policy
-    from glob import dis
 
     if not version.has_qwerty:
         from seed import WordNestMenu
