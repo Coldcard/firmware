@@ -785,12 +785,11 @@ async def enable_step1(words):
     try:
         # do BIP-32 basics: capture XFP and XPUB and encoded version of the secret
         CCCFeature.init_setup(words)
-
-        # continue into config menu
-        m = CCCConfigMenu()
-    except: raise
     finally:
         dis.busy_bar(False)
+
+    # continue into config menu
+    m = CCCConfigMenu()
 
     the_ux.push(m)
 
