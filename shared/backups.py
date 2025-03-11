@@ -44,12 +44,7 @@ def render_backup_contents(bypass_tmp=False):
 
     COMMENT('Private key details: ' + chain.name)
 
-    with stash.SensitiveValues(bypass_tmp=bypass_tmp) as sv:
-        if sv.deltamode:
-            # die rather than give up our secrets
-            import callgate
-            callgate.fast_wipe()
-
+    with stash.SensitiveValues(bypass_tmp=bypass_tmp, enforce_delta=True) as sv:
         if sv.mode == 'words':
             ADD('mnemonic', bip39.b2a_words(sv.raw))
 

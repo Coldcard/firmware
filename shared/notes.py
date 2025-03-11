@@ -13,7 +13,7 @@ from files import CardMissingError, needs_microsd, CardSlot
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 from charcodes import KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6
 from lcd_display import CHARS_W
-from utils import problem_file_line, url_unquote
+from utils import problem_file_line, url_unquote, wipe_if_deltamode
 
 # title, username and such are limited that they fit on the one line both in
 # text entry (W-2) and also in menu display (W-3)
@@ -21,11 +21,6 @@ from utils import problem_file_line, url_unquote
 ONE_LINE = CHARS_W-2
 
 async def make_notes_menu(*a):
-
-    from pincodes import pa
-    if pa.is_deltamode():
-        import callgate
-        callgate.fast_wipe()
 
     if not settings.get('secnap', False):
         # Explain feature, and then enable if interested. Drop them into menu.
@@ -122,6 +117,8 @@ class NotesMenu(MenuSystem):
         if not cnt:
             rv = news + [ MenuItem('Disable Feature', f=cls.disable_notes) ]
         else:
+            wipe_if_deltamode()
+
             rv = []
             for note in NoteContent.get_all():
                 rv.append(MenuItem('%d: %s' % (note.idx+1, note.title), menu=note.make_menu))
@@ -178,7 +175,6 @@ class NotesMenu(MenuSystem):
 
         await tmp._save_ux(menu)
         await cls.drill_to(menu, tmp)
-
 
     def update_contents(self):
         # Reconstruct the list of notes on this dynamic menu, because

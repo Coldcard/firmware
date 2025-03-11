@@ -73,6 +73,7 @@ async def dev_enable_repl(*a):
     # Enable serial port connection. You'll have to break case open.
 
     from ux import ux_show_story
+    from utils import wipe_if_deltamode
 
     wipe_if_deltamode()
     if not version.is_devmode: return
@@ -83,16 +84,5 @@ async def dev_enable_repl(*a):
     print("REPL enabled.")
     await ux_show_story("""\
 The serial port has now been enabled.\n\n3.3v TTL on Tx/Rx/Gnd pads @ 115,200 bps.""")
-
-def wipe_if_deltamode():
-    # If in deltamode, give up and wipe self rather do
-    # a thing that might reveal true master secret...
-
-    from pincodes import pa
-
-    if not pa.is_deltamode():
-        return
-
-    callgate.fast_wipe()
 
 # EOF
