@@ -203,14 +203,12 @@ class SensitiveValues:
     _cache_secret = None
     _cache_used = None
 
-    def __init__(self, secret=None, bip39pw='', bypass_tmp=False):
+    def __init__(self, secret=None, bip39pw='', bypass_tmp=False, enforce_delta=False):
         self.spots = []
 
         self._bip39pw = bip39pw
 
-        if secret is Ellipsis:
-            self.mode = self.raw = self.node = None
-        elif secret is not None:
+        if secret is not None:
             # sometimes we already know the secret
             self.secret = secret
             self.deltamode = False
@@ -223,7 +221,12 @@ class SensitiveValues:
 
             if not pa.has_secrets():
                 raise ZeroSecretException
+
             self.deltamode = pa.is_deltamode()
+            if self.deltamode and enforce_delta:
+                # wipe self before fetching secret
+                import callgate
+                callgate.fast_wipe()
 
             if self._cache_secret and not bypass_tmp:
                 # they are using new BIP39 passphrase but we already have raw secret

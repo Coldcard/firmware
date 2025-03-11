@@ -69,12 +69,7 @@ Otherwise, press {ok} to continue.'''.format(n=num_parts, ok=OK), escape='2')
 
     raw_secret = bytes(32)
     try:
-        with SensitiveValues() as sv:
-            if sv.deltamode:
-                # die rather than give up our secrets
-                import callgate
-                callgate.fast_wipe()
-
+        with SensitiveValues(enforce_delta=True) as sv:
             words = None
             if sv.mode == 'words':
                 words = bip39.b2a_words(sv.raw).split(' ')
@@ -294,12 +289,7 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
         if ch == 'x': return
         if ch == '1':
             dis.fullscreen("Wait...")
-            with SensitiveValues() as sv:
-                if sv.deltamode:
-                    # die rather than give up our secrets
-                    import callgate
-                    callgate.fast_wipe()
-
+            with SensitiveValues(enforce_delta=True) as sv:
                 if sv.mode == 'words':
                     # needs copy here [:] otherwise rewritten with zeros in __exit__
                     import_xor_parts.append(sv.raw[:])

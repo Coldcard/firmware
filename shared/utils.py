@@ -725,4 +725,13 @@ def truncate_address(addr):
         # tons of space on Q1
         return addr[0:12] + '⋯' + addr[-12:]
 
+def wipe_if_deltamode():
+    # If in deltamode, give up and wipe self rather do
+    # a thing that might reveal true master secret...
+    from pincodes import pa
+
+    if pa.is_deltamode():
+        import callgate
+        callgate.fast_wipe()
+
 # EOF

@@ -750,7 +750,6 @@ so you may perform transactions with it. Reboot the Coldcard to restore \
 normal operation.''')
         if ch != 'y': return
 
-        from pincodes import pa, AE_SECRET_LEN
         b, slot = tp.get_by_pin(pin)
         assert slot
 

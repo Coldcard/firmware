@@ -9,7 +9,7 @@ from uhashlib import sha256
 from uasyncio import sleep_ms
 from ubinascii import hexlify as b2a_hex
 from utils import imported, problem_file_line, get_filesize, encode_seed_qr
-from utils import xfp2str, B2A, txid_from_fname
+from utils import xfp2str, B2A, txid_from_fname, wipe_if_deltamode
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
 from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt, OK, X, ux_render_words
 from export import make_json_wallet, make_summary_file, make_descriptor_wallet_export
@@ -653,20 +653,14 @@ async def view_seed_words(*a):
     raw = mode = None
     if stash.bip39_passphrase:
         # get main secret - bypass tmp
-        with stash.SensitiveValues(bypass_tmp=True) as sv:
-            if not sv.deltamode:
-                assert sv.mode == "words"
-                raw = sv.raw[:]
-                mode = sv.mode
+        with stash.SensitiveValues(bypass_tmp=True, enforce_delta=True) as sv:
+            assert sv.mode == "words"
+            raw = sv.raw[:]
+            mode = sv.mode
 
         stash.SensitiveValues.clear_cache()
 
-    with stash.SensitiveValues(bypass_tmp=False) as sv:
-        if sv.deltamode:
-            # give up and wipe self rather than show true seed values.
-            import callgate
-            callgate.fast_wipe()
-
+    with stash.SensitiveValues(bypass_tmp=False, enforce_delta=True) as sv:
         dis.busy_bar(False)
         msg, qr, qr_alnum = render_master_secrets(mode or sv.mode,
                                                   raw or sv.raw,
@@ -702,12 +696,7 @@ async def export_seedqr(*a):
 
     # Note: cannot reach this menu item if no words. If they are tmp, that's cool.
 
-    with stash.SensitiveValues(bypass_tmp=False) as sv:
-        if sv.deltamode:
-            # give up and wipe self rather than show true seed values.
-            import callgate
-            callgate.fast_wipe()
-
+    with stash.SensitiveValues(bypass_tmp=False, enforce_delta=True) as sv:
         if sv.mode != 'words':
             raise ValueError(sv.mode)
 
@@ -1401,9 +1390,7 @@ async def bkpw_override(*A):
     if pa.is_secret_blank():
         return
 
-    if pa.is_deltamode():
-        import callgate
-        callgate.fast_wipe()
+    wipe_if_deltamode()
 
     while True:
         pwd = settings.get("bkpw", None)

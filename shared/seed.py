@@ -13,12 +13,12 @@
 import ngu, uctypes, bip39, random, version
 from ucollections import OrderedDict
 from menu import MenuItem, MenuSystem
-from utils import xfp2str, parse_extended_key, swab32, pad_raw_secret, problem_file_line
+from utils import xfp2str, parse_extended_key, swab32, pad_raw_secret, problem_file_line, wipe_if_deltamode
 from uhashlib import sha256
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, OK, X
 from ux import PressRelease, ux_input_text, show_qr_code
 from actions import goto_top_menu
-from stash import SecretStash, ZeroSecretException, SensitiveValues
+from stash import SecretStash, SensitiveValues
 from ubinascii import hexlify as b2a_hex
 from pwsave import PassphraseSaver, PassphraseSaverMenu
 from glob import settings, dis
@@ -663,7 +663,6 @@ def set_seed_value(words=None, encoded=None, chain=None):
 
 async def calc_bip39_passphrase(pw, bypass_tmp=False):
     from glob import dis, settings
-    from pincodes import pa
 
     dis.fullscreen("Working...")
 
@@ -967,12 +966,6 @@ class SeedVaultMenu(MenuSystem):
         # Dynamic menu with user-defined names of seeds shown
         from pincodes import pa
 
-        if pa.is_deltamode():
-            # attacker has re-enabled SeedVault in Settings
-            import callgate
-            callgate.fast_wipe()
-
-
         rv = []
         add_current_tmp = MenuItem("Add current tmp", f=cls._add_current_tmp)
 
@@ -984,6 +977,8 @@ class SeedVaultMenu(MenuSystem):
                 rv.append(add_current_tmp)
             rv.append(MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu))
         else:
+            wipe_if_deltamode()
+
             tmp_in_sv = False
             for i, (xfp_str, encoded, name, meta) in enumerate(seeds):
                 is_active = False
