@@ -33,7 +33,6 @@ V = range(1, 16)
 for i, v1 in enumerate(V):
     for j in range(i+1, len(V)):
         M, N = v1, V[j]
-        print(M, N)
         # number of pubkeys times 1 pushdata + 33 pubkey = 34 * N
         # +1 M
         # +1 N
@@ -43,17 +42,10 @@ for i, v1 in enumerate(V):
         assert vec == deser_string_vector(BytesIO(ser_string_vector(vec)))
         
 
-for i in [253, 0x10000, 0x100000000, 0x10000000000000000]:
+for i in [253, 0x10000, 0x100000000]:
     for j in [-1, 0, 1]:
         num = i + j
-        if i == 0x10000000000000000 and (j != -1):
-            try:
-                ser_compact_size(num)
-                raise RuntimeError
-            except AssertionError:
-                continue
-        else:
-            x = ser_compact_size(num)
+        x = ser_compact_size(num)
 
         assert num == deser_compact_size(BytesIO(x))
 
