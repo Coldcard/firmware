@@ -331,7 +331,7 @@ def test_split_unit(test_size, encoding, sim_exec, sim_eval):
 def test_psbt_static(file, goto_home, cap_story, scan_a_qr, press_select,
                      readback_bbqr, need_keypress, press_cancel, start_sign,
                      end_sign, bitcoind):
-
+    # final tx qrs are versions 23,24,25
     goto_home()
     need_keypress(KEY_QR)
 
@@ -394,5 +394,40 @@ KDOloGMDU3fv+Y3NRSe17SoO4uSKo9IUU2+baJ/pqaHZBuvmW6j5nnv/N4M5BCVawiUig/qzExZpFsA7
     title, story = cap_story()
     assert "Good signature by address" in story
 
+@pytest.mark.qrcode
+@pytest.mark.manual
+@pytest.mark.parametrize("i", range(1,25))
+def test_qr_sizes(i, scan_a_qr, readback_bbqr, press_select, need_keypress,
+                  qr_quality_check, render_bbqr, goto_home, use_regtest, cap_story,
+                  decode_psbt_with_bitcoind, decode_with_bitcoind, fake_txn, dev,
+                  start_sign, end_sign, press_cancel, cap_screen_qr):
+
+    # QRs from version 10 to version 25, everything from v26(included) and above is BBQR
+    # only v17 contains 2 lines of txid
+    psbt = fake_txn(1, i, dev.master_xpub, segwit_in=True, outstyles=['p2wpkh'])
+
+    goto_home()
+    need_keypress(KEY_QR)
+
+    # def split_qrs(raw, type_code, encoding=None,
+    #  min_split=1, max_split=1295, min_version=5, max_version=40
+    actual_vers, parts = split_qrs(psbt, 'P')
+
+    for p in parts:
+        scan_a_qr(p)
+        time.sleep(4.0 / len(parts))       # just so we can watch
+
+    for r in range(20):
+        title, story = cap_story()
+        if 'OK TO SEND' in title:
+            break
+        time.sleep(.1)
+    else:
+        raise pytest.fail('never saw it?')
+
+    # approve it
+    press_select()
+    time.sleep(.3)
+    cap_screen_qr()
 
 # EOF

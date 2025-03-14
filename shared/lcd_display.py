@@ -705,25 +705,20 @@ class Display:
         fullscreen = False
         trim_lines = 0
 
-        if w == 77:
-            # v15 =>  77px x 3: 77*3 = 231px
-            expand = 3
-            num_lines = 0
-            fullscreen = True
-        elif w in (109, 113, 117):
-            # v23 => 109px x 2 = 218px
-            # v24 => 113px x 2 = 226px
-            # v25 => 117px x 2 = 234px
-            expand = 2
-            num_lines = 0
-            fullscreen = True
-        elif expand == 1 and num_lines:
-            # Maybe loose the text lines?
-            expand2 = max(1, ACTIVE_H // (w+2))
-            if expand2 > expand:
-                # v18,v19,v20,v21,v22
+        # always try to show the biggest possible QR code
+        if num_lines:
+            # better with text dropped?
+            e2 = max(1, ACTIVE_H // (w + 2))
+            if e2 > expand:
                 num_lines = 0
-                expand = expand2
+                expand = e2
+
+        # fullscreen ?
+        e3 = (ACTIVE_H + 20) // (w + 2)
+        if expand < e3:
+            expand = e3
+            fullscreen = True
+            num_lines = 0
 
         # vert center in available space
         qw = (w+2) * expand
