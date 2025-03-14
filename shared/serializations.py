@@ -59,13 +59,13 @@ def deser_compact_size(f):
     nit = struct.unpack("<B", f.read(1))[0]
     if nit == 253:
         nit = struct.unpack("<H", f.read(2))[0]
-        assert 253 <= nit
+        assert nit > 253
     elif nit == 254:
         nit = struct.unpack("<I", f.read(4))[0]
-        assert 0x10000 <= nit
+        assert nit > 0x1_0000
     elif nit == 255:
         nit = struct.unpack("<Q", f.read(8))[0]
-        assert 0x100000000 <= nit
+        assert nit > 0x1_0000_0000
     return nit
 
 def deser_string(f):
