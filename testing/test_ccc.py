@@ -512,7 +512,7 @@ def bitcoind_create_watch_only_wallet(pick_menu_item, need_keypress, microsd_pat
         for obj in res:
             assert obj["success"], obj
 
-        for _ in range(3):
+        for _ in range(4):
             press_cancel()
 
         return bitcoind_wo
