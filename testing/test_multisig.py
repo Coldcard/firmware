@@ -1623,12 +1623,6 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
         assert 0, addr_fmt
 
     if way == "qr":
-        # first non-json garbage
-        scan_a_qr("aaaaaaaaaaaaaaaaaaaa")
-        time.sleep(1)
-        scr = cap_screen()
-        assert f"Expected JSON data" in scr
-
         # JSON but wrong
         _, parts = split_qrs('{"json": "but wrong","missing": "important data"}',
                              'J', max_version=20)

@@ -149,11 +149,11 @@ class CCCFeature:
 
             block_h = pol.get("block_h", chains.current_chain().ccc_min_block)
             if psbt.lock_time <= block_h:
-                raise CCCPolicyViolationError("rewound")
+                raise CCCPolicyViolationError("rewound (%d)" % psbt.lock_time)
 
             # we won't sign txn unless old height + velocity >= new height
             if psbt.lock_time < (block_h + velocity):
-                raise CCCPolicyViolationError("velocity")
+                raise CCCPolicyViolationError("velocity (%d)" % psbt.lock_time)
 
         # Whitelist of outputs addresses
         wl = pol.get("addrs", None)
@@ -285,7 +285,13 @@ class CCCConfigMenu(MenuSystem):
 
     async def debug_last_fail(self, *a):
         # debug for customers: why did we reject that last txn?
-        msg = 'The most recent policy check failed because of:\n\n"%s"\n\nPress (4) to clear.' \
+        pol = CCCFeature.get_policy()
+        bh = pol.get('block_h', None)
+        msg = ''
+        if bh:
+            msg += "CCC height:\n\n%s\n\n" % bh
+
+        msg += 'The most recent policy check failed because of:\n\n%s\n\nPress (4) to clear.' \
                     % CCCFeature.last_fail_reason
         ch = await ux_show_story(msg, escape='4')
 
@@ -406,17 +412,24 @@ class CCCAddrWhitelist(MenuSystem):
         addrs = CCCFeature.get_policy().get('addrs', [])
         maxxed = (len(addrs) >= MAX_WHITELIST)
 
-        items = [MenuItem(truncate_address(a), f=self.edit_addr, arg=a) for a in addrs]
-
-        if not items:
-            items.append(MenuItem("(none yet)"))
-
+        items = []
+        # better to show usability options at the top, as we can have up to 25 addresses in the menu
         if version.has_qr:
             items.append(MenuItem('Scan QR', f=(self.maxed_out if maxxed else self.scan_qr),
                                                     shortcut=KEY_QR))
 
         items.append(MenuItem('Import from File',
                 f=(self.maxed_out if maxxed else self.import_file)))
+
+        # show most recent added addresses at the top of the menu list
+        a_items = [MenuItem(truncate_address(a), f=self.edit_addr, arg=a) for a in addrs[::-1]]
+
+        if a_items:
+            items += a_items
+            if len(a_items) > 1:
+                items.append(MenuItem("Clear Whitelist", f=self.clear_all))
+        else:
+            items.append(MenuItem("(none yet)"))
 
         return items
 
@@ -435,6 +448,12 @@ class CCCAddrWhitelist(MenuSystem):
         addrs.remove(addr)
         CCCFeature.update_policy_key(addrs=addrs)
         self.update_contents()
+
+    async def clear_all(self, *a):
+        if await ux_confirm("Irreversibly remove all addresses from the whitelist?",
+                            confirm_key='4'):
+            CCCFeature.update_policy_key(addrs=[])
+            self.update_contents()
 
     async def import_file(self, *a):
         # Import from a file, or NFC.
@@ -476,6 +495,9 @@ class CCCAddrWhitelist(MenuSystem):
         with CardSlot(readonly=True, **choice) as card:
             with open(fn, 'rt') as fd:
                 for ln in fd.readlines():
+                    if len(results) >= MAX_WHITELIST:
+                        # no need to clog memory and parse more, we're done
+                        break
                     for here in pat.split(ln):
                         if len(here) >= 4:
                             try:
@@ -501,8 +523,10 @@ class CCCAddrWhitelist(MenuSystem):
         while 1:
             here = await q.scan_for_addresses("Bitcoin Address(es) to Whitelist", line2=ln)
             if not here: break
-            got.extend(here)
-            ln = 'Got %d so far. ENTER to apply.' % len(got)
+            for addr in here:
+                if addr not in got:
+                    got.append(addr)
+                    ln = 'Got %d so far. ENTER to apply.' % len(got)
 
         if got:
             # import them

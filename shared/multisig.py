@@ -4,7 +4,7 @@
 #
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson, version
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, to_ascii_printable
-from utils import str_to_keypath, problem_file_line, parse_extended_key, get_filesize, B2A
+from utils import str_to_keypath, problem_file_line, parse_extended_key, get_filesize, extract_cosigner
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
 from ux import import_export_prompt, ux_enter_bip32_index, ux_enter_number, OK, X
 from files import CardSlot, CardMissingError, needs_microsd
@@ -1211,7 +1211,7 @@ Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=
 
     def kt_my_keypair(self, ri):
         # Calc my keypair for sending PSBT files.
-        # 
+        #
 
         my_xfp = settings.get('xfp')
 
@@ -1248,7 +1248,7 @@ Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=
         kp = None
         for ms in cls.iter_wallets():
             if my_xfp not in ms.xfp_paths:
-                # we aren't a party to this MS wallet? not supposed to happen, but 
+                # we aren't a party to this MS wallet? not supposed to happen, but
                 # easy to handle
                 continue
 
@@ -1273,7 +1273,7 @@ Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=
                 # if implied session key decodes the checksum, it is right
                 ses_key, body = decode_step1(kp, his_pubkey, payload[4:])
 
-                if ses_key: 
+                if ses_key:
                     return ses_key, body, xfp
 
         return None, None, None
@@ -1625,7 +1625,30 @@ async def validate_xpub_for_ms(obj, af_str, chain, my_xfp, xpubs):
 async def ms_coordinator_qr(af_str, my_xfp, chain):
     # Scan a number of JSON files from BBQr w/ derive, xfp and xpub details.
     #
-    from ux_q1 import QRScannerInteraction
+    from ux_q1 import QRScannerInteraction, decode_qr_result, QRDecodeExplained
+
+    def convertor(got):
+        file_type, _, data = decode_qr_result(got, expect_bbqr=True)
+        if isinstance(data, bytes):
+            # we expect BBQr, but simple QR also possible here
+            data = data.decode()
+
+        if file_type == 'U':
+            data = data.strip()
+            if data[0] == '{' and data[-1] == '}':
+                file_type = 'J'
+        if file_type == 'J':
+            try:
+                import json
+                return json.loads(data)
+            except:
+                raise QRDecodeExplained('Unable to decode JSON data')
+        else:
+            for line in data.split("\n"):
+                if len(line) > 112:
+                    l_data = extract_cosigner(line, af_str)
+                    if l_data:
+                        return l_data
 
     num_mine = 0
     num_files = 0
@@ -1633,10 +1656,9 @@ async def ms_coordinator_qr(af_str, my_xfp, chain):
 
     msg = 'Scan Exported XPUB from Coldcard'
     while True:
-        vals = await QRScannerInteraction().scan_json(msg)
+        vals = await QRScannerInteraction().scan_general(msg, convertor)
         if vals is None:
             break
-
         try:
             is_mine = await validate_xpub_for_ms(vals, af_str, chain, my_xfp, xpubs)
         except KeyError as e:
@@ -1669,7 +1691,8 @@ async def ms_coordinator_file(af_str, my_xfp, chain, slot_b=None):
                         # ignore subdirs
                         continue
 
-                    if not fn.startswith('ccxp-') or not fn.endswith('.json'):
+                    if fn.endswith('.bsms'): pass  # allows files with [xfp/p/a/t/h]xpub
+                    elif not fn.startswith('ccxp-') or not fn.endswith('.json'):
                         # wrong prefix/suffix: ignore
                         continue
 
@@ -1685,7 +1708,16 @@ async def ms_coordinator_file(af_str, my_xfp, chain, slot_b=None):
 
                     try:
                         with open(full_fname, 'rt') as fp:
-                            vals = ujson.load(fp)
+                            try:
+                                # CC multisig XPUBs JSON expected
+                                vals = ujson.load(fp)
+                            except:
+                                # try looking for BIP-380 key expression
+                                fp.seek(0)
+                                for line in fp.readlines():
+                                    vals = extract_cosigner(line, af_str)
+                                    if vals:
+                                        break
 
                         is_mine = await validate_xpub_for_ms(vals, af_str, chain,
                                                              my_xfp, xpubs)
@@ -1775,8 +1807,8 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
             await ux_show_story("Need at least one other co-signer (key B).")
             return
 
-        xpubs.append(a)
-        xpubs.append(c)
+        # master seed is always key0, key C is key1, k2..kn backup keys
+        xpubs = [a, c] + xpubs
         num_mine += 2
 
     elif not num_mine:
