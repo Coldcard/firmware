@@ -593,7 +593,7 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
     from glob import dis
     from ux import ux_confirm
 
-    assert num_words and prompt and done_cb
+    assert num_words and prompt
 
     def redraw_words(wrds=None):
         if not wrds:
@@ -751,7 +751,10 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
             else:
                 err_msg = 'Next key: ' + nextchars
 
-    await done_cb(words)
+    if done_cb:
+        await done_cb(words)
+
+    return words
 
 def ux_dice_rolling():
     from glob import dis
@@ -986,6 +989,11 @@ class QRScannerInteraction:
                 txt, = vals
                 await ux_visualize_textqr(txt)
                 return 
+
+            if what == 'teleport':
+                from teleport import kt_incoming
+                await kt_incoming(*vals)
+                return
 
             # not reached?
             problem = 'Unhandled: ' + what

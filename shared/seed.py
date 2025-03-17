@@ -473,6 +473,7 @@ async def add_seed_to_vault(encoded, meta=None):
 
 async def set_ephemeral_seed(encoded, chain=None, summarize_ux=True, bip39pw='',
                              is_restore=False, meta=None):
+    # Capture tmp seed into vault, if so enabled, and regardless apply it as new tmp.
     if not is_restore:
         await add_seed_to_vault(encoded, meta=meta)
         dis.fullscreen("Wait...")
@@ -637,8 +638,8 @@ def xprv_to_encoded_secret(xprv):
 
 
 def set_seed_value(words=None, encoded=None, chain=None):
-    # Save the seed words (or other encoded private key) into secure element,
-    # and reboot. BIP-39 passphrase is not set at this point (empty string).
+    # Save the seed words (or other encoded private key) into secure element.
+    # BIP-39 passphrase is not set at this point (empty string).
     if words:
         nv = seed_words_to_encoded_secret(words)
     else:

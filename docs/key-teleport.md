@@ -1,0 +1,151 @@
+
+# Key Teleport
+
+Purpose: Send a small quantity of very secret data between two COLDCARD Q systems, with
+no risk of anything in the middle learning the secret.
+
+Method: ECDH and AES-256-CTR plus an extra wrapping layer, transmitted over a mixture of
+NFC, passive websites, and QR/BBQr codes.
+
+# Protocol Overview
+
+## Steps
+
+- Receiver picks an EC keypair, stores it in settings, and publishes the pubkey via a QR/NFC
+- Sender gets that, pickes own keypair, and does ECDH to arrive at a shared session key
+- Sender picks a human-readable secret (12 words) which is independant of anything else (P key)
+- The secret data (perhaps a seed phrase, XPRV, secure note, etc) is AES encryped with P key,
+  then encrypted + MAC added with session key
+- Data packet is sent to receiver, who can reconstruct the session key via ECDH
+- Prompt user for the P key to finish decoding
+- Decoded secret value is saved to Seed Vault or secure notes as appropriate
+- Receiver destroys EC keypair used in transfer
+
+### When used for PSBT Multisig
+
+- No action required on receiver
+- Sender uses the pubkey of the first unsigned input as receiver's pubkey
+- Same steps, but drops immediately into signing process when decoded correctly
+
+## Notes and Limitations
+
+- max 4k (after encoding) of data is possible due to HTTP limitations
+- all transfers are "data typed" and decode only expected on COLDCARD
+- Q model is required due to the use of QR codes to ulitmately get data into the COLDCARD
+
+
+# Details
+
+## Data Type Codes
+
+The first byte encodes what the package contents (under all the encryption).
+
+- `w` - 12/18/24 words - 16/24/32 bytes follow
+- `m` - (one byte of length) + (up to 71 bytes) - BIP-32 raw master secret [rare]
+- `r` - raw XPRV mode - 64 bytes follow which are the chain code then master privkey 
+- `x` - XPRV mode, full details - 4 bytes (XPRV) + base58 *decoded* binary-XPRV follows
+- `n` - one or many notes export (JSON array)
+- `v` - seed vault export (JSON: one secret key but includes includes name, source of key)
+- `p` - binary PSBT to be signed
+- `P` - a more-signed binary PSBT being returned back to sender
+
+## QR details
+
+BBQr is always used for the QR's involved in this process, even if they
+are short enough for a normal QR code. Becasuse the BBQr is being
+generated on the COLDCARD, it will not be compressed and will be
+Base32 encoded.
+
+New type codes for BBQr are defined for the purposes of this application:
+
+- `R` contains `(pubkey)` ... begins the process from receiver; pubkey is base32 of 33 bytes
+- `S` contains `(pubkey)(data)` ... data from sender; all base32 encoded, and first 33 bytes
+  are sender's pubkey
+- `E` for PSBT: `(randint)(data)` ... randint (4 bytes) indicates which a randomly
+  selected derived subkey from pre-shared xpub associated with receiver
+
+All the data is encrypted with the exception of the pubkey or randint. Keep in mind
+those are both nonce values picked uniquely for each transfer.
+
+### PSBT Key Picking
+
+When sending PSBT data, the keys involved are picked at random by the sender in range:
+    5000..(2^30).
+
+This is called `randint`. The receiver's pubkey will be
+
+    .../20250317/(randint)
+
+where `...` is the derivation used in the multisig setup for the co-signer who will
+receive the package. The sender's keypair is implied by:
+
+    .../20250318/(randint)
+
+Because both the sender and receiver have each other's XPUB they can derive
+the appropriate pubkeys (and privkey for their side) without communicating anymore
+more than `randint`. The sending COLDCARD will pick a new random value each time.
+
+## Encryption Details
+
+AES-256-CTR is used exclusively. Session key is picked via ECDH with final
+key value being the SHA256 over 64 bytes of coordinate X (concat) Y.
+
+While ECDH is enough to assure privacy from men in the middle, we
+add an additional layer of encryption, using 12 BIP-39 words with
+checksum (128 bits). We call this the "paranoid key" internally.
+
+- ECDH arrives at session key
+- decrypt (AES-256-CTR) the binary body of message
+- verify checksum:
+    - final 2 bytes should be `== SHA256(decrypted body[0:-2])[-2:]`
+    - if not, corruption, truncation, or wrong keys
+- if that decryption is correct, then prompt user for the paranoid key (12 words)
+- concat paranoid key (16 bytes) with first 16 bytes of the session key and run AES-256-CTR again
+- same checksum of 2 bytes of SHA256 are found inside after decryption
+
+Encryption adds 4 bytes of overhead because of these MAC values, 
+but should catch truncation and bitrot. There are no other
+protections against truncation as length data is not transmitted.
+
+# Web Component
+
+In order to "teleport" the contents of a QR code over NFC, we will
+publish a static website directly from an open Github repository.
+The single-page website contains javascript code which looks at the
+"hash" part of the incoming URL (`window.location.hash`) and if it
+meets the requirements, renders a large QR. The QR data must look like
+a correctly-ecoded BBQr with one of the type codes above.
+(otherwise the website could render any QR, which we don't want to
+support).
+
+The page will offer "copy to clipboard" features for the data inside
+the QR as a URL (ie. same URL as shown) and as an image and of course,
+the COLDCARD Q can scan from the web browser screen itself.
+
+On the COLDCARD side, when NFC is tapped, it will offer a long
+URL to this site with the data to be transfered "after the hash".
+This is optional since the QR shown on the Q itself, would pass
+the same data. 
+
+Since the website is running on Github, Coinkite does not have
+access to IP addresses or other log details. Because the data for
+teleport is "after the hash" it is never sent to Github's servers
+but remains in the browser only.
+
+# UX Details
+
+- When the receive process is started by the user, a pubkey is picked
+  and stored, so that they can come back later (after a power cycle)
+  and make use of the data encoded by the sender. However once a package
+  is decoded successfully, that key is deleted.
+
+- Sender must start by scanning the QR from a receiver. Then can pick what
+  to send, from secure notes to seeds and so on.
+
+- For PSBT multisig, user must pick a single co-signer (who hasn't already
+  signed) and the QR is prepared for that receiver. They should get another
+  chance to do the same for the other possible co-signers.
+
+- If the user opts to skip the "paranoid key" then treat it as `bytes([0x5a] * 32)`,
+  but still do the extra decryption and MAC check.
+
