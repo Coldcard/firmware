@@ -619,7 +619,13 @@ async def import_from_other(menu, *a):
             records = json.load(open(fn, 'rt'))
 
     # We have some JSON, parsed now.
-    # - should dedup, but we aren't
+    await import_from_json(records)
+        
+    await ux_dramatic_pause('Saved.', 3)
+    menu.update_contents()
+    
+async def import_from_json(records):
+    # should dedup, but we aren't
     try:
         assert 'coldcard_notes' in records, 'Incorrect format'
 
@@ -634,9 +640,5 @@ async def import_from_other(menu, *a):
 
     except Exception as e:
         await ux_show_story(title="Failure", msg=str(e) + '\n\n' + problem_file_line(e))
-        
-    await ux_dramatic_pause('Saved.', 3)
-    menu.update_contents()
-    
 
 # EOF

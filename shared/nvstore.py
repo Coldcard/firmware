@@ -66,6 +66,8 @@ from utils import call_later_ms
 #   unsort_ms = (bool) Allow unsorted multisig with BIP-67 disabled
 #   msas = multisig address show (do not censor multisig addresses)
 #   ccc = (complex) If present, CCC feature is enabled and key details stored here.
+#   ktrx = (privkey) Key teleport Rx has been started, this will be our keypair
+#   kttx = (words) Key teleport Tx: last words used (paranoid key)
 
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)

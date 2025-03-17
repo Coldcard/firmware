@@ -745,4 +745,17 @@ def chunk_checksum(fd, chunk=1024):
 
     return md.digest()
 
+def xor(*args):
+    # bit-wise xor between all args
+    vlen = len(args[0])
+    # all have to be same length
+    assert all(len(e) == vlen for e in args)
+    rv = bytearray(vlen)
+
+    for i in range(vlen):
+        for a in args:
+            rv[i] ^= a[i]
+
+    return rv
+
 # EOF

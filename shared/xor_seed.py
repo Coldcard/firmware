@@ -12,22 +12,9 @@ from seed import word_quiz, WordNestMenu, set_seed_value, set_ephemeral_seed
 from glob import settings
 from menu import MenuSystem, MenuItem
 from actions import goto_top_menu
-from utils import encode_seed_qr, pad_raw_secret
+from utils import encode_seed_qr, pad_raw_secret, xor
 from charcodes import KEY_QR
 from stash import SecretStash, blank_object, SensitiveValues, numwords_to_len, len_to_numwords
-
-def xor(*args):
-    # bit-wise xor between all args
-    vlen = len(args[0])
-    # all have to be same length
-    assert all(len(e) == vlen for e in args)
-    rv = bytearray(vlen)
-
-    for i in range(vlen):
-        for a in args:
-            rv[i] ^= a[i]
-
-    return rv
 
 async def xor_split_start(*a):
 

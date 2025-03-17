@@ -18,7 +18,7 @@ class QRDisplaySingle(UserInteraction):
     # Show a single QR code for (typically) a list of addresses, or a single value.
 
     def __init__(self, addrs, is_alnum, start_n=0, sidebar=None, msg=None,
-                 is_addrs=False, force_msg=False):
+                 is_addrs=False, force_msg=False, allow_nfc=True):
         self.is_alnum = is_alnum
         self.idx = 0             # start with first address
         self.invert = False      # looks better, but neither mode is ideal
@@ -29,6 +29,7 @@ class QRDisplaySingle(UserInteraction):
         self.msg = msg
         self.qr_data = None
         self.force_msg = force_msg
+        self.allow_nfc = allow_nfc
 
     def calc_qr(self, msg):
         # Version 2 would be nice, but can't hold what we need, even at min error correction,
@@ -95,13 +96,15 @@ class QRDisplaySingle(UserInteraction):
                 self.redraw()
                 continue
             elif NFC and (ch == '3' or ch == KEY_NFC):
-                # Share any QR over NFC!
-                await NFC.share_text(self.addrs[self.idx])
-                self.redraw()
+                if not self.allow_nfc:
+                    # not a valid as text over NFC sometimes; treat as cancel
+                    break
+                else:
+                    # Share any QR over NFC!
+                    await NFC.share_text(self.addrs[self.idx])
+                    self.redraw()
                 continue
             elif ch in 'xy'+KEY_ENTER+KEY_CANCEL:
-                if dis.has_lcd:
-                    dis.real_clear()  # bugfix
                 break
             elif len(self.addrs) == 1:
                 continue
@@ -122,6 +125,10 @@ class QRDisplaySingle(UserInteraction):
                 # self.idx has changed, so need full re-render
                 self.qr_data = None
                 self.redraw()
+
+        # bugfix
+        if dis.has_lcd:
+            dis.real_clear()
 
     async def interact(self):
         await self.interact_bare()

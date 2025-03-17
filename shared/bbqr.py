@@ -12,7 +12,8 @@ b32encode = ngu.codecs.b32_encode
 b32decode = ngu.codecs.b32_decode
 
 TYPE_LABELS = dict(P='PSBT File', T='Transaction', J='JSON', C='CBOR', U='Unicode Text',
-                        X='Executable', B='Binary')
+                        X='Executable', B='Binary', 
+                        R='KT Rx', S='KT Tx', E='KT PSBT')
 
 def int2base36(n):
     # convert an integer to two digits of base 36 string. 00 thu ZZ as bytes

@@ -39,11 +39,13 @@ if version.has_battery:
     from battery import battery_idle_timeout_chooser, brightness_chooser
     from q1 import scan_and_bag
     from notes import make_notes_menu
+    from teleport import kt_start_rx
 else:
     battery_idle_timeout_chooser = None
     brightness_chooser = None
     scan_and_bag = None
     make_notes_menu = None
+    kt_start_rx = None
 
 
 #
@@ -253,6 +255,7 @@ AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
     MenuItem("Upgrade Firmware", menu=UpgradeMenu, predicate=is_not_tmp),
     MenuItem("File Management", menu=FileMgmtMenu),
+    MenuItem("Key Teleport (start)", f=kt_start_rx, predicate=version.has_qr),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
     MenuItem("I Am Developer.", menu=maybe_dev_menu),
@@ -362,6 +365,7 @@ AdvancedNormalMenu = [
                             f=drv_entro_start),
     MenuItem("View Identity", f=view_ident),
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
+    MenuItem("Key Teleport (start)", f=kt_start_rx, predicate=version.has_qr),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     ToggleMenuItem('Enable HSM', 'hsmcmd', ['Default Off', 'Enable'],
                    story=("Enable HSM? Enables all user management commands, and other HSM-only USB commands. "

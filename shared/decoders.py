@@ -136,6 +136,10 @@ def decode_qr_result(got, expect_secret=False, expect_text=False, expect_bbqr=Fa
                 what = "smsg"
 
             return what, (got,)
+
+        elif ty in 'RSE':
+            # key-teleport related
+            return 'teleport', (ty, got)
         else:
             msg = TYPE_LABELS.get(ty, 'Unknown FileType')
             raise QRDecodeExplained("Sorry, %s not useful." % msg)

@@ -806,8 +806,12 @@ class Display:
         else:
             pat = ''                # clear line
 
-        self.text(None, -3, pat)
+        if count == hdr.num_parts and count == 1:
+            # skip the BS, it's a simple one
+            self.progress_bar_show(1)
+            return
 
+        self.text(None, -3, pat)
         self.text(None, -2, 'Keep scanning more...' if count < hdr.num_parts else 'Got all parts!')
         self.text(None, -1, '%s: %d of %d parts' % (hdr.file_label(), count, hdr.num_parts),
                                                         dark=True)
