@@ -299,7 +299,7 @@ class BitcoinMain(ChainsBase):
     # see <https://github.com/bitcoin/bitcoin/blob/master/src/chainparams.cpp#L140>
     ctype = 'BTC'
     name = 'Bitcoin Mainnet'
-    ccc_min_block = 865572
+    ccc_min_block = 890584
 
     slip132 = {
         AF_CLASSIC:     Slip132Version(0x0488B21E, 0x0488ADE4, 'x'),

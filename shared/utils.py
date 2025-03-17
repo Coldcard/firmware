@@ -8,6 +8,7 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
 from charcodes import OUT_CTRL_ADDRESS
 from uhashlib import sha256
+from public_constants import MAX_PATH_DEPTH, AF_CLASSIC
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
 
@@ -250,7 +251,6 @@ def cleanup_deriv_path(bin_path, allow_star=False):
     # - assume 'm' prefix, so '34' becomes 'm/34', etc
     # - do not assume /// is m/0/0/0
     # - if allow_star, then final position can be * or *h (wildcard)
-    from public_constants import MAX_PATH_DEPTH
 
     s = to_ascii_printable(bin_path, strip=True).lower()
 
@@ -758,5 +758,31 @@ def xor(*args):
             rv[i] ^= a[i]
 
     return rv
+
+def extract_cosigner(data, af_str):
+    # decodes any text, looking for key expression [xfp/p/a/t/h]xpub123
+    # BIP-380 https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki#key-expressions
+    # only first key expression will be parsed from the data
+    # key origin info is required
+    # failure to find "proper" key expression results in None being returned
+    pub = "%spub" % chains.current_chain().slip132[AF_CLASSIC].hint
+    if pub not in data:
+        return
+
+    o_start = data.find("[")
+    o_end = data.find("]")
+    if 0 <= o_start < o_end:
+        key_orig_info = data[o_start+1:o_end]
+        ss = key_orig_info.split("/")
+        xfp = ss[0]
+        if (len(xfp) == 8) and (data[o_end+1:o_end+1+len(pub)] == pub):
+            deriv = "m"
+            der_nums = "/".join(ss[1:])
+            if der_nums:
+                deriv += ("/" + der_nums)
+            ek = data[o_end+1:o_end+1+112]
+            key_deriv = "%s_deriv" %  af_str
+            # emulate coldcard export xpubs
+            return {"xfp": xfp, af_str: ek, key_deriv: deriv}
 
 # EOF
