@@ -111,10 +111,10 @@ class VirtDisk:
 
         return actual
 
-    def new_psbt(self, filename, sz):
+    def new_psbt(self, filename):
         # New incoming PSBT has been detected, start to sign it.
         from auth import sign_psbt_file
-        uasyncio.create_task(sign_psbt_file(filename, force_vdisk=True))
+        uasyncio.create_task(sign_psbt_file(filename, force_vdisk=True, abort=True))
 
     def new_firmware(self, filename, sz):
         # potential new firmware file detected
@@ -157,9 +157,9 @@ class VirtDisk:
 
             lfn = fn.lower()
 
-            if lfn.endswith('.psbt') and sz > 100:
+            if lfn.endswith('.psbt') and sz > 100 and ("-signed" not in lfn):
                 self.ignore.add(fn)
-                self.new_psbt(fn, sz)
+                self.new_psbt(fn)
                 break
 
             if lfn.endswith('.dfu') and sz > FW_MIN_LENGTH:

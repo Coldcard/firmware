@@ -25,7 +25,9 @@ This lists the new changes that have not yet been published in a normal release.
 - Enhancement: 10% performance improvement in USB upload speed for large files
 - Bugfix: Fix stuck progress bar under `Receiving...` after a USB communications failure
 - Bugfix: Showing derivation path in Address Explorer for root key (m) showed double slash (//)
-- Bugfix: Enable to restore dev backup with custom password other than 12 words format 
+- Bugfix: Enable to restore dev backup with custom password other than 12 words format
+- Bugfix: Virtual Disk auto mode ignore already signed PSBTs (with "-signed" in file name)
+- Bugfix: Virtual Disk auto mode stuck on "Reading..." screen
 
 
 # Mk4 Specific Changes
