@@ -13,7 +13,7 @@ from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH, AF_P
 from public_constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
-from ux import show_qr_code, OK, X, ux_input_text, ux_enter_bip32_index
+from ux import show_qr_code, OK, X, ux_input_text, ux_enter_bip32_index, abort_and_push
 from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, chunk_checksum
 from utils import B2A, to_ascii_printable, show_single_address
@@ -1439,7 +1439,7 @@ async def done_signing(psbt, input_method=None, filename=None, force_vdisk=False
             n += 1
 
 
-async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
+async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, abort=False):
     # sign a PSBT file found on a MicroSD card
     # - or from VirtualDisk (mk4)
     from files import CardSlot
@@ -1498,7 +1498,11 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
              "force_vdisk": force_vdisk,
              "output_encoder": output_encoder}
     )
-    the_ux.push(UserAuthorizedAction.active_request)
+    if abort:
+        # needed for auto vdisk mode
+        abort_and_push(UserAuthorizedAction.active_request)
+    else:
+        the_ux.push(UserAuthorizedAction.active_request)
 
 class RemoteBackup(UserAuthorizedAction):
     def __init__(self):
