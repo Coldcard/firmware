@@ -4,7 +4,7 @@
 #
 import gc, chains, version, ngu, web2fa, bip39, re
 from chains import NLOCK_IS_TIME
-from utils import swab32, xfp2str, truncate_address, pad_raw_secret, show_single_address
+from utils import swab32, xfp2str, truncate_address, deserialize_secret, show_single_address
 from glob import settings, dis
 from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number, ux_aborted
 from menu import MenuSystem, MenuItem, start_chooser
@@ -45,7 +45,7 @@ class CCCFeature:
     def get_encoded_secret(cls):
         # Gets the key C as encoded binary secret, compatible w/
         # encodings used in stash.
-        return pad_raw_secret(settings.get('ccc')['secret'])
+        return deserialize_secret(settings.get('ccc')['secret'])
 
     @classmethod
     def get_xfp(cls):
@@ -369,7 +369,7 @@ be ready to show it as a QR, before proceeding.'''
         from actions import goto_top_menu
 
         enc = CCCFeature.get_encoded_secret()
-        await set_ephemeral_seed(enc, meta='Key C from CCC')
+        await set_ephemeral_seed(enc, origin='Key C from CCC')
 
         goto_top_menu()
 
@@ -725,10 +725,10 @@ async def gen_or_import():
 
     elif ch == '6':
         # pick existing from Seed Vault
-        enc = await SeedVaultChooserMenu.pick(words_only=True)
-        if not enc: return None
-        words = SecretStash.decode_words(enc)
-        await enable_step1(words)
+        picked = await SeedVaultChooserMenu.pick(words_only=True)
+        if picked:
+            words = SecretStash.decode_words(deserialize_secret(picked.encoded))
+            await enable_step1(words)
 
         return None
 

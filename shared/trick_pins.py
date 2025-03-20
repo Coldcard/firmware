@@ -776,7 +776,7 @@ normal operation.''')
 
         # switch over to new secret!
         dis.fullscreen("Applying...")
-        await set_ephemeral_seed(encoded, meta=name)
+        await set_ephemeral_seed(encoded, origin=name)
         goto_top_menu()
 
     async def countdown_details(self, m, l, item):

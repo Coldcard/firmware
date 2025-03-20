@@ -13,7 +13,7 @@ NFC, passive websites, and QR/BBQr codes.
 
 - Receiver picks an EC keypair, stores it in settings, and publishes the pubkey via a QR/NFC
 - Sender gets that, pickes own keypair, and does ECDH to arrive at a shared session key
-- Sender picks a human-readable secret (12 words) which is independant of anything else (P key)
+- Sender picks a human-readable secret which is independant of anything else (P key)
 - The secret data (perhaps a seed phrase, XPRV, secure note, etc) is AES encryped with P key,
   then encrypted + MAC added with session key
 - Data packet is sent to receiver, who can reconstruct the session key via ECDH
@@ -40,9 +40,7 @@ NFC, passive websites, and QR/BBQr codes.
 
 The first byte encodes what the package contents (under all the encryption).
 
-- `w` - 12/18/24 words - 16/24/32 bytes follow
-- `m` - (one byte of length) + (up to 71 bytes) - BIP-32 raw master secret [rare]
-- `r` - raw XPRV mode - 64 bytes follow which are the chain code then master privkey 
+- `s` - 12/18/24 words/raw master/xprv - 16/24/32/64 bytes follow encoded in internal format
 - `x` - XPRV mode, full details - 4 bytes (XPRV) + base58 *decoded* binary-XPRV follows
 - `n` - one or many notes export (JSON array)
 - `v` - seed vault export (JSON: one secret key but includes includes name, source of key)
@@ -58,10 +56,9 @@ Base32 encoded.
 
 New type codes for BBQr are defined for the purposes of this application:
 
-- `R` contains `(pubkey)` ... begins the process from receiver; pubkey is base32 of 33 bytes
-- `S` contains `(pubkey)(data)` ... data from sender; all base32 encoded, and first 33 bytes
-  are sender's pubkey
-- `E` for PSBT: `(randint)(data)` ... randint (4 bytes) indicates which a randomly
+- `R` contains `(pubkey)` ... begins the process from receiver; compressed pubkey is 33 bytes
+- `S` contains `(pubkey)(data)` ... data from sender; first 33 bytes are sender's pubkey
+- `E` for PSBT: `(randint)(data)` ... randint (4 bytes) indicates which randomly
   selected derived subkey from pre-shared xpub associated with receiver
 
 All the data is encrypted with the exception of the pubkey or randint. Keep in mind
@@ -81,8 +78,8 @@ receive the package. The sender's keypair is implied by:
 
     .../20250318/(randint)
 
-Because both the sender and receiver have each other's XPUB they can derive
-the appropriate pubkeys (and privkey for their side) without communicating anymore
+Because both the sender and receiver already have each other's XPUB they can derive
+the appropriate pubkeys (and privkey for their side) without communicating 
 more than `randint`. The sending COLDCARD will pick a new random value each time.
 
 ## Encryption Details
@@ -91,16 +88,22 @@ AES-256-CTR is used exclusively. Session key is picked via ECDH with final
 key value being the SHA256 over 64 bytes of coordinate X (concat) Y.
 
 While ECDH is enough to assure privacy from men in the middle, we
-add an additional layer of encryption, using 12 BIP-39 words with
-checksum (128 bits). We call this the "paranoid key" internally.
+add an additional layer of encryption. We call this the "paranoid key" internally
+and in the UX it is called "Teleport Password".
+
+The user sees a random 8-character password, generated as a random 40-bit value, but
+shown in Base32 (8 chars) for the human to enter. We apply PBKDF2-SHA512 with
+an interation count of 5000 to stretch that to 512 bits, of which we use half.
+The session key is used as the key for the KDF, and the entered value as salt.
 
 - ECDH arrives at session key
 - decrypt (AES-256-CTR) the binary body of message
 - verify checksum:
     - final 2 bytes should be `== SHA256(decrypted body[0:-2])[-2:]`
     - if not, corruption, truncation, or wrong keys
-- if that decryption is correct, then prompt user for the paranoid key (12 words)
-- concat paranoid key (16 bytes) with first 16 bytes of the session key and run AES-256-CTR again
+- if that decryption is correct, then prompt user for the paranoid key (8 chars)
+- stretch that value using session key and 5000 iterations of PBKDF2-SHA512
+- use upper 256 bits and run AES-256-CTR again
 - same checksum of 2 bytes of SHA256 are found inside after decryption
 
 Encryption adds 4 bytes of overhead because of these MAC values, 
@@ -114,23 +117,32 @@ publish a static website directly from an open Github repository.
 The single-page website contains javascript code which looks at the
 "hash" part of the incoming URL (`window.location.hash`) and if it
 meets the requirements, renders a large QR. The QR data must look like
-a correctly-ecoded BBQr with one of the type codes above.
-(otherwise the website could render any QR, which we don't want to
-support).
+a correctly-encoded BBQr with one of the 3 type-codes above (`R` `S` or `E`).
+Otherwise the website could render any QR, which we don't want to
+support.
 
 The page will offer "copy to clipboard" features for the data inside
 the QR as a URL (ie. same URL as shown) and as an image and of course,
 the COLDCARD Q can scan from the web browser screen itself.
 
-On the COLDCARD side, when NFC is tapped, it will offer a long
-URL to this site with the data to be transfered "after the hash".
-This is optional since the QR shown on the Q itself, would pass
-the same data. 
+When the BBQr data is larger than comfortable for a single QR, the
+website can split into a multi-frame BBQr. The website can
+do this without understanding the contents of the BBQr data (all
+of which is encrypted). Download options will be provided for
+single-frame QR, animated PNG, and "stacked BBQr" (a single tall
+PNG with each QR frame stacked).
+
+On the COLDCARD side, when NFC is tapped, it will offer a long URL
+to this site with the data to be transfered "after the hash".  This
+is optional since the QR can be shown on the Q itself, and would
+pass the same data.
 
 Since the website is running on Github, Coinkite does not have
 access to IP addresses or other log details. Because the data for
 teleport is "after the hash" it is never sent to Github's servers
-but remains in the browser only.
+but remains in the browser only. All JS resources referenced by the
+webpage will have content hashes applied to prevent interference,
+and the site will be served over SSL.
 
 # UX Details
 
@@ -146,6 +158,4 @@ but remains in the browser only.
   signed) and the QR is prepared for that receiver. They should get another
   chance to do the same for the other possible co-signers.
 
-- If the user opts to skip the "paranoid key" then treat it as `bytes([0x5a] * 32)`,
-  but still do the extra decryption and MAC check.
 
