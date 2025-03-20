@@ -8,11 +8,11 @@
 import ngu, bip39, version
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause
 from ux import show_qr_code, ux_render_words, OK
-from seed import word_quiz, WordNestMenu, set_seed_value, set_ephemeral_seed
+from seed import word_quiz, WordNestMenu, set_seed_value, set_ephemeral_seed, seed_vault_iter
 from glob import settings
 from menu import MenuSystem, MenuItem
 from actions import goto_top_menu
-from utils import encode_seed_qr, pad_raw_secret, xor
+from utils import encode_seed_qr, deserialize_secret, xor
 from charcodes import KEY_QR
 from stash import SecretStash, blank_object, SensitiveValues, numwords_to_len, len_to_numwords
 
@@ -203,13 +203,11 @@ async def xor_all_done(data):
                 #     ))
                 #     for i in enc_parts
                 # ]
-                await set_ephemeral_seed(
-                    enc,
-                    meta='SeedXOR(%d parts, check: "%s")' % (
-                        num_parts, chk_word
-                    )
-                )
+                await set_ephemeral_seed(enc,
+                    origin='SeedXOR(%d parts, check: "%s")' % (num_parts, chk_word))
+
                 goto_top_menu()
+
         break
 
 class XORWordNestMenu(WordNestMenu):
@@ -284,14 +282,14 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
         # Add from Seed Vault?
         # filter only those that are correct length and type from seed vault
         opt = []
-        for i, (xfp_str, hex_str, _, _) in enumerate(settings.master_get("seeds", [])):
-            raw = pad_raw_secret(hex_str)
+        for i, rec in seed_vault_iter():
+            raw = deserialize_secret(rec.encoded)
 
             nw = SecretStash.is_words(raw)
             if nw and nw == desired_num_words:
                 # it is words, and right length
                 sk = SecretStash.decode_words(raw, bin_mode=True)
-                opt.append((i, xfp_str, sk))
+                opt.append((i, rec.xfp, sk))
 
             blank_object(raw)
 

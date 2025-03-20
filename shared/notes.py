@@ -635,7 +635,8 @@ async def import_from_json(records):
 
         was = list(settings.get('notes', []))
         was.extend(new)
-        settings.put('notes', was)
+        settings.set('notes', was)
+        settings.set('secnap', True)
         settings.save()
 
     except Exception as e:

@@ -1292,11 +1292,11 @@ async def verify_backup(*A):
     # do a limited CRC-check over encrypted file
     await backups.verify_backup_file(fn)
 
-async def import_extended_key_as_secret(extended_key, ephemeral, meta=None):
+async def import_extended_key_as_secret(extended_key, ephemeral, origin=None):
     try:
         import seed
         if ephemeral:
-            await seed.set_ephemeral_seed_extended_key(extended_key, meta=meta)
+            await seed.set_ephemeral_seed_extended_key(extended_key, origin=origin)
         else:
             await seed.set_seed_extended_key(extended_key)
     except ValueError:
@@ -1360,7 +1360,7 @@ async def import_xprv(_1, _2, item):
                         extended_key = ln
                         break
 
-    await import_extended_key_as_secret(extended_key, ephemeral, meta='Imported XPRV')
+    await import_extended_key_as_secret(extended_key, ephemeral, origin='Imported XPRV')
     # not reached; will do reset.
 
 async def need_clear_seed(*a):

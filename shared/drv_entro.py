@@ -263,7 +263,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
                 xfp_str = xfp2str(settings.get("xfp", 0))
                 await seed.set_ephemeral_seed(
                     encoded,
-                    meta='BIP85 Derived from [%s], index=%d' % (xfp_str, index)
+                    origin='BIP85 Derived from [%s], index=%d' % (xfp_str, index)
                 )
                 goto_top_menu()
                 break
