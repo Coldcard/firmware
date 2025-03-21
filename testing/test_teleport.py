@@ -12,6 +12,8 @@ from charcodes import KEY_QR, KEY_NFC
 from base64 import b32encode
 
 from test_bbqr import readback_bbqr
+from test_notes import need_some_notes, need_some_passwords
+from test_ephemeral import SEEDVAULT_TEST_DATA
 
 # All tests in this file are exclusively meant for Q
 #
@@ -22,12 +24,12 @@ def THIS_FILE_requires_q1(is_q1, is_headless):
 
 @pytest.fixture()
 def rx_start(grab_payload, goto_home, pick_menu_item):
-    def doit():
+    def doit(**kws):
         goto_home()
         pick_menu_item('Advanced/Tools')
         pick_menu_item('Key Teleport (start)')
 
-        return grab_payload(': Receive', 'R')
+        return grab_payload('R', **kws)
 
     return doit
     
@@ -36,7 +38,8 @@ def rx_start(grab_payload, goto_home, pick_menu_item):
 def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_story, nfc_block4rf, cap_screen_qr):
 
     # start the Rx process, capturing numeric code
-    def doit(expect_in_title, tt_code, allow_reuse=True, reset_pubkey=False):
+    def doit(tt_code, allow_reuse=True, reset_pubkey=False):
+        expect_in_title = 'Receive' if tt_code == 'R' else 'Teleport Password'
 
         title, story = cap_story()
     
@@ -139,18 +142,18 @@ def tx_start(press_select, need_keypress, press_cancel, goto_home, pick_menu_ite
 
     return doit
 
-def test_rx_reuse(rx_start, settings_remove):
-
-    code, enc_pubkey = rx_start(True, True)
+def test_rx_reuse(rx_start):
+    # check rx pubkey re-use logic
+    code, enc_pubkey = rx_start(allow_reuse=True, reset_pubkey=True)
     assert code.isdigit()
-    code2, enc_pubkey2 = rx_start(True, False)
+    code2, enc_pubkey2 = rx_start(allow_reuse=True, reset_pubkey=False)
     assert code2 == code
     assert enc_pubkey2 == enc_pubkey
 
-    code3, pk3 = rx_start(True, True)
+    code3, pk3 = rx_start(allow_reuse=True, reset_pubkey=True)
     assert code3 != code
 
-def test_tx_quick_note(rx_start, tx_start, settings_remove, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select):
+def test_tx_quick_note(rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select):
     # Send a quick-note
     code, rx_pubkey = rx_start()
     pw = tx_start(rx_pubkey, code)
@@ -167,7 +170,7 @@ def test_tx_quick_note(rx_start, tx_start, settings_remove, cap_menu, enter_comp
     enter_complex(msg)
 
     time.sleep(.150)        # required
-    pw, data = grab_payload('Teleport Password', 'S')
+    pw, data = grab_payload('S')
     assert len(pw) == 8
     
     # now, send that back
@@ -193,5 +196,127 @@ def test_tx_quick_note(rx_start, tx_start, settings_remove, cap_menu, enter_comp
     pick_menu_item('Delete')
     press_select()
     
+
+def test_tx_master_send(rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select):
+    # Send master secret, but doesn't really work since same as what we have
+    code, rx_pubkey = rx_start()
+    pw = tx_start(rx_pubkey, code)
+
+    # other contents require other features to be enabled
+    pick_menu_item('Master Seed Words')
+
+    title, body = cap_story()
+
+    assert 'Are you SURE' in title
+    assert 'MASTER secret' in body
+    assert '24 words' in body
+
+    press_select()
+
+    time.sleep(.150)        # required?
+    pw, data = grab_payload('S')
+    
+    # now, send that back
+    rx_complete(data, pw)
+
+    title, body = cap_story()
+
+    assert title == 'FAILED'
+    assert 'Cannot use master seed as temp' in body
+    assert 'successfully tested' in body
+
+    press_cancel()
+
+@pytest.mark.parametrize('qty', [1, 3])
+def test_tx_notes(qty, rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select, need_some_passwords, need_some_notes, settings_set, settings_get):
+    # Send notes.
+    settings_set('notes', [])
+    need_some_notes()
+    notes = need_some_passwords()
+
+    assert len(notes) >= qty
+
+    code, rx_pubkey = rx_start()
+    pw = tx_start(rx_pubkey, code)
+
+    # other contents require other features to be enabled
+    if qty == 1:
+        pick_menu_item('Single Note / Password')
+        pick_menu_item('1: ' + notes[0]["title"])
+    else:
+        pick_menu_item('Export All Notes & Passwords')
+
+    time.sleep(.150)        # required?
+    pw, data = grab_payload('S')
+    
+    # now, send that back
+    rx_complete(data, pw)
+
+    # arrive in settings menu, on last item (last imported)
+    m = cap_menu()
+    assert m[-1] == 'Import'
+
+    after = settings_get('notes', None)
+
+    assert notes[0:qty] == after[-qty:]
+
+    settings_set('notes', [])
+    press_cancel()
+
         
+@pytest.mark.parametrize('data', SEEDVAULT_TEST_DATA[0:2])
+def test_tx_seedvault(data, rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select, settings_set, settings_get, goto_home, need_keypress):
+    # Send seeds from vault
+
+    xfp, entropy, mnemonic = data
+
+    # build stashed encoded secrets
+    entropy_bytes = bytes.fromhex(entropy)
+    if mnemonic:
+        vlen = len(entropy_bytes)
+        assert vlen in [16, 24, 32]
+        marker = 0x80 | ((vlen // 8) - 2)
+        stored_secret = bytes([marker]) + entropy_bytes
+    else:
+        stored_secret = entropy_bytes
+
+    pkg = (xfp, stored_secret.hex(), f"[{xfp}]", "from testing")
+
+    settings_set("seedvault", True)
+    settings_set("seeds", [pkg])
+
+    # get ready to send
+    code, rx_pubkey = rx_start(reset_pubkey=True)
+    pw = tx_start(rx_pubkey, code)
+
+    pick_menu_item('From Seed Vault')
+    mi, = (i for i in cap_menu() if i.endswith(f"[{xfp}]"))
+    pick_menu_item(mi)
+
+    time.sleep(.150)        # required?
+    pw, data = grab_payload('S')
+
+    settings_set("seeds", [])
+
+    rx_complete(data, pw)
+
+    if settings_get("seedvault", False):
+        time.sleep(.1)
+        title, body = cap_story()
+        assert 'Press (1) to store temp' in body
+        assert 'to continue without saving' in body
+        need_keypress('1')
+
+    time.sleep(.1)
+    title, body = cap_story()
+    assert xfp in body
+    assert 'Saved to Seed Vault' in body
+
+    assert settings_get('seeds') == [pkg]
+
+    goto_home()
+    pick_menu_item('Restore Master')
+    press_select()
+
+
 # EOF

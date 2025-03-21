@@ -47,6 +47,7 @@ def need_some_notes(settings_get, settings_set):
         notes = settings_get('notes', [])
         if not notes:
             settings_set('notes', [dict(misc=body, title=title)])
+            settings_set('secnap', True)
         return notes
     return doit
 
@@ -54,8 +55,8 @@ def need_some_notes(settings_get, settings_set):
 def need_some_passwords(settings_get, settings_set):
     def doit():
         notes = settings_get('notes', [])
-        if any(n.get('password', False) for n in notes):
-            settings_set('notes', [
+        if not any(1  for n in notes if n.get('password', False)):
+            notes.extend([
                 {'misc': 'More Notes AAAA',
                  'password': 'fds65fd5f1sd51s',
                  'site': 'https://a.com',
@@ -67,6 +68,8 @@ def need_some_passwords(settings_get, settings_set):
                  'title': 'B-Title',
                  'user': 'Buzzer'}
             ])
+            settings_set('notes', notes)
+            settings_set('secnap', True)
         return notes
     return doit
 
