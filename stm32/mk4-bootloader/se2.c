@@ -729,12 +729,12 @@ se2_test_trick_pin(const char *pin, int pin_len, trick_slot_t *found_slot, bool 
         uint16_t todo = found_slot->tc_flags;
 
         // hmm: don't need this data if safety is off.. but we have it anyway
-        if(found_slot->tc_flags & TC_WORD_WALLET) {
+        if(todo & TC_WORD_WALLET) {
             // it's a 12/24-word BIP-39 seed phrase, un-encrypted.
             if(found+1 < NUM_TRICKS) {
                 memcpy(found_slot->xdata, &slots[found+1][0], 32);
             }
-        } else if(found_slot->tc_flags & TC_XPRV_WALLET) {
+        } else if(todo & TC_XPRV_WALLET) {
             // it's an xprv-based wallet
             if(found+2 < NUM_TRICKS) {
                 memcpy(&found_slot->xdata[0], &slots[found+1][0], 32);
