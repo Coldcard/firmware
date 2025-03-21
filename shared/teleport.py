@@ -13,6 +13,7 @@ from ux_q1 import show_bbqr_codes, QRScannerInteraction, ux_input_text
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 from bbqr import b32encode, b32decode
 from menu import MenuItem, MenuSystem
+from notes import NoteContentBase
 
 KT_DOMAIN = 'keyteleport.com'
 
@@ -445,7 +446,7 @@ class SecretPickerMenu(MenuSystem):
 
         from flow import word_based_seed, is_tmp
         from stash import bip39_passphrase
-        has_notes = bool(settings.get('secnap', False))
+        has_notes = bool(NoteContentBase.count())
         has_ms = bool(settings.get('multisig', False))
         has_sv = bool(settings.get('seedvault', False))
 
@@ -484,10 +485,9 @@ class SecretPickerMenu(MenuSystem):
 
     async def pick_note_submenu(self, *a):
         # Make a submenu to select a single note/password
-        from notes import NoteContent
 
         rv = []
-        for note in NoteContent.get_all():
+        for note in NoteContentBase.get_all():
             rv.append(MenuItem('%d: %s' % (note.idx+1, note.title), f=self.picked_note, arg=note))
 
         return rv
@@ -506,7 +506,6 @@ class SecretPickerMenu(MenuSystem):
 
     async def picked_note(self, _, _2, item):
         # exporting note(s)
-        from notes import NoteContentBase
 
         if item.arg is None:
             # export all
