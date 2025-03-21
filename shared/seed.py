@@ -1047,7 +1047,8 @@ class SeedVaultChooserMenu(MenuSystem):
 
             item = MenuItem('%2d: %s' % (i+1, rec.label), arg=rec, f=self.picked)
             items.append(item)
-        else:
+
+        if not items:
             items.append(MenuItem("(none suitable)"))
 
         super().__init__(items)
