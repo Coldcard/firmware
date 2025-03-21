@@ -85,7 +85,7 @@ We will re-use same values as last try, unless you press (R) for new values to b
     msg = '''To receive teleport of sensitive data from another COLDCARD, \
 share this Receiver Password with sender:
 
-  %s = %s
+   %s  =  %s
 
 and show the QR on next screen to the sender. ENTER or %s to show here''' % (
         short_code, ' '.join(short_code), KEY_QR)
@@ -168,13 +168,14 @@ async def kt_start_send(rx_data):
                 "Incorrect Teleport Password.\n\nYou can try again or CANCEL to stop.")
         if ch == 'x': return
 
-    msg = '''You can now teleport secrets. You can select from seed words, temporary keys, \
-secure notes and passwords. \
+    msg = '''You can now teleport secrets! Select from seed words, seed vault keys, \
+secure notes or passwords. \
 
 WARNING: Receiver will have full access to all Bitcoin controlled by these keys!
 '''
 
     ch = await ux_show_story(msg, title="Key Teleport: Send")
+    if ch != 'y': return
 
     # pick what to send from a series of submenus
     menu = SecretPickerMenu(rx_pubkey)

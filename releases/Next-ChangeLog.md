@@ -43,4 +43,13 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 1.3.2Q - 2025-03-??
 
+- Feature: Key Teleport -- Easily and securely move seed phrases, secure notes/passwords and PSBT
+  between two Q using QR codes and/or NFC with helper website. See protocol spec in
+  [docs/key-teleport.md][https://github.com/Coldcard/firmware/blob/master/docs/key-teleport.md]
+    - can send master seed (words, xprv), anything held in seed vault, secure notes/passwords 
+      (singular, or all) and PSBT involved in a multisig
+    - ECDH to create session key for AES-256-CTR, with another layer of AES-256-CTR using a
+      short password (stretched by PBKDF2-SHA512) inside
+    - receiver shows sender a QR and a numeric code; sender replies with a QR and 8-char
+      password
 - Enhancement: Always choose the biggest possible display size for QR

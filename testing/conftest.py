@@ -1611,6 +1611,24 @@ def nfc_read(request, needs_nfc):
         return doit_usb
 
 @pytest.fixture()
+def nfc_read_url(nfc_read, press_cancel):
+    # gives URL from ndef
+
+    def doit():
+        contents = nfc_read()
+
+        press_cancel()  # exit NFC animation
+
+        # expect a single record, a URL
+        got, = ndef.message_decoder(contents)
+
+        assert got.type == 'urn:nfc:wkt:U'
+
+        return got.uri
+
+    return doit
+
+@pytest.fixture()
 def nfc_write(request, needs_nfc, is_q1):
     # WRITE data into NFC "chip"
     def doit_usb(ccfile):
