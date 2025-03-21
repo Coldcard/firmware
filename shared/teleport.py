@@ -31,7 +31,7 @@ KT_DOMAIN = 'keyteleport.com'
 
 def short_bbqr(type_code, data):
     # Short-circuit basic BBQr encoding here: always Base32, single part: 1 of 1
-    # XXX generalize
+    # - used only for NFC link, where website may split again into parts
     hdr = 'B$2%s0100' % type_code
 
     return hdr + b32encode(data)
@@ -46,7 +46,7 @@ async def nfc_push_kt(qrdata):
     n.add_url(url, https=True)
 
     from glob import NFC
-    await NFC.share_loop(n, prompt=KT_DOMAIN, line2="View QR on web")
+    await NFC.share_loop(n, prompt="View QR on web", line2=KT_DOMAIN)
 
 async def kt_start_rx(*a):
     # menu item to "start a receive" operation
@@ -80,64 +80,93 @@ We will re-use same values as last try, unless you press (R) for new values to b
         settings.set("ktrx", b2a_hex(kp.privkey()))
         settings.save()
 
+    short_code, payload = generate_rx_code(kp)
+
+    msg = '''To receive teleport of sensitive data from another COLDCARD, \
+share this Receiver Password with sender:
+
+  %s = %s
+
+and show the QR on next screen to the sender. ENTER or %s to show here''' % (
+        short_code, ' '.join(short_code), KEY_QR)
+
+    await tk_show_payload('R', payload, 'Key Teleport: Receive', msg, cta='Show to Sender')
+
+def generate_rx_code(kp):
+    # Receiver-side password: given a pubkey (33 bytes, compressed format)
+    # - construct an 8-digit decimal "password"
+    # - it's a AES key, but only 26 bits worth
+    # - add checksum
     pubkey = kp.pubkey().to_bytes()        # default: compressed format
-    assert pubkey[0] in { 2, 3}
+    #assert len(pubkey) == 33
 
-    msg = '''You are starting a teleport of sensitive data from another COLDCARD. \
-It will be double-encrypted with AES-256-CTR using ECDH for one-time key and also \
-a password.\n
-Show the QR on next screen to the sender somehow. ENTER or %s to show here''' % KEY_QR
+    # I want the code to be deterministic, but I also don't want to save it
+    nk = ngu.hash.sha256s(kp.privkey() + b'COLCARD4EVER')[4:8]
+    num = '%08d' % (int.from_bytes(nk, 'big') % 1_0000_0000)
 
-    await tk_show_payload('R', pubkey, 'Key Teleport: Receive', cta='Show to Sender', msg=msg)
+    # encryption after baby key stretch
+    kk = ngu.hash.sha256s(num.encode())
+    enc = aes256ctr.new(kk).cipher(pubkey)
+    enc += ngu.hash.sha256s(pubkey)[-2:]
 
-async def tk_show_payload(type_code, pubkey, title, cta=None, msg=None):
+    return num, enc
+
+def decrypt_rx_pubkey(code, payload):
+    # given a 8-digit numeric code, make the key and then decrypt/checksum check
+    kk = ngu.hash.sha256s(code.encode())
+    rx_pubkey = aes256ctr.new(kk).cipher(payload[:-2])
+
+    expect = ngu.hash.sha256s(rx_pubkey)[-2:]
+
+    return rx_pubkey if expect == payload[-2:] else None
+
+async def tk_show_payload(type_code, payload, title, msg, cta=None):
     # show the QR and/or NFC
+    # - MAYBE: make easier/faster to pick NFC from QR screen and vice-versa
     from glob import NFC
-
-    # XXX proper BBQr for sending data?
-    # - make easier to pick NFC from QR
-    qr = short_bbqr(type_code, pubkey)
+    from bbqr import num_qr_needed
+    from ux_q1 import show_bbqr_codes
 
     hints = KEY_QR
     if NFC:
         hints += KEY_NFC
-        if msg:
-            msg += ' or %s to view on your phone' % KEY_NFC
+        msg += ' or %s to view on your phone' % KEY_NFC
 
-    if msg:
-        msg += '. CANCEL to stop.'
+    msg += '. CANCEL to stop.'
 
     # simply show the QR
     while 1:
-        if msg:
-            ch = await ux_show_story(msg, title=title, hint_icons=hints)
-        else:
-            ch = KEY_QR
+        ch = await ux_show_story(msg, title=title, hint_icons=hints)
 
         if ch == KEY_NFC and NFC:
-            await nfc_push_kt(qr)
+            await nfc_push_kt(short_bbqr(type_code, payload))
         elif ch == KEY_QR or ch == 'y':
-            await show_qr_code(qr, is_alnum=True, msg=cta, force_msg=True, allow_nfc=False)
-            if not msg: break
+            # NOTE: CTA rarely seen, but maybe?
+            await show_bbqr_codes(type_code, payload, msg=cta)
         elif ch == 'x':
             return
 
-def valid_looking_pubkey(rx_pubkey):
-    try:
-        assert rx_pubkey[0] in { 2, 3}
-        assert len(rx_pubkey) == 33
-        assert len(set(rx_pubkey)) > 3
-        # check on curve? secp256k1.ecdh_multiply does that ?
-        return True
-    except:
-        # dont waste bytes on error messages for hackers
-        return False
+async def kt_start_send(rx_data):
+    # a QR was scanned and it held (most of) a pubkey
+    # - they want to send to this guy
+    # - ask for a validate the sender's password
+    # - ask them what to send, etc
 
-async def kt_start_send(rx_pubkey):
-    # a QR was scanned and it held a pubkey
-    # they want to send to this guy, ask them what to send, etc
-    
-    if not valid_looking_pubkey(rx_pubkey): return
+    # prompt for numeric password
+    while 1:
+        code = await ux_input_text('', confirm_exit=False, hex_only=True, max_len=8,
+                prompt='Teleport Password (number)', min_len=8, b39_complete=False, scan_ok=False,
+                placeholder='########', funct_keys=None, force_xy=None)
+
+        if not code: return
+        rx_pubkey = decrypt_rx_pubkey(code, rx_data)
+
+        if rx_pubkey:
+            break
+
+        ch = await ux_show_story(
+                "Incorrect Teleport Password.\n\nYou can try again or CANCEL to stop.")
+        if ch == 'x': return
 
     msg = '''You can now teleport secrets. You can select from seed words, temporary keys, \
 secure notes and passwords. \
@@ -147,28 +176,34 @@ WARNING: Receiver will have full access to all Bitcoin controlled by these keys!
 
     ch = await ux_show_story(msg, title="Key Teleport: Send")
 
-    # TODO: pick what to send, somehow ... 
+    # pick what to send from a series of submenus
     menu = SecretPickerMenu(rx_pubkey)
-
     the_ux.push(menu)
 
 async def kt_do_send(rx_pubkey, dtype, raw=None, obj=None):
     # Example: cleartext = b'w'+ (b'A'*16)
+    from glob import dis
     cleartext = dtype.encode() + (raw or json.dumps(obj).encode())
 
     # Pick and show noid key to sender
     noid_key, txt = pick_noid_key()
-    
-    msg = "Share this password with the receiver, via some different channel:"\
-                "\n\n   %s  =  %s\n\n" % (txt, ' '.join(txt))
-    msg += "ENTER to view QR"
+
+    dis.progress_bar_show(0.25)
 
     # all new EC key
     my_keypair = ngu.secp256k1.keypair()
 
+    dis.progress_bar_show(0.75)
+
     payload = encode_payload(my_keypair, rx_pubkey, noid_key, cleartext)
 
-    await tk_show_payload('S', payload, 'Teleport Password', cta='Show to Receiver', msg=msg)
+    dis.progress_bar_show(1)
+
+    msg = "Share this password with the receiver, via some different channel:"\
+                "\n\n   %s  =  %s\n\n" % (txt, ' '.join(txt))
+    msg += "ENTER to view QR"
+
+    await tk_show_payload('S', payload, 'Teleport Password', msg, cta='Show to Receiver')
 
     from flow import goto_top_menu
     goto_top_menu()
@@ -215,8 +250,9 @@ async def kt_decode_rx(is_psbt, payload):
     while 1:
         # ask for noid key
         pw = await ux_input_text('', confirm_exit=False, hex_only=False, max_len=8,
-                prompt='Teleport Password', min_len=8, b39_complete=False, scan_ok=False,
+                prompt='Teleport Password (text)', min_len=8, b39_complete=False, scan_ok=False,
                 placeholder='********', funct_keys=None, force_xy=None)
+        if not pw: return
 
         dis.progress_bar_show(0)
         try:
@@ -318,6 +354,7 @@ async def kt_accept_values(dtype, raw):
         raise ValueError(dtype)
 
     # key material is arriving; offer to use as main secret, or tmp, or seed vault?
+    settings.remove_key("ktrx")     # force new rx key after this point
     assert enc
 
     from seed import set_ephemeral_seed, set_seed_value
@@ -330,14 +367,14 @@ async def kt_accept_values(dtype, raw):
         ok = await set_ephemeral_seed(enc, origin=origin, label=label)
 
     if ok:
-        settings.remove_key("ktrx")     # force new rx key after this point
         goto_top_menu()
 
 def noid_stretch(session_key, noid_key):
+    # TODO: measure timing of this on real Q
     return ngu.hash.pbkdf2_sha512(session_key, noid_key, 5000)[0:32]
 
 def encode_payload(my_keypair, his_pubkey, noid_key, body):
-    # do all the encryption
+    # do all the encryption for sender
     assert len(his_pubkey) == 33
     assert len(noid_key) == 5
 
@@ -357,7 +394,6 @@ def encode_payload(my_keypair, his_pubkey, noid_key, body):
 def decode_step1(my_keypair, his_pubkey, body):
     # Do ECDH and remove top layer of encryption
     try:
-        assert valid_looking_pubkey(his_pubkey)
         assert len(body) >= 10
 
         session_key = my_keypair.ecdh_multiply(his_pubkey)
@@ -415,6 +451,7 @@ class SecretPickerMenu(MenuSystem):
         # Q-only feature, so menu can be W I D E 
         # - in increasing order of important / sensitivity!
         m = [
+            MenuItem('Quick Text Message', f=self.quick_note),
             MenuItem('Multisig PSBT for Signing', predicate=has_ms),
             MenuItem('Single Note / Password', predicate=has_notes, menu=self.pick_note_submenu),
             MenuItem('Export All Notes & Passwords', predicate=has_notes, f=self.picked_note),
@@ -454,13 +491,25 @@ class SecretPickerMenu(MenuSystem):
 
         return rv
 
+    async def quick_note(self, _, _2, item):
+        # accept a text string, and send as a note
+        from notes import NoteContent
+        txt = await ux_input_text('', max_len=100,
+            prompt='Enter your message', min_len=1, b39_complete=True, scan_ok=True,
+            placeholder='Attack at dawn.')
+
+        if not txt: return
+
+        n = NoteContent(dict(title="Quick Note", misc=txt))
+        await kt_do_send(self.rx_pubkey, 'n', obj=[n.serialize()])
+
     async def picked_note(self, _, _2, item):
         # exporting note(s)
-        from notes import NoteContent
+        from notes import NoteContentBase
 
         if item.arg is None:
             # export all
-            body = [n.serialize() for n in NoteContent.get_all()]
+            body = [n.serialize() for n in NoteContentBase.get_all()]
         else:
             # single note/password
             body = [item.arg.serialize()]

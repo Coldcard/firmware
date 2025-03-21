@@ -1215,8 +1215,14 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
 
         pos += part_size
 
+        # first first packet, want to discover a working small value for QR version
+        if pkt == 0:
+            mnv = 10 if num_parts > 1 else 1
+        else:
+            mnv = force_version
+
         # do the hard work
-        qr_data = uqr.make(hdr+body, min_version=(10 if pkt == 0 else force_version),
+        qr_data = uqr.make(hdr+body, min_version=mnv,
                                     max_version=force_version, encoding=uqr.Mode_ALPHANUMERIC)
 
         # save the rendered QR
@@ -1234,7 +1240,7 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
 
         del qr_data
 
-        dis.progress_bar_show((pkt+1) / num_parts)
+        dis.progress_sofar((pkt+1), num_parts)
     
     # display rate (plus time to send to display, etc)
     ms_per_each = 200

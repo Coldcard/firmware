@@ -281,6 +281,7 @@ class SettingsObject:
 
     def leaving_master_seed(self):
         # going from master seed to a tmp seed, so capture a few values we need.
+        self.save_if_dirty()
 
         SettingsObject.master_nvram_key = self.nvram_key
 
