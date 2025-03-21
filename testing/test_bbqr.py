@@ -7,6 +7,7 @@ from helpers import prandom
 from binascii import a2b_hex
 from bbqr import split_qrs, join_qrs
 from charcodes import KEY_QR
+from base64 import b32decode, b32encode
 
 # All tests in this file are exclusively meant for Q
 #

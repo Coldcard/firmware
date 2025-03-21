@@ -421,7 +421,7 @@ def test_ndef_roundtrip(load_shared_mod):
 @pytest.mark.parametrize('chain', ['BTC', 'XTN'])
 @pytest.mark.parametrize('way', ['sd', 'nfc', 'usb', 'qr'])
 def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
-                    try_sign, fake_txn, nfc_block4rf, nfc_read, press_cancel,
+                    try_sign, fake_txn, nfc_block4rf, nfc_read_url, press_cancel,
                     cap_story, cap_screen, has_qwerty, way, try_sign_microsd,
                     try_sign_nfc, scan_a_qr, need_keypress, press_select,
                     goto_home, multisig, fake_ms_txn, import_ms_wallet,
@@ -491,20 +491,12 @@ def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
         scr = cap_screen()
         assert 'TXID:' in scr
 
-    contents = nfc_read()
+    uri = nfc_read_url()
 
-    print(f'nfc contents = {len(contents)}')
+    assert uri.startswith(prefix)
+    assert uri.startswith(prefix + 't')
 
-    press_cancel()  # exit NFC animation
-
-    # expect a single record, a URL
-    got, = ndef.message_decoder(contents)
-
-    assert got.type == 'urn:nfc:wkt:U'
-    assert got.uri.startswith(prefix)
-    assert got.uri.startswith(prefix + 't')
-
-    parts = urlsplit(got.uri)
+    parts = urlsplit(uri)
     args = parse_qsl(unquote(parts.fragment))
 
     assert args[0][0] == 't', 'txn must be first'
