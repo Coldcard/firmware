@@ -12,9 +12,9 @@ NFC, passive websites, and QR/BBQr codes.
 ## Steps
 
 - Receiver picks an EC keypair, stores it in settings, and publishes the pubkey via a QR/NFC
-- Sender gets that, pickes own keypair, and does ECDH to arrive at a shared session key
-- Sender picks a human-readable secret which is independant of anything else (P key)
-- The secret data (perhaps a seed phrase, XPRV, secure note, etc) is AES encryped with P key,
+- Sender gets that, picks own keypair, and does ECDH to arrive at a shared session key
+- Sender picks a human-readable secret which is independent of anything else (P key)
+- The secret data (perhaps a seed phrase, XPRV, secure note, etc) is AES encrypted with P key,
   then encrypted + MAC added with session key
 - Data packet is sent to receiver, who can reconstruct the session key via ECDH
 - Prompt user for the P key to finish decoding
@@ -24,14 +24,14 @@ NFC, passive websites, and QR/BBQr codes.
 ### When used for PSBT Multisig
 
 - No action required on receiver
-- Sender uses the pubkey of the first unsigned input as receiver's pubkey
+- Sender uses the pubkey derived from pre-shared XPUB involved in the multisig wallet.
 - Same steps, but drops immediately into signing process when decoded correctly
 
 ## Notes and Limitations
 
 - max 4k (after encoding) of data is possible due to HTTP limitations
 - all transfers are "data typed" and decode only expected on COLDCARD
-- Q model is required due to the use of QR codes to ulitmately get data into the COLDCARD
+- Q model is required due to the use of QR codes to ultimately get data into the COLDCARD
 
 
 # Details
@@ -40,10 +40,10 @@ NFC, passive websites, and QR/BBQr codes.
 
 The first byte encodes what the package contents (under all the encryption).
 
-- `s` - 12/18/24 words/raw master/xprv - 16/24/32/64 bytes follow encoded in internal format
+- `s` - 12/18/24 words/raw master/xprv - 17-72 bytes follow, encoded in an internal format
 - `x` - XPRV mode, full details - 4 bytes (XPRV) + base58 *decoded* binary-XPRV follows
 - `n` - one or many notes export (JSON array)
-- `v` - seed vault export (JSON: one secret key but includes includes name, source of key)
+- `v` - seed vault export (JSON: one secret key but includes name, source of key)
 - `p` - binary PSBT to be signed
 - `P` - a more-signed binary PSBT being returned back to sender
 
