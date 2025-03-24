@@ -97,29 +97,34 @@ def generate_rx_code(kp):
     # Receiver-side password: given a pubkey (33 bytes, compressed format)
     # - construct an 8-digit decimal "password"
     # - it's a AES key, but only 26 bits worth
-    # - add checksum
-    pubkey = kp.pubkey().to_bytes()        # default: compressed format
+    pubkey = bytearray(kp.pubkey().to_bytes())        # default: compressed format
     #assert len(pubkey) == 33
 
-    # I want the code to be deterministic, but I also don't want to save it
-    nk = ngu.hash.sha256s(kp.privkey() + b'COLCARD4EVER')[4:8]
-    num = '%08d' % (int.from_bytes(nk, 'big') % 1_0000_0000)
+    # - want the code to be deterministic, but I also don't want to save it
+    nk = ngu.hash.sha256d(kp.privkey() + b'COLCARD4EVER')
+
+    # first byte will be 0x02 or 0x03 (Y coord) -- remove those known 7 bits
+    pubkey[0] ^= nk[20] & 0xfe
+
+    num = '%08d' % (int.from_bytes(nk[4:8], 'big') % 1_0000_0000)
 
     # encryption after baby key stretch
     kk = ngu.hash.sha256s(num.encode())
     enc = aes256ctr.new(kk).cipher(pubkey)
-    enc += ngu.hash.sha256s(pubkey)[-2:]
 
     return num, enc
 
 def decrypt_rx_pubkey(code, payload):
     # given a 8-digit numeric code, make the key and then decrypt/checksum check
+    # - every value works, there is no fail.
     kk = ngu.hash.sha256s(code.encode())
-    rx_pubkey = aes256ctr.new(kk).cipher(payload[:-2])
+    rx_pubkey = bytearray(aes256ctr.new(kk).cipher(payload))
 
-    expect = ngu.hash.sha256s(rx_pubkey)[-2:]
+    # first byte will be 0x02 or 0x03 but other 7 bits are noise
+    rx_pubkey[0] &= 0x01
+    rx_pubkey[0] |= 0x02
 
-    return rx_pubkey if expect == payload[-2:] else None
+    return rx_pubkey
 
 async def tk_show_payload(type_code, payload, title, msg, cta=None):
     # show the QR and/or NFC
@@ -150,24 +155,15 @@ async def tk_show_payload(type_code, payload, title, msg, cta=None):
 async def kt_start_send(rx_data):
     # a QR was scanned and it held (most of) a pubkey
     # - they want to send to this guy
-    # - ask for a validate the sender's password
     # - ask them what to send, etc
 
-    # prompt for numeric password
-    while 1:
-        code = await ux_input_text('', confirm_exit=False, hex_only=True, max_len=8,
-                prompt='Teleport Password (number)', min_len=8, b39_complete=False, scan_ok=False,
-                placeholder='########', funct_keys=None, force_xy=None)
+    # - ask for the sender's password -- any value will be accepted
+    code = await ux_input_text('', confirm_exit=False, hex_only=True, max_len=8,
+            prompt='Teleport Password (number)', min_len=8, b39_complete=False, scan_ok=False,
+            placeholder='########', funct_keys=None, force_xy=None)
+    if not code: return
 
-        if not code: return
-        rx_pubkey = decrypt_rx_pubkey(code, rx_data)
-
-        if rx_pubkey:
-            break
-
-        ch = await ux_show_story(
-                "Incorrect Teleport Password.\n\nYou can try again or CANCEL to stop.")
-        if ch == 'x': return
+    rx_pubkey = decrypt_rx_pubkey(code, rx_data)
 
     msg = '''You can now teleport secrets! Select from seed words, seed vault keys, \
 secure notes or passwords. \
@@ -239,13 +235,16 @@ async def kt_decode_rx(is_psbt, payload):
         body = payload[4:]
 
         # may need to iterate over a few wallets?
+        # TODO: multisig
 
     ses_key, body = decode_step1(pair, his_pubkey, body)
 
     if not ses_key:
-        # when ECDH fails, it's truncation or wrong RX key (due to sender using old rx key, etc)
-        await ux_show_story("QR code is damaged, or was sent to a different user. "
-            "Sender should start again.", title="Teleport Fail")
+        # when ECDH fails, it's truncation or wrong RX key (due to sender using old rx key,
+        # or the numeric code the sender entered was wrong, etc)
+        await ux_show_story("QR code was damaged, numeric password was wrong, "
+            "or it was sent to a different user. "
+            "Sender must start again.", title="Teleport Fail")
         return
 
     from glob import dis
@@ -281,15 +280,14 @@ async def kt_decode_rx(is_psbt, payload):
 async def kt_accept_values(dtype, raw):
     # We got some secret, decode it more, and save it.
     '''
-- `s` - secret, encoded per stash.py
-- `m` - (up to 72 bytes?) - BIP-32 raw master secret [rare]
-- `r` - raw XPRV mode - 64 bytes follow which are the chain code then master privkey 
-- `x` - XPRV mode, full details - 4 bytes (XPRV) + base58 *decoded* binary-XPRV follows
-- `n` - one or many notes export (JSON array)
-- `v` - seed vault export (JSON: one secret key but includes includes name, source of key)
-- `p` - binary PSBT to be signed
-- `P` - a more-signed binary PSBT being returned back to sender
-'''
+    - `s` - secret, encoded per stash.py
+    - `r` - raw XPRV mode - 64 bytes follow which are the chain code then master privkey 
+    - `x` - XPRV mode, full details - 4 bytes (XPRV) + base58 *decoded* binary-XPRV follows
+    - `n` - one or many notes export (JSON array)
+    - `v` - seed vault export (JSON: one secret key but includes includes name, source of key)
+    - `p` - binary PSBT to be signed
+    - `P` - a more-signed binary PSBT being returned back to sender
+    '''
     from chains import current_chain, slip32_deserialize
     from flow import has_se_secrets, goto_top_menu
 
@@ -396,7 +394,7 @@ def encode_payload(my_keypair, his_pubkey, noid_key, body):
 def decode_step1(my_keypair, his_pubkey, body):
     # Do ECDH and remove top layer of encryption
     try:
-        assert len(body) >= 10
+        assert len(body) >= 3
 
         session_key = my_keypair.ecdh_multiply(his_pubkey)
 
@@ -423,8 +421,9 @@ def decode_step2(session_key, noid_key, body):
 
 async def kt_incoming(type_code, payload):
     # incoming BBQr was scanned (via main menu, etc)
+    from exceptions import QRDecodeExplained
 
-    if type_code == 'R':
+    if type_code == 'R': 
         # they want to send to this guy
         return await kt_start_send(payload)
 
