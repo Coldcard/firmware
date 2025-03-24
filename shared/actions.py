@@ -524,6 +524,7 @@ async def new_from_dice(menu, label, item):
 async def any_active_duress_ux():
     from trick_pins import tp
     tp.reload()
+    # if TPs are hidden this msg will not be shown
     if any(tp.get_duress_pins()):
         await ux_show_story('You have one or more duress wallets defined '
                             'under Trick PINs. Please empty them, and clear '
@@ -579,7 +580,8 @@ async def clear_seed(*a):
                             'All funds will be lost. '
                             'You better have a backup of the seed words. '
                             'All settings like multisig wallets are also wiped. '
-                            'Saved temporary seed settings and Seed Vault are lost.'):
+                            'Saved temporary seed settings and Seed Vault are lost. '
+                            'Trick PINs are also completely removed.'):
         return await ux_aborted()
 
     if not await ux_confirm('''Are you REALLY sure though???\n\n\
@@ -587,6 +589,10 @@ This action will certainly cause you to lose all funds associated with this wall
 unless you have a backup of the seed words and know how to import them into a \
 new wallet.''', confirm_key='4'):
         return await ux_aborted()
+
+    # clear all trick PINs from SE2
+    from trick_pins import tp
+    tp.clear_all()
 
     # clear settings, address cache, settings from tmp seeds / seedvault seeds
     from files import wipe_flash_filesystem
