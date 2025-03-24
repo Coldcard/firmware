@@ -28,6 +28,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Enable to restore dev backup with custom password other than 12 words format
 - Bugfix: Virtual Disk auto mode ignore already signed PSBTs (with "-signed" in file name)
 - Bugfix: Virtual Disk auto mode stuck on "Reading..." screen
+- Bugfix: Do not allow to change Main PIN to value already used as Trick PIN even if Trick PIN is hidden
 
 
 # Mk4 Specific Changes
