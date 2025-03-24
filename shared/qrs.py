@@ -80,7 +80,7 @@ class QRDisplaySingle(UserInteraction):
         dis.busy_bar(False)
         dis.draw_qr_display(self.qr_data, self.msg or body, self.is_alnum,
                             self.sidebar, self.idx_hint(), self.invert,
-                            is_addr=self.is_addrs, force_msg=False)
+                            is_addr=self.is_addrs, force_msg=self.force_msg)
 
     async def interact_bare(self):
         from glob import NFC, dis
