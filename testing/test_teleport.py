@@ -100,13 +100,14 @@ def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_s
 @pytest.fixture()
 def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr, enter_complex, cap_screen, goto_home):
     # finish the teleport by doing QR and getting data
-    def doit(data, pw):
+    def doit(data, pw, expect_fail=False):
         goto_home()
         need_keypress(KEY_QR)
         time.sleep(.250)        # required
         scan_a_qr(data)
 
         time.sleep(.250)        # required
+        if expect_fail: return
         scr = cap_screen()
         assert 'Teleport Password (text)' in scr
 
@@ -120,7 +121,7 @@ def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr,
 def tx_start(press_select, need_keypress, press_cancel, goto_home, pick_menu_item, cap_story, scan_a_qr, enter_complex, cap_screen):
 
     # start the Tx process, capturing password and leaving you are picker menu
-    def doit(rx_qr, rx_code):
+    def doit(rx_qr, rx_code, expect_fail=None):
         goto_home()
         need_keypress(KEY_QR)
         time.sleep(.250)        # required
@@ -128,6 +129,10 @@ def tx_start(press_select, need_keypress, press_cancel, goto_home, pick_menu_ite
 
         time.sleep(.250)        # required
         scr = cap_screen()
+        if expect_fail:
+            assert expect_fail in scr
+            return
+
         assert 'Teleport Password (number)' in scr
 
         enter_complex(rx_code)
@@ -318,5 +323,36 @@ def test_tx_seedvault(data, rx_start, tx_start, cap_menu, enter_complex, pick_me
     pick_menu_item('Restore Master')
     press_select()
 
+def test_rx_truncated(rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select):
+    # Truncate the RX Code
+    code, rx_pubkey = rx_start()
+    pw = tx_start(rx_pubkey[:-3], code, expect_fail='Truncated KT RX')
+
+
+def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select):
+    # simulate wrong numeric code only -- sender doesn't know
+    right_code, rx_pubkey = rx_start()
+
+    code = '00000000'
+    pw = tx_start(rx_pubkey, code)
+
+    # other contents require other features to be enabled
+    pick_menu_item('Master Seed Words')
+    time.sleep(.150)        # required?
+    press_select()
+
+    time.sleep(.150)        # required?
+    pw, data = grab_payload('S')
+    
+    # now, send that back
+    rx_complete(data, pw, expect_fail=True)
+
+    title, body = cap_story()
+
+    assert title == 'Teleport Fail'
+    assert 'password was wrong' in body
+    assert 'start again' in body
+
+    press_cancel()
 
 # EOF
