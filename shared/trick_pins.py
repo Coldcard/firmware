@@ -299,9 +299,12 @@ class TrickPinMgmt:
     def check_new_main_pin(self, pin):
         # user is trying to change main PIN to new value; check for issues
         # - dups bad but also: delta mode pin might not work w/ longer main true pin
+        # - deciding whether TP already exists must be done via comms with SE2
+        #   as checking only self.tp is not sufficient for hidden TPs or after fast wipe
         # - return error msg or None
         assert isinstance(pin, str)
-        if pin in self.tp:
+        b, slot = tp.get_by_pin(pin)
+        if slot is not None:
             return 'That PIN is already in use as a Trick PIN.'
 
         for d_pin in self.get_deltamode_pins():
