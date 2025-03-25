@@ -911,29 +911,24 @@ class SeedVaultMenu(MenuSystem):
         from ux import ux_input_text
 
         idx, old = item.arg
-
-        #seeds = settings.master_get("seeds", [])
-        #old = VaultEntry(*seeds[idx])
-        assert old.xfp == xfp_str
-
         new_label = await ux_input_text(old.label, confirm_exit=False, max_len=40)
 
         if not new_label:
             return
 
         dis.fullscreen("Saving...")
+        seeds = settings.master_get("seeds", [])
 
         # save it
-        seeds[idx] = VaultEntry(old.xfp, old.encoded, new_label, old.origin)
-
+        seeds[idx] = (old.xfp, old.encoded, new_label, old.origin)
         # need to load and work on master secrets, will be slow if on tmp seed
         settings.master_set("seeds", seeds)
 
         # update label in sub-menu
         menu.items[0].label = new_label
-        menu.items[0].arg = seeds[idx]
+        menu.items[0].arg = VaultEntry(*seeds[idx])
 
-        # .. and name in parent menu too
+        # and name in parent menu too
         parent = the_ux.parent_of(menu)
         if parent:
             parent.update_contents()
