@@ -311,11 +311,7 @@ class CCCConfigMenu(MenuSystem):
         # trying to exit from CCCConfigMenu
         from seed import in_seed_vault
 
-        try:
-            enc = CCCFeature.get_encoded_secret()
-        except:
-            # some test cases?
-            enc = None
+        enc = CCCFeature.get_encoded_secret()
 
         if in_seed_vault(enc):
             # remind them to clear the seed-vault copy of Key C because it defeats feature
@@ -706,7 +702,7 @@ async def gen_or_import():
           "12-words or (2) for 24-words import." % OK
 
     if settings.master_get("seedvault", False):
-        msg += ' (6) for import from Seed Vault'
+        msg += ' Press (6) to import from Seed Vault.'
 
     ch = await ux_show_story(msg, escape='126', title="CCC Key C")
 

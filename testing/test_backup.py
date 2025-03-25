@@ -547,28 +547,10 @@ def test_seed_vault_backup(settings_set, reset_seed_words, generate_ephemeral_wo
         assert xfp_ui in sv_xfp_menu
 
 
-def test_seed_vault_backup_frozen(reset_seed_words, settings_set, repl):
-    from test_ephemeral import SEEDVAULT_TEST_DATA
-
+def test_seed_vault_backup_frozen(reset_seed_words, settings_set, repl, build_test_seed_vault):
     reset_seed_words()
     settings_set("seedvault", 1)
-
-    sv = []
-    for item in SEEDVAULT_TEST_DATA:
-        xfp, entropy, mnemonic = item
-
-        # build stashed encoded secret
-        entropy_bytes = bytes.fromhex(entropy)
-        if mnemonic:
-            vlen = len(entropy_bytes)
-            assert vlen in [16, 24, 32]
-            marker = 0x80 | ((vlen // 8) - 2)
-            stored_secret = bytes([marker]) + entropy_bytes
-        else:
-            stored_secret = entropy_bytes
-
-        sv.append((xfp, stored_secret.hex(), f"[{xfp}]", "meta"))
-
+    sv = build_test_seed_vault()
     settings_set("seeds", sv)
     bk = repl.exec('import backups; RV.write(backups.render_backup_contents())', raw=1)
     assert 'Coldcard backup file' in bk
