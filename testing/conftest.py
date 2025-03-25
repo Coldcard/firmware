@@ -997,7 +997,7 @@ def settings_get(sim_exec):
 def master_settings_get(sim_exec):
 
     def doit(key):
-        cmd = f"RV.write(repr(settings.master_get('{key}')))"
+        cmd = f"RV.write(repr(settings.master_get('{key}', False)))"
         resp = sim_exec(cmd)
         assert 'Traceback' not in resp, resp
         return eval(resp)
@@ -2467,6 +2467,29 @@ def garbage_collector():
         try:
             os.remove(pth)
         except: pass
+
+
+@pytest.fixture
+def build_test_seed_vault():
+    def doit():
+        from test_ephemeral import SEEDVAULT_TEST_DATA
+        sv = []
+        for item in SEEDVAULT_TEST_DATA:
+            xfp, entropy, mnemonic = item
+
+            # build stashed encoded secret
+            entropy_bytes = bytes.fromhex(entropy)
+            if mnemonic:
+                vlen = len(entropy_bytes)
+                assert vlen in [16, 24, 32]
+                marker = 0x80 | ((vlen // 8) - 2)
+                stored_secret = bytes([marker]) + entropy_bytes
+            else:
+                stored_secret = entropy_bytes
+
+            sv.append((xfp, stored_secret.hex(), f"[{xfp}]", "meta"))
+        return sv
+    return doit
 
 
 # useful fixtures

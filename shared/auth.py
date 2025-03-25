@@ -1495,8 +1495,8 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, abort=False):
         psbt_len,
         approved_cb=done_signing,
         cb_kws={"filename": filename,
-             "force_vdisk": force_vdisk,
-             "output_encoder": output_encoder}
+                "force_vdisk": force_vdisk,
+                "output_encoder": output_encoder}
     )
     if abort:
         # needed for auto vdisk mode
