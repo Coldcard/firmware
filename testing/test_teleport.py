@@ -30,7 +30,7 @@ def rx_start(grab_payload, goto_home, pick_menu_item):
         pick_menu_item('Advanced/Tools')
         pick_menu_item('Key Teleport (start)')
 
-        return grab_payload('R', **kws)
+        return grab_payload('R', **kws)[0:2]
 
     return doit
     
@@ -91,7 +91,7 @@ def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_s
             # will be multi-frame BBQr in case of PSBT
             filetype, qr_raw = readback_bbqr()
             # this is un-split BBQR which didn't really happen, but useful
-            qr_data = f'B$2{filetype}0100' + b32encode(qr_raw).decode('ascii')
+            qr_data = f'B$2{filetype}0100' + b32encode(qr_raw).decode('ascii').rstrip('=')
 
         assert filetype == tt_code
 
@@ -114,7 +114,7 @@ def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr,
 
         if isinstance(data, tuple):
             bbrq_type, raw = data
-            split_scan_bbqr(raw, bbrq_type, max_version=27)
+            split_scan_bbqr(raw, bbrq_type, max_version=26)
         else:
             assert len(data) <  2000    # USB protocol limit
             scan_a_qr(data)
@@ -370,7 +370,7 @@ def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_ite
 
 @pytest.mark.unfinalized
 @pytest.mark.parametrize('num_ins', [ 15 ])
-@pytest.mark.parametrize('M', [2])          # [ 2, 4, 1])
+@pytest.mark.parametrize('M', [4])          # [ 2, 4, 1])
 @pytest.mark.parametrize('segwit', [True])
 @pytest.mark.parametrize('incl_xpubs', [ False, True ])
 def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, dev, clear_ms,
@@ -406,45 +406,64 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
     assert title == 'Teleport PSBT?'
     assert 'Press (T)' in body
 
-    need_keypress('t')
-
-    time.sleep(.1)
-
     # expect: a menu of xfp to pick from
-    m = cap_menu()
-    assert len(m) == N
-    assert 'YOU' in [ln for ln in m if xfp2str(my_xfp) in ln][0]
+    while 1:
+        need_keypress('t')
+        time.sleep(.1)
 
-    idx = 1
-    next_xfp = keys[1][0]
-    assert next_xfp != my_xfp
+        m = cap_menu()
+        assert len(m) == N
+        assert 'YOU' in [ln for ln in m if xfp2str(my_xfp) in ln][0]
 
-    # choose one that isn't me
-    nm, = [mi for mi in m if xfp2str(next_xfp) in mi]
-    pick_menu_item(nm)
+        unsigned = [ln[1:9] for ln in m if (xfp2str(my_xfp) not in ln) and ('DONE' not in ln)]
+        assert unsigned
 
-    pw, data, qr_raw = grab_payload('E')
-    assert len(pw) == 8
+        # find another signer
+        for idx, (xfp, *_) in enumerate(keys):
+            if xfp2str(xfp) in unsigned:
+                break
+        else:
+            assert 0, 'missing unsigned'
 
-    open(f'debug/next_qr.txt', 'wt').write(f'{xfp2str(next_xfp)}\n\n{pw}\n\n{data}')
+        # check XFP changes
+        next_xfp = keys[idx][0]
+        assert next_xfp != my_xfp
+        my_xfp = next_xfp
 
-    # switch personalities, and try to read that QR
-    new_xfp = select_wallet(idx)
-    assert new_xfp == next_xfp
+        nm, = [mi for mi in m if xfp2str(next_xfp) in mi]
+        pick_menu_item(nm)
 
-    # import and sign
-    rx_complete(('E', qr_raw), pw)
+        pw, data, qr_raw = grab_payload('E')
+        assert len(pw) == 8
 
-    title, body = cap_story()
-    assert title == 'OK TO SEND?'
+        nn = xfp2str(next_xfp)
+        open(f'debug/next_qr_{nn}.txt', 'wt').write(f'{nn}\n\n{pw}\n\n{data}')
 
-    press_select()
-    time.sleep(.25)
+        # switch personalities, and try to read that QR
+        new_xfp = select_wallet(idx)
+        assert new_xfp == next_xfp
 
-    title, body = cap_story()
-    assert title == 'Teleport PSBT?'
-    assert '2 more signatures' in body
+        # import and sign
+        rx_complete(('E', qr_raw), pw)
+
+        title, body = cap_story()
+        assert title == 'OK TO SEND?'
+
+        press_select()
+        time.sleep(.25)
+
+        title, body = cap_story()
+        if title != 'Teleport PSBT?':
+            break
+
+        assert title == 'Teleport PSBT?'
+        assert 'more signatures' in body
 
     pdb.set_trace()
+
+# TODO
+# - send single-sig PSBT
+# - ms psbt send when lots of unrelated wallets on rx side
+# - ms psbt from disk file
 
 # EOF

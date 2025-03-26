@@ -244,6 +244,7 @@ class BBQrState:
         dis.draw_bbqr_progress(hdr, self.parts)
 
         # do we need more still?
+
         return (len(self.parts) < hdr.num_parts) or self.runt
 
 class BBQrStorage:

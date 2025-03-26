@@ -174,7 +174,7 @@ WARNING: Receiver will have full access to all Bitcoin controlled by these keys!
     menu = SecretPickerMenu(rx_pubkey)
     the_ux.push(menu)
 
-async def kt_do_send(rx_pubkey, dtype, raw=None, obj=None, prefix='', rx_label='the receiver', kp=None):
+async def kt_do_send(rx_pubkey, dtype, raw=None, obj=None, prefix=b'', rx_label='the receiver', kp=None):
     # We are rendering a QR and showing it to them for sending to another Q
     from glob import dis
     cleartext = dtype.encode() + (raw or json.dumps(obj).encode())

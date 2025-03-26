@@ -162,7 +162,8 @@ def split_scan_bbqr(scan_a_qr, goto_home, need_keypress):
         # def split_qrs(raw, type_code, encoding=None,
         #  min_split=1, max_split=1295, min_version=5, max_version=40
         actual_vers, parts = split_qrs(raw_data, type_code, **kws)
-        random.shuffle(parts)
+        #XXX#random.shuffle(parts)
+        parts = parts[::-1]
 
         for p in parts:
             scan_a_qr(p)
