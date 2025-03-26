@@ -1291,10 +1291,13 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
             assert False, 'timed out'
 
         txid = None
-        lines = story.split('\n\n')
-        if 'Final TXID:' in story:
-            txid = lines[-2].split("\n")[-1]
-            result_fname = lines[-3]
+        lines = story.split('\n')
+        if 'Final TXID:' in lines:
+            txid = lines[-1]
+            result_fname = lines[-4]
+        elif 'Key Teleport' in lines[-1]:
+            # ignore "Press (T) to use Key Teleport to send PSBT to other co-signers" footer
+            result_fname = lines[2]
         else:
             result_fname = lines[-2]
 

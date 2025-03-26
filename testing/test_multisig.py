@@ -1271,12 +1271,14 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, press_select, clear_m
 
         def select_wallet(idx):
             # select to specific pw
+            print(f"--- switch to another leg of MS: {idx} ---")
             xfp = set_bip39_pw(passwords[idx])
             if do_import:
                 offer_ms_import(config)
                 time.sleep(.1)
                 press_select()
             assert xfp == keys[idx][0]
+            return xfp
 
         return (keys, select_wallet)
 

@@ -22,6 +22,9 @@ TRUST_VERIFY = const(0)
 TRUST_OFFER = const(1)
 TRUST_PSBT = const(2)
 
+# Arbitrary value, not 0 or 1, used to derive a pubkey from preshared xpub in Key Teleport
+KT_RXPUBKEY_DERIV = const(20250317)
+
 class MultisigOutOfSpace(RuntimeError):
     pass
 
@@ -467,6 +470,10 @@ class MultisigWallet(WalletABC):
         # return set of indexes of xpubs with indicated xfp
         return set(xp_idx for xp_idx, (wxfp, _, _) in enumerate(self.xpubs)
                         if wxfp == xfp)
+
+    def xpubs_from_xfp(self, xfp):
+        # return list of XPUB's which match xfp; typically one.
+        return [xpub for (wxfp, _, xpub) in self.xpubs if wxfp == xfp]
 
     def yield_addresses(self, start_idx, count, change_idx=0):
         # Assuming a suffix of /0/0 on the defined prefix's, yield
@@ -1179,6 +1186,84 @@ Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=
                 msg.write('\nSLIP-132 equiv:\n%s\n' % xp)
 
         return await ux_show_story(msg, title=self.name)
+
+    # Key Teleport support, where a co-signers pubkeys are used for ECDH
+
+    def kt_make_rxkey(self, xfp):
+        # Derive the receiver's pubkey from preshared xpub and a special derivation
+        # - also provide the keypair we're using from our side of connection
+        # - returns 4 byte nonce which is sent un-encrypted, his_pubkey and my_keypair
+        ri = ngu.random.uniform(1<<28)
+        try:
+            xpub, =  self.xpubs_from_xfp(xfp)
+        except ValueError:
+            raise RuntimeError("dup or missing xfp")
+
+        node = self.chain.deserialize_node(xpub, AF_P2SH)
+        node.derive(KT_RXPUBKEY_DERIV, False)
+        node.derive(ri, False)
+        pubkey = node.pubkey()
+
+        kp = self.kt_my_keypair(ri)
+
+        return ri.to_bytes(4, 'big'), pubkey, kp
+
+    def kt_my_keypair(self, ri):
+        # Calc my keypair for sending PSBT files.
+        # 
+
+        my_xfp = settings.get('xfp')
+
+        # Find the derivation path used by my leg of this multisig
+        deriv = list(self.xfp_paths[my_xfp])
+        deriv.append(KT_RXPUBKEY_DERIV)
+        deriv.append(ri)
+
+        path = keypath_to_str(deriv)
+
+        with stash.SensitiveValues() as sv:
+            node = sv.derive_path(path)
+
+            kp = ngu.secp256k1.keypair(node.privkey())
+
+            return kp
+
+    @classmethod
+    def kt_search_rxkey(cls, payload):
+        # Construct the keypair for to be decryption
+        # - has to try pubkey each all the unique XFP for all co-signers in all wallets
+        # - checks checksum of ECDH unwrapped data to see if it's the right one
+        # - returns session key, decrypted first layer, and XFP of sender
+        from teleport import decode_step1
+
+        # this nonce is part of the derivation path so each txn gets new keys
+        ri = int.from_bytes(payload[0:4], 'big')
+
+        my_xfp = settings.get('xfp')
+
+        kp = None
+        for ms in cls.iter_wallets():
+            if (not kp) or (kp_deriv != ms.xfp_paths[my_xfp]):
+                # my keypair is cachable if path the same in 2nd MS wallet and so on
+                kp = ms.kt_my_keypair(ri)
+                kp_deriv = ms.xfp_paths[my_xfp]
+
+            for xfp, deriv, xpub in ms.xpubs:
+                if xfp == my_xfp: continue
+
+                node = ms.chain.deserialize_node(xpub, AF_P2SH)
+                node.derive(KT_RXPUBKEY_DERIV, False)
+                node.derive(ri, False)
+
+                his_pubkey = node.pubkey()
+
+                # if implied session key decodes the checksum, it is right
+                ses_key, body = decode_step1(kp, his_pubkey, payload[4:])
+
+                if ses_key: 
+                    return ses_key, body, xfp
+
+        return None, None, None
 
 async def no_ms_yet(*a):
     # action for 'no wallets yet' menu item

@@ -1040,6 +1040,12 @@ class ApproveTransaction(UserAuthorizedAction):
                     continue
                 break
 
+        elif version.has_qwerty and self.psbt.active_multisig:
+            # Offer to teleport the result
+            from teleport import kt_send_psbt
+
+            await kt_send_psbt(self.psbt, self.result[0], post_signing=True)
+
     async def txn_explorer(self):
         # Page through unlimited-sized transaction details
         # - shows all outputs (including change): their address and amounts.
@@ -1250,15 +1256,19 @@ def psbt_encoding_taster(taste, psbt_len):
 
 async def done_signing(psbt, input_method=None, filename=None, force_vdisk=False,
                        output_encoder=None, slot_b=False, finalize=None):
+    # User authorized PSBT for signing, and we added signatures.
+    # - allow PushTX if enabled (first thing)
+    # - can save final TXN out to SD card/VirtDisk, share by NFC, QR.
+
     from glob import dis, PSRAM
     from files import CardSlot, CardMissingError
     from sffile import SFFile
     from ux import show_qr_code, import_export_prompt, ux_show_story
 
     txid = None
+    is_complete = psbt.is_complete()
 
     with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as psram:
-        is_complete = psbt.is_complete()
         if is_complete:
             txid = psbt.finalize(psram)
         else:
@@ -1439,10 +1449,11 @@ async def done_signing(psbt, input_method=None, filename=None, force_vdisk=False
             n += 1
 
 
-async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, abort=False):
+    
+async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, just_read=False, ux_abort=False):
     # sign a PSBT file found on a MicroSD card
     # - or from VirtualDisk (mk4)
-    from files import CardSlot
+    # - to re-use reading/decoding logic, pass just_read
     from glob import dis
     from ux import the_ux
 
@@ -1490,6 +1501,9 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, abort=False):
             assert total <= psbt_len
             psbt_len = total
 
+    if just_read:
+        return psbt_len
+
     UserAuthorizedAction.cleanup()
     UserAuthorizedAction.active_request = ApproveTransaction(
         psbt_len,
@@ -1498,7 +1512,7 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, abort=False):
                 "force_vdisk": force_vdisk,
                 "output_encoder": output_encoder}
     )
-    if abort:
+    if ux_abort:
         # needed for auto vdisk mode
         abort_and_push(UserAuthorizedAction.active_request)
     else:

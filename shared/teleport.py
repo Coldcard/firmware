@@ -4,7 +4,7 @@
 #               secure environment of two Q's.
 #
 import sys, uzlib, ngu, aes256ctr, bip39, json, stash
-from utils import problem_file_line, B2A, xfp2str, deserialize_secret
+from utils import problem_file_line, B2A, xfp2str, deserialize_secret, keypath_to_str
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from glob import settings
@@ -14,21 +14,17 @@ from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 from bbqr import b32encode, b32decode
 from menu import MenuItem, MenuSystem
 from notes import NoteContentBase
+from sffile import SFFile
+from multisig import MultisigWallet
 
+# One page github-hosted static website that shows QR based on URL contents pushed by NFC
 KT_DOMAIN = 'keyteleport.com'
 
-'''
-- `w` - 12/18/24 words - 16/24/32 bytes follow
-- `m` - (one byte of length) + (up to 71 bytes) - BIP-32 raw master secret [rare]
-- `r` - raw XPRV mode - 64 bytes follow which are the chain code then master privkey 
-- `x` - XPRV mode, full details - 4 bytes (XPRV) + base58 *decoded* binary-XPRV follows
-- `n` - secure note or password (JSON)
-- `e` - full notes export (JSON array)
-- `v` - seed vault export (JSON: one secret key but includes includes name, source of key)
-- `p` - binary PSBT to be signed
-- `P` - a more-signed binary PSBT being returned back to sender
-'''
-
+# No length/size worries with simple secrets, but massive notes and big PSBT,
+# with lots of UTXO, cannot be passed via NFC URL, because we are limited by
+# NFC chip (8k) and URL length (4k or less) inside. BBQr is not limited however.
+# - but the website is ready to make animated BBQr nicely
+NFC_SIZE_LIMIT = const(4096)
 
 def short_bbqr(type_code, data):
     # Short-circuit basic BBQr encoding here: always Base32, single part: 1 of 1
@@ -134,7 +130,7 @@ async def tk_show_payload(type_code, payload, title, msg, cta=None):
     from ux_q1 import show_bbqr_codes
 
     hints = KEY_QR
-    if NFC:
+    if NFC and len(payload) < NFC_SIZE_LIMIT:
         hints += KEY_NFC
         msg += ' or %s to view on your phone' % KEY_NFC
 
@@ -147,7 +143,7 @@ async def tk_show_payload(type_code, payload, title, msg, cta=None):
         if ch == KEY_NFC and NFC:
             await nfc_push_kt(short_bbqr(type_code, payload))
         elif ch == KEY_QR or ch == 'y':
-            # NOTE: CTA rarely seen, but maybe?
+            # NOTE: CTA rarely seen, but maybe sometimes?
             await show_bbqr_codes(type_code, payload, msg=cta)
         elif ch == 'x':
             return
@@ -178,8 +174,8 @@ WARNING: Receiver will have full access to all Bitcoin controlled by these keys!
     menu = SecretPickerMenu(rx_pubkey)
     the_ux.push(menu)
 
-async def kt_do_send(rx_pubkey, dtype, raw=None, obj=None):
-    # Example: cleartext = b'w'+ (b'A'*16)
+async def kt_do_send(rx_pubkey, dtype, raw=None, obj=None, prefix='', rx_label='the receiver', kp=None):
+    # We are rendering a QR and showing it to them for sending to another Q
     from glob import dis
     cleartext = dtype.encode() + (raw or json.dumps(obj).encode())
 
@@ -189,22 +185,27 @@ async def kt_do_send(rx_pubkey, dtype, raw=None, obj=None):
     dis.progress_bar_show(0.25)
 
     # all new EC key
-    my_keypair = ngu.secp256k1.keypair()
+    my_keypair = kp or ngu.secp256k1.keypair()
 
     dis.progress_bar_show(0.75)
 
-    payload = encode_payload(my_keypair, rx_pubkey, noid_key, cleartext)
+    payload = prefix + encode_payload(my_keypair, rx_pubkey, noid_key, cleartext,
+                                                for_psbt=bool(prefix))
 
     dis.progress_bar_show(1)
 
-    msg = "Share this password with the receiver, via some different channel:"\
-                "\n\n   %s  =  %s\n\n" % (txt, ' '.join(txt))
+    msg = "Share this password with %s, via some different channel:"\
+                "\n\n   %s  =  %s\n\n" % (rx_label, txt, ' '.join(txt))
     msg += "ENTER to view QR"
 
-    await tk_show_payload('S', payload, 'Teleport Password', msg, cta='Show to Receiver')
+    print(msg)
+    await tk_show_payload('S' if not prefix else 'E',
+                                payload, 'Teleport Password', msg, cta='Show to Receiver')
 
-    from flow import goto_top_menu
-    goto_top_menu()
+    if not prefix:
+        # not PSBT case ... reset menus, we are deep!
+        from flow import goto_top_menu
+        goto_top_menu()
     
 def pick_noid_key():
     # pick an 40 bit password, shown as base32
@@ -218,6 +219,8 @@ def pick_noid_key():
 async def kt_decode_rx(is_psbt, payload):
     # we are getting data back from a sender, decode it.
 
+    prompt = 'Teleport Password (text)'
+
     if not is_psbt:
         rx_key = settings.get("ktrx")
         if not rx_key:
@@ -230,28 +233,32 @@ async def kt_decode_rx(is_psbt, payload):
         body = payload[33:]
         pair = ngu.secp256k1.keypair(a2b_hex(rx_key))
 
+        ses_key, body = decode_step1(pair, his_pubkey, body)
     else:
-        randint = payload[0:4]
-        body = payload[4:]
+        # Multisig PSBT: will need to iterate over a few wallets and each N-1 possible senders
+        if not MultisigWallet.exists():
+            await ux_show_story("Incoming PSBT requires multisig wallet(s) to be already setup, but you have none.")
+            return
 
-        # may need to iterate over a few wallets?
-        # TODO: multisig
+        ses_key, body, sender_xfp = MultisigWallet.kt_search_rxkey(payload)
 
-    ses_key, body = decode_step1(pair, his_pubkey, body)
+        if sender_xfp is not None:
+            prompt = 'Teleport Password from [%s]' % xfp2str(sender_xfp)
 
     if not ses_key:
         # when ECDH fails, it's truncation or wrong RX key (due to sender using old rx key,
         # or the numeric code the sender entered was wrong, etc)
-        await ux_show_story("QR code was damaged, numeric password was wrong, "
-            "or it was sent to a different user. "
-            "Sender must start again.", title="Teleport Fail")
+        await ux_show_story("QR code was damaged, "+
+                ("numeric password was wrong, " if not is_psbt else "")+
+                "or it was sent to a different user. "
+                "Sender must start again.", title="Teleport Fail")
         return
 
     from glob import dis
     while 1:
         # ask for noid key
         pw = await ux_input_text('', confirm_exit=False, hex_only=False, max_len=8,
-                prompt='Teleport Password (text)', min_len=8, b39_complete=False, scan_ok=False,
+                prompt=prompt, min_len=8, b39_complete=False, scan_ok=False,
                 placeholder='********', funct_keys=None, force_xy=None)
         if not pw: return
 
@@ -286,7 +293,6 @@ async def kt_accept_values(dtype, raw):
     - `n` - one or many notes export (JSON array)
     - `v` - seed vault export (JSON: one secret key but includes includes name, source of key)
     - `p` - binary PSBT to be signed
-    - `P` - a more-signed binary PSBT being returned back to sender
     '''
     from chains import current_chain, slip32_deserialize
     from flow import has_se_secrets, goto_top_menu
@@ -308,9 +314,9 @@ async def kt_accept_values(dtype, raw):
         assert ch.name == chains.current_chain.name, 'wrong chain'
         enc = stash.SecretStash.encode(node=node)
 
-    elif dtype in 'pP':
-        # raw PSBT -- bigger
-        from auth import sign_transaction
+    elif dtype == 'p':
+        # raw PSBT -- much bigger more complex
+        from auth import sign_transaction, TXN_INPUT_OFFSET
         psbt_len = len(raw)
 
         # copy into PSRAM
@@ -373,7 +379,7 @@ def noid_stretch(session_key, noid_key):
     # TODO: measure timing of this on real Q
     return ngu.hash.pbkdf2_sha512(session_key, noid_key, 5000)[0:32]
 
-def encode_payload(my_keypair, his_pubkey, noid_key, body):
+def encode_payload(my_keypair, his_pubkey, noid_key, body, for_psbt=False):
     # do all the encryption for sender
     assert len(his_pubkey) == 33
     assert len(noid_key) == 5
@@ -388,6 +394,10 @@ def encode_payload(my_keypair, his_pubkey, noid_key, body):
 
     b2 = aes256ctr.new(session_key).cipher(b1)
     b2 += ngu.hash.sha256s(b1)[-2:]
+
+    if for_psbt:
+        # no need to share pubkey for PSBT files
+        return b2
 
     return my_keypair.pubkey().to_bytes() +  b2
 
@@ -541,5 +551,165 @@ class SecretPickerMenu(MenuSystem):
             return
 
         await kt_do_send(self.rx_pubkey, 's', raw=raw)
+
+
+async def kt_send_psbt(psbt, psbt_len=None, post_signing=False):
+    # We just finishing adding our signature to an incomplete PSBT.
+    # User wants to send to one or more other senders for them to complete signing.
+
+    # who remains to sign? look at inputs
+    ms = psbt.active_multisig
+    all_xfps = [x for x,p in ms.get_xfp_paths()]
+    need = [x for x in psbt.multisig_xfps_needed() if x in all_xfps]
+
+    # maybe it's not really a PSBT where we know the other signers? might be
+    # a weird coinjoin we dont fully understand
+    if not need:
+        if not post_signing:
+            await ux_show_story("No more signers?")
+        return
+
+    num_to_complete = ms.M - (ms.N - len(need))
+
+    if post_signing:
+        # They just approved and signed a MS txn perhaps via USB or QR or any source
+        # - offer to save?
+        # - offer them to teleport it (we only come this far if possible)
+
+        if num_to_complete <= 0:
+            # fully signed. we can probably finalize it too
+            # - they have no copy of the result, if it came in via teleport
+            # - if from USB, we'd be uploading back, SD would be saved, etc
+            return
+        
+        ch = await ux_show_story("%d more signatures are still required. Press (T) to pick another co-signer to get it next using QR codes." % num_to_complete, title="Teleport PSBT?", escape='t')
+        if ch != 't': return
+        
+
+    if not psbt_len:
+        # we need it serialized, might have only saved into Base64 or something
+        from io import BytesIO
+
+        with BytesIO() as fd:
+            psbt.serialize(fd)      # need prog bar?
+
+            psbt_len = fd.tell()
+            bin_psbt = fd.getvalue()
+    else:
+        # move out of PSRAM
+        from auth import TXN_OUTPUT_OFFSET
+
+        with SFFile(TXN_OUTPUT_OFFSET, psbt_len) as fd:
+            bin_psbt = fd.read(psbt_len)
+
+    my_xfp = settings.get('xfp')
+
+    # if my_xfp in need:
+    # - we haven't signed yet? let's do that now .. except we've lost some of the
+    #   data we need such as filename to save back into.
+    # - so just keep going instead... maybe they want to be last signer?
+
+    # Make them pick a single next signer. It's not helpful to do multiple at once
+    # here, since we need signatures to be added serially so that last
+    # signer can do finalization. We don't have a general purpose combiner.
+
+    async def done_cb(m, idx, item):
+        m.next_xfp = need[idx]
+        the_ux.pop()
+
+    ci = []
+    next_signer = None
+    for idx, x in enumerate(all_xfps):
+        txt = '[%s] Co-signer #%d' % (xfp2str(x), idx+1)
+        f = done_cb
+        if x == my_xfp:
+            txt += ': YOU'
+            f = None        # we dont offer to QR to ourselves
+        elif x not in need:
+            txt += ': DONE'
+            f = None
+        mi = MenuItem(txt, f=f)
+        if x not in need:
+            # show check if we've got sig
+            mi.is_chosen = lambda: True
+        elif next_signer == None:
+            next_signer = idx
+        ci.append(mi)
+
+    m = MenuSystem(ci)
+    m.next_xfp = None
+    m.goto_idx(next_signer)     # position cursor on next candidate
+    the_ux.push(m)
+    await m.interact()
+    
+    if m.next_xfp:
+        assert m.next_xfp != my_xfp
+        ri, rx_pubkey, kp = ms.kt_make_rxkey(m.next_xfp)
+        await kt_do_send(rx_pubkey, 'p', raw=bin_psbt, prefix=ri, kp=kp,
+                        rx_label='[%s] co-signer' % xfp2str(m.next_xfp))
+
+async def kt_send_file_psbt(*a):
+    # Menu item: choose a PSBT file from SD card, and send to co-signers.
+    # Heavy code re-use here. Need to find the multisig wallet associated w/ file,
+    # so we need to parse it and we must be one of the co-signers.
+
+    from actions import is_psbt, file_picker
+    from auth import sign_psbt_file, TXN_INPUT_OFFSET
+    from version import MAX_TXN_LEN
+    from ux import import_export_prompt
+    from psbt import psbtObject
+    from glob import dis
+
+    # choose any PSBT from SD
+    picked = await import_export_prompt("PSBT", is_import=True, no_nfc=True, no_qr=True)
+    if picked == KEY_CANCEL:
+        return
+    choices = await file_picker(suffix='psbt', min_size=50, ux=False,
+                                  max_size=MAX_TXN_LEN, taster=is_psbt, **picked)
+    if not choices:
+        # error msg already shown
+        return
+
+    if len(choices) == 1:
+        # single - skip the menu
+        label,path,fn = choices[0]
+        input_psbt = path + '/' + fn
+    else:
+        # multiples - make them pick one
+        input_psbt = await file_picker(choices=choices)
+        if not input_psbt:
+            return
+
+    # read into PSRAM from wherever
+    psbt_len = await sign_psbt_file(input_psbt, just_read=True, **picked)
+
+    dis.fullscreen("Validating...")
+    try:
+        dis.progress_sofar(1, 4)
+        with SFFile(TXN_INPUT_OFFSET, length=psbt_len, message='Reading...') as fd:
+            # NOTE: psbtObject captures the file descriptor and uses it later
+            psbt = psbtObject.read_psbt(fd)
+
+        await psbt.validate()      # might do UX: accept multisig import
+
+        dis.progress_sofar(2, 4)
+        psbt.consider_inputs()
+        dis.progress_sofar(3, 4)
+
+        psbt.consider_keys()
+
+    except Exception as exc:
+        # not going to do full reporting here, use our other code for that!
+        await ux_show_story("Cannot validate PSBT?\n\n"+str(exc), "PSBT Load Failed")
+        return
+    finally:
+        dis.progress_bar_show(1)
+
+    if not psbt.active_multisig:
+        await ux_show_story("We are not part of this multisig wallet.", "Cannot Teleport PSBT")
+        return
+
+    await kt_send_psbt(psbt, psbt_len=psbt_len)
+
     
 # EOF

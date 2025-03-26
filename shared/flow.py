@@ -39,13 +39,14 @@ if version.has_battery:
     from battery import battery_idle_timeout_chooser, brightness_chooser
     from q1 import scan_and_bag
     from notes import make_notes_menu
-    from teleport import kt_start_rx
+    from teleport import kt_start_rx, kt_send_file_psbt
 else:
     battery_idle_timeout_chooser = None
     brightness_chooser = None
     scan_and_bag = None
     make_notes_menu = None
     kt_start_rx = None
+    kt_send_file_psbt = None
 
 
 #
@@ -215,6 +216,7 @@ FileMgmtMenu = [
     MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu),        #dup elsewhere
     MenuItem('Sign Text File', predicate=has_secrets, f=sign_message_on_sd),
     MenuItem('Batch Sign PSBT', predicate=has_secrets, f=batch_sign),
+    MenuItem('Teleport Multisig PSBT', predicate=version.has_qr, f=kt_send_file_psbt),
     MenuItem('List Files', f=list_files),
     MenuItem('Verify Sig File', f=verify_sig_file),
     MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file, shortcut=KEY_NFC),
