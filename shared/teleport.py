@@ -198,7 +198,6 @@ async def kt_do_send(rx_pubkey, dtype, raw=None, obj=None, prefix=b'', rx_label=
                 "\n\n   %s  =  %s\n\n" % (rx_label, txt, ' '.join(txt))
     msg += "ENTER to view QR"
 
-    print(msg)
     await tk_show_payload('S' if not prefix else 'E',
                                 payload, 'Teleport Password', msg, cta='Show to Receiver')
 
@@ -614,7 +613,7 @@ async def kt_send_psbt(psbt, psbt_len=None, post_signing=False):
     # signer can do finalization. We don't have a general purpose combiner.
 
     async def done_cb(m, idx, item):
-        m.next_xfp = need[idx]
+        m.next_xfp = item.arg
         the_ux.pop()
 
     ci = []
@@ -628,7 +627,7 @@ async def kt_send_psbt(psbt, psbt_len=None, post_signing=False):
         elif x not in need:
             txt += ': DONE'
             f = None
-        mi = MenuItem(txt, f=f)
+        mi = MenuItem(txt, f=f, arg=x)
         if x not in need:
             # show check if we've got sig
             mi.is_chosen = lambda: True

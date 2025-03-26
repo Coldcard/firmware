@@ -243,8 +243,7 @@ class BBQrState:
         # provide UX -- even if we didn't use it
         dis.draw_bbqr_progress(hdr, self.parts)
 
-        # do we need more still?
-
+        # return T if we need more parts still
         return (len(self.parts) < hdr.num_parts) or self.runt
 
 class BBQrStorage:

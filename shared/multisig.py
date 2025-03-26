@@ -4,7 +4,7 @@
 #
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson, version
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, to_ascii_printable
-from utils import str_to_keypath, problem_file_line, parse_extended_key, get_filesize
+from utils import str_to_keypath, problem_file_line, parse_extended_key, get_filesize, B2A
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
 from ux import import_export_prompt, ux_enter_bip32_index, ux_enter_number, OK, X
 from files import CardSlot, CardMissingError, needs_microsd
@@ -1206,6 +1206,8 @@ Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=
 
         kp = self.kt_my_keypair(ri)
 
+        #print("psbt sender: ri=%d toward xfp: %s ... %s" % (ri, xfp2str(xfp), B2A(pubkey)))
+
         return ri.to_bytes(4, 'big'), pubkey, kp
 
     def kt_my_keypair(self, ri):
@@ -1226,6 +1228,9 @@ Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=
 
             kp = ngu.secp256k1.keypair(node.privkey())
 
+            #print("my keypair: ri=%d my_xfp=%s ... %s" % (
+            #        ri, xfp2str(my_xfp), B2A(kp.pubkey().to_bytes())))
+
             return kp
 
     @classmethod
@@ -1244,7 +1249,8 @@ Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=
         kp = None
         for ms in cls.iter_wallets():
             if (not kp) or (kp_deriv != ms.xfp_paths[my_xfp]):
-                # my keypair is cachable if path the same in 2nd MS wallet and so on
+                # my keypair is cachable if my derivation path is the
+                # same in subsequent MS wallet
                 kp = ms.kt_my_keypair(ri)
                 kp_deriv = ms.xfp_paths[my_xfp]
 
@@ -1256,6 +1262,9 @@ Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=
                 node.derive(ri, False)
 
                 his_pubkey = node.pubkey()
+
+                #print("try decode: ri=%d toward xfp: %s ... from %s <= to %s" % (
+                #    ri, xfp2str(xfp), B2A(his_pubkey), B2A(kp.pubkey().to_bytes())), end=' ... ')
 
                 # if implied session key decodes the checksum, it is right
                 ses_key, body = decode_step1(kp, his_pubkey, payload[4:])
