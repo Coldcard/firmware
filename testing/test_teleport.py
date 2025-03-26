@@ -107,7 +107,7 @@ def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_s
 @pytest.fixture()
 def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr, enter_complex, cap_screen, goto_home, split_scan_bbqr):
     # finish the teleport by doing QR and getting data
-    def doit(data, pw, expect_fail=False):
+    def doit(data, pw, expect_fail=False, expect_xfp=None):
         goto_home()
         need_keypress(KEY_QR)
         time.sleep(.250)        # required
@@ -123,6 +123,9 @@ def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr,
         if expect_fail: return
         scr = cap_screen()
         assert 'Teleport Password' in scr
+
+        if expect_xfp:
+            assert xfp2str(expect_xfp) in scr
 
         enter_complex(pw)
         time.sleep(.150)        # required
@@ -370,12 +373,12 @@ def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_ite
 
 @pytest.mark.unfinalized
 @pytest.mark.parametrize('num_ins', [ 15 ])
-@pytest.mark.parametrize('M', [4])          # [ 2, 4, 1])
+@pytest.mark.parametrize('M', [1, 4])          # [ 2, 4, 1])
 @pytest.mark.parametrize('segwit', [True])
 @pytest.mark.parametrize('incl_xpubs', [ False, True ])
 def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, dev, clear_ms,
                         fake_ms_txn, try_sign, incl_xpubs, bitcoind, cap_story, need_keypress,
-    cap_menu, pick_menu_item, grab_payload, rx_complete, press_select):
+    cap_menu, pick_menu_item, grab_payload, rx_complete, press_select, settings_get, settings_set):
 
     # IMPORTANT: wont work if you start simulator with --ms flag. Use no args
 
@@ -384,6 +387,8 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
 
     clear_ms()
     use_regtest()
+
+    settings_set('finms', 1)
 
     # create a wallet, with 3 bip39 pw's
     keys, select_wallet = make_myself_wallet(M, do_import=(not incl_xpubs))
@@ -406,8 +411,8 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
     assert title == 'Teleport PSBT?'
     assert 'Press (T)' in body
 
-    # expect: a menu of xfp to pick from
     while 1:
+        # expect: a menu of other signers to pick from
         need_keypress('t')
         time.sleep(.1)
 
@@ -428,11 +433,13 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
         # check XFP changes
         next_xfp = keys[idx][0]
         assert next_xfp != my_xfp
-        my_xfp = next_xfp
+        last_xfp = my_xfp
 
+        # pick other xfp to send to
         nm, = [mi for mi in m if xfp2str(next_xfp) in mi]
         pick_menu_item(nm)
 
+        # grab the payload and pw
         pw, data, qr_raw = grab_payload('E')
         assert len(pw) == 8
 
@@ -442,9 +449,11 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
         # switch personalities, and try to read that QR
         new_xfp = select_wallet(idx)
         assert new_xfp == next_xfp
+        my_xfp = next_xfp
+        assert settings_get('xfp') == my_xfp
 
         # import and sign
-        rx_complete(('E', qr_raw), pw)
+        rx_complete(('E', qr_raw), pw, expect_xfp=last_xfp)
 
         title, body = cap_story()
         assert title == 'OK TO SEND?'
