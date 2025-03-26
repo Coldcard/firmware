@@ -152,20 +152,30 @@ def render_bbqr(need_keypress, cap_screen_qr, sim_exec, readback_bbqr_ll):
 
 
 @pytest.fixture
-def try_sign_bbqr(cap_story, scan_a_qr, press_select, press_cancel, need_keypress, goto_home,
-                  readback_bbqr):
-    def doit(psbt, type_code="P", approve=True, nfc_push_tx=False, **kws):
+def split_scan_bbqr(scan_a_qr, goto_home, need_keypress):
+
+    # take big data and send it via series of BBQr thru emulated scanner
+    def doit(raw_data, type_code, **kws):
         goto_home()
         need_keypress(KEY_QR)
 
         # def split_qrs(raw, type_code, encoding=None,
         #  min_split=1, max_split=1295, min_version=5, max_version=40
-        actual_vers, parts = split_qrs(psbt, type_code, **kws)
+        actual_vers, parts = split_qrs(raw_data, type_code, **kws)
         random.shuffle(parts)
 
         for p in parts:
             scan_a_qr(p)
-            time.sleep(4.0 / len(parts))  # just so we can watch
+            time.sleep(2.0 / len(parts))  # just so we can watch
+
+    return doit
+
+@pytest.fixture
+def try_sign_bbqr(cap_story, scan_a_qr, press_select, press_cancel, need_keypress,
+                  readback_bbqr, split_scan_bbqr):
+    def doit(psbt, type_code="P", approve=True, nfc_push_tx=False, **kws):
+
+        split_scan_bbqr(psbt, type_code, **kws)
 
         for r in range(20):
             title, story = cap_story()

@@ -44,8 +44,7 @@ The first byte encodes what the package contents (under all the encryption).
 - `x` - XPRV mode, full details - 4 bytes (XPRV) + base58 *decoded* binary-XPRV follows
 - `n` - one or many notes export (JSON array)
 - `v` - seed vault export (JSON: one secret key but includes name, source of key)
-- `p` - binary PSBT to be signed
-- `P` - a more-signed binary PSBT being returned back to sender
+- `p` - binary PSBT to be signed, perhaps multisig but not required.
 
 ## QR details
 
@@ -58,29 +57,37 @@ New type codes for BBQr are defined for the purposes of this application:
 
 - `R` contains `(pubkey)` ... begins the process from receiver; compressed pubkey is 33 bytes
 - `S` contains `(pubkey)(data)` ... data from sender; first 33 bytes are sender's pubkey
-- `E` for PSBT: `(randint)(data)` ... randint (4 bytes) indicates which randomly
-  selected derived subkey from pre-shared xpub associated with receiver
+- `E` for Multisig PSBT: `(randint)(data)` ... randint (4 byte nonce) indicates which 
+  derived subkey from pre-shared xpub associated with receiver
 
 All the data is encrypted with the exception of the pubkey or randint. Keep in mind
 those are both nonce values picked uniquely for each transfer.
 
-### PSBT Key Picking
+### PSBT Key Selection
 
-When sending PSBT data, the keys involved are picked at random by the sender in range:
-    5000..(2^30).
+When sending PSBT data, a nonce is picked at random by the sender
+in range: `0..(2^28)`
 
-This is called `randint`. The receiver's pubkey will be
+This nonce is called `randint`. The receiver's pubkey will be
 
     .../20250317/(randint)
 
-where `...` is the derivation used in the multisig setup for the co-signer who will
-receive the package. The sender's keypair is implied by:
-
-    .../20250318/(randint)
+where `...` is the derivation used in the multisig wallet for the co-signer who will
+receive the package. The sender's keypair has the same sub key path assuming all
+co-signers have same derivation path from root (not required).
 
 Because both the sender and receiver already have each other's XPUB they can derive
 the appropriate pubkeys (and privkey for their side) without communicating 
 more than `randint`. The sending COLDCARD will pick a new random value each time.
+
+When receiving a multisig PSBT encrypted this way, the receiver does not need
+to any setup (nor numeric password) and can receive a QR code at any time.
+This works because the shared multisig wallet is already setup. Receiver will
+take the nonce value (randint) and seach all pre-defined multisig wallets for
+any pubkey that can decrypt the package successfully (based on checksum inside
+first layer of ECDH encryption).
+
+The next layer of encryption (paranoid password) is unchanged.
 
 ## Encryption Details
 
@@ -175,7 +182,33 @@ and the site will be served over SSL.
   to send, from secure notes to seeds and so on.
 
 - For PSBT multisig, user must pick a single co-signer (who hasn't already
-  signed) and the QR is prepared for that receiver. They should get another
-  chance to do the same for the other possible co-signers.
+  signed) and the QR is prepared for that receiver. Because we
+  cannot do arbitary conbining, it's best if the next signer continues
+  to teleport the updated PSBT to further signers. In other words,
+  a daisy-chain pattern is prefered to a star patter. The signer
+  who completes the Mth (of N) signature will be able to finalize
+  the transaction, and ideally with PushTx feature, broadcast it.
 
+# Security Comments
 
+## Such short passwords?
+
+We are using 8-character passwords because we want them to be
+practical to share over non-digital channels such as a voice phone
+call, or hand-written note.
+
+It is important to remind users that the passwords should be sent
+by a different channel from the QR itself. Best is to call up your
+other party and say the letters to them directly.
+
+## Is it safe to save image of QR to cloud?
+
+Yes, this seems safe. Of course, if you can control it, perhaps not
+a risk to accept... but the QR is encrypted via ECDH using a key
+that is forgotten after the transfer, so forward privacy is protected.
+Also your cloud service (or photo roll, chat app log, etc) will not
+have the 8-character password which is also required unpack the secrets.
+
+The QR codes themselves are fully random and do not reveal the
+identity of your COLDCARD, your on chain funds or anything linked
+to you.

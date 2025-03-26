@@ -114,7 +114,7 @@ class VirtDisk:
     def new_psbt(self, filename):
         # New incoming PSBT has been detected, start to sign it.
         from auth import sign_psbt_file
-        uasyncio.create_task(sign_psbt_file(filename, force_vdisk=True, abort=True))
+        uasyncio.create_task(sign_psbt_file(filename, force_vdisk=True, ux_abort=True))
 
     def new_firmware(self, filename, sz):
         # potential new firmware file detected

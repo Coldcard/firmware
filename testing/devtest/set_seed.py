@@ -23,6 +23,7 @@ PassphraseMenu.pp_sofar = ''
 SettingsObject.master_sv_data = {}
 SettingsObject.master_nvram_key = None
 set_seed_value(main.WORDS)
+stash.SensitiveValues.clear_cache()
 
 settings.set('chain', 'XTN')
 settings.set('words', len(main.WORDS))
@@ -30,7 +31,7 @@ settings.set('terms_ok', True)
 settings.set('idle_to', 0)
 
 print("New key in effect: %s" % settings.get('xpub', 'MISSING'))
-print("Fingerprint: %s" % xfp2str(settings.get('xfp', 0)))
+print(".. w/ fingerprint: %s" % xfp2str(settings.get('xfp', 0)))
 
 # impt: if going from xprv => seed words, main menu needs updating
 goto_top_menu()

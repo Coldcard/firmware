@@ -2232,6 +2232,19 @@ class psbtObject(psbtProxy):
         sigs = sigs[:self.active_multisig.M]
         return sigs
 
+    def multisig_xfps_needed(self):
+        # provide the set of xfp's that still need to sign PSBT
+        # - used to find which multisig-signer needs to go next
+        rv = set()
+        for inp in self.inputs:
+            for pk, pth in inp.subpaths.items():
+                if pk in inp.part_sigs:
+                    continue
+                if pk in inp.added_sigs:
+                    continue
+                rv.add(pth[0])
+        return rv
+
     def finalize(self, fd):
         # Stream out the finalized transaction, with signatures applied
         # - assumption is it's complete already.

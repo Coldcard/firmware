@@ -4,14 +4,15 @@
 #
 # - you'll need v1.0.1 of bbqr library for this to work
 #
-import pytest, time, re
-from helpers import prandom
+import pytest, time, re, pdb
+from helpers import prandom, xfp2str
 from binascii import a2b_hex
 from bbqr import split_qrs, join_qrs
 from charcodes import KEY_QR, KEY_NFC
 from base64 import b32encode
+from constants import *
 
-from test_bbqr import readback_bbqr
+from test_bbqr import readback_bbqr, split_scan_bbqr
 from test_notes import need_some_notes, need_some_passwords
 from test_ephemeral import SEEDVAULT_TEST_DATA
 
@@ -35,9 +36,9 @@ def rx_start(grab_payload, goto_home, pick_menu_item):
     
 
 @pytest.fixture()
-def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_story, nfc_block4rf, cap_screen_qr):
+def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_story, nfc_block4rf, cap_screen_qr, readback_bbqr):
 
-    # start the Rx process, capturing numeric code
+    # started the process; capture pw/code and QR contents, verify NFC works
     def doit(tt_code, allow_reuse=True, reset_pubkey=False):
         expect_in_title = 'Receive' if tt_code == 'R' else 'Teleport Password'
 
@@ -83,9 +84,15 @@ def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_s
 
         need_keypress(KEY_QR)
 
-        qr_data = cap_screen_qr().decode()
+        if tt_code != 'E':
+            qr_data = cap_screen_qr().decode()
+            filetype, qr_raw = join_qrs([qr_data])
+        else:
+            # will be multi-frame BBQr in case of PSBT
+            filetype, qr_raw = readback_bbqr()
+            # this is un-split BBQR which didn't really happen, but useful
+            qr_data = f'B$2{filetype}0100' + b32encode(qr_raw).decode('ascii')
 
-        filetype, qr_raw = join_qrs([qr_data])
         assert filetype == tt_code
 
         if nfc_raw: assert nfc_raw == qr_raw
@@ -93,23 +100,29 @@ def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_s
         press_cancel()
         press_cancel()
 
-        return code, qr_data
+        return code, qr_data, qr_raw
         
     return doit
 
 @pytest.fixture()
-def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr, enter_complex, cap_screen, goto_home):
+def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr, enter_complex, cap_screen, goto_home, split_scan_bbqr):
     # finish the teleport by doing QR and getting data
     def doit(data, pw, expect_fail=False):
         goto_home()
         need_keypress(KEY_QR)
         time.sleep(.250)        # required
-        scan_a_qr(data)
+
+        if isinstance(data, tuple):
+            bbrq_type, raw = data
+            split_scan_bbqr(raw, bbrq_type, max_version=27)
+        else:
+            assert len(data) <  2000    # USB protocol limit
+            scan_a_qr(data)
 
         time.sleep(.250)        # required
         if expect_fail: return
         scr = cap_screen()
-        assert 'Teleport Password (text)' in scr
+        assert 'Teleport Password' in scr
 
         enter_complex(pw)
         time.sleep(.150)        # required
@@ -175,7 +188,7 @@ def test_tx_quick_note(rx_start, tx_start, cap_menu, enter_complex, pick_menu_it
     enter_complex(msg)
 
     time.sleep(.150)        # required
-    pw, data = grab_payload('S')
+    pw, data, _ = grab_payload('S')
     assert len(pw) == 8
     
     # now, send that back
@@ -219,7 +232,7 @@ def test_tx_master_send(rx_start, tx_start, cap_menu, enter_complex, pick_menu_i
     press_select()
 
     time.sleep(.150)        # required?
-    pw, data = grab_payload('S')
+    pw, data, _ = grab_payload('S')
     
     # now, send that back
     rx_complete(data, pw)
@@ -252,7 +265,7 @@ def test_tx_notes(qty, rx_start, tx_start, cap_menu, enter_complex, pick_menu_it
         pick_menu_item('Export All Notes & Passwords')
 
     time.sleep(.150)        # required?
-    pw, data = grab_payload('S')
+    pw, data, _ = grab_payload('S')
     
     # now, send that back
     rx_complete(data, pw)
@@ -299,7 +312,7 @@ def test_tx_seedvault(data, rx_start, tx_start, cap_menu, enter_complex, pick_me
     pick_menu_item(mi)
 
     time.sleep(.150)        # required?
-    pw, data = grab_payload('S')
+    pw, data, _ = grab_payload('S')
 
     settings_set("seeds", [])
 
@@ -323,7 +336,7 @@ def test_tx_seedvault(data, rx_start, tx_start, cap_menu, enter_complex, pick_me
     pick_menu_item('Restore Master')
     press_select()
 
-def test_rx_truncated(rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select):
+def test_rx_truncated(rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, rx_complete, cap_story, press_cancel, press_select):
     # Truncate the RX Code
     code, rx_pubkey = rx_start()
     pw = tx_start(rx_pubkey[:-3], code, expect_fail='Truncated KT RX')
@@ -342,7 +355,7 @@ def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_ite
     press_select()
 
     time.sleep(.150)        # required?
-    pw, data = grab_payload('S')
+    pw, data, _ = grab_payload('S')
     
     # now, send that back
     rx_complete(data, pw, expect_fail=True)
@@ -354,5 +367,84 @@ def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_ite
     assert 'start again' in body
 
     press_cancel()
+
+@pytest.mark.unfinalized
+@pytest.mark.parametrize('num_ins', [ 15 ])
+@pytest.mark.parametrize('M', [2])          # [ 2, 4, 1])
+@pytest.mark.parametrize('segwit', [True])
+@pytest.mark.parametrize('incl_xpubs', [ False, True ])
+def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, dev, clear_ms,
+                        fake_ms_txn, try_sign, incl_xpubs, bitcoind, cap_story, need_keypress,
+    cap_menu, pick_menu_item, grab_payload, rx_complete, press_select):
+
+    # IMPORTANT: wont work if you start simulator with --ms flag. Use no args
+
+    all_out_styles = list(unmap_addr_fmt.keys())
+    num_outs = len(all_out_styles)
+
+    clear_ms()
+    use_regtest()
+
+    # create a wallet, with 3 bip39 pw's
+    keys, select_wallet = make_myself_wallet(M, do_import=(not incl_xpubs))
+    N = len(keys)
+    assert M<=N
+
+    psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs, 
+                        outstyles=all_out_styles, change_outputs=list(range(1,num_outs)))
+
+    open(f'debug/myself-before.psbt', 'wb').write(psbt)
+
+    cur_wallet = 0
+    my_xfp = select_wallet(cur_wallet)
+
+    _, updated = try_sign(psbt, accept_ms_import=incl_xpubs)
+    open(f'debug/myself-after-1.psbt', 'wb').write(updated)
+    assert updated != psbt
+
+    title, body = cap_story()
+    assert title == 'Teleport PSBT?'
+    assert 'Press (T)' in body
+
+    need_keypress('t')
+
+    time.sleep(.1)
+
+    # expect: a menu of xfp to pick from
+    m = cap_menu()
+    assert len(m) == N
+    assert 'YOU' in [ln for ln in m if xfp2str(my_xfp) in ln][0]
+
+    idx = 1
+    next_xfp = keys[1][0]
+    assert next_xfp != my_xfp
+
+    # choose one that isn't me
+    nm, = [mi for mi in m if xfp2str(next_xfp) in mi]
+    pick_menu_item(nm)
+
+    pw, data, qr_raw = grab_payload('E')
+    assert len(pw) == 8
+
+    open(f'debug/next_qr.txt', 'wt').write(f'{xfp2str(next_xfp)}\n\n{pw}\n\n{data}')
+
+    # switch personalities, and try to read that QR
+    new_xfp = select_wallet(idx)
+    assert new_xfp == next_xfp
+
+    # import and sign
+    rx_complete(('E', qr_raw), pw)
+
+    title, body = cap_story()
+    assert title == 'OK TO SEND?'
+
+    press_select()
+    time.sleep(.25)
+
+    title, body = cap_story()
+    assert title == 'Teleport PSBT?'
+    assert '2 more signatures' in body
+
+    pdb.set_trace()
 
 # EOF

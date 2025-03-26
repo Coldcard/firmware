@@ -1657,13 +1657,14 @@ async def list_files(*A):
 
 async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
                       choices=None, none_msg=None, force_vdisk=False, slot_b=None,
-                      allow_batch_sign=False, ux=True):
+                      allow_batch=False, ux=True):
     # present a menu w/ a list of files... to be read
     # - optionally, enforce a max size, and provide a "tasting" function
-    # - if msg==None, don't prompt, just do the search and return list
+    # - if (not ux), don't prompt, just do the search and return list
     # - if choices is provided; skip search process
     # - escape: allow these chars to skip picking process
     # - slot_b: None=>pick slot w/ card in it, or A if both.
+    # - allow_batch: adds an "all of the above" choice: ("menu label", menu_handler)
 
     if choices is None:
         choices = []
@@ -1707,7 +1708,7 @@ async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
                         label = fn
                         while label in sofar:
                             # just the file name isn't unique enough sometimes?
-                            # - shouldn't happen anymore now that we dno't support internal FS
+                            # - shouldn't happen anymore now that we don't support internal FS
                             # - unless we do muliple paths
                             label += path.split('/')[-1] + '/' + fn
 
@@ -1744,10 +1745,10 @@ async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
     choices.sort()
 
     items = [MenuItem(label, f=clicked, arg=(path, fn)) for label, path, fn in choices]
-    if allow_batch_sign and len(choices) > 1:
-        # we know that each choices member is psbt as allow_batch_sign is only True
-        # in Ready To Sign
-        items.insert(0, MenuItem("[Sign All]", f=batch_sign, arg=choices))
+    if allow_batch and len(choices) > 1:
+        # Allow an "all" selection
+        label, funct = allow_batch
+        items.insert(0, MenuItem(label, f=funct, arg=choices))
 
     menu = MenuSystem(items)
     the_ux.push(menu)
@@ -1895,7 +1896,7 @@ from your desktop wallet software or command line tools.\n\n'''
         input_psbt = path + '/' + fn
     else:
         # multiples - ask which, and offer batch to sign them all
-        input_psbt = await file_picker(choices=choices, allow_batch_sign=True)
+        input_psbt = await file_picker(choices=choices, allow_batch=("[Sign All]", batch_sign))
         if not input_psbt:
             return
 
