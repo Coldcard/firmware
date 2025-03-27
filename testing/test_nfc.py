@@ -446,7 +446,6 @@ def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
 
     clear_ms()
     settings_set('chain', chain)
-    settings_remove("finms")  # we do not need finms setting on as we have push tx enabled
 
     enable_nfc()
 

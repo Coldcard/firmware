@@ -751,7 +751,6 @@ class ApproveTransaction(UserAuthorizedAction):
         self.psbt_len = psbt_len
         self.do_finalize = bool(flags & STXN_FINALIZE)
         self.do_visualize = bool(flags & STXN_VISUALIZE)
-        self.finalize_ms = settings.get("finms", False) or settings.get('ptxurl', False)
         self.stxn_flags = flags
         self.psbt = None
         self.psbt_sha = psbt_sha
@@ -990,12 +989,7 @@ class ApproveTransaction(UserAuthorizedAction):
             return await self.failure("Signing failed late", exc)
 
         if self.approved_cb:
-            # for NFC, micro SD cases
-            finalize = self.psbt.is_complete()
-            if self.psbt.would_finalize_ms and not self.finalize_ms:
-                finalize = False
-
-            kws = dict(psbt=self.psbt, finalize=finalize)
+            kws = dict(psbt=self.psbt)
             if self.is_sd and (ch == "b"):
                 kws["slot_b"] = True
             await self.approved_cb(**kws)
@@ -1303,7 +1297,7 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
             assert total <= psbt_len
             psbt_len = total
 
-    async def done(psbt, slot_b=None, finalize=None):
+    async def done(psbt, slot_b=None):
         dis.fullscreen("Wait...")
         orig_path, basename = filename.rsplit('/', 1)
         orig_path += '/'

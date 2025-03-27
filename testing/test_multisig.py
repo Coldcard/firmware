@@ -1051,7 +1051,7 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import,
         menu = cap_menu()
         assert f'{M}/{N}: {name}' in menu
         # depending if NFC enabled or not, and if Q (has QR)
-        assert (len(menu) - num_wallets) in [8,9,10]
+        assert (len(menu) - num_wallets) in [7,8,9]
 
     title, story = offer_ms_import(make_named('xxx-orig'))
     assert 'Create new multisig wallet' in story
@@ -3763,16 +3763,14 @@ def test_cc_root_key(import_ms_wallet, bitcoind, use_regtest, clear_ms, microsd_
 
 
 @pytest.mark.parametrize("way", ["nfc", "qr"])
-@pytest.mark.parametrize("finalize", [True, False])
-def test_multisig_nfc_qr_opt_in_finalization(way, finalize, clear_ms, make_multisig,
-                                             import_ms_wallet, cap_story, press_cancel,
-                                             OK, settings_set, fake_ms_txn, try_sign_nfc,
-                                             settings_remove, try_sign_bbqr):
+def test_multisig_nfc_qr_finalization(way, clear_ms, make_multisig, import_ms_wallet,
+                                      cap_story, press_cancel, OK, settings_set,
+                                      fake_ms_txn, try_sign_nfc, settings_remove,
+                                      try_sign_bbqr):
     clear_ms()
-    settings_set("finms", int(finalize))
     settings_remove("ptxurl")  # tesing above parameter, ptxurl needs to be off
     M, N = 1, 2
-    wname = "finms-%d" % int(finalize)
+    wname = "finms-%s" % way
     keys = import_ms_wallet(M, N, addr_fmt="p2wsh", name=wname, accept=True,
                      descriptor=False)
 
@@ -3780,17 +3778,14 @@ def test_multisig_nfc_qr_opt_in_finalization(way, finalize, clear_ms, make_multi
                        change_outputs=[0])
 
     if way == "nfc":
-        ip, result, txid = try_sign_nfc(psbt, expect_finalize=finalize,
+        ip, result, txid = try_sign_nfc(psbt, expect_finalize=True,
                                         nfc_tools=True, encoding="hex")
         is_fin = bool(txid)
     else:
         assert way == "qr"
         ip, ft, result = try_sign_bbqr(psbt)
-        is_fin = ft == "T"
+        is_fin = (ft == "T")
 
-    if finalize:
-        assert is_fin
-    else:
-        assert not is_fin
+    assert is_fin
 
 # EOF
