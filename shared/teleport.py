@@ -643,16 +643,30 @@ async def kt_send_psbt(psbt, psbt_len=None, post_signing=False):
         f = done_cb
         if x == my_xfp:
             txt += ': YOU'
-            f = None        # we dont offer to QR to ourselves
+            f = None
+            if x in need:
+                # we haven't signed ourselves yet, so allow that
+                from auth import sign_transaction, TXN_INPUT_OFFSET
+                from public_constants import STXN_FINALIZE
+
+                async def sign_now(*a):
+                    # this will reset the UX stack:
+                    sign_transaction(psbt_len, flags=STXN_FINALIZE)
+                
+                f = sign_now
+
         elif x not in need:
             txt += ': DONE'
             f = None
+
         mi = MenuItem(txt, f=f, arg=x)
+
         if x not in need:
             # show check if we've got sig
             mi.is_chosen = lambda: True
         elif next_signer == None:
             next_signer = idx
+
         ci.append(mi)
 
     m = MenuSystem(ci)
