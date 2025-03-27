@@ -11,7 +11,7 @@ from ux import ux_show_story, ux_enter_bip32_index, the_ux, ux_confirm, ux_drama
 from menu import MenuItem, MenuSystem
 from ubinascii import hexlify as b2a_hex
 from ubinascii import b2a_base64
-from auth import write_sig_file
+from msgsign import write_sig_file
 from utils import chunk_writer, xfp2str, swab32
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 

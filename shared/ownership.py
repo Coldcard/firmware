@@ -340,7 +340,7 @@ class OwnershipCache:
                                         is_alnum=(wallet.addr_fmt & (AFC_BECH32 | AFC_BECH32M)),
                                         msg=addr, is_addrs=True)
                 elif not is_ms and (ch == "0"):  # only singlesig
-                    from auth import sign_with_own_address
+                    from msgsign import sign_with_own_address
                     await sign_with_own_address(sp, wallet.addr_fmt)
                 else:
                     break

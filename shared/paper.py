@@ -83,7 +83,7 @@ class PaperWalletMaker:
 
         try:
             import ngu
-            from auth import write_sig_file
+            from msgsign import write_sig_file
             from chains import current_chain
             from serializations import hash160
             from stash import blank_object
