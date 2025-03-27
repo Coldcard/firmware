@@ -1248,6 +1248,11 @@ Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=
 
         kp = None
         for ms in cls.iter_wallets():
+            if my_xfp not in ms.xfp_paths:
+                # we aren't a party to this MS wallet? not supposed to happen, but 
+                # easy to handle
+                continue
+
             if (not kp) or (kp_deriv != ms.xfp_paths[my_xfp]):
                 # my keypair is cachable if my derivation path is the
                 # same in subsequent MS wallet
