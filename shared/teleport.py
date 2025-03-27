@@ -120,7 +120,13 @@ def decrypt_rx_pubkey(code, payload):
     rx_pubkey[0] &= 0x01
     rx_pubkey[0] |= 0x02
 
-    return rx_pubkey
+    # validate that it's on the curve... otherwise the code is wrong
+    try:
+        ngu.secp256k1.pubkey(rx_pubkey)
+
+        return rx_pubkey
+    except:
+        return None
 
 async def tk_show_payload(type_code, payload, title, msg, cta=None):
     # show the QR and/or NFC
@@ -153,13 +159,22 @@ async def kt_start_send(rx_data):
     # - they want to send to this guy
     # - ask them what to send, etc
 
-    # - ask for the sender's password -- any value will be accepted
-    code = await ux_input_text('', confirm_exit=False, hex_only=True, max_len=8,
+    while 1:
+        # - ask for the sender's password -- nearly any value will be accepted
+        code = await ux_input_text('', confirm_exit=False, hex_only=True, max_len=8,
             prompt='Teleport Password (number)', min_len=8, b39_complete=False, scan_ok=False,
             placeholder='########', funct_keys=None, force_xy=None)
-    if not code: return
+        if not code: return
 
-    rx_pubkey = decrypt_rx_pubkey(code, rx_data)
+        rx_pubkey = decrypt_rx_pubkey(code, rx_data)
+
+        if not rx_pubkey:
+            # I think only about 50% odds of catching an incorrect code. Not sure
+            ch = await ux_show_story(
+                    "Incorrect Teleport Password. You can try again or CANCEL to stop.")
+            if ch == 'x': return
+
+        break
 
     msg = '''You can now teleport secrets! Select from seed words, seed vault keys, \
 secure notes or passwords. \
@@ -316,6 +331,8 @@ async def kt_accept_values(dtype, raw):
     elif dtype == 'p':
         # raw PSBT -- much bigger more complex
         from auth import sign_transaction, TXN_INPUT_OFFSET
+        from public_constants import STXN_FINALIZE
+
         psbt_len = len(raw)
 
         # copy into PSRAM
@@ -323,7 +340,7 @@ async def kt_accept_values(dtype, raw):
             out.write(raw)
 
         # This will take over UX w/ the signing process
-        sign_transaction(psbt_len, flags=0x0)
+        sign_transaction(psbt_len, flags=STXN_FINALIZE)
         return
 
     elif dtype in 'nv':
@@ -383,6 +400,9 @@ def encode_payload(my_keypair, his_pubkey, noid_key, body, for_psbt=False):
     assert len(his_pubkey) == 33
     assert len(noid_key) == 5
 
+    # this can fail with ValueError: secp256k1_ec_pubkey_parse
+    # if the user has provided the wrong value for numeric password
+    # - better to catch this sooner in decrypt_rx_pubkey
     session_key = my_keypair.ecdh_multiply(his_pubkey)
 
     # stretch noid key out -- will be slow

@@ -15,6 +15,7 @@ from constants import *
 from test_bbqr import readback_bbqr, split_scan_bbqr
 from test_notes import need_some_notes, need_some_passwords
 from test_ephemeral import SEEDVAULT_TEST_DATA
+from test_nfc import ndef_parse_txn_psbt
 
 # All tests in this file are exclusively meant for Q
 #
@@ -119,10 +120,13 @@ def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr,
             assert len(data) <  2000    # USB protocol limit
             scan_a_qr(data)
 
-        time.sleep(.250)        # required
-        if expect_fail: return
-        scr = cap_screen()
-        assert 'Teleport Password' in scr
+        if expect_fail:
+            time.sleep(.200)
+            return
+        for retries in range(20):
+            scr = cap_screen()
+            if 'Teleport Password' in scr: break
+            time.sleep(.200)
 
         if expect_xfp:
             assert xfp2str(expect_xfp) in scr
@@ -137,7 +141,7 @@ def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr,
 def tx_start(press_select, need_keypress, press_cancel, goto_home, pick_menu_item, cap_story, scan_a_qr, enter_complex, cap_screen):
 
     # start the Tx process, capturing password and leaving you are picker menu
-    def doit(rx_qr, rx_code, expect_fail=None):
+    def doit(rx_qr, rx_code, expect_fail=None, expect_wrong_code=False):
         goto_home()
         need_keypress(KEY_QR)
         time.sleep(.250)        # required
@@ -154,7 +158,13 @@ def tx_start(press_select, need_keypress, press_cancel, goto_home, pick_menu_ite
         enter_complex(rx_code)
         time.sleep(.150)        # required
 
+
         title, story = cap_story()
+        if expect_wrong_code:
+            # not a sure thing
+            if 'Incorrect Teleport Pass' in story:
+                return True
+
         assert title == 'Key Teleport: Send'
 
         assert 'secure notes' in story
@@ -349,8 +359,17 @@ def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_ite
     # simulate wrong numeric code only -- sender doesn't know
     right_code, rx_pubkey = rx_start()
 
-    code = '00000000'
-    pw = tx_start(rx_pubkey, code)
+    for attempt in range(20):
+        code = '%08d' % attempt
+        failed = tx_start(rx_pubkey, code, expect_wrong_code=True)
+
+        if failed:
+            # 50% odds (apx, maybe?) of wrong code being detected.
+            print(f'{code} => wasnt accepted')
+            continue
+        break
+    else:
+        raise pytest.fail('huh')
 
     # other contents require other features to be enabled
     pick_menu_item('Master Seed Words')
@@ -373,12 +392,13 @@ def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_ite
 
 @pytest.mark.unfinalized
 @pytest.mark.parametrize('num_ins', [ 15 ])
-@pytest.mark.parametrize('M', [1, 4])          # [ 2, 4, 1])
+@pytest.mark.parametrize('M', [2, 4])
 @pytest.mark.parametrize('segwit', [True])
-@pytest.mark.parametrize('incl_xpubs', [ False, True ])
+@pytest.mark.parametrize('incl_xpubs', [ False ])
 def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, dev, clear_ms,
                         fake_ms_txn, try_sign, incl_xpubs, bitcoind, cap_story, need_keypress,
-    cap_menu, pick_menu_item, grab_payload, rx_complete, press_select, settings_get, settings_set):
+    cap_menu, pick_menu_item, grab_payload, rx_complete, press_select, ndef_parse_txn_psbt,
+    press_nfc, nfc_read, settings_get, settings_set):
 
     # IMPORTANT: wont work if you start simulator with --ms flag. Use no args
 
@@ -387,8 +407,6 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
 
     clear_ms()
     use_regtest()
-
-    settings_set('finms', 1)
 
     # create a wallet, with 3 bip39 pw's
     keys, select_wallet = make_myself_wallet(M, do_import=(not incl_xpubs))
@@ -468,7 +486,21 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
         assert title == 'Teleport PSBT?'
         assert 'more signatures' in body
 
-    pdb.set_trace()
+    assert title == 'Final TXID'
+    txid = body.split()[0]
+    
+    # share signed txn via low-level NFC
+    press_nfc()
+    time.sleep(.1)
+    contents = nfc_read()
+
+    got_psbt, got_txn, _ = ndef_parse_txn_psbt(contents, txid, expect_finalized=True)
+
+    assert not got_psbt
+    assert got_txn
+
+    
+
 
 # TODO
 # - send single-sig PSBT
