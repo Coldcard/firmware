@@ -1000,7 +1000,7 @@ class ApproveTransaction(UserAuthorizedAction):
         try:
             # re-serialize the PSBT back out
             with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd:
-                if self.do_finalize:
+                if self.do_finalize and self.psbt.is_complete():
                     txid = self.psbt.finalize(fd)
                 else:
                     self.psbt.serialize(fd)
