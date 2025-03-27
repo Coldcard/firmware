@@ -987,10 +987,12 @@ class ApproveTransaction(UserAuthorizedAction):
             return await self.failure("Signing failed late", exc)
 
         if self.approved_cb:
+            kws = dict(psbt=self.psbt)
             if self.is_sd and (ch == "b"):
                 self.cb_kws["slot_b"] = True
 
             await self.approved_cb(self.psbt, **self.cb_kws)
+
             self.done()
             return
 
@@ -1441,10 +1443,22 @@ async def done_signing(psbt, input_method=None, filename=None, force_vdisk=False
                 if txid and not del_after:
                     msg += '\n\nFinal TXID:\n' + txid
 
-        re_exp = "\n\nPress (0) to re-export."
-        ch = await ux_show_story(msg + re_exp, title='PSBT Signed',
-                                 escape="0")
-        if ch != "0":
+        msg += '\n\n'
+        esc = '0'
+
+        if not is_complete and psbt.active_multisig and version.has_qwerty:
+            # on Q, we can offer to "teleport" partly-signed file to othe other signers.
+            msg += 'Press (T) to use Key Teleport to send PSBT to other co-signers. '
+            esc += 't'
+
+        msg += 'Press (0) to re-export.'
+
+        ch = await ux_show_story(msg, title='PSBT Signed', escape=esc)
+
+        if ch == 't':
+            from teleport import kt_send_psbt
+            await kt_send_psbt(psbt)
+        elif ch != '0':
             break
         else:
             input_method = None
