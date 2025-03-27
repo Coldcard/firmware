@@ -101,6 +101,11 @@ def xfp2str(xfp):
     from struct import pack
     return b2a_hex(pack('<I', xfp)).decode('ascii').upper()
 
+def str2xfp(s):
+    assert len(s) == 8
+    b = bytes.fromhex(s)
+    return int.from_bytes(b, 'little')
+
 def addr_from_display_format(dis_addr):
     assert dis_addr[0] == '\x02'        # OUT_CTRL_ADDRESS
     return dis_addr[1:]
