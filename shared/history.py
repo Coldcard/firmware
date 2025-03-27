@@ -18,7 +18,7 @@ from glob import settings
 #       - 8 bytes exact satoshi value => base64 (pad trimmed) => 11 chars
 # - stored satoshi value is XOR'ed with LSB from prevout txn hash, which isn't stored
 # - result is a 31 character string for each history entry, plus 4 overhead => 35 each
-# - if we store 30 of those it's about 25% of total setting space
+# - if we store 30 of those it's about 25% of total setting space (Mk3)
 #
 HISTORY_SAVED = const(30)
 HISTORY_MAX_MEM = const(128)
