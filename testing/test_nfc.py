@@ -263,7 +263,43 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
             press_select()
             txid = None
 
-        got_txid, got_psbt, got_txn = nfc_read_txn(txid=txid, contents=contents)
+        got_psbt, got_txn, got_txid = ndef_parse_txn_psbt(contents, txid, encoding, expect_finalize)
+
+        return ip, (got_psbt or got_txn), (txid or got_txid)
+
+
+    yield doit
+
+    # cleanup / restore
+    sim_exec('from pyb import SDCard; SDCard.ejected = False')
+
+@pytest.fixture
+def ndef_parse_txn_psbt():
+    def doit(contents, txid=None, encoding='binary', expect_finalized=True):
+        # from NFC data read, what did we get?
+        got_txid = None
+        got_txn = None
+        got_psbt = None
+        got_hash = None
+        for got in ndef.message_decoder(contents):
+            if got.type == 'urn:nfc:wkt:T':
+                assert 'Transaction' in got.text or 'PSBT' in got.text
+                if 'Transaction' in got.text and txid:
+                    assert txid in got.text
+            elif got.type == 'urn:nfc:ext:bitcoin.org:txid':
+                got_txid = b2a_hex(got.data).decode('ascii')
+            elif got.type == 'urn:nfc:ext:bitcoin.org:txn':
+                got_txn = got.data
+            elif got.type == 'urn:nfc:ext:bitcoin.org:psbt':
+                got_psbt = got.data
+            elif got.type == 'urn:nfc:ext:bitcoin.org:sha256':
+                got_hash = got.data
+            else:
+                raise ValueError(got.type)
+
+        assert got_psbt or got_txn, 'no data?'
+        assert got_hash
+        assert got_hash == sha256(got_psbt or got_txn).digest()
 
         if got_txid and not txid:
             # Txid not shown in pure NFC case
@@ -272,11 +308,11 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
         if got_txid:
             assert got_txn
             assert got_txid == txid
-            assert expect_finalize
+            assert expect_finalized
             result = got_txn
             open("debug/nfc-result.txn", 'wb').write(result)
         else:
-            assert not expect_finalize
+            assert not expect_finalized
             result = got_psbt
 
             open("debug/nfc-result.psbt", 'wb').write(result)
@@ -310,12 +346,10 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
             assert was != now
 
         press_cancel()  # exit re-export animation
-        return ip, (got_psbt or got_txn), txid
 
-    yield doit
+        return got_psbt, got_txn, got_txid
 
-    # cleanup / restore
-    sim_exec('from pyb import SDCard; SDCard.ejected = False')
+    return doit
 
 @pytest.mark.parametrize('num_outs', [ 1, 20, 250])
 def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress,
