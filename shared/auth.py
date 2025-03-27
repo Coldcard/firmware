@@ -963,8 +963,8 @@ class ApproveTransaction(UserAuthorizedAction):
                 await CCCFeature.web2fa_challenge()
             except:
                 could_ccc_sign = False
-                ch = await ux_show_story("Will not add CCC signature. Proceed anyway?")
-                if ch != 'y':
+                ch2 = await ux_show_story("Will not add CCC signature. Proceed anyway?")
+                if ch2 != 'y':
                     return await self.failure("2FA Failed")
 
         # do the actual signing.
@@ -1013,6 +1013,7 @@ class ApproveTransaction(UserAuthorizedAction):
         from glob import NFC
 
         if self.do_finalize and txid and not hsm_active:
+            # Unsigned PSBT came in via NFC or QR or Teleport
 
             if await try_push_tx(self.result[0], txid, self.result[1]):
                 return  # success, exit
@@ -1020,6 +1021,7 @@ class ApproveTransaction(UserAuthorizedAction):
             kq, kn = "(1)", "(3)"
             if version.has_qwerty:
                 kq, kn = KEY_QR, KEY_NFC
+
             while 1:
                 # Show txid when we can; advisory
                 # - maybe even as QR, hex-encoded in alnum mode
@@ -1041,7 +1043,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 break
 
         elif version.has_qwerty and self.psbt.active_multisig:
-            # Offer to teleport the result
+            # Offer to teleport the result, which still needs signatures
             from teleport import kt_send_psbt
 
             await kt_send_psbt(self.psbt, self.result[0], post_signing=True)
