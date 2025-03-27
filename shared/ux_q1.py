@@ -1023,7 +1023,7 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
         assert total <= psbt_len
         psbt_len = total
 
-    async def done(psbt, finalize):
+    async def done(psbt):
         dis.fullscreen("Wait...")
         txid = None
 
@@ -1031,7 +1031,7 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
 
             # save transaction, as hex into PSRAM
             with CapsHexWriter(psram) as fd:
-                if finalize:
+                if psbt.is_complete():
                     txid = psbt.finalize(fd)
                 else:
                     psbt.serialize(fd)

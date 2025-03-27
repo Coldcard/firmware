@@ -577,7 +577,7 @@ class NFCHandler:
         # kill any menu stack, and put our thing at the top
         the_ux.push(UserAuthorizedAction.active_request)
 
-    async def signing_done(self, psbt, finalize):
+    async def signing_done(self, psbt):
         # User approved the PSBT, and signing worked... share result over NFC (only)
         from auth import TXN_OUTPUT_OFFSET, try_push_tx
         from version import MAX_TXN_LEN
@@ -587,7 +587,7 @@ class NFCHandler:
 
         # re-serialize the PSBT back out (into PSRAM)
         with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd:
-            if finalize:
+            if psbt.is_complete():
                 txid = psbt.finalize(fd)
             else:
                 psbt.serialize(fd)

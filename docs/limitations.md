@@ -56,10 +56,9 @@
 - only one signature will be added per input. However, if needed the partly-signed 
   PSBT can be given again, and the "next" leg will be signed.
 - finalizing of multisig transactions involving P2SH signatures:
-    * QR & NFC signing, by default, only exports signed PSBTs, `Settings -> Multisig Wallets -> Finalize TXN? -> Enable` to export finalized txn ready for broadcast instead
-    * SD/Vdisk signing is not affected by above settings and exports both signed PSBT and finalized txn (if complete) by default
+    * SD/Vdisk signing exports both signed PSBT and finalized txn ready for broadcast (if txn is complete)
+    * QR/NFC outputs finalized txn ready for broadcast if txn is complete otherwise signed PSBT only
     * USB signing requires `--finalize` parameter (as for standard single signature wallets)
-    * enabling [PushTX](https://pushtx.org/) also enables `Finalize TXN?` setting
 
 - we can sign for P2SH and P2WSH addresses that represent multisig (M of N) but
   we cannot sign for non-standard scripts because we don't know how to present

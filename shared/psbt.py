@@ -780,7 +780,7 @@ class psbtInputProxy(psbtProxy):
                 addr = redeem_script[2:22]
                 self.is_segwit = True
             else:
-                # multiple keys involved, we probably can't do the finalize step
+                # multiple keys involved
                 self.is_multisig = True
 
             if self.witness_script and not self.is_segwit and self.is_multisig:
@@ -1016,9 +1016,6 @@ class psbtObject(psbtProxy):
         self.has_gic = False  # global input count
         self.has_goc = False  # global output count
         self.has_gtv = False  # global txn version
-
-        # misc
-        self.would_finalize_ms = False
 
     @property
     def lock_time(self):
@@ -2201,7 +2198,6 @@ class psbtObject(psbtProxy):
         for inp in self.inputs:
             if inp.is_multisig and self.active_multisig:
                 if (len(inp.added_sigs) + len(inp.part_sigs)) >= self.active_multisig.M:
-                    self.would_finalize_ms = True
                     signed += 1
 
             elif inp.added_sigs:
