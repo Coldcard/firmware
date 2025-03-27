@@ -1648,7 +1648,7 @@ async def list_files(*A):
                     card.securely_blank_file(fn)
                     break
                 else:
-                    from auth import write_sig_file
+                    from msgsign import write_sig_file
 
                     sig_nice = write_sig_file([(digest, fn)])
                     await ux_show_story("Signature file %s written." % sig_nice)
@@ -1946,7 +1946,7 @@ async def verify_sig_file(*a):
         return
 
     # start the process
-    from auth import verify_txt_sig_file
+    from msgsign import verify_txt_sig_file
     await verify_txt_sig_file(fn)
 
 

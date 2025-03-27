@@ -716,14 +716,14 @@ class NFCHandler:
                                msg_sign_request=winner)
 
     async def msg_sign_done(self, signature, address, text):
-        from auth import rfc_signature_template_gen
+        from msgsign import rfc_signature_template
 
         sig = b2a_base64(signature).decode('ascii').strip()
-        armored_str = "".join(rfc_signature_template_gen(addr=address, msg=text, sig=sig))
+        armored_str = "".join(rfc_signature_template(addr=address, msg=text, sig=sig))
         await self.share_text(armored_str)
 
     async def verify_sig_nfc(self):
-        from auth import verify_armored_signed_msg
+        from msgsign import verify_armored_signed_msg
 
         f = lambda x: x.decode().strip() if b"SIGNED MESSAGE" in x else None
         winner = await self._nfc_reader(f, 'Unable to find signed message.')

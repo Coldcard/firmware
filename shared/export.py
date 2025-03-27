@@ -8,7 +8,7 @@ from ucollections import OrderedDict
 from utils import xfp2str, swab32, chunk_writer
 from ux import ux_show_story
 from glob import settings
-from auth import write_sig_file
+from msgsign import write_sig_file
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH
 from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
 from ownership import OWNERSHIP

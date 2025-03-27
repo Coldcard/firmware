@@ -932,7 +932,6 @@ def test_verify_signature_file_truncated(way, microsd_path, cap_story, verify_ar
     else:
         assert title == "FAILURE"
         assert "Armor text MUST be surrounded by exactly five (5) dashes" in story
-        assert "auth.py" in story
 
 
 @pytest.mark.parametrize("msg", ["this is the message to sign", "this is meessage to sign\n with newline", "a"*200])

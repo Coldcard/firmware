@@ -14,7 +14,7 @@ from uasyncio import sleep_ms
 from uhashlib import sha256
 from ubinascii import hexlify as b2a_hex
 from glob import settings
-from auth import write_sig_file
+from msgsign import write_sig_file
 from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME, KEY_LEFT, KEY_RIGHT
 from charcodes import KEY_CANCEL
 from utils import show_single_address, problem_file_line, truncate_address
@@ -391,7 +391,7 @@ Press (3) if you really understand and accept these risks.
                 else:
                     # only custom path sets allow_change to False
                     # msg sign
-                    from auth import sign_with_own_address
+                    from msgsign import sign_with_own_address
                     await sign_with_own_address(path, addr_fmt)
 
             elif n is None:

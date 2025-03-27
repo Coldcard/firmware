@@ -318,7 +318,7 @@ class NoteContentBase:
         await start_export([self])
 
     async def sign_txt_msg(self, a, b, item):
-        from auth import ux_sign_msg, msg_signing_done
+        from msgsign import ux_sign_msg, msg_signing_done
         txt = item.arg
         await ux_sign_msg(txt, approved_cb=msg_signing_done, kill_menu=False)
 
@@ -537,7 +537,7 @@ class NoteContent(NoteContentBase):
 async def start_export(notes):
     # Save out notes/passwords
     from glob import NFC
-    from auth import write_sig_file
+    from msgsign import write_sig_file
     import ujson as json
     from ux_q1 import show_bbqr_codes
 

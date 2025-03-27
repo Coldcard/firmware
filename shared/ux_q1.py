@@ -972,13 +972,14 @@ class QRScannerInteraction:
 
             if what == "vmsg":
                 data, = vals
-                from auth import verify_armored_signed_msg
+                from msgsign import verify_armored_signed_msg
                 await verify_armored_signed_msg(data)
                 return
 
             if what == "smsg":
                 data, = vals
-                from auth import approve_msg_sign, msg_signing_done
+                from auth import approve_msg_sign, 
+                from msgsign import msg_signing_done
                 await approve_msg_sign(None, None, None,
                                        msg_sign_request=data, kill_menu=True,
                                        approved_cb=msg_signing_done)
@@ -1122,7 +1123,7 @@ async def ux_visualize_wif(wif_str, kp, compressed, testnet):
 
 async def qr_msg_sign_done(signature, address, text):
     from ux import ux_show_story
-    from auth import rfc_signature_template_gen
+    from msgsign import rfc_signature_template
     from export import export_by_qr
 
     sig = b2a_base64(signature).decode('ascii').strip()
@@ -1134,12 +1135,13 @@ async def qr_msg_sign_done(signature, address, text):
         if ch == "y":
             await export_by_qr(sig, "Signature", "U")
         if ch == "0":
-            armored_str = "".join(rfc_signature_template_gen(addr=address, msg=text,
+            armored_str = "".join(rfc_signature_template(addr=address, msg=text,
                                                              sig=sig))
             await show_bbqr_codes("U", armored_str, "Armored MSG")
 
 async def qr_sign_msg(txt):
-    from auth import ux_sign_msg
+    from msgsign import ux_sign_msg
+
     await ux_sign_msg(txt, approved_cb=qr_msg_sign_done, kill_menu=True)
 
 async def ux_visualize_textqr(txt, maxlen=MSG_SIGNING_MAX_LENGTH):
@@ -1156,8 +1158,6 @@ async def ux_visualize_textqr(txt, maxlen=MSG_SIGNING_MAX_LENGTH):
     msg = "%s\n\nAbove is text that was scanned. " % txt
     if escape:
         msg += " Press (0) to sign the text. "
-    else:
-        msg += "We can't do any more with it."
 
     ch = await ux_show_story(title="Simple Text", msg=msg, escape=escape)
     if escape and (ch == "0"):
