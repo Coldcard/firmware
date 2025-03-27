@@ -5,7 +5,7 @@
 # - you'll need v1.0.1 of bbqr library for this to work
 #
 import pytest, time, re, pdb
-from helpers import prandom, xfp2str
+from helpers import prandom, xfp2str, str2xfp
 from binascii import a2b_hex
 from bbqr import split_qrs, join_qrs
 from charcodes import KEY_QR, KEY_NFC
@@ -499,7 +499,102 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
     assert not got_psbt
     assert got_txn
 
+
+def test_teleport_big_ms(make_myself_wallet, clear_ms,
+                        fake_ms_txn, try_sign, cap_story, need_keypress,
+    cap_menu, pick_menu_item, grab_payload, rx_complete, press_select, ndef_parse_txn_psbt,
+    set_master_key, 
+    goto_home, press_nfc, nfc_read, settings_get, settings_set, open_microsd, import_ms_wallet):
+
+    # define lots of wallets, do teleport from SD disk
+
+    clear_ms()
+    M, N = 2, 15
+    for i in range(5):
+        keys = import_ms_wallet(M, N, name=f'ms{i}-test', unique=(i*73), accept=True,
+                                    descriptor=False, bip67=True)
     
+    # just use last wallet
+    psbt = fake_ms_txn(1, 1, M, keys)
+
+    fname = 'ms-example.psbt'
+    open_microsd(fname, 'wb').write(psbt)
+
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
+    pick_menu_item('Teleport Multisig PSBT')
+
+    need_keypress('1')      # top slot
+    
+    pick_menu_item(fname)
+
+    # on Co-signer list menu
+    m = cap_menu()
+    assert len(m) == N
+
+    myself, = [i for i in m if 'YOU' in i]
+    pick_menu_item(myself)
+
+    title, body = cap_story()
+    assert title == 'OK TO SEND?'
+    press_select()
+
+    time.sleep(.25)
+
+    # have 1 sigs now, need one more via teleport
+    title, body = cap_story()
+    assert title == 'Teleport PSBT?'
+    need_keypress('t')   
+
+    # pick another one randomly
+    m = cap_menu()
+    assert len(m) == N
+
+    target = m[-1] if 'YOU' not in m[0] else m[-2]
+    pick_menu_item(target)
+    target_xfp = str2xfp(target[1:9])
+
+    # capture QR+pw to go there
+    pw, data, qr_raw = grab_payload('E')
+
+    tmp_ms = settings_get('multisig')
+
+    # switch to that key, receive it
+    node, = [n for x,n,_ in keys if x == target_xfp]
+    set_master_key(node.hwif(as_private=True))
+
+    # copy over the one MS wallet this xfp was involved in
+    settings_set('multisig', [tmp_ms[-1]])
+
+    # import and sign
+    rx_complete(('E', qr_raw), pw, expect_xfp=simulator_fixed_xfp)
+
+    title, body = cap_story()
+    assert title == 'OK TO SEND?'
+
+    press_select()
+    time.sleep(.25)
+
+    title, body = cap_story()
+
+    assert title == 'Final TXID'
+
+'''
+@pytest.mark.parametrize('N', [14, 20])
+@pytest.mark.parametrize('M', [2, 14])
+@pytest.mark.parametrize('incl_xpubs', [ False ])
+def test_teleport_sd_psbt(M, use_regtest, make_myself_wallet, segwit, dev, clear_ms,
+                        fake_ms_txn, try_sign, incl_xpubs, bitcoind, cap_story, need_keypress,
+    cap_menu, pick_menu_item, grab_payload, rx_complete, press_select, ndef_parse_txn_psbt,
+    press_nfc, nfc_read, settings_get, settings_set, open_microsd):
+    
+
+
+    keys = import_ms_wallet(M, N, descriptor=descriptor, bip67=bip67)
+
+    keys, select_wallet = make_myself_wallet(M, do_import=(not incl_xpubs))
+'''
 
 
 # TODO
