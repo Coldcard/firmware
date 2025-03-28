@@ -3033,12 +3033,18 @@ def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_ms_imp
     time.sleep(.1)
     title, story = cap_story()
 
+    if 'Seed Vault' in story:
+        press_select()
+        time.sleep(.1)
+        title, story = cap_story()
+
     assert "[747B698E]" in title
     press_select()
 
     time.sleep(.1)
     _, story = offer_ms_import(desc)
-    assert "Create new multisig wallet?" in story
+    assert "Create new multisig wallet?" in story \
+                or 'Update NAME only of existing multisig' in story
     time.sleep(.1)
     press_select()
 
@@ -3046,6 +3052,7 @@ def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_ms_imp
     # only on firmware versions that do only 10 grinding iterations
     try_sign(base64.b64decode(b64psbt), accept=True)
 
+    reset_seed_words()
 
 def test_null_data_op_return(fake_txn, start_sign, end_sign, reset_seed_words):
     reset_seed_words()
