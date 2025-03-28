@@ -55,6 +55,7 @@ def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_s
             else:
                 press_select()
 
+            time.sleep(.1)
             title, story = cap_story()
 
         assert 'Teleport' in title
@@ -348,6 +349,9 @@ def test_tx_seedvault(data, rx_start, tx_start, cap_menu, enter_complex, pick_me
     goto_home()
     pick_menu_item('Restore Master')
     press_select()
+
+    time.sleep(.1)
+    assert settings_get('xfp', -1) == simulator_fixed_xfp
 
 def test_rx_truncated(rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, rx_complete, cap_story, press_cancel, press_select):
     # Truncate the RX Code
