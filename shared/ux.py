@@ -392,7 +392,7 @@ def _import_prompt_builder(title, no_qr, no_nfc, slot_b_only=False):
     return prompt, escape
 
 
-def export_prompt_builder(what_it_is, no_qr=False, no_nfc=False, key0=None,
+def export_prompt_builder(what_it_is, no_qr=False, no_nfc=False, key0=None, offer_kt=False,
                           force_prompt=False):
     # Build the prompt for export
     # - key0 can be for special stuff
@@ -401,7 +401,7 @@ def export_prompt_builder(what_it_is, no_qr=False, no_nfc=False, key0=None,
 
     prompt, escape = None, KEY_CANCEL+"x"
 
-    if (NFC or VD) or (num_sd_slots>1) or key0 or force_prompt:
+    if (NFC or VD) or (num_sd_slots>1) or key0 or force_prompt or offer_kt:
         # no need to spam with another prompt, only option is SD card
 
         prompt = "Press (1) to save %s to SD Card" % what_it_is
@@ -430,6 +430,10 @@ def export_prompt_builder(what_it_is, no_qr=False, no_nfc=False, key0=None,
             else:
                 prompt += ", (4) to show QR code"
                 escape += '4'
+
+        if offer_kt:
+            prompt += ", (T) to " + offer_kt
+            escape += 't'
 
         if key0:
             prompt += ', (0) ' + key0
@@ -471,19 +475,21 @@ def import_export_prompt_decode(ch):
     return dict(force_vdisk=force_vdisk, slot_b=slot_b)
 
 async def import_export_prompt(what_it_is, is_import=False, no_qr=False,
-                               no_nfc=False, title=None, intro='', footnotes='',
-                               slot_b_only=False, force_prompt=False):
+                            no_nfc=False, title=None, intro='', footnotes='',
+                            offer_kt=False, slot_b_only=False, force_prompt=False):
+
     # Show story allowing user to select source for importing/exporting
     # - return either str(mode) OR dict(file_args)
     # - KEY_NFC or KEY_QR for those sources
     # - KEY_CANCEL for abort by user
     # - dict() => do file system thing, using file_args to control vdisk vs. SD vs slot_b
+    # - 't' => key teleport, but only offered with offer_kt is set (contetxt, and Q only)
 
     if is_import:
         prompt, escape = _import_prompt_builder(what_it_is, no_qr, no_nfc, slot_b_only)
     else:
         prompt, escape = export_prompt_builder(what_it_is, no_qr, no_nfc,
-                                               force_prompt=force_prompt)
+                                               force_prompt=force_prompt, offer_kt=offer_kt)
 
     # TODO: detect if we're only asking A or B, when just one card is inserted
     # - assume that's what they want to do

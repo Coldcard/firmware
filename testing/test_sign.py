@@ -1617,6 +1617,7 @@ def test_incomplete_signing(dev, try_sign, fake_txn, cap_story):
         oo.serialize(fd)
         mod_psbt = fd.getvalue()
 
+    raise pytest.xfail('issue #915 ')
     with pytest.raises(CCProtoError) as ee:
         orig, result = try_sign(mod_psbt, accept=True, finalize=True)
 

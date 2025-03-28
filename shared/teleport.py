@@ -601,8 +601,13 @@ async def kt_send_psbt(psbt, psbt_len=None, post_signing=False):
             # - if from USB, we'd be uploading back, SD would be saved, etc
             return
         
-        ch = await ux_show_story("%d more signatures are still required. Press (T) to pick another co-signer to get it next using QR codes." % num_to_complete, title="Teleport PSBT?", escape='t')
-        if ch != 't': return
+        ch = await ux_show_story("%d more signatures are still required. Press (T) to pick another co-signer to sign next, using QR codes, or ENTER for other options." % num_to_complete, title="Teleport PSBT?", escape='t')
+        if ch != 't': 
+            # ENTER/CANCEL both come here because we don't want to lose the PSBT
+            # - they also do a "T" and teleport again
+            from auth import done_signing
+            await done_signing(psbt)
+            return
         
 
     if not psbt_len:
@@ -680,6 +685,8 @@ async def kt_send_psbt(psbt, psbt_len=None, post_signing=False):
         ri, rx_pubkey, kp = ms.kt_make_rxkey(m.next_xfp)
         await kt_do_send(rx_pubkey, 'p', raw=bin_psbt, prefix=ri, kp=kp,
                         rx_label='[%s] co-signer' % xfp2str(m.next_xfp))
+
+        return True
 
 async def kt_send_file_psbt(*a):
     # Menu item: choose a PSBT file from SD card, and send to co-signers.

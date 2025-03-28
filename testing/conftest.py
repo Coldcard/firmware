@@ -809,6 +809,7 @@ def open_microsd(simulator, microsd_path):
     # open a file from the simulated microsd
 
     def doit(fn, mode='rb'):
+        assert fn, 'empty fname'
         return open(microsd_path(fn), mode)
 
     return doit
@@ -928,7 +929,18 @@ def use_regtest(request, settings_set):
 
 
 @pytest.fixture(scope="function")
-def set_seed_words(sim_exec, sim_execfile, simulator, reset_seed_words):
+def set_seed_words(change_seed_words, reset_seed_words):
+    def doit(w):
+        return change_seed_words(w)
+
+    yield doit
+
+    # Important cleanup: restore normal key, because other tests assume that
+
+    reset_seed_words()
+
+@pytest.fixture(scope="function")
+def change_seed_words(sim_exec, sim_execfile, simulator):
     # load simulator w/ a specific bip32 master key
 
     def doit(words):
@@ -943,30 +955,19 @@ def set_seed_words(sim_exec, sim_execfile, simulator, reset_seed_words):
         #print("sim xfp: 0x%08x" % simulator.master_fingerprint)
         return simulator.master_fingerprint
 
-    yield doit
-
-    # Important cleanup: restore normal key, because other tests assume that
-
-    reset_seed_words()
+    return doit
 
 @pytest.fixture()
-def reset_seed_words(sim_exec, sim_execfile, simulator):
+def reset_seed_words(change_seed_words):
     # load simulator w/ a specific bip39 seed phrase
 
     def doit():
-        words = simulator_fixed_words
-        cmd = 'import main; main.WORDS = %r;' % words.split()
-        sim_exec(cmd)
-        rv = sim_execfile('devtest/set_seed.py')
-        if rv: pytest.fail(rv)
-
-        simulator.start_encryption()
-        simulator.check_mitm()
+        new_xfp = change_seed_words(simulator_fixed_words)
 
         #print("sim xfp: 0x%08x (reset)" % simulator.master_fingerprint)
-        assert simulator.master_fingerprint == simulator_fixed_xfp
+        assert new_xfp == simulator_fixed_xfp
 
-        return words
+        return simulator_fixed_words
 
     return doit
 
@@ -1290,16 +1291,18 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
         else:
             assert False, 'timed out'
 
-        txid = None
         lines = story.split('\n')
+        txid = None
         if 'Final TXID:' in lines:
-            txid = lines[-1]
-            result_fname = lines[-4]
-        elif 'Key Teleport' in lines[-1]:
-            # ignore "Press (T) to use Key Teleport to send PSBT to other co-signers" footer
-            result_fname = lines[2]
-        else:
-            result_fname = lines[-2]
+            txid = lines[lines.index('Final TXID:')+1]
+
+        # This is fragile!
+        # ignore "Press (T) to use Key Teleport to send PSBT to other co-signers" footer
+        # ignore "Press (0) to save again by..."
+        # - want the .txn if present, else the .psbt file
+        t, = [l for l in lines if l.endswith('.txn')] or [None]
+        p, = [l for l in lines if l.endswith('.psbt')] or [None]
+        result_fname = t or p
 
         result = open_microsd(result_fname, 'rb').read()
 
@@ -2024,7 +2027,7 @@ def signing_artifacts_reexport(cap_story, need_keypress, load_export, press_canc
                     if txid:
                         assert txid in story
 
-            assert "Press (0) to re-export." in story
+            assert "Press (0) to save again" in story
             need_keypress("0")
 
         to_do = ["sd", "vdisk", "nfc", "qr"]

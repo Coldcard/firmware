@@ -274,7 +274,7 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
     sim_exec('from pyb import SDCard; SDCard.ejected = False')
 
 @pytest.fixture
-def ndef_parse_txn_psbt():
+def ndef_parse_txn_psbt(press_cancel):
     def doit(contents, txid=None, encoding='binary', expect_finalized=True):
         # from NFC data read, what did we get?
         got_txid = None
