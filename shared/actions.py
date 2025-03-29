@@ -12,7 +12,7 @@ from utils import imported, problem_file_line, get_filesize, encode_seed_qr
 from utils import xfp2str, B2A, txid_from_fname, wipe_if_deltamode
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
 from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt, OK, X, ux_render_words
-from export import make_json_wallet, make_summary_file, make_descriptor_wallet_export
+from export import export_contents, make_summary_file, make_descriptor_wallet_export
 from export import make_bitcoin_core_wallet, generate_wasabi_wallet, generate_generic_export
 from export import generate_unchained_export, generate_electrum_wallet
 from files import CardSlot, CardMissingError, needs_microsd
@@ -1202,9 +1202,9 @@ without ever connecting this Coldcard to a computer.\
 async def electrum_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
     addr_fmt, account_num = item.arg
-    await make_json_wallet('Electrum wallet',
-                           lambda: generate_electrum_wallet(addr_fmt, account_num),
-                           "new-electrum.json")
+    await export_contents('Electrum wallet',
+                          lambda: generate_electrum_wallet(addr_fmt, account_num),
+                          "new-electrum.json", is_json=True)
 
 async def _generic_export(prompt, label, f_pattern):
     # like the Multisig export, make a single JSON file with
@@ -1216,7 +1216,8 @@ async def _generic_export(prompt, label, f_pattern):
     elif ch != 'y':
         return
 
-    await make_json_wallet(label, lambda: generate_generic_export(account_num), f_pattern)
+    await export_contents(label, lambda: generate_generic_export(account_num),
+                          f_pattern, is_json=True)
 
 async def generic_skeleton(*A):
     # like the Multisig export, make a single JSON file with
@@ -1251,7 +1252,8 @@ You can then open that file in Wasabi without ever connecting this Coldcard to a
         return
 
     # no choices to be made, just do it.
-    await make_json_wallet('Wasabi wallet', lambda: generate_wasabi_wallet(), 'new-wasabi.json')
+    await export_contents('Wasabi wallet', lambda: generate_wasabi_wallet(),
+                          'new-wasabi.json', is_json=True)
 
 async def unchained_capital_export(*a):
     # they were using our airgapped export, and the BIP-45 path from that
@@ -1268,9 +1270,8 @@ This saves multisig XPUB information required to setup on the Unchained platform
     xfp = xfp2str(settings.get('xfp', 0))
     fname = 'unchained-%s.json' % xfp
 
-    await make_json_wallet('Unchained',
-                           lambda: generate_unchained_export(account_num),
-                           fname)
+    await export_contents('Unchained', lambda: generate_unchained_export(account_num),
+                          fname, is_json=True)
 
 
 async def backup_everything(*A):

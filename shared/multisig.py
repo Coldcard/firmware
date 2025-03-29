@@ -9,7 +9,7 @@ from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
 from ux import import_export_prompt, ux_enter_bip32_index, ux_enter_number, OK, X
 from files import CardSlot, CardMissingError, needs_microsd
 from descriptor import MultisigDescriptor, multisig_descriptor_template
-from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS
+from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS, AF_CLASSIC
 from menu import MenuSystem, MenuItem, NonDefaultMenuItem, start_chooser, ToggleMenuItem
 from opcodes import OP_CHECKMULTISIG
 from exceptions import FatalPSBTIssue
@@ -163,6 +163,11 @@ class MultisigWallet(WalletABC):
         else:
             deriv = derivs[0]
         return deriv + '/%d/%d' % (change_idx, idx)
+
+    def get_my_deriv(self, my_xfp):
+        for tup in self.xpubs:
+            if tup[0] == my_xfp:
+                return tup[1]
 
     @property
     def chain(self):
@@ -696,7 +701,7 @@ class MultisigWallet(WalletABC):
 
     @classmethod
     def from_descriptor(cls, descriptor: str):
-        # excpect descriptor here if only one line, normal multisig file requires more lines
+        # expect descriptor here if only one line, normal multisig file requires more lines
         has_mine = 0
         my_xfp = settings.get('xfp')
         xpubs = []
@@ -863,7 +868,7 @@ class MultisigWallet(WalletABC):
 
     async def export_electrum(self):
         # Generate and save an Electrum JSON file.
-        from export import make_json_wallet
+        from export import export_contents
 
         def doit():
             rv = dict(seed_version=17, use_encryption=False,
@@ -889,15 +894,15 @@ class MultisigWallet(WalletABC):
                                 derivation=deriv, xpub=xp)
 
             # sign export with first p2pkh key
-            return ujson.dumps(rv), False, False
+            return ujson.dumps(rv), self.get_my_deriv(settings.get('xfp'))+"/0/0", AF_CLASSIC
             
-        await make_json_wallet('Electrum multisig wallet', doit,
-                                    fname_pattern=self.make_fname('el', 'json'))
+        await export_contents('Electrum multisig wallet', doit,
+                              self.make_fname('el', 'json'), is_json=True)
 
     async def export_wallet_file(self, mode="exported from", extra_msg=None, descriptor=False,
                                  core=False, desc_pretty=True):
         # create a text file with the details; ready for import to next Coldcard
-        my_xfp = xfp2str(settings.get('xfp'))
+        my_xfp = settings.get('xfp')
         if core:
             name = "Bitcoin Core"
             fname_pattern = self.make_fname('bitcoin-core')
@@ -908,7 +913,7 @@ class MultisigWallet(WalletABC):
             name = "Coldcard"
             fname_pattern = self.make_fname('export')
 
-        hdr = '%s %s' % (mode, my_xfp)
+        hdr = '%s %s' % (mode, xfp2str(my_xfp))
         label = "%s multisig setup" % name
 
         with uio.StringIO() as fp:
@@ -916,9 +921,15 @@ class MultisigWallet(WalletABC):
                                core=core, desc_pretty=desc_pretty)
             body = fp.getvalue()
 
-        from export import write_text_file
-        await write_text_file(fname_pattern, body, label, None, None,
-                              sig=False, no_qr=not version.has_qwerty)
+        # create airgapped, where own key is not included in the ms setup, no key to sign with
+        af = None
+        der = self.get_my_deriv(my_xfp)
+        if der:
+            der = der + "/0/0"
+            af = AF_CLASSIC
+
+        from export import export_contents
+        await export_contents(label, body, fname_pattern, der, af)
 
     def render_export(self, fp, hdr_comment=None, descriptor=False, core=False, desc_pretty=True):
         if descriptor:
@@ -1580,18 +1591,16 @@ P2WSH:
     acct = await ux_enter_bip32_index('Account Number:') or 0
 
     def render(acct_num):
-        todo = [
-            ("m/45h", 'p2sh', AF_P2SH),  # iff acct_num == 0
-            ("m/48h/{coin}h/{acct_num}h/1h", 'p2sh_p2wsh', AF_P2WSH_P2SH),
-            ("m/48h/{coin}h/{acct_num}h/2h", 'p2wsh', AF_P2WSH),
-        ]
+        sign_der = None
         with uio.StringIO() as fp:
             fp.write('{\n')
             with stash.SensitiveValues(secret=alt_secret) as sv:
-                for deriv, name, fmt in todo:
+                for name, deriv, fmt in chains.MS_STD_DERIVATIONS:
                     if fmt == AF_P2SH and acct_num:
                         continue
                     dd = deriv.format(coin=chain.b44_cointype, acct_num=acct_num)
+                    if fmt == AF_P2WSH:
+                        sign_der = dd + "/0/0"
                     node = sv.derive_path(dd)
                     xp = chain.serialize_public(node, fmt)
                     fp.write('  "%s_deriv": "%s",\n' % (name, dd))
@@ -1604,10 +1613,11 @@ P2WSH:
 
             fp.write('  "account": "%d",\n' % acct_num)
             fp.write('  "xfp": "%s"\n}\n' % xfp)
-            return fp.getvalue(), False, False
+            return fp.getvalue(), sign_der, AF_CLASSIC
 
-    from export import make_json_wallet
-    await make_json_wallet(label, lambda: render(acct), fname_pattern, force_bbqr=True)
+    from export import export_contents
+    await export_contents(label, lambda: render(acct), fname_pattern,
+                          force_bbqr=True, is_json=True)
 
 async def validate_xpub_for_ms(obj, af_str, chain, my_xfp, xpubs):
     # Read xpub and validate from JSON received via SD card or BBQr

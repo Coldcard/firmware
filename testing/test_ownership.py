@@ -279,7 +279,7 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
         return  # multisig addresses are blanked
 
     title, body = cap_story()
-    contents, sig_addr = load_export_and_verify_signature(body, "sd", label="Address summary")
+    contents, sig_addr, _ = load_export_and_verify_signature(body, "sd", label="Address summary")
     addr_dump = io.StringIO(contents)
     cc = csv.reader(addr_dump)
     hdr = next(cc)

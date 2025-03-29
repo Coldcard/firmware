@@ -8,7 +8,7 @@ import chains, stash, version
 from ux import ux_show_story, the_ux, ux_enter_bip32_index
 from ux import export_prompt_builder, import_export_prompt_decode
 from menu import MenuSystem, MenuItem
-from public_constants import AFC_BECH32, AFC_BECH32M, AF_P2WPKH
+from public_constants import AFC_BECH32, AFC_BECH32M, AF_P2WPKH, AF_CLASSIC
 from multisig import MultisigWallet
 from uasyncio import sleep_ms
 from uhashlib import sha256
@@ -475,7 +475,7 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
                                     start=0, count=250, change=0, **save_opts):
 
     # write addresses into a text file on the MicroSD/VirtDisk
-    from glob import dis
+    from glob import dis, settings
     from files import CardSlot, CardMissingError, needs_microsd
 
     # simple: always set number of addresses.
@@ -487,7 +487,6 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
     # generator function
     body = generate_address_csv(path, addr_fmt, ms_wallet, account_num, count,
                                 start=start, change=change)
-
     # pick filename and write
     try:
         with CardSlot(**save_opts) as card:
@@ -498,27 +497,27 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
                 for idx, part in enumerate(body):
                     ep = part.encode()
                     fd.write(ep)
-                    if not ms_wallet:
-                        h.update(ep)
-
+                    h.update(ep)
                     dis.progress_sofar(idx, count or 1)
 
-            sig_nice = None
-            if not ms_wallet:
+            if ms_wallet:
+                # sign with my key at the same path as first address of export
+                addr_fmt = AF_CLASSIC
+                derive = ms_wallet.get_my_key(settings.get('xfp'))[1]
+                derive += "/%d/%d" % (change, start)
+            else:
                 derive = path.format(account=account_num, change=change, idx=start)  # first addr
-                sig_nice = write_sig_file([(h.digest(), fname)], derive, addr_fmt)
+
+            sig_nice = write_sig_file([(h.digest(), fname)], derive, addr_fmt)
+
+        await ux_show_story("Address summary file written:\n\n%s\n\nAddress"
+                            " signature file written:\n\n%s" % (nice, sig_nice))
 
     except CardMissingError:
         await needs_microsd()
-        return
     except Exception as e:
         await ux_show_story('Failed to write!\n\n\n%s\n%s' % (e, problem_file_line(e)))
-        return
 
-    msg = '''Address summary file written:\n\n%s''' % nice
-    if sig_nice:
-        msg += "\n\nAddress signature file written:\n\n%s" % sig_nice
-    await ux_show_story(msg)
 
 async def address_explore(*a):
     # explore addresses based on derivation path chosen

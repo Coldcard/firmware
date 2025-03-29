@@ -419,6 +419,12 @@ STD_DERIVATIONS = {
     "p2wpkh": CommonDerivations[2][1],
 }
 
+MS_STD_DERIVATIONS = {
+    ("p2sh", "m/45h", AF_P2SH),
+    ("p2sh_p2wsh", "m/48h/{coin}h/{acct_num}h/1h", AF_P2WSH_P2SH),
+    ("p2wsh", "m/48h/{coin}h/{acct_num}h/2h", AF_P2WSH),
+}
+
 def parse_addr_fmt_str(addr_fmt):
     # accepts strings and also integers if already parsed
     try:

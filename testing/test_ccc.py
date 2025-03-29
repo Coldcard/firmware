@@ -845,7 +845,7 @@ def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim
 
     pick_menu_item(target_mi)  # choose already created multisig
     pick_menu_item("Coldcard Export")
-    ms_conf = load_export("sd", "Coldcard multisig setup", is_json=False, sig_check=False)
+    ms_conf = load_export("sd", "Coldcard multisig setup", is_json=False)
     press_cancel()
 
     # fund CCC multisig
@@ -895,7 +895,7 @@ def test_load_and_sign_key_C(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_
 
     pick_menu_item(target_mi)  # choose already created multisig
     pick_menu_item("Coldcard Export")
-    ms_conf = load_export("sd", "Coldcard multisig setup", is_json=False, sig_check=False)
+    ms_conf = load_export("sd", "Coldcard multisig setup", is_json=False)
     press_cancel()
 
     # fund CCC multisig
@@ -973,7 +973,7 @@ def test_ccc_xpub_export(chain, c_num_words, acct, settings_set, load_export, se
     else:
         enter_number(acct)
 
-    xpub_obj = load_export("sd", label="Multisig XPUB", is_json=True, sig_check=False)
+    xpub_obj = load_export("sd", label="Multisig XPUB", is_json=True)
 
     if acct is None:
         assert xpub_obj["account"] == "0"
@@ -1074,7 +1074,7 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
     new_name = "new"
     pick_menu_item(ami)  # just another ms wallet
     pick_menu_item("Coldcard Export")
-    ms_conf = load_export("sd", label="Coldcard multisig setup", is_json=False, sig_check=False)
+    ms_conf = load_export("sd", label="Coldcard multisig setup", is_json=False)
 
     # try importing duplicate does not work
     _, story = offer_ms_import(ms_conf)
