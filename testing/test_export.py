@@ -432,7 +432,7 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
         press_select()
 
     expect_acctnum_captured(acct_num)
-    obj = load_export(way, label="Unchained", is_json=True, sig_check=False)
+    obj = load_export(way, label="Unchained", is_json=True)
 
     ek = simulator_fixed_tprv if testnet else simulator_fixed_xprv
     root = BIP32Node.from_wallet_key(ek)

@@ -200,7 +200,7 @@ def test_bip_vectors(mode, index, entropy, expect, cap_story, need_keypress,
 
     time.sleep(0.1)
     title, story = cap_story()
-    contents,_ = load_export_and_verify_signature(story, "sd", fpattern="drv", label=None)
+    contents,_, _ = load_export_and_verify_signature(story, "sd", fpattern="drv", label=None)
     assert contents.strip() == msg.strip()
     press_select()
     time.sleep(0.1)

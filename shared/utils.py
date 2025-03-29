@@ -540,17 +540,6 @@ def parse_extended_key(ln, private=False):
 
     return node, chain, addr_fmt
 
-def chunk_writer(fd, body):
-    from glob import dis
-    dis.fullscreen("Saving...")
-    body_len = len(body)
-    chunk = body_len // 10
-    for idx, i in enumerate(range(0, body_len, chunk)):
-        fd.write(body[i:i + chunk])
-        dis.progress_bar_show(idx / 10)
-    dis.progress_bar_show(1)
-
-
 def deserialize_secret(text_sec_str):
     # Chip can hold 72-bytes as a secret
     # - has 0th byte as marker, secret and zero padding to AE_SECRET_LEN

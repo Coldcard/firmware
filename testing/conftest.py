@@ -1867,8 +1867,8 @@ def load_export_and_verify_signature(microsd_path, virtdisk_path, verify_detache
         contents, address = verify_detached_signature_file([fname], sig_fn, way, addr_fmt)
 
         if is_json:
-            return json.loads(contents), address
-        return contents, address
+            return json.loads(contents), address, fname
+        return contents, address, fname
     return doit
 
 @pytest.fixture
@@ -1949,10 +1949,10 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
         title, story = cap_story()
         path_f = microsd_path if way == "sd" else virtdisk_path
         if sig_check:
-            export, sig_addr = load_export_and_verify_signature(story, way, is_json=is_json,
-                                                                addr_fmt=addr_fmt, label=label,
-                                                                tail_check=tail_check,
-                                                                fpattern=fpattern)
+            export, sig_addr, fname = load_export_and_verify_signature(
+                story, way, is_json=is_json, addr_fmt=addr_fmt,
+                label=label, tail_check=tail_check, fpattern=fpattern
+            )
         elif is_tx:
             enc = "rb" if encoding == "binary" else "r"
             _split = story.split("\n\n")

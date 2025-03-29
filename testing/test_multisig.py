@@ -791,7 +791,7 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
         need_keypress(n)
     press_select()
 
-    rv = load_export(way, is_json=True, label="Multisig XPUB", fpattern="ccxp-", sig_check=False)
+    rv = load_export(way, is_json=True, label="Multisig XPUB", fpattern="ccxp-")
 
     assert 'xfp' in rv
     assert len(rv) >= 6
@@ -908,7 +908,7 @@ def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap
     pick_menu_item(item)
 
     pick_menu_item('Coldcard Export')
-    contents = load_export(way or "sd", label="Coldcard multisig setup", is_json=False, sig_check=False)
+    contents = load_export(way or "sd", label="Coldcard multisig setup", is_json=False)
     if way == "qr":
         # QR code still displayed on screen
         press_select()
@@ -952,7 +952,10 @@ def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap
     assert len(got) == 4 + N
 
     # test delete while we're here
+    time.sleep(.1)
     press_cancel()
+    if way in ("sd", None, "vdisk"):
+        press_cancel()
     pick_menu_item('Delete')
 
     time.sleep(.2)
@@ -1677,7 +1680,7 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
         press_select()
         pick_menu_item("Coldcard Export")
         impf, fname = load_export("sd", label="Coldcard multisig setup", is_json=False,
-                                  sig_check=False, ret_fname=True)
+                                  ret_fname=True)
         cc_fname = microsd_path(fname)
         assert f'Policy: {M} of {N}' in impf
         if addr_fmt != 'p2sh':
@@ -1717,8 +1720,7 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
 
     else:
         # own wallet not included in the mix, can only export resulting descriptor
-        desc = load_export(way, label="Descriptor multisig setup",
-                           is_json=False, sig_check=False)
+        desc = load_export(way, label="Descriptor multisig setup", is_json=False, sig_check=False)
         desc = desc.strip()
         do = MultisigDescriptor.parse(desc)
         assert do.M == M
@@ -2092,7 +2094,7 @@ def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_impo
     pick_menu_item(f'{M}/{N}: impmany')
 
     pick_menu_item('Coldcard Export')
-    contents = load_export(way, label="Coldcard multisig setup", sig_check=False, is_json=False)
+    contents = load_export(way, label="Coldcard multisig setup", is_json=False)
     lines = io.StringIO(contents).readlines()
 
     for xfp,_,_ in keys:
@@ -2100,6 +2102,8 @@ def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_impo
         assert any(m in ln for ln in lines)
 
     press_cancel()
+    if way != "nfc":
+        press_cancel()
     pick_menu_item('Electrum Wallet')
 
     time.sleep(.25)
@@ -2107,7 +2111,7 @@ def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_impo
     assert 'This saves a skeleton Electrum wallet file' in story
     press_select()
 
-    el = load_export(way, label="Electrum multisig wallet", sig_check=False, is_json=True)
+    el = load_export(way, label="Electrum multisig wallet", is_json=True)
 
     assert el['seed_version'] == 17
     assert el['wallet_type'] == f"{M}of{N}"
@@ -2316,7 +2320,7 @@ def test_import_desciptor(M_N, addr_fmt, int_ext_desc, way, import_ms_wallet, go
     press_select()  # only one enrolled multisig - choose it
     pick_menu_item('Descriptors')
     pick_menu_item('Export')
-    contents = load_export(way, label="Descriptor multisig setup", is_json=False, sig_check=False)
+    contents = load_export(way, label="Descriptor multisig setup", is_json=False)
     desc_export = contents.strip()
     with open("debug/last-ms.txt", "r") as f:
         desc_import = f.read().strip()
@@ -2403,11 +2407,11 @@ def test_bitcoind_ms_address(change, M_N, addr_fmt, clear_ms, goto_home, need_ke
         assert "(0)" not in story
 
     if way != "nfc":
-        contents, exp_fname = load_export(way, label="Address summary", is_json=False,
-                                          sig_check=False, ret_fname=True)
+        contents, exp_fname = load_export(way, label="Address summary",
+                                          is_json=False, ret_fname=True)
         garbage_collector.append(path_f(exp_fname))
     else:
-        contents = load_export(way, label="Address summary", is_json=False, sig_check=False)
+        contents = load_export(way, label="Address summary", is_json=False)
     addr_cont = contents.strip()
     goto_home()
     pick_menu_item('Settings')
@@ -2417,10 +2421,10 @@ def test_bitcoind_ms_address(change, M_N, addr_fmt, clear_ms, goto_home, need_ke
     pick_menu_item("Bitcoin Core")
     if way != "nfc":
         contents, exp_fname = load_export(way, label="Bitcoin Core multisig setup", is_json=False,
-                                          sig_check=False, ret_fname=True)
+                                          ret_fname=True)
         garbage_collector.append(path_f(exp_fname))
     else:
-        contents = load_export(way, label="Bitcoin Core multisig setup", is_json=False, sig_check=False)
+        contents = load_export(way, label="Bitcoin Core multisig setup", is_json=False)
     text = contents.replace("importdescriptors ", "").strip()
     # remove junk
     r1 = text.find("[")
@@ -2494,7 +2498,7 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, m
     press_select()
     need_keypress("0")  # account
     press_select()
-    xpub_obj = load_export("sd", label="Multisig XPUB", is_json=True, sig_check=False)
+    xpub_obj = load_export("sd", label="Multisig XPUB", is_json=True)
     template = xpub_obj["p2sh_desc"]
     # get key from bitcoind cosigner
     target_desc = ""
@@ -2538,7 +2542,7 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, m
     pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
     pick_menu_item("Descriptors")
     pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core multisig setup", is_json=False, sig_check=False)
+    text = load_export("sd", label="Bitcoin Core multisig setup", is_json=False)
     text = text.replace("importdescriptors ", "").strip()
     # remove junk
     r1 = text.find("[")
@@ -2669,7 +2673,7 @@ def bitcoind_multisig(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story, 
         pick_menu_item(menu[0])  # pick imported descriptor multisig wallet
         pick_menu_item("Descriptors")
         pick_menu_item("Bitcoin Core")
-        text = load_export("sd", label="Bitcoin Core multisig setup", is_json=False, sig_check=False)
+        text = load_export("sd", label="Bitcoin Core multisig setup", is_json=False)
         text = text.replace("importdescriptors ", "").strip()
         # remove junk
         r1 = text.find("[")
@@ -2779,7 +2783,7 @@ def test_finalization(m_n, script, desc, use_regtest, clear_ms, bitcoind_multisi
 @pytest.mark.parametrize('desc', ["multi", "sortedmulti"])
 def test_bitcoind_MofN_tutorial(m_n, script, clear_ms, goto_home, need_keypress, pick_menu_item,
                                 sighash, cap_menu, cap_story, microsd_path, use_regtest, bitcoind,
-                                microsd_wipe, load_export, settings_set, psbt_v2, is_q1, try_sign,
+                                microsd_wipe, settings_set, psbt_v2, is_q1, try_sign,
                                 finalize_v2_v0_convert, press_select, desc, bitcoind_multisig):
     # 2of2 case here is described in docs with tutorial
     if desc == "multi":
@@ -3108,7 +3112,7 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
     choose_multisig_wallet()
     pick_menu_item("Descriptors")
     pick_menu_item("Export")
-    contents = load_export(way, label="Descriptor multisig setup", is_json=False, sig_check=False)
+    contents = load_export(way, label="Descriptor multisig setup", is_json=False)
     bare_desc = contents.strip()
 
     # get pretty descriptor
@@ -3123,14 +3127,14 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
         else:
             time.sleep(1)
 
-    contents = load_export(way, label="Descriptor multisig setup", is_json=False, sig_check=False)
+    contents = load_export(way, label="Descriptor multisig setup", is_json=False)
     pretty_desc = contents.strip()
 
     # get core descriptor json
     choose_multisig_wallet()
     pick_menu_item("Descriptors")
     pick_menu_item("Bitcoin Core")
-    core_desc_text = load_export(way, label="Bitcoin Core multisig setup", is_json=False, sig_check=False)
+    core_desc_text = load_export(way, label="Bitcoin Core multisig setup", is_json=False)
 
     # remove junk
     text = core_desc_text.replace("importdescriptors ", "").strip()
@@ -3689,7 +3693,7 @@ def test_cc_root_key(import_ms_wallet, bitcoind, use_regtest, clear_ms, microsd_
     pick_menu_item(menu[0])  # pick imported descriptor multisig wallet
     pick_menu_item("Descriptors")
     pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core multisig setup", is_json=False, sig_check=False)
+    text = load_export("sd", label="Bitcoin Core multisig setup", is_json=False)
     text = text.replace("importdescriptors ", "").strip()
     # remove junk
     r1 = text.find("[")
@@ -3739,7 +3743,7 @@ def test_cc_root_key(import_ms_wallet, bitcoind, use_regtest, clear_ms, microsd_
     assert der_paths == target_first_der
 
     need_keypress('1')  # SD
-    contents = load_export("sd", label="Address summary", is_json=False, sig_check=False)
+    contents = load_export("sd", label="Address summary", is_json=False)
     cc_addrs = contents.strip().split("\n")[1:]
 
     # Generate the addresses file and get each line in a list

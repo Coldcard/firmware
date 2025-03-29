@@ -112,7 +112,7 @@ def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, mic
 
         time.sleep(.5)  # always long enough to write the file?
         title, body = cap_story()
-        contents, sig_addr = load_export_and_verify_signature(body, way, label="Address summary")
+        contents, sig_addr, _ = load_export_and_verify_signature(body, way, label="Address summary")
         addr_dump = io.StringIO(contents)
         cc = csv.reader(addr_dump)
         hdr = next(cc)
