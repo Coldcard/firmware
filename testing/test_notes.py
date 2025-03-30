@@ -6,7 +6,6 @@ import pytest, time, json, random, os, pdb
 from helpers import prandom
 from charcodes import *
 from constants import AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2WPKH
-from test_bbqr import readback_bbqr
 from bbqr import split_qrs
 
 

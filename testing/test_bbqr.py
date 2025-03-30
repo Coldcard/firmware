@@ -407,10 +407,7 @@ KDOloGMDU3fv+Y3NRSe17SoO4uSKo9IUU2+baJ/pqaHZBuvmW6j5nnv/N4M5BCVawiUig/qzExZpFsA7
 @pytest.mark.qrcode
 @pytest.mark.manual
 @pytest.mark.parametrize("i", range(1,25))
-def test_qr_sizes(i, scan_a_qr, readback_bbqr, press_select, need_keypress,
-                  qr_quality_check, render_bbqr, goto_home, use_regtest, cap_story,
-                  decode_psbt_with_bitcoind, decode_with_bitcoind, fake_txn, dev,
-                  start_sign, end_sign, press_cancel, cap_screen_qr, try_sign_bbqr):
+def test_qr_sizes(i, dev, fake_txn, press_cancel, cap_screen_qr, try_sign_bbqr):
 
     # QRs from version 10 to version 25, everything from v26(included) and above is BBQR
     # only v17 contains 2 lines of txid
@@ -418,5 +415,6 @@ def test_qr_sizes(i, scan_a_qr, readback_bbqr, press_select, need_keypress,
 
     try_sign_bbqr(psbt, type_code="P")
     cap_screen_qr()
+    press_cancel()
 
 # EOF

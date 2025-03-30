@@ -9,8 +9,9 @@ from ubinascii import unhexlify as a2b_hex
 from uhashlib import sha256
 from public_constants import MSG_SIGNING_MAX_LENGTH
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
-from charcodes import KEY_QR, KEY_NFC, KEY_ENTER, KEY_CANCEL
-from ux import ux_show_story, OK, X, ux_enter_bip32_index
+from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
+from ux import (ux_show_story, OK, ux_enter_bip32_index, ux_input_text, the_ux,
+                import_export_prompt, ux_aborted)
 from utils import problem_file_line, to_ascii_printable, show_single_address
 from files import CardSlot, CardMissingError, needs_microsd
 
@@ -202,8 +203,6 @@ def sign_export_contents(content_list, deriv, addr_fmt, pk=None):
 def verify_signed_file_digest(msg):
     # Look inside a list of hashs and file names, and
     # verify at their actual hashes and return list of issues if any.
-    from files import CardSlot
-
     parsed_msg = parse_signature_file_msg(msg)
     if not parsed_msg:
         # not our format
@@ -238,8 +237,6 @@ def verify_signed_file_digest(msg):
     return err, warn
 
 def write_sig_file(content_list, derive=None, addr_fmt=AF_CLASSIC, pk=None, sig_name=None):
-    from glob import dis
-
     if derive is None:
         ct = chains.current_chain().b44_cointype
         derive = "m/44'/%d'/0'/0/0" % ct
@@ -405,7 +402,6 @@ def sign_message_digest(digest, subpath, prompt, addr_fmt=AF_CLASSIC, pk=None):
 
 async def ux_sign_msg(txt, approved_cb=None, kill_menu=True):
     from menu import MenuSystem, MenuItem
-    from ux import the_ux
 
     async def done(_1, _2, item):
         from auth import approve_msg_sign
@@ -424,8 +420,6 @@ async def ux_sign_msg(txt, approved_cb=None, kill_menu=True):
     the_ux.push(MenuSystem(rv))
 
 async def msg_signing_done(signature, address, text):
-    from ux import import_export_prompt
-
     ch = await import_export_prompt("Signed Msg", is_import=False,
                                     no_qr=not version.has_qwerty)
     if ch == KEY_CANCEL:
@@ -446,11 +440,11 @@ async def sign_with_own_address(subpath, addr_fmt):
     # used for cases where we already have the key picked, but need the message:
     #     * address_explorer custom path
     #     * positive ownership test
-    from glob import dis
 
     to_sign = await ux_input_text("", scan_ok=True, prompt="Enter MSG")  # max len is 100 only here
     if not to_sign: return
 
+    from auth import approve_msg_sign
     await approve_msg_sign(to_sign, subpath, addr_fmt, approved_cb=msg_signing_done, kill_menu=True)
 
 async def sd_sign_msg_done(signature, address, text, base=None, orig_path=None,

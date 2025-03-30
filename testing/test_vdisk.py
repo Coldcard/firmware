@@ -107,7 +107,7 @@ def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, pre
         else:
             reexport_msg = split_story[2]
 
-        assert "Press (0) to re-export." == reexport_msg
+        assert "Press (0) to save again by another method." == reexport_msg
         got_psbt = None
         got_txn = None
         txid, got_txid = None, None

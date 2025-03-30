@@ -3,7 +3,6 @@
 # tests for ../shared/pwsave.py
 #
 import pytest, time, os, shutil
-from test_ux import word_menu_entry
 from binascii import a2b_hex
 from constants import simulator_fixed_tprv
 
