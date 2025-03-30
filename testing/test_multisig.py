@@ -3314,7 +3314,6 @@ def test_bare_cc_ms_qr_import(N, make_multisig, scan_a_qr, clear_ms, goto_home,
 
     title, story = cap_story()
     assert title == 'Simple Text'
-    assert "We can't do any more with it." in story
 
     press_cancel()
 

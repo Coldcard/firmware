@@ -149,7 +149,7 @@ def test_ndef_ccfile(ccfile, load_shared_mod):
 @pytest.fixture
 def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
                  sim_exec, nfc_read, nfc_write, nfc_block4rf, press_select,
-                 press_cancel, press_nfc, nfc_read_txn):
+                 press_cancel, press_nfc, nfc_read_txn, ndef_parse_txn_psbt):
 
     # like "try_sign" but use NFC to send/receive PSBT/results
 
@@ -263,7 +263,7 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
             press_select()
             txid = None
 
-        got_psbt, got_txn, got_txid = ndef_parse_txn_psbt(contents, txid, encoding, expect_finalize)
+        got_psbt, got_txn, got_txid = ndef_parse_txn_psbt(contents, txid, ip, expect_finalize)
 
         return ip, (got_psbt or got_txn), (txid or got_txid)
 
@@ -275,7 +275,7 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
 
 @pytest.fixture
 def ndef_parse_txn_psbt(press_cancel):
-    def doit(contents, txid=None, encoding='binary', expect_finalized=True):
+    def doit(contents, txid=None, orig=None, expect_finalized=True):
         # from NFC data read, what did we get?
         got_txid = None
         got_txn = None
@@ -317,15 +317,6 @@ def ndef_parse_txn_psbt(press_cancel):
 
             open("debug/nfc-result.psbt", 'wb').write(result)
 
-        if 0:
-            # check output encoding matches input
-            if encoding == 'hex' or finalize:
-                result = a2b_hex(result.strip())
-            elif encoding == 'base64':
-                result = b64decode(result)
-            else:
-                assert encoding == 'binary'
-
         # read back final product
         if got_txn:
             from ctransaction import CTransaction
@@ -340,7 +331,7 @@ def ndef_parse_txn_psbt(press_cancel):
             assert got_psbt[0:5] == b'psbt\xff'
 
             from psbt import BasicPSBT
-            was = BasicPSBT().parse(ip) 
+            was = BasicPSBT().parse(orig)
             now = BasicPSBT().parse(got_psbt)
             assert was.txn == now.txn
             assert was != now

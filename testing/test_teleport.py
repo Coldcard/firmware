@@ -6,16 +6,11 @@
 #
 import pytest, time, re, pdb
 from helpers import prandom, xfp2str, str2xfp
-from binascii import a2b_hex
-from bbqr import split_qrs, join_qrs
+from bbqr import join_qrs
 from charcodes import KEY_QR, KEY_NFC
 from base64 import b32encode
 from constants import *
-
-from test_bbqr import readback_bbqr, split_scan_bbqr
-from test_notes import need_some_notes, need_some_passwords
 from test_ephemeral import SEEDVAULT_TEST_DATA
-from test_nfc import ndef_parse_txn_psbt
 
 # All tests in this file are exclusively meant for Q
 #
@@ -404,7 +399,7 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
     cap_menu, pick_menu_item, grab_payload, rx_complete, press_select, ndef_parse_txn_psbt,
     press_nfc, nfc_read, settings_get, settings_set):
 
-    # IMPORTANT: wont work if you start simulator with --ms flag. Use no args
+    # IMPORTANT: won't work if you start simulator with --ms flag. Use no args
 
     all_out_styles = list(unmap_addr_fmt.keys())
     num_outs = len(all_out_styles)
@@ -530,8 +525,12 @@ def test_teleport_big_ms(make_myself_wallet, clear_ms,
     pick_menu_item('Teleport Multisig PSBT')
 
     need_keypress('1')      # top slot
-    
-    pick_menu_item(fname)
+
+    try:
+        pick_menu_item(fname)
+    except KeyError:
+        # maybe just one file that is suitable --> str8 to xfp picking
+        pass
 
     # on Co-signer list menu
     m = cap_menu()

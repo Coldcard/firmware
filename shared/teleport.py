@@ -3,12 +3,13 @@
 # teleport.py - Magically transport extremely sensitive data between the
 #               secure environment of two Q's.
 #
-import sys, uzlib, ngu, aes256ctr, bip39, json, stash
-from utils import problem_file_line, B2A, xfp2str, deserialize_secret, keypath_to_str
+import ngu, aes256ctr, bip39, json, ndef, chains
+from io import BytesIO
+from utils import xfp2str, deserialize_secret
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from glob import settings
-from ux import ux_show_story, ux_confirm, show_qr_code, the_ux, ux_dramatic_pause
+from ux import ux_show_story, ux_confirm, the_ux, ux_dramatic_pause
 from ux_q1 import show_bbqr_codes, QRScannerInteraction, ux_input_text
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 from bbqr import b32encode, b32decode
@@ -16,6 +17,7 @@ from menu import MenuItem, MenuSystem
 from notes import NoteContentBase
 from sffile import SFFile
 from multisig import MultisigWallet
+from stash import SensitiveValues, SecretStash, blank_object, bip39_passphrase
 
 # One page github-hosted static website that shows QR based on URL contents pushed by NFC
 KT_DOMAIN = 'keyteleport.com'
@@ -35,7 +37,6 @@ def short_bbqr(type_code, data):
 
 async def nfc_push_kt(qrdata):
     # NFC push to send them to our QR-rendering website
-    import ndef
 
     url = KT_DOMAIN + '#' + qrdata
 
@@ -132,8 +133,6 @@ async def tk_show_payload(type_code, payload, title, msg, cta=None):
     # show the QR and/or NFC
     # - MAYBE: make easier/faster to pick NFC from QR screen and vice-versa
     from glob import NFC
-    from bbqr import num_qr_needed
-    from ux_q1 import show_bbqr_codes
 
     hints = KEY_QR
     if NFC and len(payload) < NFC_SIZE_LIMIT:
@@ -218,7 +217,7 @@ async def kt_do_send(rx_pubkey, dtype, raw=None, obj=None, prefix=b'', rx_label=
 
     if not prefix:
         # not PSBT case ... reset menus, we are deep!
-        from flow import goto_top_menu
+        from actions import goto_top_menu
         goto_top_menu()
     
 def pick_noid_key():
@@ -308,7 +307,6 @@ async def kt_accept_values(dtype, raw):
     - `v` - seed vault export (JSON: one secret key but includes includes name, source of key)
     - `p` - binary PSBT to be signed
     '''
-    from chains import current_chain, slip32_deserialize
     from flow import has_se_secrets, goto_top_menu
 
     enc = None
@@ -324,9 +322,9 @@ async def kt_accept_values(dtype, raw):
         # it's an XPRV, but in binary.. some extra data we throw away here; sigh
         # XXX no way to send this .. but was thinking of address explorer
         txt = ngu.codecs.b58_encode(raw)
-        node, ch, _, _ = slip32_deserialize(txt)
-        assert ch.name == chains.current_chain.name, 'wrong chain'
-        enc = stash.SecretStash.encode(node=node)
+        node, ch, _, _ = chains.slip32_deserialize(txt)
+        assert ch.name == chains.current_chain().name, 'wrong chain'
+        enc = SecretStash.encode(xprv=node)
 
     elif dtype == 'p':
         # raw PSBT -- much bigger more complex
@@ -473,7 +471,6 @@ class SecretPickerMenu(MenuSystem):
         self.rx_pubkey = rx_pubkey
 
         from flow import word_based_seed, is_tmp
-        from stash import bip39_passphrase
         has_notes = bool(NoteContentBase.count())
         has_ms = bool(settings.get('multisig', False))
         has_sv = bool(settings.get('seedvault', False))
@@ -513,7 +510,6 @@ class SecretPickerMenu(MenuSystem):
 
     async def pick_note_submenu(self, *a):
         # Make a submenu to select a single note/password
-
         rv = []
         for note in NoteContentBase.get_all():
             rv.append(MenuItem('%d: %s' % (note.idx+1, note.title), f=self.picked_note, arg=note))
@@ -547,9 +543,8 @@ class SecretPickerMenu(MenuSystem):
     async def share_master_secret(self, _, _2, item):
         # altho menu items look different we are sharing same thing:
         # - up to 72 bytes from secure elements
-        from stash import SensitiveValues, SecretStash, blank_object
 
-        with stash.SensitiveValues(bypass_tmp=False, enforce_delta=True) as sv:
+        with SensitiveValues(bypass_tmp=False, enforce_delta=True) as sv:
             raw = bytearray(sv.secret)
             xfp = xfp2str(sv.get_xfp())
 
@@ -573,16 +568,16 @@ class SecretPickerMenu(MenuSystem):
 
 
 async def kt_send_psbt(psbt, psbt_len=None, post_signing=False):
-    # We just finishing adding our signature to an incomplete PSBT.
+    # We just finished adding our signature to an incomplete PSBT.
     # User wants to send to one or more other senders for them to complete signing.
 
     # who remains to sign? look at inputs
     ms = psbt.active_multisig
-    all_xfps = [x for x,p in ms.get_xfp_paths()]
+    all_xfps = [x for x,*p in ms.get_xfp_paths()]
     need = [x for x in psbt.multisig_xfps_needed() if x in all_xfps]
 
     # maybe it's not really a PSBT where we know the other signers? might be
-    # a weird coinjoin we dont fully understand
+    # a weird coinjoin we don't fully understand
     if not need:
         if not post_signing:
             await ux_show_story("No more signers?")
@@ -612,8 +607,6 @@ async def kt_send_psbt(psbt, psbt_len=None, post_signing=False):
 
     if not psbt_len:
         # we need it serialized, might have only saved into Base64 or something
-        from io import BytesIO
-
         with BytesIO() as fd:
             psbt.serialize(fd)      # need prog bar?
 
@@ -750,6 +743,5 @@ async def kt_send_file_psbt(*a):
         return
 
     await kt_send_psbt(psbt, psbt_len=psbt_len)
-
     
 # EOF

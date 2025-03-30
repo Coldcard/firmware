@@ -8,7 +8,6 @@ from constants import simulator_fixed_tpub, simulator_fixed_xfp, simulator_fixed
 from constants import simulator_fixed_words, simulator_fixed_tprv
 from ckcc.protocol import CCProtocolPacker
 from txn import fake_txn
-from test_ux import word_menu_entry
 from bip32 import BIP32Node
 from helpers import xfp2str, a2b_hex
 from charcodes import KEY_CLEAR, KEY_NFC
