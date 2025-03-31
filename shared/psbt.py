@@ -715,7 +715,6 @@ class psbtInputProxy(psbtProxy):
 
         return utxo
 
-
     def determine_my_signing_key(self, my_idx, utxo, my_xfp, psbt, cosign_xfp=None):
         # See what it takes to sign this particular input
         # - type of script
@@ -816,10 +815,11 @@ class psbtInputProxy(psbtProxy):
             # we don't know how to "solve" this type of input
             pass
 
-        if self.is_multisig and which_key:
+        if self.is_multisig:
             # We will be signing this input, so 
             # - find which wallet it is or
             # - check it's the right M/N to match redeem script
+            # - which_key can be empty set, meaning all is already signed
 
             #print("redeem: %s" % b2a_hex(redeem_script))
             M, N = disassemble_multisig_mn(redeem_script)
@@ -2188,6 +2188,12 @@ class psbtObject(psbtProxy):
         # double SHA256
         return ngu.hash.sha256s(rv.digest())
 
+    def multi_input_complete(self, inp):
+        # raises if input is not multisig or no active_multisig loaded
+        assert inp.is_multisig
+        if (len(inp.added_sigs) + len(inp.part_sigs)) >= self.active_multisig.M:
+            return True
+
     def is_complete(self):
         # Are all the inputs (now) signed?
 
@@ -2197,7 +2203,7 @@ class psbtObject(psbtProxy):
         # plus we added some signatures
         for inp in self.inputs:
             if inp.is_multisig and self.active_multisig:
-                if (len(inp.added_sigs) + len(inp.part_sigs)) >= self.active_multisig.M:
+                if self.multi_input_complete(inp):
                     signed += 1
 
             elif inp.added_sigs:
@@ -2247,7 +2253,7 @@ class psbtObject(psbtProxy):
 
     def finalize(self, fd):
         # Stream out the finalized transaction, with signatures applied
-        # - assumption is it's complete already.
+        # - raise if not complete already
         # - returns the TXID of resulting transaction
         # - but in segwit case, needs to re-read to calculate it
         # - fd must be read/write and seekable to support txid calc
@@ -2269,6 +2275,10 @@ class psbtObject(psbtProxy):
         fd.write(ser_compact_size(self.num_inputs))
         for in_idx, txi in self.input_iter():
             inp = self.inputs[in_idx]
+            # only finalize if input with signatures added by us
+            assert inp.added_sigs, 'No signature on input #%d' % in_idx
+            if inp.is_multisig:
+                assert self.multi_input_complete(inp), 'Incomplete signature set on input #%d' % in_idx
 
             if inp.is_segwit:
                 if inp.is_multisig:
@@ -2287,7 +2297,6 @@ class psbtObject(psbtProxy):
 
             else:
                 # insert the new signature(s), assuming fully signed txn.
-                assert inp.added_sigs, 'No signature on input #%d'%in_idx
                 if inp.is_multisig:
                     # p2sh multisig (non-segwit)
                     sigs = self.multisig_signatures(inp)
