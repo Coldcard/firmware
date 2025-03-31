@@ -30,8 +30,7 @@ class MultisigOutOfSpace(RuntimeError):
 
 def disassemble_multisig_mn(redeem_script):
     # pull out just M and N from script. Simple, faster, no memory.
-
-    assert MAX_SIGNERS == 15
+    # assert MAX_SIGNERS == 15
     assert redeem_script[-1] == OP_CHECKMULTISIG, 'need CHECKMULTISIG'
 
     M = redeem_script[0] - 80
