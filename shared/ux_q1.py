@@ -902,6 +902,7 @@ class QRScannerInteraction:
 
     async def scan_anything(self, expect_secret=False, tmp=False):
         # start a QR scan, and act on what we find, whatever it may be.
+        from ux import ux_show_story
         problem = None
         while 1:
             prompt = 'Scan any QR code, or CANCEL' if not expect_secret else \
@@ -914,91 +915,82 @@ class QRScannerInteraction:
 
                 # Figure out what we got.
                 what, vals = decode_qr_result(got, expect_secret=expect_secret)
+                break
             except QRDecodeExplained as exc:
                 problem = str(exc)
                 continue
-            except Exception as exc:
-                import sys; sys.print_exception(exc)
+            except Exception:
+                # import sys; sys.print_exception(exc)
                 problem = "Unable to decode QR"
                 continue
 
-            if what == 'xprv':
-                from actions import import_extended_key_as_secret
-                text_xprv, = vals
-                await import_extended_key_as_secret(text_xprv, tmp)
-                return
+        if what == 'xprv':
+            from actions import import_extended_key_as_secret
+            text_xprv, = vals
+            await import_extended_key_as_secret(text_xprv, tmp)
+            return
 
-            if what == 'words':
-                from seed import commit_new_words, set_ephemeral_seed_words       # dirty API
-                words, = vals
-                if tmp:
-                    await set_ephemeral_seed_words(words, 'From QR')
-                else:
-                    await commit_new_words(words)
+        if what == 'words':
+            from seed import commit_new_words, set_ephemeral_seed_words       # dirty API
+            words, = vals
+            if tmp:
+                await set_ephemeral_seed_words(words, 'From QR')
+            else:
+                await commit_new_words(words)
 
-                return
+            return
 
-            if what == 'psbt':
-                decoder, psbt_len, got = vals
-                await qr_psbt_sign(decoder, psbt_len, got)
-                return
+        if what == 'psbt':
+            decoder, psbt_len, got = vals
+            await qr_psbt_sign(decoder, psbt_len, got)
 
-            if what == 'txn':
-                bin_txn, = vals
-                await ux_visualize_txn(bin_txn)
-                return 
+        elif what == 'txn':
+            bin_txn, = vals
+            await ux_visualize_txn(bin_txn)
 
-            if what == 'addr':
-                proto, addr, args = vals
-                await ux_visualize_bip21(proto, addr, args)
-                return
+        elif what == 'addr':
+            proto, addr, args = vals
+            await ux_visualize_bip21(proto, addr, args)
 
-            if what == "multi":
-                from auth import maybe_enroll_xpub
-                from ux import ux_show_story
-                ms_config, = vals
-                try:
-                    maybe_enroll_xpub(config=ms_config)
-                except Exception as e:
-                    await ux_show_story(
-                        'Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
-                return
+        elif what == "multi":
+            from auth import maybe_enroll_xpub
+            ms_config, = vals
+            try:
+                maybe_enroll_xpub(config=ms_config)
+            except Exception as e:
+                await ux_show_story(
+                    'Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
-            if what == "wif":
-                data, = vals
-                wif_str, key_pair, compressed, testnet = data
-                await ux_visualize_wif(wif_str, key_pair, compressed, testnet)
-                return
+        elif what == "wif":
+            data, = vals
+            wif_str, key_pair, compressed, testnet = data
+            await ux_visualize_wif(wif_str, key_pair, compressed, testnet)
 
-            if what == "vmsg":
-                data, = vals
-                from msgsign import verify_armored_signed_msg
-                await verify_armored_signed_msg(data)
-                return
+        elif what == "vmsg":
+            data, = vals
+            from msgsign import verify_armored_signed_msg
+            await verify_armored_signed_msg(data)
 
-            if what == "smsg":
-                data, = vals
-                from auth import approve_msg_sign, 
-                from msgsign import msg_signing_done
-                await approve_msg_sign(None, None, None,
-                                       msg_sign_request=data, kill_menu=True,
-                                       approved_cb=msg_signing_done)
-                return
+        elif what == "smsg":
+            data, = vals
+            from auth import approve_msg_sign
+            from msgsign import msg_signing_done
+            await approve_msg_sign(None, None, None,
+                                   msg_sign_request=data, kill_menu=True,
+                                   approved_cb=msg_signing_done)
 
-            if what == 'text' or what == 'xpub':
-                # we couldn't really decode it.
-                txt, = vals
-                await ux_visualize_textqr(txt)
-                return 
+        elif what == 'text' or what == 'xpub':
+            # we couldn't really decode it.
+            txt, = vals
+            await ux_visualize_textqr(txt)
 
-            if what == 'teleport':
-                from teleport import kt_incoming
-                await kt_incoming(*vals)
-                return
+        elif what == 'teleport':
+            from teleport import kt_incoming
+            await kt_incoming(*vals)
 
-            # not reached?
-            problem = 'Unhandled: ' + what
-            
+        else:
+            await ux_show_story(what, title='Unhandled')
+
 
 async def qr_psbt_sign(decoder, psbt_len, raw):
     # Got a PSBT coming in from QR scanner. Sign it.
