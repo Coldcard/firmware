@@ -591,15 +591,14 @@ async def kt_send_psbt(psbt, psbt_len=None, post_signing=False):
         # - offer them to teleport it (we only come this far if possible)
 
         if num_to_complete <= 0:
-            # fully signed. we can probably finalize it too
-            # - they have no copy of the result, if it came in via teleport
+            # Sufficiently signed. We can probably finalize it too.
             # - if from USB, we'd be uploading back, SD would be saved, etc
             return
         
         ch = await ux_show_story("%d more signatures are still required. Press (T) to pick another co-signer to sign next, using QR codes, or ENTER for other options." % num_to_complete, title="Teleport PSBT?", escape='t')
         if ch != 't': 
             # ENTER/CANCEL both come here because we don't want to lose the PSBT
-            # - they also do a "T" and teleport again
+            # - they can also do a "T" and teleport again
             from auth import done_signing
             await done_signing(psbt)
             return
