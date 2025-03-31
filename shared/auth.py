@@ -525,7 +525,9 @@ class ApproveTransaction(UserAuthorizedAction):
         try:
             # re-serialize the PSBT back out
             with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd:
-                if self.do_finalize and self.psbt.is_complete():
+                if self.do_finalize:
+                    # user is forcing us to finalize over USB
+                    # try it & fail with detailed msg
                     txid = self.psbt.finalize(fd)
                 else:
                     self.psbt.serialize(fd)

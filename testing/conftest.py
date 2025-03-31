@@ -1397,19 +1397,19 @@ def end_sign(dev, need_keypress):
             need_keypress('y', timeout=None)
             time.sleep(0.050)
 
-        if accept != None:
+        if accept is not None:
             need_keypress('y' if accept else 'x', timeout=None)
 
-        if accept == False:
+        if accept is False:
             with pytest.raises(CCUserRefused):
                 done = None
-                while done == None:
+                while done is None:
                     time.sleep(0.050)
                     done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
             return
         else:
             done = None
-            while done == None:
+            while done is None:
                 time.sleep(0.00)
                 done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
 
