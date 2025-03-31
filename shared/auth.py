@@ -333,19 +333,23 @@ class ApproveTransaction(UserAuthorizedAction):
 
         # Do some analysis/ validation
         try:
-            await self.psbt.validate()      # might do UX: accept multisig import
+            await self.psbt.validate()  # might do UX: accept multisig import
             dis.progress_sofar(10, 100)
+
+            # consider_keys only needs num_our_keys to be set
+            # it set during psbt.validate()
+            self.psbt.consider_keys()
+            dis.progress_sofar(20, 100)
+
             ccc_c_xfp = CCCFeature.get_xfp()  # can be None
             self.psbt.consider_inputs(cosign_xfp=ccc_c_xfp)
+            dis.progress_sofar(50, 100)
 
-            dis.progress_sofar(33, 100)
-            self.psbt.consider_keys()
-
-            dis.progress_sofar(66, 100)
             self.psbt.consider_outputs()
-            self.psbt.consider_dangerous_sighash()
+            dis.progress_sofar(75, 100)
 
-            dis.progress_sofar(85, 100)
+            self.psbt.consider_dangerous_sighash()
+            dis.progress_sofar(90, 100)
 
         except FraudulentChangeOutput as exc:
             #print('FraudulentChangeOutput: ' + exc.args[0])
