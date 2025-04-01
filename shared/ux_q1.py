@@ -704,7 +704,7 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
                 maybe = [i for i in last_words if i.startswith(value)]
                 if len(maybe) == 1:
                     value = maybe[0]
-                elif len(maybe) == 0:
+                elif not maybe:
                     if len(last_words) == 8:        # 24 words case
                         ll = ''.join(sorted(set([w[0] for w in last_words])))
                         err_msg = 'Final word starts with: ' + ll

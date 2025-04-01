@@ -72,7 +72,7 @@ class Queue:
         return len(self._queue)
 
     def empty(self):  # Return True if the queue is empty, False otherwise.
-        return len(self._queue) == 0
+        return not self._queue
 
     def full(self):  # Return True if there are maxsize items in the queue.
         # Note: if the Queue was initialized with maxsize=0 (the default) or

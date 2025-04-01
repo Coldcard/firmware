@@ -317,7 +317,7 @@ def parse_msg_sign_request(data):
         is_json = True
     except ValueError:
         lines = data.split("\n")
-        assert len(lines) >= 1, "min 1 line"
+        assert lines, "min 1 line"
         assert len(lines) <= 3, "max 3 lines"
 
         if len(lines) == 1:

@@ -479,7 +479,7 @@ class CTransaction(object):
         self.nVersion = struct.unpack("<i", f.read(4))[0]
         self.vin = deser_vector(f, CTxIn)
         flags = 0
-        if len(self.vin) == 0:
+        if not self.vin:
             flags = struct.unpack("<B", f.read(1))[0]
             # Not sure why flags can't be zero, but this
             # matches the implementation in bitcoind
