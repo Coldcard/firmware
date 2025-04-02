@@ -225,9 +225,6 @@ class NFCHandler:
         self.set_rf_disable(1)
 
     async def share_loop(self, n, **kws):
-        if "prompt" not in kws:
-            kws["prompt"] = "Tap to broadcast, CANCEL when done"
-
         while 1:
             done = await self.share_start(n, **kws)
             if done: break
@@ -284,7 +281,7 @@ class NFCHandler:
         if line2 is None:
             line2 = self.txid_line2(txid)
 
-        await self.share_loop(n, line2=line2)
+        await self.share_loop(n, prompt="Tap to broadcast, CANCEL when done", line2=line2)
 
     async def push_tx_from_file(self):
         # Pick (signed txn) file from SD card and broadcast via PushTx
