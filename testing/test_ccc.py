@@ -205,7 +205,7 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
                 press_select()
                 time.sleep(.1)
                 title, story = cap_story()
-                assert f'Record these {nwords} secret words!' in story
+                assert f'Record these {nwords} secret words!' in (title if is_q1 else story)
 
                 if is_q1:
                     c_words = seed_story_to_words(story)
@@ -384,7 +384,9 @@ def enter_enabled_ccc(goto_home, pick_menu_item, cap_story, press_select, is_q1,
 
 @pytest.fixture
 def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_menu_item,
-                 cap_story, press_select, need_keypress, enter_number, press_cancel):
+                 cap_story, press_select, need_keypress, enter_number, press_cancel,
+                 garbage_collector):
+
     def doit(N=3, b_words=12, way="sd", addr_fmt=AF_P2WSH, ftype="cc", bbqr=True):
 
         N2 = N - 2  # how many more signers we need (B keys)
@@ -433,7 +435,9 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
                     fname = f"{xfp}.bsms"
                     conts = f"[{xfp}/{deriv}]{dd[label]}"
 
-                with open(path_f(fname), "w") as f:
+                pth = path_f(fname)
+                garbage_collector.append(pth)
+                with open(pth, "w") as f:
                     f.write(conts)
 
         pick_menu_item("↳ Build 2-of-N")
@@ -1191,8 +1195,8 @@ def test_c_key_from_seed_vault(has_candidates, setup_ccc, build_test_seed_vault,
 @pytest.mark.parametrize("is_bbqr", [True, False])
 @pytest.mark.parametrize("N", [3, 15])
 def test_ms_setup_cosigner_import(way, ftype, is_bbqr, N, goto_home, settings_set, setup_ccc,
-                                  ccc_ms_setup, pick_menu_item, cap_story):
-    if way == "sd" and is_bbqr:
+                                  ccc_ms_setup, pick_menu_item, cap_story, is_q1):
+    if ((way == "sd") and is_bbqr) or ((not is_q1) and (way == "qr")):
         pytest.skip("useless")
 
     goto_home()

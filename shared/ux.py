@@ -6,6 +6,7 @@ from uasyncio import sleep_ms
 from queues import QueueEmpty
 import utime, gc, version
 from utils import word_wrap
+from version import has_qwerty, num_sd_slots, has_qr
 from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME, KEY_NFC, KEY_QR,
             KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ENTER, KEY_CANCEL, OUT_CTRL_TITLE)
 
@@ -356,7 +357,6 @@ async def ux_enter_bip32_index(prompt, can_cancel=False, unlimited=False):
     return await ux_enter_number(prompt=prompt, max_value=max_value, can_cancel=can_cancel)
 
 def _import_prompt_builder(title, no_qr, no_nfc, slot_b_only=False):
-    from version import has_qwerty, num_sd_slots, has_qr
     from glob import NFC, VD
 
     prompt, escape = None, KEY_CANCEL+"x"
@@ -396,7 +396,6 @@ def export_prompt_builder(what_it_is, no_qr=False, no_nfc=False, key0=None, offe
                           force_prompt=False):
     # Build the prompt for export
     # - key0 can be for special stuff
-    from version import has_qwerty, num_sd_slots, has_qr
     from glob import NFC, VD
 
     prompt, escape = None, KEY_CANCEL+"x"

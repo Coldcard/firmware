@@ -838,7 +838,8 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
         if ch != '6': return
 
         b, s = tp.get_by_pin(pin)
-        if s == None:
+        if s is None:
+            title = None
             # could not find in SE2. Our settings vs. SE2 are not in sync.
             msg = "Not found in SE2. Delete and remake."
         else:
@@ -850,14 +851,14 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
                 ch, pk = s.xdata[0:32], s.xdata[32:64]
                 node.from_chaincode_privkey(ch, pk)
 
-                msg, *_ = render_master_secrets('xprv', None, node)
+                title, msg, *_ = render_master_secrets('xprv', None, node)
             elif flags & TC_WORD_WALLET:
                 raw = s.xdata[0:(32 if nwords == 24 else 16)]
-                msg, *_ = render_master_secrets('words', raw, None)
+                title, msg, *_ = render_master_secrets('words', raw, None)
             else:
                 raise ValueError(hex(flags))
 
-        await ux_show_story(msg, sensitive=True)
+        await ux_show_story(msg, title=title, sensitive=True)
         
 
     async def pin_submenu(self, menu, label, item):

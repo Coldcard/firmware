@@ -529,11 +529,9 @@ async def ux_login_countdown(sec):
 
     dis.busy_bar(0)
 
-def ux_render_words(words, leading_blanks=1):
+def ux_render_words(words, leading_blanks=0):
     # re-use word-list rendering code to show as a string in a story.
     # - because I want them all on-screen at once, and not simple to do that
-    buf = [bytearray(CHARS_W) for y in range(CHARS_H)]
-
     rv = [''] * leading_blanks
 
     num_words = len(words)

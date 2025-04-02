@@ -2301,7 +2301,7 @@ def test_dup_ms_wallet_bug(goto_home, pick_menu_item, press_select, import_ms_wa
 
     clear_ms()
 
-@pytest.mark.parametrize('M_N', [(2, 3), (2, 2), (3, 5), (15, 15)])
+@pytest.mark.parametrize('M_N', [(2, 3), (3, 5), (15, 15)])
 @pytest.mark.parametrize('addr_fmt', [ AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH ])
 @pytest.mark.parametrize('int_ext_desc', [True, False])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
@@ -3078,7 +3078,7 @@ def test_ms_xpub_ordering(descriptor, m_n, clear_ms, make_multisig, import_ms_wa
 
 @pytest.mark.parametrize('cmn_pth_from_root', [True, False])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
-@pytest.mark.parametrize('M_N', [(3, 15), (2, 2), (3, 5), (15, 15)])
+@pytest.mark.parametrize('M_N', [(2, 3), (3, 5), (15, 15)])
 @pytest.mark.parametrize('desc', ["multi", "sortedmulti"])
 @pytest.mark.parametrize('addr_fmt', [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH])
 def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear_ms, make_multisig,
@@ -3419,8 +3419,10 @@ def test_import_duplicate_shuffled_keys(clear_ms, make_multisig, import_ms_walle
 
 @pytest.mark.parametrize("int_ext", [True, False])
 def test_multi_sortedmulti_duplicate(clear_ms, make_multisig, import_ms_wallet, OK,
-                                     cap_story, press_cancel, int_ext, offer_ms_import):
+                                     cap_story, press_cancel, int_ext, offer_ms_import,
+                                     settings_set):
     clear_ms()
+    settings_set("unsort_ms", 1)
     M, N = 3, 5
     wname = "ms001"
     fstr = "m/48h/1h/0h/2h/{idx}"

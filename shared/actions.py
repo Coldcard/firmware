@@ -618,7 +618,12 @@ def render_master_secrets(mode, raw, node):
         qr = ' '.join(w[0:4] for w in words)
         qr_alnum = True
 
-        msg = 'Seed words (%d):\n' % len(words)
+        title = 'Seed words (%d):' % len(words)
+        msg = ""
+        if not version.has_qwerty:
+            msg += title + "\n"
+            title = None
+
         msg += ux_render_words(words)
 
         if stash.bip39_passphrase:
@@ -628,28 +633,30 @@ def render_master_secrets(mode, raw, node):
 
 
     elif mode == 'xprv':
+        title = "Extended Private Key" if version.has_qwerty else None
         msg = c.serialize_private(node)
         qr = msg
 
     elif mode == 'master':
+        title = "Master Secret" if version.has_qwerty else None
         msg = '%d bytes:\n\n' % len(raw)
         qr = str(b2a_hex(raw), 'ascii')
         msg += qr
     else:
         raise ValueError(mode)
 
-    return msg, qr, qr_alnum
+    return title, msg, qr, qr_alnum
 
 async def view_seed_words(*a):
-    import stash
-
     if not await ux_confirm('The next screen will show the seed words'
                             ' (and if defined, your BIP-39 passphrase).'
                             '\n\nAnyone with knowledge of those words '
                             'can control all funds in this wallet.'):
         return
 
-    from glob import dis
+    import stash
+    from glob import dis, NFC
+
     dis.fullscreen("Wait...")
     dis.busy_bar(True)
 
@@ -668,18 +675,26 @@ async def view_seed_words(*a):
 
     with stash.SensitiveValues(bypass_tmp=False, enforce_delta=True) as sv:
         dis.busy_bar(False)
-        msg, qr, qr_alnum = render_master_secrets(mode or sv.mode,
-                                                  raw or sv.raw,
-                                                  sv.node)
-
+        title, msg, qr, qr_alnum = render_master_secrets(mode or sv.mode,
+                                                         raw or sv.raw,
+                                                         sv.node)
+        esc = "1"
         if not version.has_qwerty:
-            msg += '\n\nPress (1) to view as QR Code.'
+            msg += '\n\nPress (1) to view as QR Code'
+            if NFC:
+                msg += ", (3) to share via NFC"
+                esc += "3"
+            msg += "."
 
         while 1:
-            ch = await ux_show_story(msg, sensitive=True, escape='1'+KEY_QR)
+            ch = await ux_show_story(msg, title=title, sensitive=True, escape=esc,
+                                     hint_icons=KEY_QR+(KEY_NFC if NFC else ''))
             if ch in '1'+KEY_QR:
                 from ux import show_qr_code
-                await show_qr_code(qr, qr_alnum)
+                await show_qr_code(qr, qr_alnum, is_secret=True)
+                continue
+            elif NFC and (ch in '3'+KEY_NFC):
+                await NFC.share_text(qr, is_secret=True)
                 continue
             break
 
@@ -714,7 +729,7 @@ async def export_seedqr(*a):
         del words
 
     from ux import show_qr_code
-    await show_qr_code(qr, True, msg="SeedQR")
+    await show_qr_code(qr, True, msg="SeedQR", is_secret=True)
 
     stash.blank_object(qr)
 

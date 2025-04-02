@@ -364,7 +364,7 @@ def verify_ephemeral_secret_ui(cap_story, press_select, cap_menu, dev, fake_txn,
 @pytest.fixture
 def generate_ephemeral_words(goto_eph_seed_menu, pick_menu_item, press_select,
                              need_keypress, cap_story, settings_set, seed_story_to_words,
-                             ephemeral_seed_disabled_ui, confirm_tmp_seed):
+                             ephemeral_seed_disabled_ui, confirm_tmp_seed, is_q1):
     def doit(num_words, dice=False, from_main=False, seed_vault=None, testnet=True):
         if testnet:
             netcode = "XTN"
@@ -388,7 +388,7 @@ def generate_ephemeral_words(goto_eph_seed_menu, pick_menu_item, press_select,
 
         time.sleep(0.2)
         title, story = cap_story()
-        assert f"Record these {num_words} secret words!" in story
+        assert f"Record these {num_words} secret words!" in (title if is_q1 else story)
         assert "Press (6) to skip word quiz" in story
 
         # filter those that starts with space, number and colon --> actual words
