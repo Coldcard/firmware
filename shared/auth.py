@@ -1221,14 +1221,16 @@ class ShowAddressBase(UserAuthorizedAction):
             msg = self.get_msg()
             msg += '\n\nCompare this payment address to the one shown on your other, less-trusted, software.'
 
+            esc = "4"
             if not version.has_qwerty:
                 if NFC:
-                    msg += ' Press %s to share via NFC.' % (KEY_NFC if version.has_qwerty else "(3)")
+                    msg += ' Press (3) to share via NFC.'
+                    esc += "3"
                 msg += ' Press (4) to view QR Code.'
 
             while 1:
-                ch = await ux_show_story(msg, title=self.title, escape='34',
-                                        hint_icons=KEY_QR+(KEY_NFC if NFC else ''))
+                ch = await ux_show_story(msg, title=self.title, escape=esc,
+                                         hint_icons=KEY_QR+(KEY_NFC if NFC else ''))
 
                 if ch in '4'+KEY_QR:
                     await show_qr_code(self.address, (self.addr_fmt & AFC_BECH32), is_addrs=True)

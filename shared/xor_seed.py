@@ -168,7 +168,7 @@ async def xor_all_done(data):
             import_xor_parts.clear()          # concern: we are contaminated w/ secrets
         elif chk_words and ch == KEY_QR:
             rv = encode_seed_qr(chk_words)
-            await show_qr_code(rv, True, msg="SeedQR")
+            await show_qr_code(rv, True, msg="SeedQR", is_secret=True)
             continue
         elif ch == '1':
             # do another list of words
@@ -223,7 +223,7 @@ async def show_n_parts(parts, chk_word):
 
     for n,words in enumerate(parts):
         msg += '\n\nPart %s:\n' % chr(65+n)
-        msg += ux_render_words(words, leading_blanks=0)
+        msg += ux_render_words(words)
 
     msg += ('\n\nThe correctly reconstructed seed phrase will have this final word,'
             ' which we recommend recording:\n\n%d: %s\n\n' % (seed_len, chk_word))

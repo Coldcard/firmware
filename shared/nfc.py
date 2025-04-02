@@ -397,7 +397,8 @@ class NFCHandler:
         self.write_dyn(GPO_CTRL_Dyn, 0x01)      # GPO_EN
         self.read_dyn(IT_STS_Dyn)               # clear interrupt
 
-    async def ux_animation(self, write_mode, allow_enter=True, prompt=None, line2=None):
+    async def ux_animation(self, write_mode, allow_enter=True, prompt=None, line2=None,
+                           is_secret=False):
         # Run the pretty animation, and detect both when we are written, and/or key to exit/abort.
         # - similar when "read" and then removed from field
         # - return T if aborted by user
@@ -471,7 +472,8 @@ class NFCHandler:
 
         self.set_rf_disable(1)
         if not write_mode:
-            await self.wipe(False)
+            # function argument secret decides whether to do full wipe after writing to chip
+            await self.wipe(is_secret)
 
         return aborted
 

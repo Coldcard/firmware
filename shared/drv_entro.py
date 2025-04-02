@@ -161,7 +161,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
         qr_alnum = True
 
         msg = 'Seed words (%d):\n' % len(words)
-        msg += ux_render_words(words)
+        msg += ux_render_words(words, leading_blanks=1)
 
         encoded = stash.SecretStash.encode(seed_phrase=new_secret)
 
@@ -251,7 +251,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
             break
         elif choice == KEY_QR:
             from ux import show_qr_code
-            await show_qr_code(qr, qr_alnum)
+            await show_qr_code(qr, qr_alnum, is_secret=True)
         elif choice == '0':
             if s_mode == 'pw':
                 # gets confirmation then types it
@@ -271,7 +271,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
 
         elif NFC and choice == KEY_NFC:
             # Share any of these over NFC
-            await NFC.share_text(qr)
+            await NFC.share_text(qr, is_secret=True)
 
     stash.blank_object(msg)
     stash.blank_object(new_secret)
