@@ -503,7 +503,7 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
             if ms_wallet:
                 # sign with my key at the same path as first address of export
                 addr_fmt = AF_CLASSIC
-                derive = ms_wallet.get_my_key(settings.get('xfp'))[1]
+                derive = ms_wallet.get_my_deriv(settings.get('xfp'))
                 derive += "/%d/%d" % (change, start)
             else:
                 derive = path.format(account=account_num, change=change, idx=start)  # first addr

@@ -516,19 +516,13 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
 
 @pytest.fixture
 def bitcoind_create_watch_only_wallet(pick_menu_item, need_keypress, microsd_path,
-                                      cap_story, bitcoind, press_cancel):
+                                      cap_story, bitcoind, press_cancel, load_export):
     def doit(ms_menu_item):
         pick_menu_item(ms_menu_item)
         pick_menu_item("Descriptors")
         pick_menu_item("Bitcoin Core")
-        time.sleep(.1)
-        need_keypress("1")
-        time.sleep(.1)
-        title, story = cap_story()
-        assert "Bitcoin Core multisig setup file written" in story
-        fname = story.split("\n\n")[-1]
-        with open(microsd_path(fname), "r") as f:
-            res = f.read()
+
+        res = load_export("sd", label="Bitcoin Core multisig setup", is_json=False)
 
         res = res.replace("importdescriptors ", "").strip()
         r1 = res.find("[")
