@@ -25,8 +25,8 @@ from pwsave import PassphraseSaver, PassphraseSaverMenu
 from glob import settings, dis
 from pincodes import pa
 from nvstore import SettingsObject
-from files import CardMissingError, needs_microsd, CardSlot
-from charcodes import KEY_QR, KEY_ENTER, KEY_CANCEL, KEY_CLEAR
+from files import CardMissingError, needs_microsd
+from charcodes import KEY_QR, KEY_ENTER, KEY_CANCEL, KEY_NFC
 from uasyncio import sleep_ms
 from ucollections import namedtuple
 
@@ -284,9 +284,16 @@ individual words if you wish.''')
 
 
 async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False):
-    msg = (prompt or 'Record these %d secret words!\n') % len(words)
-
     from ux import ux_render_words
+    from glob import NFC
+
+    if prompt:
+        title = None
+        msg = prompt
+    else:
+        m = 'Record these %d secret words!' % len(words)
+        title, msg = (m, "") if version.has_qwerty else (None, m+"\n")
+
     msg += ux_render_words(words)
 
     msg += '\n\nPlease check and double check your notes.'
@@ -294,22 +301,30 @@ async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False)
         # user can skip quiz for ephemeral secrets
         msg += " There will be a test!"
 
+    escape = (escape or '') + '1'
     if not version.has_qwerty:
-        escape = (escape or '') + '1'
-        extra += 'Press (1) to view as QR Code. '
-    else:
-        escape = (escape or '') + KEY_QR
-        extra += 'Press '+ KEY_QR + ' to view as QR Code. '
+        title = None
+        extra += 'Press (1) to view as QR Code'
+        if NFC:
+            extra += ", (3) to share via NFC"
+            escape += "3"
+        extra += "."
 
     if extra:
         msg += '\n\n'
         msg += extra
 
     while 1:
-        ch = await ux_show_story(msg, escape=escape, sensitive=True)
-        if ch == '1' or ch == KEY_QR:
-            await show_qr_code(' '.join(w[0:4] for w in words), True)
+        rv = ' '.join(w[0:4] for w in words)
+        ch = await ux_show_story(msg, title=title, escape=escape, sensitive=True,
+                                 hint_icons=KEY_QR+(KEY_NFC if NFC else ''))
+        if ch in ('1'+KEY_QR):
+            await show_qr_code(rv, True, is_secret=True)
             continue
+        if NFC and (ch in "3"+KEY_NFC):
+            await NFC.share_text(rv, is_secret=True)
+            continue
+
         break
 
     return ch

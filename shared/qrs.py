@@ -18,7 +18,7 @@ class QRDisplaySingle(UserInteraction):
     # Show a single QR code for (typically) a list of addresses, or a single value.
 
     def __init__(self, addrs, is_alnum, start_n=0, sidebar=None, msg=None,
-                 is_addrs=False, force_msg=False, allow_nfc=True):
+                 is_addrs=False, force_msg=False, allow_nfc=True, is_secret=False):
         self.is_alnum = is_alnum
         self.idx = 0             # start with first address
         self.invert = False      # looks better, but neither mode is ideal
@@ -30,6 +30,8 @@ class QRDisplaySingle(UserInteraction):
         self.qr_data = None
         self.force_msg = force_msg
         self.allow_nfc = allow_nfc
+        # only used for NFC sharing secret material - full chip wipe if is_secret=True
+        self.is_secret = is_secret
 
     def calc_qr(self, msg):
         # Version 2 would be nice, but can't hold what we need, even at min error correction,
@@ -101,7 +103,7 @@ class QRDisplaySingle(UserInteraction):
                     break
                 else:
                     # Share any QR over NFC!
-                    await NFC.share_text(self.addrs[self.idx])
+                    await NFC.share_text(self.addrs[self.idx], secret=self.secret)
                     self.redraw()
                 continue
             elif ch in 'xy'+KEY_ENTER+KEY_CANCEL:

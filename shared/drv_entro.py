@@ -12,7 +12,7 @@ from menu import MenuItem, MenuSystem
 from ubinascii import hexlify as b2a_hex
 from ubinascii import b2a_base64
 from msgsign import write_sig_file
-from utils import chunk_writer, xfp2str, swab32
+from utils import xfp2str, swab32
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 
 BIP85_PWD_LEN = 21
@@ -161,7 +161,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
         qr_alnum = True
 
         msg = 'Seed words (%d):\n' % len(words)
-        msg += ux_render_words(words)
+        msg += ux_render_words(words, leading_blanks=1)
 
         encoded = stash.SecretStash.encode(seed_phrase=new_secret)
 
@@ -226,12 +226,13 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
         choice = import_export_prompt_decode(ch)
         if isinstance(choice, dict):
             # write to SD card or Virtual Disk: simple text file
+            dis.fullscreen("Saving...")
             try:
                 with CardSlot(**choice) as card:
                     fname, out_fn = card.pick_filename('drv-%s-idx%d.txt' % (s_mode, index))
                     body = msg + "\n"
                     with open(fname, 'wt') as fp:
-                        chunk_writer(fp, body)
+                        fp.write(body)
 
                     h = ngu.hash.sha256s(body.encode())
                     sig_nice = write_sig_file([(h, fname)], derive=path)
@@ -250,7 +251,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
             break
         elif choice == KEY_QR:
             from ux import show_qr_code
-            await show_qr_code(qr, qr_alnum)
+            await show_qr_code(qr, qr_alnum, is_secret=True)
         elif choice == '0':
             if s_mode == 'pw':
                 # gets confirmation then types it
@@ -270,7 +271,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
 
         elif NFC and choice == KEY_NFC:
             # Share any of these over NFC
-            await NFC.share_text(qr)
+            await NFC.share_text(qr, is_secret=True)
 
     stash.blank_object(msg)
     stash.blank_object(new_secret)

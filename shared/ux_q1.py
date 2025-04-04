@@ -529,11 +529,9 @@ async def ux_login_countdown(sec):
 
     dis.busy_bar(0)
 
-def ux_render_words(words, leading_blanks=1):
+def ux_render_words(words, leading_blanks=0):
     # re-use word-list rendering code to show as a string in a story.
     # - because I want them all on-screen at once, and not simple to do that
-    buf = [bytearray(CHARS_W) for y in range(CHARS_H)]
-
     rv = [''] * leading_blanks
 
     num_words = len(words)
@@ -704,7 +702,7 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
                 maybe = [i for i in last_words if i.startswith(value)]
                 if len(maybe) == 1:
                     value = maybe[0]
-                elif len(maybe) == 0:
+                elif not maybe:
                     if len(last_words) == 8:        # 24 words case
                         ll = ''.join(sorted(set([w[0] for w in last_words])))
                         err_msg = 'Final word starts with: ' + ll

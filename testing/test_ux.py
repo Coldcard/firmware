@@ -339,12 +339,13 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
         time.sleep(0.1)
         title, body = cap_story()
 
-    assert f'Record these {nwords}' in body
-
-    assert f'{KEY_QR if is_q1 else "(1)"} to view as QR Code' in body
+    target = f'Record these {nwords}'
     if is_q1:
+        assert target in title
         words = [i[:4].upper() for i in seed_story_to_words(body)]
     else:
+        assert target in body
+        assert  "(1) to view as QR Code" in body
         words = [i[4:4+4].upper() for i in re.findall(r'[ 0-9][0-9]: \w*', body)]
 
     if not is_headless:
@@ -390,8 +391,12 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, expect_ftux,
     pick_menu_item(f'{nwords} Words')
 
     title, body = cap_story()
-    assert title == 'NO-TITLE'
-    assert f'Record these {nwords} secret words!' in body
+    target = f'Record these {nwords} secret words!'
+    if is_q1:
+        assert target in title
+    else:
+        assert title == 'NO-TITLE'
+        assert target in body
 
     if is_q1:
         words = seed_story_to_words(body)
@@ -585,10 +590,11 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
     time.sleep(0.01)
 
     title, body = cap_story()
-    assert title == 'NO-TITLE'
+    if not is_q1:
+        assert title == 'NO-TITLE'
 
     if mode == 'words':
-        assert '24' in body
+        assert '24' in (title if is_q1 else body)
 
         lines = body.split('\n')
         if is_q1:
@@ -598,10 +604,10 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
 
         if b39_word:
             if is_q1:
-                assert lines[11] == 'BIP-39 Passphrase:'
-                assert "*" in lines[12]
-                assert "Seed+Passphrase" in lines[14]
-                ek = lines[15]
+                assert lines[9] == 'BIP-39 Passphrase:'
+                assert "*" in lines[10]
+                assert "Seed+Passphrase" in lines[12]
+                ek = lines[13]
             else:
                 assert lines[26] == 'BIP-39 Passphrase:'
                 assert "*" in lines[27]

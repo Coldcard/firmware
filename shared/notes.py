@@ -274,7 +274,7 @@ class NoteContentBase:
 
         await ux_dramatic_pause('Deleted.', 3)
 
-    async def share_nfc(self, menu, _, item):
+    async def share_nfc(self, a, b, item):
         # share something via NFC -- if small enough and enabled
         from glob import NFC
 
@@ -283,6 +283,19 @@ class NoteContentBase:
         v = getattr(self, item.arg)
         if len(v) < 8000:       # see MAX_NFC_SIZE
             await NFC.share_text(v)
+
+    async def view_qr(self, k):
+        # full screen QR
+        try:
+            await show_qr_code(getattr(self, k), msg=self.title, is_secret=True)
+        except Exception as exc:
+            # - not all data can be a QR (non-text, binary, zeros)
+            # - might be too big for single QR
+            # - may be a RuntimeError(n) where n is line number inside uqr
+            await ux_show_story("Unable to display as QR.\n\nError: " + str(exc))
+
+    async def view_qr_menu(self, a, b, item):
+        await self.view_qr(item.arg)
 
     async def _save_ux(self, menu):
         is_new = self.save()
@@ -346,8 +359,8 @@ class PasswordContent(NoteContentBase):
             MenuItem('Delete', f=self.delete),
             MenuItem('Change Password', f=self.change_pw),
             self.sign_misc_menu_item(),
-            ShortcutItem(KEY_QR, f=self.view_qr),
-            ShortcutItem(KEY_NFC, f=self.share_nfc, arg='password'),
+            ShortcutItem(KEY_QR, f=self.view_qr_menu, arg=self.type_label),
+            ShortcutItem(KEY_NFC, f=self.share_nfc, arg=self.type_label),
         ]
 
     async def view(self, *a):
@@ -388,7 +401,7 @@ class PasswordContent(NoteContentBase):
         ch = await ux_show_story(msg, title=self.title, escape=KEY_QR,
                                  hint_icons=KEY_QR)
         if ch == KEY_QR:
-            await self.view_qr()
+            await self.view_qr(self.type_label)
             
     async def send_pw(self, *a):
         # use USB to send it -- weak at present
@@ -399,10 +412,6 @@ class PasswordContent(NoteContentBase):
             return await ux_show_story("Sorry, your password contains a character that "
                                             "we cannot type at this time.")
         await single_send_keystrokes(self.password)
-
-    async def view_qr(self, *a):
-        # full screen QR
-        await show_qr_code(self.password, msg=self.title)
 
     async def edit(self, menu, _, item):
         # Edit, also used for add new
@@ -476,7 +485,7 @@ class NoteContent(NoteContentBase):
             MenuItem('Delete', f=self.delete),
             MenuItem('Export', f=self.export),
             self.sign_misc_menu_item(),
-            ShortcutItem(KEY_QR, f=self.view_qr),
+            ShortcutItem(KEY_QR, f=self.view_qr_menu, arg="misc"),
             ShortcutItem(KEY_NFC, f=self.share_nfc, arg='misc'),
         ]
 
@@ -484,17 +493,7 @@ class NoteContent(NoteContentBase):
         ch = await ux_show_story(self.misc, title=self.title, escape=KEY_QR,
                                  hint_icons=KEY_QR)
         if ch == KEY_QR:
-            await self.view_qr()
-
-    async def view_qr(self, *a):
-        # full screen QR
-        try:
-            await show_qr_code(self.misc, msg=self.title)
-        except Exception as exc:
-            # - not all data can be a QR (non-text, binary, zeros)
-            # - might be too big for single QR
-            # - may be a RuntimeError(n) where n is line number inside uqr
-            await ux_show_story("Unable to display as QR.\n\nError: "+str(exc))
+            await self.view_qr("misc")
 
     async def edit(self, menu, _, item):
         # Edit, also used for add new

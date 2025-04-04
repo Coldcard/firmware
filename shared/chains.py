@@ -299,7 +299,7 @@ class BitcoinMain(ChainsBase):
     # see <https://github.com/bitcoin/bitcoin/blob/master/src/chainparams.cpp#L140>
     ctype = 'BTC'
     name = 'Bitcoin Mainnet'
-    ccc_min_block = 865572
+    ccc_min_block = 890584
 
     slip132 = {
         AF_CLASSIC:     Slip132Version(0x0488B21E, 0x0488ADE4, 'x'),
@@ -417,6 +417,12 @@ STD_DERIVATIONS = {
     "p2sh-p2wpkh": CommonDerivations[1][1],
     "p2wpkh-p2sh": CommonDerivations[1][1],
     "p2wpkh": CommonDerivations[2][1],
+}
+
+MS_STD_DERIVATIONS = {
+    ("p2sh", "m/45h", AF_P2SH),
+    ("p2sh_p2wsh", "m/48h/{coin}h/{acct_num}h/1h", AF_P2WSH_P2SH),
+    ("p2wsh", "m/48h/{coin}h/{acct_num}h/2h", AF_P2WSH),
 }
 
 def parse_addr_fmt_str(addr_fmt):

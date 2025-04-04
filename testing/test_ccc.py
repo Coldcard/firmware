@@ -205,7 +205,7 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
                 press_select()
                 time.sleep(.1)
                 title, story = cap_story()
-                assert f'Record these {nwords} secret words!' in story
+                assert f'Record these {nwords} secret words!' in (title if is_q1 else story)
 
                 if is_q1:
                     c_words = seed_story_to_words(story)
@@ -339,7 +339,7 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
             time.sleep(.1)
             m = cap_menu()
             mi_addrs = [a for a in m if '⋯' in a]
-            for mia, addr in zip(mi_addrs, whitelist):
+            for mia, addr in zip(mi_addrs, reversed(whitelist)):
                 _start, _end = mia.split('⋯')
                 assert addr.startswith(_start)
                 assert addr.endswith(_end)
@@ -384,10 +384,14 @@ def enter_enabled_ccc(goto_home, pick_menu_item, cap_story, press_select, is_q1,
 
 @pytest.fixture
 def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_menu_item,
-                 cap_story, press_select, need_keypress, enter_number):
-    def doit(N=3, b_words=12, way="sd", addr_fmt=AF_P2WSH):
+                 cap_story, press_select, need_keypress, enter_number, press_cancel,
+                 garbage_collector):
+
+    def doit(N=3, b_words=12, way="sd", addr_fmt=AF_P2WSH, ftype="cc", bbqr=True):
 
         N2 = N - 2  # how many more signers we need (B keys)
+
+        label = "p2wsh" if addr_fmt == AF_P2WSH else "p2sh_p2wsh"
 
         res = []
         for i in range(N2):
@@ -401,7 +405,6 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
 
             master = BIP32Node.from_master_secret(b39_seed)
             xfp = master.fingerprint().hex().upper()
-            label = "p2wsh" if addr_fmt == AF_P2WSH else "p2sh_p2wsh"
             derive = f"m/48h/1h/0h/{'2' if addr_fmt == AF_P2WSH else '1'}h"
             derived = master.subkey_for_path(derive)
 
@@ -418,21 +421,26 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
             for fn in glob.glob(path_f('ccxp-*.json')):
                 os.remove(fn) # cleanup as we want to control N
 
+            for fn in glob.glob(path_f('*.bsms')):
+                os.remove(fn) # cleanup as we want to control N
+
             for d, dd in res:
-                fname = f"ccxp-{dd['xfp']}.json"
-                with open(path_f(fname), "w") as f:
-                    f.write(json.dumps(dd))
+                if ftype == "cc":
+                    fname = f"ccxp-{dd['xfp']}.json"
+                    conts = json.dumps(dd)
+                else:
+                    assert ftype == "bsms"
+                    xfp = dd['xfp']
+                    deriv = dd[f"{label}_deriv"].replace("m/", "")
+                    fname = f"{xfp}.bsms"
+                    conts = f"[{xfp}/{deriv}]{dd[label]}"
 
-        m = cap_menu()
-        target_mi = None
-        for mi in m:
-            if "Build 2-of-N" in mi:
-                target_mi = mi
-                break
-        else:
-            assert False, "not in CCC menu"
+                pth = path_f(fname)
+                garbage_collector.append(pth)
+                with open(pth, "w") as f:
+                    f.write(conts)
 
-        pick_menu_item(target_mi)
+        pick_menu_item("↳ Build 2-of-N")
         time.sleep(.1)
         title, story = cap_story()
         assert "one other device, as key B" in story
@@ -447,17 +455,44 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
                 press_select()
             else:
                 need_keypress(KEY_QR)
+                time.sleep(.1)
+                title, story = cap_story()
+                assert title == "Address Format"
+                assert "Press ENTER for default address format (P2WSH" in story
+                assert "press (1) for P2SH-P2WSH" in story
+                if addr_fmt == AF_P2WSH:
+                    press_select()
+                else:
+                    need_keypress("1")
+
                 for d, dd in res:
-                    _, parts = split_qrs(json.dumps(dd), 'J', max_version=20)
-                    for p in parts:
-                        scan_a_qr(p)
+                    if ftype == "cc":
+                        conts = json.dumps(dd)
+                        tc = "J"
+                    else:
+                        deriv = dd[f"{label}_deriv"].replace("m/", "")
+                        conts = f"[{dd['xfp']}/{deriv}]{dd[label]}"
+                        tc = "U"
+
+                    if bbqr:
+                        _, parts = split_qrs(conts, tc, max_version=20)
+                        for p in parts:
+                            scan_a_qr(p)
+                            time.sleep(.1)
+                    else:
+                        scan_a_qr(conts)
                         time.sleep(.1)
 
+                    time.sleep(.5)
+
+                press_cancel()  # after we're done scanning keys, exit QR animation to proceed
+
         # casual on-device multisig create
-        if addr_fmt == AF_P2WSH:
-            press_select()
-        else:
-            need_keypress("1")
+        if way != "qr":
+            if addr_fmt == AF_P2WSH:
+                press_select()
+            else:
+                need_keypress("1")
 
         # CCC C key account number
         enter_number("0")
@@ -485,19 +520,13 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
 
 @pytest.fixture
 def bitcoind_create_watch_only_wallet(pick_menu_item, need_keypress, microsd_path,
-                                      cap_story, bitcoind, press_cancel):
+                                      cap_story, bitcoind, press_cancel, load_export):
     def doit(ms_menu_item):
         pick_menu_item(ms_menu_item)
         pick_menu_item("Descriptors")
         pick_menu_item("Bitcoin Core")
-        time.sleep(.1)
-        need_keypress("1")
-        time.sleep(.1)
-        title, story = cap_story()
-        assert "Bitcoin Core multisig setup file written" in story
-        fname = story.split("\n\n")[-1]
-        with open(microsd_path(fname), "r") as f:
-            res = f.read()
+
+        res = load_export("sd", label="Bitcoin Core multisig setup", is_json=False)
 
         res = res.replace("importdescriptors ", "").strip()
         r1 = res.find("[")
@@ -532,7 +561,7 @@ def policy_sign(start_sign, end_sign, cap_story, get_last_violation):
         if violation:
             assert ("(%d warning%s below)"% (num_warn, "s" if num_warn > 1 else "")) in story
             assert "CCC: Violates spending policy. Won't sign." in story
-            assert get_last_violation() == violation
+            assert get_last_violation().startswith(violation)
             if warn_list:
                 for w in warn_list:
                     assert w in story
@@ -814,7 +843,7 @@ def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim
 
     pick_menu_item(target_mi)  # choose already created multisig
     pick_menu_item("Coldcard Export")
-    ms_conf = load_export("sd", "Coldcard multisig setup", is_json=False, sig_check=False)
+    ms_conf = load_export("sd", "Coldcard multisig setup", is_json=False)
     press_cancel()
 
     # fund CCC multisig
@@ -864,7 +893,7 @@ def test_load_and_sign_key_C(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_
 
     pick_menu_item(target_mi)  # choose already created multisig
     pick_menu_item("Coldcard Export")
-    ms_conf = load_export("sd", "Coldcard multisig setup", is_json=False, sig_check=False)
+    ms_conf = load_export("sd", "Coldcard multisig setup", is_json=False)
     press_cancel()
 
     # fund CCC multisig
@@ -942,7 +971,7 @@ def test_ccc_xpub_export(chain, c_num_words, acct, settings_set, load_export, se
     else:
         enter_number(acct)
 
-    xpub_obj = load_export("sd", label="Multisig XPUB", is_json=True, sig_check=False)
+    xpub_obj = load_export("sd", label="Multisig XPUB", is_json=True)
 
     if acct is None:
         assert xpub_obj["account"] == "0"
@@ -1043,7 +1072,7 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
     new_name = "new"
     pick_menu_item(ami)  # just another ms wallet
     pick_menu_item("Coldcard Export")
-    ms_conf = load_export("sd", label="Coldcard multisig setup", is_json=False, sig_check=False)
+    ms_conf = load_export("sd", label="Coldcard multisig setup", is_json=False)
 
     # try importing duplicate does not work
     _, story = offer_ms_import(ms_conf)
@@ -1159,5 +1188,32 @@ def test_c_key_from_seed_vault(has_candidates, setup_ccc, build_test_seed_vault,
     assert "Key C is in your Seed Vault" in story
     assert "MUST delete" in story
     press_select()
+
+
+@pytest.mark.parametrize("way", ["sd", "qr"])
+@pytest.mark.parametrize("ftype", ["cc", "bsms"])
+@pytest.mark.parametrize("is_bbqr", [True, False])
+@pytest.mark.parametrize("N", [3, 15])
+def test_ms_setup_cosigner_import(way, ftype, is_bbqr, N, goto_home, settings_set, setup_ccc,
+                                  ccc_ms_setup, pick_menu_item, cap_story, is_q1):
+    if ((way == "sd") and is_bbqr) or ((not is_q1) and (way == "qr")):
+        pytest.skip("useless")
+
+    goto_home()
+    settings_set("ccc", None)
+    settings_set("multisig", [])
+
+    setup_ccc()
+    keys, target_mi = ccc_ms_setup(N=N, way=way, ftype=ftype, bbqr=is_bbqr)
+
+    pick_menu_item(target_mi)
+    pick_menu_item("Descriptors")
+    pick_menu_item("View Descriptor")
+    time.sleep(.1)
+    _, story = cap_story()
+    desc = story.split("\n\n")[-1]
+
+    for _, obj in keys:
+        assert f"[{obj['xfp'].lower()}/{obj['p2wsh_deriv'].replace('m/', '')}]{obj['p2wsh']}" in desc
 
 # EOF

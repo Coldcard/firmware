@@ -205,7 +205,7 @@ class psbtProxy:
 
             key = fd.read(ks)
             vs = deser_compact_size(fd)
-            assert vs != None, 'eof'
+            assert vs is not None, 'eof'
 
             kt = key[0]
 
@@ -265,7 +265,7 @@ class psbtProxy:
         if not self.subpaths:
             return 0
 
-        if self.num_our_keys != None:
+        if self.num_our_keys is not None:
             # already been here once
             return self.num_our_keys
 

@@ -12,7 +12,7 @@ from utils import imported, problem_file_line, get_filesize, encode_seed_qr
 from utils import xfp2str, B2A, txid_from_fname, wipe_if_deltamode
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
 from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt, OK, X, ux_render_words
-from export import make_json_wallet, make_summary_file, make_descriptor_wallet_export
+from export import export_contents, make_summary_file, make_descriptor_wallet_export
 from export import make_bitcoin_core_wallet, generate_wasabi_wallet, generate_generic_export
 from export import generate_unchained_export, generate_electrum_wallet
 from files import CardSlot, CardMissingError, needs_microsd
@@ -618,7 +618,12 @@ def render_master_secrets(mode, raw, node):
         qr = ' '.join(w[0:4] for w in words)
         qr_alnum = True
 
-        msg = 'Seed words (%d):\n' % len(words)
+        title = 'Seed words (%d):' % len(words)
+        msg = ""
+        if not version.has_qwerty:
+            msg += title + "\n"
+            title = None
+
         msg += ux_render_words(words)
 
         if stash.bip39_passphrase:
@@ -628,28 +633,30 @@ def render_master_secrets(mode, raw, node):
 
 
     elif mode == 'xprv':
+        title = "Extended Private Key" if version.has_qwerty else None
         msg = c.serialize_private(node)
         qr = msg
 
     elif mode == 'master':
+        title = "Master Secret" if version.has_qwerty else None
         msg = '%d bytes:\n\n' % len(raw)
         qr = str(b2a_hex(raw), 'ascii')
         msg += qr
     else:
         raise ValueError(mode)
 
-    return msg, qr, qr_alnum
+    return title, msg, qr, qr_alnum
 
 async def view_seed_words(*a):
-    import stash
-
     if not await ux_confirm('The next screen will show the seed words'
                             ' (and if defined, your BIP-39 passphrase).'
                             '\n\nAnyone with knowledge of those words '
                             'can control all funds in this wallet.'):
         return
 
-    from glob import dis
+    import stash
+    from glob import dis, NFC
+
     dis.fullscreen("Wait...")
     dis.busy_bar(True)
 
@@ -668,18 +675,26 @@ async def view_seed_words(*a):
 
     with stash.SensitiveValues(bypass_tmp=False, enforce_delta=True) as sv:
         dis.busy_bar(False)
-        msg, qr, qr_alnum = render_master_secrets(mode or sv.mode,
-                                                  raw or sv.raw,
-                                                  sv.node)
-
+        title, msg, qr, qr_alnum = render_master_secrets(mode or sv.mode,
+                                                         raw or sv.raw,
+                                                         sv.node)
+        esc = "1"
         if not version.has_qwerty:
-            msg += '\n\nPress (1) to view as QR Code.'
+            msg += '\n\nPress (1) to view as QR Code'
+            if NFC:
+                msg += ", (3) to share via NFC"
+                esc += "3"
+            msg += "."
 
         while 1:
-            ch = await ux_show_story(msg, sensitive=True, escape='1'+KEY_QR)
+            ch = await ux_show_story(msg, title=title, sensitive=True, escape=esc,
+                                     hint_icons=KEY_QR+(KEY_NFC if NFC else ''))
             if ch in '1'+KEY_QR:
                 from ux import show_qr_code
-                await show_qr_code(qr, qr_alnum)
+                await show_qr_code(qr, qr_alnum, is_secret=True)
+                continue
+            elif NFC and (ch in '3'+KEY_NFC):
+                await NFC.share_text(qr, is_secret=True)
                 continue
             break
 
@@ -714,7 +729,7 @@ async def export_seedqr(*a):
         del words
 
     from ux import show_qr_code
-    await show_qr_code(qr, True, msg="SeedQR")
+    await show_qr_code(qr, True, msg="SeedQR", is_secret=True)
 
     stash.blank_object(qr)
 
@@ -1202,9 +1217,9 @@ without ever connecting this Coldcard to a computer.\
 async def electrum_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
     addr_fmt, account_num = item.arg
-    await make_json_wallet('Electrum wallet',
-                           lambda: generate_electrum_wallet(addr_fmt, account_num),
-                           "new-electrum.json")
+    await export_contents('Electrum wallet',
+                          lambda: generate_electrum_wallet(addr_fmt, account_num),
+                          "new-electrum.json", is_json=True)
 
 async def _generic_export(prompt, label, f_pattern):
     # like the Multisig export, make a single JSON file with
@@ -1216,7 +1231,8 @@ async def _generic_export(prompt, label, f_pattern):
     elif ch != 'y':
         return
 
-    await make_json_wallet(label, lambda: generate_generic_export(account_num), f_pattern)
+    await export_contents(label, lambda: generate_generic_export(account_num),
+                          f_pattern, is_json=True)
 
 async def generic_skeleton(*A):
     # like the Multisig export, make a single JSON file with
@@ -1251,7 +1267,8 @@ You can then open that file in Wasabi without ever connecting this Coldcard to a
         return
 
     # no choices to be made, just do it.
-    await make_json_wallet('Wasabi wallet', lambda: generate_wasabi_wallet(), 'new-wasabi.json')
+    await export_contents('Wasabi wallet', lambda: generate_wasabi_wallet(),
+                          'new-wasabi.json', is_json=True)
 
 async def unchained_capital_export(*a):
     # they were using our airgapped export, and the BIP-45 path from that
@@ -1268,9 +1285,8 @@ This saves multisig XPUB information required to setup on the Unchained platform
     xfp = xfp2str(settings.get('xfp', 0))
     fname = 'unchained-%s.json' % xfp
 
-    await make_json_wallet('Unchained',
-                           lambda: generate_unchained_export(account_num),
-                           fname)
+    await export_contents('Unchained', lambda: generate_unchained_export(account_num),
+                          fname, is_json=True)
 
 
 async def backup_everything(*A):

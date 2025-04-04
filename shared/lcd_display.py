@@ -622,7 +622,8 @@ class Display:
                 # title ... but we have no special font? Inverse!
                 self.text(0, y, ' '+ln[1:]+' ', invert=True)
                 if hint_icons:
-                    # maybe show that [QR] can do something
+                    # hint_icons not shown if is story without title
+                    # maybe show that [QR,NFC] can do something
                     self.text(-1, y, hint_icons, dark=True)
 
             elif ln and ln[0] == OUT_CTRL_ADDRESS:
