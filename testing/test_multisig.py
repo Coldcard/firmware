@@ -464,7 +464,7 @@ def make_redeem(M, keys, path_mapper=None, violate_script_key_order=False,
 def make_ms_address(M, keys, idx=0, is_change=0, addr_fmt=AF_P2SH, testnet=1,
                     bip67=True, **make_redeem_args):
     # Construct addr and script need to represent a p2sh address
-    if 'path_mapper' not in make_redeem_args:
+    if not make_redeem_args.get('path_mapper'):
         make_redeem_args['path_mapper'] = lambda cosigner: [HARD(45), cosigner, is_change, idx]
 
     script, pubkeys, xfp_paths = make_redeem(M, keys, bip67=bip67, **make_redeem_args)
@@ -1296,7 +1296,7 @@ def fake_ms_txn(pytestconfig):
     def doit(num_ins, num_outs, M, keys, fee=10000, outvals=None, segwit_in=False,
              outstyles=['p2pkh'], change_outputs=[], incl_xpubs=False, hack_psbt=None,
              hack_change_out=False, input_amount=1E8, psbt_v2=None, bip67=True,
-             violate_script_key_order=False):
+             violate_script_key_order=False, path_mapper=None):
 
         psbt = BasicPSBT()
         if psbt_v2 is None:
@@ -1333,7 +1333,7 @@ def fake_ms_txn(pytestconfig):
 
             # addr where the fake money will be stored.
             addr, scriptPubKey, script, details = make_ms_address(M, keys, idx=i, bip67=bip67,
-                                                                  violate_script_key_order=violate_script_key_order)
+                      violate_script_key_order=violate_script_key_order, path_mapper=path_mapper)
 
             # lots of supporting details needed for p2sh inputs
             if segwit_in:
