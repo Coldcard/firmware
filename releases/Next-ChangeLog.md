@@ -21,6 +21,7 @@ This lists the new changes that have not yet been published in a normal release.
   Read more [here](https://github.com/Coldcard/firmware/blob/master/docs/limitations.md#p2sh--multisig)
 - New Feature: Signing artifacts re-export. Press (0) at the end of signing to re-export with different medium
 - New Feature: Signed multisig exports. Read more [here](https://github.com/Coldcard/firmware/blob/master/docs/msg-signing.md#signed-exports)
+- Enhancement: Import master seed words via NFC
 - Enhancement: NFC export usability upgrade. NFC keeps exporting until CANCEL/X is pressed
 - Enhancement: Add `Bitcoin Safe` option to `Export Wallet`
 - Enhancement: 10% performance improvement in USB upload speed for large files

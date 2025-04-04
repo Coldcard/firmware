@@ -9,7 +9,7 @@ from constants import simulator_fixed_words, simulator_fixed_tprv
 from ckcc.protocol import CCProtocolPacker
 from txn import fake_txn
 from bip32 import BIP32Node
-from helpers import xfp2str, a2b_hex
+from helpers import xfp2str, a2b_hex, truncate_seed_words
 from charcodes import KEY_CLEAR, KEY_NFC
 
 
@@ -61,11 +61,6 @@ def seed_vault_enable(cap_story, pick_menu_item, press_select, goto_home,
         time.sleep(.1)
 
     return doit
-
-def truncate_seed_words(words):
-    if isinstance(words, str):
-        words = words.split(" ")
-    return ' '.join(w[0:4] for w in words)
 
 
 @pytest.fixture
@@ -528,9 +523,9 @@ def test_ephemeral_seed_import_words(nfc, truncated, num_words, cap_menu, pick_m
         word_menu_entry(words.split())
     else:
         menu = cap_menu()
-        if 'Import via NFC' not in menu:
+        if 'NFC Words' not in menu:
             raise pytest.xfail("NFC not enabled")
-        pick_menu_item('Import via NFC')
+        pick_menu_item('NFC Words')
 
         if truncated:
             truncated_words = truncate_seed_words(words)

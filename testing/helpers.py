@@ -234,4 +234,9 @@ def bitcoind_addr_fmt(script_type):
 
     return addr_type
 
+def truncate_seed_words(words):
+    if isinstance(words, str):
+        words = words.split(" ")
+    return ' '.join(w[0:4] for w in words)
+
 # EOF

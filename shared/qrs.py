@@ -103,7 +103,7 @@ class QRDisplaySingle(UserInteraction):
                     break
                 else:
                     # Share any QR over NFC!
-                    await NFC.share_text(self.addrs[self.idx], secret=self.secret)
+                    await NFC.share_text(self.addrs[self.idx], is_secret=self.is_secret)
                     self.redraw()
                 continue
             elif ch in 'xy'+KEY_ENTER+KEY_CANCEL:

@@ -393,6 +393,7 @@ ImportWallet = [
     MenuItem("12 Words", menu=start_seed_import, arg=12),
     MenuItem("18 Words", menu=start_seed_import, arg=18),
     MenuItem("24 Words", menu=start_seed_import, arg=24),
+    MenuItem("NFC Words", menu=nfc_recv_seed_words, predicate=nfc_enabled, arg=False),  # temporary=False
     MenuItem('Scan QR Code', predicate=version.has_qr,
              shortcut=KEY_QR, f=scan_any_qr, arg=(True, False)),
     MenuItem("Restore Backup", f=restore_backup, arg=False),  # tmp=False

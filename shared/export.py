@@ -140,8 +140,8 @@ be needed for different systems.
         for name, path, addr_fmt in chains.CommonDerivations:
             path = path.replace('{coin_type}', str(chain.b44_cointype))
 
-            yield ('''## For {name}: {path}\n\n'''.format(name=name, path=path))
-            yield ('''First %d receive addresses (account=0, change=0):\n\n''' % num_rx)
+            yield '## For {name}: {path}\n\n'.format(name=name, path=path)
+            yield 'First %d receive addresses (account=0, change=0):\n\n' % num_rx
 
             submaster = None
             for i in range(num_rx):

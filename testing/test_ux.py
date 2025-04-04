@@ -1,7 +1,7 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 import pytest, time, os, re, hashlib, shutil
-from helpers import xfp2str, prandom
+from helpers import xfp2str, prandom, truncate_seed_words
 from charcodes import KEY_DOWN, KEY_QR, KEY_NFC, KEY_DELETE
 from constants import AF_CLASSIC, simulator_fixed_words, simulator_fixed_xfp
 from mnemonic import Mnemonic
@@ -241,6 +241,34 @@ def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_t
 
     assert v['mnemonic'] == seed_words
     reset_seed_words()
+
+
+@pytest.mark.parametrize("num_words", [12, 18, 24])
+@pytest.mark.parametrize("truncated", [False, True])
+def test_import_seed_nfc(truncated, num_words, pick_menu_item, nfc_write_text,
+                         get_seed_value_ux, unit_test, expect_ftux, enable_hw_ux):
+
+    from test_ephemeral import WORDLISTS
+    words, expect_xfp = WORDLISTS[num_words]
+
+    unit_test('devtest/clear_seed.py')
+
+    pick_menu_item('Import Existing')
+    pick_menu_item("NFC Words")
+
+    if truncated:
+        truncated_words = truncate_seed_words(words)
+        nfc_write_text(truncated_words)
+    else:
+        nfc_write_text(words)
+        time.sleep(.5)
+
+    expect_ftux()
+    enable_hw_ux("nfc")
+
+    nfc_seed = get_seed_value_ux(nfc=True)  # export seed via NFC (always truncated)
+    seed_words = get_seed_value_ux()
+    assert " ".join(nfc_seed) == truncate_seed_words(seed_words)
 
 
 @pytest.mark.veryslow           # 40 minutes realtime, skp with "-m not\ veryslow" on cmd line

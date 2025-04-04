@@ -653,7 +653,7 @@ class NFCHandler:
                 #import sys; sys.print_exception(e)
                 await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
-    async def import_ephemeral_seed_words_nfc(self, *a):
+    async def import_seed_words_nfc(self, temporary):
         def f(m):
             sm = m.decode().strip().split(" ")
             if len(sm) in stash.SEED_LEN_OPTS:
@@ -663,8 +663,13 @@ class NFCHandler:
 
         if winner:
             try:
-                from seed import set_ephemeral_seed_words
-                await set_ephemeral_seed_words(winner, origin='NFC Import')
+                if temporary:
+                    from seed import set_ephemeral_seed_words
+                    await set_ephemeral_seed_words(winner, origin='NFC Import')
+                else:
+                    from seed import commit_new_words
+                    await commit_new_words(winner)
+
             except Exception as e:
                 #import sys; sys.print_exception(e)
                 await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))

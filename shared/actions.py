@@ -1604,15 +1604,19 @@ async def nfc_address_verify(*A):
             msg='Address verification failed.\n\n%s\n%s' % (e, problem_file_line(e))
         )
 
-async def nfc_recv_ephemeral(*A):
+async def nfc_recv_seed_words(a, b, item):
     # Mk4: Share txt, txn and PSBT files over NFC.
     from glob import NFC
+
+    tmp = item.arg
     try:
-        await NFC.import_ephemeral_seed_words_nfc()
+        await NFC.import_seed_words_nfc(tmp)
     except Exception as e:
         await ux_show_story(
             title="ERROR",
-            msg="Failed to import temporary seed via NFC.\n\n%s\n%s" % (e, problem_file_line(e))
+            msg="Failed to import %sseed via NFC.\n\n%s\n%s" % (
+                "temporary" if tmp else "", e, problem_file_line(e)
+            )
         )
 
 async def nfc_sign_psbt(*A):

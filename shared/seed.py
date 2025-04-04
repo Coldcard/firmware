@@ -1101,7 +1101,7 @@ class EphemeralSeedMenu(MenuSystem):
     @classmethod
     def construct(cls):
         from glob import NFC
-        from actions import nfc_recv_ephemeral, import_xprv
+        from actions import nfc_recv_seed_words, import_xprv
         from actions import restore_backup, scan_any_qr
         from tapsigner import import_tapsigner_backup_file
         from charcodes import KEY_QR
@@ -1110,7 +1110,7 @@ class EphemeralSeedMenu(MenuSystem):
             MenuItem("12 Words", f=cls.ephemeral_seed_import, arg=12),
             MenuItem("18 Words", f=cls.ephemeral_seed_import, arg=18),
             MenuItem("24 Words", f=cls.ephemeral_seed_import, arg=24),
-            MenuItem("Import via NFC", f=nfc_recv_ephemeral, predicate=bool(NFC)),
+            MenuItem("NFC Words", f=nfc_recv_seed_words, predicate=bool(NFC), arg=True),  # temporary=True
         ]
         gen_ephemeral_menu = [
             MenuItem("12 Words", f=cls.ephemeral_seed_generate, arg=12),
