@@ -176,6 +176,31 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
 
     return doit
 
+@pytest.fixture
+def make_big_notes(settings_set, sim_exec):
+    def doit(count=9):
+        print(">>> Making huge backup file")
+
+        # - to bypass USB msg limit, append as we go
+        notes = []
+        settings_set('notes', [])
+        for n in range(count):
+            v = { fld:('a'*30) if fld != 'misc' else 'b'*1800
+                    for fld in ['user', 'password', 'site', 'misc'] }
+            v['title'] = f'Note {n+1}'
+            notes.append(v)
+            rv = sim_exec(cmd := f'settings.current["notes"].append({v!r})')
+            assert 'error' not in rv.lower()
+
+        rv = sim_exec('settings.changed()')
+        assert 'error' not in rv.lower()
+
+        assert len(notes) == count
+
+        return notes
+
+    return doit
+
 
 @pytest.mark.qrcode
 @pytest.mark.parametrize('multisig', [False, 'multisig'])
@@ -191,7 +216,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
                      generate_ephemeral_words, set_bip39_pw, verify_backup_file,
                      check_and_decrypt_backup, restore_backup_cs, clear_ms, seedvault,
                      restore_main_seed, import_ephemeral_xprv, backup_system,
-                     press_cancel, sim_exec, pass_way, garbage_collector):
+                     press_cancel, sim_exec, pass_way, garbage_collector, make_big_notes):
     # Make an encrypted 7z backup, verify it, and even restore it!
     clear_ms()
     reset_seed_words()
@@ -201,20 +226,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     # test larger backup files > 10,000 bytes
     if multisig == False and st == None and not reuse_pw and not save_pw and not seedvault:
         # pick just one test case.
-        # - to bypass USB msg limit, append as we go
-        print(">>> Making huge backup file")
-        notes = []
-        settings_set('notes', [])
-        for n in range(9):
-            v = { fld:('a'*30) if fld != 'misc' else 'b'*1800
-                    for fld in ['user', 'password', 'site', 'misc'] }
-            v['title'] = f'Note {n+1}'
-            notes.append(v)
-            rv = sim_exec(cmd := f'settings.current["notes"].append({v!r})')
-            print(rv)
-            assert 'error' not in rv.lower()
-        rv = sim_exec(cmd := f'settings.changed()')
-        assert 'error' not in rv.lower()
+        notes = make_big_notes()
     else:
         notes = None
 

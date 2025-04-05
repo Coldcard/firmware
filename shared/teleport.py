@@ -179,11 +179,9 @@ async def kt_start_send(rx_data):
 
         break
 
-    msg = '''You can now teleport secrets! Select from seed words, seed vault keys, \
-secure notes or passwords. \
-
-WARNING: Receiver will have full access to all Bitcoin controlled by these keys!
-'''
+    msg = '''You can now Key Teleport secrets! Choose what to share on next screen.\
+\n
+WARNING: Receiver will have full access to all Bitcoin controlled by these keys!'''
 
     ch = await ux_show_story(msg, title="Key Teleport: Send")
     if ch != 'y': return
@@ -310,6 +308,7 @@ async def kt_accept_values(dtype, raw):
     - `n` - one or many notes export (JSON array)
     - `v` - seed vault export (JSON: one secret key but includes includes name, source of key)
     - `p` - binary PSBT to be signed
+    - `b` - complete system backup file (text, internal format)
     '''
     from flow import has_se_secrets, goto_top_menu
 
@@ -343,6 +342,29 @@ async def kt_accept_values(dtype, raw):
 
         # This will take over UX w/ the signing process
         sign_transaction(psbt_len, flags=STXN_FINALIZE)
+        return
+
+    elif dtype == 'b':
+        # full system backup, including master: text lines
+        from backups import text_bk_parser, restore_tmp_from_dict_ll, restore_from_dict
+
+        vals = text_bk_parser(raw)
+        assert vals         # empty?
+
+        from flow import has_secrets
+
+        if has_secrets():
+            # restores as tmp secret and/or offers to save to SeedVault
+            prob = await restore_tmp_from_dict_ll(vals)
+        else:
+            # we have no secret, so... reboot if it works, else errors shown, etc.
+            prob = await restore_from_dict(vals)
+
+        if prob:
+            await ux_show_story(prob, title='FAILED')
+        else:
+            # force new rx key because this tfr worked
+            settings.remove_key("ktrx")         
         return
 
     elif dtype in 'nv':
@@ -502,6 +524,8 @@ class SecretPickerMenu(MenuSystem):
             msg = 'Master Seed Words' if word_based_seed() else 'Master XPRV'
 
         m.append( MenuItem(msg, f=self.share_master_secret) )
+
+        m.append( MenuItem("Full COLDCARD Backup", f=self.share_full_backup) )
         
         super().__init__(m)
 
@@ -543,6 +567,28 @@ class SecretPickerMenu(MenuSystem):
             body = [item.arg.serialize()]
 
         await kt_do_send(self.rx_pubkey, 'n', obj=body)
+
+    async def share_full_backup(self, *a):
+        # context, and warn them
+        ch = await ux_show_story("Sending complete backup, including master secret, "
+            "seed vault (if any), multisig wallets, notes/passwords, and all settings! "
+            "The receiving "
+            "COLDCARD must already have the master seed wiped to be able to install "
+            "everything, otherwise only master secret and multisig are saved into a tmp seed. "
+            "OK to proceed?")
+        if ch != 'y': return
+
+        from backups import render_backup_contents
+
+        # renders a text file, with rather a lot of comments; strip them
+        bkup = render_backup_contents(bypass_tmp=True)
+        out = []
+        for ln in bkup.split('\n'):
+            if not ln: continue
+            if ln[0] == '#': continue
+            out.append(ln)
+
+        await kt_do_send(self.rx_pubkey, 'b', raw=b'\n'.join(ln.encode() for ln in out))
 
     async def share_master_secret(self, _, _2, item):
         # altho menu items look different we are sharing same thing:

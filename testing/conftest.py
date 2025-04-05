@@ -2207,9 +2207,48 @@ def check_and_decrypt_backup(microsd_path):
 
 
 @pytest.fixture
-def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
+def restore_backup_unpacked(unit_test, pick_menu_item, cap_story, cap_menu,
                       press_select, word_menu_entry, get_setting, is_q1,
                       need_keypress, scan_a_qr, cap_screen, enter_complex):
+
+    # check things are right after unpack & install; FTUX shown
+    def doit(avail_settings=None):
+
+        time.sleep(.3)
+        title, body = cap_story()
+
+        # on simulator Disable USB is always off - so FTUX all the time
+        assert title == 'NO-TITLE'  # no Welcome!
+        assert "best security practices" in body
+        assert "USB disabled" in body
+        assert "NFC disabled" in body
+        assert "VirtDisk disabled" in body
+        assert "You can change these under Settings > Hardware On/Off" in body
+        press_select()
+
+        time.sleep(.3)
+        title, body = cap_story()
+        assert title == 'Success!'
+        assert 'has been successfully restored' in body
+
+        if avail_settings:
+            for key in avail_settings:
+                assert get_setting(key)
+
+        # after successful restore - user is in default mode - all OFF
+        # (besides USB on simulator - that is always ON)
+        assert not get_setting("nfc")
+        assert not get_setting("vidsk")
+
+        # avoid simulator reboot; restore normal state
+        unit_test('devtest/abort_ux.py')
+
+    return doit
+
+@pytest.fixture
+def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
+                      press_select, word_menu_entry, get_setting, is_q1,
+                      need_keypress, scan_a_qr, cap_screen, enter_complex, restore_backup_unpacked):
     # restore backup with clear seed as first step
     def doit(fn, passphrase, avail_settings=None, pass_way=None, custom_bkpw=False):
         unit_test('devtest/clear_seed.py')
@@ -2244,33 +2283,7 @@ def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
         else:
             word_menu_entry(passphrase, has_checksum=False)
 
-        time.sleep(.3)
-        title, body = cap_story()
-        # on simulator Disable USB is always off - so FTUX all the time
-        assert title == 'NO-TITLE'  # no Welcome!
-        assert "best security practices" in body
-        assert "USB disabled" in body
-        assert "NFC disabled" in body
-        assert "VirtDisk disabled" in body
-        assert "You can change these under Settings > Hardware On/Off" in body
-        press_select()
-
-        time.sleep(.3)
-        title, body = cap_story()
-        assert title == 'Success!'
-        assert 'has been successfully restored' in body
-
-        if avail_settings:
-            for key in avail_settings:
-                assert get_setting(key)
-
-        # after successful restore - user is in default mode - all OFF
-        # (besides USB on simulator - that is always ON)
-        assert not get_setting("nfc")
-        assert not get_setting("vidsk")
-
-        # avoid simulator reboot; restore normal state
-        unit_test('devtest/abort_ux.py')
+        restore_backup_unpacked(avail_settings=avail_settings)
 
     return doit
 

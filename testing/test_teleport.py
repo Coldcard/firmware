@@ -5,12 +5,13 @@
 # - you'll need v1.0.1 of bbqr library for this to work
 #
 import pytest, time, re, pdb
-from helpers import prandom, xfp2str, str2xfp
+from helpers import prandom, xfp2str, str2xfp, str_to_path
 from bbqr import join_qrs
 from charcodes import KEY_QR, KEY_NFC
 from base64 import b32encode
 from constants import *
 from test_ephemeral import SEEDVAULT_TEST_DATA
+from test_backup import make_big_notes
 
 # All tests in this file are exclusively meant for Q
 #
@@ -30,6 +31,16 @@ def rx_start(grab_payload, goto_home, pick_menu_item):
 
     return doit
     
+@pytest.fixture()
+def main_do_over(unit_test, settings_get, settings_set):
+    # reset all contents, including master secret ... except ktrx
+    # - so you can test backup-restore onto blank unit
+    def doit():
+        kp = settings_get('ktrx')
+        unit_test('devtest/clear_seed.py')
+        settings_set('ktrx', kp)
+
+    return doit
 
 @pytest.fixture()
 def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_story, nfc_block4rf, cap_screen_qr, readback_bbqr):
@@ -81,14 +92,10 @@ def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_s
 
         need_keypress(KEY_QR)
 
-        if tt_code != 'E':
-            qr_data = cap_screen_qr().decode()
-            filetype, qr_raw = join_qrs([qr_data])
-        else:
-            # will be multi-frame BBQr in case of PSBT
-            filetype, qr_raw = readback_bbqr()
-            # this is un-split BBQR which didn't really happen, but useful
-            qr_data = f'B$2{filetype}0100' + b32encode(qr_raw).decode('ascii').rstrip('=')
+        # will be multi-frame BBQr in case of PSBT, other cases usually one frame
+        filetype, qr_raw = readback_bbqr()
+        # this is un-split BBQR which didn't really happen, but useful
+        qr_data = f'B$2{filetype}0100' + b32encode(qr_raw).decode('ascii').rstrip('=')
 
         assert filetype == tt_code
 
@@ -163,7 +170,7 @@ def tx_start(press_select, need_keypress, press_cancel, goto_home, pick_menu_ite
 
         assert title == 'Key Teleport: Send'
 
-        assert 'secure notes' in story
+        assert 'Choose what to share' in story
         assert 'WARNING' in story
         press_select()
 
@@ -224,7 +231,8 @@ def test_tx_quick_note(rx_start, tx_start, cap_menu, enter_complex, pick_menu_it
     press_select()
     
 
-def test_tx_master_send(rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select):
+@pytest.mark.parametrize('testcase', [ 'weak', 'strong'])
+def test_tx_master_send(testcase, rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select, main_do_over):
     # Send master secret, but doesn't really work since same as what we have
     code, rx_pubkey = rx_start()
     pw = tx_start(rx_pubkey, code)
@@ -242,15 +250,27 @@ def test_tx_master_send(rx_start, tx_start, cap_menu, enter_complex, pick_menu_i
 
     time.sleep(.150)        # required?
     pw, data, _ = grab_payload('S')
+
+    if testcase == 'strong':
+        # virginized
+        main_do_over()
     
     # now, send that back
     rx_complete(data, pw)
 
     title, body = cap_story()
 
-    assert title == 'FAILED'
-    assert 'Cannot use master seed as temp' in body
-    assert 'successfully tested' in body
+    if testcase == 'weak':
+
+        assert title == 'FAILED'
+        assert 'Cannot use master seed as temp' in body
+        assert 'successfully tested' in body
+
+    elif testcase == 'strong':
+        # real product would reboot; simulator just quietly goes back to top menu?
+        assert title == ''
+        m = cap_menu()
+        assert m[0] == 'Ready To Sign'
 
     press_cancel()
 
@@ -505,7 +525,7 @@ def test_teleport_big_ms(make_myself_wallet, clear_ms,
     set_master_key, 
     goto_home, press_nfc, nfc_read, settings_get, settings_set, open_microsd, import_ms_wallet):
 
-    # define lots of wallets, do teleport from SD disk
+    # define lots of wallets and do teleport from SD disk
 
     clear_ms()
     M, N = 2, 15
@@ -583,26 +603,109 @@ def test_teleport_big_ms(make_myself_wallet, clear_ms,
 
     assert title == 'Final TXID'
 
-'''
-@pytest.mark.parametrize('N', [14, 20])
-@pytest.mark.parametrize('M', [2, 14])
-@pytest.mark.parametrize('incl_xpubs', [ False ])
-def test_teleport_sd_psbt(M, use_regtest, make_myself_wallet, segwit, dev, clear_ms,
-                        fake_ms_txn, try_sign, incl_xpubs, bitcoind, cap_story, need_keypress,
-    cap_menu, pick_menu_item, grab_payload, rx_complete, press_select, ndef_parse_txn_psbt,
-    press_nfc, nfc_read, settings_get, settings_set, open_microsd):
+
+@pytest.mark.manual
+def test_teleport_real_ms(dev, fake_ms_txn):
+    #
+    # Do a 2-of-2 w/ USB-attached REAL Q and simulator
+    # - build ms wallet beforehand, both devices (QR); default air-gap settings
+    # - this makes fake txn, sents to (real) device via USB
+    # - do your signature, press (T) to teleport to next
+    # - observe BBQr, but press NFC and capture URL text via keyteleport.com
+    # - get that BBQr string into clipboard, and paste into simulator
+    # - observe working signature on sim side
+    #
+    # py.test test_teleport.py --dev --manual -k test_teleport_real_ms
+    #
+    from bip32 import BIP32Node
+    from struct import unpack
+    from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
+
+    M = N = 2
+
+    #p2wsh
+    deriv = "m/48h/1h/0h/2h"
+
+    # simulator key
+    n = BIP32Node.from_hwif(simulator_fixed_xprv).subkey_for_path(deriv)
+    keys = [ (simulator_fixed_xfp, None, n) ]
+
+    # add device
+    xfp = dev.master_fingerprint
+    xpk = dev.send_recv(CCProtocolPacker.get_xpub(deriv))
+    node = BIP32Node.from_wallet_key(xpk)
+    keys.append((xfp, None, node))
+
+    def p2wsh_mapper(cosigner_idx):
+        # match the default paths created by CC in airgapped MS wallet creation.
+        return str_to_path(deriv)
+
+    psbt = fake_ms_txn(3, 2, M, keys, fee=10000, outvals=None, segwit_in=False,
+             outstyles=['p2pkh'], change_outputs=[], incl_xpubs=False,
+             hack_change_out=False, input_amount=1E8, path_mapper=p2wsh_mapper)
+
+    open('debug/teleport_real_ms.psbt', 'wb').write(psbt)
+
+    ll, sha = dev.upload_file(psbt)
+    dev.send_recv(CCProtocolPacker.sign_transaction(ll, sha))
+
+    print("Follow signing prompts on device, and then do teleport back "
+            "to Simulator via NFC => website => clipboard")
     
 
+@pytest.mark.parametrize('testcase', [ 'weak', 'partial', 'strong'])
+def test_send_backup(testcase, rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select, settings_get, settings_set, restore_backup_unpacked, main_do_over, set_encoded_secret, reset_seed_words, make_big_notes):
+    # Send complete backup file.
+    code, rx_pubkey = rx_start()
+    pw = tx_start(rx_pubkey, code)
 
-    keys = import_ms_wallet(M, N, descriptor=descriptor, bip67=bip67)
+    if testcase == 'strong':
+        notes = make_big_notes()
 
-    keys, select_wallet = make_myself_wallet(M, do_import=(not incl_xpubs))
-'''
+    # other contents require other features to be enabled
+    pick_menu_item('Full COLDCARD Backup')
 
+    title, body = cap_story()
 
-# TODO
-# - send single-sig PSBT
-# - ms psbt send when lots of unrelated wallets on rx side
-# - ms psbt from disk file
+    assert 'Sending complete backup' in body
+
+    press_select()
+
+    time.sleep(.150)        # required?
+    pw, data, qr_raw = grab_payload('S')
+
+    if testcase == 'partial':
+        # be on a different master, so backup is restored into seed vault/tmp seed
+        kp = settings_get('ktrx')
+        set_encoded_secret(b'\x20' + prandom(32))
+        settings_set('ktrx', kp)
+
+    if testcase == 'strong':
+        # wipe everything; except we need the keypair
+        main_do_over()
+    
+    # now, send that back
+    rx_complete(('S', qr_raw), pw)
+
+    title, body = cap_story()
+
+    if testcase == 'weak':
+        assert title == 'FAILED'
+        assert 'Cannot use master seed as temp' in body
+        assert 'successfully tested' in body
+        press_cancel()
+
+    elif testcase == 'partial':
+        # should be in a tmp seed now
+        assert title == '[0F056943]'
+        assert 'temporary master key is in effect' in body
+
+        reset_seed_words()
+
+    elif testcase == 'strong':
+        restore_backup_unpacked()
+        assert settings_get('notes') == notes
+        settings_set('notes', [])
+
 
 # EOF

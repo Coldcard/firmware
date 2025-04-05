@@ -263,6 +263,25 @@ def restore_from_dict_ll(vals):
 
     return None, need_ftux
 
+def text_bk_parser(contents):
+    # given a (binary encoded) text file, decode into a dict of values
+    # - use json rules to decode the "value" sides
+    vals = {}
+    for line in contents.decode().split('\n'):
+        if not line: continue
+        if line[0] == '#': continue
+
+        try:
+            k,v = line.split(' = ', 1)
+            #print("%s = %s" % (k, v))
+
+            vals[k] = ujson.loads(v)
+        except:
+            print("unable to decode line: %r" % line)
+            # but keep going!
+
+    return vals
+
 async def restore_tmp_from_dict_ll(vals):
     from glob import dis
 
@@ -624,19 +643,7 @@ async def restore_complete_doit(fname_or_fd, words, file_cleanup=None, temporary
         await needs_microsd()
         return
 
-    vals = {}
-    for line in contents.decode().split('\n'):
-        if not line: continue
-        if line[0] == '#': continue
-
-        try:
-            k,v = line.split(' = ', 1)
-            #print("%s = %s" % (k, v))
-
-            vals[k] = ujson.loads(v)
-        except:
-            print("unable to decode line: %r" % line)
-            # but keep going!
+    vals = text_bk_parser(contents)
 
     # this leads to reboot if it works, else errors shown, etc.
     if temporary:

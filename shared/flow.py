@@ -422,6 +422,7 @@ EmptyWallet = [
     MenuItem('Help', f=virgin_help, predicate=not version.has_qwerty),
     MenuItem('Advanced/Tools', menu=AdvancedPinnedVirginMenu, shortcut='t'),
     MenuItem('Settings', menu=SettingsMenu),
+    ShortcutItem(KEY_QR, predicate=version.has_qr, f=scan_any_qr, arg=(True, False)),
 ]
 
 # In operation, normal system, after a good PIN received.

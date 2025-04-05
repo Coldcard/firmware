@@ -12,11 +12,14 @@ NFC, passive websites, and QR/BBQr codes.
 ## Steps
 
 - Receiver picks an EC keypair, stores it in settings, and publishes the pubkey via a QR/NFC
-- Sender gets that, picks own keypair, and does ECDH to arrive at a shared session key
+- The pubkey is encrypted by a short 8-digit numeric code, which should be
+  sent by a different channel.
+- Sender gets QR and numeric code, picks own keypair, and does ECDH to arrive at a
+  shared session key
 - Sender picks a human-readable secret which is independent of anything else (P key)
-- The secret data (perhaps a seed phrase, XPRV, secure note, etc) is AES encrypted with P key,
-  then encrypted + MAC added with session key
-- Data packet is sent to receiver, who can reconstruct the session key via ECDH
+- The secret data (perhaps a seed phrase, XPRV, secure note, full backup, etc) is
+  AES-256-CTR encrypted with P key, then encrypted + MAC added with session key
+- Data packet is sent to receiver (via BBQr), who can reconstruct the session key via ECDH
 - Prompt user for the P key to finish decoding
 - Decoded secret value is saved to Seed Vault or secure notes as appropriate
 - Receiver destroys EC keypair used in transfer
@@ -30,7 +33,7 @@ NFC, passive websites, and QR/BBQr codes.
 ## Notes and Limitations
 
 - max 4k (after encoding) of data is possible due to HTTP limitations
-- all transfers are "data typed" and decode only expected on COLDCARD
+- all transfers are "data typed" and decode only on COLDCARD
 - Q model is required due to the use of QR codes to ultimately get data into the COLDCARD
 
 
@@ -45,6 +48,7 @@ The first byte encodes what the package contents (under all the encryption).
 - `n` - one or many notes export (JSON array)
 - `v` - seed vault export (JSON: one secret key but includes name, source of key)
 - `p` - binary PSBT to be signed, perhaps multisig but not required.
+- `b` - complete system backup file (text lines, internal format)
 
 ## QR details
 
@@ -60,8 +64,10 @@ New type codes for BBQr are defined for the purposes of this application:
 - `E` for Multisig PSBT: `(randint)(data)` ... randint (4 byte nonce) indicates which 
   derived subkey from pre-shared xpub associated with receiver
 
-All the data is encrypted with the exception of the pubkey or randint. Keep in mind
-those are both nonce values picked uniquely for each transfer.
+All the data is encrypted with the exception randint. Keep in mind
+this is a nonce value picked uniquely for each transfer. The
+receiver's pubkey is only weakly encrypted by the 8-digit numeric
+password, but is also a nonce effectively.
 
 ### PSBT Key Selection
 
@@ -81,7 +87,7 @@ the appropriate pubkeys (and privkey for their side) without communicating
 more than `randint`. The sending COLDCARD will pick a new random value each time.
 
 When receiving a multisig PSBT encrypted this way, the receiver does not need
-to any setup (nor numeric password) and can receive a QR code at any time.
+to do any setup (nor numeric password) and can receive a QR code at any time.
 This works because the shared multisig wallet is already setup. Receiver will
 take the nonce value (randint) and seach all pre-defined multisig wallets for
 any pubkey that can decrypt the package successfully (based on checksum inside
@@ -126,7 +132,7 @@ the pubkey QR on another channel. The code is randomly picked, but
 only represents about 26 bits of entropy and is stretched with
 a single round of SHA256 before being used as a AES-256-CTR key
 to decrypt the pubkey. No checksum verifies correct
-decryption, so any code is accepted, and will with near-100% odds 
+decryption, so any code is accepted, and will with near-50% odds,
 decrypt to a valid pubkey.
 
 When the sender is given the receiver's pubkey via QR code, it
@@ -135,7 +141,7 @@ Thus a MiTM who injects their pubkey will be detected and blocked.
 
 The "paranoid key" serves the same role in the other direction but
 it is Base32 character set, so it will not look similar or be
-confusing.
+confusing as to its purpose.
 
 # Web Component
 
@@ -165,11 +171,15 @@ is optional since the QR can be shown on the Q itself, and would
 pass the same data.
 
 Since the website is running on Github, Coinkite does not have
-access to IP addresses or other log details. Because the data for
+access to IP addresses or other access log details. Because the data for
 teleport is "after the hash" it is never sent to Github's servers
 but remains in the browser only. All JS resources referenced by the
 webpage will have content hashes applied to prevent interference,
 and the site will be served over SSL.
+
+Visit [keyteleport.com](https://keyteleport.com/), or an
+[example small QR](https://keyteleport.com/#B$2R0100VHT2AGUUH7KUZUUSTOWOIWHJX3XM7GA2N4BHQOXDFHXLVHVA7K6ZO)
+and [view source code](https://github.com/coinkite/keyteleport.com).
 
 # UX Details
 
@@ -185,7 +195,7 @@ and the site will be served over SSL.
   signed) and the QR is prepared for that receiver. Because we
   cannot do arbitary conbining, it's best if the next signer continues
   to teleport the updated PSBT to further signers. In other words,
-  a daisy-chain pattern is prefered to a star patter. The signer
+  a daisy-chain pattern is prefered to a star pattern. The signer
   who completes the Mth (of N) signature will be able to finalize
   the transaction, and ideally with PushTx feature, broadcast it.
 
@@ -197,7 +207,7 @@ We are using 8-character passwords because we want them to be
 practical to share over non-digital channels such as a voice phone
 call, or hand-written note.
 
-It is important to remind users that the passwords should be sent
+It is very important to remind users that the passwords should be sent
 by a different channel from the QR itself. Best is to call up your
 other party and say the letters to them directly.
 
