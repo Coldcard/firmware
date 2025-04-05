@@ -384,7 +384,7 @@ AdvancedNormalMenu = [
 VirginSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Choose PIN Code', f=initial_pin_setup),
-    MenuItem('Advanced/Tools', menu=AdvancedVirginMenu),
+    MenuItem('Advanced/Tools', menu=AdvancedVirginMenu, shortcut='t'),
     MenuItem('Bag Number', f=show_bag_number),
     MenuItem('Help', f=virgin_help, predicate=not version.has_qwerty),
 ]
@@ -420,7 +420,7 @@ EmptyWallet = [
     MenuItem('Import Existing', menu=ImportWallet),
     MenuItem("Migrate Coldcard", menu=clone_start),
     MenuItem('Help', f=virgin_help, predicate=not version.has_qwerty),
-    MenuItem('Advanced/Tools', menu=AdvancedPinnedVirginMenu),
+    MenuItem('Advanced/Tools', menu=AdvancedPinnedVirginMenu, shortcut='t'),
     MenuItem('Settings', menu=SettingsMenu),
 ]
 
