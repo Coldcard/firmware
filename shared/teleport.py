@@ -35,6 +35,10 @@ def short_bbqr(type_code, data):
 
     return hdr + b32encode(data)
 
+def txt_grouper(txt):
+    # split into 2-char groups and add spaces -- to make it easier to read/remember
+    return ' '.join(txt[n:n+2] for n in range(0, len(txt), 2))
+
 async def nfc_push_kt(qrdata):
     # NFC push to send them to our QR-rendering website
 
@@ -80,13 +84,13 @@ We will re-use same values as last try, unless you press (R) for new values to b
 
     short_code, payload = generate_rx_code(kp)
 
-    msg = '''To receive teleport of sensitive data from another COLDCARD, \
+    msg = '''To receive sensitive data from another COLDCARD, \
 share this Receiver Password with sender:
 
    %s  =  %s
 
 and show the QR on next screen to the sender. ENTER or %s to show here''' % (
-        short_code, ' '.join(short_code), KEY_QR)
+        short_code, txt_grouper(short_code), KEY_QR)
 
     await tk_show_payload('R', payload, 'Key Teleport: Receive', msg, cta='Show to Sender')
 
@@ -209,7 +213,7 @@ async def kt_do_send(rx_pubkey, dtype, raw=None, obj=None, prefix=b'', rx_label=
     dis.progress_bar_show(1)
 
     msg = "Share this password with %s, via some different channel:"\
-                "\n\n   %s  =  %s\n\n" % (rx_label, txt, ' '.join(txt))
+                "\n\n   %s  =  %s\n\n" % (rx_label, txt, txt_grouper(txt))
     msg += "ENTER to view QR"
 
     await tk_show_payload('S' if not prefix else 'E',
