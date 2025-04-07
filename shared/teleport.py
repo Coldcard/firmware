@@ -171,13 +171,13 @@ async def kt_start_send(rx_data):
 
         rx_pubkey = decrypt_rx_pubkey(code, rx_data)
 
-        if not rx_pubkey:
-            # I think only about 50% odds of catching an incorrect code. Not sure
-            ch = await ux_show_story(
-                    "Incorrect Teleport Password. You can try again or CANCEL to stop.")
-            if ch == 'x': return
+        if rx_pubkey:
+            break
 
-        break
+        # I think only about 50% odds of catching an incorrect code. Not sure.
+        ch = await ux_show_story(
+                "Incorrect Teleport Password. You can try again or CANCEL to stop.")
+        if ch == 'x': return
 
     msg = '''You can now Key Teleport secrets! Choose what to share on next screen.\
 \n
@@ -496,16 +496,16 @@ class SecretPickerMenu(MenuSystem):
     def __init__(self, rx_pubkey):
         self.rx_pubkey = rx_pubkey
 
-        from flow import word_based_seed, is_tmp
+        from flow import word_based_seed, is_tmp, has_se_secrets
         has_notes = bool(NoteContentBase.count())
-        has_ms = bool(settings.get('multisig', False))
         has_sv = bool(settings.get('seedvault', False))
 
         # Q-only feature, so menu can be W I D E 
-        # - in increasing order of important / sensitivity!
+        # - in increasing order of importance & sensitivity!
+        # - pinned-virgin mode is supported, so might not have any secrets to share yet,
+        #   but can do secret notes still
         m = [
             MenuItem('Quick Text Message', f=self.quick_note),
-            MenuItem('Multisig PSBT for Signing', predicate=has_ms),
             MenuItem('Single Note / Password', predicate=has_notes, menu=self.pick_note_submenu),
             MenuItem('Export All Notes & Passwords', predicate=has_notes, f=self.picked_note),
         ]
@@ -513,19 +513,19 @@ class SecretPickerMenu(MenuSystem):
         if has_sv:
             m.append( MenuItem('From Seed Vault',  menu=self.pick_vault_submenu) )
 
+        msg = None
         if is_tmp():
             # tmp seed, or maybe bip39 is in effect 
-            # - all are the current master secret
+            # - share the current master secret, not the real master
             msg = 'Temp Secret (words)' if word_based_seed() else (
                         'XPRV from Words+Passphrase' if bip39_passphrase else 'Temp XPRV Secret')
-
-        else:
-            # real master secret
+        elif has_se_secrets():
+            # sharing real master secret
             msg = 'Master Seed Words' if word_based_seed() else 'Master XPRV'
 
-        m.append( MenuItem(msg, f=self.share_master_secret) )
-
-        m.append( MenuItem("Full COLDCARD Backup", f=self.share_full_backup) )
+        if msg:
+            m.append( MenuItem(msg, f=self.share_master_secret) )
+            m.append( MenuItem("Full COLDCARD Backup", f=self.share_full_backup) )
         
         super().__init__(m)
 
