@@ -106,7 +106,7 @@ and in the UX it is called "Teleport Password".
 
 The user sees a random 8-character password, generated as a random 40-bit value, but
 shown in Base32 (8 chars) for the human to enter. We apply PBKDF2-SHA512 with
-an interation count of 5000 to stretch that to 512 bits, of which we use half.
+an iteration count of 5000 to stretch that to 512 bits, of which we use half.
 The session key is used as the key for the KDF, and the entered value as salt.
 
 - ECDH arrives at session key
@@ -193,7 +193,7 @@ and [view source code](https://github.com/coinkite/keyteleport.com).
 
 - For PSBT multisig, user must pick a single co-signer (who hasn't already
   signed) and the QR is prepared for that receiver. Because we
-  cannot do arbitary conbining, it's best if the next signer continues
+  cannot do arbitary combining, it's best if the next signer continues
   to teleport the updated PSBT to further signers. In other words,
   a daisy-chain pattern is prefered to a star pattern. The signer
   who completes the Mth (of N) signature will be able to finalize
