@@ -134,7 +134,7 @@ def test_psbt_proxy_parsing(fn, sim_execfile, sim_exec):
 
 @pytest.mark.unfinalized
 def test_speed_test(dev, fake_txn, is_mark3, is_mark4, start_sign, end_sign,
-                    press_select):
+                    press_select, press_cancel):
     # measure time to sign a larger txn
     if is_mark4:
         # Mk4: expect 
@@ -169,6 +169,7 @@ def test_speed_test(dev, fake_txn, is_mark3, is_mark4, start_sign, end_sign,
 
     print("  Tx time: %.1f" % tx_time)
     print("Sign time: %.1f" % ready_time)
+    press_cancel()
 
 if 0:
     # TODO: attempt to re-create the mega transaction: 5,569 inputs, one out
@@ -1211,10 +1212,26 @@ def hist_count(sim_exec):
             'import history; RV.write(str(len(history.OutptValueCache.runtime_cache)));'))
     return doit
 
+@pytest.fixture
+def txid_from_export_prompt(cap_story, cap_screen_qr, cap_screen, need_keypress):
+    def doit():
+        time.sleep(.1)
+        title, story = cap_story()
+        assert "(6) for QR Code of TXID" in story
+        need_keypress("6")
+        time.sleep(.1)
+        screen_txid = cap_screen().strip().replace("\n", "").replace("~", "")
+        qr_txid = cap_screen_qr().decode().strip().lower()
+        assert qr_txid == screen_txid
+        return qr_txid
+
+    return doit
+
 @pytest.mark.parametrize('num_utxo', [9, 100])
 @pytest.mark.parametrize('segwit_in', [False, True])
 def test_bip143_attack_data_capture(num_utxo, segwit_in, try_sign, fake_txn, settings_set,
-                                    settings_get, cap_story, sim_exec, hist_count):
+                                    settings_get, cap_story, sim_exec, hist_count,
+                                    txid_from_export_prompt, press_cancel):
 
     # cleanup prev runs, if very first time thru
     sim_exec('import history; history.OutptValueCache.clear()')
@@ -1224,16 +1241,15 @@ def test_bip143_attack_data_capture(num_utxo, segwit_in, try_sign, fake_txn, set
     # make a txn, capture the outputs of that as inputs for another txn
     psbt = fake_txn(1, num_utxo+3, segwit_in=segwit_in, change_outputs=range(num_utxo+2),
                         outstyles=(['p2wpkh']*num_utxo) + ['p2wpkh-p2sh', 'p2pkh'])
-    _, txn = try_sign(psbt, accept=True, finalize=True)
+    _, txn = try_sign(psbt, accept=True, finalize=True, exit_export_loop=False)
 
     open('debug/funding.psbt', 'wb').write(psbt)
 
     num_inp_utxo = (1 if segwit_in else 0)
 
-    time.sleep(.1)
-    title, story = cap_story()
-    assert 'TXID' in title, story
-    txid = story.strip().split()[0]
+    txid = txid_from_export_prompt()
+    press_cancel()
+    press_cancel()
 
     assert hist_count() in {128, hist_b4+num_utxo+num_inp_utxo}
 
@@ -1273,21 +1289,17 @@ def test_bip143_attack_data_capture(num_utxo, segwit_in, try_sign, fake_txn, set
 
 @pytest.mark.parametrize('segwit', [False, True])
 @pytest.mark.parametrize('num_ins', [1, 17])
-def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoind, cap_story):
+def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoind, cap_story,
+                   txid_from_export_prompt, press_cancel):
     # verify correct txid for transactions is being calculated
     xp = dev.master_xpub
 
     psbt = fake_txn(num_ins, 1, xp, segwit_in=segwit)
 
-    _, txn = try_sign(psbt, accept=True, finalize=True)
-
-    #print('Signed; ' + B2A(txn))
-
-    time.sleep(.1)
-    title, story = cap_story()
-    assert '0' in story
-    assert 'TXID' in title, story
-    txid = story.strip().split()[0]
+    _, txn = try_sign(psbt, accept=True, finalize=True, exit_export_loop=False)
+    txid = txid_from_export_prompt()
+    press_cancel()  # exit QR
+    press_cancel()  # exit re-export loop
 
     if 1:
         t = CTransaction()
@@ -1304,6 +1316,7 @@ def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoin
             assert all(x['txinwitness'] for x in decoded['vin'])
 
         assert decoded['txid'] == txid
+
 
 @pytest.mark.unfinalized            # iff partial=1
 @pytest.mark.reexport
@@ -1527,36 +1540,36 @@ def test_value_render(dev, units, fake_txn, start_sign, cap_story, settings_set,
 @pytest.mark.qrcode
 @pytest.mark.parametrize('num_in', [1,2,3])
 @pytest.mark.parametrize('num_out', [1,2,3])
-def test_qr_txn(num_in, num_out, request, fake_txn, try_sign, dev, cap_screen_qr, qr_quality_check, cap_story, need_keypress):
-    segwit=True
+@pytest.mark.parametrize('segwit', [True, False])
+def test_qr_txn(num_in, num_out, segwit, fake_txn, try_sign, dev, cap_screen_qr,
+                qr_quality_check, cap_story, need_keypress, is_q1, press_cancel):
 
-    psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=False)
+    psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=segwit)
 
-
-    _, txn = try_sign(psbt, accept=True, finalize=True)
-    open('debug/last.txn', 'wb').write(txn)
-
-    print("txn len = %d bytes" % len(txn))
+    _, txn = try_sign(psbt, accept=True, finalize=True, exit_export_loop=False)
+    with open('debug/last.txn', 'wb') as f:
+        f.write(txn)
 
     title, story = cap_story()
 
-    assert 'QR Code' in story
+    assert '(6) for QR Code of TXID' in story
 
-    if 1:
-        # check TXID qr code
-        need_keypress('1')
+    # check TXID qr code
+    need_keypress('6')
+    qr = cap_screen_qr().decode()
+    press_cancel()
 
-        qr = cap_screen_qr().decode()
+    t = CTransaction()
+    t.deserialize(BytesIO(txn))
+    assert t.txid().hex() == qr.lower()
 
-        t = CTransaction()
-        t.deserialize(BytesIO(txn))
-        assert t.txid().hex() == qr.lower()
-
-    else:
-        # TODO: QR for txn itself yet
-        need_keypress('2')
+    if is_q1:
+        need_keypress(KEY_QR)
         qr = cap_screen_qr().decode()
         assert qr.lower() == txn.hex()
+        press_cancel()
+
+    press_cancel()
 
 def test_missing_keypaths(dev, try_sign, fake_txn):
 
@@ -1755,7 +1768,8 @@ def test_bitcoind_missing_foreign_utxo(bitcoind, bitcoind_d_sim_watch, microsd_p
     b"$$$$$$$$$$$$$$ Bitcoin",
     b"\xeb\x97\xf7\xb7\xf78\x9a';\x90F_\xfc\xe2b\xa4\x93)\xea\xac\xacR\xff\x9c\xbe\x1c\xf1\xad\xe9!\xee\xd9t1\x1f\x92\x83\x97\xb3\x98/\xff\xc8\xff\xc1\xc0\xdd\x1et\x00L\x13\xe0\xe3\x90\xe4\xd4\xf2x:\xf7Ab\x04\x91\x1e\xa8R\x92\xd3\x96OK\xc6I\x06\x9e\xce=\xb3",
 ])
-def test_op_return_signing(op_return_data, dev, fake_txn, bitcoind_d_sim_watch, bitcoind, start_sign, end_sign, cap_story):
+def test_op_return_signing(op_return_data, dev, fake_txn, bitcoind_d_sim_watch, bitcoind,
+                           start_sign, end_sign, cap_story):
     cc = bitcoind_d_sim_watch
     dest_address = cc.getnewaddress()
     bitcoind.supply_wallet.generatetoaddress(101, dest_address)
@@ -1864,11 +1878,18 @@ def test_duplicate_unknow_values_in_psbt(dev, start_sign, end_sign, fake_txn):
 
 @pytest.fixture
 def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
-                             bitcoind, bitcoind_d_dev_watch, settings_set, finalize_v2_v0_convert):
+                             bitcoind, bitcoind_d_dev_watch, settings_set,
+                             finalize_v2_v0_convert, pytestconfig):
     def doit(addr_fmt, sighash, num_inputs=2, num_outputs=2, consolidation=False, sh_checks=False,
-             psbt_v2=False, tx_check=True):
+             psbt_v2=None, tx_check=True):
 
         from decimal import Decimal, ROUND_DOWN
+
+        if psbt_v2 is None:
+            # anything passed directly to this function overrides
+            # pytest flag --psbt2 - only care about pytest flag
+            # if psbt_v2 is not specified (None)
+            psbt_v2 = pytestconfig.getoption('psbt2')
 
         if dev.is_simulator:
             # if running against real HW you need to set CC to correct sighshchk mode
@@ -2044,38 +2065,34 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
 
     return doit
 
+# TODO Locktime test MUST be run with --psbt2 flag on and off
+# pytest test_sign.py -k locktime {--psbt2,}
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32"])
 @pytest.mark.parametrize("sighash", [sh for sh in SIGHASH_MAP if sh != 'ALL'])
 @pytest.mark.parametrize("num_outs", [1, 3, 5])
 @pytest.mark.parametrize("num_ins", [2, 5])
-@pytest.mark.parametrize("psbt_v2", [True, False])
-def test_sighash_same(addr_fmt, sighash, num_ins, num_outs, psbt_v2, _test_single_sig_sighash):
+def test_sighash_same(addr_fmt, sighash, num_ins, num_outs, _test_single_sig_sighash):
     # sighash is the same among all inputs
-    _test_single_sig_sighash(addr_fmt, [sighash], num_inputs=num_ins, num_outputs=num_outs,
-                             psbt_v2=psbt_v2)
+    _test_single_sig_sighash(addr_fmt, [sighash], num_inputs=num_ins, num_outputs=num_outs)
 
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32"])
 @pytest.mark.parametrize("sighash", list(itertools.combinations(SIGHASH_MAP.keys(), 2)))
 @pytest.mark.parametrize("num_outs", [2, 3, 5])
-@pytest.mark.parametrize("psbt_v2", [True, False])
-def test_sighash_different(addr_fmt, sighash, num_outs, psbt_v2, _test_single_sig_sighash):
+def test_sighash_different(addr_fmt, sighash, num_outs, _test_single_sig_sighash):
     # sighash differ among all inputs
-    _test_single_sig_sighash(addr_fmt, sighash, num_inputs=2, num_outputs=num_outs,
-                             psbt_v2=psbt_v2)
+    _test_single_sig_sighash(addr_fmt, sighash, num_inputs=2, num_outputs=num_outs)
 
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32"])
 @pytest.mark.parametrize("num_outs", [5, 8])
-@pytest.mark.parametrize("psbt_v2", [True, False])
-def test_sighash_fullmix(addr_fmt, num_outs, psbt_v2, _test_single_sig_sighash):
+def test_sighash_fullmix(addr_fmt, num_outs, _test_single_sig_sighash):
     # tx with 6 inputs representing all possible sighashes
-    _test_single_sig_sighash(addr_fmt, tuple(SIGHASH_MAP.keys()), num_inputs=6,
-                             num_outputs=num_outs, psbt_v2=psbt_v2)
+    _test_single_sig_sighash(addr_fmt, tuple(SIGHASH_MAP.keys()), num_inputs=6, num_outputs=num_outs)
 
 
 @pytest.mark.bitcoind
@@ -2207,7 +2224,7 @@ def test_batch_sign(num_tx, ui_path, action, fake_txn, need_keypress,
         time.sleep(.5)
         title, story = cap_story()
         assert "-signed.psbt" in story
-        press_select()
+        press_cancel()
         time.sleep(.5)
         title, story = cap_story()
 
@@ -2337,7 +2354,7 @@ def test_psbt_v2_global_quantities(way, fake_txn, start_sign, end_sign, cap_stor
 ])
 def test_locktime_ux(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign,
                      microsd_path, cap_story, goto_home, press_select,
-                     pick_menu_item, bitcoind, locktime):
+                     pick_menu_item, bitcoind, locktime, file_tx_signing_done):
     use_regtest()
     sim = bitcoind_d_sim_watch
     addr = sim.getnewaddress()
@@ -2366,12 +2383,15 @@ def test_locktime_ux(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign,
     psbt_fname = "locktime.psbt"
     with open(microsd_path(psbt_fname), "w") as f:
         f.write(psbt)
+
     goto_home()
     pick_menu_item('Ready To Sign')
     time.sleep(0.1)
-    pick_menu_item(psbt_fname)
-    time.sleep(0.1)
     title, story = cap_story()
+    if 'OK TO SEND' not in title:
+        pick_menu_item(psbt_fname)
+        time.sleep(0.1)
+        title, story = cap_story()
 
     assert "WARNING" not in story
     if locktime != 0:
@@ -2390,18 +2410,10 @@ def test_locktime_ux(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign,
     press_select()  # confirm signing
     time.sleep(0.1)
     title, story = cap_story()
-    assert title == 'PSBT Signed'
     assert "Updated PSBT is:" in story
     assert "Finalized transaction (ready for broadcast)" in story
     assert "TXID" in story
-    split_story = story.split("\n\n")
-    story_txid = split_story[-2].split("\n")[-1]
-    signed_psbt_fname = split_story[1]
-    with open(microsd_path(signed_psbt_fname), "r") as f:
-        signed_psbt = f.read().strip()
-    signed_txn_fname = split_story[3]
-    with open(microsd_path(signed_txn_fname), "r") as f:
-        signed_txn = f.read().strip()
+    signed_psbt, signed_txn, story_txid = file_tx_signing_done(story)
     assert signed_psbt != psbt
     finalize_res = sim.finalizepsbt(signed_psbt)
     bitcoind_signed_txn = finalize_res["hex"]
@@ -2426,7 +2438,7 @@ def test_locktime_ux(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign,
 def test_nsequence_blockheight_relative_locktime_ux(sequence, use_regtest, bitcoind_d_sim_watch,
                                                     start_sign, end_sign, microsd_path, cap_story,
                                                     goto_home, press_select, pick_menu_item,
-                                                    bitcoind, num_ins, differ):
+                                                    bitcoind, num_ins, differ, file_tx_signing_done):
     if differ and (sequence == 0):
         # this case makes no sense
         return
@@ -2475,12 +2487,15 @@ def test_nsequence_blockheight_relative_locktime_ux(sequence, use_regtest, bitco
     psbt_fname = "rtl-blockheight.psbt"
     with open(microsd_path(psbt_fname), "w") as f:
         f.write(psbt)
+
     goto_home()
     pick_menu_item('Ready To Sign')
     time.sleep(0.1)
-    pick_menu_item(psbt_fname)
-    time.sleep(0.1)
     title, story = cap_story()
+    if 'OK TO SEND' not in title:
+        pick_menu_item(psbt_fname)
+        time.sleep(0.1)
+        title, story = cap_story()
 
     assert "WARNING" not in story
     if sequence:
@@ -2502,18 +2517,11 @@ def test_nsequence_blockheight_relative_locktime_ux(sequence, use_regtest, bitco
     press_select()  # confirm signing
     time.sleep(0.1)
     title, story = cap_story()
-    assert title == 'PSBT Signed'
     assert "Updated PSBT is:" in story
     assert "Finalized transaction (ready for broadcast)" in story
     assert "TXID" in story
-    split_story = story.split("\n\n")
-    story_txid = split_story[-2].split("\n")[-1]
-    signed_psbt_fname = split_story[1]
-    with open(microsd_path(signed_psbt_fname), "r") as f:
-        signed_psbt = f.read().strip()
-    signed_txn_fname = split_story[3]
-    with open(microsd_path(signed_txn_fname), "r") as f:
-        signed_txn = f.read().strip()
+    press_select()  # exit saved story
+    signed_psbt, signed_txn, story_txid = file_tx_signing_done(story)
     assert signed_psbt != psbt
     finalize_res = sim.finalizepsbt(signed_psbt)
     bitcoind_signed_txn = finalize_res["hex"]
@@ -2538,13 +2546,13 @@ def test_nsequence_blockheight_relative_locktime_ux(sequence, use_regtest, bitco
 
 
 @pytest.mark.bitcoind
-@pytest.mark.veryslow
 @pytest.mark.parametrize("num_ins", [1, 4, 11])
 @pytest.mark.parametrize("differ", [True, False])
 @pytest.mark.parametrize("seconds", [512, 10000, 1000000, 33554431])
 def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind_d_sim_watch, start_sign,
                                                   microsd_path, cap_story, goto_home, press_select,
-                                                  pick_menu_item, bitcoind, end_sign, num_ins, differ):
+                                                  pick_menu_item, bitcoind, end_sign, num_ins, differ,
+                                                  file_tx_signing_done):
     sequence = SEQUENCE_LOCKTIME_TYPE_FLAG | (seconds >> 9)
     use_regtest()
     sim = bitcoind_d_sim_watch
@@ -2587,12 +2595,15 @@ def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind
     psbt_fname = "rtl-time.psbt"
     with open(microsd_path(psbt_fname), "w") as f:
         f.write(psbt)
+
     goto_home()
-    pick_menu_item('Ready To Sign')
-    time.sleep(0.1)
-    pick_menu_item(psbt_fname)
+    pick_menu_item("Ready To Sign")
     time.sleep(0.1)
     title, story = cap_story()
+    if 'OK TO SEND' not in title:
+        pick_menu_item(psbt_fname)
+        time.sleep(0.1)
+        title, story = cap_story()
 
     assert "WARNING" not in story
     assert "TX LOCKTIMES" in story
@@ -2613,18 +2624,10 @@ def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind
     press_select()  # confirm signing
     time.sleep(0.1)
     title, story = cap_story()
-    assert title == 'PSBT Signed'
     assert "Updated PSBT is:" in story
     assert "Finalized transaction (ready for broadcast)" in story
     assert "TXID" in story
-    split_story = story.split("\n\n")
-    story_txid = split_story[-2].split("\n")[-1]
-    signed_psbt_fname = split_story[1]
-    with open(microsd_path(signed_psbt_fname), "r") as f:
-        signed_psbt = f.read().strip()
-    signed_txn_fname = split_story[3]
-    with open(microsd_path(signed_txn_fname), "r") as f:
-        signed_txn = f.read().strip()
+    signed_psbt, signed_txn, story_txid = file_tx_signing_done(story)
     assert signed_psbt != psbt
     finalize_res = sim.finalizepsbt(signed_psbt)
     bitcoind_signed_txn = finalize_res["hex"]
@@ -2650,12 +2653,11 @@ def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind
 
 
 @pytest.mark.bitcoind
-@pytest.mark.veryslow
 @pytest.mark.parametrize("abs_lock", [True, False])
 @pytest.mark.parametrize("num_rtl", [(2,3),(4,7),(8,3),(6,7)])
-def test_mixed_locktimes(num_rtl, use_regtest, bitcoind_d_sim_watch, start_sign,
-                             microsd_path, cap_story, goto_home, press_select,
-                             pick_menu_item, bitcoind, end_sign, abs_lock):
+def test_mixed_locktimes(num_rtl, use_regtest, bitcoind_d_sim_watch, start_sign, microsd_path,
+                         cap_story, goto_home, press_select, pick_menu_item, bitcoind, end_sign,
+                         abs_lock, file_tx_signing_done):
     tb, bb = num_rtl
     num_ins = tb + bb
     sequence = SEQUENCE_LOCKTIME_TYPE_FLAG | (512 >> 9)
@@ -2703,9 +2705,11 @@ def test_mixed_locktimes(num_rtl, use_regtest, bitcoind_d_sim_watch, start_sign,
     goto_home()
     pick_menu_item('Ready To Sign')
     time.sleep(0.1)
-    pick_menu_item(psbt_fname)
-    time.sleep(0.1)
     title, story = cap_story()
+    if 'OK TO SEND' not in title:
+        pick_menu_item(psbt_fname)
+        time.sleep(0.1)
+        title, story = cap_story()
 
     assert "WARNING" not in story
     assert "TX LOCKTIMES" in story
@@ -2726,18 +2730,10 @@ def test_mixed_locktimes(num_rtl, use_regtest, bitcoind_d_sim_watch, start_sign,
     press_select()  # confirm signing
     time.sleep(0.1)
     title, story = cap_story()
-    assert title == 'PSBT Signed'
     assert "Updated PSBT is:" in story
     assert "Finalized transaction (ready for broadcast)" in story
     assert "TXID" in story
-    split_story = story.split("\n\n")
-    story_txid = split_story[-2].split("\n")[-1]
-    signed_psbt_fname = split_story[1]
-    with open(microsd_path(signed_psbt_fname), "r") as f:
-        signed_psbt = f.read().strip()
-    signed_txn_fname = split_story[3]
-    with open(microsd_path(signed_txn_fname), "r") as f:
-        signed_txn = f.read().strip()
+    signed_psbt, signed_txn, story_txid = file_tx_signing_done(story)
     assert signed_psbt != psbt
     finalize_res = sim.finalizepsbt(signed_psbt)
     bitcoind_signed_txn = finalize_res["hex"]
@@ -2791,55 +2787,55 @@ def random_nLockTime_test_cases(num=10):
 ])
 def test_timelocks_visualize(start_sign, end_sign, dev, bitcoind, use_regtest,
                              bitcoind_d_sim_watch, nLockTime):
-        # - works on simulator and connected USB real-device
-        nLockTime, expect_ux = nLockTime
-        num_ins = 10
-        use_regtest()
-        bitcoind_d_sim_watch.keypoolrefill(20)
-        for i in range(num_ins):
-            addr = bitcoind_d_sim_watch.getnewaddress()
-            bitcoind.supply_wallet.sendtoaddress(addr, 1)
+    # - works on simulator and connected USB real-device
+    nLockTime, expect_ux = nLockTime
+    num_ins = 10
+    use_regtest()
+    bitcoind_d_sim_watch.keypoolrefill(20)
+    for i in range(num_ins):
+        addr = bitcoind_d_sim_watch.getnewaddress()
+        bitcoind.supply_wallet.sendtoaddress(addr, 1)
 
-        bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
-        dest_addr = bitcoind_d_sim_watch.getnewaddress()  # self-spend
-        utxos = bitcoind_d_sim_watch.listunspent()
-        assert len(utxos) == num_ins
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    dest_addr = bitcoind_d_sim_watch.getnewaddress()  # self-spend
+    utxos = bitcoind_d_sim_watch.listunspent()
+    assert len(utxos) == num_ins
 
-        ins = []
-        for i, utxo in enumerate(utxos):
-            if i % 2 == 0:
-                nSeq = (SEQUENCE_LOCKTIME_TYPE_FLAG | i)
-            else:
-                confirmations = utxo["confirmations"]
-                nSeq = confirmations + (20*i)
+    ins = []
+    for i, utxo in enumerate(utxos):
+        if i % 2 == 0:
+            nSeq = (SEQUENCE_LOCKTIME_TYPE_FLAG | i)
+        else:
+            confirmations = utxo["confirmations"]
+            nSeq = confirmations + (20*i)
 
-            inp = {
-                "txid": utxo["txid"],
-                "vout": utxo["vout"],
-                "sequence": nSeq,
-            }
-            ins.append(inp)
+        inp = {
+            "txid": utxo["txid"],
+            "vout": utxo["vout"],
+            "sequence": nSeq,
+        }
+        ins.append(inp)
 
-        psbt_resp = bitcoind_d_sim_watch.walletcreatefundedpsbt(
-            ins, [{dest_addr: (num_ins - 0.1)}],
-            nLockTime, {"fee_rate": 20}
-        )
-        psbt = base64.b64decode(psbt_resp.get("psbt"))
+    psbt_resp = bitcoind_d_sim_watch.walletcreatefundedpsbt(
+        ins, [{dest_addr: (num_ins - 0.1)}],
+        nLockTime, {"fee_rate": 20}
+    )
+    psbt = base64.b64decode(psbt_resp.get("psbt"))
 
-        open('debug/locktimes.psbt', 'wb').write(psbt)
+    open('debug/locktimes.psbt', 'wb').write(psbt)
 
-        # should be able to sign, but get warning
+    # should be able to sign, but get warning
 
-        # use new feature to have Coldcard return the 'visualization' of transaction
-        start_sign(psbt, False, stxn_flags=STXN_VISUALIZE)
-        story = end_sign(accept=None, expect_txn=False)
+    # use new feature to have Coldcard return the 'visualization' of transaction
+    start_sign(psbt, False, stxn_flags=STXN_VISUALIZE)
+    story = end_sign(accept=None, expect_txn=False)
 
-        story = story.decode('ascii')
-        assert datetime.datetime.utcfromtimestamp(nLockTime).strftime("%Y-%m-%d %H:%M:%S") == expect_ux
-        assert f"Abs Locktime: This tx can only be spent after {expect_ux} UTC (MTP)" in story
-        assert "Block height RTL: 5 inputs have relative block height timelock" in story
-        # when i=0 in loop time based RTL is zero
-        assert "Time-based RTL: 4 inputs have relative time-based timelock" in story
+    story = story.decode('ascii')
+    assert datetime.datetime.utcfromtimestamp(nLockTime).strftime("%Y-%m-%d %H:%M:%S") == expect_ux
+    assert f"Abs Locktime: This tx can only be spent after {expect_ux} UTC (MTP)" in story
+    assert "Block height RTL: 5 inputs have relative block height timelock" in story
+    # when i=0 in loop time based RTL is zero
+    assert "Time-based RTL: 4 inputs have relative time-based timelock" in story
 
 
 @pytest.mark.parametrize('in_out', [(4,1),(2,2),(2,1)])
@@ -2947,7 +2943,6 @@ def test_sorting_outputs_by_size(fake_txn, start_sign, cap_story, use_testnet,
     press_cancel()
 
 
-@pytest.mark.parametrize("psbtv2", [True, False])
 @pytest.mark.parametrize("chain", ["BTC", "XTN"])
 @pytest.mark.parametrize("data", [
     # (out_style, amount, is_change)
@@ -2956,8 +2951,9 @@ def test_sorting_outputs_by_size(fake_txn, start_sign, cap_story, use_testnet,
     [("p2pkh", 1000000, 1)] * 11 + [("p2wpkh", 50000000, 0)] * 16,
     [("p2pkh", 1000000, 1), ("p2wpkh", 50000000, 0), ("p2wpkh-p2sh", 800000, 1)] * 11,
 ])
-def test_txout_explorer(psbtv2, chain, data, fake_txn, start_sign,
-                        settings_set, txout_explorer, cap_story):
+def test_txout_explorer(chain, data, fake_txn, start_sign, settings_set, txout_explorer,
+                        cap_story, pytestconfig):
+    # TODO This test MUST be run with --psbt2 flag on and off
     settings_set("chain", chain)
     outstyles = []
     outvals = []
@@ -2972,7 +2968,7 @@ def test_txout_explorer(psbtv2, chain, data, fake_txn, start_sign,
     inp_amount = sum(outvals) + 100000  # 100k sat fee
     psbt = fake_txn(1, len(data), segwit_in=True, outstyles=outstyles,
                     outvals=outvals, change_outputs=change_outputs,
-                    psbt_v2=psbtv2, input_amount=inp_amount)
+                    psbt_v2=pytestconfig.getoption('psbt2'), input_amount=inp_amount)
 
     start_sign(psbt)
     txout_explorer(data, chain)

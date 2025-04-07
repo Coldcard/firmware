@@ -18,9 +18,7 @@ async def export_by_qr(body, label, type_code, force_bbqr=False):
     from ux import show_qr_code
 
     try:
-        # ignore label/title - provides no useful info
-        # makes qr smaller and harder to read
-        if force_bbqr:
+        if force_bbqr or len(body) > 2000:
             raise ValueError
 
         await show_qr_code(body)
@@ -35,7 +33,7 @@ async def export_by_qr(body, label, type_code, force_bbqr=False):
     return
 
 
-async def export_contents(title, contents, fname_pattern, derive=None, addr_fmt=None, no_qr=None,
+async def export_contents(title, contents, fname_pattern, derive=None, addr_fmt=None,
                           is_json=False, force_bbqr=False, force_prompt=False):
     # export text and json files while offering NFC, QR & Vdisk
     # produces signed export in case of SD/Vdisk (signed with key at deriv and addr_fmt)
@@ -49,8 +47,9 @@ async def export_contents(title, contents, fname_pattern, derive=None, addr_fmt=
         dis.fullscreen('Generating...')
         contents, derive, addr_fmt = contents()
 
-    if no_qr is not None:
-        no_qr = not version.has_qwerty and (len(contents) >= MAX_V11_CHAR_LIMIT)
+    # figure out if offering QR code export make sense given HW
+    # len() is O(1)
+    no_qr = not version.has_qwerty and (len(contents) >= MAX_V11_CHAR_LIMIT)
 
     sig = not (derive is None and addr_fmt is None)
 

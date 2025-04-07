@@ -8,17 +8,15 @@ from ubinascii import b2a_base64, a2b_base64
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from uhashlib import sha256
-from public_constants import MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
-from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH, AF_P2WPKH_P2SH
+from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, SUPPORTED_ADDR_FORMATS
 from public_constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
-from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
-from ux import show_qr_code, OK, X, ux_input_text, ux_enter_bip32_index, abort_and_push
+from ux import ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
+from ux import show_qr_code, OK, X, abort_and_push, AbortInteraction
 from usb import CCBusyError
-from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, chunk_checksum
-from utils import B2A, to_ascii_printable, show_single_address
+from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A, show_single_address
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
-from files import CardSlot, CardMissingError, needs_microsd
+from files import CardSlot, CardMissingError
 from exceptions import HSMDenied
 from version import MAX_TXN_LEN
 from charcodes import KEY_QR, KEY_NFC, KEY_ENTER, KEY_CANCEL, KEY_LEFT, KEY_RIGHT
@@ -74,7 +72,7 @@ class UserAuthorizedAction:
         if allowed_cls and isinstance(cls.active_request, allowed_cls):
             return
 
-        # check if UX actally was cleared, and we're not really doing that anymore; recover
+        # check if UX actually was cleared, and we're not really doing that anymore; recover
         # - happens if USB caller never comes back for their final results
         from ux import the_ux
         top_ux = the_ux.top_of_stack()
@@ -264,20 +262,25 @@ async def try_push_tx(data, txid, txn_sha=None):
     return False
 
 class ApproveTransaction(UserAuthorizedAction):
-    def __init__(self, psbt_len, flags=0x0, approved_cb=None, psbt_sha=None, cb_kws=None):
-        from glob import settings
+    def __init__(self, psbt_len, flags=None, psbt_sha=None, input_method=None,
+                 output_encoder=None, filename=None):
         super().__init__()
         self.psbt_len = psbt_len
-        self.do_finalize = bool(flags & STXN_FINALIZE)
-        self.do_visualize = bool(flags & STXN_VISUALIZE)
+
+        # do finalize is None if not USB, None = decide based on is_complete
+        if flags is None:
+            self.do_finalize = self.do_visualize = None
+        else:
+            self.do_finalize = bool(flags & STXN_FINALIZE)
+            self.do_visualize = bool(flags & STXN_VISUALIZE)
+
         self.stxn_flags = flags
         self.psbt = None
         self.psbt_sha = psbt_sha
-        self.approved_cb = approved_cb
+        self.input_method = input_method
+        self.output_encoder = output_encoder
+        self.filename = filename
         self.result = None      # will be (len, sha256) of the resulting PSBT
-        self.cb_kws = cb_kws or {}
-        self.is_sd = (self.cb_kws.get("input_method", None) is None) \
-                     and (not self.cb_kws.get("force_vdisk", False))
         self.chain = chains.current_chain()
 
     def render_output(self, o):
@@ -447,7 +450,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 if needs_txn_explorer:
                     esc += "2"
                     msg.write(" Press (2) to explore txn.")
-                if self.is_sd and CardSlot.both_inserted():
+                if (self.input_method == "sd") and CardSlot.both_inserted():
                     esc += "b"
                     msg.write(" (B) to write to lower SD slot.")
                 msg.write(" %s to abort." % X)
@@ -516,70 +519,17 @@ class ApproveTransaction(UserAuthorizedAction):
         except BaseException as exc:
             return await self.failure("Signing failed late", exc)
 
-        if self.approved_cb:
-            if self.is_sd and (ch == "b"):
-                self.cb_kws["slot_b"] = True
-
-            await self.approved_cb(self.psbt, **self.cb_kws)
-
-            self.done()
-            return
-
-        txid = None
         try:
-            # re-serialize the PSBT back out
-            with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd:
-                if self.do_finalize:
-                    # user is forcing us to finalize over USB
-                    # try it & fail with detailed msg
-                    txid = self.psbt.finalize(fd)
-                else:
-                    self.psbt.serialize(fd)
-
-                self.result = (fd.tell(), fd.checksum.digest())
-
-            self.done(redraw=(not txid))
-
+            await done_signing(self.psbt, self, self.input_method, self.filename, self.output_encoder,
+                               slot_b=True if ch == "b" else False, finalize=self.do_finalize)
+            self.done()
+        except AbortInteraction:
+            # user might have sent new sign cmd, while we still at export prompt
+            pass
         except BaseException as exc:
+            # sys.print_exception(exc)
             return await self.failure("PSBT output failed", exc)
 
-        from glob import NFC
-
-        if self.do_finalize and txid and not hsm_active:
-            # Unsigned PSBT came in via NFC or QR or Teleport
-
-            if await try_push_tx(self.result[0], txid, self.result[1]):
-                return  # success, exit
-
-            kq, kn = "(1)", "(3)"
-            if version.has_qwerty:
-                kq, kn = KEY_QR, KEY_NFC
-
-            while 1:
-                # Show txid when we can; advisory
-                # - maybe even as QR, hex-encoded in alnum mode
-                tmsg = txid + '\n\nPress %s for QR Code of TXID. ' % kq
-
-                if NFC:
-                    tmsg += 'Press %s to share signed txn via NFC.' % kn
-
-                ch = await ux_show_story(tmsg, "Final TXID", escape='13'+KEY_NFC+KEY_QR)
-
-                if ch in '1'+KEY_QR:
-                    await show_qr_code(txid, True)
-                    continue
-
-                if ch in KEY_NFC+"3" and NFC:
-                    await NFC.share_signed_txn(txid, TXN_OUTPUT_OFFSET,
-                                               self.result[0], self.result[1])
-                    continue
-                break
-
-        elif version.has_qwerty and self.psbt.active_multisig:
-            # Offer to teleport the result, which still needs signatures
-            from teleport import kt_send_psbt
-
-            await kt_send_psbt(self.psbt, self.result[0], post_signing=True)
 
     async def txn_explorer(self):
         # Page through unlimited-sized transaction details
@@ -761,7 +711,7 @@ def sign_transaction(psbt_len, flags=0x0, psbt_sha=None):
     # transaction (binary) loaded into PSRAM already, checksum checked
     UserAuthorizedAction.check_busy(ApproveTransaction)
     UserAuthorizedAction.active_request = ApproveTransaction(
-        psbt_len, flags, psbt_sha=psbt_sha, cb_kws={"input_method": "usb"}
+        psbt_len, flags, psbt_sha=psbt_sha, input_method="usb",
     )
 
     # kill any menu stack, and put our thing at the top
@@ -789,19 +739,24 @@ def psbt_encoding_taster(taste, psbt_len):
     return decoder, output_encoder, psbt_len
 
 
-async def done_signing(psbt, input_method=None, filename=None, force_vdisk=False,
+async def done_signing(psbt, tx_req, input_method=None, filename=None,
                        output_encoder=None, slot_b=False, finalize=None):
     # User authorized PSBT for signing, and we added signatures.
     # - allow PushTX if enabled (first thing)
     # - can save final TXN out to SD card/VirtDisk, share by NFC, QR.
 
-    from glob import dis, PSRAM
-    from files import CardSlot, CardMissingError
+    from glob import PSRAM, hsm_active
     from sffile import SFFile
-    from ux import show_qr_code, import_export_prompt, ux_show_story
+    from ux import show_qr_code, import_export_prompt
 
-    txid = None
+    first_time = True
+    msg = None
+    title = None
+
     is_complete = psbt.is_complete()
+    if finalize is not None:
+        # USB case - user can choose whether to attempt finalization
+        is_complete = finalize
 
     with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as psram:
         if is_complete:
@@ -815,9 +770,18 @@ async def done_signing(psbt, input_method=None, filename=None, force_vdisk=False
         data_len = psram.tell()
         data_sha2 = psram.checksum.digest()
 
-    UserAuthorizedAction.cleanup()
+    if input_method == "usb":
+        # return result over USB before going to all options
+        tx_req.result = data_len, data_sha2
+        if hsm_active:
+            # it is enough to just return back via USB, other options
+            # are pointless
+            return
 
-    first_time = True
+        first_time = False
+        msg = noun + " shared via USB."
+        title = "PSBT Signed"
+
     if txid and await try_push_tx(data_len, txid, data_sha2):
         # go directly to reexport menu after pushTX
         first_time = False
@@ -830,32 +794,45 @@ async def done_signing(psbt, input_method=None, filename=None, force_vdisk=False
     while True:
         ch = None
         if first_time:
-            # first time, assume they want to send out same way it came in -- dont prompt
+            # first time, assume they want to send out same way it came in -- don't prompt
             if input_method == "qr":
                 ch = KEY_QR
             elif input_method == "nfc":
                 ch = KEY_NFC
             elif input_method == "kt":
-                # not reached .. because we offer KT method before this is called
                 ch = 't'
             else:
                 # SD/VDisk
-                ch = {"force_vdisk": force_vdisk, "slot_b": slot_b}
+                ch = {"force_vdisk": input_method == "vdisk", "slot_b": slot_b}
 
         if not ch:
             # show all possible export options (based on hardware enabled, features)
-            ch = await import_export_prompt(noun, no_qr=not version.has_qr, offer_kt=offer_kt)
+            intro = []
+            if msg:
+                intro.append(msg)
+            if txid:
+                intro.append('TXID:\n' + txid)
 
+            ch = await import_export_prompt(noun, intro="\n\n".join(intro), offer_kt=offer_kt,
+                                            txid=txid, title=title)
         if ch == KEY_CANCEL:
+            UserAuthorizedAction.cleanup()
             break
+
+        elif txid and (ch == '6'):
+            await show_qr_code(txid, is_alnum=True, force_msg=True)
+            continue
 
         elif ch == KEY_QR:
             here = PSRAM.read_at(TXN_OUTPUT_OFFSET, data_len)
             msg = txid or 'Partly Signed PSBT'
             try:
+                if len(here) > 920:
+                    # too big for simple QR - use BBQr instead
+                    raise ValueError
                 hex_here = b2a_hex(here).upper().decode()
                 await show_qr_code(hex_here, is_alnum=True, msg=msg)
-            except (ValueError, RuntimeError):
+            except (ValueError, RuntimeError, TypeError):
                 from ux_q1 import show_bbqr_codes
                 await show_bbqr_codes('T' if txid else 'P', here, msg)
 
@@ -871,33 +848,26 @@ async def done_signing(psbt, input_method=None, filename=None, force_vdisk=False
 
             msg = noun + " shared via NFC."
 
-        elif ch == 't':
-            # after saving to card, they might want to teleport it
+        elif (ch == 't') and not is_complete:
+            # they might want to teleport it, but only if we have PSBT
+            # there is no need to teleport PSBT if txn is already complete & ready to be broadcast
             from teleport import kt_send_psbt
-            ok = await kt_send_psbt(psbt)
-            msg = 'Failed to Teleport' if not ok else 'Sent by Teleport'
+            ok, num_sigs_needed = await kt_send_psbt(psbt, data_len)
+            title = 'Sent by Teleport' if ok else 'Failed to Teleport'
+            if num_sigs_needed > 0:
+                s, aux = ("", "is") if num_sigs_needed == 1 else ("s", "are")
+                msg = "%d more signature%s %s still required." % (num_sigs_needed, s, aux)
+            continue
 
         else:
             # typical case: save to SD card, show filenames we used
             assert isinstance(ch, dict)
-            msg = await _save_to_disk(psbt, txid, ch, is_complete, data_len, output_encoder, filename)
-            if not msg:
-                # it failed so start again with all possible options enabled.
-                ch = None
-                input_method = None
-                first_time = False
-                continue
+            msg = await _save_to_disk(psbt, txid, ch, is_complete, data_len,
+                                      output_encoder, filename)
 
-        msg += '\n\n'
-        esc = '0'
-        msg += 'Press (0) to save again by another method.'
-
-        ch2 = await ux_show_story(msg, title='PSBT Signed', escape=esc)
-        if ch2 != '0':
-            break
-        else:
-            input_method = None
-            first_time = False
+        input_method = None
+        first_time = False
+        title = "PSBT Signed"
 
 async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_encoder, filename=None):
     # Saving a PSBT from PSRAM to something disk-like.
@@ -995,7 +965,7 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
 
         except OSError as exc:
             prob = 'Failed to write!\n\n%s\n\n' % exc
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
             # fall through to try again
 
         # If this point reached, some problem, we could not write.
@@ -1023,8 +993,6 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
 
     if out2_fn:
         msg += 'Finalized transaction (ready for broadcast):\n\n%s' % out2_fn
-        if txid and not del_after:
-            msg += '\n\nFinal TXID:\n' + txid
 
     return msg
 
@@ -1085,11 +1053,8 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, just_read=Fal
 
     UserAuthorizedAction.cleanup()
     UserAuthorizedAction.active_request = ApproveTransaction(
-        psbt_len,
-        approved_cb=done_signing,
-        cb_kws={"filename": filename,
-                "force_vdisk": force_vdisk,
-                "output_encoder": output_encoder}
+        psbt_len, input_method="vdisk" if force_vdisk else "sd",
+        filename=filename, output_encoder=output_encoder,
     )
     if ux_abort:
         # needed for auto vdisk mode

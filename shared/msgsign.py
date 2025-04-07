@@ -420,8 +420,7 @@ async def ux_sign_msg(txt, approved_cb=None, kill_menu=True):
     the_ux.push(MenuSystem(rv))
 
 async def msg_signing_done(signature, address, text):
-    ch = await import_export_prompt("Signed Msg", is_import=False,
-                                    no_qr=not version.has_qwerty)
+    ch = await import_export_prompt("Signed Msg")
     if ch == KEY_CANCEL:
         return
 

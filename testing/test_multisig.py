@@ -2706,7 +2706,7 @@ def bitcoind_multisig(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story, 
 @pytest.mark.parametrize("script", ["p2wsh", "p2sh-p2wsh", "p2sh"])
 @pytest.mark.parametrize('desc', ["multi", "sortedmulti"])
 def test_finalization(m_n, script, desc, use_regtest, clear_ms, bitcoind_multisig, bitcoind,
-                      try_sign, cap_story, settings_set):
+                      try_sign, cap_story, settings_set, txid_from_export_prompt, press_cancel):
     if desc == "multi":
         settings_set("unsort_ms", 1)
 
@@ -2734,15 +2734,16 @@ def test_finalization(m_n, script, desc, use_regtest, clear_ms, bitcoind_multisi
 
     psbt_bytes = base64.b64decode(psbt)
     # USB sign with COLDCARD & finalize
-    _, txn = try_sign(psbt_bytes, finalize=True)
+    _, txn = try_sign(psbt_bytes, finalize=True, exit_export_loop=False)
     tx_hex = txn.hex()
     res = wo.testmempoolaccept([tx_hex])
     assert res[0]["allowed"]
     res = wo.sendrawtransaction(tx_hex)
     assert len(res) == 64  # tx id
-    time.sleep(0.1)
-    _, story = cap_story()
-    cc_tx_id = story.split("\n\n")[0]
+
+    cc_tx_id = txid_from_export_prompt()
+    press_cancel()  # exit QR display
+    press_cancel()  # exit export loop
     assert res == cc_tx_id
 
     wo.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
@@ -2760,15 +2761,16 @@ def test_finalization(m_n, script, desc, use_regtest, clear_ms, bitcoind_multisi
 
     psbt_bytes = base64.b64decode(psbt)
     # USB sign with COLDCARD & finalize
-    _, txn = try_sign(psbt_bytes, finalize=True)
+    _, txn = try_sign(psbt_bytes, finalize=True, exit_export_loop=False)
     tx_hex = txn.hex()
     res = wo.testmempoolaccept([tx_hex])
     assert res[0]["allowed"]
     res = wo.sendrawtransaction(tx_hex)
     assert len(res) == 64  # tx id
-    time.sleep(0.1)
-    _, story = cap_story()
-    cc_tx_id = story.split("\n\n")[0]
+
+    cc_tx_id = txid_from_export_prompt()
+    press_cancel()  # exit QR display
+    press_cancel()  # exit export loop
     assert res == cc_tx_id
 
     wo.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
@@ -2779,13 +2781,14 @@ def test_finalization(m_n, script, desc, use_regtest, clear_ms, bitcoind_multisi
 @pytest.mark.parametrize("m_n", [(2,3), (3,5), (15,15)])
 @pytest.mark.parametrize("script", ["p2wsh", "p2sh-p2wsh", "p2sh"])
 @pytest.mark.parametrize("sighash", list(SIGHASH_MAP.keys()))
-@pytest.mark.parametrize("psbt_v2", [True, False])
 @pytest.mark.parametrize('desc', ["multi", "sortedmulti"])
 def test_bitcoind_MofN_tutorial(m_n, script, clear_ms, goto_home, need_keypress, pick_menu_item,
                                 sighash, cap_menu, cap_story, microsd_path, use_regtest, bitcoind,
-                                microsd_wipe, settings_set, psbt_v2, is_q1, try_sign,
-                                finalize_v2_v0_convert, press_select, desc, bitcoind_multisig):
+                                microsd_wipe, settings_set, is_q1, try_sign, press_select,
+                                finalize_v2_v0_convert, desc, bitcoind_multisig, press_cancel,
+                                txid_from_export_prompt, pytestconfig, file_tx_signing_done):
     # 2of2 case here is described in docs with tutorial
+    # TODO This test MUST be run with --psbt2 flag on and off
     if desc == "multi":
         settings_set("unsort_ms", 1)
 
@@ -2823,7 +2826,7 @@ def test_bitcoind_MofN_tutorial(m_n, script, clear_ms, goto_home, need_keypress,
         half_signed_psbt = signer.walletprocesspsbt(psbt, True, sighash, True)  # do not finalize
         psbt = half_signed_psbt["psbt"]
 
-    if psbt_v2:
+    if pytestconfig.getoption('psbt2'):
         # below is noop if psbt is already v2
         po = BasicPSBT().parse(base64.b64decode(psbt))
         po.to_v2()
@@ -2856,20 +2859,11 @@ def test_bitcoind_MofN_tutorial(m_n, script, clear_ms, goto_home, need_keypress,
     press_select()  # confirm signing
     time.sleep(0.1)
     title, story = cap_story()
-    assert "PSBT Signed" == title
     assert "Updated PSBT is:" in story
     press_select()
     os.remove(microsd_path(name))
 
-    split_story = story.split("\n\n")
-    fname = split_story[1]
-    fname_tx = split_story[3]
-    cc_tx_id = split_story[-2].split("\n")[-1]
-    with open(microsd_path(fname), "r") as f:
-        final_psbt = f.read().strip()
-
-    with open(microsd_path(fname_tx), "r") as f:
-        final_tx = f.read().strip()
+    final_psbt, final_tx, cc_tx_id = file_tx_signing_done(story)
 
     po = BasicPSBT().parse(base64.b64decode(final_psbt))
     res = finalize_v2_v0_convert(po)
@@ -2897,7 +2891,7 @@ def test_bitcoind_MofN_tutorial(m_n, script, clear_ms, goto_home, need_keypress,
         half_signed_psbt = signer.walletprocesspsbt(psbt, True, sighash, True)  # do not finalize
         psbt = half_signed_psbt["psbt"]
 
-    if psbt_v2:
+    if pytestconfig.getoption('psbt2'):
         # below is noop if psbt is already v2
         po = BasicPSBT().parse(base64.b64decode(psbt))
         po.to_v2()
@@ -2905,15 +2899,15 @@ def test_bitcoind_MofN_tutorial(m_n, script, clear_ms, goto_home, need_keypress,
 
     psbt_bytes = base64.b64decode(psbt)
     # USB sign with COLDCARD & finalize
-    _, txn = try_sign(psbt_bytes, finalize=True)
+    _, txn = try_sign(psbt_bytes, finalize=True, exit_export_loop=False)
     tx_hex = txn.hex()
     res = bitcoind_watch_only.testmempoolaccept([tx_hex])
     assert res[0]["allowed"]
     res = bitcoind_watch_only.sendrawtransaction(tx_hex)
     assert len(res) == 64  # tx id
-    time.sleep(0.1)
-    _, story = cap_story()
-    cc_tx_id = story.split("\n\n")[0]
+    cc_tx_id = txid_from_export_prompt()
+    press_cancel()  # exit QR display
+    press_cancel()  # exit export loop
     assert res == cc_tx_id
 
     bitcoind_watch_only.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())  # need to mine above tx
@@ -2931,6 +2925,10 @@ def test_bitcoind_MofN_tutorial(m_n, script, clear_ms, goto_home, need_keypress,
     x = BasicPSBT().parse(base64.b64decode(psbt))
     for idx, i in enumerate(x.inputs):
         i.sighash = SIGHASH_MAP[sighash]
+
+    if pytestconfig.getoption('psbt2'):
+        x.to_v2()
+
     psbt = x.as_b64_str()
 
     name = f"change_{M}of{N}_{script}.psbt"
@@ -2957,12 +2955,11 @@ def test_bitcoind_MofN_tutorial(m_n, script, clear_ms, goto_home, need_keypress,
         assert "missing" in story
         return
 
-    assert "PSBT Signed" == title
     assert "Updated PSBT is:" in story
-    press_select()
-    fname = story.split("\n\n")[-2]
-    with open(microsd_path(fname), "r") as f:
-        cc_signed_psbt = f.read().strip()
+    cc_signed_psbt, _txn, _txid = file_tx_signing_done(story)
+    assert _txn is None and _txid is None
+
+    press_cancel()  # exit re-export loop
 
     po = BasicPSBT().parse(base64.b64decode(cc_signed_psbt))
     cc_signed_psbt = finalize_v2_v0_convert(po)["psbt"]
@@ -3330,7 +3327,6 @@ def test_bare_cc_ms_qr_import(N, make_multisig, scan_a_qr, clear_ms, goto_home,
     press_cancel()
 
 
-@pytest.mark.parametrize("psbtv2", [True, False])
 @pytest.mark.parametrize("desc", ["multi", "sortedmulti"])
 @pytest.mark.parametrize("data", [
     # (out_style, amount, is_change)
@@ -3339,8 +3335,9 @@ def test_bare_cc_ms_qr_import(N, make_multisig, scan_a_qr, clear_ms, goto_home,
     [("p2wsh-p2sh", 1000000, 1)] * 18 + [("p2wsh", 50000000, 0)] * 12,
     [("p2sh", 1000000, 1), ("p2wsh-p2sh", 50000000, 0), ("p2wsh", 800000, 1)] * 14,
 ])
-def test_txout_explorer(psbtv2, data, clear_ms, import_ms_wallet, fake_ms_txn,
-                        start_sign, txout_explorer, desc):
+def test_txout_explorer(data, clear_ms, import_ms_wallet, fake_ms_txn,
+                        start_sign, txout_explorer, desc, pytestconfig):
+    # TODO This test MUST be run with --psbt2 flag on and off
     clear_ms()
     M, N = 2, 3
     descriptor, bip67 = False, True
@@ -3362,7 +3359,8 @@ def test_txout_explorer(psbtv2, data, clear_ms, import_ms_wallet, fake_ms_txn,
     inp_amount = sum(outvals) + 100000  # 100k sat fee
     psbt = fake_ms_txn(1, len(data), M, keys, outstyles=outstyles,
                        outvals=outvals, change_outputs=change_outputs,
-                       input_amount=inp_amount, psbt_v2=psbtv2, bip67=bip67)
+                       input_amount=inp_amount, psbt_v2=pytestconfig.getoption('psbt2'),
+                       bip67=bip67)
     start_sign(psbt)
     txout_explorer(data)
 

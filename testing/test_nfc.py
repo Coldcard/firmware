@@ -244,7 +244,7 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
             for r in range(10):
                 time.sleep(0.1)
                 title, story = cap_story()
-                if title == 'PSBT Signed': break
+                if "shared via NFC" in story: break
             else:
                 assert False, 'timed out'
 
@@ -347,7 +347,7 @@ def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress,
                    cap_story, is_q1, press_nfc, press_cancel):
     # Read signing result (transaction) over NFC, decode it.
     psbt = fake_txn(1, num_outs)
-    orig, result = try_sign(psbt, accept=True, finalize=True)
+    orig, result = try_sign(psbt, accept=True, finalize=True, exit_export_loop=False)
 
     too_big = len(result) > 8000
 
@@ -356,18 +356,20 @@ def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress,
 
     time.sleep(.1)
     title, story = cap_story()
-    assert 'TXID' in title, story
-    txid = a2b_hex(story.split()[0])
-    assert f'Press {KEY_NFC if is_q1 else "(3)"}' in story
+    assert 'TXID' in story, story
+    txid = a2b_hex(story.split("\n")[3])
+    assert f'press {KEY_NFC if is_q1 else "(3)"}' in story
     press_nfc()
     time.sleep(.2)
 
     if too_big:
         title, story = cap_story()
         assert 'is too large' in story
+        press_cancel()
         return
 
     contents = nfc_read()
+    press_cancel()
     press_cancel()
 
     #print("contents = " + B2A(contents))
@@ -482,7 +484,7 @@ def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
         psbt = fake_txn(2, num_outs)
 
     if way == "usb":
-        _, result = try_sign(psbt, finalize=True)
+        _, result = try_sign(psbt, finalize=True, exit_export_loop=False)
     elif way == "sd":
         ip, result, txid = try_sign_microsd(psbt, finalize=True, nfc_push_tx=True)
     elif way == "nfc":
@@ -501,10 +503,9 @@ def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
         time.sleep(.1)
         title, story = cap_story()
         if way == "usb":
-            assert title == 'Final TXID'
-            assert 'to share signed txn' in story
+            assert 'TXID' in story
         elif way == "sd":
-            assert title == "PSBT Signed"
+            assert ('Updated PSBT' in story) or ('Finalized transaction' in story)
         else:
             assert False
         return
