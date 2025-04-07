@@ -543,9 +543,9 @@ async def start_export(notes):
     singular = (len(notes) == 1)
 
     item = notes[0].type_label if singular else  'all notes & passwords'
-    choice = await import_export_prompt(item, is_import=False, title="Data Export", no_nfc=True,
-                    footnotes="\n\nWARNING: No encryption happens here. "
-                                            "Your secrets will be cleartext.")
+    choice = await import_export_prompt(item, title="Data Export", no_nfc=True,
+                                        footnotes="WARNING: No encryption happens here."
+                                                  " Your secrets will be cleartext.")
     if choice == KEY_CANCEL:
         return
 

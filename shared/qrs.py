@@ -81,7 +81,16 @@ class QRDisplaySingle(UserInteraction):
 
         # draw display
         dis.busy_bar(False)
-        dis.draw_qr_display(self.qr_data, self.msg or body, self.is_alnum,
+
+        if self.msg:
+            msg = self.msg
+        else:
+            msg = None
+            if isinstance(body, str) and not has_qwerty:
+                # on Mk4 if no self.msg, we show part of the body
+                msg = body
+
+        dis.draw_qr_display(self.qr_data, msg, self.is_alnum,
                             self.sidebar, self.idx_hint(), self.invert,
                             is_addr=self.is_addrs, force_msg=self.force_msg)
 
@@ -103,7 +112,7 @@ class QRDisplaySingle(UserInteraction):
                     break
                 else:
                     # Share any QR over NFC!
-                    await NFC.share_text(self.addrs[self.idx], secret=self.secret)
+                    await NFC.share_text(self.addrs[self.idx], is_secret=self.is_secret)
                     self.redraw()
                 continue
             elif ch in 'xy'+KEY_ENTER+KEY_CANCEL:

@@ -523,7 +523,6 @@ class NFCHandler:
         from auth import psbt_encoding_taster, TXN_INPUT_OFFSET
         from auth import UserAuthorizedAction, ApproveTransaction
         from ux import the_ux
-        from auth import done_signing
         from sffile import SFFile
 
         data = await self.start_nfc_rx()
@@ -567,10 +566,9 @@ class NFCHandler:
         # start signing UX
         UserAuthorizedAction.cleanup()
         UserAuthorizedAction.active_request = ApproveTransaction(
-            psbt_len, 0x0, psbt_sha=psbt_sha,
-            approved_cb=done_signing,
-            cb_kws={"input_method": "nfc",
-                    "output_encoder": output_encoder})
+            psbt_len, psbt_sha=psbt_sha, input_method="nfc",
+            output_encoder=output_encoder
+        )
         # kill any menu stack, and put our thing at the top
         the_ux.push(UserAuthorizedAction.active_request)
 

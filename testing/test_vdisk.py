@@ -94,7 +94,6 @@ def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, pre
         # wait for it to finish signing
         time.sleep(.1)
         title, story = cap_story()
-        assert "PSBT Signed" in title
 
         split_story = story.split("\n\n")
         result_fn = split_story[1]
@@ -103,11 +102,7 @@ def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, pre
         if expect_finalize:
             result_txn = split_story[3]
             result_txid = split_story[4].split("\n")[-1]
-            reexport_msg = split_story[5]
-        else:
-            reexport_msg = split_story[2]
 
-        assert "Press (0) to save again by another method." == reexport_msg
         got_psbt = None
         got_txn = None
         txid, got_txid = None, None

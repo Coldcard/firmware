@@ -1878,9 +1878,9 @@ async def ready2sign(*a):
 Put the proposed transaction onto MicroSD card \
 in PSBT format (Partially Signed Bitcoin Transaction) \
 or upload a transaction to be signed \
-from your desktop wallet software or command line tools.\n\n'''
+from your desktop wallet software or command line tools.'''
 
-        footnotes = ("\n\nYou will always be prompted to confirm the details "
+        footnotes = ("You will always be prompted to confirm the details "
                      "before any signature is performed.")
 
         # if we have only one SD card inserted, at this point, we know no PSBTs on them

@@ -82,7 +82,7 @@ def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_s
 
             url = nfc_read_url().replace('%24', '$')
 
-            assert url.startswith('https://keyteleport.com#')
+            assert url.startswith('https://keyteleport.com/#')
 
             nfc_data = url.rsplit('#')[1]
             assert nfc_data.startswith(f'B$2{tt_code}0100') 
@@ -401,6 +401,7 @@ def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_ite
     # now, send that back
     rx_complete(data, pw, expect_fail=True)
 
+    time.sleep(.1)
     title, body = cap_story()
 
     assert title == 'Teleport Fail'
@@ -416,11 +417,11 @@ def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_ite
 @pytest.mark.parametrize('incl_xpubs', [ False ])
 def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, dev, clear_ms,
                         fake_ms_txn, try_sign, incl_xpubs, bitcoind, cap_story, need_keypress,
-    cap_menu, pick_menu_item, grab_payload, rx_complete, press_select, ndef_parse_txn_psbt,
-    press_nfc, nfc_read, settings_get, settings_set):
+                          cap_menu, pick_menu_item, grab_payload, rx_complete, press_select,
+                          ndef_parse_txn_psbt, press_nfc, nfc_read, settings_get, settings_set,
+                          txid_from_export_prompt):
 
     # IMPORTANT: won't work if you start simulator with --ms flag. Use no args
-
     all_out_styles = list(unmap_addr_fmt.keys())
     num_outs = len(all_out_styles)
 
@@ -440,13 +441,15 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
     cur_wallet = 0
     my_xfp = select_wallet(cur_wallet)
 
-    _, updated = try_sign(psbt, accept_ms_import=incl_xpubs)
+    _, updated = try_sign(psbt, accept_ms_import=incl_xpubs, exit_export_loop=False)
     open(f'debug/myself-after-1.psbt', 'wb').write(updated)
     assert updated != psbt
 
     title, body = cap_story()
-    assert title == 'Teleport PSBT?'
-    assert 'Press (T)' in body
+    assert title == "PSBT Signed"
+    assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
+
+    num_sigs_needed = M - 1  # we have already signed with first at this point
 
     while 1:
         # expect: a menu of other signers to pick from
@@ -483,6 +486,13 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
         nn = xfp2str(next_xfp)
         open(f'debug/next_qr_{nn}.txt', 'wt').write(f'{nn}\n\n{pw}\n\n{data}')
 
+        time.sleep(.1)
+        title, story = cap_story()
+        assert title == 'Sent by Teleport'
+        s, aux = ("", "is") if num_sigs_needed == 1 else ("s", "are")
+        msg = "%d more signature%s %s still required." % (num_sigs_needed, s, aux)
+        assert msg in story
+
         # switch personalities, and try to read that QR
         new_xfp = select_wallet(idx)
         assert new_xfp == next_xfp
@@ -499,14 +509,14 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
         time.sleep(.25)
 
         title, body = cap_story()
-        if title != 'Teleport PSBT?':
+        if 'Finalized TX' in body:
             break
 
-        assert title == 'Teleport PSBT?'
-        assert 'more signatures' in body
+        assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
+        num_sigs_needed -= 1
 
-    assert title == 'Final TXID'
-    txid = body.split()[0]
+    txid = txid_from_export_prompt()
+    press_select()  # exit QR
     
     # share signed txn via low-level NFC
     press_nfc()
@@ -519,11 +529,11 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
     assert got_txn
 
 
-def test_teleport_big_ms(make_myself_wallet, clear_ms,
-                        fake_ms_txn, try_sign, cap_story, need_keypress,
-    cap_menu, pick_menu_item, grab_payload, rx_complete, press_select, ndef_parse_txn_psbt,
-    set_master_key, 
-    goto_home, press_nfc, nfc_read, settings_get, settings_set, open_microsd, import_ms_wallet):
+def test_teleport_big_ms(make_myself_wallet, clear_ms, fake_ms_txn, try_sign, cap_story,
+                         need_keypress, cap_menu, pick_menu_item, grab_payload, rx_complete,
+                         press_select, ndef_parse_txn_psbt, set_master_key, goto_home, press_nfc,
+                         nfc_read, settings_get, settings_set, open_microsd, import_ms_wallet,
+                         press_cancel):
 
     # define lots of wallets and do teleport from SD disk
 
@@ -567,8 +577,8 @@ def test_teleport_big_ms(make_myself_wallet, clear_ms,
 
     # have 1 sigs now, need one more via teleport
     title, body = cap_story()
-    assert title == 'Teleport PSBT?'
-    need_keypress('t')   
+    assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
+    need_keypress('t')
 
     # pick another one randomly
     m = cap_menu()
@@ -600,8 +610,8 @@ def test_teleport_big_ms(make_myself_wallet, clear_ms,
     time.sleep(.25)
 
     title, body = cap_story()
-
-    assert title == 'Final TXID'
+    assert 'Finalized TX' in body
+    press_cancel()
 
 
 @pytest.mark.manual

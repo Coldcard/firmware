@@ -1287,14 +1287,15 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
         for r in range(10):
             time.sleep(0.1)
             title, story = cap_story()
-            if title == 'PSBT Signed': break
+            if 'Updated PSBT' in story: break
+            if 'Finalized transaction' in story: break
         else:
             assert False, 'timed out'
 
         lines = story.split('\n')
         txid = None
-        if 'Final TXID:' in lines:
-            txid = lines[lines.index('Final TXID:')+1]
+        if 'TXID:' in lines:
+            txid = lines[lines.index('TXID:')+1]
 
         # This is fragile!
         # ignore "Press (T) to use Key Teleport to send PSBT to other co-signers" footer
@@ -1359,9 +1360,11 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
 @pytest.fixture
 def try_sign(start_sign, end_sign):
 
-    def doit(filename_or_data, accept=True, finalize=False, accept_ms_import=False):
+    def doit(filename_or_data, accept=True, finalize=False, accept_ms_import=False,
+             exit_export_loop=True):
         ip = start_sign(filename_or_data, finalize=finalize)
-        return ip, end_sign(accept, finalize=finalize, accept_ms_import=accept_ms_import)
+        return ip, end_sign(accept, finalize=finalize, accept_ms_import=accept_ms_import,
+                            exit_export_loop=exit_export_loop)
 
     return doit
 
@@ -1387,10 +1390,11 @@ def start_sign(dev):
     return doit
 
 @pytest.fixture
-def end_sign(dev, need_keypress):
+def end_sign(dev, need_keypress, press_cancel):
     from ckcc_protocol.protocol import CCUserRefused
 
-    def doit(accept=True, in_psbt=None, finalize=False, accept_ms_import=False, expect_txn=True):
+    def doit(accept=True, finalize=False, accept_ms_import=False, expect_txn=True,
+             exit_export_loop=True):
 
         if accept_ms_import:
             # XXX would be better to do cap_story here, but that would limit test to simulator
@@ -1444,6 +1448,9 @@ def end_sign(dev, need_keypress):
                     
         for sig in sigs:
             assert len(sig) <= 71, "overly long signature observed"
+
+        if exit_export_loop:
+            press_cancel()  # landed back to export prompt - exit
 
         return psbt_out
 
@@ -1872,9 +1879,47 @@ def load_export_and_verify_signature(microsd_path, virtdisk_path, verify_detache
     return doit
 
 @pytest.fixture
+def file_tx_signing_done(virtdisk_path, microsd_path):
+    def doit(story, encoding="base64", is_vdisk=False):
+        path_f = virtdisk_path if is_vdisk else microsd_path
+        enc = "rb" if encoding == "binary" else "r"
+        _split = story.split("\n\n")
+        export = None
+        if 'Updated PSBT is:' == _split[0]:
+            fname = _split[1]
+            path = path_f(fname)
+            with open(path, enc) as f:
+                export = f.read().strip()
+
+            export_tx = None
+            if "Finalized transaction (ready for broadcast)" in _split[2]:
+                fname_tx = _split[3]
+                path_tx = path_f(fname_tx)
+                with open(path_tx, enc) as f:
+                    export_tx = f.read().strip()
+        else:
+            # just finalized tx
+            assert "Finalized transaction (ready for broadcast):" == _split[0]
+            fname_tx = _split[1]
+            path_tx = path_f(fname_tx)
+            with open(path_tx, enc) as f:
+                export_tx = f.read()
+
+        txid = None
+        for l in _split:
+            if "TXID" in l:
+                txid = l.split("\n")[-1].strip()
+                assert len(txid) == 64, "wrong txid"
+                break
+
+        return export, export_tx, txid
+
+    return doit
+
+@pytest.fixture
 def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_text, nfc_read_json,
                 load_export_and_verify_signature, is_q1, press_cancel, press_select, readback_bbqr,
-                cap_screen_qr, nfc_read_txn):
+                cap_screen_qr, nfc_read_txn, file_tx_signing_done):
     def doit(way, label, is_json, sig_check=True, addr_fmt=AF_CLASSIC, ret_sig_addr=False,
              tail_check=None, sd_key=None, vdisk_key=None, nfc_key=None, ret_fname=False,
              fpattern=None, qr_key=None, is_tx=False, encoding="base64"):
@@ -1954,29 +1999,7 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 label=label, tail_check=tail_check, fpattern=fpattern
             )
         elif is_tx:
-            enc = "rb" if encoding == "binary" else "r"
-            _split = story.split("\n\n")
-            export = None
-            if 'Updated PSBT is:' == _split[0]:
-                fname = _split[1]
-                path = path_f(fname)
-                with open(path, enc) as f:
-                    export = f.read()
-
-                export_tx = None
-                if "Finalized transaction (ready for broadcast)" in _split[2]:
-                    fname_tx = _split[3]
-                    path_tx = path_f(fname_tx)
-                    with open(path_tx, enc) as f:
-                        export_tx = f.read()
-            else:
-                # just finalized tx
-                assert "Finalized transaction (ready for broadcast):" == _split[0]
-                fname_tx = _split[1]
-                path_tx = path_f(fname_tx)
-                with open(path_tx, enc) as f:
-                    export_tx = f.read()
-
+            export, export_tx, _ = file_tx_signing_done(story, encoding, is_vdisk=(way == "vdisk"))
             return export, export_tx
         else:
             assert f"{label} file written" in story
@@ -2014,7 +2037,6 @@ def signing_artifacts_reexport(cap_story, need_keypress, load_export, press_canc
         def _check_story(the_way):
             time.sleep(.2)
             title, story = cap_story()
-            assert title == "PSBT Signed"
 
             if the_way in ["qr", "nfc"]:
                 what = label + " shared via %s." % the_way.upper()
@@ -2026,9 +2048,6 @@ def signing_artifacts_reexport(cap_story, need_keypress, load_export, press_canc
                     assert "Finalized transaction (ready for broadcast)" in story
                     if txid:
                         assert txid in story
-
-            assert "Press (0) to save again" in story
-            need_keypress("0")
 
         to_do = ["sd", "vdisk", "nfc", "qr"]
         if not is_usb:
@@ -2544,6 +2563,7 @@ from test_notes import need_some_notes, need_some_passwords
 from test_nfc import try_sign_nfc, ndef_parse_txn_psbt
 from test_se2 import goto_trick_menu, clear_all_tricks, new_trick_pin, se2_gate, new_pin_confirmed
 from test_seed_xor import restore_seed_xor
+from test_sign import txid_from_export_prompt
 from test_ux import pass_word_quiz, word_menu_entry, enable_hw_ux
 from txn import fake_txn
 

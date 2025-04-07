@@ -993,7 +993,7 @@ class QRScannerInteraction:
 async def qr_psbt_sign(decoder, psbt_len, raw):
     # Got a PSBT coming in from QR scanner. Sign it.
     # - similar to auth.sign_psbt_file()
-    from auth import UserAuthorizedAction, ApproveTransaction, done_signing
+    from auth import UserAuthorizedAction, ApproveTransaction
     from ux import the_ux
     from sffile import SFFile
     from auth import TXN_INPUT_OFFSET, psbt_encoding_taster
@@ -1024,9 +1024,8 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
 
     UserAuthorizedAction.cleanup()
     UserAuthorizedAction.active_request = ApproveTransaction(
-        psbt_len, approved_cb=done_signing,
-        cb_kws={"input_method": "qr",
-                "output_encoder": output_encoder}
+        psbt_len, input_method="qr",
+        output_encoder=output_encoder
     )
     the_ux.push(UserAuthorizedAction.active_request)
 
@@ -1193,19 +1192,18 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
         # BBQr header
         hdr = 'B$' + encoding + type_code + int2base36(num_parts) + int2base36(pkt)
 
-        # encode the bytes
         assert pos < data_len, (pkt, pos, data_len)
         if already_hex:
-            # not encoding, just chars->bytes
+            # not encoding, just hex string
             hp = pos*2
-            body = data[hp:hp+(part_size*2)].decode()
+            body = data[hp:hp+(part_size*2)]
         else:
-            # base32 encoding
+            # encode bytes to base32 encoding
             body = b32encode(data[pos:pos+part_size])
 
         pos += part_size
 
-        # first first packet, want to discover a working small value for QR version
+        # first packet, want to discover a working small value for QR version
         if pkt == 0:
             mnv = 10 if num_parts > 1 else 1
         else:

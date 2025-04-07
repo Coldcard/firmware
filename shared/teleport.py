@@ -4,11 +4,10 @@
 #               secure environment of two Q's.
 #
 import ngu, aes256ctr, bip39, json, ndef, chains
-from io import BytesIO
 from utils import xfp2str, deserialize_secret
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
-from glob import settings
+from glob import settings, dis
 from ux import ux_show_story, ux_confirm, the_ux, ux_dramatic_pause
 from ux_q1 import show_bbqr_codes, QRScannerInteraction, ux_input_text
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
@@ -192,8 +191,9 @@ WARNING: Receiver will have full access to all Bitcoin controlled by these keys!
 
 async def kt_do_send(rx_pubkey, dtype, raw=None, obj=None, prefix=b'', rx_label='the receiver', kp=None):
     # We are rendering a QR and showing it to them for sending to another Q
-    from glob import dis
+    dis.fullscreen("Wait...")
     cleartext = dtype.encode() + (raw or json.dumps(obj).encode())
+    dis.progress_bar_show(0.1)
 
     # Pick and show noid key to sender
     noid_key, txt = pick_noid_key()
@@ -214,8 +214,8 @@ async def kt_do_send(rx_pubkey, dtype, raw=None, obj=None, prefix=b'', rx_label=
                 "\n\n   %s  =  %s\n\n" % (rx_label, txt, txt_grouper(txt))
     msg += "ENTER to view QR"
 
-    await tk_show_payload('S' if not prefix else 'E',
-                                payload, 'Teleport Password', msg, cta='Show to Receiver')
+    await tk_show_payload('S' if not prefix else 'E', payload,
+                          'Teleport Password', msg, cta='Show to Receiver')
 
     if not prefix:
         # not PSBT case ... reset menus, we are deep!
@@ -269,7 +269,6 @@ async def kt_decode_rx(is_psbt, payload):
                 "Sender must start again.", title="Teleport Fail")
         return
 
-    from glob import dis
     while 1:
         # ask for noid key
         pw = await ux_input_text('', confirm_exit=False, hex_only=False, max_len=8,
@@ -312,6 +311,7 @@ async def kt_accept_values(dtype, raw):
     '''
     from flow import has_se_secrets, goto_top_menu
 
+    dis.fullscreen("Wait...")
     enc = None
     origin = 'Teleported'
     label = None
@@ -341,7 +341,8 @@ async def kt_accept_values(dtype, raw):
             out.write(raw)
 
         # This will take over UX w/ the signing process
-        sign_transaction(psbt_len, flags=STXN_FINALIZE)
+        # flags=None --> whether to finalize is decided based on psbt.is_complete
+        sign_transaction(psbt_len, flags=None)
         return
 
     elif dtype == 'b':
@@ -579,7 +580,6 @@ class SecretPickerMenu(MenuSystem):
         if ch != 'y': return
 
         from backups import render_backup_contents
-        from glob import dis
 
         dis.fullscreen("Buiding Backup...")
 
@@ -620,7 +620,7 @@ class SecretPickerMenu(MenuSystem):
         await kt_do_send(self.rx_pubkey, 's', raw=raw)
 
 
-async def kt_send_psbt(psbt, psbt_len=None, post_signing=False):
+async def kt_send_psbt(psbt, psbt_len):
     # We just finished adding our signature to an incomplete PSBT.
     # User wants to send to one or more other senders for them to complete signing.
 
@@ -632,44 +632,14 @@ async def kt_send_psbt(psbt, psbt_len=None, post_signing=False):
     # maybe it's not really a PSBT where we know the other signers? might be
     # a weird coinjoin we don't fully understand
     if not need:
-        if not post_signing:
-            await ux_show_story("No more signers?")
+        await ux_show_story("No more signers?")
         return
 
-    num_to_complete = ms.M - (ms.N - len(need))
+    # move out of PSRAM
+    from auth import TXN_OUTPUT_OFFSET
 
-    if post_signing:
-        # They just approved and signed a MS txn perhaps via USB or QR or any source
-        # - offer to save?
-        # - offer them to teleport it (we only come this far if possible)
-
-        if num_to_complete <= 0:
-            # Sufficiently signed. We can probably finalize it too.
-            # - if from USB, we'd be uploading back, SD would be saved, etc
-            return
-        
-        ch = await ux_show_story("%d more signatures are still required. Press (T) to pick another co-signer to sign next, using QR codes, or ENTER for other options." % num_to_complete, title="Teleport PSBT?", escape='t')
-        if ch != 't': 
-            # ENTER/CANCEL both come here because we don't want to lose the PSBT
-            # - they can also do a "T" and teleport again
-            from auth import done_signing
-            await done_signing(psbt)
-            return
-        
-
-    if not psbt_len:
-        # we need it serialized, might have only saved into Base64 or something
-        with BytesIO() as fd:
-            psbt.serialize(fd)      # need prog bar?
-
-            psbt_len = fd.tell()
-            bin_psbt = fd.getvalue()
-    else:
-        # move out of PSRAM
-        from auth import TXN_OUTPUT_OFFSET
-
-        with SFFile(TXN_OUTPUT_OFFSET, psbt_len) as fd:
-            bin_psbt = fd.read(psbt_len)
+    with SFFile(TXN_OUTPUT_OFFSET, psbt_len) as fd:
+        bin_psbt = fd.read(psbt_len)
 
     my_xfp = settings.get('xfp')
 
@@ -701,7 +671,8 @@ async def kt_send_psbt(psbt, psbt_len=None, post_signing=False):
 
                 async def sign_now(*a):
                     # this will reset the UX stack:
-                    sign_transaction(psbt_len, flags=STXN_FINALIZE)
+                    # flags=None --> whether to finalize is decided based on psbt.is_complete
+                    sign_transaction(psbt_len, flags=None)
                 
                 f = sign_now
 
@@ -743,7 +714,6 @@ async def kt_send_file_psbt(*a):
     from version import MAX_TXN_LEN
     from ux import import_export_prompt
     from psbt import psbtObject
-    from glob import dis
 
     # choose any PSBT from SD
     picked = await import_export_prompt("PSBT", is_import=True, no_nfc=True, no_qr=True)
