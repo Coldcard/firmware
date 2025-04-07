@@ -579,6 +579,9 @@ class SecretPickerMenu(MenuSystem):
         if ch != 'y': return
 
         from backups import render_backup_contents
+        from glob import dis
+
+        dis.fullscreen("Buiding Backup...")
 
         # renders a text file, with rather a lot of comments; strip them
         bkup = render_backup_contents(bypass_tmp=True)
