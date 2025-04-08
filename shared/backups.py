@@ -383,15 +383,17 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
             ckcc.rng_bytes(b)
             pwd = bip39.b2a_words(b).rsplit(' ', num_pw_words)[0]
 
-            ch = await seed.show_words(prompt="Record this (%d word) backup file password:\n",
-                                       words=pwd.split(" "), escape='6')
+            ch = await seed.show_words(
+                prompt="Record this (%d word) backup file password:\n" % num_pw_words,
+                words=pwd.split(" "), escape='6'
+            )
 
-            if ch == '6' and not write_sflash:
+            if (ch == '6') and not write_sflash:
                 # Secret feature: plaintext mode
                 # - only safe for people living in faraday cages inside locked vaults.
                 if await ux_confirm("The file will **NOT** be encrypted and "
                                     "anyone who finds the file will get all of your money for free!"):
-                    words = []
+                    pwd = []
                     fname_pattern = 'backup.txt'
                     break
                 continue
@@ -486,11 +488,9 @@ async def write_complete_backup(pwd, fname_pattern, write_sflash=False,
 
         except Exception as e:
             # includes CardMissingError
-            import sys
-            sys.print_exception(e)
             # catch any error
             ch = await ux_show_story('Failed to write! Please insert formated MicroSD card, '
-                                    'and press %s to try again.\n\nX to cancel.\n\n\n' % OK +str(e))
+                                    'and press %s to try again.\n\n%s to cancel.\n\n\n%s' % (OK, X, e))
             if ch == 'x': break
             continue
 
