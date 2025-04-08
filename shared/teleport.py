@@ -42,7 +42,7 @@ def txt_grouper(txt):
 async def nfc_push_kt(qrdata):
     # NFC push to send them to our QR-rendering website
 
-    url = KT_DOMAIN + '#' + qrdata
+    url = KT_DOMAIN + '/#' + qrdata
 
     n = ndef.ndefMaker()
     n.add_url(url, https=True)
