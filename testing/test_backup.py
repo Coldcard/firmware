@@ -142,7 +142,7 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
             words = ['zoo'] * 12
         else:
             assert title == 'NO-TITLE'
-            assert 'Record this' in body
+            assert 'Record this (12 word)' in body
             assert 'password:' in body
 
             words = seed_story_to_words(body)
