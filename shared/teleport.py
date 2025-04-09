@@ -702,7 +702,7 @@ async def kt_send_psbt(psbt, psbt_len):
         await kt_do_send(rx_pubkey, 'p', raw=bin_psbt, prefix=ri, kp=kp,
                         rx_label='[%s] co-signer' % xfp2str(m.next_xfp))
 
-        return True
+        return True, ms.M - (ms.N - len(need))
 
 async def kt_send_file_psbt(*a):
     # Menu item: choose a PSBT file from SD card, and send to co-signers.
