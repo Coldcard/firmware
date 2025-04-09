@@ -852,11 +852,14 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
             # they might want to teleport it, but only if we have PSBT
             # there is no need to teleport PSBT if txn is already complete & ready to be broadcast
             from teleport import kt_send_psbt
-            ok, num_sigs_needed = await kt_send_psbt(psbt, data_len)
-            title = 'Sent by Teleport' if ok else 'Failed to Teleport'
-            if num_sigs_needed > 0:
-                s, aux = ("", "is") if num_sigs_needed == 1 else ("s", "are")
-                msg = "%d more signature%s %s still required." % (num_sigs_needed, s, aux)
+            ok = await kt_send_psbt(psbt, data_len)
+            if ok is None:
+                title = "Failed to Teleport"
+            else:
+                _, num_sigs_needed = ok
+                if num_sigs_needed > 0:
+                    s, aux = ("", "is") if num_sigs_needed == 1 else ("s", "are")
+                    msg = "%d more signature%s %s still required." % (num_sigs_needed, s, aux)
             continue
 
         else:
