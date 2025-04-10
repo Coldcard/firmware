@@ -580,7 +580,10 @@ class NFCHandler:
         n.setup()
         assert n.uid
 
-        aborted = await n.share_text("NFC is working: %s" % n.get_uid(), allow_enter=False)
+        nn = ndef.ndefMaker()
+        nn.add_text("NFC is working: %s" % n.get_uid())
+
+        aborted = await n.share_start(nn, allow_enter=False)
         assert not aborted, "Aborted"
     
     async def share_file(self):
