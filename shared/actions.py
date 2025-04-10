@@ -1495,47 +1495,52 @@ async def qr_share_file(_1, _2, item):
         return f.endswith('.psbt') or f.endswith('.txn') \
             or f.endswith('.txt') or f.endswith(".json") or fname.endswith(".sig")
 
-    while 1:
-        txid = None
-        fn = await file_picker(min_size=10, max_size=MAX_TXN_LEN, taster=is_suitable)
-        if not fn: return
+    try:
+        while 1:
+            txid = None
+            fn = await file_picker(min_size=10, max_size=MAX_TXN_LEN, taster=is_suitable)
+            if not fn: return
 
-        basename = fn.split('/')[-1]
-        ext = fn.split('.')[-1].lower()
+            basename = fn.split('/')[-1]
+            ext = fn.split('.')[-1].lower()
 
-        try:
-            with CardSlot() as card:
-                with open(fn, 'rb') as fp:
-                    data = fp.read()
+            try:
+                with CardSlot() as card:
+                    with open(fn, 'rb') as fp:
+                        data = fp.read()
 
-        except CardMissingError:
-            await needs_microsd()
-            return
+            except CardMissingError:
+                await needs_microsd()
+                return
 
-        if ext == "txn":
-            tc = "T"
-            txid = txid_from_fname(basename)
-            if data[2:8] == b'000000':
-                # it's a txn, and we wrote as hex
+            if ext == "txn":
+                tc = "T"
+                txid = txid_from_fname(basename)
+                if data[2:8] == b'000000':
+                    # it's a txn, and we wrote as hex
+                    data = data.decode()
+                else:
+                    assert data[2:8] == bytes(6)
+                    data = b2a_hex(data).decode()
+            elif data[0:5] == b'psbt\xff':
+                tc = "P"
+            elif data[0:6] in (b'cHNidP', b'707362'):
+                tc = "U"
+                data = data.decode().strip()
+            elif ext in ('txt', 'json', 'sig'):
+                tc = "U"
+                if ext == "json":
+                    tc = "J"
                 data = data.decode()
             else:
-                assert data[2:8] == bytes(6)
-                data = b2a_hex(data).decode()
-        elif data[0:5] == b'psbt\xff':
-            tc = "P"
-        elif data[0:6] in (b'cHNidP', b'707362'):
-            tc = "U"
-            data = data.decode().strip()
-        elif ext in ('txt', 'json', 'sig'):
-            tc = "U"
-            if ext == "json":
-                tc = "J"
-            data = data.decode()
-        else:
-            raise ValueError(ext)
+                raise ValueError(ext)
 
-        await export_by_qr(data, txid, tc, force_bbqr=force_bbqr)
-
+            await export_by_qr(data, txid, tc, force_bbqr=force_bbqr)
+    except Exception as e:
+        await ux_show_story(
+            title="ERROR",
+            msg="Failed to share file via QR.\n\n%s\n%s" % (e, problem_file_line(e))
+        )
 
 async def nfc_share_file(*A):
     # Share txt, txn and PSBT files over NFC.

@@ -856,6 +856,7 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
             if ok is None:
                 title = "Failed to Teleport"
             else:
+                title = "Sent by Teleport"
                 _, num_sigs_needed = ok
                 if num_sigs_needed > 0:
                     s, aux = ("", "is") if num_sigs_needed == 1 else ("s", "are")
