@@ -276,17 +276,14 @@ async def kt_decode_rx(is_psbt, payload):
                 placeholder='********', funct_keys=None, force_xy=None)
         if not pw: return
 
-        dis.progress_bar_show(0)
+        dis.fullscreen("Wait...")
         try:
             assert len(pw) == 8
             noid_key = b32decode(pw)       # case insenstive, and smart about confused chars
             final = decode_step2(ses_key, noid_key, body)
             if final is not None: 
                 break
-        except:
-            pass
-        finally:
-            dis.progress_bar_show(1)
+        except: pass
 
         ch = await ux_show_story(
                 "Incorrect Teleport Password. You can try again or CANCEL to stop.")
@@ -311,7 +308,6 @@ async def kt_accept_values(dtype, raw):
     '''
     from flow import has_se_secrets, goto_top_menu
 
-    dis.fullscreen("Wait...")
     enc = None
     origin = 'Teleported'
     label = None
@@ -332,7 +328,6 @@ async def kt_accept_values(dtype, raw):
     elif dtype == 'p':
         # raw PSBT -- much bigger more complex
         from auth import sign_transaction, TXN_INPUT_OFFSET
-        from public_constants import STXN_FINALIZE
 
         psbt_len = len(raw)
 
@@ -356,6 +351,9 @@ async def kt_accept_values(dtype, raw):
 
         if has_secrets():
             # restores as tmp secret and/or offers to save to SeedVault
+            # need to remove key before I get into tmp seed settings
+            # so even if this errors out, new ktrx is needed
+            settings.remove_key("ktrx")
             prob = await restore_tmp_from_dict_ll(vals)
         else:
             # we have no secret, so... reboot if it works, else errors shown, etc.
@@ -365,6 +363,7 @@ async def kt_accept_values(dtype, raw):
             await ux_show_story(prob, title='FAILED')
         else:
             # force new rx key because this tfr worked
+            # only has effect if in master seed settings
             settings.remove_key("ktrx")         
         return
 
@@ -475,7 +474,6 @@ def decode_step2(session_key, noid_key, body):
 
 async def kt_incoming(type_code, payload):
     # incoming BBQr was scanned (via main menu, etc)
-    from exceptions import QRDecodeExplained
 
     if type_code == 'R': 
         # they want to send to this guy
@@ -667,7 +665,6 @@ async def kt_send_psbt(psbt, psbt_len):
             if x in need:
                 # we haven't signed ourselves yet, so allow that
                 from auth import sign_transaction, TXN_INPUT_OFFSET
-                from public_constants import STXN_FINALIZE
 
                 async def sign_now(*a):
                     # this will reset the UX stack:
@@ -685,7 +682,7 @@ async def kt_send_psbt(psbt, psbt_len):
         if x not in need:
             # show check if we've got sig
             mi.is_chosen = lambda: True
-        elif next_signer == None:
+        elif next_signer is None:
             next_signer = idx
 
         ci.append(mi)
