@@ -956,19 +956,47 @@ def test_custom_pushtx_url(goto_home, pick_menu_item, press_select, enter_comple
     assert settings_get('ptxurl', None) is None
 
 
-@pytest.mark.parametrize("fname,mode,ftype", [
-    ("ccbk-start.json", "r", "J"),
-    ("ckcc-backup.txt", "r", "U"),
-    ("devils-txn.txn", "rb", "T"),
-    ("example-change.psbt", "rb", "P"),
-    ("sim_conso5.psbt", "rb", "P"),  # binary psbt
-    ("payjoin.psbt", "r", "U"),  # base64 string in file
-    ("worked-unsigned.psbt", "rb", "U"),  # hex string psbt
-    ("coldcard-export.json", "rb", "J"),
-    ("coldcard-export.sig", "r", "U"),
+@pytest.mark.parametrize("fname,ftype", [
+    ("ccbk-start.json", "J"),
+    ("ckcc-backup.txt", "U"),
+    ("devils-txn.txn", "T"),
+    ("example-change.psbt", "P"),
+    ("sim_conso5.psbt", "P"),  # binary psbt
+    ("payjoin.psbt", "U"),  # base64 string in file
+    ("worked-unsigned.psbt", "U"),  # hex string psbt
+    ("coldcard-export.json", "J"),
+    ("coldcard-export.sig", "U"),
 ])
-def test_qr_share_files(fname, mode, ftype, readback_bbqr, need_keypress,
-                        goto_home, pick_menu_item, is_q1, cap_menu):
+def test_bbqr_share_files(fname, ftype, readback_bbqr, need_keypress,
+                          goto_home, pick_menu_item, is_q1, cap_menu):
+    goto_home()
+    if not is_q1:
+        pick_menu_item("Advanced/Tools")
+        pick_menu_item("File Management")
+        assert "BBQr File Share" not in cap_menu()
+        return
+
+    fpath = "data/" + fname
+    shutil.copy2(fpath, '../unix/work/MicroSD')
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("File Management")
+    pick_menu_item("BBQr File Share")
+    time.sleep(.1)
+    pick_menu_item(fname)
+    file_type, rb = readback_bbqr()
+    assert file_type == ftype
+    with open(fpath, "rb") as f:
+        res = f.read()
+
+    assert res == rb
+    os.remove('../unix/work/MicroSD/' + fname)
+
+@pytest.mark.parametrize("fname", [
+    "ccbk-start.json",
+    "devils-txn.txn",
+    "payjoin.psbt",  # base64 string in file
+])
+def test_qr_share_files(fname, pick_menu_item, goto_home, is_q1, cap_menu, cap_screen_qr):
     goto_home()
     if not is_q1:
         pick_menu_item("Advanced/Tools")
@@ -983,15 +1011,11 @@ def test_qr_share_files(fname, mode, ftype, readback_bbqr, need_keypress,
     pick_menu_item("QR File Share")
     time.sleep(.1)
     pick_menu_item(fname)
-    file_type, rb = readback_bbqr()
-    assert file_type == ftype
-    with open(fpath, mode) as f:
+    qr = cap_screen_qr()
+    with open(fpath, "r") as f:
         res = f.read()
 
-    if fname.endswith(".txn"):
-        res = bytes.fromhex(res.decode())
-
-    assert res == rb
+    assert res == qr.decode()
     os.remove('../unix/work/MicroSD/' + fname)
 
 

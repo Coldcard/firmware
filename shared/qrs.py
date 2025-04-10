@@ -86,8 +86,8 @@ class QRDisplaySingle(UserInteraction):
             msg = self.msg
         else:
             msg = None
-            if isinstance(body, str) and not has_qwerty:
-                # on Mk4 if no self.msg, we show part of the body
+            if isinstance(body, str):
+                # sanity check
                 msg = body
 
         dis.draw_qr_display(self.qr_data, msg, self.is_alnum,
