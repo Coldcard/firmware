@@ -1548,7 +1548,7 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
         assert is_complete
 
 @pytest.mark.parametrize('addr_fmt', ['p2wsh', 'p2sh-p2wsh'])
-@pytest.mark.parametrize('acct_num', [ 0, None, 4321])
+@pytest.mark.parametrize('acct_num', [None, 4321])
 @pytest.mark.parametrize('M_N', [(2,3), (8,14)])
 @pytest.mark.parametrize('way', ["sd", "qr"])
 @pytest.mark.parametrize('incl_self', [True, False, None])

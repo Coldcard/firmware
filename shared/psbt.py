@@ -2238,6 +2238,22 @@ class psbtObject(psbtProxy):
         sigs = sigs[:self.active_multisig.M]
         return sigs
 
+    def singlesig_signature(self, inp):
+        # return signature that we added
+        # or one signature from partial sigs if input is fully sign
+        # (i.e. len(part_sigs)>=len(subpaths))
+        ssig = None
+        if inp.added_sigs:
+            # we have added signature to this single sig input
+            assert len(inp.added_sigs) == 1
+            ssig = list(inp.added_sigs.items())[0]
+        elif inp.part_sigs and inp.fully_signed:
+            assert len(inp.part_sigs) == 1
+            rv = list(inp.part_sigs.items())[0]
+            ssig = rv[0], self.get(rv[1])
+
+        return ssig
+
     def multisig_xfps_needed(self):
         # provide the set of xfp's that still need to sign PSBT
         # - used to find which multisig-signer needs to go next
@@ -2275,10 +2291,14 @@ class psbtObject(psbtProxy):
         fd.write(ser_compact_size(self.num_inputs))
         for in_idx, txi in self.input_iter():
             inp = self.inputs[in_idx]
-            # only finalize if input with signatures added by us
-            assert inp.added_sigs, 'No signature on input #%d' % in_idx
+
+            # first check - if no signature(s) - fail soon
             if inp.is_multisig:
                 assert self.multi_input_complete(inp), 'Incomplete signature set on input #%d' % in_idx
+            else:
+                # single signature
+                ssig = self.singlesig_signature(inp)
+                assert ssig, 'No signature on input #%d' % in_idx
 
             if inp.is_segwit:
                 if inp.is_multisig:
@@ -2307,7 +2327,7 @@ class psbtObject(psbtProxy):
                     txi.scriptSig = ss
 
                 else:
-                    pubkey, der_sig = list(inp.added_sigs.items())[0]
+                    pubkey, der_sig = ssig
                     txi.scriptSig = ser_push_data(der_sig) + ser_push_data(pubkey)
 
             fd.write(txi.serialize())
@@ -2329,14 +2349,14 @@ class psbtObject(psbtProxy):
             for in_idx, wit in self.input_witness_iter():
                 inp = self.inputs[in_idx]
 
-                if inp.is_segwit and inp.added_sigs:
+                if inp.is_segwit:
                     # put in new sig: wit is a CTxInWitness
                     assert not wit.scriptWitness.stack, 'replacing non-empty?'
                     if inp.is_multisig:
                         sigs = self.multisig_signatures(inp)
                         wit.scriptWitness.stack = [b""] + sigs + [self.get(inp.witness_script)]
                     else:
-                        pubkey, der_sig = list(inp.added_sigs.items())[0]
+                        pubkey, der_sig = self.singlesig_signature(inp)
                         assert pubkey[0] in {0x02, 0x03} and len(pubkey) == 33, "bad v0 pubkey"
                         wit.scriptWitness.stack = [der_sig, pubkey]
 
