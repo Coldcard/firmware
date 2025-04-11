@@ -1725,12 +1725,17 @@ def test_bitcoind_missing_foreign_utxo(bitcoind, bitcoind_d_sim_watch, microsd_p
     cc_pubkey = cc.getaddressinfo(cc_addr)["pubkey"]
     # fund all addresses
     for addr in (alice_addr, bob_addr, cc_addr):
-        bitcoind.supply_wallet.generatetoaddress(101, addr)
+        bitcoind.supply_wallet.sendtoaddress(addr, 2.0)
+
+    # mine above sends
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
     psbt_list = []
     for w in (alice, bob, cc):
         assert w.listunspent()
         psbt = w.walletcreatefundedpsbt([], [{dest_address: 1.0}], 0, {"fee_rate": 20})["psbt"]
         psbt_list.append(psbt)
+
     # join PSBTs to one
     the_psbt = bitcoind.supply_wallet.joinpsbts(psbt_list)
     the_psbt_obj = BasicPSBT().parse(the_psbt.encode())
@@ -3056,5 +3061,24 @@ def test_null_data_op_return(fake_txn, start_sign, end_sign, reset_seed_words):
     story = end_sign(accept=None, expect_txn=False).decode()
     assert "null-data" in story
     assert "OP_RETURN" in story
+
+
+def test_mk4_done_signing_infinite_loop(goto_home, try_sign, fake_txn, enable_hw_ux,
+                                        settings_get, is_q1):
+    if is_q1:
+        raise pytest.skip("Irrelecant on Q as it always provides QR option")
+
+    goto_home()
+    had_nfc = settings_get("nfc", None)
+    had_vdisk = settings_get("vidsk", None)
+    enable_hw_ux("nfc", disable=True)
+    enable_hw_ux("vdisk", disable=True)
+    psbt = fake_txn(1, 2, segwit_in=True, change_outputs=[0])
+    try_sign(psbt, accept=True)
+    # above never returns in unpatched version and fills up the disk
+    if had_nfc:
+        enable_hw_ux("nfc")
+    if had_vdisk:
+        enable_hw_ux("vdisk")
 
 # EOF

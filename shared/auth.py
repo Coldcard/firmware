@@ -813,8 +813,13 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
             if txid:
                 intro.append('TXID:\n' + txid)
 
+            # "force_prompt" is needed after first iteration as we can be Mk4, with NFC,Vdisk off,
+            # no QR support & not finalizing (no option to show txid provided).
+            # In that case this would just return dict and keep producing signed
+            # files on SD infinitely (would never actually prompt).
             ch = await import_export_prompt(noun, intro="\n\n".join(intro), offer_kt=offer_kt,
-                                            txid=txid, title=title)
+                                            txid=txid, title=title, force_prompt=not first_time,
+                                            no_qr=not version.has_qwerty)
         if ch == KEY_CANCEL:
             UserAuthorizedAction.cleanup()
             break

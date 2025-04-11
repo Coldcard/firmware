@@ -10,7 +10,7 @@ from bip32 import BIP32Node
 
 @pytest.fixture
 def enable_hw_ux(pick_menu_item, cap_story, press_select, goto_home):
-    def doit(way):
+    def doit(way, disable=False):
         pick_menu_item("Settings")
         pick_menu_item("Hardware On/Off")
         if way == "vdisk":
@@ -18,13 +18,19 @@ def enable_hw_ux(pick_menu_item, cap_story, press_select, goto_home):
             _, story = cap_story()
             if "emulate a virtual disk drive" in story:
                 press_select()
-            pick_menu_item("Enable")
+            if disable:
+                pick_menu_item("Default Off")
+            else:
+                pick_menu_item("Enable")
         elif way == "nfc":
             pick_menu_item("NFC Sharing")
             _, story = cap_story()
             if "(Near Field Communications)" in story:
                 press_select()
-            pick_menu_item("Enable NFC")
+            if disable:
+                pick_menu_item("Default Off")
+            else:
+                pick_menu_item("Enable NFC")
         else:
             raise RuntimeError("TODO")
 

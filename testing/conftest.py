@@ -2031,7 +2031,9 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
 
 
 @pytest.fixture
-def signing_artifacts_reexport(cap_story, need_keypress, load_export, press_cancel, is_q1):
+def signing_artifacts_reexport(cap_story, need_keypress, load_export, press_cancel, is_q1,
+                               settings_get):
+
     def doit(way, tx_final=False, txid=None, encoding=None, del_after=False, is_usb=False):
         label = "Finalized TX ready for broadcast" if tx_final else "Partly Signed PSBT"
         def _check_story(the_way):
@@ -2057,6 +2059,9 @@ def signing_artifacts_reexport(cap_story, need_keypress, load_export, press_canc
 
         if not is_q1:
             to_do.remove("qr")
+
+        if not settings_get("nfc", None):
+            to_do.remove("nfc")
 
         res = []
         res_tx = []
