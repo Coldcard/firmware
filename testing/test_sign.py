@@ -16,7 +16,7 @@ from helpers import B2A, fake_dest_addr, parse_change_back, addr_from_display_fo
 from helpers import xfp2str, seconds2human_readable, hash160
 from msg import verify_message
 from bip32 import BIP32Node
-from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP
+from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP, simulator_fixed_xfp
 from txn import *
 from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint
 from ckcc_protocol.constants import STXN_VISUALIZE, STXN_SIGNED
@@ -2070,8 +2070,8 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
 
     return doit
 
-# TODO Locktime test MUST be run with --psbt2 flag on and off
-# pytest test_sign.py -k locktime {--psbt2,}
+# TODO Sighash test MUST be run with --psbt2 flag on and off
+# pytest test_sign.py -k sighash {--psbt2,}
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32"])
@@ -3080,5 +3080,60 @@ def test_mk4_done_signing_infinite_loop(goto_home, try_sign, fake_txn, enable_hw
         enable_hw_ux("nfc")
     if had_vdisk:
         enable_hw_ux("vdisk")
+
+
+@pytest.mark.bitcoind
+def test_finalize_with_foreign_inputs(bitcoind, bitcoind_d_sim_watch, start_sign, end_sign,
+                                      cap_story, try_sign_microsd):
+    # foreign inputs that have partial sigs filled
+    # we still do not care about final_scriptsig & final_scriptwitness PSBT fields
+    dest_address = bitcoind.supply_wallet.getnewaddress()
+    alice = bitcoind.create_wallet(wallet_name="alice")
+    bob = bitcoind.create_wallet(wallet_name="bob")
+    cc = bitcoind_d_sim_watch
+    alice_addr = alice.getnewaddress()
+    bob_addr = bob.getnewaddress()
+    cc_addr = cc.getnewaddress()
+    # fund all addresses
+    for addr in (alice_addr, bob_addr, cc_addr):
+        bitcoind.supply_wallet.sendtoaddress(addr, 2.0)
+
+        # mine above sends
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    psbt_list = []
+    for w in (alice, bob, cc):
+        assert w.listunspent()
+        psbt = w.walletcreatefundedpsbt([], [{dest_address: 1.0}], 0, {"fee_rate": 20})["psbt"]
+        psbt_list.append(psbt)
+
+    # join PSBTs to one
+    the_psbt = bitcoind.supply_wallet.joinpsbts(psbt_list)
+
+    # bitcoin core would just fill finalscriptwitness, we need partial signatures
+    # just add dummy signatures and remove
+    pp = BasicPSBT().parse(base64.b64decode(the_psbt))
+    for i in pp.inputs:
+        assert len(i.bip32_paths) == 1  # single sigs
+        der = list(i.bip32_paths.values())[0]
+        if der[:4].hex().upper() == xfp2str(simulator_fixed_xfp):
+            # our key
+            continue
+        pubkey = list(i.bip32_paths.keys())[0]
+        assert not i.part_sigs  # empty
+        i.part_sigs[pubkey] = os.urandom(71)  # dummy sig
+
+    # USB works and our signature is added (but only if we do not finalize)
+    psbt = pp.as_bytes()
+    start_sign(psbt)
+    signed = end_sign(accept=True)
+    assert signed != psbt
+    for i in BasicPSBT().parse(signed).inputs:
+        assert i.part_sigs
+
+    try_sign_microsd(psbt, finalize=True, accept=True)
+    title, story = cap_story()
+    assert title == "PSBT Signed"
+    assert "Finalized transaction (ready for broadcast)" in story
 
 # EOF

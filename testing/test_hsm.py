@@ -758,7 +758,7 @@ def test_big_txn(num_in, num_out, dev, quick_start_hsm, hsm_status, is_simulator
         attempt_psbt(psbt)
 
 
-@pytest.mark.veryslow
+@pytest.mark.manual
 def test_multiple_signings(dev, quick_start_hsm, is_simulator,
                            attempt_psbt, fake_txn, load_hsm_users,
                            auth_user):
@@ -774,7 +774,7 @@ def test_multiple_signings(dev, quick_start_hsm, is_simulator,
         attempt_psbt(psbt)
 
 
-@pytest.mark.veryslow
+@pytest.mark.manual
 @pytest.mark.parametrize("cc_first", [True, False])
 @pytest.mark.parametrize("M_N", [(2,3), (3,5), (15,15)])
 def test_multiple_signings_multisig(cc_first, M_N, dev, quick_start_hsm,

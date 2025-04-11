@@ -33,6 +33,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Virtual Disk auto mode stuck on "Reading..." screen
 - Bugfix: Do not allow to change Main PIN to value already used as Trick PIN even if
   Trick PIN is hidden.
+- Bugfix: Finalization of foreign inputs from partial signatures. Thanks Christian Uebber
 - Change: `Destroy Seed` also removes all Trick PINs from SE2.
 
 
