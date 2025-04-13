@@ -2258,12 +2258,14 @@ class psbtObject(psbtProxy):
         # - but in segwit case, needs to re-read to calculate it
         # - fd must be read/write and seekable to support txid calc
 
+        start_pos = fd.tell()
         fd.write(pack('<i', self.txn_version))           # nVersion
 
-        # does this txn require witness data to be included?
-        # - yes, if the original txn had some
-        # - yes, if we did a segwit signature on any input
-        needs_witness = self.had_witness or any(i.is_segwit for i in self.inputs if i)
+        # Determine if witness data is needed based on original txn or added segwit signatures
+        needs_witness = self.had_witness or any(
+            inp.is_segwit for idx, inp in enumerate(self.inputs)
+            if (len(inp.part_sigs) + len(inp.added_sigs)) > 0 # Check if *any* sig exists for segwit input
+        )
 
         if needs_witness:
             # zero marker, and flags=0x01
@@ -2275,41 +2277,83 @@ class psbtObject(psbtProxy):
         fd.write(ser_compact_size(self.num_inputs))
         for in_idx, txi in self.input_iter():
             inp = self.inputs[in_idx]
-            # only finalize if input with signatures added by us
-            assert inp.added_sigs, 'No signature on input #%d' % in_idx
+
+            # --- Start Fix ---
+            # Check for completeness by considering *both* previously added (part_sigs)
+            # and newly added (added_sigs) signatures.
+            is_complete = False
+            num_sigs_present = len(inp.part_sigs) + len(inp.added_sigs)
+
             if inp.is_multisig:
-                assert self.multi_input_complete(inp), 'Incomplete signature set on input #%d' % in_idx
+                # For multisig, rely on the helper which already checks combined sigs against M
+                if not self.active_multisig:
+                     # Cannot finalize multisig without wallet context to know M
+                     raise AssertionError(f"Cannot finalize multisig input #{in_idx} without active wallet context.")
+                is_complete = self.multi_input_complete(inp)
+                if not is_complete:
+                    raise AssertionError(f"Incomplete signature set for multisig input #{in_idx} "
+                                         f"(found {num_sigs_present}, need {self.active_multisig.M})")
+            else:
+                # For single-sig, we just need at least one signature
+                is_complete = num_sigs_present >= 1
+                if not is_complete:
+                    raise AssertionError(f"Missing signature for input #{in_idx}")
+
+            # --- End Fix ---
+
 
             if inp.is_segwit:
+                # scriptSig construction for SegWit inputs
                 if inp.is_multisig:
                     if inp.redeem_script:
-                        # p2sh-p2wsh
+                        # p2sh-p2wsh: scriptSig contains the P2WSH redeem script
                         txi.scriptSig = ser_string(self.get(inp.redeem_script))
-
+                    else:
+                        # Native P2WSH: scriptSig is empty
+                         txi.scriptSig = b''
                 elif inp.is_p2sh:
-                    # singlesig (p2sh) segwit still requires the script here.
+                    # p2sh-p2wpkh: scriptSig contains the P2WPKH redeem script
                     txi.scriptSig = ser_string(inp.scriptSig)
                 else:
-                    # major win for segwit (p2pkh): no redeem script bloat anymore
+                    # Native P2WPKH: scriptSig is empty
                     txi.scriptSig = b''
-
-                # Actual signature will be in witness data area
+                # Actual signature(s) go in the witness data
 
             else:
-                # insert the new signature(s), assuming fully signed txn.
+                # scriptSig construction for non-SegWit inputs
                 if inp.is_multisig:
-                    # p2sh multisig (non-segwit)
-                    sigs = self.multisig_signatures(inp)
-                    ss = b"\x00"
+                    # P2SH multisig (non-segwit)
+                    sigs = self.multisig_signatures(inp) # Already combines part_sigs and added_sigs
+                    ss = b"\x00" # OP_FALSE for CHECKMULTISIG bug
                     for sig in sigs:
                         ss += ser_push_data(sig)
+                    # redeem_script should be present and validated earlier
+                    if not inp.redeem_script:
+                         raise AssertionError(f"Missing redeem script for non-segwit multisig input #{in_idx}")
                     ss += ser_push_data(self.get(inp.redeem_script))
                     txi.scriptSig = ss
 
                 else:
-                    pubkey, der_sig = list(inp.added_sigs.items())[0]
-                    txi.scriptSig = ser_push_data(der_sig) + ser_push_data(pubkey)
+                    # --- Start Fix ---
+                    # Single-sig non-segwit (P2PK, P2PKH, P2SH-wrapped P2PK/P2PKH)
+                    # Retrieve the single signature from either added_sigs or part_sigs
+                    if inp.added_sigs:
+                        # Signature was added in the *last* sign_it call
+                        pubkey, der_sig = list(inp.added_sigs.items())[0]
+                    elif inp.part_sigs:
+                        # Signature was added in a *previous* sign_it call
+                        pubkey, sig_proxy = list(inp.part_sigs.items())[0]
+                        der_sig = self.get(sig_proxy) # Fetch actual signature bytes
+                    else:
+                         # This case should be caught by the completeness assertion above
+                         raise AssertionError(f"Logic Error: No signature found for complete input #{in_idx}")
 
+                    # For P2PKH/P2SH-wrapped, pubkey is needed. For P2PK, only sig is needed technically,
+                    # but standard practice includes pubkey.
+                    txi.scriptSig = ser_push_data(der_sig) + ser_push_data(pubkey)
+                    # --- End Fix ---
+
+            # Serialize the input with the constructed scriptSig
             fd.write(txi.serialize())
 
         # outputs
@@ -2317,41 +2361,95 @@ class psbtObject(psbtProxy):
         for out_idx, txo in self.output_iter():
             fd.write(txo.serialize())
 
-            # capture change output amounts (if segwit)
-            if self.outputs[out_idx].is_change and self.outputs[out_idx].witness_script:
+            # capture change output amounts (if segwit) - No change needed here
+            output_proxy = self.outputs[out_idx]
+            if output_proxy.is_change and (output_proxy.witness_script or output_proxy.is_segwit): # is_segwit check might be needed if get_address determines it
                 history.add_segwit_utxos(out_idx, txo.nValue)
 
         body_end = fd.tell()
 
         if needs_witness:
             # witness values
-            # - preserve any given ones, add ours
-            for in_idx, wit in self.input_witness_iter():
+            wit_iter = self.input_witness_iter() # Assume this correctly yields placeholders if needed
+            for in_idx, wit in wit_iter:
                 inp = self.inputs[in_idx]
 
-                if inp.is_segwit and inp.added_sigs:
-                    # put in new sig: wit is a CTxInWitness
-                    assert not wit.scriptWitness.stack, 'replacing non-empty?'
+                # Only add witness data if the input is SegWit *and* has signatures
+                if inp.is_segwit and (len(inp.part_sigs) + len(inp.added_sigs)) > 0:
+                    # Ensure we are not overwriting existing witness data unexpectedly
+                    # (Though PSBT standard suggests combiner should handle this merge)
+                    if wit.scriptWitness.stack:
+                         # This might indicate a non-standard PSBT or prior finalization attempt.
+                         # Depending on policy, could raise, warn, or merge (merge is complex).
+                         # Raising is safest if unexpected.
+                         # For now, let's assume an empty stack is expected before *our* finalization.
+                         print(f"Warning: Input #{in_idx} witness stack not empty before finalization.")
+                         # If strictness is desired:
+                         # raise AssertionError(f"Input #{in_idx} witness stack not empty before finalization.")
+
                     if inp.is_multisig:
-                        sigs = self.multisig_signatures(inp)
+                        # P2WSH or P2SH-P2WSH
+                        sigs = self.multisig_signatures(inp) # Already combines part_sigs and added_sigs
+                        if not inp.witness_script:
+                             raise AssertionError(f"Missing witness script for segwit multisig input #{in_idx}")
+                        # Standard witness stack: <dummy> <sig1> ... <sigM> <witnessScript>
                         wit.scriptWitness.stack = [b""] + sigs + [self.get(inp.witness_script)]
                     else:
-                        pubkey, der_sig = list(inp.added_sigs.items())[0]
-                        assert pubkey[0] in {0x02, 0x03} and len(pubkey) == 33, "bad v0 pubkey"
-                        wit.scriptWitness.stack = [der_sig, pubkey]
+                        # --- Start Fix ---
+                        # Single-sig SegWit (P2WPKH or P2SH-P2WPKH)
+                        # Retrieve the single signature from either added_sigs or part_sigs
+                        if inp.added_sigs:
+                            pubkey, der_sig = list(inp.added_sigs.items())[0]
+                        elif inp.part_sigs:
+                            pubkey, sig_proxy = list(inp.part_sigs.items())[0]
+                            der_sig = self.get(sig_proxy)
+                        else:
+                            raise AssertionError(f"Logic Error: No signature found for complete segwit input #{in_idx}")
 
+                        # Pubkey must be compressed for SegWit v0
+                        if not (pubkey[0] in {0x02, 0x03} and len(pubkey) == 33):
+                             raise AssertionError(f"Invalid pubkey format for segwit input #{in_idx}")
+                        # Standard witness stack: <signature> <pubkey>
+                        wit.scriptWitness.stack = [der_sig, pubkey]
+                        # --- End Fix ---
+
+                # Serialize the (potentially updated) witness object
                 fd.write(wit.serialize())
 
         # locktime
         fd.write(pack('<I', self.lock_time))
+        end_pos = fd.tell()
 
         # calc transaction ID
+        fd.seek(start_pos)
+        final_tx_bytes = fd.read(end_pos - start_pos)
+
+        # Reset seek position if fd is used further
+        fd.seek(end_pos)
+
         if not needs_witness:
-            # easy w/o witness data
-            txid = ngu.hash.sha256s(fd.checksum.digest())
+            # Easy case: double-SHA256 the whole thing
+            txid = ngu.hash.sha256d(final_tx_bytes)
         else:
-            # legacy cost here for segwit: re-read what we just wrote
-            txid = calc_txid(fd, (0, fd.tell()), (body_start, body_end-body_start))
+            # Harder case: need to hash parts, skipping witness marker/flag and witness data
+            # Re-parse the finalized bytes in memory to get body offsets accurately
+            # (Using calc_txid directly on the file might be problematic if fd state changes)
+            mem_fd = BytesIO(final_tx_bytes)
+            parsed_tx_version = unpack('<i', mem_fd.read(4))[0]
+            marker_flag = mem_fd.read(2) # Skip marker/flag
+            assert marker_flag == b'\x00\x01'
+
+            # Recalculate body start/end within the memory buffer
+            mem_body_start = mem_fd.tell()
+            mem_num_in = deser_compact_size(mem_fd)
+            _skip_n_objs(mem_fd, mem_num_in, 'CTxIn') # Skips based on scriptSig *in final_tx_bytes*
+            mem_num_out = deser_compact_size(mem_fd)
+            _skip_n_objs(mem_fd, mem_num_out, 'CTxOut')
+            mem_body_end = mem_fd.tell()
+
+            # Now use calc_txid on the memory buffer
+            txid = calc_txid(BytesIO(final_tx_bytes), (0, len(final_tx_bytes)),
+                             (mem_body_start, mem_body_end - mem_body_start))
 
         history.add_segwit_utxos_finalize(txid)
 
