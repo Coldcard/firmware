@@ -304,7 +304,7 @@ async def restore_tmp_from_dict_ll(vals):
         key = k[8:]
         if key in ["multisig"]:
             # whitelist
-            settings.set(k, v)
+            settings.set(key, v)
 
     goto_top_menu()
 

@@ -298,9 +298,9 @@ def seed_vault_delete(pick_menu_item, need_keypress, cap_menu, cap_story,
 
 
 @pytest.fixture
-def verify_ephemeral_secret_ui(cap_story, press_select, cap_menu, dev, fake_txn,
+def verify_ephemeral_secret_ui(cap_story, cap_menu, dev, fake_txn, goto_home,
                                get_identity_story, try_sign, get_seed_value_ux,
-                               pick_menu_item, goto_home):
+                               pick_menu_item):
     def doit(mnemonic=None, xpub=None, expected_xfp=None, seed_vault=False,
              testnet=True, is_b39pw=False):
 
@@ -355,7 +355,6 @@ def verify_ephemeral_secret_ui(cap_story, press_select, cap_menu, dev, fake_txn,
             assert e_master_xpub == xpub
         psbt = fake_txn(2, 2, master_xpub=e_master_xpub, segwit_in=True)
         try_sign(psbt, accept=True, finalize=True)  # MUST NOT raise
-        press_select()
         return in_effect_xfp
 
     return doit
@@ -1283,17 +1282,17 @@ def test_add_current_active(reset_seed_words, settings_set, import_ephemeral_xpr
         verify_ephemeral_secret_ui(xpub=node.hwif(), seed_vault=True)
 
 
-@pytest.mark.parametrize('multisig', [False, 'multisig'])
+@pytest.mark.parametrize('multisig', [True, False])
 @pytest.mark.parametrize('seedvault', [False, True])
 @pytest.mark.parametrize('data', SEEDVAULT_TEST_DATA)
 def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_setting,
                                data, press_select, cap_story, set_encoded_secret,
-                               reset_seed_words, check_and_decrypt_backup,
+                               reset_seed_words, check_and_decrypt_backup, clear_ms,
                                goto_eph_seed_menu, pick_menu_item, word_menu_entry,
                                verify_ephemeral_secret_ui, seedvault, settings_set,
-                               seed_vault_enable, confirm_tmp_seed, settings_path,
-                               seed_vault_delete, restore_main_seed, set_seed_words):
-    
+                               seed_vault_enable, confirm_tmp_seed, set_seed_words,
+                               seed_vault_delete, restore_main_seed, settings_slots):
+
     xfp_str, encoded_str, mnemonic = data
     if mnemonic:
         set_seed_words(mnemonic)
@@ -1302,12 +1301,15 @@ def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_se
         set_encoded_secret(encoded)
 
     settings_set("chain", "XTN")
+    clear_ms()
 
     if multisig:
         import_ms_wallet(15, 15, dev_key=True)
         press_select()
         time.sleep(.1)
         assert len(get_setting('multisig')) == 1
+    else:
+        assert get_setting('multisig') is None
 
     # ACTUAL BACKUP
     bk_pw = backup_system()
@@ -1316,6 +1318,14 @@ def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_se
     fname = story.split("\n\n")[1]
 
     check_and_decrypt_backup(fname, bk_pw)
+
+    # remove all saved slots, one of them will be the one where we just created backup
+    # slot where backup was created needs to be removed - otherwise we will load back to it
+    # and see multisig wallet there without the need for backup to actually copy it
+    for s in settings_slots():
+        try:
+            os.remove(s)
+        except: pass
 
     # restore fixed simulator
     reset_seed_words()
@@ -1335,11 +1345,21 @@ def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_se
     if mnemonic:
         mnemonic = mnemonic.split(" ")
 
-    xfp = verify_ephemeral_secret_ui(mnemonic=mnemonic, xpub=None, # xpub veriphy ephemeral secret not tested here
+    xfp = verify_ephemeral_secret_ui(mnemonic=mnemonic, xpub=None, # XPUB verify ephemeral secret not tested here
                                      seed_vault=seedvault)
 
+    # actual bug, multisig key copied with "setting." prefix -> therefore not visible in Multisig menu
+    assert get_setting("setting.multisig") is None
+    # correct multisig was copied during loading backup as tmp seed
+    ms = get_setting('multisig')
+    if multisig:
+        assert len(ms) == 1
+        assert ms[0][1] == [15,15]
+    else:
+        assert ms is None
+
     if seedvault:
-        seed_vault_delete(xfp, not False)
+        seed_vault_delete(xfp, True)
     else:
         restore_main_seed(False)
 
