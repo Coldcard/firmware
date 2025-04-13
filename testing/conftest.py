@@ -827,7 +827,7 @@ def settings_path(simulator):
 @pytest.fixture
 def settings_slots(settings_path):
     def doit():
-        return [fn
+        return [settings_path(fn)
                 for fn in os.listdir(settings_path(""))
                 if fn.endswith(".aes")]
     return doit

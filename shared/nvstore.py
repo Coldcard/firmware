@@ -417,7 +417,7 @@ class SettingsObject:
 
         if previous:
             for k in KEEP_IF_BLANK_SETTINGS:
-                if k in previous and k not in self.current:
+                if (k in previous) and (k not in self.current):
                     self.current[k] = previous[k]
 
         # nfc, usb, vidsk handling
