@@ -941,7 +941,10 @@ class SeedVaultMenu(MenuSystem):
 
         # update label in sub-menu
         menu.items[0].label = new_label
-        menu.items[0].arg = VaultEntry(*seeds[idx])
+        # take old arg, in rename we cannot change encoded value, so it can be used without
+        # the need to deserialize it again
+        _, encoded = menu.items[0].arg
+        menu.items[0].arg = VaultEntry(*seeds[idx]), encoded
 
         # and name in parent menu too
         parent = the_ux.parent_of(menu)
