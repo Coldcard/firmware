@@ -1,5 +1,7 @@
 # (c) Copyright 2025 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
+# Key Teleport protocol re-implementation: CLI for humans (testing purposes only).
+#
 import click, pyqrcode, json
 from bbqr import split_qrs
 from pysecp256k1.extrakeys import keypair_create, keypair_sec

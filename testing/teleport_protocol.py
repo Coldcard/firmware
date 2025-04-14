@@ -1,5 +1,7 @@
 # (c) Copyright 2025 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
+# Key Teleport protocol re-implementation.
+#
 import os, pyaes, hashlib, base64
 from bip32 import BIP32Node, PrvKeyNode
 from mnemonic import Mnemonic
@@ -209,7 +211,7 @@ def receiver_step2(teleport_pwd, payload, keypair):
         return None, None
 
 
-if __name__ == "__main__":
+def selftest():
     # WORDS
     # RECEIVER INIT
     number_pass, enc_pubkey, kp_receiver = receiver_step1()
@@ -245,3 +247,10 @@ if __name__ == "__main__":
     _, received = receiver_step2(noid_txt, encrypted_payload, kp_receiver)
     assert xprv == stash_decode_secret(received)[1]
     # ===
+
+    print("Selftest passed.")
+
+if __name__ == "__main__":
+    selftest()
+
+# EOF
