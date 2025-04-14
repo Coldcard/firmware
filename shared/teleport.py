@@ -595,6 +595,8 @@ class SecretPickerMenu(MenuSystem):
         # altho menu items look different we are sharing same thing:
         # - up to 72 bytes from secure elements
 
+        dis.fullscreen("Wait...")
+
         with SensitiveValues(bypass_tmp=False, enforce_delta=True) as sv:
             raw = bytearray(sv.secret)
             xfp = xfp2str(sv.get_xfp())
