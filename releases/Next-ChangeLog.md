@@ -26,13 +26,13 @@ This lists the new changes that have not yet been published in a normal release.
 - Enhancement: NFC export usability upgrade: NFC keeps exporting until CANCEL/X is pressed
 - Enhancement: Add `Bitcoin Safe` option to `Export Wallet`
 - Enhancement: 10% performance improvement in USB upload speed for large files
+- Bugfix: Do not allow to change Main PIN to value already used as Trick PIN even if
+  Trick PIN is hidden.
 - Bugfix: Fix stuck progress bar under `Receiving...` after a USB communications failure
 - Bugfix: Showing derivation path in Address Explorer for root key (m) showed double slash (//)
 - Bugfix: Can restore developer backup with custom password other than 12 words format
-- Bugfix: Virtual Disk auto mode ignore already signed PSBTs (with "-signed" in file name)
-- Bugfix: Virtual Disk auto mode stuck on "Reading..." screen
-- Bugfix: Do not allow to change Main PIN to value already used as Trick PIN even if
-  Trick PIN is hidden.
+- Bugfix: Virtual Disk auto mode ignores already signed PSBTs (with "-signed" in file name)
+- Bugfix: Virtual Disk auto mode stuck on "Reading..." screen sometimes
 - Bugfix: Finalization of foreign inputs from partial signatures. Thanks Christian Uebber
 - Bugfix: Temporary seed from COLDCARD backup failed to load stored multisig wallets
 - Change: `Destroy Seed` also removes all Trick PINs from SE2.
@@ -52,7 +52,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Feature: Key Teleport -- Easily and securely move seed phrases, secure notes/passwords,
   multisig PSBT files, and even full Coldcard backups, between two Q using QR codes
   and/or NFC with helper website. See protocol spec in
-  [docs/key-teleport.md][https://github.com/Coldcard/firmware/blob/master/docs/key-teleport.md]
+  [docs/key-teleport.md](https://github.com/Coldcard/firmware/blob/master/docs/key-teleport.md)
     - can send master seed (words, xprv), anything held in seed vault, secure notes/passwords 
       (singular, or all) and PSBT involved in a multisig to the other co-signers
     - full COLDCARD backup is possible as well, but receiver must be "unseeded" Q for best result
