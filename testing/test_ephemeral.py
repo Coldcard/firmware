@@ -791,9 +791,6 @@ def test_seed_vault_menus(dev, data, settings_set, master_settings_get, pick_men
                           sim_exec, goto_home, seed_vault_enable, is_q1, enter_text,
                           press_select, press_cancel, press_delete):
     # Verify "seed vault" feature works as intended
-    
-    
-
     reset_seed_words()
     xfp, entropy, mnemonic = data
 
@@ -852,6 +849,18 @@ def test_seed_vault_menus(dev, data, settings_set, master_settings_get, pick_men
 
     m = cap_menu()
     assert m[0] == "AAAA"
+
+    pick_menu_item("AAAA")  # bug issues/920
+    # would be yikes here, if not fixed
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "AAAA" in story
+    assert xfp in story
+    if mnemonic:
+        assert ('%d words' % (6 * (vlen // 8))) in story
+    else:
+        assert 'xprv' in story
+    press_cancel()
 
     # check parent menu - must be updated too
     press_cancel()
