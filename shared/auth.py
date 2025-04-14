@@ -426,7 +426,6 @@ class ApproveTransaction(UserAuthorizedAction):
 
                 for label, m in self.psbt.ux_notes:
                     msg.write('- %s: %s\n' % (label, m))
-                msg.write("\n")
 
             if self.psbt.warnings:
                 msg.write('---WARNING---\n\n')
@@ -446,7 +445,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
             if not hsm_active:
                 esc = ""
-                msg.write("\nPress %s to approve and sign transaction." % OK)
+                msg.write("Press %s to approve and sign transaction." % OK)
                 if needs_txn_explorer:
                     esc += "2"
                     msg.write(" Press (2) to explore txn.")
@@ -686,7 +685,7 @@ class ApproveTransaction(UserAuthorizedAction):
             visible_change_sum = 0
             if len(largest_change) == 1:
                 visible_change_sum += largest_change[0][0]
-                msg.write(' - to address -\n%s\n' % show_single_address(largest_change[0][1]))
+                msg.write(' - to address -\n%s\n\n' % show_single_address(largest_change[0][1]))
             else:
                 msg.write(' - to addresses -\n')
                 for val, addr in largest_change:
@@ -698,9 +697,7 @@ class ApproveTransaction(UserAuthorizedAction):
             if left_c:
                 needs_txn_explorer = True
                 msg.write('.. plus %d smaller change output(s), not shown here, which total: ' % left_c)
-                msg.write('%s %s\n' % self.chain.render_value(total_change - visible_change_sum))
-
-            msg.write("\n")
+                msg.write('%s %s\n\n' % self.chain.render_value(total_change - visible_change_sum))
 
         # if we didn't already show all outputs, then give user a chance to
         # view them individually

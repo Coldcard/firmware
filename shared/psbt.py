@@ -1313,11 +1313,11 @@ class psbtObject(psbtProxy):
             # Block height relative lock-time
             if num_bb == 1:
                 idx, val = bb[0]
-                msg = "Input %d. has relative block height timelock of %d blocks" % (
+                msg = "Input %d. has relative block height timelock of %d blocks\n" % (
                         idx, val
                     )
             elif all(bb[0][1] == i[1] for i in bb):
-                msg = "%d inputs have relative block height timelock of %d blocks" % (
+                msg = "%d inputs have relative block height timelock of %d blocks\n" % (
                         num_bb, bb[0][1]
                     )
             else:
@@ -1335,11 +1335,11 @@ class psbtObject(psbtProxy):
             if num_tb == 1:
                 idx, val = tb[0]
                 val = seconds2human_readable(val)
-                msg = "Input %d. has relative time-based timelock of:\n %s" % (
+                msg = "Input %d. has relative time-based timelock of:\n %s\n" % (
                     idx, val
                 )
             elif all(tb[0][1] == i[1] for i in tb):
-                msg = "%d inputs have relative time-based timelock of:\n %s" % (
+                msg = "%d inputs have relative time-based timelock of:\n %s\n" % (
                         num_tb, seconds2human_readable(tb[0][1])
                     )
             else:

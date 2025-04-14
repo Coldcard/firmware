@@ -2553,7 +2553,7 @@ def test_nsequence_blockheight_relative_locktime_ux(sequence, use_regtest, bitco
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("num_ins", [1, 4, 11])
 @pytest.mark.parametrize("differ", [True, False])
-@pytest.mark.parametrize("seconds", [512, 10000, 1000000, 33554431])
+@pytest.mark.parametrize("seconds", [512, 10240, 1024000, 33554431])
 def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind_d_sim_watch, start_sign,
                                                   microsd_path, cap_story, goto_home, press_select,
                                                   pick_menu_item, bitcoind, end_sign, num_ins, differ,
@@ -2575,18 +2575,22 @@ def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind
 
     ins = []
     num_ins_locked = 0
+    locked_indexes = []
     for i, utxo in enumerate(utxos):
         # time-based RTL
-        if i and differ:
-            nSeq = sequence - (sequence * i)
+        if i and differ and (seconds > 512):
+            secs = seconds // i
+            nSeq = SEQUENCE_LOCKTIME_TYPE_FLAG | (secs >> 9)
             if nSeq < 0:
                 nSeq = 0
 
         else:
+            secs = seconds
             nSeq = sequence
 
         if nSeq > 0:
             num_ins_locked += 1
+            locked_indexes.append((i, secs))
 
         inp = {
             "txid": utxo["txid"],
@@ -2618,9 +2622,9 @@ def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind
     if num_ins_locked == 1:
         assert ("has " + base_msg) in story
     else:
-        if differ:
+        if differ and (seconds > 512):
             assert ("%d inputs have relative time-based timelock." % num_ins_locked) in story
-            for i in range(num_ins_locked):
+            for i, _ in sorted(locked_indexes, key=lambda i: i[1], reverse=True)[:10]:
                 assert ("%d.  " % i) in story
         else:
             msg1 = "%d inputs have " % num_ins_locked
