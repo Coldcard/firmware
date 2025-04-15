@@ -274,10 +274,9 @@ def test_cancel_on_empty_added_numbers(pick_menu_item, is_q1, cap_menu,
 
 
 @pytest.mark.parametrize('stype', ["bip39pw", "words", "xprv", None])
-def test_lockdown_ux(stype, pick_menu_item, set_bip39_pw, goto_home,
-                     press_cancel, get_setting, reset_seed_words,
-                     generate_ephemeral_words, import_ephemeral_xprv,
-                     press_select, is_q1, cap_story, cap_menu):
+def test_lockdown_ux(stype, pick_menu_item, set_bip39_pw, goto_home, is_q1,
+                     get_setting, reset_seed_words, import_ephemeral_xprv,
+                     generate_ephemeral_words, cap_story, cap_menu, press_select):
     # test UX and operation of the 'seed lockdown' option
 
     if stype:
@@ -313,7 +312,10 @@ def test_lockdown_ux(stype, pick_menu_item, set_bip39_pw, goto_home,
         assert "Convert currently used BIP-39 passphrase to master seed" in story
         assert "but the passphrase itself is erased" in story
 
-    press_cancel()
+    assert "Press (4) to prove you read to the end of this message and accept all consequences" in story
+    press_select()  # enter does not active, sends you back to menu
+    time.sleep(.1)
+    assert "Lock Down Seed" in cap_menu()
     reset_seed_words()
     # real code does reboot, which is poorly simulated; avoid that
     # this needs to be tested with real HW !!!

@@ -561,7 +561,7 @@ async def convert_ephemeral_to_master(*a):
 
     msg += 'A reboot is part of this process. '
     msg += 'PIN code, and %s funds are not affected.' % _type
-    if not await ux_confirm(msg):
+    if not await ux_confirm(msg, confirm_key='4'):
         return await ux_aborted()
 
     # settings.save is part of re-building fs

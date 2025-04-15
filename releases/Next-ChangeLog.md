@@ -36,6 +36,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Finalization of foreign inputs from partial signatures. Thanks Christian Uebber
 - Bugfix: Temporary seed from COLDCARD backup failed to load stored multisig wallets
 - Change: `Destroy Seed` also removes all Trick PINs from SE2.
+- Change: `Lock Down Seed` requires pressing confirm key (4) to execute
 
 
 # Mk4 Specific Changes
