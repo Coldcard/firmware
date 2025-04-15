@@ -315,4 +315,44 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
     else:
         assert af in story
 
+
+def test_regtest_addr_on_mainnet(goto_home, is_q1, pick_menu_item, scan_a_qr, nfc_write, cap_story,
+                                 need_keypress, load_shared_mod, use_mainnet):
+    # testing bug in chains.possible_address_fmt
+    # allowed regtest addresses to be allowed on main chain
+    goto_home()
+    use_mainnet()
+    addr = "bcrt1qmff7njttlp6tqtj0nq7svcj2p9takyqm3mfl06"
+    if is_q1:
+        pick_menu_item('Scan Any QR Code')
+        scan_a_qr(addr)
+        time.sleep(1)
+
+        title, story = cap_story()
+
+        assert addr == addr_from_display_format(story.split("\n\n")[0])
+        assert '(1) to verify ownership' in story
+        need_keypress('1')
+
+    else:
+        cc_ndef = load_shared_mod('cc_ndef', '../shared/ndef.py')
+        n = cc_ndef.ndefMaker()
+        n.add_text(addr)
+        ccfile = n.bytes()
+
+        # run simulator w/ --set nfc=1 --eff
+        pick_menu_item('Advanced/Tools')
+        pick_menu_item('NFC Tools')
+        pick_menu_item('Verify Address')
+        open('debug/nfc-addr.ndef', 'wb').write(ccfile)
+        nfc_write(ccfile)
+        # press_select()
+
+    time.sleep(1)
+    title, story = cap_story()
+    assert addr == addr_from_display_format(story.split("\n\n")[0])
+
+    assert title == 'Unknown Address'
+    assert "not valid on Bitcoin Mainnet" in story
+
 # EOF

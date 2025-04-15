@@ -635,7 +635,7 @@ class CCCPolicyMenu(MenuSystem):
 
         self.policy = CCCFeature.update_policy_key(**args)
 
-        await ux_show_story(msg, title="Txn Magnitude")
+        await ux_show_story(msg, title="TX Magnitude")
         
     async def set_velocity(self, *a):
         mag = self.policy.get('mag', 0) or 0
@@ -828,7 +828,7 @@ async def modify_ccc_settings():
         # directly into menu (super helpful for debug/setup/testing time). We do warn tho.
         await ux_show_story('''You have a copy of the CCC key C in the Seed Vault, so \
 you may proceed to change settings now.\n\nYou must delete that key from the vault once \
-setup and debug is finished, or all benefit of this feature is lost!''')
+setup and debug is finished, or all benefit of this feature is lost!''', title='REMINDER')
 
         bypass = True
 
@@ -836,13 +836,9 @@ setup and debug is finished, or all benefit of this feature is lost!''')
         ch = await ux_show_story(
             "Spending policy cannot be viewed, changed nor disabled, "
             "unless you have the seed words for key C.",
-            title="CCC Enabled", escape='6')
+            title="CCC Enabled")
 
-        if ch == '6' and version.is_devmode:
-            # debug hack: skip word entry
-            bypass = True
-
-        elif ch != 'y': return
+        if ch != 'y': return
 
     if bypass:
         # doing full decode cycle here for better testing
