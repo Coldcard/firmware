@@ -718,7 +718,7 @@ pin_login_attempt(pinAttempt_t *args)
         args->num_fails = 0;
         args->attempts_left = MAX_TARGET_ATTEMPTS;
 
-        bool wipe = (slot.tc_flags & TC_WIPE) && !(slot.tc_flags & TC_WORD_WALLET|TC_XPRV_WALLET);
+        bool wipe = (slot.tc_flags & TC_WIPE) && !(slot.tc_flags & (TC_WORD_WALLET|TC_XPRV_WALLET));
         if(check_all_zeros(slot.xdata, 32) || wipe) {
             args->state_flags |= PA_ZERO_SECRET;
         }
