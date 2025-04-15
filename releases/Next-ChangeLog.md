@@ -26,7 +26,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Enhancement: NFC export usability upgrade: NFC keeps exporting until CANCEL/X is pressed
 - Enhancement: Add `Bitcoin Safe` option to `Export Wallet`
 - Enhancement: 10% performance improvement in USB upload speed for large files
-- Bugfix: Do not allow to change Main PIN to value already used as Trick PIN even if
+- Bugfix: Do not allow change Main PIN to same value already used as Trick PIN, even if
   Trick PIN is hidden.
 - Bugfix: Fix stuck progress bar under `Receiving...` after a USB communications failure
 - Bugfix: Showing derivation path in Address Explorer for root key (m) showed double slash (//)
@@ -40,14 +40,14 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Mk4 Specific Changes
 
-## 5.4.2 - 2025-04-??
+## 5.4.2 - 2025-04-17
 
-- tbd
+- All of the above, but not Key Teleport which requires QR scanner.
 
 
 # Q Specific Changes
 
-## 1.3.2Q - 2025-04-??
+## 1.3.2Q - 2025-04-17
 
 - Feature: Key Teleport -- Easily and securely move seed phrases, secure notes/passwords,
   multisig PSBT files, and even full Coldcard backups, between two Q using QR codes
