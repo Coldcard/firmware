@@ -258,11 +258,11 @@ def test_macos_detection():
     # not a portable test...  at all.
     import platform, subprocess, plistlib
 
-    if not platform.platform().startswith('macOS-11'):
+    if not platform.platform().startswith('macOS-'):
         raise pytest.xfail("requires MacOS")
 
     if not os.path.isdir('/Volumes/COLDCARD'):
-        raise pytest.xfail("needs COLDCARD mounted in usual spot")
+        raise pytest.xfail("needs COLDCARD connected & mounted")
 
     cmd = ['diskutil', 'info', '-plist', '/Volumes/COLDCARD']
     pl = subprocess.check_output(cmd)
