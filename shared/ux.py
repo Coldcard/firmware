@@ -29,8 +29,9 @@ else:
     # How many characters can we fit on each line? How many lines?
     # (using FontSmall) .. except it's an approximation since variable-width font.
     # - even 19 could work sometimes, but not when line is completely full
+    # - 18 will always fit, even if line full, one char can be only half visible
     # - really should look at rendered-width of text
-    CH_PER_W = 19
+    CH_PER_W = 18
     STORY_H = 5
     from ux_mk4 import PressRelease, ux_enter_number, ux_input_text, ux_show_pin
     from ux_mk4 import ux_login_countdown, ux_dice_rolling, ux_render_words
