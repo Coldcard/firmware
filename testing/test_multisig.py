@@ -1649,7 +1649,7 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
             scr = cap_screen()
             assert f"Number of keys scanned: {i+1}" in scr
 
-        press_cancel()  # quit QR animation
+        press_select()  # quit QR animation
 
     if not incl_self:
         time.sleep(.1)

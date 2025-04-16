@@ -782,6 +782,7 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
     if txid and await try_push_tx(data_len, txid, data_sha2):
         # go directly to reexport menu after pushTX
         first_time = False
+        title = "TX Pushed"
 
     # for specific cases, key teleport is an option
     offer_kt = False

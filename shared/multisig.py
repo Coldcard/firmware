@@ -1666,7 +1666,7 @@ async def ms_coordinator_qr(af_str, my_xfp, chain):
 
     msg = 'Scan Exported XPUB from Coldcard'
     while True:
-        vals = await QRScannerInteraction().scan_general(msg, convertor)
+        vals = await QRScannerInteraction().scan_general(msg, convertor, enter_quits=True)
         if vals is None:
             break
         try:
