@@ -15,7 +15,6 @@ This lists the changes in the most recent firmware, for each hardware platform.
     - spending policy can be exceeded with help of the other co-signer (3rd key), when needed
     - cannot view or change the CCC spending policy once set, policy violations are not explained
     - existing multisig wallets can be used by importing the spending-policy-controlled key
-
 - New Feature: Multisig transactions are finalized. Allows use of [PushTX](https://pushtx.org/)
   with multisig wallets.  Read more [here](https://github.com/Coldcard/firmware/blob/master/docs/limitations.md#p2sh--multisig)
 - New Feature: Signing artifacts re-export to various media. Now you have the option of
