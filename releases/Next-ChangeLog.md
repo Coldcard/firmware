@@ -62,3 +62,4 @@ This lists the new changes that have not yet been published in a normal release.
     - receiver shows sender a (simple) QR and a numeric code; sender replies with larger BBQr
       and 8-char password
 - Enhancement: Always choose the biggest possible display size for QR
+- Bugfix: Only BBQr is allowed to export Coldcard, Core, and pretty descriptor

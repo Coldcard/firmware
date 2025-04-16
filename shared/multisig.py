@@ -899,14 +899,19 @@ class MultisigWallet(WalletABC):
         await export_contents('Electrum multisig wallet', doit,
                               self.make_fname('el', 'json'), is_json=True)
 
-    async def export_wallet_file(self, mode="exported from", extra_msg=None, descriptor=False,
+    async def export_wallet_file(self, mode="exported from", descriptor=False,
                                  core=False, desc_pretty=True):
         # create a text file with the details; ready for import to next Coldcard
         my_xfp = settings.get('xfp')
+        # both core and CC export contains newlines, not supported with simple QR
+        force_bbqr = True
         if core:
             name = "Bitcoin Core"
             fname_pattern = self.make_fname('bitcoin-core')
         elif descriptor:
+            # classic descriptor is one-liner, can be exported as simple QR if size allows
+            # pretty desc has newlines - needs BBQr
+            force_bbqr = desc_pretty
             name = "Descriptor"
             fname_pattern = self.make_fname('desc')
         else:
@@ -929,7 +934,7 @@ class MultisigWallet(WalletABC):
             af = AF_CLASSIC
 
         from export import export_contents
-        await export_contents(label, body, fname_pattern, der, af)
+        await export_contents(label, body, fname_pattern, der, af, force_bbqr=force_bbqr)
 
     def render_export(self, fp, hdr_comment=None, descriptor=False, core=False, desc_pretty=True):
         if descriptor:
