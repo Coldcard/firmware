@@ -26,7 +26,7 @@ class SFFile:
         self.message = message
         self.runt = False
 
-        if max_size != None:
+        if max_size is not None:
             # Write
             self.max_size = max_size
             self.readonly = False

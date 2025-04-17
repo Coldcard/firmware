@@ -169,7 +169,7 @@ class ChainsBase:
     @classmethod
     def hash_message(cls, msg=None, msg_len=0):
         # Perform sha256 for message-signing purposes (only)
-        # - or get setup for that, if msg == None
+        # - or get setup for that, if msg is None
         s = sha256()
 
         s.update(cls.msg_signing_prefix())

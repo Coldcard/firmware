@@ -55,13 +55,13 @@ def disassemble_multisig(redeem_script):
 
     # expect M value first
     ex_M, opcode =  next(dis)
-    assert ex_M == M and opcode == None, 'bad M'
+    assert ex_M == M and opcode is None, 'bad M'
 
     # need N pubkeys
     pubkeys = []
     for idx in range(N):
         data, opcode = next(dis)
-        assert opcode == None and len(data) == 33, 'data'
+        assert opcode is None and len(data) == 33, 'data'
         assert data[0] == 0x02 or data[0] == 0x03, 'Y val'
         pubkeys.append(data)
 
@@ -69,7 +69,7 @@ def disassemble_multisig(redeem_script):
 
     # next is N value
     ex_N, opcode = next(dis)
-    assert ex_N == N and opcode == None
+    assert ex_N == N and opcode is None
 
     # finally, the opcode: CHECKMULTISIG
     data, opcode = next(dis)
@@ -801,7 +801,7 @@ class MultisigWallet(WalletABC):
             raise AssertionError('unable to parse xpub')
 
         try:
-            assert node.privkey() == None       # 'no privkeys plz'
+            assert node.privkey() is None       # 'no privkeys plz'
         except ValueError:
             pass
 

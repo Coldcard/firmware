@@ -177,7 +177,7 @@ class PinAttempt:
                 old_pin = self.pin
 
             assert len(new_pin) <= MAX_PIN_LEN
-            assert old_pin != None
+            assert old_pin is not None
             assert len(old_pin) <= MAX_PIN_LEN
         else:
             new_pin = b''

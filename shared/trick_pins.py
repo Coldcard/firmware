@@ -221,7 +221,7 @@ class TrickPinMgmt:
 
             # pick a free slot
             sn = self.find_empty_slots(1 if not secret else 1+(len(secret)//32))
-            if sn == None:
+            if sn is None:
                 # we are full
                 raise RuntimeError("no space left")
 
