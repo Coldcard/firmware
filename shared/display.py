@@ -76,7 +76,7 @@ class Display:
         if x is None or x < 0:
             # center/rjust
             w = self.width(msg, font)
-            if x == None:
+            if x is None:
                 x = max(0, (self.WIDTH - w) // 2)
             else:
                 # measure from right edge (right justify)
