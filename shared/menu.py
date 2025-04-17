@@ -182,7 +182,7 @@ class ToggleMenuItem(MenuItem):
         if self.nvkey == "chain":
             default = (self.get() == "BTC")
         else:
-            default = (self.get(None) == None)
+            default = (self.get(None) is None)
         if self.story and default:
             ch = await ux_show_story(self.story)
             if ch == 'x': return

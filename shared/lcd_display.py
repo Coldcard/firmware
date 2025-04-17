@@ -154,7 +154,7 @@ class Display:
         # otherwise: respect setting
 
         if on_battery is None:
-            on_battery = (get_batt_threshold() != None)
+            on_battery = (get_batt_threshold() is not None)
 
         if on_battery:
             # user-defined brightness when running on batteries.
@@ -190,7 +190,7 @@ class Display:
             self.image(165, 0, 'tmp_%d' % kws['tmp'])
 
         xfp = kws.get('xfp', None)      # expects an integer
-        if xfp != None:
+        if xfp is not None:
             x = 217
             for ch in xfp2str(xfp).lower():
                 self.image(x, 0, 'ch_'+ch)
@@ -268,7 +268,7 @@ class Display:
 
         if x is None or x < 0:
             w = self.width(msg)
-            if x == None:
+            if x is None:
                 # center: also blanks rest of line
                 x = max(0, (CHARS_W - w) // 2)
                 end_x = x + w

@@ -59,7 +59,7 @@ Example Commands:
         try:
             dis.busy_bar(1)
 
-            if ln == None :
+            if ln is None :
                 # Cancel key - do nothing
                 ans = None
             elif ln in ('help', 'cls', 'rand'):
