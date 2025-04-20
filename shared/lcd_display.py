@@ -657,7 +657,7 @@ class Display:
         return prev_x
 
     def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, partial_bar=None,
-                        is_addr=False, force_msg=False):
+                        is_addr=False, force_msg=False, is_change=False):
         # Show a QR code on screen w/ some text under it
         # - invert not supported on Q1
         # - sidebar not supported here (see users.py)
@@ -773,6 +773,10 @@ class Display:
                     self.text(-1, 1, idx_hint[5:])
                 else:
                     self.text(-1, 0, idx_hint)
+
+            if is_addr and is_change:
+                for i, c in enumerate("CHANGE"):
+                    self.text(0, i, c)
 
             # pass a max brightness flag here, which will be cleared after next show
             self.show(max_bright=True)
