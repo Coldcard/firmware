@@ -3062,7 +3062,19 @@ def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_stor
     time.sleep(.1)
     _, story = cap_story()
     ss = story.split("\n\n")
-    for i, (sa, sb, (amount, d)) in enumerate(zip(ss[:-1:2], ss[1::2], data), start=20):
+
+    # collect QR codes first
+    need_keypress(KEY_QR if is_q1 else "4")
+    qr_list = []
+    for _ in range(len(data)):
+        qr = cap_screen_qr().decode('ascii')
+        qr_list.append(qr)
+        need_keypress(KEY_RIGHT if is_q1 else "9")
+        time.sleep(.5)
+
+    press_cancel()  # QR code on screen - exit
+
+    for i, (sa, sb, (amount, data)) in enumerate(zip(ss[:-1:2], ss[1::2], data), start=20):
         assert f"Output {i}:" == sa
         try:
             val, name, dd = sb.split("\n")
@@ -3073,11 +3085,12 @@ def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_stor
         assert f'{amount / 100000000:.8f} XTN' == val
         if dd:
             hex_str, ascii_str = dd.split(" ", 1)
-            assert f"(ascii: {d.decode()})" == ascii_str
-            assert d.hex() == hex_str
+            assert hex_str == qr_list[i-20]
+            assert f"(ascii: {data.decode()})" == ascii_str
+            assert data.hex() == hex_str
         else:
-            assert d.hex()[:200] == dd0
-            assert d.hex()[-200:] == dd1
+            assert data.hex()[:200] == dd0
+            assert data.hex()[-200:] == dd1
 
     press_cancel()  # exit txn out explorer
     end_sign(finalize=finalize)

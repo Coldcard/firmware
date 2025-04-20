@@ -18,7 +18,8 @@ class QRDisplaySingle(UserInteraction):
     # Show a single QR code for (typically) a list of addresses, or a single value.
 
     def __init__(self, addrs, is_alnum, start_n=0, sidebar=None, msg=None,
-                 is_addrs=False, force_msg=False, allow_nfc=True, is_secret=False):
+                 is_addrs=False, force_msg=False, allow_nfc=True, is_secret=False,
+                 change_idxs=None):
         self.is_alnum = is_alnum
         self.idx = 0             # start with first address
         self.invert = False      # looks better, but neither mode is ideal
@@ -32,6 +33,7 @@ class QRDisplaySingle(UserInteraction):
         self.allow_nfc = allow_nfc
         # only used for NFC sharing secret material - full chip wipe if is_secret=True
         self.is_secret = is_secret
+        self.change_idxs = change_idxs or []
 
     def calc_qr(self, msg):
         # Version 2 would be nice, but can't hold what we need, even at min error correction,
@@ -61,6 +63,11 @@ class QRDisplaySingle(UserInteraction):
         # this member function decides what type of hint will be shown
         # numbers, letters, etc.
         return str(self.start_n + self.idx) if len(self.addrs) > 1 else None
+
+    def is_change(self):
+        if self.idx in self.change_idxs:
+            return True
+        return False
 
     def redraw(self):
         # Redraw screen.
@@ -92,7 +99,8 @@ class QRDisplaySingle(UserInteraction):
 
         dis.draw_qr_display(self.qr_data, msg, self.is_alnum,
                             self.sidebar, self.idx_hint(), self.invert,
-                            is_addr=self.is_addrs, force_msg=self.force_msg)
+                            is_addr=self.is_addrs, force_msg=self.force_msg,
+                            is_change=self.is_change())
 
     async def interact_bare(self):
         from glob import NFC, dis
