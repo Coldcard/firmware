@@ -600,8 +600,14 @@ def verify_qr_address(cap_screen_qr, cap_screen, is_q1):
     # plus text version of address, if any, is right.
     from ckcc_protocol.constants import AFC_BECH32
 
-    def doit(addr_fmt, expect_addr=None):
+    def doit(addr_fmt, expect_addr=None, is_change=None):
         qr = cap_screen_qr().decode('ascii')
+
+        if isinstance(addr_fmt, str):
+            try:
+                addr_fmt = unmap_addr_fmt[addr_fmt]
+            except KeyError:
+                addr_fmt = msg_sign_unmap_addr_fmt[addr_fmt]
 
         if addr_fmt & AFC_BECH32:
             qr = qr.lower()
@@ -613,9 +619,21 @@ def verify_qr_address(cap_screen_qr, cap_screen, is_q1):
         # - insists on some spaces
         full = cap_screen()
         if is_q1:
-            txt = ''.join(full.split()[2:]).replace('~', '')
+            if is_change:
+                for c, line in zip("CHANGE", full.split('\n')):
+                    assert line.startswith(c)
+            elif is_change is False:
+                for c, line in zip("CHANGE", full.split('\n')):
+                    assert not line.startswith(c)
+
+            txt = ''.join(l for l in full.split() if len(l)>4).replace('~', '')
         else:
-            txt = ''.join(full.split())
+            if is_change:
+                assert "CHANGE" in full
+            elif is_change is False:
+                assert "CHANGE" not in full
+
+            txt = ''.join(full.split()).replace('CHANGE', '')
 
         if txt:
             assert txt == qr
@@ -2399,7 +2417,7 @@ def goto_address_explorer(goto_home, pick_menu_item, need_keypress,
     return doit
 
 @pytest.fixture
-def txout_explorer(cap_story, press_cancel, need_keypress, is_q1):
+def txout_explorer(cap_story, press_cancel, need_keypress, is_q1, verify_qr_address):
     def doit(data, chain="XTN"):
         time.sleep(.1)
         title, story = cap_story()
@@ -2417,11 +2435,26 @@ def txout_explorer(cap_story, press_cancel, need_keypress, is_q1):
             assert len(ss) == (len(d) * 2) + 1
             assert "Press RIGHT to see next group" in ss[-1]
             if i:
-                assert " LEFT to go back." in ss[-1]
+                assert " LEFT to go back" in ss[-1]
             else:
                 assert "LEFT" not in ss[-1]
 
-            for i, (sa, sb, (af, amount, change)) in enumerate(zip(ss[:-1:2], ss[1::2], d), start=i):
+            if not is_q1:
+                assert "(4) to show QR code" in ss[-1]
+
+            # collect QR codes first
+            need_keypress(KEY_QR if is_q1 else "4")
+            qr_addr_list = []
+            for af, amount, change in d:
+                qr = verify_qr_address(af, is_change=bool(change))
+                qr_addr_list.append(qr)
+                need_keypress(KEY_RIGHT if is_q1 else "9")
+                time.sleep(.5)
+
+            press_cancel()  # QR code on screen - exit
+
+            start = i
+            for i, (sa, sb, (af, amount, change)) in enumerate(zip(ss[:-1:2], ss[1::2], d), start=start):
                 if change:
                     assert f"Output {i} (change):" == sa
                 else:
@@ -2429,6 +2462,9 @@ def txout_explorer(cap_story, press_cancel, need_keypress, is_q1):
 
                 txt_amount, _, addr = sb.split("\n")
                 addr = addr_from_display_format(addr)
+                # verify QR matches what is on screen
+                assert addr == qr_addr_list[i-start]
+
                 assert txt_amount == f'{amount / 100000000:.8f} {chain}'
                 if af == "p2pkh":
                     if chain == "BTC":

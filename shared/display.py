@@ -329,7 +329,7 @@ class Display:
         return
 
     def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert,
-                        is_addr=False, force_msg=False):
+                        is_addr=False, force_msg=False, is_change=False):
         # 'sidebar' is a pre-formated obj to show to right of QR -- oled life
         # - 'msg' will appear to right if very short, else under in tiny
         # - ignores "is_addr" because exactly zero space to do anything special
@@ -378,11 +378,14 @@ class Display:
 
         if not sidebar and not msg:
             pass
-        elif not sidebar and len(msg) > (5*7):
+        elif not sidebar and ((len(msg) > (5*7)) or is_change):
             # use FontTiny and word wrap (will just split if no spaces)
+            # native segwit addresses and taproot
+            # if is_change=True also p2pkh and p2sh fall into this category as space is needed for "CHANGE"
             x = bw + lm + 4
             ww = ((128 - x)//4) - 1        # char width avail
             y = 1
+
             parts = list(word_wrap(msg, ww))
             if len(parts) > 8:
                 parts = parts[:8]
@@ -393,9 +396,13 @@ class Display:
             for line in parts:
                 self.text(x, y, line, FontTiny)
                 y += 8
+
+            if is_addr and is_change:
+                self.text(x+4, y+8, "CHANGE", FontTiny)
         else:
             # hand-positioned for known cases
             # - sidebar = (text, #of char per line)
+            # p2pkh and p2sh addresses (if is_change=False)
             x, y = 73, (0 if is_alnum else 2)
             dy = 10 if is_alnum else 12
             sidebar, ll = sidebar if sidebar else (msg, 7)
