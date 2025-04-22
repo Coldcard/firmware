@@ -48,7 +48,6 @@ else:
     kt_start_rx = None
     kt_send_file_psbt = None
 
-
 #
 # NOTE: "Always In Title Case"
 #
@@ -72,6 +71,8 @@ def has_secrets():
     # Secret is loaded, may be from SE or tmp
     from pincodes import pa
     return pa.has_secrets()
+
+qr_and_has_secrets = has_secrets if version.has_qr else False
 
 def nfc_enabled():
     from glob import NFC
@@ -216,7 +217,7 @@ FileMgmtMenu = [
     MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu),        #dup elsewhere
     MenuItem('Sign Text File', predicate=has_secrets, f=sign_message_on_sd),
     MenuItem('Batch Sign PSBT', predicate=has_secrets, f=batch_sign),
-    MenuItem('Teleport Multisig PSBT', predicate=version.has_qr, f=kt_send_file_psbt),
+    MenuItem('Teleport Multisig PSBT', predicate=qr_and_has_secrets, f=kt_send_file_psbt),
     MenuItem('List Files', f=list_files),
     MenuItem('Verify Sig File', f=verify_sig_file),
     MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file, shortcut=KEY_NFC),
