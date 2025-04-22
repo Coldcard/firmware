@@ -54,18 +54,22 @@
       From VirtDisk [IF VIRTDISK ENABLED]
     File Management
       Verify Backup
+      Teleport Multisig PSBT [IF QR AND SECRET]
       List Files
       Verify Sig File
       NFC File Share [IF NFC ENABLED]
-      QR File Share
+      BBQr File Share [IF QR SCANNER]
+      QR File Share [IF QR SCANNER]
       Format SD Card
       Format RAM Disk [IF VIRTDISK ENABLED]
+    Key Teleport (start)
     Paper Wallets
     Perform Selftest
     I Am Developer.
       Serial REPL
       Warm Reset
-      Restore Txt Bkup
+      Restore Bkup
+      Reflash GPU [IF QWERTY KEYBOARD]
     Secure Logout
   Settings
     Login Settings
@@ -239,6 +243,7 @@
       Zeus
       Electrum Wallet
       Theya
+      Bitcoin Safe
       Wasabi Wallet
       Unchained
       Lily Wallet
@@ -249,7 +254,7 @@
       Export XPUB
         Segwit (BIP-84)
         Classic (BIP-44)
-        P2WPKH/P2SH (49)
+        P2WPKH/P2SH (BIP-49)
         Master XPUB
         Current XFP
       Dump Summary
@@ -268,6 +273,7 @@
         Zeus
         Electrum Wallet
         Theya
+        Bitcoin Safe
         Wasabi Wallet
         Unchained
         Lily Wallet
@@ -278,16 +284,18 @@
         Export XPUB
           Segwit (BIP-84)
           Classic (BIP-44)
-          P2WPKH/P2SH (49)
+          P2WPKH/P2SH (BIP-49)
           Master XPUB
           Current XFP
         Dump Summary
       Sign Text File
       Batch Sign PSBT
+      Teleport Multisig PSBT [IF QR AND SECRET]
       List Files
       Verify Sig File
       NFC File Share [IF NFC ENABLED]
-      QR File Share
+      BBQr File Share [IF QR SCANNER]
+      QR File Share [IF QR SCANNER]
       Clone Coldcard
       Format SD Card
       Format RAM Disk [IF VIRTDISK ENABLED]
@@ -333,11 +341,14 @@
       Import XPRV
       Tapsigner Backup
       Coldcard Backup
+    Key Teleport (start)
     Paper Wallets
     Enable HSM [IF HSM AND SECRET]
       Default Off
       Enable
+    Coldcard Co-Signing [IF NOT TMP SEED]
     User Management [IF HSM AND SECRET]
+      (no users yet)
     NFC Tools [IF NFC ENABLED]
       Sign PSBT
       Show Address
@@ -346,7 +357,7 @@
       Verify Address
       File Share
       Import Multisig
-      Push Transaction [MAYBE]
+      Push Transaction [IF ENBALED]
     Danger Zone
       Debug Functions
       Seed Functions
@@ -360,8 +371,10 @@
       I Am Developer.
         Serial REPL
         Warm Reset
-        Restore Txt Bkup
-      Seed Vault [IF SECRET]
+        Restore Bkup
+        BKPW Override
+        Reflash GPU [IF QWERTY KEYBOARD]
+      Seed Vault [IF SECRET AND NOT TMP SEED]
         Default Off
         Enable
       Perform Selftest
@@ -374,7 +387,7 @@
         Warn
       Testnet Mode
         Bitcoin
-        Testnet3
+        Testnet4
         Regtest
       AE Start Index
         Default Off
@@ -457,7 +470,10 @@
       Create Airgapped
       Trust PSBT?
       Skip Checks?
-      Unsorted Multisig
+      Full Address View?
+        Partly Censor
+        Show Full
+      Unsorted Multisig?
     NFC Push Tx
       coldcard.com
       mempool.space
@@ -522,12 +538,12 @@
     Verify Address
     File Share
     Import Multisig
-    Push Transaction [MAYBE]
+    Push Transaction [IF ENBALED]
 ---
 
 [FACTORY MODE]
-  Version: 5.x.x
   Bag Me Now
+  Version: 5.x.x
   DFU Upgrade
   Ship W/O Bag
   Debug Functions

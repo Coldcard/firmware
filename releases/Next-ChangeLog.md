@@ -18,4 +18,4 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 1.3.?Q - 2025-05-
 
-- tbd
+- Bugfix: Do not allow to teleport PSBTs from SD card when CC has no secrets

@@ -15,7 +15,7 @@ async def doit():
         from users import UsersMenu
         from flow import has_secrets, nfc_enabled, vdisk_enabled, word_based_seed
         from flow import hsm_policy_available, is_not_tmp, has_real_secret
-        from flow import has_se_secrets, hsm_available
+        from flow import has_se_secrets, hsm_available, qr_and_has_secrets
 
         print("%s%s"% (indent, label), file=fd)
 
@@ -69,7 +69,7 @@ async def doit():
                 if pred in (True, False):
                     if here in ("NFC Tools", "Import via NFC", "NFC File Share"):
                         here += ' [IF NFC ENABLED]'
-                    if "QR" in here and "Scan" in here:
+                    if "QR" in here or "Scan" in here or "BBQr" in here:
                         here += ' [IF QR SCANNER]'
                     if "battery" in here:
                         here += ' [IF BATTERIES]'
@@ -97,6 +97,8 @@ async def doit():
                     here += ' [IF SECRET AND NOT TMP SEED]'
                 elif pred == hsm_available:
                     here += ' [IF HSM AND SECRET]'
+                elif pred == qr_and_has_secrets:
+                    here += ' [IF QR AND SECRET]'
                 elif pred:
                     if here in ("Secure Notes & Passwords", "Push Transaction"):
                         here += ' [IF ENBALED]'
