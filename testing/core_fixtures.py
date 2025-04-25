@@ -17,6 +17,11 @@ def _sim_exec(device, cmd, binary=False, timeout=60000):
     # print(f'sim_exec: {cmd!r} -> {s!r}')
     return s.decode('utf-8') if not isinstance(s, str) else s
 
+def _sim_eval(device, cmd, binary=False, timeout=None):
+    s = device.send_recv(b'EVAL' + cmd.encode('utf-8'), timeout=timeout)
+    if binary: return s
+    return s.decode('utf-8')
+
 def _cap_story(device):
     cmd = "RV.write('\0'.join(sim_display.story or []))"
     rv = _sim_exec(device, cmd)

@@ -6,7 +6,12 @@ import pytest, time, os, shutil
 from binascii import a2b_hex
 from constants import simulator_fixed_tprv
 
-SIM_FNAME = '../unix/work/MicroSD/.tmp.tmp'
+
+@pytest.fixture
+def simulator_db_file(sim_root_dir):
+    def doit():
+        return sim_root_dir + "/MicroSD/.tmp.tmp"
+    return doit
 
 @pytest.fixture
 def set_pw_phrase(pick_menu_item, word_menu_entry):
@@ -31,8 +36,9 @@ def set_pw_phrase(pick_menu_item, word_menu_entry):
         'ab'*25,
     ])
 def test_first_time(pws, need_keypress, cap_story, pick_menu_item, enter_complex,
-                    cap_menu, go_to_passphrase, reset_seed_words, press_select):
-    try:    os.unlink(SIM_FNAME)
+                    cap_menu, go_to_passphrase, reset_seed_words, press_select,
+                    simulator_db_file):
+    try:    os.unlink(simulator_db_file())
     except: pass
 
     pws = pws.split()
@@ -85,7 +91,7 @@ def test_first_time(pws, need_keypress, cap_story, pick_menu_item, enter_complex
         reset_seed_words()
 
 
-def test_crypto_unittest(sim_eval, sim_exec, simulator):
+def test_crypto_unittest(sim_exec, simulator, simulator_db_file):
     # unit test for AES key generation from SDCard and master secret
     card = sim_exec('import files; from h import b2a_hex; cs = files.CardSlot().__enter__(); RV.write(b2a_hex(cs.get_id_hash())); cs.__exit__()')
 
@@ -121,7 +127,7 @@ p=PassphraseSaver(); p._calc_key(cs); RV.write(b2a_hex(p.key)); cs.__exit__()'''
 
     # check that key works for decrypt and that the file was actually encrypted
 
-    with open(SIM_FNAME, 'rb') as fd:
+    with open(simulator_db_file(), 'rb') as fd:
         raw = fd.read()
 
     import pyaes
@@ -137,7 +143,7 @@ p=PassphraseSaver(); p._calc_key(cs); RV.write(b2a_hex(p.key)); cs.__exit__()'''
     assert j[0]['xfp']
 
 def test_delete_one_by_one(go_to_passphrase, pick_menu_item, cap_menu,
-                           cap_story, press_select):
+                           cap_story, press_select, src_root_dir, sim_root_dir):
     # delete it one by one
     # when all deleted - we must be back in Passphrase
     # menu without Restore Saved option visible
@@ -145,7 +151,7 @@ def test_delete_one_by_one(go_to_passphrase, pick_menu_item, cap_menu,
     time.sleep(.1)
     m = cap_menu()
     if 'Restore Saved' not in m:
-        shutil.copy2('data/pwsave.tmp', '../unix/work/MicroSD/.tmp.tmp')
+        shutil.copy2(f'{src_root_dir}/testing/data/pwsave.tmp', f'{sim_root_dir}/MicroSD/.tmp.tmp')
         go_to_passphrase()
     pick_menu_item('Restore Saved')
     m = cap_menu()

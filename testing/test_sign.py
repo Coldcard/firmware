@@ -119,14 +119,14 @@ def xxx_test_sign_truncated(dev):
 	'data/worked-combined.psbt',
 	'data/worked-7.psbt',
 ])
-def test_psbt_proxy_parsing(fn, sim_execfile, sim_exec):
+def test_psbt_proxy_parsing(fn, sim_execfile, sim_exec, src_root_dir, sim_root_dir):
     # unit test: parsing by the psbt proxy object
 
-    sim_exec('import main; main.FILENAME = %r; ' % ('../../testing/'+fn))
+    sim_exec('import main; main.FILENAME = %r; ' % (f'{src_root_dir}/testing/'+fn))
     rv = sim_execfile('devtest/unit_psbt.py')
     assert not rv, rv
 
-    rb = '../unix/work/readback.psbt'
+    rb = f'{sim_root_dir}/readback.psbt'
 
     oo = BasicPSBT().parse(open(fn, 'rb').read())
     rb = BasicPSBT().parse(open(rb, 'rb').read())
@@ -135,7 +135,7 @@ def test_psbt_proxy_parsing(fn, sim_execfile, sim_exec):
 @pytest.mark.unfinalized
 @pytest.mark.parametrize("addr_fmt", ["p2tr", "p2wpkh"])
 def test_speed_test(dev, addr_fmt, fake_txn, is_mark3, is_mark4, start_sign, end_sign,
-                    press_select, press_cancel):
+                    press_select, press_cancel, sim_root_dir):
     # measure time to sign a larger txn
     if is_mark4:
         # Mk4: expect 
@@ -152,7 +152,9 @@ def test_speed_test(dev, addr_fmt, fake_txn, is_mark3, is_mark4, start_sign, end
 
     psbt = fake_txn(num_in, num_out, dev.master_xpub, addr_fmt=addr_fmt)
 
-    open('debug/speed.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/speed.psbt', 'wb') as f:
+        f.write(psbt)
+
     dt = time.time()
     start_sign(psbt, finalize=False)
 
@@ -193,8 +195,8 @@ if 0:
 @pytest.mark.bitcoind
 @pytest.mark.veryslow
 @pytest.mark.parametrize('addr_fmt', ["p2wpkh", "p2tr", "p2pkh"])
-def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn, is_mark3, is_mark4,
-                 start_sign, end_sign, dev, addr_fmt):
+def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn,
+                 start_sign, end_sign, dev, addr_fmt, sim_root_dir):
 
     # try a bunch of different bigger sized txns
     # - important to test on real device, due to it's limited memory
@@ -213,7 +215,8 @@ def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn, is_mark3,
 
     psbt = fake_txn(num_in, num_out, dev.master_xpub, addr_fmt=addr_fmt)
 
-    open('debug/last.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/last.psbt', 'wb') as f:
+        f.write(psbt)
 
     start_sign(psbt, finalize=True)
 
@@ -228,7 +231,8 @@ def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn, is_mark3,
 
     signed = end_sign(True, finalize=True)
 
-    open('debug/signed.txn', 'wb').write(signed)
+    with open(f'{sim_root_dir}/debug/signed.txn', 'wb') as f:
+        f.write(signed)
 
     decoded = decode_with_bitcoind(signed)
 
@@ -264,14 +268,15 @@ def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn, is_mark3,
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
 def test_real_signing(fake_txn, use_regtest, try_sign, dev, num_ins,
-                      decode_with_bitcoind):
+                      decode_with_bitcoind, sim_root_dir):
     # create a TXN using actual addresses that are correct for DUT
     xp = dev.master_xpub
 
     inputs = [["p2tr"] if i % 2 == 0 else ["p2wpkh"] for i in range(num_ins)]
 
     psbt = fake_txn(inputs, 1, xp)
-    open('debug/real-%d.psbt' % num_ins, 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/real-%d.psbt' % num_ins, 'wb') as f:
+        f.write(psbt)
 
     _, txn = try_sign(psbt, accept=True, finalize=True)
 
@@ -290,7 +295,7 @@ def test_real_signing(fake_txn, use_regtest, try_sign, dev, num_ins,
 @pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
 @pytest.mark.bitcoind
 def test_vs_bitcoind(match_key, use_regtest, check_against_bitcoind, bitcoind,
-                     start_sign, end_sign, we_finalize, num_dests):
+                     start_sign, end_sign, we_finalize, num_dests, sim_root_dir):
 
     wallet_xfp = match_key
     use_regtest()
@@ -346,7 +351,8 @@ def test_vs_bitcoind(match_key, use_regtest, check_against_bitcoind, bitcoind,
     fee = resp['fee']
     chg_pos = resp['changepos']
 
-    open('debug/vs.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/vs.psbt', 'wb') as f:
+        f.write(psbt)
 
     # check some basics
     mine = BasicPSBT().parse(psbt)
@@ -368,14 +374,17 @@ def test_vs_bitcoind(match_key, use_regtest, check_against_bitcoind, bitcoind,
         assert mine.version == 2
 
     signed = end_sign(accept=True, finalize=we_finalize)
-    open('debug/vs-signed.psbt', 'wb').write(signed)
+    with open(f'{sim_root_dir}/debug/vs-signed.psbt', 'wb') as f:
+        f.write(signed)
 
     if not we_finalize:
         b4 = BasicPSBT().parse(psbt)
         aft = BasicPSBT().parse(signed)
         assert b4 != aft, "signing didn't change anything?"
 
-        open('debug/signed.psbt', 'wb').write(signed)
+        with open(f'{sim_root_dir}/debug/signed.psbt', 'wb') as f:
+            f.write(signed)
+
         resp = bitcoind.supply_wallet.finalizepsbt(str(b64encode(signed), 'ascii'), True)
 
         #combined_psbt = b64decode(resp['psbt'])
@@ -387,7 +396,8 @@ def test_vs_bitcoind(match_key, use_regtest, check_against_bitcoind, bitcoind,
 
         # assert resp['complete']
         print("Final txn: %r" % network)
-        open('debug/finalized-by-btcd.txn', 'wb').write(network)
+        with open(f'{sim_root_dir}/debug/finalized-by-btcd.txn', 'wb') as f:
+            f.write(network)
 
         # try to send it
         txed = bitcoind.supply_wallet.sendrawtransaction(B2A(network))
@@ -396,7 +406,8 @@ def test_vs_bitcoind(match_key, use_regtest, check_against_bitcoind, bitcoind,
     else:
         assert signed[0:4] != b'psbt', "expecting raw bitcoin txn"
         #print("Final txn: %s" % B2A(signed))
-        open('debug/finalized-by-cc.txn', 'wb').write(signed)
+        with open(f'{sim_root_dir}/debug/finalized-by-cc.txn', 'wb') as f:
+            f.write(signed)
 
         txed = bitcoind.supply_wallet.sendrawtransaction(B2A(signed))
         print("Final txn hash: %r" % txed)
@@ -428,7 +439,7 @@ def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign):
 
 @pytest.mark.bitcoind
 @pytest.mark.unfinalized
-def test_sign_p2sh_p2wpkh(match_key, use_regtest, start_sign, end_sign, bitcoind):
+def test_sign_p2sh_p2wpkh(match_key, use_regtest, start_sign, end_sign, bitcoind, sim_root_dir):
     # Check we can finalize p2sh_p2wpkh inputs right.
 
     # TODO fix this
@@ -444,7 +455,8 @@ def test_sign_p2sh_p2wpkh(match_key, use_regtest, start_sign, end_sign, bitcoind
     start_sign(psbt, finalize=True)
     signed = end_sign(accept=True)
     #signed = end_sign(None)
-    open('debug/p2sh-signed.psbt', 'wb').write(signed)
+    with open(f'{sim_root_dir}/debug/p2sh-signed.psbt', 'wb') as f:
+        f.write(signed)
 
     #print('my finalization: ' + B2A(signed))
 
@@ -452,7 +464,9 @@ def test_sign_p2sh_p2wpkh(match_key, use_regtest, start_sign, end_sign, bitcoind
     signed_psbt = end_sign(accept=True)
 
     # use bitcoind to combine
-    open('debug/signed.psbt', 'wb').write(signed_psbt)
+    with open(f'{sim_root_dir}/debug/signed.psbt', 'wb') as f:
+        f.write(signed_psbt)
+
     resp = bitcoind.rpc.finalizepsbt(str(b64encode(signed_psbt), 'ascii'), True)
 
     assert resp['complete'] == True, "bitcoind wasn't able to finalize it"
@@ -465,7 +479,8 @@ def test_sign_p2sh_p2wpkh(match_key, use_regtest, start_sign, end_sign, bitcoind
 @pytest.mark.bitcoind
 @pytest.mark.unfinalized
 def test_sign_p2sh_example(set_master_key, use_regtest, sim_execfile, start_sign, end_sign,
-                           decode_psbt_with_bitcoind, offer_ms_import, press_select, clear_ms):
+                           decode_psbt_with_bitcoind, offer_ms_import, press_select, clear_ms,
+                           sim_root_dir):
     # Use the private key given in BIP 174 and do similar signing
     # as the examples.
 
@@ -506,7 +521,8 @@ def test_sign_p2sh_example(set_master_key, use_regtest, sim_execfile, start_sign
     start_sign(psbt)
     part_signed = end_sign(True)
 
-    open('debug/ex-signed-part.psbt', 'wb').write(part_signed)
+    with open(f'{sim_root_dir}/debug/ex-signed-part.psbt', 'wb') as f:
+        f.write(part_signed)
 
     b4 = BasicPSBT().parse(psbt)
     aft = BasicPSBT().parse(part_signed)
@@ -516,7 +532,9 @@ def test_sign_p2sh_example(set_master_key, use_regtest, sim_execfile, start_sign
     start_sign(part_signed, finalize=False)
     signed = end_sign(True, finalize=False)
 
-    open('debug/ex-signed.psbt', 'wb').write(signed)
+    with open(f'{sim_root_dir}/debug/ex-signed.psbt', 'wb') as f:
+        f.write(signed)
+
     aft2 = BasicPSBT().parse(signed)
 
     decode = decode_psbt_with_bitcoind(signed)
@@ -544,7 +562,8 @@ def test_sign_p2sh_example(set_master_key, use_regtest, sim_execfile, start_sign
 
 
 @pytest.mark.bitcoind
-def test_change_case(start_sign, use_regtest, end_sign, check_against_bitcoind, cap_story):
+def test_change_case(start_sign, use_regtest, end_sign, check_against_bitcoind, cap_story,
+                     sim_root_dir):
     # is change shown/hidden at right times. no fraud checks 
 
     # NOTE: out#1 is change:
@@ -564,7 +583,8 @@ def test_change_case(start_sign, use_regtest, end_sign, check_against_bitcoind, 
     check_against_bitcoind(B2A(b4.txn), Decimal('0.00000294'), change_outs=[1,])
 
     signed = end_sign(True)
-    open('debug/chg-signed.psbt', 'wb').write(signed)
+    with open(f'{sim_root_dir}/debug/chg-signed.psbt', 'wb') as f:
+        f.write(signed)
 
     # modify it: remove bip32 path
     b4.outputs[1].bip32_paths = {}
@@ -583,14 +603,17 @@ def test_change_case(start_sign, use_regtest, end_sign, check_against_bitcoind, 
     check_against_bitcoind(B2A(b4.txn), Decimal('0.00000294'), change_outs=[])
 
     signed2 = end_sign(True)
-    open('debug/chg-signed2.psbt', 'wb').write(signed)
+    with open(f'{sim_root_dir}/debug/chg-signed2.psbt', 'wb') as f:
+        f.write(signed)
+
     aft = BasicPSBT().parse(signed)
     aft2 = BasicPSBT().parse(signed2)
     assert aft.txn == aft2.txn
 
 @pytest.mark.parametrize('case', [ 1, 2])
 @pytest.mark.bitcoind
-def test_change_fraud_path(start_sign, use_regtest, end_sign, case, check_against_bitcoind, cap_story):
+def test_change_fraud_path(start_sign, use_regtest, end_sign, case, check_against_bitcoind,
+                           cap_story, sim_root_dir):
     # fraud: BIP-32 path of output doesn't lead to pubkey indicated
 
     # NOTE: out#1 is change:
@@ -614,7 +637,8 @@ def test_change_fraud_path(start_sign, use_regtest, end_sign, case, check_agains
         b4.serialize(fd)
         mod_psbt = fd.getvalue()
 
-    open('debug/mod-%d.psbt' % case, 'wb').write(mod_psbt)
+    with open(f'{sim_root_dir}/debug/mod-%d.psbt' % case, 'wb') as f:
+        f.write(mod_psbt)
 
     if case == 1:
         start_sign(mod_psbt)
@@ -633,7 +657,8 @@ def test_change_fraud_path(start_sign, use_regtest, end_sign, case, check_agains
         end_sign(True)
 
 @pytest.mark.bitcoind
-def test_change_fraud_addr(start_sign, end_sign, use_regtest, check_against_bitcoind, cap_story):
+def test_change_fraud_addr(start_sign, end_sign, use_regtest, check_against_bitcoind, cap_story,
+                           sim_root_dir):
     # fraud: BIP-32 path of output doesn't match TXO address
     # NOTE: out#1 is change:
     #chg_addr = 'mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'
@@ -655,7 +680,8 @@ def test_change_fraud_addr(start_sign, end_sign, use_regtest, check_against_bitc
         b4.serialize(fd)
         mod_psbt = fd.getvalue()
 
-    open('debug/mod-addr.psbt', 'wb').write(mod_psbt)
+    with open(f'{sim_root_dir}/debug/mod-addr.psbt', 'wb') as f:
+        f.write(mod_psbt)
 
     start_sign(mod_psbt)
     with pytest.raises(CCProtoError) as ee:
@@ -666,13 +692,15 @@ def test_change_fraud_addr(start_sign, end_sign, use_regtest, check_against_bitc
 @pytest.mark.parametrize('case', ['p2sh-p2wpkh', 'p2wpkh', 'p2sh', 'p2sh-p2pkh'])
 @pytest.mark.bitcoind
 def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, use_regtest,
-                            cap_story, case):
+                            cap_story, case, sim_root_dir):
     # not fraud: output address encoded in various equiv forms
     use_regtest()
     # NOTE: out#1 is change:
     #chg_addr = 'mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'
 
-    psbt = open('data/example-change.psbt', 'rb').read()
+    with open('data/example-change.psbt', 'rb') as f:
+        psbt = f.read()
+
     b4 = BasicPSBT().parse(psbt)
 
     t = CTransaction()
@@ -722,7 +750,8 @@ def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, use_re
         b4.serialize(fd)
         mod_psbt = fd.getvalue()
 
-    open('debug/mod-%s.psbt' % case, 'wb').write(mod_psbt)
+    with open(f'{sim_root_dir}/debug/mod-%s.psbt' % case, 'wb') as f:
+        f.write(mod_psbt)
 
     start_sign(mod_psbt)
 
@@ -819,7 +848,8 @@ def test_sign_multisig_partial_fail(start_sign, end_sign):
     assert 'None of the keys involved' in str(ee)
 
 @pytest.mark.unfinalized
-def test_sign_wutxo(start_sign, set_seed_words, end_sign, cap_story, sim_exec, sim_execfile):
+def test_sign_wutxo(start_sign, set_seed_words, end_sign, cap_story, sim_exec, sim_execfile,
+                    sim_root_dir):
 
     # Example from SomberNight: we can sign it, but signature won't be accepted by
     # network because the PSBT lies about the UTXO amount and tries to give away to miners,
@@ -854,11 +884,13 @@ def test_sign_wutxo(start_sign, set_seed_words, end_sign, cap_story, sim_exec, s
 
         signed = end_sign(True, finalize=fin)
 
-        open('debug/sn-signed.'+ ('txn' if fin else 'psbt'), 'wt').write(B2A(signed))
+        with open(f'{sim_root_dir}/debug/sn-signed.'+ ('txn' if fin else 'psbt'), 'wt') as f:
+            f.write(B2A(signed))
 
 @pytest.mark.parametrize('fee_max', [ 10, 25, 50])
 @pytest.mark.parametrize('under', [ False, True])
-def test_network_fee_amts(fee_max, under, fake_txn, try_sign, start_sign, dev, settings_set, sim_exec, cap_story):
+def test_network_fee_amts(fee_max, under, fake_txn, try_sign, start_sign, dev, settings_set,
+                          sim_exec, cap_story, sim_root_dir):
 
     settings_set('fee_limit', fee_max)
 
@@ -868,7 +900,8 @@ def test_network_fee_amts(fee_max, under, fake_txn, try_sign, start_sign, dev, s
 
     psbt = fake_txn(1, [["p2pkh", outval]], dev.master_xpub, fee=0)
 
-    open('debug/fee.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/fee.psbt', 'wb') as f:
+        f.write(psbt)
 
     if not under:
         with pytest.raises(CCProtoError) as ee:
@@ -887,14 +920,16 @@ def test_network_fee_amts(fee_max, under, fake_txn, try_sign, start_sign, dev, s
 
     settings_set('fee_limit', 10)
 
-def test_network_fee_unlimited(fake_txn, start_sign, end_sign, dev, settings_set, cap_story):
+def test_network_fee_unlimited(fake_txn, start_sign, end_sign, dev, settings_set, cap_story,
+                               sim_root_dir):
 
     settings_set('fee_limit', -1)
 
     # creat a txn with single 1BTC input, and tiny one output; the rest is fee
     psbt = fake_txn(1, [["p2wpkh", 100]], dev.master_xpub)
 
-    open('debug/fee-un.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/fee-un.psbt', 'wb') as f:
+        f.write(psbt)
 
     # should be able to sign, but get warning
     start_sign(psbt, False)
@@ -916,7 +951,7 @@ def test_network_fee_unlimited(fake_txn, start_sign, end_sign, dev, settings_set
 @pytest.mark.parametrize('out_style', ADDR_STYLES_SINGLE)
 @pytest.mark.parametrize('visualized', [0, STXN_VISUALIZE, STXN_VISUALIZE|STXN_SIGNED])
 def test_change_outs(fake_txn, start_sign, end_sign, cap_story, dev, num_outs, master_xpub,
-                     act_outs, out_style, visualized):
+                     act_outs, out_style, visualized, sim_root_dir):
     # create a TXN which has change outputs, which shouldn't be shown to user, and also not fail.
     num_ins = 3
     xp = dev.master_xpub
@@ -925,7 +960,8 @@ def test_change_outs(fake_txn, start_sign, end_sign, cap_story, dev, num_outs, m
     outs = [[out_style, None, True] for _ in range(couts)] + [[out_style] for _ in range(num_outs-couts)]
     psbt = fake_txn(num_ins, outs, xp, addr_fmt=out_style)
 
-    open('debug/change.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/change.psbt', 'wb') as f:
+        f.write(psbt)
 
     # should be able to sign, but get warning
     if not visualized:
@@ -1005,7 +1041,8 @@ def KEEP_test_random_psbt(try_sign, sim_exec, fname="data/   .psbt"):
 @pytest.mark.bitcoind
 @pytest.mark.unfinalized
 @pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
-def test_finalization_vs_bitcoind(match_key, use_regtest, check_against_bitcoind, bitcoind, start_sign, end_sign, num_dests):
+def test_finalization_vs_bitcoind(match_key, use_regtest, check_against_bitcoind, bitcoind,
+                                  start_sign, end_sign, num_dests, sim_root_dir):
     # Compare how we finalize vs bitcoind ... should be exactly the same txn
     wallet_xfp = match_key
     # has to be after match key
@@ -1034,7 +1071,8 @@ def test_finalization_vs_bitcoind(match_key, use_regtest, check_against_bitcoind
     fee = resp['fee']
     chg_pos = resp['changepos']
 
-    open('debug/vs.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/vs.psbt', 'wb') as f:
+        f.write(psbt)
 
     # check some basics
     mine = BasicPSBT().parse(psbt)
@@ -1057,13 +1095,15 @@ def test_finalization_vs_bitcoind(match_key, use_regtest, check_against_bitcoind
 
     signed_final = end_sign(accept=True, finalize=True)
     assert signed_final[0:4] != b'psbt', "expecting raw bitcoin txn"
-    open('debug/finalized-by-ckcc.txn', 'wt').write(B2A(signed_final))
+    with open(f'{sim_root_dir}/debug/finalized-by-ckcc.txn', 'wt') as f:
+        f.write(B2A(signed_final))
 
     # Sign again, but don't finalize it.
     start_sign(psbt, finalize=False)
     signed = end_sign(accept=True)
 
-    open('debug/vs-signed-unfin.psbt', 'wb').write(signed)
+    with open(f'{sim_root_dir}/debug/vs-signed-unfin.psbt', 'wb') as f:
+        f.write(signed)
 
     # Use bitcoind to finalize it this time.
     resp = bitcoind.supply_wallet.finalizepsbt(str(b64encode(signed), 'ascii'), True)
@@ -1073,7 +1113,8 @@ def test_finalization_vs_bitcoind(match_key, use_regtest, check_against_bitcoind
 
     # assert resp['complete']
     #print("Final txn: %r" % network)
-    open('debug/finalized-by-btcd.txn', 'wt').write(B2A(network))
+    with open(f'{sim_root_dir}/debug/finalized-by-btcd.txn', 'wt') as f:
+        f.write(B2A(network))
 
     assert network == signed_final, "Finalized differently"
 
@@ -1095,7 +1136,7 @@ def test_finalization_vs_bitcoind(match_key, use_regtest, check_against_bitcoind
     # ("44'/1'/0'/3000/5", '2nd last component'),
     # ("44'/1'/0'/3/5", '2nd last component'),
 ])
-def test_change_troublesome(dev, start_sign, cap_story, try_path, expect):
+def test_change_troublesome(dev, start_sign, cap_story, try_path, expect, sim_root_dir):
     # NOTE: out#1 is change:
     # addr = 'mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'
     # path = (m=4369050F)/44'/1'/0'/1/5
@@ -1119,7 +1160,8 @@ def test_change_troublesome(dev, start_sign, cap_story, try_path, expect):
         b4.serialize(fd)
         mod_psbt = fd.getvalue()
 
-    open('debug/troublesome.psbt', 'wb').write(mod_psbt)
+    with open(f'{sim_root_dir}/debug/troublesome.psbt', 'wb') as f:
+        f.write(mod_psbt)
 
     start_sign(mod_psbt)
     time.sleep(0.1)
@@ -1204,8 +1246,6 @@ def spend_outputs(funding_psbt, finalized_txn, tweaker=None):
     with BytesIO() as rv:
         nn.serialize(rv)
         raw = rv.getvalue()
-    
-    open('debug/spend_outs.psbt', 'wb').write(raw)
 
     return nn, raw
 
@@ -1234,7 +1274,7 @@ def txid_from_export_prompt(cap_story, cap_screen_qr, cap_screen, need_keypress)
 @pytest.mark.parametrize('num_utxo', [9, 100])
 def test_bip143_attack_data_capture(num_utxo, try_sign, fake_txn, press_cancel,
                                     settings_set, settings_get, cap_story, sim_exec,
-                                    history_data, txid_from_export_prompt):
+                                    history_data, txid_from_export_prompt, sim_root_dir):
 
     # cleanup prev runs, if very first time thru
     sim_exec('import history; history.OutptValueCache.clear()')
@@ -1252,7 +1292,8 @@ def test_bip143_attack_data_capture(num_utxo, try_sign, fake_txn, press_cancel,
     psbt = fake_txn(1, outputs, addr_fmt="p2wpkh")
     _, txn = try_sign(psbt, accept=True, finalize=True, exit_export_loop=False)
 
-    open('debug/funding.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/funding.psbt', 'wb') as f:
+        f.write(psbt)
 
     txid = txid_from_export_prompt()
     press_cancel()
@@ -1274,6 +1315,8 @@ def test_bip143_attack_data_capture(num_utxo, try_sign, fake_txn, press_cancel,
     assert len(all_utxo) == num_utxo
     # build a new PSBT based on those change outputs
     psbt2, raw = spend_outputs(psbt, txn)
+    with open(f'{sim_root_dir}/debug/spend_outs.psbt', 'wb') as f:
+        f.write(raw)
 
     # try to sign that ... should work fine
     try_sign(raw, accept=True, finalize=True)
@@ -1289,6 +1332,8 @@ def test_bip143_attack_data_capture(num_utxo, try_sign, fake_txn, press_cancel,
             spendables[0][1].nValue += amt
 
         psbt3, raw = spend_outputs(psbt, txn, tweaker=value_tweak)
+        with open(f'{sim_root_dir}/debug/spend_outs.psbt', 'wb') as f:
+            f.write(raw)
         with pytest.raises(CCProtoError) as ee:
             orig, result = try_sign(raw, accept=True, finalize=True)
 
@@ -1358,7 +1403,8 @@ def test_sdcard_signing(encoding, num_outs, del_after, partial, try_sign_microsd
 @pytest.mark.unfinalized
 @pytest.mark.parametrize('num_ins', [2,3,8])
 @pytest.mark.parametrize('num_outs', [1,2,8])
-def test_payjoin_signing(num_ins, num_outs, fake_txn, try_sign, start_sign, end_sign, cap_story):
+def test_payjoin_signing(num_ins, num_outs, fake_txn, try_sign, start_sign, end_sign,
+                         cap_story, sim_root_dir):
 
     # Try to simulate a PSBT that might be involved in a Payjoin (BIP-78 txn)
 
@@ -1368,7 +1414,8 @@ def test_payjoin_signing(num_ins, num_outs, fake_txn, try_sign, start_sign, end_
 
     psbt = fake_txn(num_ins, num_outs, addr_fmt="p2wpkh", psbt_hacker=hack)
 
-    open('debug/payjoin.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/payjoin.psbt', 'wb') as f:
+        f.write(psbt)
 
     ip = start_sign(psbt, finalize=False)
     time.sleep(.1)
@@ -1423,7 +1470,7 @@ def test_wrong_xfp(fake_txn, try_sign, addr_fmt):
     assert 'found 12345678' in str(ee)
 
 @pytest.mark.parametrize('addr_fmt', ["p2wpkh", "p2tr"])
-def test_wrong_xfp_multi(fake_txn, try_sign, addr_fmt):
+def test_wrong_xfp_multi(fake_txn, try_sign, addr_fmt, sim_root_dir):
 
     # A PSBT which is unsigned and doesn't involve our XFP value
     # - but multiple wrong XFP values
@@ -1444,7 +1491,9 @@ def test_wrong_xfp_multi(fake_txn, try_sign, addr_fmt):
 
     psbt = fake_txn(7, 2, addr_fmt=addr_fmt, psbt_hacker=hack)
 
-    open('debug/wrong-xfp.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/wrong-xfp.psbt', 'wb') as f:
+        f.write(psbt)
+
     with pytest.raises(CCProtoError) as ee:
         orig, result = try_sign(psbt, accept=True)
 
@@ -1458,7 +1507,7 @@ def test_wrong_xfp_multi(fake_txn, try_sign, addr_fmt):
 
 @pytest.mark.parametrize('out_style', ADDR_STYLES_SINGLE)
 @pytest.mark.parametrize('outval', ['.5', '.788888', '0.92640866'])
-def test_render_outs(out_style, outval, fake_txn, start_sign, end_sign, dev):
+def test_render_outs(out_style, outval, fake_txn, start_sign, end_sign, dev, sim_root_dir):
     # check how we render the value of outputs
     # - works on simulator and connected USB real-device
     oi = int(Decimal(outval) * int(1E8))
@@ -1466,7 +1515,8 @@ def test_render_outs(out_style, outval, fake_txn, start_sign, end_sign, dev):
     psbt = fake_txn(1, [[out_style, oi],[out_style, int(1E8 -oi), True]], dev.master_xpub,
                     addr_fmt="p2wpkh")
 
-    open('debug/render.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/render.psbt', 'wb') as f:
+        f.write(psbt)
 
     # should be able to sign, but get warning
 
@@ -1515,7 +1565,8 @@ def test_negative_fee(dev, fake_txn, try_sign):
     ( 5, 'mXTN'), 
     ( 2, 'bits'), 
     ( 0, 'sats')])
-def test_value_render(dev, units, fake_txn, start_sign, cap_story, settings_set, settings_remove):
+def test_value_render(dev, units, fake_txn, start_sign, cap_story, settings_set,
+                      settings_remove, sim_root_dir):
 
     # Check we are rendering values in right units.
     decimal, units = units
@@ -1532,7 +1583,8 @@ def test_value_render(dev, units, fake_txn, start_sign, cap_story, settings_set,
     psbt = fake_txn(1, outputs, dev.master_xpub,
                     input_amount=need)
 
-    open('debug/values.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/values.psbt', 'wb') as f:
+        f.write(psbt)
 
     ip = start_sign(psbt, finalize=False)
     time.sleep(.1)
@@ -1557,12 +1609,12 @@ def test_value_render(dev, units, fake_txn, start_sign, cap_story, settings_set,
 @pytest.mark.parametrize('num_out', [1,2,3])
 @pytest.mark.parametrize('addr_fmt', ["p2wpkh", "p2tr"])
 def test_qr_txn(num_in, num_out, addr_fmt, fake_txn, try_sign, dev, cap_screen_qr,
-                qr_quality_check, cap_story, need_keypress, is_q1, press_cancel):
+                qr_quality_check, cap_story, need_keypress, is_q1, press_cancel, sim_root_dir):
 
     psbt = fake_txn(num_in, num_out, dev.master_xpub, addr_fmt=addr_fmt)
 
     _, txn = try_sign(psbt, accept=True, finalize=True, exit_export_loop=False)
-    with open('debug/last.txn', 'wb') as f:
+    with open(f'{sim_root_dir}/debug/last.txn', 'wb') as f:
         f.write(txn)
 
     title, story = cap_story()
@@ -1857,7 +1909,7 @@ def test_op_return_signing(op_return_data, dev, fake_txn, bitcoind_d_sim_watch, 
     ({b"x" * 64: b"y" * 128}, {b"q" * 64: b"p" * 128}, {b"w" * 90: b"z" * 256}),
     ({b"x" * 32: b"y" * 256}, {b"q" * 32: b"p" * 256, b"f" * 15: 32 * b"\x01"}, {b"w": b"z"}),
 ])
-def test_unknow_values_in_psbt(unknowns, dev, start_sign, end_sign, fake_txn):
+def test_unknow_values_in_psbt(unknowns, dev, start_sign, end_sign, fake_txn, sim_root_dir):
     unknown_global, unknown_ins, unknown_outs = unknowns
     def hack(psbt):
         psbt.unknown = unknown_global
@@ -1867,7 +1919,8 @@ def test_unknow_values_in_psbt(unknowns, dev, start_sign, end_sign, fake_txn):
             o.unknown = unknown_outs
 
     psbt = fake_txn(5, 5, dev.master_xpub, addr_fmt="p2wpkh", psbt_hacker=hack)
-    open('debug/last.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/last.psbt', 'wb') as f:
+        f.write(psbt)
     psbt_o = BasicPSBT().parse(psbt)
     assert psbt_o.unknown == unknown_global
     for inp in psbt_o.inputs:
@@ -1884,7 +1937,7 @@ def test_unknow_values_in_psbt(unknowns, dev, start_sign, end_sign, fake_txn):
     for out in res.outputs:
         assert out.unknown == unknown_outs
 
-def test_read_write_prop_attestation_keys(try_sign, fake_txn):
+def test_read_write_prop_attestation_keys(try_sign, fake_txn, sim_root_dir):
     from psbt import ser_prop_key, PSBT_PROP_CK_ID
     def attach_attest_to_outs(psbt):
         for idx, o in enumerate(psbt.outputs):
@@ -1893,7 +1946,8 @@ def test_read_write_prop_attestation_keys(try_sign, fake_txn):
             o.proprietary[key] = value
 
     psbt = fake_txn(2, 2, psbt_hacker=attach_attest_to_outs)
-    open('debug/propkeys.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/propkeys.psbt', 'wb') as f:
+        f.write(psbt)
     orig, signed = try_sign(psbt)
     res = BasicPSBT().parse(signed)
 
@@ -1934,7 +1988,7 @@ def test_duplicate_unknow_values_in_psbt(dev, start_sign, end_sign, fake_txn):
 @pytest.fixture
 def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
                              bitcoind, bitcoind_d_dev_watch, settings_set,
-                             finalize_v2_v0_convert, pytestconfig):
+                             finalize_v2_v0_convert, pytestconfig, sim_root_dir):
     def doit(addr_fmt, sighash, num_inputs=2, num_outputs=2, consolidation=False, sh_checks=False,
              psbt_v2=None, tx_check=True):
 
@@ -2011,7 +2065,7 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
             psbt_sh = x.as_b64_str()
 
         # make useful reference psbt along the way
-        with open(f'debug/sighash-{sighash[0] if len(sighash) == 1 else "MIX"}.psbt'\
+        with open(f'{sim_root_dir}/debug/sighash-{sighash[0] if len(sighash) == 1 else "MIX"}.psbt'\
                 .replace('|', '-'), 'wt') as f:
             f.write(psbt_sh)
 
@@ -2853,7 +2907,7 @@ def random_nLockTime_test_cases(num=10):
     *random_nLockTime_test_cases()
 ])
 def test_timelocks_visualize(start_sign, end_sign, dev, bitcoind, use_regtest,
-                             bitcoind_d_sim_watch, nLockTime):
+                             bitcoind_d_sim_watch, nLockTime, sim_root_dir):
     # - works on simulator and connected USB real-device
     nLockTime, expect_ux = nLockTime
     num_ins = 10
@@ -2889,7 +2943,8 @@ def test_timelocks_visualize(start_sign, end_sign, dev, bitcoind, use_regtest,
     )
     psbt = base64.b64decode(psbt_resp.get("psbt"))
 
-    open('debug/locktimes.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/locktimes.psbt', 'wb') as f:
+        f.write(psbt)
 
     # should be able to sign, but get warning
 
@@ -2910,7 +2965,7 @@ def test_timelocks_visualize(start_sign, end_sign, dev, bitcoind, use_regtest,
 def test_base64_psbt_qr(in_out, partial, scan_a_qr, readback_bbqr,
                         goto_home, use_regtest, cap_story, fake_txn, dev,
                         decode_psbt_with_bitcoind, decode_with_bitcoind,
-                        press_cancel, press_select, need_keypress):
+                        press_cancel, press_select, need_keypress, sim_root_dir):
     def hack(psbt):
         if partial:
             # change first input to not be ours
@@ -2924,7 +2979,8 @@ def test_base64_psbt_qr(in_out, partial, scan_a_qr, readback_bbqr,
 
     psbt = base64.b64encode(psbt).decode()
 
-    open('debug/last.psbt', 'w').write(psbt)
+    with open(f'{sim_root_dir}/debug/last.psbt', 'w') as f:
+        f.write(psbt)
 
     goto_home()
     need_keypress(KEY_QR)
@@ -3097,8 +3153,7 @@ def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_stor
             assert s == dd0
             assert e == dd1
             qr = qr_list[i - 20]
-            assert qr.startswith(s)
-            assert qr.endswith(e)
+            assert qr == ""
 
     press_cancel()  # exit txn out explorer
     end_sign(finalize=finalize)
@@ -3184,7 +3239,7 @@ def test_zero_value_outputs(num_outs, change, fake_txn, start_sign, end_sign, re
     psbt = fake_txn(1, num_outs, outvals=num_outs*[0], change_outputs=change_outs, input_amount=1)
     start_sign(psbt, False, stxn_flags=STXN_VISUALIZE)
     story = end_sign(accept=None, expect_txn=False).decode()
-    assert f"Zero Value: Non-standard zero value outputs: {num_outs}" in story
+    assert f"Zero Value: Non-standard zero value output(s)" in story
     assert "1 input" in story
     assert f"{num_outs} output{'' if num_outs == 1 else 's'}" in story
     assert 'Network fee 0.00000001 XTN' in story

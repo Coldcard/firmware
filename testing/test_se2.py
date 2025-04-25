@@ -65,7 +65,7 @@ def decode_slot(data):
     assert len(data) == 128
     return SlotInfo(*struct.unpack(TRICK_FMT, data))
 
-@pytest.fixture(scope='function')
+@pytest.fixture
 def se2_gate(sim_exec):
     # not-so-low-level method: include auth data for main PIN
     def doit(method_num, obj=None, buf=None):
@@ -252,7 +252,7 @@ def test_ux_trick_menus(goto_trick_menu, pick_menu_item, cap_menu,
     # all clear now
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture
 def new_trick_pin(goto_trick_menu, pick_menu_item, cap_menu, press_select,
                   cap_story, enter_pin, se2_gate, is_simulator, is_q1):
     # using menus and UX, setup a new trick PIN

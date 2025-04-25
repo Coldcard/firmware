@@ -20,7 +20,7 @@ def THIS_FILE_requires_q1(is_q1, is_headless):
     if not is_q1 or is_headless:
         raise pytest.skip('Q1 only (not headless)')
 
-@pytest.fixture()
+@pytest.fixture
 def rx_start(grab_payload, goto_home, pick_menu_item):
     def doit(**kws):
         goto_home()
@@ -31,7 +31,7 @@ def rx_start(grab_payload, goto_home, pick_menu_item):
 
     return doit
     
-@pytest.fixture()
+@pytest.fixture
 def main_do_over(unit_test, settings_get, settings_set):
     # reset all contents, including master secret ... except ktrx
     # - so you can test backup-restore onto blank unit
@@ -42,7 +42,7 @@ def main_do_over(unit_test, settings_get, settings_set):
 
     return doit
 
-@pytest.fixture()
+@pytest.fixture
 def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_story, nfc_block4rf, cap_screen_qr, readback_bbqr):
 
     # started the process; capture pw/code and QR contents, verify NFC works
@@ -108,7 +108,7 @@ def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_s
         
     return doit
 
-@pytest.fixture()
+@pytest.fixture
 def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr, enter_complex, cap_screen, goto_home, split_scan_bbqr):
     # finish the teleport by doing QR and getting data
     def doit(data, pw, expect_fail=False, expect_xfp=None):
@@ -126,10 +126,13 @@ def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr,
         if expect_fail:
             time.sleep(.200)
             return
-        for retries in range(20):
+
+        for _ in range(10):
             scr = cap_screen()
             if 'Teleport Password' in scr: break
-            time.sleep(.200)
+            time.sleep(.2)
+        else:
+            assert False, "Teleport Password not in screen"
 
         if expect_xfp:
             assert xfp2str(expect_xfp) in scr
@@ -140,7 +143,7 @@ def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr,
 
     return doit
 
-@pytest.fixture()
+@pytest.fixture
 def tx_start(press_select, need_keypress, press_cancel, goto_home, pick_menu_item, cap_story, scan_a_qr, enter_complex, cap_screen):
 
     # start the Tx process, capturing password and leaving you are picker menu
@@ -150,13 +153,15 @@ def tx_start(press_select, need_keypress, press_cancel, goto_home, pick_menu_ite
         time.sleep(.250)        # required
         scan_a_qr(rx_qr)
 
-        time.sleep(.250)        # required
-        scr = cap_screen()
-        if expect_fail:
-            assert expect_fail in scr
-            return
-
-        assert 'Teleport Password (number)' in scr
+        for _ in range(10):
+            scr = cap_screen()
+            if expect_fail and  expect_fail in scr:
+                return
+            elif 'Teleport Password (number)' in scr:
+                break
+            time.sleep(.2)
+        else:
+            assert False, "Teleport Password not in screen"
 
         enter_complex(rx_code)
         time.sleep(.150)        # required
@@ -419,7 +424,7 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
                           fake_ms_txn, try_sign, incl_xpubs, bitcoind, cap_story, need_keypress,
                           cap_menu, pick_menu_item, grab_payload, rx_complete, press_select,
                           ndef_parse_txn_psbt, press_nfc, nfc_read, settings_get, settings_set,
-                          txid_from_export_prompt):
+                          txid_from_export_prompt, sim_root_dir):
 
     # IMPORTANT: won't work if you start simulator with --ms flag. Use no args
     all_out_styles = [af for af in unmap_addr_fmt.keys() if af != "p2tr"]
@@ -436,13 +441,15 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
     psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs, 
                         outstyles=all_out_styles, change_outputs=list(range(1,num_outs)))
 
-    open(f'debug/myself-before.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/myself-before.psbt', 'wb') as f:
+        f.write(psbt)
 
     cur_wallet = 0
     my_xfp = select_wallet(cur_wallet)
 
     _, updated = try_sign(psbt, accept_ms_import=incl_xpubs, exit_export_loop=False)
-    open(f'debug/myself-after-1.psbt', 'wb').write(updated)
+    with open(f'{sim_root_dir}/debug/myself-after-1.psbt', 'wb') as f:
+        f.write(updated)
     assert updated != psbt
 
     title, body = cap_story()
@@ -484,7 +491,8 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
         assert len(pw) == 8
 
         nn = xfp2str(next_xfp)
-        open(f'debug/next_qr_{nn}.txt', 'wt').write(f'{nn}\n\n{pw}\n\n{data}')
+        with open(f'{sim_root_dir}/debug/next_qr_{nn}.txt', 'wt') as f:
+            f.write(f'{nn}\n\n{pw}\n\n{data}')
 
         time.sleep(.1)
         title, story = cap_story()
@@ -628,8 +636,7 @@ def test_teleport_real_ms(dev, fake_ms_txn):
     # py.test test_teleport.py --dev --manual -k test_teleport_real_ms
     #
     from bip32 import BIP32Node
-    from struct import unpack
-    from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
+    from ckcc_protocol.protocol import CCProtocolPacker
 
     M = N = 2
 

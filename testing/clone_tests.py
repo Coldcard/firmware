@@ -5,7 +5,7 @@ from charcodes import KEY_ENTER
 from core_fixtures import _pick_menu_item, _cap_story, _press_select
 from core_fixtures import _need_keypress, _cap_menu, _sim_exec
 from run_sim_tests import ColdcardSimulator, clean_sim_data
-from ckcc_protocol.client import ColdcardDevice, CKCC_SIMULATOR_PATH
+from ckcc_protocol.client import ColdcardDevice
 
 
 def _clone(source, target):
@@ -18,7 +18,7 @@ def _clone(source, target):
     clean_sim_data()  # remove all from previous
     sim_target = ColdcardSimulator(args=[target_sim_arg, "-l"])
     sim_target.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
     _pick_menu_item(device, target_is_Q, "Import Existing")
     _pick_menu_item(device, target_is_Q, "Clone Coldcard")
     time.sleep(.1)
@@ -36,7 +36,7 @@ def _clone(source, target):
     sim_source = ColdcardSimulator(args=[source_sim_arg, "--ms", "--p2wsh",
                                          "--set", "nfc=1", "--set", "vidsk=1"])
     sim_source.start(start_wait=6)
-    device_source = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device_source = ColdcardDevice(is_simulator=True)
     _pick_menu_item(device_source, source_is_Q, "Advanced/Tools")
     time.sleep(.1)
     _pick_menu_item(device_source, source_is_Q, "Backup")
@@ -89,7 +89,7 @@ def _clone(source, target):
     # TARGET again. Killed now - restart and verify settings
     sim_target = ColdcardSimulator(args=[target_sim_arg])
     sim_target.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
     _pick_menu_item(device, target_is_Q, "Settings")
     _pick_menu_item(device, target_is_Q, "Multisig Wallets")
     time.sleep(.1)

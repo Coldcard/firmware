@@ -174,7 +174,8 @@ def test_ux(valid, netcode, method,
     sim_exec, wipe_cache, make_myself_wallet, use_testnet, goto_home, pick_menu_item,
     press_cancel, press_select, settings_set, is_q1, nfc_write, need_keypress,
     cap_screen, cap_story, load_shared_mod, scan_a_qr, skip_if_useless_way,
-    sign_msg_from_address, multisig, import_ms_wallet, clear_ms, verify_qr_address
+    sign_msg_from_address, multisig, import_ms_wallet, clear_ms, verify_qr_address,
+    src_root_dir, sim_root_dir
 ):
     skip_if_useless_way(method)
     addr_fmt = AF_CLASSIC
@@ -218,7 +219,7 @@ def test_ux(valid, netcode, method,
 
     elif method == 'nfc':
         
-        cc_ndef = load_shared_mod('cc_ndef', '../shared/ndef.py')
+        cc_ndef = load_shared_mod('cc_ndef', f'{src_root_dir}/shared/ndef.py')
         n = cc_ndef.ndefMaker()
         n.add_text(addr)
         ccfile = n.bytes()
@@ -228,7 +229,8 @@ def test_ux(valid, netcode, method,
         pick_menu_item('Advanced/Tools')
         pick_menu_item('NFC Tools')
         pick_menu_item('Verify Address')
-        open('debug/nfc-addr.ndef', 'wb').write(ccfile)
+        with open(f'{sim_root_dir}/debug/nfc-addr.ndef', 'wb') as f:
+            f.write(ccfile)
         nfc_write(ccfile)
         #press_select()
 
@@ -272,7 +274,8 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
                                 pick_menu_item, need_keypress, sim_exec, clear_ms,
                                 import_ms_wallet, press_select, goto_home, nfc_write,
                                 load_shared_mod, load_export_and_verify_signature,
-                                cap_story, load_export, offer_minsc_import, is_q1):
+                                cap_story, load_export, offer_minsc_import, is_q1,
+                                src_root_dir, sim_root_dir):
     goto_home()
     wipe_cache()
     settings_set('accts', [])
@@ -315,7 +318,7 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
         if idx == 200:
             addr = addr
 
-    cc_ndef = load_shared_mod('cc_ndef', '../shared/ndef.py')
+    cc_ndef = load_shared_mod('cc_ndef', f'{src_root_dir}/shared/ndef.py')
     n = cc_ndef.ndefMaker()
     n.add_text(addr)
     ccfile = n.bytes()
@@ -325,7 +328,9 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
     pick_menu_item('Advanced/Tools')
     pick_menu_item('NFC Tools')
     pick_menu_item('Verify Address')
-    open('debug/nfc-addr.ndef', 'wb').write(ccfile)
+    with open(f'{sim_root_dir}/debug/nfc-addr.ndef', 'wb') as f:
+        f.write(ccfile)
+
     nfc_write(ccfile)
 
     time.sleep(1)
@@ -343,7 +348,7 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
 
 
 def test_regtest_addr_on_mainnet(goto_home, is_q1, pick_menu_item, scan_a_qr, nfc_write, cap_story,
-                                 need_keypress, load_shared_mod, use_mainnet):
+                                 need_keypress, load_shared_mod, use_mainnet, src_root_dir, sim_root_dir):
     # testing bug in chains.possible_address_fmt
     # allowed regtest addresses to be allowed on main chain
     goto_home()
@@ -361,7 +366,7 @@ def test_regtest_addr_on_mainnet(goto_home, is_q1, pick_menu_item, scan_a_qr, nf
         need_keypress('1')
 
     else:
-        cc_ndef = load_shared_mod('cc_ndef', '../shared/ndef.py')
+        cc_ndef = load_shared_mod('cc_ndef', f'{src_root_dir}/shared/ndef.py')
         n = cc_ndef.ndefMaker()
         n.add_text(addr)
         ccfile = n.bytes()
@@ -370,7 +375,8 @@ def test_regtest_addr_on_mainnet(goto_home, is_q1, pick_menu_item, scan_a_qr, nf
         pick_menu_item('Advanced/Tools')
         pick_menu_item('NFC Tools')
         pick_menu_item('Verify Address')
-        open('debug/nfc-addr.ndef', 'wb').write(ccfile)
+        with open(f'{sim_root_dir}/debug/nfc-addr.ndef', 'wb') as f:
+            f.write(ccfile)
         nfc_write(ccfile)
         # press_select()
 

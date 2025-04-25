@@ -14,7 +14,7 @@ from serialize import uint256_from_str
 from ctransaction import CTransaction, COutPoint, CTxIn, CTxOut
 
 
-@pytest.fixture()
+@pytest.fixture
 def fake_txn(dev, pytestconfig):
     # make various size txn's ... completely fake and pointless values
     # - but has UTXO's to match needs

@@ -30,7 +30,7 @@ def test_vd_basics(dev, virtdisk_path, is_simulator):
 
 @pytest.fixture
 def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, press_cancel,
-                      pick_menu_item, goto_home):
+                      pick_menu_item, goto_home, sim_root_dir):
 
     # like "try_sign" but use Virtual Disk to send/receive PSBT/results
     # - on real dev, need user to manually say yes ... alot
@@ -142,9 +142,8 @@ def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, pre
             assert expect_finalize
             assert got_txn
             assert got_txid == txid == result_txid
-            with open("debug/vd-result.txn", 'wb') as f:
+            with open(f"{sim_root_dir}/debug/vd-result.txn", 'wb') as f:
                 f.write(got_txid)
-
 
         # check output encoding matches input (for PSBT only)
         if got_psbt:
@@ -170,7 +169,7 @@ def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, pre
 
         if got_psbt:
             assert got_psbt[0:5] == b'psbt\xff'
-            with open("debug/vd-result.psbt", 'wb') as f:
+            with open(f"{sim_root_dir}/debug/vd-result.psbt", 'wb') as f:
                 f.write(got_psbt)
 
             from psbt import BasicPSBT

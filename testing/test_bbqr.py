@@ -219,14 +219,14 @@ def test_show_bbqr_sizes(size, cap_screen_qr, sim_exec, render_bbqr):
     assert ft == 'U'
 
 @pytest.mark.parametrize('src', [ 'rng', 'gpu', 'bigger'] )
-def test_show_bbqr_contents(src, cap_screen_qr, sim_exec, render_bbqr, load_shared_mod):
+def test_show_bbqr_contents(src, cap_screen_qr, sim_exec, render_bbqr, load_shared_mod, src_root_dir):
 
     args = dict(msg=f'Test {src}', file_type='B')
     if src == 'rng':
         args['data'] = expect = prandom(500)        # limited by simulated USB path
     elif src in { 'gpu', 'bigger' }:
         args['setup'] = 'from gpu_binary import BINARY'
-        cc_gpu_bin = load_shared_mod('cc_gpu_bin', '../shared/gpu_binary.py')
+        cc_gpu_bin = load_shared_mod('cc_gpu_bin', f'{src_root_dir}/shared/gpu_binary.py')
         if src == 'gpu':
             args['str_expr'] = 'BINARY'
             expect = cc_gpu_bin.BINARY
@@ -254,7 +254,7 @@ def test_bbqr_psbt(size, encoding, max_ver, partial, addr_fmt, scan_a_qr, readba
                    cap_screen_qr, render_bbqr, goto_home, use_regtest, cap_story,
                    decode_psbt_with_bitcoind, decode_with_bitcoind, fake_txn, dev,
                    start_sign, end_sign, press_cancel, press_select, need_keypress,
-                   base64str, try_sign_bbqr, signing_artifacts_reexport):
+                   base64str, try_sign_bbqr, signing_artifacts_reexport, sim_root_dir):
 
     num_in = size
     num_out = size*10
@@ -268,7 +268,8 @@ def test_bbqr_psbt(size, encoding, max_ver, partial, addr_fmt, scan_a_qr, readba
     if base64str:
         psbt = base64.b64encode(psbt).decode()
 
-    open('debug/last.psbt', 'w' if base64str else 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/last.psbt', 'w' if base64str else 'wb') as f:
+        f.write(psbt)
 
     _, file_type, rb = try_sign_bbqr(psbt, type_code="U" if base64str else "P",
                                   max_version=max_ver, encoding=encoding)

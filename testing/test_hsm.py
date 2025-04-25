@@ -122,7 +122,7 @@ def enable_hsm_commands(dev, sim_exec, only_mk4):
     sim_exec(cmd)
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture
 def hsm_reset(dev, sim_exec):
     # filename for the policy file, as stored on simulated CC
 
@@ -476,10 +476,11 @@ def wait_til_signed(dev):
     return result
 
 @pytest.fixture
-def attempt_psbt(hsm_status, start_sign, dev):
+def attempt_psbt(hsm_status, start_sign, dev, sim_root_dir):
 
     def doit(psbt, refuse=None, remote_error=None):
-        open('debug/attempt.psbt', 'wb').write(psbt)
+        with open(f'{sim_root_dir}/debug/attempt.psbt', 'wb') as f:
+            f.write(psbt)
         start_sign(psbt)
 
         try:
@@ -890,7 +891,7 @@ def test_multiple_signings(dev, quick_start_hsm, is_simulator,
 def test_multiple_signings_multisig(cc_first, M_N, dev, quick_start_hsm,
                                     is_simulator, attempt_psbt, fake_txn,
                                     load_hsm_users, auth_user, bitcoind,
-                                    request):
+                                    request, sim_root_dir):
     # signs 400 different PSBTs in loop beaing one leg of multisig
     # CC must be on regtest if testing with real thing
     af = "bech32"
@@ -960,7 +961,9 @@ def test_multiple_signings_multisig(cc_first, M_N, dev, quick_start_hsm,
 
     # uploading only external to CC
     file_len, sha = dev.upload_file(desc_ext.encode('ascii'))
-    open('debug/last-config.txt', 'wt').write(desc_ext)
+    with open(f'{sim_root_dir}/debug/last-config.txt', 'wt') as f:
+        f.write(desc_ext)
+
     dev.send_recv(CCProtocolPacker.multisig_enroll(file_len, sha), timeout=30000)
 
     time.sleep(.2)
