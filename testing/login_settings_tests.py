@@ -11,7 +11,7 @@
 import pytest, time, pdb
 from core_fixtures import _pick_menu_item, _cap_menu, _cap_story, _cap_screen
 from core_fixtures import _need_keypress, _enter_complex, _press_select
-from ckcc_protocol.client import ColdcardDevice, CKCC_SIMULATOR_PATH
+from ckcc_protocol.client import ColdcardDevice
 from run_sim_tests import ColdcardSimulator, clean_sim_data
 
 
@@ -138,7 +138,7 @@ def test_set_nickname(nick, request):
     clean_sim_data()  # remove all from previous
     sim = ColdcardSimulator(args=["--q1"] if is_Q else [])
     sim.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
 
     _pick_menu_item(device, is_Q, "Settings")
     _pick_menu_item(device, is_Q, "Login Settings")
@@ -150,7 +150,7 @@ def test_set_nickname(nick, request):
     sim = ColdcardSimulator(args= ["--q1" if is_Q else "", "--early-usb"])
 
     sim.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
 
     scr = _cap_screen(device)
     target = "".join(scr.strip().split("\n"))
@@ -167,7 +167,7 @@ def test_randomize_pin_keys(request):
     clean_sim_data()  # remove all from previous
     sim = ColdcardSimulator(args=["--q1"] if is_Q else [])
     sim.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
 
     _pick_menu_item(device, is_Q, "Settings")
     _pick_menu_item(device, is_Q, "Login Settings")
@@ -177,7 +177,7 @@ def test_randomize_pin_keys(request):
     sim.stop()  # power off
     sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"])
     sim.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
     _login(device, is_Q, "22-22", scrambled=True)
     time.sleep(3)
     m = _cap_menu(device)
@@ -190,7 +190,7 @@ def test_login_countdown(lcdwn, request):
     clean_sim_data()  # remove all from previous
     sim = ColdcardSimulator(args=["--q1"] if is_Q else [])
     sim.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
 
     _pick_menu_item(device, is_Q, "Settings")
     _pick_menu_item(device, is_Q, "Login Settings")
@@ -200,7 +200,7 @@ def test_login_countdown(lcdwn, request):
     sim.stop()  # power off
     sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"])
     sim.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
     secs = int(lcdwn.strip().split()[0])
     _login(device, is_Q, "22-22")
     time.sleep(.15)
@@ -223,7 +223,7 @@ def test_kill_key(kbtn, when, request):
     clean_sim_data()  # remove all from previous
     sim = ColdcardSimulator(args=["--q1"] if is_Q else [])
     sim.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
 
     _pick_menu_item(device, is_Q, "Settings")
     _pick_menu_item(device, is_Q, "Login Settings")
@@ -233,7 +233,7 @@ def test_kill_key(kbtn, when, request):
     sim.stop()  # power off
     sim = ColdcardSimulator(args= ["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"])
     sim.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
 
     if is_Q:
         possible_kbtn = [chr(65 + i) for i in range(26)] + [i for i in '\',./']
@@ -278,7 +278,7 @@ def test_terms_ok(request):
     clean_sim_data()  # remove all from previous
     sim = ColdcardSimulator(args=["--early-usb", "-w", "--q1" if is_Q else ""])
     sim.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
     time.sleep(.1)
 
     _, story = _cap_story(device)
@@ -317,7 +317,7 @@ def test_terms_ok(request):
     sim.stop()  # power off
     sim = ColdcardSimulator(args=["-l", "--q1" if is_Q else "", "--early-usb", "--pin", "22-22"])
     sim.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
     _login(device, is_Q, "22-22")
     time.sleep(3)
     m = _cap_menu(device)
@@ -331,7 +331,7 @@ def test_wrong_pin_input(request, brick):
     clean_sim_data()  # remove all from previous
     sim = ColdcardSimulator(args=["--early-usb", "--q1" if is_Q else "", "--pin", "22-22"])
     sim.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
     time.sleep(.1)
     num_attmeptss = 13
     for ii, i in enumerate(range(31, 43), start=1):
@@ -394,7 +394,7 @@ def test_login_integration(request, nick, randomize, login_ctdwn, kill_btn, kill
     clean_sim_data()  # remove all from previous
     sim = ColdcardSimulator(args=["--q1"] if is_Q else [])
     sim.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
     _pick_menu_item(device, is_Q, "Settings")
     _pick_menu_item(device, is_Q, "Login Settings")
 
@@ -416,7 +416,7 @@ def test_login_integration(request, nick, randomize, login_ctdwn, kill_btn, kill
     sim.stop()  # power off
     sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"])
     sim.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
 
     if nick:
         scr = _cap_screen(device)
@@ -484,7 +484,7 @@ def test_calc_login(request):
     clean_sim_data()  # remove all from previous
     sim = ColdcardSimulator(args=["--q1"])
     sim.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
 
     _pick_menu_item(device, is_Q, "Settings")
     _pick_menu_item(device, is_Q, "Login Settings")
@@ -494,7 +494,7 @@ def test_calc_login(request):
     sim.stop()  # power off
     sim = ColdcardSimulator(args=["--q1", "--pin", "22-22", "--early-usb"])
     sim.start(start_wait=6)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
     scr = _cap_screen(device)
     assert 'ECC Calculator' in scr
 

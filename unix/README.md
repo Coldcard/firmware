@@ -60,6 +60,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--scan` => (Q) use attached serial port connected to a QR scanner module (not simulation)
 - `--battery` => (Q) assume the USB cable is NOT connected (ie. on battery power)
 - `--early-usb` => start simulated USB interface even before user is login (useful for login testing)
+- `--segregate` => scroll down to `Running simulators in parallel` section
 
 See `variant/sim_settings.py` for the details of settings-related options.
 
@@ -78,7 +79,7 @@ See `variant/sim_settings.py` for the details of settings-related options.
 
 ## Requirements
 
-- uses good olde `xterm` for console input and output
+- uses good old `xterm` for console input and output
 - this directory has additional `requirements.txt` (a superset of other requirements of the project)
 - run "brew install sdl2" before/after doing python requirements
 - run "make setup" then "make"
@@ -99,4 +100,39 @@ See `variant/sim_settings.py` for the details of settings-related options.
 - linux supported (only tested on debian based Ubuntu 20.04), please check main README.md
 - Windows can work under WSL but is not supported by our team. Follow instructions on <https://www.reddit.com/r/coldcard/comments/14etq8i/coldcard_simulator_for_windows_mac_and_linux_to/>
 
+# Running simulators in parallel
 
+Normally, when simulator is spwned with `./simulator.py --eff --q1` (or similar) 
+the default socket file is produced (`/tmp/ckcc-simulator.sock`) for simulator to be able to emulate various types of comms. 
+Each time new simulator is spwned (while som older still running) the socket file gets claimed by the most recently opened simulator.
+You can continue to use older simulator manually, but it is no longer possible to communicate via the socket file.
+Besides shared socket file, all simulators share some working directories (`work` & previously `testing/debug`, currently `work/debug`).
+
+To enable full parallel operation on multiple simulators use `--segregate` simulator flag that:
+* creates unique simulator socket file `/tmp/ckcc-simulator-<PID>.sock` for every simulator spwned with the flag
+* creates separate simulator work directory in `/tmp/cc-simulators/<PID>` (every simulator has its own debug dir in work dir)
+
+Spawn two simulators:
+
+```shell
+./simulator.py --eff --segregate           # Mk4
+./simulator.py --eff --segregate --q1      # Q
+```
+
+Two directories were created inside `/tmp/cc-simulators` and two socket files in `/tmp` with same PID in names as directory names created.
+To operate above simulators new `--socket`/`-c` flag needs to be used with client: `ckcc -c /tmp/ckcc-simulator-35156.sock ...`
+
+```shell
+ckcc -c /tmp/ckcc-simulator-35156.sock addr -s
+ckcc -c /tmp/ckcc-simulator-35291.sock addr -s
+```
+
+Simulator socket path is dumped to STDOUT after simulator is started:
+```shell
+Coldcard Simulator: Commands (over simulated window):
+  - Control-Q to quit
+  - ^Z to snapshot screen.
+  - ^S/^E to start/end movie recording
+  - ^N to capture NFC data (tap it)
+  - socket: /tmp/ckcc-simulator-35291.sock
+```

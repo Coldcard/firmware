@@ -14,12 +14,10 @@
 # Limitations:
 # - USB light not fully implemented, because happens at irq level on real product
 #
-import os, sys, signal, time, pdb, tempfile, struct, zlib
-import subprocess, asyncio
+import os, sys, signal, time, pdb, tempfile, struct, zlib, subprocess, shutil
 from dataclasses import dataclass
 import sdl2.ext
-import PIL
-from PIL import Image, ImageSequence, ImageOps
+from PIL import Image, ImageOps
 from select import select
 import fcntl
 from bare import BareMetal
@@ -30,6 +28,7 @@ MPY_UNIX = 'l-port/micropython'
 UNIX_SOCKET_PATH = '/tmp/ckcc-simulator.sock'
 
 current_led_state = 0x0
+
 
 def activate_file(filename):
     # see <https://stackoverflow.com/questions/17317219>
@@ -745,6 +744,14 @@ def handle_q1_key_events(event, numpad_tx, data_tx):
 
 def start():
     is_q1 = ('--q1' in sys.argv)
+    segregate = ("--segregate" in sys.argv)
+    pid = os.getpid()
+    # for compatibility with old clients
+    # UNIX_SOCKET_PATH is always used if not segregate
+    socket_path = UNIX_SOCKET_PATH
+    if segregate:
+        socket_path = '/tmp/ckcc-simulator-%d.sock' % pid
+
     if "--headless" in sys.argv:
         sys.argv.remove("--headless")
         is_headless = True
@@ -760,6 +767,7 @@ def start():
   - ^S/^E to start/end movie recording
   - ^N to capture NFC data (tap it)'''
 )
+        print("  - socket: %s" % socket_path)
         if is_q1:
             print('''\
 Q1 specials:
@@ -818,10 +826,10 @@ Q1 specials:
     # manage unix socket cleanup for client
     def sock_cleanup():
         import os
-        fp = UNIX_SOCKET_PATH
+        fp = socket_path
         if os.path.exists(fp):
             os.remove(fp)
-    sock_cleanup()
+
     import atexit
     atexit.register(sock_cleanup)
 
@@ -849,11 +857,30 @@ Q1 specials:
         scan_args = [ '--scan', str(port.fileno()) ]
         sys.argv.remove('--scan')
 
-    os.chdir('./work')
-    cc_cmd = ['../coldcard-mpy', 
-                        '-X', 'heapsize=9m',
-                        '-i', '../sim_boot.py'] + [str(i) for i in pass_fds] \
-                        + metal_args + scan_args + sys.argv[1:]
+    # unix
+    cwd = os.getcwd()
+    # abs paths
+    cc_mpy = os.path.join(cwd, "coldcard-mpy")
+    sim_boot = os.path.join(cwd, "sim_boot.py")
+
+    if segregate:
+        os.makedirs("/tmp/cc-simulators", exist_ok=True)
+        os.chdir("/tmp/cc-simulators")
+        # our new work /tmp/cc-simulators/<PID>
+        os.mkdir(str(pid))
+        os.chdir(str(pid))
+        os.mkdir("MicroSD")
+        os.mkdir("settings")
+        os.mkdir("VirtDisk")
+        os.mkdir("debug")
+        # needed for VirtDisk test
+        shutil.copy(os.path.join(cwd, "work", "VirtDisk", "README.md"),
+                    os.path.join(os.getcwd(), "VirtDisk", "README.md"))
+    else:
+        os.chdir('./work')
+
+    cc_cmd = [cc_mpy, '-X', 'heapsize=9m', '-i', sim_boot] + [str(i) for i in pass_fds] \
+                        + metal_args + scan_args + sys.argv[1:] + [socket_path]
 
     if is_headless:
         pass_fds.remove("-1")

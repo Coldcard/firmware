@@ -30,16 +30,82 @@ python run_sim_tests.py --collect veryslow                     # just print all 
 python run_sim_tests.py --collect manual                       # just print all manual tests to stdout
 
 Make sure to run manual test if you want to state that your changes passed all the tests.
+
+Testing on multiple simulators in parallel
+
+python run_sim_tests.py --q1 --multiproc                                  # to run all Q tests in parallel (default num-proc=14 simulators)
+python run_sim_tests.py --multiproc --num-proc 6                          # to run all Mk4 tests in parallel max 6 simulators at once
+python run_sim_tests.py -m test_addr.py -m test_bbqr.py --multiproc       # just desired test
+python run_sim_tests.py --q1 -m test_sign.py --multiproc                  # just desired test
+python run_sim_tests --multiproc --turbo                                  # turbo causes both Mk4 & Q tests to run simultaneously (turbo doubles num-procs)
+python run_sim_tests --multiproc --turbo                                  # all Mk4 & Q tests run in 60 minutes total!!
+python run_sim_tests --multiproc --turbo -m test_addr.py -m test_ux.py    # will spawn 4 simulators: one Q and one Mk4 for address tests & one Q and one Mk4 for ux tests
+
+Console output has some useful info:
+* when job is started it will print its PID
+* when job is done you'll get elapsed time from start (test duration)
+* when all is done - complete test session duration
+
+```
+$ python run_sim_tests.py -m test_addr.py -m test_drv_entro.py -m test_usb.py --multiproc --turbo
+started: Mk4   test_addr.py                  38824
+started: Q     test_addr.py                  38935
+started: Mk4   test_drv_entro.py             39042
+started: Q     test_drv_entro.py             39150
+started: Mk4   test_usb.py                   39257
+started: Q     test_usb.py                   39364
+done:    Mk4   test_usb.py                   0:00:06.043072
+done:    Q     test_usb.py                   0:00:06.081147
+done:    Mk4   test_addr.py                  0:00:51.141250
+done:    Q     test_addr.py                  0:01:03.185571
+done:    Mk4   test_drv_entro.py             0:03:24.234521
+done:    Q     test_drv_entro.py             0:03:30.278795
+
+
+elapsed: 0:03:50.308146
+```
+
+After jobs are finished, or even during execution you can inspect `/tmp/cc-simulators` directory:
+* contains simulator work directories named as <PID> of specific simulator
+* log directories where pytest output is piped
+    * mk4_logs
+    * q1_logs
+
+```
+$ pwd
+/tmp/cc-simulators
+$ ls
+38824  38935  39042  39150  39257  39364  mk4_logs  q1_logs
+$ ls 39042/*
+39042/debug:
+last-qr.png
+
+39042/MicroSD:
+drv-hex-idx0-2.txt  drv-pw-idx0.txt   drv-words-idx0-2.txt  drv-words-idx0.txt
+drv-hex-idx0.txt    drv-wif-idx0.txt  drv-words-idx0-3.txt  drv-xprv-idx0.txt
+
+39042/settings:
+
+39042/VirtDisk:
+README.md
+$ ls mk4_logs/
+test_addr.py.log  test_drv_entro.py.log  test_usb.py.log
+```
+
+To parse only failures use below cmd in {mk4,q1}_logs directory:
+```
+for f in $(ls); do x=`grep -n "short test summary info" $f | grep -Eo '^[^:]+'`; if [ -n "$x" ];then tail -n +"$x" $f | grep -E '^FAILED|^ERROR';fi ;done
+```
 """
 
-import os, time, glob, json, pytest, atexit, signal, argparse, subprocess, contextlib
+import os, time, glob, json, pytest, atexit, signal, argparse, subprocess, contextlib, shutil
+from datetime import timedelta
 from typing import List
-
 from pytest import ExitCode
 
 
 SIM_INIT_WAIT = 2  # 2 seconds, can be tweaked via cmdline arguments ( -w 6 )
-
+DEFAULT_PYTEST_MARKS = "not onetime and not veryslow and not manual"
 
 @contextlib.contextmanager
 def pushd(new_dir):
@@ -50,13 +116,17 @@ def pushd(new_dir):
     finally:
         os.chdir(previous_dir)
 
+def clean_directory(pth):
+    for root, dirs, files in os.walk(pth):
+        for f in files:
+            os.unlink(os.path.join(root, f))
+        for d in dirs:
+            shutil.rmtree(os.path.join(root, d))
 
-def remove_client_sockets():
+def remove_all_client_sockets():
     with pushd("/tmp"):
         for fn in glob.glob("ckcc-client*.sock"):
             os.remove(fn)
-    print("Removed all client sockets")
-
 
 def remove_cautious(fpath: str) -> None:
     if os.path.basename(fpath) in ["README.md", ".gitignore"]:
@@ -99,7 +169,7 @@ def is_ok(ec: ExitCode) -> bool:
 
 
 def _run_pytest_tests(test_module: str, pytest_marks: str, pytest_k: str, pdb: bool,
-               failed_first: bool, psbt2=False, is_Q=False, headless=False) -> ExitCode:
+               failed_first: bool, psbt2=False, is_Q=False, headless=False, sim_socket=None) -> ExitCode:
     cmd_list = [
         "--cache-clear", "-m", pytest_marks, "--sim",
         test_module if test_module is not None else ""
@@ -116,42 +186,50 @@ def _run_pytest_tests(test_module: str, pytest_marks: str, pytest_k: str, pdb: b
         cmd_list.insert(0, "--Q")  # only changes behavior in login_settings_test
     if headless:
         cmd_list.append("--headless")
+    if sim_socket:
+        cmd_list.append("--sim-socket")
+        cmd_list.append(sim_socket)
 
     return pytest.main(cmd_list)
 
-def _run_coldcard_tests(test_module: str, simulator_args: List[str], pytest_marks: str,
+def _run_coldcard_tests(test_module: str, simulator_args: List[str],
                         pytest_k: str, pdb: bool, failed_first: bool, psbt2=False,
-                        is_Q=False, headless=False) -> ExitCode:
+                        is_Q=False, headless=False, pytest_marks: str = DEFAULT_PYTEST_MARKS,
+                        sim_segregate=False) -> ExitCode:
+    sock_path = None
     if simulator_args is not None:
-        sim = ColdcardSimulator(args=simulator_args, headless=headless)
+        sim = ColdcardSimulator(args=simulator_args, headless=headless, segregate=sim_segregate)
         sim.start()
         time.sleep(1)
+        sock_path = sim.socket
 
     exit_code = _run_pytest_tests(test_module, pytest_marks, pytest_k, pdb,
-                                  failed_first, psbt2, is_Q, headless)
+                                  failed_first, psbt2, is_Q, headless, sock_path)
 
     if simulator_args is not None:
         sim.stop()
         time.sleep(1)
         clean_sim_data()
+        remove_all_client_sockets()
+
     return exit_code
 
 
 def run_coldcard_tests(test_module=None, simulator_args=None, pytest_k=None, pdb=False,
                        failed_first=False, psbt2=False, is_Q=False, headless=False,
-                       pytest_marks="not onetime and not veryslow and not manual"):
+                       pytest_marks=DEFAULT_PYTEST_MARKS):
     failed = []
-    exit_code = _run_coldcard_tests(test_module, simulator_args, pytest_marks, pytest_k,
-                                    pdb, failed_first, psbt2, is_Q, headless)
+    exit_code = _run_coldcard_tests(test_module, simulator_args, pytest_k,
+                                    pdb, failed_first, psbt2, is_Q, headless, pytest_marks)
     if not is_ok(exit_code):
         # no success, no nothing - give failed another try, each alone with its own simulator
         last_failed = get_last_failed()
         print("Running failed from last run", last_failed)
         exit_codes = []
         for failed_test in last_failed:
-            exit_code_2 = _run_coldcard_tests(failed_test, simulator_args, pytest_marks,
+            exit_code_2 = _run_coldcard_tests(failed_test, simulator_args,
                                               pytest_k, pdb, failed_first, psbt2, is_Q,
-                                              headless)
+                                              headless, pytest_marks)
             exit_codes.append(exit_code_2)
             if not is_ok(exit_code_2):
                 failed.append(failed_test)
@@ -173,11 +251,12 @@ class PytestCollectMarked:
 
 
 class ColdcardSimulator:
-    def __init__(self, path=None, args=None, headless=False):
+    def __init__(self,args=None, headless=False, segregate=False):
         self.proc = None
         self.args = args
-        self.path = "/tmp/ckcc-simulator.sock" if path is None else path
         self.headless = headless
+        self.segregate = segregate
+        self.socket = "/tmp/ckcc-simulator.sock"
 
     def start(self, start_wait=None):
         # here we are in testing directory
@@ -188,14 +267,20 @@ class ColdcardSimulator:
             cmd_list.extend(self.args)
         if self.headless:
             cmd_list.append("--headless")
+        if self.segregate:
+            cmd_list.append("--segregate")
 
         self.proc = subprocess.Popen(
             cmd_list,
             # this needs to be in firmware/unix - expected to be run from firmware/testing
             cwd="../unix",
-            preexec_fn=os.setsid
+            preexec_fn=os.setsid,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         time.sleep(start_wait or SIM_INIT_WAIT)
+        if self.segregate:
+            self.socket = "/tmp/ckcc-simulator-%d.sock" % self.proc.pid
         atexit.register(self.stop)
 
     def stop(self):
@@ -205,7 +290,6 @@ class ColdcardSimulator:
             os.waitpid(os.getpgid(self.proc.pid), 0)
 
         atexit.unregister(self.stop)
-        remove_client_sockets()
 
 
 def main():
@@ -233,6 +317,12 @@ def main():
                         help="only run tests which match the given substring expression")
     parser.add_argument("--headless", action="store_true", default=False,
                         help="run simulator instance in headless mode")
+    parser.add_argument("--multiproc", action="store_true", default=False,
+                        help="Run tests & simulators in parallel")
+    parser.add_argument("--num-proc", type=int, default=14,
+                        help="How many executors/simulators to run in parallel in --multiproc mode")
+    parser.add_argument("--turbo", action="store_true", default=False,
+                        help="Both Mk4 and Q at the same time")
     args = parser.parse_args()
 
     if args.sim_init_wait:
@@ -258,47 +348,159 @@ def main():
     if args.module is None:
         test_modules = []
     elif len(args.module) == 1 and args.module[0].lower() == "all":
-        test_modules = sorted(glob.glob("test_*.py"))
+        test_modules = glob.glob("test_*.py")
         assert test_modules, "please run in ../testing subdir"
     else:
         for fn in args.module:
             if not os.path.exists(fn):
                 raise RuntimeError(f"{fn} does not exist")
-        test_modules = sorted(args.module)
+        test_modules = args.module
 
-    result = []
-    for test_module in test_modules:
-        test_args = DEFAULT_SIMULATOR_ARGS
-        if test_module in ["test_rng.py", "test_pincodes.py", "test_rolls.py"]:
-            # test_pincodes.py can only be run against real device
-            # test_rng.py not needed when using simulator
-            # test_rolls.py should be run alone as it does not need simulator
-            print("Skipped", test_module)
-            continue
+    # test_pincodes.py can only be run against real device
+    # test_rng.py not needed when using simulator
+    # test_rolls.py should be run alone as it does not need simulator
+    # set diff
+    test_modules = set(test_modules) - {"test_rng.py", "test_pincodes.py", "test_rolls.py"}
 
-        print("Started", test_module)
+    module_args = []
+    for test_module in sorted(list(test_modules)):
+        sim_args = DEFAULT_SIMULATOR_ARGS
         if test_module in ["test_bsms.py", "test_address_explorer.py", "test_export.py",
                            "test_multisig.py", "test_ux.py"]:
-            test_args = DEFAULT_SIMULATOR_ARGS + ["--set", "vidsk=1"]
+            sim_args = DEFAULT_SIMULATOR_ARGS + ["--set", "vidsk=1"]
         if test_module == "test_vdisk.py":
-            test_args = ["--eject"] + DEFAULT_SIMULATOR_ARGS + ["--set", "vidsk=1"]
+            sim_args = ["--eject"] + DEFAULT_SIMULATOR_ARGS + ["--set", "vidsk=1"]
         if test_module == "test_bip39pw.py":
-            test_args = []
+            sim_args = []
         if test_module in ["test_unit.py", "test_se2.py", "test_backup.py", "test_teleport.py"]:
             # test_nvram_mk4 needs to run without --eff
             # se2 duress wallet activated as ephemeral seed requires proper `settings.load`
-            test_args = ["--set", "nfc=1"]
+            sim_args = ["--set", "nfc=1"]
         if test_module in ["test_ephemeral.py", "test_notes.py", "test_ccc.py"]:
             # proper `settings.load` _ virtual disk
-            test_args = ["--set", "nfc=1", "--set", "vidsk=1"]
+            sim_args = ["--set", "nfc=1", "--set", "vidsk=1"]
 
-        if args.q1 and '--q1' not in test_args:
-            test_args.append('--q1')
+        if args.q1 and '--q1' not in sim_args:
+            sim_args.append('--q1')
 
-        ec, failed_tests = run_coldcard_tests(test_module, simulator_args=test_args,
-                                              pytest_k=args.pytest_k, pdb=args.pdb,
-                                              failed_first=args.ff, psbt2=args.psbt2,
-                                              headless=args.headless)
+        module_args.append((test_module, sim_args, args.pytest_k, args.pdb,
+                            args.ff, args.psbt2, args.q1, args.headless))
+
+    if args.multiproc:
+        start_time = time.time()
+        def add_to_queue(module_name, simulator_args, queue):
+            if module_name == "test_multisig.py":
+                # split takes too much time
+                queue.append((0, [module_name, simulator_args, "not tutorial and not airgapped and not ms_address and not descriptor_export", ""]))
+                queue.append((0, [module_name, simulator_args, "airgapped", "-sep1"]))
+                queue.append((0, [module_name, simulator_args, "tutorial", "-sep2"]))
+                queue.append((0, [module_name, simulator_args, "ms_address", "-sep3"]))
+                queue.append((0, [module_name, simulator_args, "descriptor_export", "-sep4"]))
+
+            elif module_name == "test_seed_xor.py":
+                # split takes too much time
+                queue.append((0, [module_name, simulator_args, "test_import_xor", "-sep1"]))
+                queue.append((0, [module_name, simulator_args, "not test_import_xor", ""]))
+
+            elif module_name in ["test_export.py", "test_ephemeral.py", "test_sign.py", "test_msg.py",
+                              "test_backup.py"]:
+                # higher priority
+                queue.append((1, [module_name, simulator_args, None, ""]))
+
+            else:
+                # standard priority
+                queue.append((2, [module_name, simulator_args, None, ""]))
+
+        # will clear everything there from previous runs
+        tmp_dir = "/tmp/cc-simulators"
+        clean_directory(tmp_dir)  # clean it
+        mk4_log_dir = f"{tmp_dir}/mk4_logs"
+        q1_log_dir = f"{tmp_dir}/q1_logs"
+        os.makedirs(mk4_log_dir, exist_ok=True)
+        os.makedirs(q1_log_dir, exist_ok=True)
+
+        q = []  # build priority queue
+        for mod_name, sim_args, *_ in module_args:
+            if args.turbo:
+                if "--q1" in sim_args:
+                    add_to_queue(mod_name, sim_args, q)
+                    add_to_queue(mod_name, [i for i in sim_args if i == "--q1"], q)
+                else:
+                    add_to_queue(mod_name, sim_args, q)
+                    add_to_queue(mod_name, sim_args + ["--q1"], q)
+
+            else:
+                add_to_queue(mod_name, sim_args, q)
+
+        # sort queue by priority, highest priority elements at the end
+        q = [i[1] for i in sorted(q, reverse=True)]
+
+        num_proc = args.num_proc
+        if args.turbo:
+            # double num-proc
+            num_proc *= 2
+
+        procs = []
+        while True:
+            # create as many processes as allowed by --num-proc (default=14)
+            if q and (len(procs) < num_proc):
+                # start simulators first
+                q_chunks = []
+                for _ in range (num_proc - len(procs)):
+                    try:
+                        mn, sim_args, k, mod_add = q.pop()  # remove element
+                    except IndexError:
+                        # priority queue is empty
+                        break
+                    sim = ColdcardSimulator(sim_args, segregate=True)
+                    sim.start(start_wait=0)
+                    ld = q1_log_dir if "--q1" in sim_args else mk4_log_dir
+                    q_chunks.append((sim, mn, mod_add, k, ld))
+
+                time.sleep(5)
+                for sim, mn, mod_add, k, log_dir in q_chunks:
+                    assert sim.socket
+                    out_log_path = f"{log_dir}/%s.log" % (mn + mod_add)
+                    out_fd = open(out_log_path, "w")
+                    cmd_list = ["pytest", "--cache-clear", "-m", DEFAULT_PYTEST_MARKS, "--sim",
+                                mn, "--sim-socket", sim.socket]
+                    if k:
+                        cmd_list.extend(["-k", k])
+                    p = subprocess.Popen(cmd_list, preexec_fn=os.setsid, stdout=out_fd, stderr=out_fd)
+                    mark = "Q" if "q1" in log_dir else "Mk4"
+                    procs.append((mn+mod_add, p, out_fd, sim, mark, time.time()))
+                    print(f'started: {mark:<6}{mn+mod_add:<30}{sim.socket.split("-")[-1].split(".")[0]:<10}')
+
+            if not procs and not q:
+                # done
+                break
+
+            i = 0
+            while i < len(procs):
+                mn, p, out_fd, sim, mark, st = procs[i]
+                if p.poll() is None:
+                    # still running
+                    i += 1
+                    continue
+                else:
+                    # done
+                    p.communicate()
+                    out_fd.close()
+                    sim.stop()
+                    del procs[i]
+                    print(f"done:    {mark:<6}{mn:<30}{str(timedelta(seconds=time.time()-st)):<15}")
+
+            time.sleep(3)
+
+        # multiprocess done
+        print(f"\n\nelapsed: {str(timedelta(seconds=time.time()-start_time))}")
+        return
+
+    result = []
+    for arguments in module_args:
+        test_module = arguments[0]
+        print("Started", test_module)
+        ec, failed_tests = run_coldcard_tests(*arguments)
         result.append((test_module, ec, failed_tests))
         print("Done", test_module)
         print(80 * "=")
@@ -363,5 +565,8 @@ def main():
 
 if __name__ == "__main__":
     main()
-
+    # sim = ColdcardSimulator(args=["--eff", "--segregate"])
+    # sim.start()
+    # import pdb;pdb.set_trace()
+    # x = 5
 # EOF

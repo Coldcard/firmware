@@ -15,7 +15,7 @@ from charcodes import KEY_NFC, KEY_QR
 
     
 @pytest.mark.parametrize('case', range(6))
-def test_ndef(case, load_shared_mod):
+def test_ndef(case, load_shared_mod, src_root_dir):
     # NDEF unit tests -- runs in cpython
 
     def get_body(efile):
@@ -36,7 +36,7 @@ def test_ndef(case, load_shared_mod):
     def decode(msg):
         return list(ndef.message_decoder(get_body(msg)))
 
-    cc_ndef = load_shared_mod('cc_ndef', '../shared/ndef.py')
+    cc_ndef = load_shared_mod('cc_ndef', f'{src_root_dir}/shared/ndef.py')
     n = cc_ndef.ndefMaker()
 
     if case == 0:
@@ -101,13 +101,13 @@ def test_ndef(case, load_shared_mod):
     'short',
     'long',
 ])
-def test_ndef_ccfile(ccfile, load_shared_mod):
+def test_ndef_ccfile(ccfile, load_shared_mod, src_root_dir):
     # NDEF unit tests
 
     def decode(body):
         return list(ndef.message_decoder(body))
 
-    cc_ndef = load_shared_mod('cc_ndef', '../shared/ndef.py')
+    cc_ndef = load_shared_mod('cc_ndef', f'{src_root_dir}/shared/ndef.py')
 
     txt_msg = None
     if ccfile == 'rx':
@@ -149,7 +149,8 @@ def test_ndef_ccfile(ccfile, load_shared_mod):
 @pytest.fixture
 def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
                  sim_exec, nfc_read, nfc_write, nfc_block4rf, press_select,
-                 press_cancel, press_nfc, nfc_read_txn, ndef_parse_txn_psbt):
+                 press_cancel, press_nfc, nfc_read_txn, ndef_parse_txn_psbt,
+                 sim_root_dir):
 
     # like "try_sign" but use NFC to send/receive PSBT/results
 
@@ -182,7 +183,7 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
                     ndef.TextRecord('some text'),
             ]
 
-        with open('debug/nfc-sent.psbt', 'wb') as f:
+        with open(f'{sim_root_dir}/debug/nfc-sent.psbt', 'wb') as f:
             f.write(ip)
 
         # wrap in a CCFile 
@@ -274,7 +275,7 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
     sim_exec('from pyb import SDCard; SDCard.ejected = False')
 
 @pytest.fixture
-def ndef_parse_txn_psbt(press_cancel):
+def ndef_parse_txn_psbt(press_cancel, sim_root_dir):
     def doit(contents, txid=None, orig=None, expect_finalized=True):
         # from NFC data read, what did we get?
         got_txid = None
@@ -310,12 +311,14 @@ def ndef_parse_txn_psbt(press_cancel):
             assert got_txid == txid
             assert expect_finalized
             result = got_txn
-            open("debug/nfc-result.txn", 'wb').write(result)
+            with open(f"{sim_root_dir}/debug/nfc-result.txn", 'wb') as f:
+                f.write(result)
         else:
             assert not expect_finalized
             result = got_psbt
 
-            open("debug/nfc-result.psbt", 'wb').write(result)
+            with open(f"{sim_root_dir}/debug/nfc-result.psbt", 'wb') as f:
+                f.write(result)
 
         # read back final product
         if got_txn:
@@ -434,9 +437,9 @@ def test_rf_uid(rf_interface, cap_story, goto_home, pick_menu_item):
     print(uid)
 
 
-def test_ndef_roundtrip(load_shared_mod):
+def test_ndef_roundtrip(load_shared_mod, src_root_dir):
     # specific failing case
-    cc_ndef = load_shared_mod('cc_ndef', '../shared/ndef.py')
+    cc_ndef = load_shared_mod('cc_ndef', f'{src_root_dir}/shared/ndef.py')
 
     r = open('data/ms-import.ndef', 'rb').read()
 
@@ -605,10 +608,11 @@ def test_share_by_pushtx(goto_home, cap_story, pick_menu_item, settings_set,
 ])
 def test_nfc_share_files(fname, mode, ftype, nfc_read_json, nfc_read_text,
                          need_keypress, goto_home, pick_menu_item, is_q1,
-                         cap_menu, nfc_read, nfc_block4rf, press_select):
+                         cap_menu, nfc_read, nfc_block4rf, press_select,
+                         src_root_dir, sim_root_dir):
     goto_home()
-    fpath = "data/" + fname
-    shutil.copy2(fpath, '../unix/work/MicroSD')
+    fpath = f"{src_root_dir}/testing/data/" + fname
+    shutil.copy2(fpath, f'{sim_root_dir}/MicroSD')
     pick_menu_item("Advanced/Tools")
     pick_menu_item("File Management")
     pick_menu_item("NFC File Share")
@@ -659,6 +663,6 @@ def test_nfc_share_files(fname, mode, ftype, nfc_read_json, nfc_read_text,
         res = json.loads(res)
 
     assert res == contents
-    os.remove('../unix/work/MicroSD/' + fname)
+    os.remove(f'{sim_root_dir}/MicroSD/' + fname)
 
 # EOF
