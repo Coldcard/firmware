@@ -198,10 +198,9 @@ def is_simulator():
 def is_debug_build():
     return True
 
-
 def get_sim_root_dirs():
     # return a single path and list of files to pretend to find there
-    import ffilib, os
+    import ffilib
     libc = ffilib.libc()
 
     b = bytearray(500)

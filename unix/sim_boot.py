@@ -6,6 +6,11 @@
 
 import machine, pyb, sys
 
+socket_path = sys.argv.pop()  # last arg must be a socket path - remove
+assert ("ckcc-simulator" in socket_path) and (".sock" in socket_path)
+pyb.SOCKET_FILE_PATH = socket_path
+print("socket:", pyb.SOCKET_FILE_PATH)
+
 if '--metal' in sys.argv:
     # next in argv will be two open file descriptors to use for serial I/O to a real Coldcard
     import bare_metal

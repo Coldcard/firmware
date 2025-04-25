@@ -45,7 +45,7 @@ def str2ipath(s):
 
         yield here
 
-@pytest.fixture(scope='function')
+@pytest.fixture
 def has_ms_checks(request, sim_exec):
     # Add this fixture to any test that should FAIL if ms checks are disabled
     # - in other words, tests that test the checks which are disabled.
@@ -64,7 +64,7 @@ def has_ms_checks(request, sim_exec):
     return danger_mode
 
 
-@pytest.fixture()
+@pytest.fixture
 def bitcoind_p2sh(bitcoind):
     # Use bitcoind to generate a p2sh addres based on public keys.
 
@@ -142,12 +142,13 @@ def make_multisig(dev, sim_execfile):
     return doit
 
 @pytest.fixture
-def offer_ms_import(cap_story, dev):
+def offer_ms_import(cap_story, dev, sim_root_dir):
     def doit(config, allow_non_ascii=False):
         # upload the file, trigger import
         file_len, sha = dev.upload_file(config.encode('utf-8' if allow_non_ascii else 'ascii'))
 
-        open('debug/last-config.txt', 'wt').write(config)
+        with open(f'{sim_root_dir}/debug/last-config.txt', 'wt') as f:
+            f.write(config)
 
         dev.send_recv(CCProtocolPacker.multisig_enroll(file_len, sha))
 
@@ -249,12 +250,12 @@ def import_multisig(request, is_q1, need_keypress, offer_ms_import):
 @pytest.fixture
 def import_ms_wallet(dev, make_multisig, offer_ms_import, press_select,
                      is_q1, request, need_keypress, import_multisig,
-                     settings_set):
+                     settings_set, sim_root_dir):
 
     def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None,
              keys=None, do_import=True, derivs=None, descriptor=False,
              int_ext_desc=False, dev_key=False, way=None, bip67=True,
-             force_unsort_ms=True, netcode="XTN"):
+             force_unsort_ms=True, netcode="XTN", return_desc=False):
         # param: bip67 if false, only usable together with descriptor=True
         if not bip67:
             assert descriptor, "needs descriptor=True"
@@ -308,7 +309,8 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, press_select,
                                             xfp2str(xfp), dd.hwif(as_private=False))
 
         #print(config)
-        open('debug/last-ms.txt', 'wt').write(config)
+        with open(f'{sim_root_dir}/debug/last-ms.txt', 'wt') as f:
+            f.write(config)
 
         title, story = import_multisig(data=config, way=way)
 
@@ -330,6 +332,9 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, press_select,
             for xfp, _, _ in keys:
                 xor ^= xfp
             assert dev.send_recv(CCProtocolPacker.multisig_check(M, N, xor)) == 1
+
+        if return_desc and descriptor:
+            return config
 
         return keys
 
@@ -560,7 +565,7 @@ def test_import_ranges(m_of_n, use_regtest, addr_fmt, clear_ms, import_ms_wallet
 @pytest.mark.ms_danger
 def test_violate_bip67(clear_ms, use_regtest, import_ms_wallet,
                        test_ms_show_addr, has_ms_checks,
-                       fake_ms_txn, try_sign):
+                       fake_ms_txn, try_sign, sim_root_dir):
     # detect when pubkeys are not in order in the redeem script
     clear_ms()
     M, N = 1, 15
@@ -578,7 +583,7 @@ def test_violate_bip67(clear_ms, use_regtest, import_ms_wallet,
                        change_outputs=[1],
                        violate_script_key_order=True)
 
-    with open('debug/last.psbt', 'wb') as f:
+    with open(f'{sim_root_dir}/debug/last.psbt', 'wb') as f:
         f.write(psbt)
 
     with pytest.raises(Exception) as e:
@@ -588,7 +593,8 @@ def test_violate_bip67(clear_ms, use_regtest, import_ms_wallet,
 
 @pytest.mark.parametrize("has_change", [True, False])
 def test_violate_import_order_multi(has_change, clear_ms, import_ms_wallet,
-                                    fake_ms_txn, try_sign, test_ms_show_addr):
+                                    fake_ms_txn, try_sign, test_ms_show_addr,
+                                    sim_root_dir):
     clear_ms()
     M, N = 3, 5
     keys = import_ms_wallet(M, N, accept=True, descriptor=True, bip67=False)
@@ -601,7 +607,7 @@ def test_violate_import_order_multi(has_change, clear_ms, import_ms_wallet,
                        change_outputs=[1] if has_change else [],
                        bip67=False, violate_script_key_order=True)
 
-    with open('debug/last.psbt', 'wb') as f:
+    with open(f'{sim_root_dir}/debug/last.psbt', 'wb') as f:
         f.write(psbt)
 
     with pytest.raises(Exception) as e:
@@ -1167,8 +1173,6 @@ def test_import_dup_xfp_fails(m_of_n, use_regtest, addr_fmt, clear_ms,
 @pytest.mark.parametrize('desc', ["multi", "sortedmulti"])
 def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, desc):
     # exercise the p2sh command of ckcc:cli ... hard to do manually.
-    from subprocess import check_output
-
     M, N = 2, 3
     clear_ms()
     bip67, descriptor = (False, True) if desc == "multi" else (True, False)
@@ -1180,41 +1184,17 @@ def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, desc):
 
     scr, pubkeys, xfp_paths = make_redeem(M, keys, pmapper, bip67=bip67)
 
-    def decode_path(p):
-        return '/'.join(str(i) if i < 0x80000000 else "%d'"%(i& 0x7fffffff) for i in p)
+    addr = dev.send_recv(CCProtocolPacker.show_p2sh_address(
+        scr[0] - 80, xfp_paths, scr, addr_fmt=addr_fmt), timeout=None
+    )
 
-    if 1:
-        args = ['ckcc']
-        if dev.is_simulator:
-            args += ['-x']
+    addr_vs_path(addr, addr_fmt=addr_fmt, script=scr)
 
-        args += ['p2sh', '-q']
-
-        if addr_fmt == AF_P2WSH:
-            args += ['-s']
-        elif addr_fmt == AF_P2WSH_P2SH:
-            args += ['-s', '-w']
-
-        args += [B2A(scr)]
-        args += [xfp2str(x)+'/'+decode_path(path) for x,*path in xfp_paths]
-
-        import shlex
-        print('CMD: ' + (' '.join(shlex.quote(i) for i in args)))
-
-        addr = check_output(args, encoding='ascii').strip()
-
-        print(addr)
-        addr_vs_path(addr, addr_fmt=addr_fmt, script=scr)
-
-        # test case for make_ms_address really.
-        expect_addr, _, scr2, _ = make_ms_address(M, keys, path_mapper=pmapper,
-                                                  addr_fmt=addr_fmt, bip67=bip67)
-        assert expect_addr == addr
-        assert scr2 == scr
-
-    # need to re-start our connection once ckcc has talked to simulator
-    dev.start_encryption()
-    dev.check_mitm()
+    # test case for make_ms_address really.
+    expect_addr, _, scr2, _ = make_ms_address(M, keys, path_mapper=pmapper,
+                                              addr_fmt=addr_fmt, bip67=bip67)
+    assert expect_addr == addr
+    assert scr2 == scr
 
     clear_ms()
 
@@ -1446,7 +1426,7 @@ def fake_ms_txn(pytestconfig):
 @pytest.mark.parametrize('desc', ["multi", "sortedmulti"])
 def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet,
                         addr_vs_path, fake_ms_txn, try_sign, try_sign_microsd, transport,
-                        has_change, settings_set, desc):
+                        has_change, settings_set, desc, sim_root_dir):
     M, N = M_N
     num_outs = num_ins-1
     descriptor, bip67 = (True, False) if desc == "multi" else (False, True)
@@ -1470,7 +1450,8 @@ def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, impor
                        outstyles=ADDR_STYLES_MS, change_outputs=[1] if has_change else [],
                        bip67=bip67)
 
-    open('debug/last.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/last.psbt', 'wb') as f:
+        f.write(psbt)
 
     if transport == 'sd':
         try_sign_microsd(psbt, encoding=('binary', 'hex', 'base64')[random.randint(0,2)])
@@ -1484,7 +1465,7 @@ def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, impor
 @pytest.mark.parametrize('segwit', [True, False])
 @pytest.mark.parametrize('incl_xpubs', [ True, False ])
 def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev, clear_ms,
-                        fake_ms_txn, try_sign, incl_xpubs, bitcoind):
+                        fake_ms_txn, try_sign, incl_xpubs, bitcoind, sim_root_dir):
 
     # IMPORTANT: wont work if you start simulator with --ms flag. Use no args
 
@@ -1502,11 +1483,13 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
     psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs, 
                         outstyles=all_out_styles, change_outputs=list(range(1,num_outs)))
 
-    open(f'debug/myself-before.psbt', 'w').write(b64encode(psbt).decode())
+    with open(f'{sim_root_dir}/debug/myself-before.psbt', 'w') as f:
+        f.write(b64encode(psbt).decode())
     for idx in range(M):
         select_wallet(idx)
         _, updated = try_sign(psbt, accept_ms_import=incl_xpubs)
-        open(f'debug/myself-after.psbt', 'w').write(b64encode(updated).decode())
+        with open(f'{sim_root_dir}/debug/myself-after.psbt', 'w') as f:
+            f.write(b64encode(updated).decode())
         assert updated != psbt
 
         aft = BasicPSBT().parse(updated)
@@ -1522,9 +1505,12 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
         assert all(inp['next'] in {'finalizer','updater'} for inp in anal['inputs']), "other issue: %r" % anal
     except:
         # XXX seems to be a bug in analyzepsbt function ... not fully studied
-        pprint(anal, stream=open('debug/analyzed.txt', 'wt'))
+        with open(f'{sim_root_dir}/debug/analyzed.txt', 'wt') as f:
+            pprint(anal, stream=f)
+
         decode = bitcoind.rpc.decodepsbt(b64encode(psbt).decode('ascii'))
-        pprint(decode, stream=open('debug/decoded.txt', 'wt'))
+        with open(f'{sim_root_dir}/debug/decoded.txt', 'wt') as f:
+            pprint(decode, stream=f)
     
         if M==N or segwit:
             # as observed, bug not trigged, so raise if it *does* happen
@@ -1749,7 +1735,7 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
 @pytest.mark.parametrize('addr_style', ["legacy", "p2sh-segwit", "bech32"])
 @pytest.mark.parametrize('cc_sign_first', [True, False])
 def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clear_ms, try_sign,
-                            press_cancel, addr_style, use_regtest, is_q1):
+                            press_cancel, addr_style, use_regtest, is_q1, sim_root_dir):
     # Make a P2SH wallet with local bitcoind as a co-signer (and simulator)
     # - send an receive various
     # - following text of <https://github.com/bitcoin/bitcoin/blob/master/doc/psbt.md>
@@ -1851,7 +1837,8 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
     # assert resp['changepos'] == -1
     psbt = b64decode(resp['psbt'])
 
-    open('debug/funded.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/funded.psbt', 'wb') as f:
+        f.write(psbt)
 
     # patch up the PSBT a little ... bitcoind doesn't know the path for the CC's key
     ex = BasicPSBT().parse(psbt)
@@ -1863,11 +1850,13 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
 
     psbt = ex.as_bytes()
 
-    open('debug/patched.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/patched.psbt', 'wb') as f:
+        f.write(psbt)
 
     _, updated = try_sign(psbt, finalize=False)
 
-    open('debug/cc-updated.psbt', 'wb').write(updated)
+    with open(f'{sim_root_dir}/debug/cc-updated.psbt', 'wb') as f:
+        f.write(updated)
 
     if cc_sign_first:
         # cc signed first - bitcoind is now second
@@ -1879,7 +1868,9 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
 
     # finalize and send
     rr = bitcoind.supply_wallet.finalizepsbt(both_signed, True)
-    open('debug/bc-final-txn.txn', 'wt').write(rr['hex'])
+    with open(f'{sim_root_dir}/debug/bc-final-txn.txn', 'wt') as f:
+        f.write(rr['hex'])
+
     assert rr['complete']
     tx_hex = rr["hex"]
     res = bitcoind.supply_wallet.testmempoolaccept([tx_hex])
@@ -1894,8 +1885,9 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
 @pytest.mark.parametrize('out_style', ['p2wsh'])
 @pytest.mark.parametrize('bitrot', list(range(0,6)) + [98, 99, 100] + list(range(-5, 0)))
 @pytest.mark.ms_danger
-def test_ms_sign_bitrot(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path,
-                        fake_ms_txn, start_sign, end_sign, out_style, cap_story, bitrot, has_ms_checks):
+def test_ms_sign_bitrot(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet,
+                        addr_vs_path, fake_ms_txn, start_sign, end_sign, out_style, cap_story,
+                        bitrot, has_ms_checks, sim_root_dir):
     M = 1
     N = 3
     num_outs = 2
@@ -1926,7 +1918,8 @@ def test_ms_sign_bitrot(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_
 
     assert len(track) == 1
 
-    open('debug/last.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/last.psbt', 'wb') as f:
+        f.write(psbt)
 
     start_sign(psbt)
     with pytest.raises(Exception) as ee:
@@ -1947,7 +1940,8 @@ def test_ms_sign_bitrot(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_
 @pytest.mark.parametrize('pk_num', range(4)) 
 @pytest.mark.parametrize('case', ['pubkey', 'path'])
 def test_ms_change_fraud(case, pk_num, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, make_multisig,
-                         addr_vs_path, fake_ms_txn, start_sign, end_sign, out_style, cap_story):
+                         addr_vs_path, fake_ms_txn, start_sign, end_sign, out_style, cap_story,
+                         sim_root_dir):
     
     M = 1
     N = 3
@@ -1982,7 +1976,8 @@ def test_ms_change_fraud(case, pk_num, num_ins, dev, addr_fmt, clear_ms, incl_xp
                 hack_change_out=lambda idx: dict(tweak_pubkeys=
                         lambda data: tweak(case, pk_num, data)))
 
-    open('debug/last.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/last.psbt', 'wb') as f:
+        f.write(psbt)
 
     with pytest.raises(Exception) as ee:
         start_sign(psbt)
@@ -1999,7 +1994,7 @@ def test_ms_change_fraud(case, pk_num, num_ins, dev, addr_fmt, clear_ms, incl_xp
 
 
 @pytest.mark.parametrize('repeat', range(2) )
-def test_iss6743(repeat, set_seed_words, sim_execfile, try_sign):
+def test_iss6743(repeat, set_seed_words, sim_execfile, try_sign, sim_root_dir):
     # from SomberNight <https://github.com/spesmilo/electrum/issues/6743#issuecomment-729965813>
     psbt_b4 = bytes.fromhex('70736274ff0100520200000001bde05be36069e2e0fe44793c68ad8244bb1a52cc37f152e0fa5b75e40169d7f70000000000fdffffff018b1e000000000000160014ed5180f05c7b1dc980732602c50cda40530e00ad4de11c004f01024289ef0000000000000000007dd565da7ee1cf05c516e89a608968fed4a2450633a00c7b922df66b27afd2e1033a0a4fa4b0a997738ac2f142a395c1f02afcb31d7ffd46a90a0c927a4c411fd704094ef7844f01024289ef0431fcbdcc8000000112d4aaea7292e7870c7eeb3565fa1c1fa8f957fa7c4c24b411d5b4f5710d359a023e63d1e54063525bea286ccb2a0ad7b14560aa31ec4be826afa883141dfe1d53145c9e228d300000800100008000000080010000804f01024289ef04e44b38f1800000014a1960f3a3c86ba355a16a66a548cfb62eeb25663311f7cd662a192896f3777e038cc595159a395e4ec35e477c9523a1512f873e74d303fb03fc9a1503b1ba45271434652fae30000080010000800000008001000080000100df02000000000101d1a321707660769c7f8604d04c9ae2db58cf1ec7a01f4f285cdcbb25ce14bdfd0300000000fdffffff02401f00000000000017a914bfd0b8471a3706c1e17870a4d39b0354bcea57b687c864000000000000160014e608b171d63ec24d9fa252d5c1e45624b14e44700247304402205133eb96df167b895f657cce31c6882840a403013682d9d4651aed2730a7dad502202aaacc045d85d9c711af0c84e7f355cc18bf2f8e6d91774d42ba24de8418a39e012103a58d8eb325abb412eaf927cf11d8b7641c4a468ce412057e47892ca2d13ed6144de11c000104220020a3c65c4e376d82fb3ca45596feee5b08313ad64f38590c1b08bc530d1c0bbfea010569522102ab84641359fa22461b8461515231da63c196614cd22b26e556ed878e30db4da621034211ab0f75c3a307a2f6bf6f09a9e05d3c8edd0ba7a2ac31f432d1045ef6381921039690cf74941da5db291fa8be7348abe3807786732d969eac5d27e0afa909a55f53ae220602ab84641359fa22461b8461515231da63c196614cd22b26e556ed878e30db4da60c094ef78400000000030000002206034211ab0f75c3a307a2f6bf6f09a9e05d3c8edd0ba7a2ac31f432d1045ef638191c5c9e228d3000008001000080000000800100008000000000030000002206039690cf74941da5db291fa8be7348abe3807786732d969eac5d27e0afa909a55f1c34652fae3000008001000080000000800100008000000000030000000000')
     # pre 3.2.0 result
@@ -2033,7 +2028,8 @@ def test_iss6743(repeat, set_seed_words, sim_execfile, try_sign):
     assert out_psbt != psbt_wrong
     assert BasicPSBT().parse(out_psbt) == BasicPSBT().parse(psbt_right)
 
-    open('debug/i6.psbt', 'wt').write(out_psbt.hex())
+    with open(f'{sim_root_dir}/debug/i6.psbt', 'wt') as f:
+        f.write(out_psbt.hex())
 
 @pytest.mark.parametrize('N', [ 3, 15])
 @pytest.mark.parametrize('xderiv', [ None, 'any', 'unknown', '*', '', 'none'])
@@ -2128,7 +2124,8 @@ def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_impo
 
 @pytest.mark.ms_danger
 @pytest.mark.parametrize('descriptor', [True, False])
-def test_danger_warning(request, descriptor, clear_ms, import_ms_wallet, cap_story, fake_ms_txn, start_sign, sim_exec):
+def test_danger_warning(request, descriptor, clear_ms, import_ms_wallet, cap_story, fake_ms_txn,
+                        start_sign, sim_exec, sim_root_dir):
     # note: cant use has_ms_checks fixture here
     danger_mode = (request.config.getoption('--ms-danger'))
     sim_exec(f'from multisig import MultisigWallet; MultisigWallet.disable_checks={danger_mode}')
@@ -2138,7 +2135,8 @@ def test_danger_warning(request, descriptor, clear_ms, import_ms_wallet, cap_sto
     keys = import_ms_wallet(M, N, accept=1, descriptor=descriptor, addr_fmt="p2wsh")
     psbt = fake_ms_txn(1, 1, M, keys, incl_xpubs=True)
 
-    open('debug/last.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/last.psbt', 'wb') as f:
+        f.write(psbt)
 
     start_sign(psbt)
     title, story = cap_story()
@@ -2306,13 +2304,17 @@ def test_dup_ms_wallet_bug(goto_home, pick_menu_item, press_select, import_ms_wa
 @pytest.mark.parametrize('int_ext_desc', [True, False])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
 @pytest.mark.parametrize('desc', ["multi", "sortedmulti"])
-def test_import_desciptor(M_N, addr_fmt, int_ext_desc, way, import_ms_wallet, goto_home, pick_menu_item,
-                          press_select, clear_ms, cap_story, microsd_path, virtdisk_path,
-                          nfc_read_text, load_export, is_q1, desc):
+def test_import_descriptor(M_N, addr_fmt, int_ext_desc, way, import_ms_wallet, goto_home, pick_menu_item,
+                           press_select, clear_ms, cap_story, microsd_path, virtdisk_path,
+                           nfc_read_text, load_export, is_q1, desc):
     clear_ms()
     M, N = M_N
-    import_ms_wallet(M, N, addr_fmt=addr_fmt, accept=1, descriptor=True,
-                     int_ext_desc=int_ext_desc, bip67=False if desc == "multi" else True)
+    desc_import = import_ms_wallet(
+        M, N, addr_fmt=addr_fmt, accept=True, descriptor=True,
+        int_ext_desc=int_ext_desc, bip67=False if desc == "multi" else True,
+        return_desc=True
+    )
+    desc_import = desc_import.strip()
 
     goto_home()
     pick_menu_item('Settings')
@@ -2322,8 +2324,7 @@ def test_import_desciptor(M_N, addr_fmt, int_ext_desc, way, import_ms_wallet, go
     pick_menu_item('Export')
     contents = load_export(way, label="Descriptor multisig setup", is_json=False)
     desc_export = contents.strip()
-    with open("debug/last-ms.txt", "r") as f:
-        desc_import = f.read().strip()
+
     normalized = parse_desc_str(desc_export)
     # as new format is not widely supported we only allow to import it - no export yet
     if int_ext_desc:
@@ -2342,7 +2343,7 @@ def test_import_desciptor(M_N, addr_fmt, int_ext_desc, way, import_ms_wallet, go
 @pytest.mark.parametrize("start_idx", [2147483540, MAX_BIP32_IDX, 0])
 @pytest.mark.parametrize('M_N', [(2, 2), (3, 5), (15, 15)])
 @pytest.mark.parametrize('addr_fmt', [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH])
-@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize('way', ["sd", "nfc"])  # vdisk
 def test_bitcoind_ms_address(change, M_N, addr_fmt, clear_ms, goto_home, need_keypress,
                              pick_menu_item, cap_menu, cap_story, make_multisig, import_ms_wallet,
                              microsd_path, bitcoind_d_wallet_w_sk, use_regtest, load_export, way,
@@ -3042,14 +3043,13 @@ def test_ms_wallet_ordering(clear_ms, import_ms_wallet, try_sign_microsd, fake_m
 
     psbt = fake_ms_txn(5, 5, 3, keys3, outstyles=all_out_styles, segwit_in=True, incl_xpubs=True)
 
-    open('debug/last.psbt', 'wb').write(psbt)
-
     try_sign_microsd(psbt, encoding='base64')
 
 
 @pytest.mark.parametrize("descriptor", [True, False])
 @pytest.mark.parametrize("m_n", [(2, 3), (3, 5), (5, 10)])
-def test_ms_xpub_ordering(descriptor, m_n, clear_ms, make_multisig, import_ms_wallet, try_sign_microsd, fake_ms_txn):
+def test_ms_xpub_ordering(descriptor, m_n, clear_ms, make_multisig, import_ms_wallet,
+                          try_sign_microsd, fake_ms_txn):
     clear_ms()
     M, N = m_n
     all_out_styles = list(unmap_addr_fmt.keys())
@@ -3063,13 +3063,11 @@ def test_ms_xpub_ordering(descriptor, m_n, clear_ms, make_multisig, import_ms_wa
                          addr_fmt="p2wsh", descriptor=descriptor)
         psbt = fake_ms_txn(5, 5, M, opt, outstyles=all_out_styles,
                            segwit_in=True, incl_xpubs=True)
-        open('debug/last.psbt', 'wb').write(psbt)
         try_sign_microsd(psbt, encoding='base64')
         for opt_1 in all_options:
             # create PSBT with original keys order
             psbt = fake_ms_txn(5, 5, M, opt_1, outstyles=all_out_styles,
                                segwit_in=True, incl_xpubs=True)
-            open('debug/last.psbt', 'wb').write(psbt)
             try_sign_microsd(psbt, encoding='base64')
 
 

@@ -25,13 +25,13 @@ def upload_file(dev):
     return doit
 
 @pytest.fixture
-def make_firmware():
-    def doit(hw_compat, fname='../stm32/firmware-signed.bin', outname='tmp-firmware.bin'):
+def make_firmware(src_root_dir):
+    def doit(hw_compat, fname=f'{src_root_dir}/stm32/firmware-signed.bin', outname='tmp-firmware.bin'):
         # os.system(f'signit sign 3.0.99 --keydir ../stm32/keys -r {fname} -o {outname} --hw-compat=0x{hw_compat:02x}')
         p = subprocess.run(
             [
                 'signit', 'sign', '3.0.99',
-                 '--keydir', '../stm32/keys',
+                 '--keydir', f'{src_root_dir}/stm32/keys',
                  '-r', f'{fname}',
                  '-o', f'{outname}',
                  f'--hw-compat={hw_compat}'
@@ -50,7 +50,7 @@ def make_firmware():
     return doit
 
 @pytest.fixture
-def upgrade_by_sd(open_microsd, cap_story, pick_menu_item, goto_home, press_select, microsd_path, sim_exec):
+def upgrade_by_sd(open_microsd, cap_story, pick_menu_item, goto_home, press_select, microsd_path, sim_exec, src_root_dir):
 
     # send a firmware file over the microSD card
 
@@ -64,7 +64,7 @@ def upgrade_by_sd(open_microsd, cap_story, pick_menu_item, goto_home, press_sele
         # create DFU file (wrapper)
         open(f'{fname}.bin', 'wb').write(data)
         dfu = microsd_path('tmp-firmware.dfu')
-        cmd = f'../external/micropython/tools/dfu.py -b 0x08008000:{fname}.bin {dfu}'
+        cmd = f'{src_root_dir}/external/micropython/tools/dfu.py -b 0x08008000:{fname}.bin {dfu}'
         print(cmd)
         os.system(cmd)
 

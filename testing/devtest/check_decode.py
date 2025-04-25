@@ -34,7 +34,7 @@ for fn in ['had_witness', 'num_inputs', 'num_outputs',
 if 'destinations' in expect:
     for (val, addr), (idx, txo) in zip(expect['destinations'], p.output_iter()):
         assert val == txo.nValue
-        txt = active_request.render_output(txo)
+        txt, _ = active_request.render_output(txo)
         # normalize from display format
         address = txt.split("\n")[-2]
         assert address[0] == "\x02"
