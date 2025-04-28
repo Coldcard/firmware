@@ -16,6 +16,7 @@ This lists the new changes that have not yet been published in a normal release.
   in export loop and needs reboot to escape.
 - Bugfix: PUSHDATA2 in bitcoin script caused yikes.
 - Bugfix: Warning for unknown scripts was not shown at the top of the signing story.
+- Bugfix: Part of extended keys in stories were not visible
 
 
 # Q Specific Changes
