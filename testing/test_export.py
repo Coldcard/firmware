@@ -525,7 +525,7 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, mi
 def test_export_xpub(chain, acct_num, dev, cap_menu, pick_menu_item, goto_home,
                      cap_story, need_keypress, enter_number, cap_screen_qr,
                      settings_set, nfc_read_text, is_q1, press_select, press_cancel,
-                     press_nfc, expect_acctnum_captured):
+                     press_nfc, expect_acctnum_captured, nfc_disabled):
     # XPUB's via QR
     settings_set("chain", chain)
     chain_num = 0 if chain == "BTC" else 1
@@ -553,12 +553,13 @@ def test_export_xpub(chain, acct_num, dev, cap_menu, pick_menu_item, goto_home,
         if is_xfp:
             got = cap_screen_qr().decode('ascii')
             time.sleep(.1)
-            press_nfc()
-            time.sleep(.2)
-            nfc_got = nfc_read_text()
-            time.sleep(.2)
-            assert nfc_got == got == xfp2str(simulator_fixed_xfp).upper()
-            press_cancel() # cancel animation
+            if not nfc_disabled():
+                press_nfc()
+                time.sleep(.2)
+                nfc_got = nfc_read_text()
+                time.sleep(.2)
+                assert nfc_got == got == xfp2str(simulator_fixed_xfp).upper()
+                press_cancel() # cancel animation
             press_cancel() # cancel QR
             continue
 
@@ -590,8 +591,9 @@ def test_export_xpub(chain, acct_num, dev, cap_menu, pick_menu_item, goto_home,
             got_nfc_pub = nfc_read_text()
             time.sleep(0.1)
             press_cancel() # cancel animation
-            press_cancel() # cancel QR
             assert got_nfc_pub == got_pub
+
+        press_cancel()  # cancel QR
 
         time.sleep(.1)
         _, story = cap_story()
@@ -641,7 +643,9 @@ def test_export_xpub(chain, acct_num, dev, cap_menu, pick_menu_item, goto_home,
 def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home,
             settings_set, need_keypress, expect_acctnum_captured, OK,
             pick_menu_item, way, cap_story, cap_menu, int_ext, settings_get,
-            virtdisk_path, load_export, press_select):
+            virtdisk_path, load_export, press_select, skip_if_useless_way):
+
+    skip_if_useless_way(way)
 
     settings_set('chain', chain)
     chain_num = 1 if chain in ["XTN", "XRT"] else 0

@@ -81,7 +81,10 @@ def test_addr_vs_bitcoind(use_regtest, press_select, dev, bitcoind_d_sim_sign):
     ("m/0/0/0/0/0/0/0/0/0/0/0/0/0\np2pkh", "too deep"),
     ("m/0/0/0/0/0/q/0/0/0\np2pkh", "invalid characters"),
 ])
-def test_show_addr_nfc_invalid(body_err, goto_home, pick_menu_item, nfc_write_text, cap_story):
+def test_show_addr_nfc_invalid(body_err, goto_home, pick_menu_item, nfc_write_text, cap_story,
+                               skip_if_useless_way):
+    skip_if_useless_way("nfc")
+
     body, err = body_err
     goto_home()
     pick_menu_item('Advanced/Tools')
@@ -96,7 +99,9 @@ def test_show_addr_nfc_invalid(body_err, goto_home, pick_menu_item, nfc_write_te
 @pytest.mark.parametrize("str_addr_fmt", ["p2pkh", "", "p2wpkh", "p2wpkh-p2sh", "p2sh-p2wpkh"])
 def test_show_addr_nfc(path, str_addr_fmt, nfc_write_text, nfc_read_text, pick_menu_item,
                        goto_home, cap_story, press_nfc, addr_vs_path, press_select, is_q1,
-                       cap_screen):
+                       cap_screen, skip_if_useless_way):
+
+    skip_if_useless_way("nfc")
     # import pdb;pdb.set_trace()
     for _ in range(5):
         # need to wait for ApproveMessageSign to be popped from ux stack

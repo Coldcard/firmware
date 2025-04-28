@@ -39,7 +39,7 @@ async def export_contents(title, contents, fname_pattern, derive=None, addr_fmt=
     # produces signed export in case of SD/Vdisk (signed with key at deriv and addr_fmt)
     # checks if suitable to offer QR export on Mk4
     # argument contents can support function that generates content
-    from glob import dis, NFC
+    from glob import dis, NFC, VD
     from files import CardSlot, CardMissingError, needs_microsd
     from qrs import MAX_V11_CHAR_LIMIT
 
@@ -94,6 +94,9 @@ async def export_contents(title, contents, fname_pattern, derive=None, addr_fmt=
             msg += "\n\n%s signature file written:\n\n%s" % (title, sig_nice)
 
         await ux_show_story(msg)
+        if no_qr and (NFC is None) and (VD is None) and not force_prompt:
+            # user has no other ways enabled, we already exported to SD - done
+            return
 
 def generate_public_contents():
     # Generate public details about wallet.
