@@ -1666,9 +1666,15 @@ def enable_nfc(needs_nfc, sim_exec, settings_set):
     return doit
 
 @pytest.fixture()
-def nfc_disabled(needs_nfc, settings_get):
+def nfc_disabled(settings_get):
     def doit():
         return not bool(settings_get('nfc', 0))
+    return doit
+
+@pytest.fixture()
+def vdisk_disabled(settings_get):
+    def doit():
+        return not bool(settings_get('vidsk', 0))
     return doit
 
 @pytest.fixture()
@@ -2477,16 +2483,18 @@ def txout_explorer(cap_story, press_cancel, need_keypress, is_q1):
 
 
 @pytest.fixture
-def skip_if_useless_way(is_q1, nfc_disabled):
+def skip_if_useless_way(is_q1, nfc_disabled, vdisk_disabled):
     # when NFC is disabled, no point trying to do a PSBT via NFC
     # - important: run_sim_tests.py will enable NFC for complete testing
     # - similarly: the Mk4 and earlier had no QR scanner, so cannot use that as input
     def doit(way):
         if way == "qr" and not is_q1:
             raise pytest.skip("mk4 QR not supported")
-        if way == 'nfc' and nfc_disabled():
+        elif way == 'nfc' and nfc_disabled():
             # runner will test these cases, but fail faster otherwise
             raise pytest.skip("NFC disabled")
+        elif way == "vdisk" and vdisk_disabled():
+            raise pytest.skip("VirtualDisk disabled")
 
     return doit
 
