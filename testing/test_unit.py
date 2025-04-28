@@ -5,6 +5,8 @@
 
 import pytest, os, shutil
 from helpers import B2A
+from constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+from charcodes import *
 
 
 def test_remote_exec(sim_exec):
@@ -274,28 +276,55 @@ def test_is_dir(microsd_path, sim_exec):
     assert rv == "False"
     shutil.rmtree(microsd_path("my_dir"))
 
-@pytest.mark.parametrize('txt, x_line2', [
-    ('Disk, press \x0e to share via NFC, \x11 to share', '\x11 to share'),
-])
-def test_word_wrap(txt, x_line2, sim_exec, only_q1, width=34):
-    # one tricky double-wide char word-wrapping case .. but add others
-    assert '\n' not in txt
+DOUBLE_W = ['⋯', '✔', '✓', '→', '←', '↦', '◉', '◯', '◌', '※', '—', '\x0e', '\x11', '\t', '\x0f', '\x12', '\x13', '\x14', '\x16', '\x17']
 
+@pytest.mark.parametrize('txt, target', [
+    ('Disk, press \x0e to share via NFC, \x11 to share', ['Disk, press \x0e to share via NFC,', '\x11 to share']),
+    ((KEY_NFC * 17)+".", [KEY_NFC * 17, '.']),
+    ((KEY_NFC * 17)+(17*KEY_QR), [KEY_NFC * 17, KEY_QR * 17]),
+    ((KEY_NFC * 17)+" "+(17*KEY_QR), [KEY_NFC * 17, KEY_QR * 17]),
+    ((KEY_NFC * 16)+".", [(KEY_NFC * 16)+'.']),
+    (f"Use {KEY_NFC}, or {KEY_F1}, {KEY_F2}, {KEY_F3}, or or or {KEY_F4}", [f"Use {KEY_NFC}, or {KEY_F1}, {KEY_F2}, {KEY_F3}, or or or {KEY_F4}"]),
+    ("".join(DOUBLE_W), ["".join(DOUBLE_W[:17]), "".join(DOUBLE_W[17:])]),
+    ("".join(6*DOUBLE_W), ["".join(6*DOUBLE_W)[i:i + 17] for i in range(0, len(6*DOUBLE_W), 17)]),
+])
+def test_word_wrap_double_wide(only_q1, txt, target, sim_exec):
+    width = 33  # check shared/ux.py CHAR_PER_W
     cmd = f'from utils import word_wrap; RV.write("\\n".join(word_wrap({txt!r}, {width})))'
     got = sim_exec(cmd)
     assert 'Traceback' not in got
 
     lines = got.split('\n')
 
-    assert width*2//3 <= len(lines[0]) <= width
-    assert lines[1] == x_line2
+    assert lines == target
 
-    want_words = [i.strip() for i in txt.split()]
-    got_words = [i.strip() for i in got.split()]
+@pytest.mark.parametrize('txt, target, width', [
+    ((17*'a')+". ccc", [(17*'a')+".", "ccc"], 17),
+    ((17*'a')+".", [(17*'a')+"."], 17),
+    ((17*'-')+". ccc", [(17*'-')+".", "ccc"], 17),
+    ((34 * 'A'), [33 * "A", "A"], 33),
+    ((33 * 'A')+". ccc", [(33 * "A")+".", "ccc"], 33),
+    ('Coldcard is ready to sign spending transactions!', ['Coldcard is ready to sign', 'spending transactions!'], 33),
+    ('Coldcard is ready to sign spending transactions!', ['Coldcard is ready', 'to sign spending', 'transactions!'], 17),
+    ((16*"B")+ " AAAA", [16*"B", "AAAA"], 17),
+    ((16*"B")+ "  AAAA", [(16*"B")+" ", "AAAA"], 17),
+    ((17*"B")+ " AAAA", [17*"B", "AAAA"], 17),
+    ((17*"B")+ "  AAAA", [17*"B", " AAAA"], 17),
+    ("(recommended), or by typing numbers.", ["(recommended), or", "by typing numbers."], 17),
+    ("difficult to recover your funds.", ["difficult to", "recover your", "funds."], 17),
+    ("USB Serial Number:", ["USB Serial Number:"], 17),
+    ("USB Serial Number;", ["USB Serial Number;"], 17),
+    ("USB Serial Number/", ["USB Serial", "Number/"], 17),
+])
+def test_word_wrap(txt, target, width, sim_exec):
+    cmd = f'from utils import word_wrap; RV.write("\\n".join(word_wrap({txt!r}, {width})))'
+    got = sim_exec(cmd)
+    assert 'Traceback' not in got
 
-    assert want_words == got_words
+    lines = got.split('\n')
 
-from constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+    assert lines == target
+
 
 @pytest.mark.parametrize('addr,net,fmt', [
     ( 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', 'BTC', AF_P2WPKH ),

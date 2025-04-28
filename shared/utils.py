@@ -460,28 +460,38 @@ def call_later_ms(delay, cb, *args, **kws):
         
     uasyncio.create_task(doit())
 
-def txtlen(s):
-    # width of string in chars, accounting for
-    # double-wide characters which happen on Q.
-    rv = len(s)
-
-    if DOUBLE_WIDE:
-        rv += sum(1 for ch in s if ch in DOUBLE_WIDE)
-
-    return rv
 
 def word_wrap(ln, w):
     # Generate the lines needed to wrap one line into X "width"-long lines.
     #  - tests in testing/test_unit.py
+    while True:
+        # ln_len considers DOUBLE_WIDTH chars
+        ln_len = 0
+        idx = 0
+        sp = None
+        for idx, ch in enumerate(ln):
+            if ch == ' ':
+                # split point on space if possible
+                sp = idx
+            if ln_len < w:
+                ln_len += 1
+                if ch in DOUBLE_WIDE:
+                    ln_len += 1
+            else:
+                if (ln_len == w) and (ch in ".,:;"):
+                    # boundary of allowed width
+                    # if . or , allow one more character
+                    # even if only half visible on Mk4
+                    # on Q it's OK as (CHARS_W-1) is used as w
+                    sp = None
+                    idx += 1
 
-    if txtlen(ln) <= w:
-        yield ln
-        return
+                break
+        else:
+            yield ln
+            return
 
-    while ln:
-        # find a space in (width) first part of remainder
-        sp = ln.rfind(' ', 0, w-1)
-        if sp == -1:
+        if sp is None:
             if ln[0] == OUT_CTRL_ADDRESS:
                 # special handling for lines w/ payment address in them
                 # - add same marker to newly split lines
@@ -497,8 +507,7 @@ def word_wrap(ln, w):
                 return
 
             # bad-break the line
-            sp = min(txtlen(ln), w)
-            nsp = sp
+            sp = nsp = idx
             if ln[nsp:nsp+1] == ' ':
                 nsp += 1
         else:
@@ -506,14 +515,10 @@ def word_wrap(ln, w):
             nsp = sp+1
 
         left = ln[0:sp]
-        ln = ln[nsp:]
-
-        if txtlen(left) + 1 + txtlen(ln) <= w:
-            # not clear when this would happen? final bit??
-            left = left + ' ' + ln
-            ln = ''
-
         yield left
+        ln = ln[nsp:]
+        if not ln: return
+
 
 def parse_extended_key(ln, private=False):
     # read an xpub/ypub/etc and return BIP-32 node and what chain it's on.
