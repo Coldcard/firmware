@@ -1765,6 +1765,10 @@ def test_bitcoind_missing_foreign_utxo(bitcoind, bitcoind_d_sim_watch, microsd_p
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("op_return_data", [
+    81 * b"a",
+    255 * b"b",  # biggest possible with PUSHDATA1
+    256 * b"c",  # PUSHDATA2
+    4000 * b"d",  # PUSHDATA2
     b"Coldcard is the best signing device",  # to test with both pushdata opcodes
     b"Coldcard, the best signing deviceaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",  # len 80 max
     b"\x80" * 80,
@@ -1777,25 +1781,44 @@ def test_op_return_signing(op_return_data, dev, fake_txn, bitcoind_d_sim_watch, 
                            start_sign, end_sign, cap_story):
     cc = bitcoind_d_sim_watch
     dest_address = cc.getnewaddress()
-    bitcoind.supply_wallet.generatetoaddress(101, dest_address)
+    bitcoind.supply_wallet.sendtoaddress(dest_address, 2)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
     psbt = cc.walletcreatefundedpsbt([], [{dest_address: 1.0}, {"data": op_return_data.hex()}], 0, {"fee_rate": 20})["psbt"]
-    start_sign(base64.b64decode(psbt))
+    start_sign(base64.b64decode(psbt), finalize=True)
     time.sleep(.1)
     title, story = cap_story()
     assert title == "OK TO SEND?"
     # in older implementations, one would see a warning for OP_RETURN --> not now
-    assert "warning" not in story
+    if len(op_return_data) > 80:
+        assert "warning" in story
+    else:
+        assert "warning" not in story
+
     assert "OP_RETURN" in story
     try:
+        assert len(op_return_data) <= 200
         expect = op_return_data.decode("ascii")
     except:
         expect = binascii.hexlify(op_return_data).decode()
+        if len(op_return_data) > 200:
+            expect = expect[:200] + "\n ⋯\n" + expect[-200:]
+
     assert expect in story
-    signed = end_sign(accept=True)
-    tx = cc.finalizepsbt(base64.b64encode(signed).decode())["hex"]
-    assert cc.testmempoolaccept([tx])[0]["allowed"] is True
-    tx_id = cc.sendrawtransaction(tx)
-    assert isinstance(tx_id, str) and len(tx_id) == 64
+    tx = end_sign(accept=True, finalize=True).hex()
+
+    # tx is final at this point and consensus valid
+    # tx = cc.finalizepsbt(base64.b64encode(signed).decode())["hex"]
+    res = cc.testmempoolaccept([tx])[0]
+
+    if len(op_return_data) > 80:
+        # policy
+        assert res["allowed"] is False
+        assert res["reject-reason"] == "scriptpubkey"
+    else:
+        assert res["allowed"] is True
+        tx_id = cc.sendrawtransaction(tx)
+        assert isinstance(tx_id, str) and len(tx_id) == 64
+
 
 @pytest.mark.parametrize("unknowns", [
     # tuples (unknown_global, unknown_ins, unknown_outs)
@@ -2162,6 +2185,26 @@ def test_send2taproot_addresss(fake_txn , start_sign, end_sign, cap_story, use_t
     # but we should show address
     assert "to script" not in story
     assert "tb1p" in story
+    signed = end_sign(accept=True, finalize=False)
+    assert signed
+
+def test_sign_taproot_input(fake_txn, start_sign, end_sign, cap_story):
+    psbt = fake_txn(1, 2, taproot_in=True)
+    start_sign(psbt)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Install EDGE firmware" in story
+
+def test_send2unknown_script(fake_txn , start_sign, end_sign, cap_story, use_testnet):
+    use_testnet()
+    psbt = fake_txn(2, 2, segwit_in=True, change_outputs=[0], outstyles=["p2tr", "unknown"])
+    start_sign(psbt)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    # we do not understand change in taproot (taproot not supported)
+    assert "Consolidating" not in story
+    assert "Change back" not in story
+    assert "to script" in story
     signed = end_sign(accept=True, finalize=False)
     assert signed
 
@@ -2982,20 +3025,19 @@ def test_txout_explorer(chain, data, fake_txn, start_sign, settings_set, txout_e
     start_sign(psbt)
     txout_explorer(data, chain)
 
-
-def test_txout_explorer_op_return(fake_txn, start_sign, cap_story, is_q1,
-                                  need_keypress, press_cancel):
-    d = [
-        (1, b"Coinkite"),
-        (0, b"Mk1 Mk2 Mk3 Mk4 Q"),
-        (100, b"binarywatch.org"),
-        (100, b"a" * 75),
-    ]
-    psbt = fake_txn(1, 20, segwit_in=False, op_return=d)
-    start_sign(psbt)
+@pytest.mark.parametrize("finalize", [True, False])
+@pytest.mark.parametrize("data", [
+    [(1, b"Coinkite"), (0, b"Mk1 Mk2 Mk3 Mk4 Q"), (100, b"binarywatch.org"), (100, b"a" * 75)],
+    [(0, b"a" * 300), (10, b"x" * 1000)]
+])
+def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_story, is_q1,
+                                  need_keypress, press_cancel, press_select, end_sign):
+    psbt = fake_txn(1, 20, segwit_in=False, op_return=data)
+    start_sign(psbt, finalize=finalize)
     time.sleep(.1)
     title, story = cap_story()
     assert title == 'OK TO SEND?'
+    assert "warning" in story
     assert "Press (2) to explore txn" in story
     need_keypress("2")
     time.sleep(.1)
@@ -3007,17 +3049,25 @@ def test_txout_explorer_op_return(fake_txn, start_sign, cap_story, is_q1,
     time.sleep(.1)
     _, story = cap_story()
     ss = story.split("\n\n")
-    for i, (sa, sb, (amount, data)) in enumerate(zip(ss[:-1:2], ss[1::2], d), start=20):
+    for i, (sa, sb, (amount, d)) in enumerate(zip(ss[:-1:2], ss[1::2], data), start=20):
         assert f"Output {i}:" == sa
-        val, name, dd = sb.split("\n")
+        try:
+            val, name, dd = sb.split("\n")
+        except:
+            dd = None
+            val, name, dd0, _, dd1 = sb.split("\n")
         assert "OP_RETURN" in name
         assert f'{amount / 100000000:.8f} XTN' == val
-        hex_str, ascii_str = dd.split(" ", 1)
-        assert f"(ascii: {data.decode()})" == ascii_str
-        assert data.hex() == hex_str
+        if dd:
+            hex_str, ascii_str = dd.split(" ", 1)
+            assert f"(ascii: {d.decode()})" == ascii_str
+            assert d.hex() == hex_str
+        else:
+            assert d.hex()[:200] == dd0
+            assert d.hex()[-200:] == dd1
 
-    press_cancel()
-    press_cancel()
+    press_cancel()  # exit txn out explorer
+    end_sign(finalize=finalize)
 
 
 def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_ms_import,

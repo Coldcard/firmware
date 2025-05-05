@@ -210,11 +210,13 @@ def disassemble(script):
                 #print('dis %d: number=%d' % (offset, (c - OP_1 + 1)))
                 yield (c - OP_1 + 1, None)
             elif c == OP_PUSHDATA1:
-                cnt = script[offset]; offset += 1
+                cnt = script[offset]
+                offset += 1
                 yield (script[offset:offset+cnt], None)
                 offset += cnt
             elif c == OP_PUSHDATA2:
-                cnt = struct.unpack_from("H", script, offset)
+                # up to 65535 bytes
+                cnt, = struct.unpack_from("H", script, offset)
                 offset += 2
                 yield (script[offset:offset+cnt], None)
                 offset += cnt
@@ -227,7 +229,8 @@ def disassemble(script):
                 # OP_0 included here
                 #print('dis %d: opcode=%d' % (offset, c))
                 yield (None, c)
-    except:
+    except Exception as e:
+        import sys;sys.print_exception(e)
         raise ValueError("bad script")
         
 
@@ -351,15 +354,13 @@ class CTxOut(object):
         # Detect type of output from scriptPubKey, and return 3-tuple:
         #    (addr_type_code, addr, is_segwit)
         # 'addr' is byte string, either 20 or 32 long
+        if self.is_p2tr():
+            return 'p2tr', self.scriptPubKey[2:2+32], True
 
-        if len(self.scriptPubKey) == 22 and \
-                self.scriptPubKey[0] == 0 and self.scriptPubKey[1] == 20:
-            # aka. P2WPKH
+        if self.is_p2wpkh():
             return 'p2pkh', self.scriptPubKey[2:2+20], True
 
-        if len(self.scriptPubKey) == 34 and \
-                self.scriptPubKey[0] == 0 and self.scriptPubKey[1] == 32:
-            # aka. P2WSH
+        if self.is_p2wsh():
             return 'p2sh', self.scriptPubKey[2:2+32], True
 
         if self.is_p2pkh():
@@ -372,9 +373,22 @@ class CTxOut(object):
             # rare, pay to full pubkey
             return 'p2pk', self.scriptPubKey[2:2+33], False
 
-        # If this is reached, we do not understand the output well
-        # enough to allow the user to authorize the spend, so fail hard.
-        raise ValueError('scriptPubKey template fail: ' + b2a_hex(self.scriptPubKey).decode())
+        if self.scriptPubKey[0] == OP_RETURN:
+            return 'op_return', self.scriptPubKey, False
+
+        return None, self.scriptPubKey, None
+
+    def is_p2tr(self):
+        return len(self.scriptPubKey) == 34 and \
+                (OP_1 <= self.scriptPubKey[0] <= OP_16) and self.scriptPubKey[1] == 0x20
+
+    def is_p2wpkh(self):
+        return len(self.scriptPubKey) == 22 and \
+                self.scriptPubKey[0] == 0 and self.scriptPubKey[1] == 0x14
+
+    def is_p2wsh(self):
+        return len(self.scriptPubKey) == 34 and \
+                self.scriptPubKey[0] == 0 and self.scriptPubKey[1] == 0x20
 
     def is_p2sh(self):
         return len(self.scriptPubKey) == 23 and self.scriptPubKey[0] == 0xa9 \
