@@ -306,10 +306,7 @@ class ApproveTransaction(UserAuthorizedAction):
             return to_ret + "\n"
 
         # Handle future things better: allow them to happen at least.
-        self.psbt.warnings.append(
-            ('Output?', 'Sending to a script that is not well understood.'))
         dest = B2A(o.scriptPubKey)
-
         return '%s\n - to script -\n%s\n' % (val, dest)
 
     async def interact(self):

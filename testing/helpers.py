@@ -53,6 +53,11 @@ def fake_dest_addr(style='p2pkh'):
     if style == "p2tr":
         return bytes([81, 32]) + prandom(32)
 
+    if style == "unknown":
+        # <same date> OP_CHECKLOCKTIMEVERIFY OP_DROP OP_DUP OP_HASH160 <pubKeyHash> OP_EQUALVERIFY OP_CHECKSIG
+        hex_str = "049f7b2a5cb17576a914371c20fb2e9899338ce5e99908e64fd30b78931388ac"
+        return bytes.fromhex(hex_str)
+
     # missing: if style == 'p2pk' =>  pay to pubkey, considered obsolete
 
     raise ValueError('not supported: ' + style)

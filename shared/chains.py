@@ -250,24 +250,29 @@ class ChainsBase:
 
     @classmethod
     def op_return(cls, script):
-        """Returns decoded string op return data if script is op return otherwise None"""
+        # returns decoded string op return data if script is op return otherwise None
         gen = disassemble(script)
         script_type = next(gen)
-        if OP_RETURN in script_type:
-            try:
-                data = next(gen)[0]
-                if data is None: raise RuntimeError
-            except (RuntimeError, StopIteration):
-                return "null-data", ""
+        if OP_RETURN not in script_type:
+            return
+
+        try:
+            data = next(gen)[0]
+            if data is None: raise RuntimeError
+        except (RuntimeError, StopIteration):
+            return "null-data", ""
+
+        data_ascii = None
+        if len(data) > 200:
+            # completely arbitrary limit, prevents huge stories
+            data_hex = b2a_hex(data[:100]).decode() + "\n ⋯\n" + b2a_hex(data[-100:]).decode()
+        else:
             data_hex = b2a_hex(data).decode()
-            data_ascii = None
             if min(data) >= 32 and max(data) < 127:  # printable
                 try:
                     data_ascii = data.decode("ascii")
-                except:
-                    pass
-            return data_hex, data_ascii
-        return None
+                except: pass
+        return data_hex, data_ascii
 
     @classmethod
     def possible_address_fmt(cls, addr):

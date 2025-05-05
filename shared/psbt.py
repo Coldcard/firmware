@@ -18,7 +18,7 @@ from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, ser_uint256,
 from serializations import ser_sig_der, uint256_from_str, ser_push_data
 from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_ANYONECANPAY
 from serializations import ALL_SIGHASH_FLAGS
-from opcodes import OP_CHECKMULTISIG
+from opcodes import OP_CHECKMULTISIG, OP_RETURN
 from glob import settings
 
 from public_constants import (
@@ -400,13 +400,20 @@ class psbtOutputProxy(psbtProxy):
         #
         num_ours = self.parse_subpaths(my_xfp, parent.warnings)
 
-        if num_ours == 0:
+        # - must match expected address for this output, coming from unsigned txn
+        af, addr_or_pubkey, is_segwit = txo.get_address()
+
+        if (num_ours == 0) or (af in ["p2tr", "op_return", None]):
+            # num_ours == 0
             # - not considered fraud because other signers looking at PSBT may have them
             # - user will see them as normal outputs, which they are from our PoV.
-            return
-
-        # - must match expected address for this output, coming from unsigned txn
-        addr_type, addr_or_pubkey, is_segwit = txo.get_address()
+            # OP_RETURN
+            # - nothing we can do with anchor outputs
+            # UNKNOWN
+            # - scripts that we do not understand
+            # P2TR
+            # - unsupported, will be properly rendered as address (no change check)
+            return af
 
         if len(self.subpaths) == 1:
             # p2pk, p2pkh, p2wpkh cases
@@ -415,7 +422,7 @@ class psbtOutputProxy(psbtProxy):
             # p2wsh/p2sh cases need full set of pubkeys, and therefore redeem script
             expect_pubkey = None
 
-        if addr_type == 'p2pk':
+        if af == 'p2pk':
             # output is public key (not a hash, much less common)
             assert len(addr_or_pubkey) == 33
 
@@ -423,12 +430,12 @@ class psbtOutputProxy(psbtProxy):
                 raise FraudulentChangeOutput(out_idx, "P2PK change output is fraudulent")
 
             self.is_change = True
-            return
+            return af
 
         # Figure out what the hashed addr should be
         pkh = addr_or_pubkey
 
-        if addr_type == 'p2sh':
+        if af == 'p2sh':
             # P2SH or Multisig output
 
             # Can be both, or either one depending on address type
@@ -473,13 +480,13 @@ class psbtOutputProxy(psbtProxy):
                     # - might be a p2sh output for another wallet that isn't us
                     # - not fraud, just an output with more details than we need.
                     self.is_change = False
-                    return
+                    return af
 
                 if MultisigWallet.disable_checks:
                     # Without validation, we have to assume all outputs
                     # will be taken from us, and are not really change.
                     self.is_change = False
-                    return
+                    return af
 
                 # redeem script must be exactly what we expect
                 # - pubkeys will be reconstructed from derived paths here
@@ -502,7 +509,7 @@ class psbtOutputProxy(psbtProxy):
                         raise FraudulentChangeOutput(out_idx, "P2WSH witness script has wrong hash")
 
                     self.is_change = True
-                    return
+                    return af
 
                 if witness_script:
                     # p2sh-p2wsh case (because it had witness script)
@@ -519,19 +526,20 @@ class psbtOutputProxy(psbtProxy):
                     # old BIP-16 style; looks like payment addr
                     expect_pkh = hash160(redeem_script)
 
-        elif addr_type == 'p2pkh':
+        elif af == 'p2pkh':
             # input is hash160 of a single public key
             assert len(addr_or_pubkey) == 20
             expect_pkh = hash160(expect_pubkey)
         else:
             # we don't know how to "solve" this type of input
-            return
+            return af
 
         if pkh != expect_pkh:
             raise FraudulentChangeOutput(out_idx, "Change output is fraudulent")
 
         # We will check pubkey value at the last second, during signing.
         self.is_change = True
+        return af
 
 
 # Track details of each input of PSBT
@@ -736,6 +744,16 @@ class psbtInputProxy(psbtProxy):
         which_key = None
 
         addr_type, addr_or_pubkey, addr_is_segwit = utxo.get_address()
+        if addr_type == "op_return":
+            self.required_key = None
+            return
+        if addr_type == "p2tr":
+            raise FatalPSBTIssue("Install EDGE firmware to spend taproot.")
+        if addr_type is None:
+            # If this is reached, we do not understand the output well
+            # enough to allow the user to authorize the spend, so fail hard.
+            raise FatalPSBTIssue('Unhandled scriptPubKey: ' + b2a_hex(addr_or_pubkey).decode())
+
         if addr_is_segwit and not self.is_segwit:
             self.is_segwit = True
 
@@ -1473,16 +1491,27 @@ class psbtObject(psbtProxy):
         # - mark change outputs, so perhaps we don't show them to users
         total_out = 0
         total_change = 0
+        num_op_return = 0
+        num_op_return_size = 0
+        num_unknown_scripts = 0
         self.num_change_outputs = 0
 
         for idx, txo in self.output_iter():
             output = self.outputs[idx]
             # perform output validation
-            output.validate(idx, txo, self.my_xfp, self.active_multisig, self)
+            af = output.validate(idx, txo, self.my_xfp, self.active_multisig, self)
             total_out += txo.nValue
             if output.is_change:
                 self.num_change_outputs += 1
                 total_change += txo.nValue
+
+            if af == "op_return":
+                num_op_return += 1
+                if len(txo.scriptPubKey) > 83:
+                    num_op_return_size += 1
+
+            elif af is None:
+                num_unknown_scripts += 1
 
         if self.total_value_out is None:
             self.total_value_out = total_out
@@ -1516,6 +1545,22 @@ class psbtObject(psbtProxy):
         if per_fee >= 5:
             self.warnings.append(('Big Fee', 'Network fee is more than '
                                     '5%% of total value (%.1f%%).' % per_fee))
+
+        if (num_op_return > 1) or num_op_return_size:
+            mm = ""
+            if num_op_return > 1:
+                mm += " Multiple OP_RETURN outputs: %d" % num_op_return
+            if num_op_return_size:
+                mm += " OP_RETURN size > 80 bytes."
+            self.warnings.append(
+                ("OP_RETURN",
+                 "TX may not be relayed by some nodes.%s" % mm))
+
+        if num_unknown_scripts:
+            self.warnings.append(
+                ('Output?',
+                 'Sending to %d not well understood script(s).' % num_unknown_scripts)
+            )
 
         self.consolidation_tx = (self.num_change_outputs == self.num_outputs)
 

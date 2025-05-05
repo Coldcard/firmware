@@ -6,7 +6,7 @@ import pytest, struct
 from ckcc_protocol.protocol import MAX_TXN_LEN
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from io import BytesIO
-from helpers import fake_dest_addr, make_change_addr, hash160
+from helpers import fake_dest_addr, make_change_addr, hash160, taptweak
 from base58 import decode_base58
 from bip32 import BIP32Node
 from constants import ADDR_STYLES, simulator_fixed_tprv
@@ -23,8 +23,8 @@ def fake_txn(dev, pytestconfig):
     def doit(num_ins, num_outs, master_xpub=None, subpath="0/%d", fee=10000,
              invals=None, outvals=None, segwit_in=False, wrapped=False,
              outstyles=['p2pkh'],  psbt_hacker=None, change_outputs=[],
-             capture_scripts=None, add_xpub=None, op_return=None,
-             psbt_v2=None, input_amount=1E8):
+             capture_scripts=None, add_xpub=None, op_return=None, taproot_in=False,
+             psbt_v2=None, input_amount=1E8, unknown_out_script=None):
 
         psbt = BasicPSBT()
 
@@ -79,6 +79,10 @@ def fake_txn(dev, pytestconfig):
                     # p2sh-p2wpkh
                     psbt.inputs[i].redeem_script = scr
                     scr = bytes([0xa9, 0x14]) + hash160(scr) + bytes([0x87])
+            elif taproot_in:
+                psbt.inputs[i].taproot_bip32_paths[sec[1:]] = b"\x00" + xfp + struct.pack('<II', 0, i)
+                tweaked_xonly = taptweak(sec[1:])
+                scr = bytes([81, 32]) + tweaked_xonly
             else:
                 # p2pkh
                 scr = bytes([0x76, 0xa9, 0x14]) + subkey.hash160() + bytes([0x88, 0xac])
@@ -153,9 +157,16 @@ def fake_txn(dev, pytestconfig):
                 amount, data = op_ret
                 op_return_size = len(data)
                 if op_return_size < 76:
+                    # OP_RETURN PUSHDATA
                     script = bytes([106, op_return_size]) + data
-                else:
+                elif op_return_size < 256:
+                    # OP_RETURN PUSHDATA1
                     script = bytes([106, 76, op_return_size]) + data
+                elif op_return_size < 65536:
+                    # OP_RETURN PUSHDATA2
+                    script = bytes([106, 77]) + struct.pack(b'<H', op_return_size) + data
+                else:
+                    assert False, "too big OP_RETURN"
 
                 op_ret_o = BasicPSBTOutput(idx=len(psbt.outputs))
                 if psbt_v2:

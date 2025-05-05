@@ -2,7 +2,7 @@
 #
 from uio import BytesIO
 from serializations import ser_push_data, ser_string_vector, deser_string_vector
-from serializations import ser_compact_size, deser_compact_size
+from serializations import ser_compact_size, deser_compact_size, disassemble
 
 test_data = [
     # data,  result
@@ -17,9 +17,10 @@ test_data = [
     (65535*b"a", b'M\xff\xff' + (65535 * b"a")),
 ]
 
-c = 0
 for i, (data, result) in enumerate(test_data):
     assert ser_push_data(data) == result, i
+    d, _ = list(disassemble(result))[0]
+    assert d == data
 
 try:
     # PUSHDATA 4 not implemented
