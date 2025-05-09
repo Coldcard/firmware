@@ -1250,15 +1250,35 @@ def test_xfp_collision(reset_seed_words, settings_set, import_ephemeral_xprv,
 def test_add_current_active(reset_seed_words, settings_set, import_ephemeral_xprv,
                             goto_home, pick_menu_item, cap_story, cap_menu,
                             press_cancel, verify_ephemeral_secret_ui,
-                            seed_vault_enable, refuse, press_select):
+                            seed_vault_enable, refuse, press_select, set_bip39_pw,
+                            need_some_notes, need_some_passwords, import_ms_wallet,
+                            restore_main_seed, settings_get, clear_ms):
     ADD_MI = "Add current tmp"
 
     reset_seed_words()
     goto_home()
     seed_vault_enable(True)
+    # clear
     settings_set("seeds", [])
+    clear_ms()
+    settings_set("notes", [])
 
-    time.sleep(.2)
+    if not refuse:
+        # add something to seed vault
+        sv_pass_xfp = set_bip39_pw('dogsNcats', seed_vault=True, reset=False)
+        restore_main_seed(seed_vault=True)
+
+        # add secure notes and passwords
+        need_some_notes()
+        need_some_passwords()
+
+        # save multisig wallet to master settings
+        ms_name = "aaa"
+        import_ms_wallet(2,3,"p2wsh", name=ms_name, accept=True)
+
+        time.sleep(.2)
+        goto_home()
+
     # in master - do not offer
     pick_menu_item("Seed Vault")
     time.sleep(.1)
@@ -1289,6 +1309,19 @@ def test_add_current_active(reset_seed_words, settings_set, import_ephemeral_xpr
     else:
         press_select()
         verify_ephemeral_secret_ui(xpub=node.hwif(), seed_vault=True)
+        restore_main_seed(seed_vault=True)
+        time.sleep(.2)
+        curr_xfp = settings_get("xfp", None)
+        assert curr_xfp is not None
+        assert curr_xfp != 0
+        mss = settings_get("multisig")
+        assert len(mss) == 1
+        assert  mss[0][0] == ms_name
+        assert len(settings_get("notes")) == 3
+        sv = settings_get("seeds")
+        assert len(sv) == 2
+        assert sv[0][0] == xfp2str(sv_pass_xfp)  # added passphrase wallet
+        assert sv[1][0] == xfp  # added via `Add current tmp`
 
 
 @pytest.mark.parametrize('multisig', [True, False])
