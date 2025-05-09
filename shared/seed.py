@@ -42,8 +42,9 @@ VaultEntry = namedtuple('VaultEntry', 'xfp encoded label origin')
 
 def seed_vault_iter():
     # iterate over all seeds in the vault; returns VaultEntry instances.
-    for tup in settings.master_get("seeds", []):
-        yield VaultEntry(*tup)
+    # raw vault entries are list type when json.loaded from flash
+    for lst in settings.master_get("seeds", []):
+        yield VaultEntry(*lst)
     
 def letter_choices(sofar='', depth=0, thres=5):
     # make a list of word completions based on indicated prefix
@@ -489,7 +490,7 @@ async def add_seed_to_vault(encoded, origin=None, label=None):
     # Save it into master settings
     rec = VaultEntry(xfp=new_xfp_str, encoded=SecretStash.storage_serialize(encoded),
                             label=(label or xfp_ui), origin=origin)
-    seeds.append(tuple(rec))
+    seeds.append(list(rec))
 
     settings.master_set("seeds", seeds)
 
@@ -974,9 +975,9 @@ class SeedVaultMenu(MenuSystem):
         seeds = settings.master_get("seeds", [])
 
         # Save it into master settings
-        seeds.append(VaultEntry(new_xfp_str,
+        seeds.append(list(VaultEntry(new_xfp_str,
                       SecretStash.storage_serialize(pa.tmp_value),
-                      xfp_ui, "unknown origin"))
+                      xfp_ui, "unknown origin")))
 
         settings.master_set("seeds", seeds)
 
