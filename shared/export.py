@@ -82,18 +82,18 @@ async def export_contents(title, contents, fname_pattern, derive=None, addr_fmt=
                     h = ngu.hash.sha256s(contents.encode())
                     sig_nice = write_sig_file([(h, fname)], derive, addr_fmt)
 
+            msg = '%s file written:\n\n%s' % (title, nice)
+            if sig:
+                msg += "\n\n%s signature file written:\n\n%s" % (title, sig_nice)
+
+            await ux_show_story(msg)
+
         except CardMissingError:
             await needs_microsd()
-            continue
         except Exception as e:
             await ux_show_story('Failed to write!\n\n\n' + str(e))
-            continue
 
-        msg = '%s file written:\n\n%s' % (title, nice)
-        if sig:
-            msg += "\n\n%s signature file written:\n\n%s" % (title, sig_nice)
-
-        await ux_show_story(msg)
+        # both exceptions & success gets here
         if no_qr and (NFC is None) and (VD is None) and not force_prompt:
             # user has no other ways enabled, we already exported to SD - done
             return
