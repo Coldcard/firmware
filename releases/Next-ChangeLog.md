@@ -4,6 +4,8 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk4 and Q
 
+- Enhancement: Text word-wrap done more carefully so never cuts off any text, and yet
+  doesn't waste space.
 - Bugfix: `Add current tmp` option, which could be shown in `Seed Vault` menu under
   specific circumstances, would corrupt master settings if selected.
 
@@ -24,3 +26,6 @@ This lists the new changes that have not yet been published in a normal release.
 ## 1.3.3Q - 2025-05-14
 
 - Bugfix: Do not allow to teleport PSBTs from SD card when CC has no secrets
+- Bugfix: Calculator login mode: added "rand()" command, removed support
+  for variables/assignments.
+
