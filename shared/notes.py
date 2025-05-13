@@ -607,9 +607,7 @@ async def import_from_other(menu, *a):
                 obj = json.load(open(fname, 'rt'))
                 assert 'coldcard_notes' in obj
                 return True
-            except Exception as exc:
-                import sys; sys.print_exception(exc)
-                pass
+            except: pass
 
         fn = await file_picker(min_size=8, max_size=100000, taster=contains_json, **choice)
         if not fn: return

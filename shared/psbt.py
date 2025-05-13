@@ -859,7 +859,7 @@ class psbtInputProxy(psbtProxy):
             try:
                 psbt.active_multisig.validate_script(redeem_script, subpaths=self.subpaths)
             except BaseException as exc:
-                sys.print_exception(exc)
+                # sys.print_exception(exc)
                 raise FatalPSBTIssue('Input #%d: %s' % (my_idx, exc))
 
         if not which_key and DEBUG:

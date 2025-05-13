@@ -1148,7 +1148,7 @@ class NewPassphrase(UserAuthorizedAction):
 
         except BaseException as exc:
             self.failed = "Exception"
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
         finally:
             self.done()
 
@@ -1345,7 +1345,7 @@ class NewEnrollRequest(UserAuthorizedAction):
             return await self.failure('No space left')
         except BaseException as exc:
             self.failed = "Exception"
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
         finally:
             UserAuthorizedAction.cleanup()      # because no results to store
             self.pop_menu()
@@ -1454,7 +1454,7 @@ Binary checksum and signature will be further verified before any changes are ma
 
         except BaseException as exc:
             self.failed = "Exception"
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
         finally:
             UserAuthorizedAction.cleanup()      # because no results to store
             self.pop_menu()

@@ -67,7 +67,7 @@ Press %s to save policy and enable HSM mode.''' % (self.policy.hash(), confirm_c
 
         except BaseException as exc:
             self.failed = "Exception"
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
             self.refused = True
 
         self.ux_done = True
@@ -354,7 +354,7 @@ class hsmUxInteraction:
                 await sleep_ms(100)
             except BaseException as exc:
                 # just in case, keep going
-                sys.print_exception(exc)
+                # sys.print_exception(exc)
                 continue
 
             # do the interactions, but don't let user actually press anything

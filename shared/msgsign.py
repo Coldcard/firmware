@@ -493,7 +493,7 @@ async def sd_sign_msg_done(signature, address, text, base=None, orig_path=None,
 
             except OSError as exc:
                 prob = 'Failed to write!\n\n%s\n\n' % exc
-                sys.print_exception(exc)
+                # sys.print_exception(exc)
                 # fall through to try again
 
         # prompt them to input another card?

@@ -81,7 +81,7 @@ class AddressCacheFile:
         except OSError:
             return
         except Exception as exc:
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
             self.count = 0
             self.hdr = None
             return

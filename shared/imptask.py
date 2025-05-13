@@ -58,7 +58,7 @@ class ImportantTask:
         else:
             # uncaught exception in an unnamed (and unimportant) task
             print("UNNAMED: " + context["message"])
-            sys.print_exception(context["exception"])
+            # sys.print_exception(context["exception"])
             print("... future: %r" % context.get("future", '?'))
 
     def start_task(self, name, awaitable):

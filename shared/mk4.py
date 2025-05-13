@@ -57,8 +57,7 @@ def init0():
 
     try:
         make_psram_fs()
-    except BaseException as exc:
-        sys.print_exception(exc)
+    except: pass
 
     if version.is_devmode:
         try:

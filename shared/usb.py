@@ -240,7 +240,7 @@ class USBHandler:
                     # catch bugs and fuzzing too
                     if is_simulator() or is_devmode:
                         print("USB request caused this: ", end='')
-                        sys.print_exception(exc)
+                        # sys.print_exception(exc)
                     resp = b'err_Confused ' + problem_file_line(exc)
 
                 if not success:

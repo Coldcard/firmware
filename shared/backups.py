@@ -146,9 +146,10 @@ def extract_long_secret(vals):
     if ('long_secret' in vals) and version.has_608:
         try:
             ls = a2b_hex(vals.pop('long_secret'))
-        except Exception as exc:
-            sys.print_exception(exc)
+        except:
+            # sys.print_exception(exc)
             # but keep going.
+            pass
     return ls
 
 def restore_from_dict_ll(vals):
@@ -186,9 +187,7 @@ def restore_from_dict_ll(vals):
     if ls is not None:
         try:
             pa.ls_change(ls)
-        except Exception as exc:
-            sys.print_exception(exc)
-            # but keep going
+        except: pass # but keep going
         pb = .70
         dis.progress_bar_show(pb)
 
@@ -222,8 +221,7 @@ def restore_from_dict_ll(vals):
             from trick_pins import tp
             try:
                 tp.restore_backup(vals[key])
-            except Exception as exc:
-                sys.print_exception(exc)
+            except: pass
 
             # continue as `tp.restore_backup` handles
             # saving into settings

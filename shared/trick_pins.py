@@ -374,8 +374,7 @@ class TrickPinMgmt:
 
                 b, slot = tp.update_slot(pin.encode(), new=True,
                                      tc_flags=flags, tc_arg=arg, secret=new_secret)
-            except Exception as exc:
-                sys.print_exception(exc)        # not visible
+            except: pass
             
 
 tp = TrickPinMgmt()
@@ -492,7 +491,7 @@ class TrickPinMenu(MenuSystem):
                            tc_arg=tc_arg, secret=new_secret)
             await ux_dramatic_pause("Saved.", 1)
         except BaseException as exc:
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
             await ux_show_story("Failed: %s" % exc)
 
         self.update_contents()
@@ -712,7 +711,7 @@ You can restore it by trying to re-add the same PIN (%s) again later.''' % pin
 
             self.pop_submenu()      # too lazy to get redraw right
         except BaseException as exc:
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
             await ux_show_story("Failed: %s" % exc)
 
     async def delete_pin(self, m,l, item):
@@ -813,8 +812,7 @@ normal operation.''')
                 # save it
                 try:
                     b, slot = tp.update_slot(pin.encode(), tc_flags=flags, tc_arg=new_val)
-                except BaseException as exc:
-                    sys.print_exception(exc)
+                except: pass
 
             return va.index(cd_val), lgto_ch[1:], set_it
 
