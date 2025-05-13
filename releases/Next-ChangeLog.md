@@ -4,20 +4,22 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk4 and Q
 
-- Bugfix: `Add current tmp` option in `Seed Vault` corrupts master settings
+- Bugfix: `Add current tmp` option, which could be shown in `Seed Vault` menu under
+  specific circumstances, would corrupt master settings if selected.
 
 
 # Mk4 Specific Changes
 
-## 5.4.? - 2025-05-
+## 5.4.3 - 2025-05-14
 
-- Bugfix: Mk4 with both NFC & Virtual Disk OFF cannot exit `Export Wallet` menu. Stuck in export loop - needs reboot.
-- Bugfix: PUSHDATA2 in script caused yikes
-- Bugfix: Warning for unknown script was not shown at the top of the signing story
+- Bugfix: With both NFC & Virtual Disk OFF, user cannot exit `Export Wallet` menu. Gets stuck
+  in export loop and needs reboot to escape.
+- Bugfix: PUSHDATA2 in bitcoin script caused yikes.
+- Bugfix: Warning for unknown scripts was not shown at the top of the signing story.
 
 
 # Q Specific Changes
 
-## 1.3.?Q - 2025-05-
+## 1.3.3Q - 2025-05-14
 
 - Bugfix: Do not allow to teleport PSBTs from SD card when CC has no secrets
