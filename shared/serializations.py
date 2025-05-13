@@ -230,7 +230,7 @@ def disassemble(script):
                 #print('dis %d: opcode=%d' % (offset, c))
                 yield (None, c)
     except Exception as e:
-        import sys;sys.print_exception(e)
+        # import sys;sys.print_exception(e)
         raise ValueError("bad script")
         
 

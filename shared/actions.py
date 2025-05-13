@@ -833,7 +833,7 @@ async def start_login_sequence():
         # safe to do so. Remember the bootrom checks PIN on every access to
         # the secret, so "letting" them past this point is harmless if they don't know
         # the true pin.
-        sys.print_exception(exc)
+        # sys.print_exception(exc)
         if not pa.is_successful():
             raise
 
@@ -854,9 +854,7 @@ async def start_login_sequence():
     try:
         from pwsave import MicroSD2FA
         MicroSD2FA.enforce_policy()
-    except BaseException as exc:
-        # robustness: keep going!
-        sys.print_exception(exc)
+    except: pass  # robustness: keep going!
 
     # implement idle timeout now that we are logged-in
     IMPT.start_task('idle', idle_logout())

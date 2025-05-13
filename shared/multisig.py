@@ -1746,7 +1746,7 @@ async def ms_coordinator_file(af_str, my_xfp, chain, slot_b=None):
 
                     except Exception as exc:
                         # show something for coders, but no user feedback
-                        sys.print_exception(exc)
+                        # sys.print_exception(exc)
                         continue
 
     except CardMissingError:

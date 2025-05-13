@@ -214,7 +214,7 @@ class BBQrState:
                 # can happen if QR got corrupted between scanner and us (overlap)
                 # or back BBQr implementation
                 #print("corrupt QR: %s" % scan)
-                import sys; sys.print_exception(exc)
+                # import sys; sys.print_exception(exc)
 
                 dis.draw_bbqr_progress(hdr, self.parts, corrupt=True)
                 return True

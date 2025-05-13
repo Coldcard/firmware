@@ -61,9 +61,7 @@ try:
     from psram import PSRAMWrapper
     glob.PSRAM = PSRAMWrapper()
 
-except BaseException as exc:
-    sys.print_exception(exc)
-    # continue tho
+except: pass  # continue tho
 
 # Setup keypad/keyboard
 if version.has_qwerty:

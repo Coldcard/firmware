@@ -71,9 +71,9 @@ def restore_backup(s):
 
         with open(POLICY_FNAME, 'wt') as f:
             f.write(s)
-    except BaseException as exc:
+    except:
         # keep going, we don't want to brick
-        sys.print_exception(exc)
+        # sys.print_exception(exc)
         pass
 
 def pop_list(j, fld_name, cleanup_fcn=None):
@@ -936,7 +936,7 @@ class HSMPolicy:
 
                 return 'y'
             except BaseException as exc:
-                sys.print_exception(exc)
+                # sys.print_exception(exc)
                 err = "Rejected: " + (str(exc) or problem_file_line(exc))
                 self.refuse(log, err)
 

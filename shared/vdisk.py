@@ -79,7 +79,7 @@ class VirtDisk:
             # corrupt or unformated?
             # XXX incomplete error handling here; needs work
             VBLKDEV.set_inserted(True)
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
 
             return None
 
@@ -93,7 +93,7 @@ class VirtDisk:
             return list(sorted(('/vdisk/'+fn, sz) for (fn,ty,_,sz) in os.ilistdir('/vdisk') 
                                                         if ty == 0x8000))
         except BaseException as exc:
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
 
             return []
         finally:

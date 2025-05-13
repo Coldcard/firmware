@@ -1059,7 +1059,7 @@ async def ux_visualize_txn(bin_txn):
         msg += '\n\nTxid:\n' + b2a_hex(txid).decode()
 
     except Exception as exc:
-        sys.print_exception(exc)
+        # sys.print_exception(exc)
         msg = "Unable to deserialize"
 
     await ux_show_story(msg, title="Signed Transaction")
