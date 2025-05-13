@@ -8,6 +8,8 @@ This lists the new changes that have not yet been published in a normal release.
   doesn't waste space.
 - Bugfix: `Add current tmp` option, which could be shown in `Seed Vault` menu under
   specific circumstances, would corrupt master settings if selected.
+- Bugfix: PUSHDATA2 in bitcoin script caused yikes.
+- Bugfix: Warning for unknown scripts was not shown at the top of the signing story.
 
 
 # Mk4 Specific Changes
@@ -16,8 +18,6 @@ This lists the new changes that have not yet been published in a normal release.
 
 - Bugfix: With both NFC & Virtual Disk OFF, user cannot exit `Export Wallet` menu. Gets stuck
   in export loop and needs reboot to escape.
-- Bugfix: PUSHDATA2 in bitcoin script caused yikes.
-- Bugfix: Warning for unknown scripts was not shown at the top of the signing story.
 - Bugfix: Part of extended keys in stories were not visible
 
 
