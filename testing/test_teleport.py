@@ -327,7 +327,7 @@ def test_tx_seedvault(data, rx_start, tx_start, cap_menu, enter_complex, pick_me
     else:
         stored_secret = entropy_bytes
 
-    pkg = (xfp, stored_secret.hex(), f"[{xfp}]", "from testing")
+    pkg = [xfp, stored_secret.hex(), f"[{xfp}]", "from testing"]
 
     settings_set("seedvault", True)
     settings_set("seeds", [pkg])
