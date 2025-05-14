@@ -1,5 +1,39 @@
 *See ChangeLog.md for more recent changes, these are historic versions*
 
+## 5.4.2 - 2025-04-16
+
+- Huge new feature: CCC - ColdCard Cosign
+    - COLDCARD holds a key in a 2-of-3 multisig, in addition to the normal signing key it has.
+    - it applies a spending policy like an HSM:
+        - velocity and magnitude limits
+        - whitelisted destination addresses
+        - 2FA authentication using phone app ([RFC 6238](https://www.rfc-editor.org/rfc/rfc6238))
+    - but will sign its part of a transaction automatically if those condition are met, 
+      giving you 2 keys of the multisig and control over the funds
+    - spending policy can be exceeded with help of the other co-signer (3rd key), when needed
+    - cannot view or change the CCC spending policy once set, policy violations are not explained
+    - existing multisig wallets can be used by importing the spending-policy-controlled key
+- New Feature: Multisig transactions are finalized. Allows use of [PushTX](https://pushtx.org/)
+  with multisig wallets.  Read more [here](https://github.com/Coldcard/firmware/blob/master/docs/limitations.md#p2sh--multisig)
+- New Feature: Signing artifacts re-export to various media. Now you have the option of
+  exporting the signing products (transaction/PSBT) to different media than the original source.
+  Incoming PSBT over QR can be signed and saved to SD card if desired.
+- New Feature: Multisig export files are signed now. Read more [here](https://github.com/Coldcard/firmware/blob/master/docs/msg-signing.md#signed-exports)
+- Enhancement: NFC export usability upgrade: NFC keeps exporting until CANCEL/X is pressed
+- Enhancement: Add `Bitcoin Safe` option to `Export Wallet`
+- Enhancement: 10% performance improvement in USB upload speed for large files
+- Bugfix: Do not allow change Main PIN to same value already used as Trick PIN, even if
+  Trick PIN is hidden.
+- Bugfix: Fix stuck progress bar under `Receiving...` after a USB communications failure
+- Bugfix: Showing derivation path in Address Explorer for root key (m) showed double slash (//)
+- Bugfix: Can restore developer backup with custom password other than 12 words format
+- Bugfix: Virtual Disk auto mode ignores already signed PSBTs (with "-signed" in file name)
+- Bugfix: Virtual Disk auto mode stuck on "Reading..." screen sometimes
+- Bugfix: Finalization of foreign inputs from partial signatures. Thanks Christian Uebber
+- Bugfix: Temporary seed from COLDCARD backup failed to load stored multisig wallets
+- Change: `Destroy Seed` also removes all Trick PINs from SE2.
+- Change: `Lock Down Seed` requires pressing confirm key (4) to execute
+
 ## 5.4.1 - 2025-02-13
 
 - New signing features:
