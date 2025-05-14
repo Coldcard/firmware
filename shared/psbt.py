@@ -1549,9 +1549,9 @@ class psbtObject(psbtProxy):
         if (num_op_return > 1) or num_op_return_size:
             mm = ""
             if num_op_return > 1:
-                mm += " Multiple OP_RETURN outputs: %d" % num_op_return
+                mm += "\nMultiple OP_RETURN outputs: %d" % num_op_return
             if num_op_return_size:
-                mm += " OP_RETURN size > 80 bytes."
+                mm += "\nOP_RETURN > 80 bytes"
             self.warnings.append(
                 ("OP_RETURN",
                  "TX may not be relayed by some nodes.%s" % mm))

@@ -20,15 +20,15 @@ WORDLISTS = {
 }
 
 SEEDVAULT_TEST_DATA = [
-    ("47649253", "344f9dc08e88b8a46d4b8f46c4e6bb6c",
-     "crowd language ice brown merit fall release impose egg cheese put suit"),
-    ("CC7BB706", "88f53ed897cc371ffe4b715c267206f3286ed2f655ba9d68",
-     "material prepare renew convince sell morning weird hotel found crime like town manage harvest sun resemble output dolphin"),
-    ("AC39935C", "956f484cc2136178fd1ad45faeb54972c829f65aad0d74eb2541b11984655893",
-     "nice kid basket loud current round virtual fold garden interest false tortoise little will height payment insane float expire giraffe obscure crawl girl glare"),
-    ('939B32C4',
+    ["47649253", "344f9dc08e88b8a46d4b8f46c4e6bb6c",
+     "crowd language ice brown merit fall release impose egg cheese put suit"],
+    ["CC7BB706", "88f53ed897cc371ffe4b715c267206f3286ed2f655ba9d68",
+     "material prepare renew convince sell morning weird hotel found crime like town manage harvest sun resemble output dolphin"],
+    ["AC39935C", "956f484cc2136178fd1ad45faeb54972c829f65aad0d74eb2541b11984655893",
+     "nice kid basket loud current round virtual fold garden interest false tortoise little will height payment insane float expire giraffe obscure crawl girl glare"],
+    ['939B32C4',
      '017caa3142d48791f837b42fcd7a98662f9fb4101a15ae87cdbc1fecc96f33c11ffcefd8121daaba0625c918a335a0712b8c35c2da60e6fc6eef78b7028f4be02a',
-     None),  # BIP-85 -> BIP-32 -> #23
+     None],  # BIP-85 -> BIP-32 -> #23
 ]
 
 @pytest.fixture

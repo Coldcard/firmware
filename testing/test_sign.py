@@ -1790,11 +1790,14 @@ def test_op_return_signing(op_return_data, dev, fake_txn, bitcoind_d_sim_watch, 
     assert title == "OK TO SEND?"
     # in older implementations, one would see a warning for OP_RETURN --> not now
     if len(op_return_data) > 80:
-        assert "warning" in story
+        assert "(1 warning below)" in story  # looking for warning at the top
+        assert "OP_RETURN > 80 bytes" in story
     else:
         assert "warning" not in story
 
     assert "OP_RETURN" in story
+    assert "Multiple OP_RETURN outputs:" not in story  # always just one - core restriction
+
     try:
         assert len(op_return_data) <= 200
         expect = op_return_data.decode("ascii")
@@ -2180,6 +2183,7 @@ def test_send2taproot_addresss(fake_txn , start_sign, end_sign, cap_story, use_t
     title, story = cap_story()
     assert title == "OK TO SEND?"
     # we do not understand change in taproot (taproot not supported)
+    assert "warning" not in story  # no warning for taproot, just not change
     assert "Consolidating" not in story
     assert "Change back" not in story
     # but we should show address
@@ -2195,13 +2199,18 @@ def test_sign_taproot_input(fake_txn, start_sign, end_sign, cap_story):
     assert title == "Failure"
     assert "Install EDGE firmware" in story
 
-def test_send2unknown_script(fake_txn , start_sign, end_sign, cap_story, use_testnet):
+@pytest.mark.parametrize("num_unknown", [1,3])
+def test_send2unknown_script(fake_txn , start_sign, end_sign, cap_story, use_testnet, num_unknown):
     use_testnet()
-    psbt = fake_txn(2, 2, segwit_in=True, change_outputs=[0], outstyles=["p2tr", "unknown"])
+    unknowns = ["unknown"] * num_unknown
+    num_out = 2 if num_unknown == 1 else 4
+    psbt = fake_txn(2, num_out, segwit_in=True, change_outputs=[0], outstyles=["p2tr"]+unknowns)
     start_sign(psbt)
     title, story = cap_story()
     assert title == "OK TO SEND?"
     # we do not understand change in taproot (taproot not supported)
+    assert "(1 warning below)" in story  # unknown script
+    assert ("Sending to %d not well understood script(s)" % num_unknown) in story
     assert "Consolidating" not in story
     assert "Change back" not in story
     assert "to script" in story
@@ -3028,7 +3037,7 @@ def test_txout_explorer(chain, data, fake_txn, start_sign, settings_set, txout_e
 @pytest.mark.parametrize("finalize", [True, False])
 @pytest.mark.parametrize("data", [
     [(1, b"Coinkite"), (0, b"Mk1 Mk2 Mk3 Mk4 Q"), (100, b"binarywatch.org"), (100, b"a" * 75)],
-    [(0, b"a" * 300), (10, b"x" * 1000)]
+    [(0, b"a" * 300), (10, b"x" * 1000), (0, b"anchor output")],
 ])
 def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_story, is_q1,
                                   need_keypress, press_cancel, press_select, end_sign):
@@ -3037,7 +3046,17 @@ def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_stor
     time.sleep(.1)
     title, story = cap_story()
     assert title == 'OK TO SEND?'
-    assert "warning" in story
+    assert "(1 warning below)" in story
+    if len(data) > 1:
+        assert ("Multiple OP_RETURN outputs: %d" % len(data)) in story
+    else:
+        assert "Multiple OP_RETURN outputs" not in story
+
+    if sum(int(len(x[1]) > 80) for x in data):
+        assert "OP_RETURN > 80 bytes" in story
+    else:
+        assert "OP_RETURN > 80 bytes" not in story
+
     assert "Press (2) to explore txn" in story
     need_keypress("2")
     time.sleep(.1)
