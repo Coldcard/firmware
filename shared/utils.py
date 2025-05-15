@@ -478,13 +478,19 @@ def word_wrap(ln, w):
                 if ch in DOUBLE_WIDE:
                     ln_len += 1
             else:
-                if (ln_len == w) and (ch in ".,:;"):
-                    # boundary of allowed width
-                    # if . or , allow one more character
-                    # even if only half visible on Mk4
-                    # on Q it's OK as (CHARS_W-1) is used as w
+                if ln_len == w:
+                    if ch in ".,:;":
+                        # boundary of allowed width
+                        # if one of .,:; is last -> allow one more character
+                        # even if only half visible on Mk4
+                        # on Q it's OK as (CHARS_W-1) is used as w
+                        sp = None
+                        idx += 1
+                else:
+                    # Q: double wide char was last
+                    # put on next line
                     sp = None
-                    idx += 1
+                    idx -= 1
 
                 break
         else:
