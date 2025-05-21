@@ -245,9 +245,10 @@ class MultisigWallet(WalletABC):
         return rv
 
     @classmethod
-    def iter_wallets(cls, M=None, N=None, not_idx=None, addr_fmt=None):
+    def iter_wallets(cls, M=None, N=None, not_idx=None, addr_fmts=None):
         # yield MS wallets we know about, that match at least right M,N if known.
         # - this is only place we should be searching this list, please!!
+        # addr_fmts: list of address formats we're intersted in
         lst = settings.get('multisig', [])
 
         for idx, rec in enumerate(lst):
@@ -261,11 +262,11 @@ class MultisigWallet(WalletABC):
                 if M is not None and has_m != M: continue
                 if N is not None and has_n != N: continue
 
-            if addr_fmt is not None:
+            if addr_fmts:
                 opts = rec[3]
                 af = opts.get('ft', AF_P2SH)
-                if af != addr_fmt: continue
-                
+                if af not in addr_fmts: continue
+
             yield cls.deserialize(rec, idx)
 
     def get_xfp_paths(self):
@@ -273,28 +274,23 @@ class MultisigWallet(WalletABC):
         return list(self.xfp_paths.values())
 
     @classmethod
-    def find_match(cls, M, N, xfp_paths, addr_fmt=None):
+    def find_match(cls, M, N, xfp_paths, addr_fmts=None):
         # Find index of matching wallet
         # - xfp_paths is list of lists: [xfp, *path] like in psbt files
         # - M and N must be known
         # - returns instance, or None if not found
-        for rv in cls.iter_wallets(M, N, addr_fmt=addr_fmt):
+        for rv in cls.iter_wallets(M, N, addr_fmts=addr_fmts):
             if rv.matching_subpaths(xfp_paths):
                 return rv
 
         return None
 
     @classmethod
-    def find_candidates(cls, xfp_paths, addr_fmt=None, M=None):
+    def find_candidates(cls, xfp_paths):
         # Return a list of matching wallets for various M values.
         # - xpfs_paths should already be sorted
-        # - returns set of matches, of any M value
-
-        # we know N, but not M at this point.
-        N = len(xfp_paths)
-        
         matches = []
-        for rv in cls.iter_wallets(M=M, addr_fmt=addr_fmt):
+        for rv in cls.iter_wallets():
             if rv.matching_subpaths(xfp_paths):
                 matches.append(rv)
 
@@ -408,7 +404,7 @@ class MultisigWallet(WalletABC):
         #   - count_similar: same N, same xfp+paths
 
         lst = self.get_xfp_paths()
-        c = self.find_match(self.M, self.N, lst, addr_fmt=self.addr_fmt)
+        c = self.find_match(self.M, self.N, lst, addr_fmts=[self.addr_fmt])
         if c:
             # All details are same: M/N, paths, addr fmt
             if sorted(self.xpubs) != sorted(c.xpubs):
@@ -454,7 +450,7 @@ class MultisigWallet(WalletABC):
         assert self.storage_idx >= 0
 
         # safety check
-        for existing in self.iter_wallets(M=self.M, N=self.N, addr_fmt=self.addr_fmt):
+        for existing in self.iter_wallets(M=self.M, N=self.N, addr_fmts=[self.addr_fmt]):
             if existing.storage_idx != self.storage_idx: continue
             break
         else:

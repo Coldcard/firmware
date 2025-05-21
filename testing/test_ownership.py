@@ -5,6 +5,7 @@
 import pytest, time, io, csv
 from txn import fake_address
 from base58 import encode_base58_checksum
+from bech32 import encode as bech32_encode
 from helpers import hash160, addr_from_display_format
 from bip32 import BIP32Node
 from constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
@@ -50,7 +51,7 @@ def test_negative(addr_fmt, testnet, sim_exec):
 	(AF_P2SH, True),
 	(AF_P2WSH_P2SH,True),
 ])
-@pytest.mark.parametrize('offset', [ 3, 760] )
+@pytest.mark.parametrize('offset', [ 3, 760, 763] )
 @pytest.mark.parametrize('subaccount', [ 0, 34] )
 @pytest.mark.parametrize('change_idx', [ 0, 1] )
 @pytest.mark.parametrize('from_empty', [ True, False] )
@@ -58,7 +59,6 @@ def test_positive(addr_fmt, offset, subaccount, testnet, from_empty, change_idx,
     sim_exec, wipe_cache, make_myself_wallet, use_testnet, goto_home, pick_menu_item,
     enter_number, press_cancel, settings_set, import_ms_wallet, clear_ms
 ):
-    from bech32 import encode as bech32_encode
 
     # API/Unit test, limited UX
 
@@ -66,11 +66,9 @@ def test_positive(addr_fmt, offset, subaccount, testnet, from_empty, change_idx,
         # multisig jigs assume testnet
         raise pytest.skip('testnet only')
 
+    wipe_cache()
+    settings_set('accts', [])
     use_testnet(testnet)
-    if from_empty:
-        wipe_cache()        # very different codepaths
-        settings_set('accts', [])
-
     coin_type = 1 if testnet else 0
 
     if addr_fmt in { AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH }:
@@ -108,7 +106,7 @@ def test_positive(addr_fmt, offset, subaccount, testnet, from_empty, change_idx,
 
         # see addr_vs_path
         mk = BIP32Node.from_wallet_key(simulator_fixed_tprv if testnet else simulator_fixed_xprv)
-        sk = mk.subkey_for_path(path[2:].replace('h', "'"))
+        sk = mk.subkey_for_path(path[2:])
 
         if addr_fmt == AF_CLASSIC:
             addr = sk.address(netcode="XTN" if testnet else "BTC")
@@ -130,20 +128,28 @@ def test_positive(addr_fmt, offset, subaccount, testnet, from_empty, change_idx,
             pick_menu_item(menu_item)
             press_cancel()
 
-    cmd = f'from ownership import OWNERSHIP; w,path=OWNERSHIP.search({addr!r}); '\
-            'RV.write(repr([w.name, path]))'
-    lst = sim_exec(cmd)
-    if 'candidates without finding a match' in lst:
-        # some kinda timing issue, but don't want big delays, so just retry
-        print("RETRY search!")
-        lst = sim_exec(cmd)
-        
+    cmd = (f'from ownership import OWNERSHIP;'
+           f'c,w,path=OWNERSHIP.search({addr!r});'
+           f'RV.write(repr([c, w.name, path]))')
+
+    if not from_empty:
+        # we expect here to find address from cache
+        # so we first need to generate proper cache
+        lst = sim_exec(cmd, timeout=None)
+        assert 'Traceback' not in lst, lst
+        lst = eval(lst)
+        assert len(lst) == 3
+        assert lst[0] is False  # not from cache, needed to build it
+
+
+    lst = sim_exec(cmd, timeout=None)
     assert 'Traceback' not in lst, lst
-
     lst = eval(lst)
-    assert len(lst) == 2
+    assert len(lst) == 3
 
-    got_name, got_path = lst
+    from_cache, got_name, got_path = lst
+
+    assert from_cache == (not from_empty)
     assert expect_name in got_name
     if subaccount and '...' not in path:
         # not expected for multisig, since we have proper wallet name
@@ -249,18 +255,20 @@ def test_ux(valid, testnet, method,
 
     else:
         assert title == 'Unknown Address'
-        assert 'Searched ' in story
-        assert 'candidates without finding a match' in story
+        assert 'Searched 1528' in story  # max
+        assert "1 wallet(s)" in story
+        assert 'without finding a match' in story
 
 @pytest.mark.parametrize("af", ["P2SH-Segwit", "Segwit P2WPKH", "Classic P2PKH", "ms0"])
 def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explorer,
                                 pick_menu_item, need_keypress, sim_exec, clear_ms,
                                 import_ms_wallet, press_select, goto_home, nfc_write,
                                 load_shared_mod, load_export_and_verify_signature,
-                                cap_story, is_q1, src_root_dir, sim_root_dir):
+                                cap_story, is_q1, src_root_dir, sim_root_dir, settings_remove):
     goto_home()
     wipe_cache()
     settings_set('accts', [])
+    settings_set('msas', 1)
 
     if af == "ms0":
         clear_ms()
@@ -277,20 +285,22 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
     lst = eval(lst)
     assert lst
 
-    if af == "ms0":
-        return  # multisig addresses are blanked
-
     title, body = cap_story()
     contents, sig_addr, _ = load_export_and_verify_signature(body, "sd", label="Address summary")
     addr_dump = io.StringIO(contents)
     cc = csv.reader(addr_dump)
     hdr = next(cc)
-    assert hdr == ['Index', 'Payment Address', 'Derivation']
+    if af == "ms0":
+        for i in ['Index', 'Payment Address', 'Redeem Script']:
+            assert i in hdr
+    else:
+        assert hdr == ['Index', 'Payment Address', 'Derivation']
+
     addr = None
-    for n, (idx, addr, deriv) in enumerate(cc, start=0):
-        assert int(idx) == n
-        if idx == 200:
-            addr = addr
+    for n, rv in enumerate(cc, start=0):
+        assert int(rv[0]) == n
+        if int(rv[0]) == 200:
+            addr = rv[1]
 
     cc_ndef = load_shared_mod('cc_ndef', f'{src_root_dir}/shared/ndef.py')
     n = cc_ndef.ndefMaker()
@@ -318,6 +328,144 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
         assert " P2WPKH " in story
     else:
         assert af in story
+
+    settings_remove("msas")
+
+
+def test_ae_saver(wipe_cache, settings_set, goto_address_explorer, cap_story,
+                  pick_menu_item, need_keypress, sim_exec, clear_ms, is_q1,
+                  import_ms_wallet, press_select, goto_home, nfc_write,
+                  load_shared_mod, load_export_and_verify_signature,
+                  set_addr_exp_start_idx, use_testnet):
+
+    cmd = lambda a: (
+        f'from ownership import OWNERSHIP;'
+        f'c,w,path=OWNERSHIP.search({a!r});'
+        f'RV.write(repr([c, w.name, path]))')
+
+    def cache_check(a, from_cache):
+        l = sim_exec(cmd(a), timeout=None)
+        assert 'Traceback' not in l, l
+        assert eval(l)[0] == from_cache
+
+    use_testnet()
+    goto_home()
+    wipe_cache()
+    settings_set('accts', [])
+    settings_set('aei', True)
+
+    goto_address_explorer()
+    set_addr_exp_start_idx(7)  # starting from index 7
+    pick_menu_item("Segwit P2WPKH")
+    need_keypress("1")  # save to SD
+
+    time.sleep(.1)
+    title, body = cap_story()
+    contents, sig_addr, _ = load_export_and_verify_signature(body, "sd", label="Address summary")
+    addr_dump = io.StringIO(contents)
+    cc = csv.reader(addr_dump)
+    hdr = next(cc)
+    assert hdr == ['Index', 'Payment Address', 'Derivation']
+    addrs = {}
+    for idx, addr, deriv in cc:
+        addrs[int(idx)] = addr
+
+    # nothing was created from above as start index was 7
+    cache_check(addrs[7], False)
+    # now we have cached addresses up to 27
+    for i in range(8, 28):
+        cache_check(addrs[i], True)
+
+    # cache file position at 27 (aka count)
+    goto_address_explorer()
+    set_addr_exp_start_idx(1)  # starting from index 1
+    pick_menu_item("Segwit P2WPKH")
+    need_keypress("1")  # save to SD
+
+    time.sleep(.1)
+    title, body = cap_story()
+    load_export_and_verify_signature(body, "sd", label="Address summary")
+
+    # after above we must have first 250 addresses cached
+    cache_check(addrs[249], True)
+
+    # cache file position at 250 (aka count)
+    goto_address_explorer()
+    set_addr_exp_start_idx(250)  # starting from index 250
+    pick_menu_item("Segwit P2WPKH")
+    need_keypress("1")  # save to SD
+
+    time.sleep(.1)
+    title, body = cap_story()
+    contents, sig_addr, _ = load_export_and_verify_signature(body, "sd", label="Address summary")
+    addr_dump = io.StringIO(contents)
+    cc = csv.reader(addr_dump)
+    hdr = next(cc)
+    assert hdr == ['Index', 'Payment Address', 'Derivation']
+    addrs = {}
+    for idx, addr, deriv in cc:
+        addrs[int(idx)] = addr
+
+    # after above we must have first 500 addresses cached
+    cache_check(addrs[300], True)
+    cache_check(addrs[400], True)
+    cache_check(addrs[499], True)
+
+    # now addresses that we already have, does nothing
+    goto_address_explorer()
+    set_addr_exp_start_idx(100)  # starting from index 100
+    pick_menu_item("Segwit P2WPKH")
+    need_keypress("1")  # save to SD
+
+    time.sleep(.1)
+    title, body = cap_story()
+    load_export_and_verify_signature(body, "sd", label="Address summary")
+    cache_check(addrs[499], True)
+
+    # now move count up via ownership
+    mk = BIP32Node.from_wallet_key(simulator_fixed_tprv)
+    sk = mk.subkey_for_path("84h/1h/0h/0/580")
+    addr = bech32_encode('tb', 0, sk.hash160())
+    cache_check(addr, False)
+    # now count at 600 (580+20)
+
+    # now over the max but with some we already have
+    goto_address_explorer()
+    set_addr_exp_start_idx(550)  # starting from index 550 (would go up to 800)
+    pick_menu_item("Segwit P2WPKH")
+    need_keypress("1")  # save to SD
+
+    time.sleep(.1)
+    title, body = cap_story()
+    contents, sig_addr, _ = load_export_and_verify_signature(body, "sd", label="Address summary")
+    addr_dump = io.StringIO(contents)
+    cc = csv.reader(addr_dump)
+    hdr = next(cc)
+    assert hdr == ['Index', 'Payment Address', 'Derivation']
+    addrs = {}
+    for idx, addr, deriv in cc:
+        addrs[int(idx)] = addr
+
+    assert 799 in addrs
+    cache_check(addrs[763], True)  # max
+
+    # start idx over max stored addresses
+    goto_address_explorer()
+    set_addr_exp_start_idx(764)  # starting from index 764
+    pick_menu_item("Segwit P2WPKH")
+    need_keypress("1")  # save to SD
+
+    time.sleep(.1)
+    title, body = cap_story()
+    load_export_and_verify_signature(body, "sd", label="Address summary")
+    # does notthing harmful, nothing added
+
+    cache_check(addrs[763], True)  # max
+    l = sim_exec(cmd(addrs[764]), timeout=None)
+    assert 'Traceback' in l
+    assert 'Searched 1528' in l  # max
+    assert "1 wallet(s)" in l
+    assert 'without finding a match' in l
 
 
 def test_regtest_addr_on_mainnet(goto_home, is_q1, pick_menu_item, scan_a_qr, nfc_write, cap_story,
@@ -359,5 +507,68 @@ def test_regtest_addr_on_mainnet(goto_home, is_q1, pick_menu_item, scan_a_qr, nf
 
     assert title == 'Unknown Address'
     assert "not valid on Bitcoin Mainnet" in story
+
+
+def test_20_more_build_after_match(sim_exec, import_ms_wallet, clear_ms, wipe_cache, settings_set):
+    from test_multisig import make_ms_address, HARD
+
+    cmd = lambda a: (
+        f'from ownership import OWNERSHIP;'
+        f'c,w,path=OWNERSHIP.search({a!r});'
+        f'RV.write(repr([c, w.name, path]))')
+
+    # create multisig wallet
+    M, N = 2, 3
+    expect_name = 'test20more'
+    clear_ms()
+    keys = import_ms_wallet(M, N, name=expect_name, accept=True, addr_fmt="p2wsh")
+
+    make_a = lambda index: make_ms_address(
+        M, keys,
+        is_change=False, idx=index, addr_fmt=AF_P2WSH, testnet=True,
+        path_mapper=lambda cosigner: [HARD(45), 0, index])
+
+    def cache_check(index, from_cache):
+        a = make_a(index)[0]
+        l = sim_exec(cmd(a), timeout=None)
+        assert 'Traceback' not in l, l
+        assert eval(l)[0] == from_cache
+
+    # clean slate
+    wipe_cache()
+    settings_set('accts', [])
+
+    # generate 10th (idx=9) address (external)
+    # first run, generated first 10 addresses + 20
+    cache_check(9, False)
+
+    # now we can go up to index 29 - all must come from cache
+    for i in range(10, 30):
+        cache_check(i, True)
+
+    # idx 30 - not in cache
+    # but will cache next 20 addrs
+    cache_check(30, False)
+
+    # now we can go up to index 51 - all must come from cache
+    for i in range(31, 51):
+        cache_check(i, True)
+
+    # idx 51 - not in cache
+    # but will cache next 20 addrs
+    cache_check(51, False)
+
+    cache_check(760, False)
+    cache_check(761, True)
+    cache_check(762, True)
+    cache_check(763, True)
+
+    # after max - not gonna find
+    addr = make_a(764)[0]
+    l = sim_exec(cmd(addr), timeout=None)
+    assert 'Traceback' in l
+    assert 'Searched 1528' in l  # max
+    assert "1 wallet(s)" in l
+    assert 'without finding a match' in l
 
 # EOF
