@@ -620,7 +620,7 @@ async def start_export(notes):
         await needs_microsd()
         return
     except Exception as e:
-        await ux_show_story('Failed to write!\n\n\n'+str(e))
+        await ux_show_story('Failed to write!\n\n'+str(e))
         return
 
     msg = 'Export file written:\n\n%s\n\nSignature file written:\n\n%s' % (

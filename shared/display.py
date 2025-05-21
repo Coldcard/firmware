@@ -156,10 +156,14 @@ class Display:
 
     def fullscreen(self, msg, percent=None, line2=None):
         # show a simple message "fullscreen". 
-        # - 'line2' not supported on smaller screen sizes, ignore
         self.clear()
         y = 14
         self.text(None, y, msg, font=FontLarge)
+
+        if line2:
+            y += FontLarge.height  # add height of above
+            y += FontTiny.height   # add space of size FontTiny height
+            self.text(None, y, line2, font=FontSmall)
 
         if percent is not None:
             self.progress_bar(percent)

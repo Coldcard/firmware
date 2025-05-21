@@ -28,6 +28,7 @@ Spending policies for "Single Signers" adds new spending policy options:
 - Bugfix: Fix filesystem initialization after Wife LFS or Destroy Seed.
 - Bugfix: Fix MicroSD selftest code.
 - Bugfix: NFC loop exporting secrets would not work after first value exported.
+- Bugfix: Ownership check failing to find addresses near max (~760), needed to be re-run to succeed
 
 # Mk4 Specific Changes
 
