@@ -179,7 +179,7 @@ class PaperWalletMaker:
             return
         except Exception as e:
             from utils import problem_file_line
-            await ux_show_story('Failed to write!\n\n\n'+problem_file_line(e))
+            await ux_show_story('Failed to write!\n\n'+problem_file_line(e))
             return
 
         story = "Done! Created file(s):\n\n%s" % nice_txt

@@ -644,13 +644,10 @@ def decode_bip21_text(got):
 
     proto, args, addr = None, None, None
 
-    # remove URL protocol: if present
-    if ':' in got[0:16]:
-        proto, got = got.split(':', 1)
-
+    # remove query params first - if any
     # looks like BIP-21 payment URL
     if '?' in got:
-        addr, args = got.split('?', 1)
+        got, args = got.split('?', 1)
 
         # full URL decode here, but assuming no repeated keys
         parts = args.split('&')
@@ -659,7 +656,12 @@ def decode_bip21_text(got):
             k, v = p.split('=', 1)
             args[k] = url_unquote(v)
 
-    # assume it's an bare address for now
+    # remove URL protocol: if present
+    if ':' in got:
+        proto, got = got.split(':', 1)
+        assert proto.lower() == "bitcoin"
+
+    # assume it's a bare address for now
     if not addr:
         addr = got
 

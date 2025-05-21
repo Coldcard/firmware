@@ -241,7 +241,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
                 await needs_microsd()
                 continue
             except Exception as e:
-                await ux_show_story('Failed to write!\n\n\n'+str(e))
+                await ux_show_story('Failed to write!\n\n'+str(e))
                 continue
 
             story = "Filename is:\n\n%s" % out_fn

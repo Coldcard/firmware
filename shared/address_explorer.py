@@ -429,14 +429,11 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
                     + ['Derivation (%d of %d)' % (i+1, ms_wallet.N) for i in range(ms_wallet.N)]
                     ) + '"\n'
 
-        if (start == 0) and (n > 100) and change in (0, 1):
-            saver = OWNERSHIP.saver(ms_wallet, change, start)
-        else:
-            saver = None
+        saver = OWNERSHIP.saver(ms_wallet, change, start, n)
 
         for (idx, addr, derivs, script) in ms_wallet.yield_addresses(start, n, change_idx=change):
             if saver:
-                saver(addr)
+                saver(addr, idx)
 
             # policy choice: never provide a complete multisig address to user.
             addr = censor_address(addr)
@@ -448,7 +445,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
             yield ln
 
         if saver:
-            saver(None)     # close file
+            saver(None, 0)     # close cache file
 
         return
 
@@ -456,20 +453,17 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
     from wallet import MasterSingleSigWallet
     main = MasterSingleSigWallet(addr_fmt, path, account_num)
 
-    if n and (start == 0) and (n > 100) and change in (0, 1):
-        saver = OWNERSHIP.saver(main, change, start)
-    else:
-        saver = None
+    saver = OWNERSHIP.saver(main, change, start, n)
 
     yield '"Index","Payment Address","Derivation"\n'
     for (idx, addr, deriv) in main.yield_addresses(start, n, change_idx=change):
         if saver:
-            saver(addr)
+            saver(addr, idx)
 
         yield '%d,"%s","%s"\n' % (idx, addr, deriv)
 
     if saver:
-        saver(None)     # close
+        saver(None, 0)     # close cache file
 
 async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
                                     start=0, count=250, change=0, **save_opts):
@@ -516,7 +510,7 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
     except CardMissingError:
         await needs_microsd()
     except Exception as e:
-        await ux_show_story('Failed to write!\n\n\n%s\n%s' % (e, problem_file_line(e)))
+        await ux_show_story('Failed to write!\n\n%s\n%s' % (e, problem_file_line(e)))
 
 
 async def address_explore(*a):

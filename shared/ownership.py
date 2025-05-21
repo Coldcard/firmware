@@ -2,7 +2,7 @@
 #
 # ownership.py - store a cache of hashes related to addresses we might control.
 #
-import os, sys, chains, ngu, struct, version
+import os, chains, ngu, struct, version
 from glob import settings
 from ucollections import namedtuple
 from ubinascii import hexlify as b2a_hex
@@ -11,8 +11,7 @@ from utils import problem_file_line, show_single_address
 
 # Track many addresses, but in compressed form
 # - map from random Bech32/Base58 payment address to (wallet) + keypath
-# - only normal (external, not change) addresses, and won't consider
-#   any keypath that does not end in 0/*
+# - won't consider any keypath that does not end in <0;1>/*
 # - store only hints, since we can re-construct any address and want to fully verify
 # - try to keep private between different duress wallets, and seed vaults
 # - storing bulk data into LFS, not settings
@@ -39,7 +38,6 @@ OWNERSHIP_MAGIC = 0x10A0            # "Address Ownership" v1.0
 
 # target 3 flash blocks, max file size => 764 addresses
 MAX_ADDRS_STORED = const(764)       # =((3*512) - OWNERSHIP_FILE_HDR_LEN) // HASH_ENC_LEN
-BONUS_GAP_LIMIT = const(20)
 
 def encode_addr(addr, salt):
     # Convert text address to something we can store while preserving privacy.
@@ -56,6 +54,7 @@ class AddressCacheFile:
         self.salt = h[32:]
         self.count = 0
         self.hdr = None
+        self.fd = None
 
         self.peek()
 
@@ -64,9 +63,6 @@ class AddressCacheFile:
         if self.change_idx:
             rv += ' (change)'
         return rv
-
-    def exists(self):
-        return bool(self.count)
 
     def peek(self):
         # see what we have on-disk; just reads header.
@@ -105,14 +101,13 @@ class AddressCacheFile:
             self.fd.write(hdr)
 
     def append(self, addr):
-        if addr is None:
-            # close file, done
-            self.fd.close()
-            del self.fd
-            return
-
-        assert '_' not in addr
         self.fd.write(encode_addr(addr, self.salt))
+
+    def close(self):
+        # close file, done
+        if self.fd is not None:
+            self.fd.close()
+            self.fd = None
 
     def fast_search(self, addr):
         # Do the easy part of the searching, using the existing file's contents.
@@ -121,6 +116,7 @@ class AddressCacheFile:
         from glob import dis
 
         if not self.hdr or not self.count:
+            # cache empty
             return
 
         with open(self.fname, 'rb') as fd:
@@ -132,7 +128,7 @@ class AddressCacheFile:
         chk = encode_addr(addr, self.salt)
         for idx in range(self.count):
             if buf[idx*HASH_ENC_LEN : (idx*HASH_ENC_LEN)+HASH_ENC_LEN] == chk:
-                yield (self.change_idx, idx)
+                yield self.change_idx, idx
 
             dis.progress_sofar(idx, self.count)
 
@@ -148,68 +144,78 @@ class AddressCacheFile:
         # - return subpath for a hit or None
         from glob import dis
 
-        bonus = 0
         match = None
 
         start_idx = self.count
         count = MAX_ADDRS_STORED - start_idx
 
         if count <= 0:
-            return None
+            return match
 
         self.setup(self.change_idx, start_idx)
 
+        bonus = None
         for idx,here,*_ in self.wallet.yield_addresses(start_idx, count,
-                                                            change_idx=self.change_idx):
-
-            if here == addr:
-                # Found it! But keep going a little for next time.
-                match = (self.change_idx, idx)
-
+                                                       change_idx=self.change_idx):
             self.append(here)
             self.count += 1
-            if match:
+
+            if bonus:
+                if bonus >= 20:
+                    # do (at most) 20 more - limited by 'start_idx' & 'count'
+                    break
                 bonus += 1
 
-            if match and bonus >= BONUS_GAP_LIMIT:
-                self.append(None)
-                return match
 
-            dis.progress_sofar(idx-start_idx, count)
+            if here == addr:
+                # match but keep going
+                match = (self.change_idx, idx)
+                bonus = 1
 
-        self.append(None)
+            dis.progress_sofar(idx - start_idx, count)
 
-        return None
+        self.close()
+        return match
 
 class OwnershipCache:
 
     @classmethod
-    def saver(cls, wallet, change_idx, start_idx):
-        # when we are generating many addresses for export, capture them
+    def saver(cls, wallet, change_idx, start_idx, count):
+        # when we are generating many addresses for export, capture them (if suitable)
         # as we go with this function
-        # - not change -- only main addrs
+        if not count:
+            return
+        if change_idx not in (0, 1):
+            return
+        if start_idx >= MAX_ADDRS_STORED:
+            return
+
         file = AddressCacheFile(wallet, change_idx)
+        current_pos = file.count
 
-        if file.exists():
-            # don't save to existing file, has some already
-            return None
+        if start_idx > current_pos:
+            # nothing to do here, we are missing some addresses in the middle
+            return
+        if (start_idx + count) <= current_pos:
+            # we already have all these addresses
+            return
 
-        try:
-            file.setup(change_idx, start_idx)
-        except:
-            # in some cases we don't want to save anything, not an error
-            return None
+        file.setup(change_idx, current_pos)
 
-        return file.append
+        def doit(addr, idx):
+            if addr is None:
+                file.close()
+            elif (idx < MAX_ADDRS_STORED) and idx >= current_pos:
+                file.append(addr)
+
+        return doit
 
     @classmethod
-    def search(cls, addr):
-        # Find it!
-        # - returns wallet object, and tuple2 of final 2 subpath components
+    def filter(cls, addr):
+        # Filter possible candidates!
         # - if you start w/ testnet, we'll follow that
         from multisig import MultisigWallet
         from public_constants import AFC_SCRIPT, AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH_P2SH
-        from glob import dis
 
         ch = chains.current_chain()
 
@@ -219,21 +225,20 @@ class OwnershipCache:
             raise UnknownAddressExplained('That address is not valid on ' + ch.name)
 
         possibles = []
-
         if addr_fmt & AFC_SCRIPT:
-            # multisig or script at least.. must exist already
-            possibles.extend(MultisigWallet.iter_wallets(addr_fmt=addr_fmt))
-
+            # multisig or script at least... must exist already
+            afs = [addr_fmt]
             if addr_fmt == AF_P2SH:
                 # might look like P2SH but actually be AF_P2WSH_P2SH
-                possibles.extend(MultisigWallet.iter_wallets(addr_fmt=AF_P2WSH_P2SH))
+                # wrapped segwit is more used than legacy
+                afs = [AF_P2WSH_P2SH, AF_P2SH]
 
                 # Might be single-sig p2wpkh wrapped in p2sh ... but that was a transition
                 # thing that hopefully is going away, so if they have any multisig wallets,
                 # defined, assume that that's the only p2sh address source.
                 addr_fmt = AF_P2WPKH_P2SH
 
-            # TODO: add tapscript and such fancy stuff here
+            possibles.extend(MultisigWallet.iter_wallets(addr_fmts=afs))
 
         try:
             # Construct possible single-signer wallets, always at least account=0 case
@@ -247,60 +252,84 @@ class OwnershipCache:
                 if af == addr_fmt and acct_num:
                     w = MasterSingleSigWallet(addr_fmt, account_idx=acct_num)
                     possibles.append(w)
-        except (KeyError, ValueError): pass  # if not single sig address format
+        except (KeyError, ValueError):
+            pass  # if not single sig address format
 
         if not possibles:
             # can only happen w/ scripts; for single-signer we have things to check
             raise UnknownAddressExplained(
-                        "No suitable multisig wallets are currently defined.")
+                "No suitable multisig wallets are currently defined.")
 
+        # ordering here
+        return possibles
+
+    @classmethod
+    def search_wallet_cache(cls, addr, cf):
+        # - returns wallet object, and tuple2 of final 2 subpath components
         # "quick" check first, before doing any generations
+        # external chain first, then internal (change)
+        for maybe in cf.fast_search(addr):
+            ok = cf.check_match(addr, maybe)
+            if ok:
+                return cf.wallet, maybe
+        return None, None
 
-        count = 0
-        phase2 = []
-        for change_idx in (0, 1):
-            files = [AddressCacheFile(w, change_idx) for w in possibles]
-            for f in files:
-                if dis.has_lcd:
-                    dis.fullscreen('Searching wallet(s)...', line2=f.nice_name())
-                else:
-                    dis.fullscreen('Searching...')
 
-                for maybe in f.fast_search(addr):
-                    ok = f.check_match(addr, maybe)
-                    if not ok: continue     # false positive - will happen
-
-                    # found winner.
-                    return f.wallet, maybe
-
-                if f.count < MAX_ADDRS_STORED:
-                    phase2.append(f)
-
-                count += f.count
-
+    @classmethod
+    def search_build_wallet(cls, addr, cf):
         # maybe we haven't calculated all the addresses yet, so do that
         # - very slow, but only needed once; any negative (failed) search causes this
         # - could stop when match found, but we go a bit beyond that for next time
         # - we could search all in parallel, rather than serially because
         #   more likely to find a match with low index... but seen as too much memory
-
-        for f in phase2:
-            b4 = f.count
-            if dis.has_lcd:
-                dis.fullscreen("Generating addresses...", line2=f.nice_name())
-            else:
-                dis.fullscreen("Generating...")
-
-            result = f.build_and_search(addr)
-            if result:
-                # found it, so report it and stop
-                return f.wallet, result
-
-            count += f.count - b4
+        result = cf.build_and_search(addr)
+        if result:
+            # found it, so report it and stop
+            return cf.wallet, result
 
         # possible phase 3: other seedvault... slow, rare and not implemented
+        return None, None
 
-        raise UnknownAddressExplained('Searched %d candidates without finding a match.' % count)
+    @classmethod
+    def search(cls, addr):
+        from glob import dis
+
+        matches = OWNERSHIP.filter(addr)
+
+        # build cache files for both external & internal chain
+        cachefs = []
+        for w in matches:
+            cachefs.append(AddressCacheFile(w, 0))
+            cachefs.append(AddressCacheFile(w, 1))
+
+        for cf in cachefs:
+            msg, l2 = "Searching...", "(change)" if cf.change_idx else None
+            if dis.has_lcd:
+                msg, l2 = 'Searching wallet(s)...', cf.nice_name()
+
+            dis.fullscreen(msg, line2=l2)
+            wallet, subpath = OWNERSHIP.search_wallet_cache(addr, cf)
+            if wallet:
+                # first arg from_cache=True
+                return True, wallet, subpath
+
+        # nothing found in existing cache files
+        c = 0
+        for cf in cachefs:
+            msg, l2 = "Generating...", "(change)" if cf.change_idx else None
+            if dis.has_lcd:
+                msg, l2 = 'Generating addresses...', cf.nice_name()
+
+            dis.fullscreen(msg, line2=l2)
+            wallet, subpath = OWNERSHIP.search_build_wallet(addr, cf)
+            c += cf.count
+            if wallet:
+                # first arg from_cache=False
+                return False, wallet, subpath
+
+        else:
+            raise UnknownAddressExplained('Searched %d candidate addresses in %d wallet(s)'
+                                          ' without finding a match.' % (c, len(matches)))
 
     @classmethod
     async def search_ux(cls, addr):
@@ -311,7 +340,7 @@ class OwnershipCache:
         from public_constants import AFC_BECH32, AFC_BECH32M
 
         try:
-            wallet, subpath = OWNERSHIP.search(addr)
+            _, wallet, subpath = cls.search(addr)
             is_ms = isinstance(wallet, MultisigWallet)
             sp = wallet.render_path(*subpath)
 
