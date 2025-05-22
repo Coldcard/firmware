@@ -1128,7 +1128,7 @@ async def ux_visualize_bip21(proto, addr, args):
 
     if ch == '1':
         from ownership import OWNERSHIP
-        await OWNERSHIP.search_ux(addr)
+        await OWNERSHIP.search_ux(addr, args)
 
 async def ux_visualize_wif(wif_str, kp, compressed, testnet):
     # TODO: remove until we support signing w/ WIF keys IMHO
