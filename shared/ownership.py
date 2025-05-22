@@ -211,18 +211,30 @@ class OwnershipCache:
         return doit
 
     @classmethod
-    def filter(cls, addr):
+    def filter(cls, addr, args):
         # Filter possible candidates!
         # - if you start w/ testnet, we'll follow that
         from multisig import MultisigWallet
         from public_constants import AFC_SCRIPT, AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH_P2SH
 
         ch = chains.current_chain()
+        args = args or {}
 
         addr_fmt = ch.possible_address_fmt(addr)
         if not addr_fmt:
             # might be valid address over on testnet vs mainnet
             raise UnknownAddressExplained('That address is not valid on ' + ch.name)
+
+        # user has specified specific (named) wallet
+        named_wal = args.get("wallet", None)
+        if named_wal:
+            # quick search without deserialization
+            res = list(MultisigWallet.iter_wallets(name=named_wal))
+            if not res:
+                raise UnknownAddressExplained("Wallet '%s' not defined." % named_wal)
+
+            # only return desired named wallet, no other wallets are searched
+            return res
 
         possibles = []
         if addr_fmt & AFC_SCRIPT:
@@ -291,10 +303,10 @@ class OwnershipCache:
         return None, None
 
     @classmethod
-    def search(cls, addr):
+    def search(cls, addr, args=None):
         from glob import dis
 
-        matches = OWNERSHIP.filter(addr)
+        matches = OWNERSHIP.filter(addr, args)
 
         # build cache files for both external & internal chain
         cachefs = []
@@ -332,7 +344,7 @@ class OwnershipCache:
                                           ' without finding a match.' % (c, len(matches)))
 
     @classmethod
-    async def search_ux(cls, addr):
+    async def search_ux(cls, addr, args):
         # Provide a simple UX. Called functions do fullscreen, progress bar stuff.
         from ux import ux_show_story, show_qr_code
         from charcodes import KEY_QR
@@ -340,7 +352,7 @@ class OwnershipCache:
         from public_constants import AFC_BECH32, AFC_BECH32M
 
         try:
-            _, wallet, subpath = cls.search(addr)
+            _, wallet, subpath = cls.search(addr, args)
             is_ms = isinstance(wallet, MultisigWallet)
             sp = wallet.render_path(*subpath)
 

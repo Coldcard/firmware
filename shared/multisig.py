@@ -245,15 +245,19 @@ class MultisigWallet(WalletABC):
         return rv
 
     @classmethod
-    def iter_wallets(cls, M=None, N=None, not_idx=None, addr_fmts=None):
+    def iter_wallets(cls, M=None, N=None, not_idx=None, addr_fmts=None, name=None):
         # yield MS wallets we know about, that match at least right M,N if known.
         # - this is only place we should be searching this list, please!!
         # addr_fmts: list of address formats we're intersted in
+        # name: string ms wallet name
         lst = settings.get('multisig', [])
 
         for idx, rec in enumerate(lst):
             if idx == not_idx:
                 # ignore one by index
+                continue
+
+            if name and (rec[0] != name):
                 continue
 
             if M or N:
