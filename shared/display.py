@@ -155,9 +155,8 @@ class Display:
         self.text(None, y, msg, font=FontLarge)
 
         if line2:
-            y += FontLarge.height  # add height of above
-            y += FontTiny.height   # add space of size FontTiny height
-            self.text(None, y, line2, font=FontSmall)
+            # 21 + 6 ie. FontLarge.height of above text + FontTiny.height as space between
+            self.text(None, y + 27, line2, font=FontSmall)
 
         if percent is not None:
             self.progress_bar(percent)
