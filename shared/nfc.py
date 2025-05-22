@@ -713,7 +713,7 @@ class NFCHandler:
             m = m.decode()
             what, vals = decode_bip21_text(m)
             if what == 'addr':
-                return vals[1]
+                return vals
 
         winner = await self._nfc_reader(f, 'Unable to find address from NFC data.')
 
@@ -721,10 +721,10 @@ class NFCHandler:
 
     async def verify_address_nfc(self):
         # Get an address or complete bip-21 url even and search it... slow.
-        winner = await self.read_address()
-        if winner:
+        _, addr, args = await self.read_address()
+        if addr:
             from ownership import OWNERSHIP
-            await OWNERSHIP.search_ux(winner)
+            await OWNERSHIP.search_ux(addr, args)
 
     async def read_extended_private_key(self):
         f = lambda x: x.decode().strip() if b"prv" in x else None

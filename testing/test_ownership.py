@@ -595,4 +595,118 @@ def test_20_more_build_after_match(sim_exec, import_ms_wallet, clear_ms, wipe_ca
     assert "1 wallet(s)" in l
     assert 'without finding a match' in l
 
+
+def test_named_wallet_search_fail(load_shared_mod, goto_home, pick_menu_item, nfc_write,
+                                  cap_story):
+    addr = fake_address(AF_P2WSH, True)
+    addr = f"{addr}?wallet=unknown"
+    cc_ndef = load_shared_mod('cc_ndef', '../shared/ndef.py')
+    n = cc_ndef.ndefMaker()
+    n.add_text(addr)
+    ccfile = n.bytes()
+
+    # run simulator w/ --set nfc=1 --eff
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('NFC Tools')
+    pick_menu_item('Verify Address')
+    open('debug/nfc-addr.ndef', 'wb').write(ccfile)
+    nfc_write(ccfile)
+
+    time.sleep(1)
+    title, story = cap_story()
+    assert addr.split("?", 1)[0] == addr_from_display_format(story.split("\n\n")[0])
+    assert "Wallet 'unknown' not defined." in story
+
+
+@pytest.mark.parametrize('valid', [True, False])
+@pytest.mark.parametrize('method', ["qr", "nfc"])
+def test_named_wallet_search(valid, method, clear_ms, import_ms_wallet, is_q1,
+                             load_shared_mod, goto_home, pick_menu_item, scan_a_qr,
+                             cap_story, need_keypress, nfc_write, use_testnet,
+                             wipe_cache, settings_set):
+
+    from test_multisig import make_ms_address, HARD
+
+    if method == "qr" and (not is_q1):
+        raise pytest.skip("QR Mk")
+
+    wipe_cache()  # very different codepaths
+    settings_set('accts', [])
+    use_testnet()
+    M, N = 2, 3
+    clear_ms()
+    ms_data = {}
+    # all ms wallets have same address format, different M/N
+    for i in range(3):
+        idx = 5
+        if i == 2:
+            idx = 763
+        name = f'msnw{i}'
+        keys = import_ms_wallet(M+i, N+i, AF_P2WSH, name=name, accept=True)
+        # last address
+        addr, scriptPubKey, script, details = make_ms_address(
+            M+i, keys, is_change=0, idx=idx, addr_fmt=AF_P2WSH,
+            testnet=True, path_mapper=lambda cosigner: [HARD(45), 0, idx]
+        )
+        ms_data[name] = (addr, scriptPubKey, script, keys)
+
+    if valid:
+        # msnw2 -> last added wallet
+        addr, *_ = ms_data["msnw2"]
+    else:
+        # will fail, even tho address is present in different wallet
+        # with wallet=<wal> only specified wallet is searched
+        addr, *_ = ms_data["msnw0"]
+
+    # will only search specified wallet
+    addr = f"{addr}?wallet=msnw2"
+
+    if method == 'qr':
+        goto_home()
+        pick_menu_item('Scan Any QR Code')
+        scan_a_qr(addr)
+        time.sleep(1)
+
+        title, story = cap_story()
+
+        assert addr.split("?", 1)[0] == addr_from_display_format(story.split("\n\n")[0])
+        assert '(1) to verify ownership' in story
+        need_keypress('1')
+
+    elif method == 'nfc':
+        cc_ndef = load_shared_mod('cc_ndef', '../shared/ndef.py')
+        n = cc_ndef.ndefMaker()
+        n.add_text(addr)
+        ccfile = n.bytes()
+
+        # run simulator w/ --set nfc=1 --eff
+        goto_home()
+        pick_menu_item('Advanced/Tools')
+        pick_menu_item('NFC Tools')
+        pick_menu_item('Verify Address')
+        open('debug/nfc-addr.ndef', 'wb').write(ccfile)
+        nfc_write(ccfile)
+        # press_select()
+
+    else:
+        raise ValueError(method)
+
+    time.sleep(1)
+    title, story = cap_story()
+    assert addr.split("?", 1)[0] == addr_from_display_format(story.split("\n\n")[0])
+
+    if valid:
+        assert title == ('Verified Address' if is_q1 else "Verified!")
+        assert 'Found in wallet' in story
+        assert 'Derivation path' in story
+
+        assert "msnw2" in story
+
+    else:
+        assert title == 'Unknown Address'
+        assert 'Searched 1528' in story  # max
+        assert "1 wallet(s)" in story
+        assert 'without finding a match' in story
+
 # EOF

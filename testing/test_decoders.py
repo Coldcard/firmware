@@ -58,40 +58,46 @@ def test_detector_bin(fname, expect, encoding, try_decode):
 
 @pytest.mark.parametrize('url', [
 'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R',
+'BCRT1QUPYD58NDSH7LUT0ET0VTRQ432JVU9JTDX8FGYV',
 'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?label=Luke-Jr',
 'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?amount=20.3&label=Luke-Jr',
-'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?amount=50&label=Luke-Jr&message=Donation%20for%20project%20xyz',
+'BCRT1QUPYD58NDSH7LUT0ET0VTRQ432JVU9JTDX8FGYV?amount=50&label=Luke-Jr&message=Donation%20for%20project%20xyz',
 'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?req-somethingyoudontunderstand=50&req-somethingelseyoudontget=999',
 'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?somethingyoudontunderstand=50&somethingelseyoudontget=999',
+'tb1q4d67p7stxml3kdudrgkg5mgaxsrgzcqzjrrj4gg62nxtvnsnvqjsxjkej0?wallet=my_wal',
+'tb1q4d67p7stxml3kdudrgkg5mgaxsrgzcqzjrrj4gg62nxtvnsnvqjsxjkej0?wallet=my wal',
+'tb1q4d67p7stxml3kdudrgkg5mgaxsrgzcqzjrrj4gg62nxtvnsnvqjsxjkej0?wallet=my%20wal',
+'tb1q4d67p7stxml3kdudrgkg5mgaxsrgzcqzjrrj4gg62nxtvnsnvqjsxjkej0?wallet=my:wal',
+'tb1q4d67p7stxml3kdudrgkg5mgaxsrgzcqzjrrj4gg62nxtvnsnvqjsxjkej0?wallet=my-wal',
 'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?label=total%20due:%20500',
 ])
 @pytest.mark.parametrize('bip21', range(2))
-@pytest.mark.parametrize('addr_fmt', range(2))
-def test_detector_url(url, bip21, addr_fmt, try_decode):
-    a1, a2 = ('mtHSVByP9EYZmB26jASDdPVm19gvpecb5R',
-                            'BCRT1QUPYD58NDSH7LUT0ET0VTRQ432JVU9JTDX8FGYV')
+def test_detector_url(url, bip21, try_decode):
+    target = url.split('?', 1)[0]
+    if target[:2].lower() in ["tb", "bc"]:
+        target = target.lower()
 
     if bip21:
-        url = 'bitcoin:' + url
-
-    if addr_fmt:
-        url = url.replace(a1, a2)
-        expect_addr = a2.lower()
-    else:
-        expect_addr = a1
+        url = f"bitcoin:{url}"
 
     ft, vals = try_decode(url)
     assert ft == 'addr'
     proto, addr, args =  vals
-    assert addr == expect_addr
+    assert addr == target
     assert proto == ('bitcoin' if bip21 else None)
 
     p = urlparse(url)
     assert (p.path == addr) or (p.path.lower() == addr.lower())
 
+    # below nest values to the list
     xargs = parse_qs(p.query)
     if args:
-        assert xargs.keys() == args.keys()
+        assert len(xargs) == len(args)
+        for k, v in args.items():
+            val = xargs[k]
+            assert len(val) == 1
+            # unwrap value
+            assert val[0] == v
     else:
         assert not xargs
 
