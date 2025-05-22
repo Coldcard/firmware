@@ -429,6 +429,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
                     + ['Derivation (%d of %d)' % (i+1, ms_wallet.N) for i in range(ms_wallet.N)]
                     ) + '"\n'
 
+        # saver will be None if we don't think it worth saving these addresses
         saver = OWNERSHIP.saver(ms_wallet, change, start, n)
 
         for (idx, addr, derivs, script) in ms_wallet.yield_addresses(start, n, change_idx=change):
@@ -453,6 +454,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
     from wallet import MasterSingleSigWallet
     main = MasterSingleSigWallet(addr_fmt, path, account_num)
 
+    # saver will be None if we don't think it worth saving these addresses
     saver = OWNERSHIP.saver(main, change, start, n)
 
     yield '"Index","Payment Address","Derivation"\n'
