@@ -402,10 +402,8 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
     from ownership import OWNERSHIP
 
     if ms_wallet:
-        if (start == 0) and (n > 100) and change in (0, 1):
-            saver = OWNERSHIP.saver(ms_wallet, change, start, n)
-        else:
-            saver = None
+        # saver will be None if we don't think it worth saving these addresses
+        saver = OWNERSHIP.saver(ms_wallet, change, start, n)
 
         for line in ms_wallet.generate_address_csv(start, n, change):
             yield line
@@ -419,6 +417,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
     from wallet import MasterSingleSigWallet
     main = MasterSingleSigWallet(addr_fmt, path, account_num)
 
+    # saver will be None if we don't think it worth saving these addresses
     saver = OWNERSHIP.saver(main, change, start, n)
 
     yield '"Index","Payment Address","Derivation"\n'

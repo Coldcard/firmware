@@ -63,6 +63,13 @@ class MasterSingleSigWallet(WalletABC):
         # - path can be overriden when we come here via address explorer
 
         n = chains.addr_fmt_label(addr_fmt)
+        if not version.has_qwerty:
+            # Mk4 tiny display
+            # Classic P2PKH -> P2PKH
+            # Segwit P2WPKH -> P2WPKH
+            # P2SH-Segwit   -> no change (should not be used that much)
+            n = n.split(" ")[-1]
+
         purpose = chains.af_to_bip44_purpose(addr_fmt)
         prefix = path or 'm/%dh/{coin_type}h/{account}h' % purpose
 
@@ -72,12 +79,13 @@ class MasterSingleSigWallet(WalletABC):
             self.chain = chains.current_chain()
 
         if account_idx != 0:
-            n += ' Account#%d' % account_idx
+            rv = " Account#%d" if version.has_qwerty else " Acct#%d"
+            n += rv % account_idx
 
         if self.chain.ctype == 'XTN':
-            n += ' (Testnet)'
+            n += ' (Testnet)' if version.has_qwerty else " XTN"
         if self.chain.ctype == 'XRT':
-            n += ' (Regtest)'
+            n += ' (Regtest)' if version.has_qwerty else " XRT"
 
         self.name = n
         self.addr_fmt = addr_fmt

@@ -39,6 +39,7 @@ OWNERSHIP_MAGIC = 0x10A0            # "Address Ownership" v1.0
 
 # target 3 flash blocks, max file size => 764 addresses
 MAX_ADDRS_STORED = const(764)       # =((3*512) - OWNERSHIP_FILE_HDR_LEN) // HASH_ENC_LEN
+BONUS_AFTER_MATCH = const(20)       # number of addresses to still generate after match found
 
 def encode_addr(addr, salt):
     # Convert text address to something we can store while preserving privacy.
@@ -161,7 +162,7 @@ class AddressCacheFile:
             self.count += 1
 
             if bonus:
-                if bonus >= 20:
+                if bonus >= BONUS_AFTER_MATCH:
                     # do (at most) 20 more - limited by 'start_idx' & 'count'
                     break
                 bonus += 1
@@ -317,11 +318,8 @@ class OwnershipCache:
             cachefs.append(AddressCacheFile(w, 1))
 
         for cf in cachefs:
-            msg, l2 = "Searching...", "(change)" if cf.change_idx else None
-            if dis.has_lcd:
-                msg, l2 = 'Searching wallet(s)...', cf.nice_name()
-
-            dis.fullscreen(msg, line2=l2)
+            msg = "Searching wallet(s)..." if dis.has_lcd else "Searching..."
+            dis.fullscreen(msg, line2=cf.nice_name())
             wallet, subpath = OWNERSHIP.search_wallet_cache(addr, cf)
             if wallet:
                 # first arg from_cache=True
@@ -330,11 +328,8 @@ class OwnershipCache:
         # nothing found in existing cache files
         c = 0
         for cf in cachefs:
-            msg, l2 = "Generating...", "(change)" if cf.change_idx else None
-            if dis.has_lcd:
-                msg, l2 = 'Generating addresses...', cf.nice_name()
-
-            dis.fullscreen(msg, line2=l2)
+            msg = "Generating addresses..." if dis.has_lcd else "Generating..."
+            dis.fullscreen(msg, line2=cf.nice_name())
             wallet, subpath = OWNERSHIP.search_build_wallet(addr, cf)
             c += cf.count
             if wallet:

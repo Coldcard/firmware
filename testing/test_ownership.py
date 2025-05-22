@@ -59,15 +59,18 @@ def test_negative(addr_fmt, testnet, sim_exec):
 @pytest.mark.parametrize('from_empty', [ True, False] )
 def test_positive(addr_fmt, offset, subaccount, chain, from_empty, change_idx,
     sim_exec, wipe_cache, make_myself_wallet, use_testnet, goto_home, pick_menu_item,
-    enter_number, press_cancel, settings_set, import_ms_wallet, clear_miniscript
+    enter_number, press_cancel, settings_set, import_ms_wallet, clear_miniscript, is_q1,
 ):
 
     # API/Unit test, limited UX
+    ms_addr_fmts = { AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH }
+    if (addr_fmt in ms_addr_fmts) and subaccount:
+        raise pytest.skip('multisig with subaccount')
 
     if chain == "BTC":
         use_testnet(False)
         testnet = False
-        if addr_fmt in { AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH }:
+        if addr_fmt in ms_addr_fmts:
             # multisig jigs assume testnet
             raise pytest.skip('testnet only')
 
@@ -168,10 +171,16 @@ def test_positive(addr_fmt, offset, subaccount, chain, from_empty, change_idx,
     from_cache, got_name, got_path = lst
 
     assert from_cache == (not from_empty)
-    assert expect_name in got_name
-    if subaccount and '...' not in path:
+    if is_q1:
+        assert expect_name in got_name
+    else:
+        assert expect_name.split(" ")[-1] in got_name
+    if subaccount:
         # not expected for multisig, since we have proper wallet name
-        assert f'Account#{subaccount}' in got_name
+        if is_q1:
+            assert f'Account#{subaccount}' in got_name
+        else:
+            assert f'Acct#{subaccount}' in got_name
 
     assert got_path == (change_idx, offset)
 
