@@ -8,27 +8,26 @@ import chains, stash, version
 from ux import ux_show_story, the_ux, ux_enter_bip32_index
 from ux import export_prompt_builder, import_export_prompt_decode
 from menu import MenuSystem, MenuItem
-from public_constants import AFC_BECH32, AFC_BECH32M, AF_P2WPKH, AF_P2TR
+from public_constants import AFC_BECH32, AFC_BECH32M, AF_P2WPKH, AF_P2TR, AF_CLASSIC
 from multisig import MultisigWallet
 from miniscript import MiniScriptWallet
 from uasyncio import sleep_ms
 from uhashlib import sha256
 from glob import settings
-from auth import write_sig_file
+from msgsign import write_sig_file
 from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME, KEY_LEFT, KEY_RIGHT
 from charcodes import KEY_CANCEL
-from utils import show_single_address, problem_file_line
+from utils import show_single_address, problem_file_line, truncate_address
 
-def truncate_address(addr):
-    # Truncates address to width of screen, replacing middle chars
-    if not version.has_qwerty:
-        # - 16 chars screen width
-        # - but 2 lost at left (menu arrow, corner arrow)
-        # - want to show not truncated on right side
-        return addr[0:6] + '⋯' + addr[-6:]
-    else:
-        # tons of space on Q1
-        return addr[0:12] + '⋯' + addr[-12:]
+def censor_address(addr):
+    # We don't like to show the user full multisig addresses because we cannot be certain
+    # they could actually be signed. And yet, don't blank too many
+    # spots or else an attacker could grind out a suitable replacement.
+    # 3 chars in the middle hidden by default
+    # censoring can be disabled by msas setting
+    if settings.get("msas", 0):
+        return addr
+    return addr[0:12] + '___' + addr[12+3:]
 
 class KeypathMenu(MenuSystem):
     def __init__(self, path=None, nl=0):
@@ -312,8 +311,10 @@ Press (3) if you really understand and accept these risks.
 
             # export options
             k0 = 'to show change addresses' if allow_change and change == 0 else None
-            export_msg, escape = export_prompt_builder('address summary file',
-                                                       key0=k0, force_prompt=True)
+            export_msg, escape = export_prompt_builder(
+                'address summary file',
+                key0=k0, force_prompt=True
+            )
             if version.has_qwerty:
                 escape += KEY_LEFT+KEY_RIGHT+KEY_HOME+KEY_PAGE_UP+KEY_PAGE_DOWN+KEY_QR
             else:
@@ -359,6 +360,7 @@ Press (3) if you really understand and accept these risks.
                 addr_fmt = addr_fmt or ms_wallet.addr_fmt
                 is_alnum = bool(addr_fmt & (AFC_BECH32 | AFC_BECH32M))
                 await show_qr_codes(addrs, is_alnum, start, is_addrs=True)
+
                 continue
 
             elif NFC and (choice == KEY_NFC):
@@ -376,7 +378,7 @@ Press (3) if you really understand and accept these risks.
                 else:
                     # only custom path sets allow_change to False
                     # msg sign
-                    from auth import sign_with_own_address
+                    from msgsign import sign_with_own_address
                     await sign_with_own_address(path, addr_fmt)
 
             elif n is None:
@@ -445,7 +447,7 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
                                     start=0, count=250, change=0, **save_opts):
 
     # write addresses into a text file on the MicroSD/VirtDisk
-    from glob import dis
+    from glob import dis, settings
     from files import CardSlot, CardMissingError, needs_microsd
 
     # simple: always set number of addresses.
@@ -457,7 +459,6 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
     # generator function
     body = generate_address_csv(path, addr_fmt, ms_wallet, account_num, count,
                                 start=start, change=change)
-
     # pick filename and write
     try:
         with CardSlot(**save_opts) as card:
@@ -468,27 +469,32 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
                 for idx, part in enumerate(body):
                     ep = part.encode()
                     fd.write(ep)
-                    if not ms_wallet:
-                        h.update(ep)
-
+                    h.update(ep)
                     dis.progress_sofar(idx, count or 1)
 
             sig_nice = None
-            if not ms_wallet and addr_fmt != AF_P2TR:
-                derive = path.format(account=account_num, change=change, idx=start)  # first addr
+            if addr_fmt != AF_P2TR:
+                if ms_wallet:
+                    # sign with my key at the same path as first address of export
+                    addr_fmt = AF_CLASSIC
+                    derive = ms_wallet.get_my_deriv(settings.get('xfp'))
+                    derive += "/%d/%d" % (change, start)
+                else:
+                    derive = path.format(account=account_num, change=change, idx=start)  # first addr
+
                 sig_nice = write_sig_file([(h.digest(), fname)], derive, addr_fmt)
+
+
+        msg = '''Address summary file written:\n\n%s''' % nice
+        if sig_nice:
+            msg += "\n\nAddress signature file written:\n\n%s" % sig_nice
+        await ux_show_story(msg)
 
     except CardMissingError:
         await needs_microsd()
-        return
     except Exception as e:
-        await ux_show_story('Failed to write!\n\n\n%s\n%s' % (e, problem_file_line(e)))
-        return
+        await ux_show_story('Failed to write!\n\n%s\n%s' % (e, problem_file_line(e)))
 
-    msg = '''Address summary file written:\n\n%s''' % nice
-    if sig_nice:
-        msg += "\n\nAddress signature file written:\n\n%s" % sig_nice
-    await ux_show_story(msg)
 
 async def address_explore(*a):
     # explore addresses based on derivation path chosen

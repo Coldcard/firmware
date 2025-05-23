@@ -41,20 +41,26 @@ IFOvGVJrm31S0j+F4dVfQ5kbRKWKcmhmXIn/Lw8iIgaCG5QNZswjrN4X673R7jTZo1kvLmiD4hlIrbuL
 
 ### What is signed
 
-1. **Single sig address explorer exports**. Signed by key corresponding to first (0th) address on the exported list.
-2. **Specific single sig exports**. Signed by key corresponding to external address at index zero of chosen application specific derivation `m/<app_deriv>/0/0`
+### What Is Signed
+
+1. **Single sig address explorer exports:** Signed by the key corresponding to the first (0th) address on the exported list.
+2. **Specific single sig exports:** Signed by the key corresponding to the external address at index zero of chosen application specific derivation `m/<app_deriv>h/<coin_type>'h/<account>h/0/0`.
     * Bitcoin Core
     * Electrum Wallet
     * Wasabi Wallet
     * Samourai Postmix
     * Samourai Premix
     * Descriptor
-3. **Generic single sig exports**. Signed by key that corresponds to address at derivation `m/44'/<coin_type>'/0'/0/0`
-    Lily Wallet
-    Generic JSON
-    Dump Summary
-4. **BIP85 derived entropy exports**. Signed by path that corresponds to specific BIP85 application.
-5. **Paper wallet exports**. Signed by key and address exported as paper wallet itself.
+3. **Generic single sig exports:** Signed by key that corresponds to first (0th) external address at derivation `m/44h/<coin_type>h/<account>h/0/0`.
+    * Lily Wallet
+    * Generic JSON
+    * Dump Summary
+4. **BIP85 derived entropy exports:** Signed by path that corresponds to specific BIP85 application.
+5. **Paper wallet exports:** Signed by key and address exported as paper wallet itself.
+6. **Multisig exports:** public keys are encoded as P2PKH address for all multisg signature exports
+    * Multisig wallet descriptor: signed by the key corresponding to the first external address of own enrolled extended key `my_key/0/0`
+    * Generic XPUBs export: signed by the key corresponding to the first external address of own standard P2WSH derivation `m/48h/<coin_type>h/<account>h/2h/0/0`
+    * Multisig address explorer export: Signed by own key at the same derivation as first (0th) row on exported list. `my_key/<change>/<start_index>`
 
 ### What is NOT signed
 

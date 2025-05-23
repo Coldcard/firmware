@@ -82,7 +82,7 @@ class AddressCacheFile:
         except OSError:
             return
         except Exception as exc:
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
             self.count = 0
             self.hdr = None
             return
@@ -326,6 +326,8 @@ class OwnershipCache:
             sp = None
             msg = show_single_address(addr)
             msg += '\n\nFound in wallet:\n  ' + wallet.name
+
+
             if hasattr(wallet, "render_path"):
                 sp = wallet.render_path(*subpath)
                 msg += '\nDerivation path:\n  ' + sp
@@ -354,7 +356,7 @@ class OwnershipCache:
                         msg=addr, is_addrs=True
                     )
                 elif not is_complex and (ch == "0"):  # only singlesig
-                    from auth import sign_with_own_address
+                    from msgsign import sign_with_own_address
                     await sign_with_own_address(sp, wallet.addr_fmt)
                 else:
                     break

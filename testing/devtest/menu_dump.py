@@ -15,7 +15,7 @@ async def doit():
         from users import UsersMenu
         from flow import has_secrets, nfc_enabled, vdisk_enabled, word_based_seed
         from flow import hsm_policy_available, is_not_tmp, has_real_secret
-        from flow import has_se_secrets, hsm_available
+        from flow import has_se_secrets, hsm_available, qr_and_has_secrets
 
         print("%s%s"% (indent, label), file=fd)
 
@@ -24,7 +24,7 @@ async def doit():
             m = []
 
         # recursing into functions that do stuff doesn't work well, skip
-        avoid = {'Clone Coldcard', 'Debug Functions', 'Migrate COLDCARD'}
+        avoid = {'Clone Coldcard', 'Debug Functions', 'Migrate Coldcard'}
         if any(label.startswith(a) for a in avoid):
             return
 
@@ -65,11 +65,11 @@ async def doit():
                     # trick pins are not available in EmptyWallet
                     continue
 
-                pred = getattr(mi, 'predicate', None)
+                pred = getattr(mi, '_predicate', None)
                 if pred in (True, False):
                     if here in ("NFC Tools", "Import via NFC", "NFC File Share"):
                         here += ' [IF NFC ENABLED]'
-                    if "QR" in here and "Scan" in here:
+                    if "QR" in here or "Scan" in here or "BBQr" in here:
                         here += ' [IF QR SCANNER]'
                     if "battery" in here:
                         here += ' [IF BATTERIES]'
@@ -97,8 +97,10 @@ async def doit():
                     here += ' [IF SECRET AND NOT TMP SEED]'
                 elif pred == hsm_available:
                     here += ' [IF HSM AND SECRET]'
+                elif pred == qr_and_has_secrets:
+                    here += ' [IF QR AND SECRET]'
                 elif pred:
-                    if here == "Secure Notes & Passwords":
+                    if here in ("Secure Notes & Passwords", "Push Transaction"):
                         here += ' [IF ENBALED]'
                     else:
                         here += ' [MAYBE]'
@@ -140,6 +142,11 @@ async def doit():
     settings.put("axskip", 1)
     settings.put("b39skip", 1)
     settings.put("sd2fa", ["a"])
+    settings.put("ptxurl", 'https://coldcard.com/pushtx#')
+
+    # saved passphrase on MicroSD
+    with open("MicroSD/.tmp.tmp", "wb") as f:
+        f.write(b'\xf0\xc9\xff\x00\xf37c\xdd\x8bz\xfa\x0b\xd9\x16;g8\xf8S0\xa5\x129\x99\xd4\xa2=\n\x01\xf9q$w\xb2sb,\xa7\xf9')
 
     with open('menudump.txt', 'wt') as fd:
         for nm, m in [

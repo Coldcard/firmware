@@ -30,6 +30,10 @@ Slip132Version = namedtuple('Slip132Version', ('pub', 'priv', 'hint'))
 #   - from <https://github.com/Bit-Wasp/bitcoin-php/issues/576>
 # - also electrum source: electrum/lib/constants.py
 
+# nLockTime in transaction equal or above this value is a unix timestamp (time_t) not block height.
+NLOCK_IS_TIME = const(500000000)
+
+
 def taptweak(internal_key, tweak=None):
     # BIP 341 states: "If the spending conditions do not require a script path,
     # the output key should commit to an unspendable script path instead of having no script path.
@@ -54,6 +58,8 @@ def tapleaf_hash(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
 class ChainsBase:
 
     curve = 'secp256k1'
+    menu_name = None        # use 'name' if this isn't defined
+    ccc_min_block = 0
 
     # b44_cointype comes from
     #    <https://github.com/satoshilabs/slips/blob/master/slip-0044.md>
@@ -272,36 +278,45 @@ class ChainsBase:
 
     @classmethod
     def op_return(cls, script):
-        """Returns decoded string op return data if script is op return otherwise None"""
+        # returns decoded string op return data if script is op return otherwise None
         gen = disassemble(script)
         script_type = next(gen)
-        if OP_RETURN in script_type:
-            try:
-                data = next(gen)[0]
-                if data is None: raise RuntimeError
-            except (RuntimeError, StopIteration):
-                return "null-data", ""
+        if OP_RETURN not in script_type:
+            return
+
+        try:
+            data = next(gen)[0]
+            if data is None: raise RuntimeError
+        except (RuntimeError, StopIteration):
+            return "null-data", ""
+
+        data_ascii = None
+        if len(data) > 200:
+            # completely arbitrary limit, prevents huge stories
+            data_hex = b2a_hex(data[:100]).decode() + "\n ⋯\n" + b2a_hex(data[-100:]).decode()
+        else:
             data_hex = b2a_hex(data).decode()
-            data_ascii = None
             if min(data) >= 32 and max(data) < 127:  # printable
                 try:
                     data_ascii = data.decode("ascii")
-                except:
-                    pass
-            return data_hex, data_ascii
-        return None
+                except: pass
+        return data_hex, data_ascii
 
     @classmethod
     def possible_address_fmt(cls, addr):
         # Given a text (serialized) address, return what
         # address format applies to the address, but
         # for AF_P2SH case, could be: AF_P2SH,  AF_P2WPKH_P2SH, AF_P2WSH_P2SH. .. we don't know
-        if addr.startswith(cls.bech32_hrp):
-            if addr.startswith(cls.bech32_hrp+'1p'):
-                # really any ver=1 script or address, but for now...
+        hrp = cls.bech32_hrp + "1"
+        if addr.startswith(hrp):
+            if addr.startswith(hrp+'p'):
+                # segwit v1 (any ver=1 script or address, but for now just taproot...)
                 return AF_P2TR
-            else:
+            elif addr.startswith(hrp+'q'):
+                # segwit v0
                 return AF_P2WPKH if len(addr) < 55 else AF_P2WSH
+
+            return 0
 
         try:
             raw = ngu.codecs.b58_decode(addr)
@@ -321,6 +336,7 @@ class BitcoinMain(ChainsBase):
     # see <https://github.com/bitcoin/bitcoin/blob/master/src/chainparams.cpp#L140>
     ctype = 'BTC'
     name = 'Bitcoin Mainnet'
+    ccc_min_block = 892714          # Apr 16/2025
 
     slip132 = {
         AF_CLASSIC:     Slip132Version(0x0488B21E, 0x0488ADE4, 'x'),
@@ -339,7 +355,7 @@ class BitcoinMain(ChainsBase):
 
     b44_cointype = 0
 
-class BitcoinTestnet(BitcoinMain):
+class BitcoinTestnet(ChainsBase):
     # testnet4 (was testnet3 up until 2025 but all parameters are the same)
     ctype = 'XTN'
     name = 'Bitcoin Testnet 4'
@@ -362,7 +378,7 @@ class BitcoinTestnet(BitcoinMain):
     b44_cointype = 1
 
 
-class BitcoinRegtest(BitcoinMain):
+class BitcoinRegtest(ChainsBase):
     ctype = 'XRT'
     name = 'Bitcoin Regtest'
 
@@ -450,15 +466,37 @@ STD_DERIVATIONS = {
     "p2sh-p2wpkh": CommonDerivations[1][1],
     "p2wpkh-p2sh": CommonDerivations[1][1],
     "p2wpkh": CommonDerivations[2][1],
+    "p2tr": CommonDerivations[3][1],
+}
+
+MS_STD_DERIVATIONS = {
+    ("p2sh", "m/45h", AF_P2SH),
+    ("p2sh_p2wsh", "m/48h/{coin}h/{acct_num}h/1h", AF_P2WSH_P2SH),
+    ("p2wsh", "m/48h/{coin}h/{acct_num}h/2h", AF_P2WSH),
+    ('p2tr', "m/48h/{coin}h/{acct_num}h/3h", AF_P2TR),
+}
+
+AF_TO_STR_AF = {
+    AF_CLASSIC: "p2pkh",
+    AF_P2TR: "p2tr",
+    AF_P2WPKH: "p2wpkh",
+    AF_P2WPKH_P2SH: "p2sh-p2wpkh",
+    AF_P2SH: "p2sh",
+    AF_P2WSH: "p2wsh",
+    AF_P2WSH_P2SH: "p2sh-p2wsh",
 }
 
 def parse_addr_fmt_str(addr_fmt):
     # accepts strings and also integers if already parsed
+    # integers are coming from USB
     try:
         if isinstance(addr_fmt, int):
             if addr_fmt in [AF_P2WPKH_P2SH, AF_P2WPKH, AF_CLASSIC]:
                 return addr_fmt
             else:
+                try:
+                    addr_fmt = AF_TO_STR_AF[addr_fmt]  # just for error msg
+                except: pass
                 raise ValueError
 
         addr_fmt = addr_fmt.lower()

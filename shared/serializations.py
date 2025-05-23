@@ -62,12 +62,15 @@ def deser_compact_size(f, ret_num_bytes=False):
     num_bytes = 1
     if nit == 253:
         nit = struct.unpack("<H", f.read(2))[0]
+        assert nit >= 253
         num_bytes += 2
     elif nit == 254:
         nit = struct.unpack("<I", f.read(4))[0]
+        assert nit >= 0x1_0000
         num_bytes += 4
     elif nit == 255:
         nit = struct.unpack("<Q", f.read(8))[0]
+        assert nit >= 0x1_0000_0000
         num_bytes += 8
     if ret_num_bytes:
         return nit, num_bytes
@@ -87,14 +90,12 @@ def deser_uint256(f):
         r += t << (i * 32)
     return r
 
-
 def ser_uint256(u):
     rs = b""
     for i in range(8):
         rs += struct.pack("<I", u & 0xFFFFFFFF)
         u >>= 32
     return rs
-
 
 def uint256_from_str(s):
     r = 0
@@ -103,12 +104,10 @@ def uint256_from_str(s):
         r += t[i] << (i * 32)
     return r
 
-
 def uint256_from_compact(c):
     nbytes = (c >> 24) & 0xFF
     v = (c & 0xFFFFFF) << (8 * (nbytes - 3))
     return v
-
 
 def deser_vector(f, c):
     nit = deser_compact_size(f)
@@ -118,7 +117,6 @@ def deser_vector(f, c):
         t.deserialize(f)
         r.append(t)
     return r
-
 
 # ser_function_name: Allow for an alternate serialization function on the
 # entries in the vector (we use this for serializing the vector of transactions
@@ -132,7 +130,6 @@ def ser_vector(l, ser_function_name=None):
             r += i.serialize()
     return r
 
-
 def deser_uint256_vector(f):
     nit = deser_compact_size(f)
     r = []
@@ -141,29 +138,22 @@ def deser_uint256_vector(f):
         r.append(t)
     return r
 
-
 def ser_uint256_vector(l):
     r = ser_compact_size(len(l))
     for i in l:
         r += ser_uint256(i)
     return r
 
-
 def deser_string_vector(f):
     nit = deser_compact_size(f)
-    r = []
-    for i in range(nit):
-        t = deser_string(f)
-        r.append(t)
-    return r
-
+    return [deser_string(f) for _ in range(nit)]
 
 def ser_string_vector(l):
     r = ser_compact_size(len(l))
     for sv in l:
         r += ser_string(sv)
-    return r
 
+    return r
 
 def deser_int_vector(f):
     nit = deser_compact_size(f)
@@ -172,7 +162,6 @@ def deser_int_vector(f):
         t = struct.unpack("<i", f.read(4))[0]
         r.append(t)
     return r
-
 
 def ser_int_vector(l):
     r = ser_compact_size(len(l))
@@ -184,16 +173,18 @@ def ser_push_data(dd):
     # "compile" data to be pushed on the script stack
     # - will be minimal sized, but only supports size ranges we're likely to see
     ll = len(dd)
-    assert 2 <= ll <= 255
-
-    if ll <= 75:
+    if ll < 0x4c:
         return bytes([ll]) + dd           # OP_PUSHDATAn + data
+    elif ll <= 0xff:
+        return bytes([0x4c, ll]) + dd       # 0x4c = 76 => OP_PUSHDATA1 + size + data
+    elif ll <= 0xffff:
+        return bytes([0x4d]) + struct.pack(b'<H', ll) + dd  # # 0x4d = 77 => OP_PUSHDATA2
     else:
-        return bytes([76, ll]) + dd       # 0x4c = 76 => OP_PUSHDATA1 + size + data
+        assert False
 
 def ser_push_int(n):
     # push a small integer onto the stack
-    from opcodes import OP_0, OP_1, OP_16, OP_PUSHDATA1
+    from opcodes import OP_0, OP_1
 
     if n == 0:
         return bytes([OP_0])
@@ -227,11 +218,13 @@ def disassemble(script):
                 #print('dis %d: number=%d' % (offset, (c - OP_1 + 1)))
                 yield (c - OP_1 + 1, None)
             elif c == OP_PUSHDATA1:
-                cnt = script[offset]; offset += 1
+                cnt = script[offset]
+                offset += 1
                 yield (script[offset:offset+cnt], None)
                 offset += cnt
             elif c == OP_PUSHDATA2:
-                cnt = struct.unpack_from("H", script, offset)
+                # up to 65535 bytes
+                cnt, = struct.unpack_from("H", script, offset)
                 offset += 2
                 yield (script[offset:offset+cnt], None)
                 offset += cnt
@@ -244,7 +237,8 @@ def disassemble(script):
                 # OP_0 included here
                 #print('dis %d: opcode=%d' % (offset, c))
                 yield (None, c)
-    except:
+    except Exception:
+        # import sys;sys.print_exception(e)
         raise ValueError("bad script")
         
 
@@ -368,20 +362,13 @@ class CTxOut(object):
         # Detect type of output from scriptPubKey, and return 3-tuple:
         #    (addr_type_code, addr, is_segwit)
         # 'addr' is byte string, either 20 or 32 long
-
-        if len(self.scriptPubKey) == 22 and \
-                self.scriptPubKey[0] == 0 and self.scriptPubKey[1] == 20:
-            # aka. P2WPKH
-            return 'p2pkh', self.scriptPubKey[2:2+20], True
-
-        if len(self.scriptPubKey) == 34 and \
-                self.scriptPubKey[0] == 81 and self.scriptPubKey[1] == 32:
-            # aka. P2TR
+        if self.is_p2tr():
             return 'p2tr', self.scriptPubKey[2:2+32], True
 
-        if len(self.scriptPubKey) == 34 and \
-                self.scriptPubKey[0] == 0 and self.scriptPubKey[1] == 32:
-            # aka. P2WSH
+        if self.is_p2wpkh():
+            return 'p2pkh', self.scriptPubKey[2:2+20], True
+
+        if self.is_p2wsh():
             return 'p2sh', self.scriptPubKey[2:2+32], True
 
         if self.is_p2pkh():
@@ -394,9 +381,22 @@ class CTxOut(object):
             # rare, pay to full pubkey
             return 'p2pk', self.scriptPubKey[2:2+33], False
 
-        # If this is reached, we do not understand the output well
-        # enough to allow the user to authorize the spend, so fail hard.
-        raise ValueError('scriptPubKey template fail: ' + b2a_hex(self.scriptPubKey).decode())
+        if self.scriptPubKey[0] == OP_RETURN:
+            return 'op_return', self.scriptPubKey, False
+
+        return None, self.scriptPubKey, None
+
+    def is_p2tr(self):
+        return len(self.scriptPubKey) == 34 and \
+                (OP_1 <= self.scriptPubKey[0] <= OP_16) and self.scriptPubKey[1] == 0x20
+
+    def is_p2wpkh(self):
+        return len(self.scriptPubKey) == 22 and \
+                self.scriptPubKey[0] == 0 and self.scriptPubKey[1] == 0x14
+
+    def is_p2wsh(self):
+        return len(self.scriptPubKey) == 34 and \
+                self.scriptPubKey[0] == 0 and self.scriptPubKey[1] == 0x20
 
     def is_p2sh(self):
         return len(self.scriptPubKey) == 23 and self.scriptPubKey[0] == 0xa9 \
@@ -501,7 +501,7 @@ class CTransaction(object):
         self.nVersion = struct.unpack("<i", f.read(4))[0]
         self.vin = deser_vector(f, CTxIn)
         flags = 0
-        if len(self.vin) == 0:
+        if not self.vin:
             flags = struct.unpack("<B", f.read(1))[0]
             # Not sure why flags can't be zero, but this
             # matches the implementation in bitcoind

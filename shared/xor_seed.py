@@ -5,29 +5,16 @@
 # - for secret spliting on paper
 # - all combination of partial XOR seed phrases are working wallets
 #
-import stash, ngu, bip39, version
+import ngu, bip39, version
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause
 from ux import show_qr_code, ux_render_words, OK
-from seed import word_quiz, WordNestMenu, set_seed_value, set_ephemeral_seed
+from seed import word_quiz, WordNestMenu, set_seed_value, set_ephemeral_seed, seed_vault_iter
 from glob import settings
 from menu import MenuSystem, MenuItem
 from actions import goto_top_menu
-from utils import encode_seed_qr, pad_raw_secret
+from utils import encode_seed_qr, deserialize_secret, xor
 from charcodes import KEY_QR
-
-
-def xor(*args):
-    # bit-wise xor between all args
-    vlen = len(args[0])
-    # all have to be same length
-    assert all(len(e) == vlen for e in args)
-    rv = bytearray(vlen)
-
-    for i in range(vlen):
-        for a in args:
-            rv[i] ^= a[i]
-
-    return rv
+from stash import SecretStash, blank_object, SensitiveValues, numwords_to_len, len_to_numwords
 
 async def xor_split_start(*a):
 
@@ -69,12 +56,7 @@ Otherwise, press {ok} to continue.'''.format(n=num_parts, ok=OK), escape='2')
 
     raw_secret = bytes(32)
     try:
-        with stash.SensitiveValues() as sv:
-            if sv.deltamode:
-                # die rather than give up our secrets
-                import callgate
-                callgate.fast_wipe()
-
+        with SensitiveValues(enforce_delta=True) as sv:
             words = None
             if sv.mode == 'words':
                 words = bip39.b2a_words(sv.raw).split(' ')
@@ -82,7 +64,7 @@ Otherwise, press {ok} to continue.'''.format(n=num_parts, ok=OK), escape='2')
             # checksum of target result is useful
             chk_word = words[-1]
 
-            vlen = stash.numwords_to_len(len(words))
+            vlen = numwords_to_len(len(words))
 
             del words
 
@@ -106,7 +88,7 @@ Otherwise, press {ok} to continue.'''.format(n=num_parts, ok=OK), escape='2')
         assert xor(*parts) == raw_secret      # selftest
 
     finally:
-        stash.blank_object(raw_secret)
+        blank_object(raw_secret)
 
     word_parts = [bip39.b2a_words(p).split(' ') for p in parts]
 
@@ -147,11 +129,11 @@ async def xor_all_done(data):
     chk_words = None
     if data is None:
         # special case, needs something already in import_xor_parts
-        target_words = stash.len_to_numwords(len(import_xor_parts[0]))
+        target_words = len_to_numwords(len(import_xor_parts[0]))
     else:
         new_encoded = bip39.a2b_words(data) if isinstance(data, list) else data
         import_xor_parts.append(new_encoded)
-        target_words = stash.len_to_numwords(len(new_encoded))
+        target_words = len_to_numwords(len(new_encoded))
 
     XORWordNestMenu.pop_all()
 
@@ -186,7 +168,7 @@ async def xor_all_done(data):
             import_xor_parts.clear()          # concern: we are contaminated w/ secrets
         elif chk_words and ch == KEY_QR:
             rv = encode_seed_qr(chk_words)
-            await show_qr_code(rv, True, msg="SeedQR")
+            await show_qr_code(rv, True, msg="SeedQR", is_secret=True)
             continue
         elif ch == '1':
             # do another list of words
@@ -203,7 +185,7 @@ async def xor_all_done(data):
             from pincodes import pa
             from glob import dis
 
-            enc = stash.SecretStash.encode(seed_phrase=seed)
+            enc = SecretStash.encode(seed_phrase=seed)
 
             if pa.is_secret_blank():
                 # save it since they have no other secret
@@ -217,17 +199,15 @@ async def xor_all_done(data):
                 # only need XFPs for UI
                 # xfps = [
                 #     xfp2str(swab32(
-                #         stash.SecretStash.decode(stash.SecretStash.encode(seed_phrase=i))[2].my_fp()
+                #         SecretStash.decode(SecretStash.encode(seed_phrase=i))[2].my_fp()
                 #     ))
                 #     for i in enc_parts
                 # ]
-                await set_ephemeral_seed(
-                    enc,
-                    meta='SeedXOR(%d parts, check: "%s")' % (
-                        num_parts, chk_word
-                    )
-                )
+                await set_ephemeral_seed(enc,
+                    origin='SeedXOR(%d parts, check: "%s")' % (num_parts, chk_word))
+
                 goto_top_menu()
+
         break
 
 class XORWordNestMenu(WordNestMenu):
@@ -243,7 +223,7 @@ async def show_n_parts(parts, chk_word):
 
     for n,words in enumerate(parts):
         msg += '\n\nPart %s:\n' % chr(65+n)
-        msg += ux_render_words(words, leading_blanks=0)
+        msg += ux_render_words(words)
 
     msg += ('\n\nThe correctly reconstructed seed phrase will have this final word,'
             ' which we recommend recording:\n\n%d: %s\n\n' % (seed_len, chk_word))
@@ -294,12 +274,7 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
         if ch == 'x': return
         if ch == '1':
             dis.fullscreen("Wait...")
-            with stash.SensitiveValues() as sv:
-                if sv.deltamode:
-                    # die rather than give up our secrets
-                    import callgate
-                    callgate.fast_wipe()
-
+            with SensitiveValues(enforce_delta=True) as sv:
                 if sv.mode == 'words':
                     # needs copy here [:] otherwise rewritten with zeros in __exit__
                     import_xor_parts.append(sv.raw[:])
@@ -307,15 +282,17 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
         # Add from Seed Vault?
         # filter only those that are correct length and type from seed vault
         opt = []
-        seeds = [] if pa.is_deltamode() else settings.master_get("seeds", [])
-        for i, (xfp_str, hex_str, _, _) in enumerate(seeds):
-            raw = pad_raw_secret(hex_str)
-            if raw[0] & 0x80:
-                # seed phrase
-                sk = raw[1:1 + stash.len_from_marker(raw[0])]
-                if stash.len_to_numwords(len(sk)) == desired_num_words:
-                    opt.append((i, xfp_str, sk))
-        del seeds
+        for i, rec in enumerate(seed_vault_iter()):
+            raw = deserialize_secret(rec.encoded)
+
+            nw = SecretStash.is_words(raw)
+            if nw and nw == desired_num_words:
+                # it is words, and right length
+                sk = SecretStash.decode_words(raw, bin_mode=True)
+                opt.append((i, rec.xfp, sk))
+
+            blank_object(raw)
+
         if opt:
             escape = "2"
             msg = ("Seed Vault is enabled. %d stored seeds have suitable type and length."

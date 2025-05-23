@@ -519,12 +519,9 @@ def taproot_tree_helper(scripts):
         assert isinstance(script, bytes)
         h = ngu.secp256k1.tagged_sha256(b"TapLeaf", chains.tapscript_serialize(script))
         return [(chains.TAPROOT_LEAF_TAPSCRIPT, script, bytes())], h
-    if len(scripts) == 1:
-        return taproot_tree_helper(scripts[0])
 
-    split_pos = len(scripts) // 2
-    left, left_h = taproot_tree_helper(scripts[0:split_pos])
-    right, right_h = taproot_tree_helper(scripts[split_pos:])
+    left, left_h = taproot_tree_helper(scripts[0].tree)
+    right, right_h = taproot_tree_helper(scripts[1].tree)
     left = [(version, script, control + right_h) for version, script, control in left]
     right = [(version, script, control + left_h) for version, script, control in right]
     if right_h < left_h:

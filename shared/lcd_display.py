@@ -622,7 +622,8 @@ class Display:
                 # title ... but we have no special font? Inverse!
                 self.text(0, y, ' '+ln[1:]+' ', invert=True)
                 if hint_icons:
-                    # maybe show that [QR] can do something
+                    # hint_icons not shown if is story without title
+                    # maybe show that [QR,NFC] can do something
                     self.text(-1, y, hint_icons, dark=True)
 
             elif ln and ln[0] == OUT_CTRL_ADDRESS:
@@ -641,10 +642,10 @@ class Display:
 
     def _draw_addr(self, y, addr, prev_x=None):
         # Draw a single-line of an address
-        # - use prev_x=0 to start centered 
+        # - use prev_x=0 to start centered
         if prev_x is None:
             # left justify (for stories)
-            prev_x = x = 1 
+            prev_x = x = 1
         elif prev_x == 0:
             # center first line, following line(s) will be left-justified to match that
             prev_x = x = max(((CHARS_W - (len(addr) * 5) // 4) // 2), 0)
@@ -655,7 +656,8 @@ class Display:
 
         return prev_x
 
-    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, partial_bar=None, is_addr=False):
+    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, partial_bar=None,
+                        is_addr=False, force_msg=False):
         # Show a QR code on screen w/ some text under it
         # - invert not supported on Q1
         # - sidebar not supported here (see users.py)
@@ -705,25 +707,21 @@ class Display:
         fullscreen = False
         trim_lines = 0
 
-        if w == 77:
-            # v15 =>  77px x 3: 77*3 = 231px
-            expand = 3
-            num_lines = 0
-            fullscreen = True
-        elif w in (109, 113, 117):
-            # v23 => 109px x 2 = 218px
-            # v24 => 113px x 2 = 226px
-            # v25 => 117px x 2 = 234px
-            expand = 2
-            num_lines = 0
-            fullscreen = True
-        elif expand == 1 and num_lines:
-            # Maybe loose the text lines?
-            expand2 = max(1, ACTIVE_H // (w+2))
-            if expand2 > expand:
-                # v18,v19,v20,v21,v22
+        # always try to show the biggest possible QR code if not force_msg
+        if not force_msg:
+            if num_lines:
+                # better with text dropped?
+                e2 = max(1, ACTIVE_H // (w + 2))
+                if e2 > expand:
+                    num_lines = 0
+                    expand = e2
+
+            # fullscreen ?
+            e3 = (ACTIVE_H + 20) // (w + 2)
+            if expand < e3:
+                expand = e3
+                fullscreen = True
                 num_lines = 0
-                expand = expand2
 
         # vert center in available space
         qw = (w+2) * expand
@@ -809,8 +807,12 @@ class Display:
         else:
             pat = ''                # clear line
 
-        self.text(None, -3, pat)
+        if count == hdr.num_parts and count == 1:
+            # skip the BS, it's a simple one
+            self.progress_bar_show(1)
+            return
 
+        self.text(None, -3, pat)
         self.text(None, -2, 'Keep scanning more...' if count < hdr.num_parts else 'Got all parts!')
         self.text(None, -1, '%s: %d of %d parts' % (hdr.file_label(), count, hdr.num_parts),
                                                         dark=True)

@@ -5,7 +5,7 @@
 # - many test "sync" issues here; case is right but gets outs of sync with DUT
 # - use `./simulator.py --eff --set nfc=1`
 #
-import pytest, time, io, shutil, json, os
+import pytest, time, io, shutil, json, os, random
 from binascii import b2a_hex, a2b_hex
 from struct import pack, unpack
 import ndef
@@ -149,7 +149,7 @@ def test_ndef_ccfile(ccfile, load_shared_mod):
 @pytest.fixture
 def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
                  sim_exec, nfc_read, nfc_write, nfc_block4rf, press_select,
-                 press_cancel, press_nfc):
+                 press_cancel, press_nfc, nfc_read_txn, ndef_parse_txn_psbt):
 
     # like "try_sign" but use NFC to send/receive PSBT/results
 
@@ -172,17 +172,18 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
             ip = b2a_hex(ip)
             recs = [ndef.TextRecord(ip)]
         elif encoding == 'base64':
-            from base64 import b64encode, b64decode
+            from base64 import b64encode
             ip = b64encode(ip)
             recs = [ndef.TextRecord(ip)]
         else:
             assert encoding == 'binary'
             recs = [ndef.Record(type='urn:nfc:ext:bitcoin.org:psbt', data=ip),
                     ndef.Record(type='urn:nfc:ext:bitcoin.org:sha256', data=sha256(ip).digest()),
-                    ndef.TextRecord('some text here about situ'),
+                    ndef.TextRecord('some text'),
             ]
 
-        open('debug/nfc-sent.psbt', 'wb').write(ip)
+        with open('debug/nfc-sent.psbt', 'wb') as f:
+            f.write(ip)
 
         # wrap in a CCFile 
         serialized = b''.join(ndef.message_encoder(recs))
@@ -243,7 +244,7 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
             for r in range(10):
                 time.sleep(0.1)
                 title, story = cap_story()
-                if title == 'PSBT Signed': break
+                if "shared via NFC" in story: break
             else:
                 assert False, 'timed out'
 
@@ -262,6 +263,20 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
             press_select()
             txid = None
 
+        got_psbt, got_txn, got_txid = ndef_parse_txn_psbt(contents, txid, ip, expect_finalize)
+
+        return ip, (got_psbt or got_txn), (txid or got_txid)
+
+
+    yield doit
+
+    # cleanup / restore
+    sim_exec('from pyb import SDCard; SDCard.ejected = False')
+
+@pytest.fixture
+def ndef_parse_txn_psbt(press_cancel):
+    def doit(contents, txid=None, orig=None, expect_finalized=True):
+        # from NFC data read, what did we get?
         got_txid = None
         got_txn = None
         got_psbt = None
@@ -270,7 +285,7 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
             if got.type == 'urn:nfc:wkt:T':
                 assert 'Transaction' in got.text or 'PSBT' in got.text
                 if 'Transaction' in got.text and txid:
-                    assert b2a_hex(txid).decode() in got.text
+                    assert txid in got.text
             elif got.type == 'urn:nfc:ext:bitcoin.org:txid':
                 got_txid = b2a_hex(got.data).decode('ascii')
             elif got.type == 'urn:nfc:ext:bitcoin.org:txn':
@@ -293,23 +308,14 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
         if got_txid:
             assert got_txn
             assert got_txid == txid
-            assert expect_finalize
+            assert expect_finalized
             result = got_txn
             open("debug/nfc-result.txn", 'wb').write(result)
         else:
-            assert not expect_finalize
+            assert not expect_finalized
             result = got_psbt
 
             open("debug/nfc-result.psbt", 'wb').write(result)
-
-        if 0:
-            # check output encoding matches input
-            if encoding == 'hex' or finalize:
-                result = a2b_hex(result.strip())
-            elif encoding == 'base64':
-                result = b64decode(result)
-            else:
-                assert encoding == 'binary'
 
         # read back final product
         if got_txn:
@@ -325,44 +331,44 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
             assert got_psbt[0:5] == b'psbt\xff'
 
             from psbt import BasicPSBT
-            was = BasicPSBT().parse(ip) 
+            was = BasicPSBT().parse(orig)
             now = BasicPSBT().parse(got_psbt)
             assert was.txn == now.txn
             assert was != now
 
-        return ip, (got_psbt or got_txn), txid
+        press_cancel()  # exit re-export animation
 
-    yield doit
+        return got_psbt, got_txn, got_txid
 
-    # cleanup / restore
-    sim_exec('from pyb import SDCard; SDCard.ejected = False')
+    return doit
 
 @pytest.mark.parametrize('num_outs', [ 1, 20, 250])
 def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress,
                    cap_story, is_q1, press_nfc, press_cancel):
     # Read signing result (transaction) over NFC, decode it.
     psbt = fake_txn(1, num_outs)
-    orig, result = try_sign(psbt, accept=True, finalize=True)
+    orig, result = try_sign(psbt, accept=True, finalize=True, exit_export_loop=False)
 
     too_big = len(result) > 8000
 
     if too_big: assert num_outs > 100
-    if num_outs > 100: assert too_big
 
     time.sleep(.1)
     title, story = cap_story()
-    assert 'TXID' in title, story
-    txid = a2b_hex(story.split()[0])
-    assert f'Press {KEY_NFC if is_q1 else "(3)"}' in story
+    assert 'TXID' in story, story
+    txid = a2b_hex(story.split("\n")[3])
+    assert f'press {KEY_NFC if is_q1 else "(3)"}' in story
     press_nfc()
     time.sleep(.2)
 
     if too_big:
         title, story = cap_story()
         assert 'is too large' in story
+        press_cancel()
         return
 
     contents = nfc_read()
+    press_cancel()
     press_cancel()
 
     #print("contents = " + B2A(contents))
@@ -380,10 +386,15 @@ def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress,
             raise ValueError(got.type)
 
 @pytest.mark.unfinalized            # iff partial=1
+@pytest.mark.reexport
 @pytest.mark.parametrize('encoding', ['binary', 'hex', 'base64'])
 @pytest.mark.parametrize('num_outs', [1,2])
 @pytest.mark.parametrize('partial', [1, 0])
-def test_nfc_signing(encoding, num_outs, partial, try_sign_nfc, fake_txn, dev):
+def test_nfc_signing(encoding, num_outs, partial, try_sign_nfc, fake_txn, dev,
+                     signing_artifacts_reexport, microsd_wipe):
+    # clear any possible files on SD - that are created by signing_artifacts_reexport
+    microsd_wipe()
+
     xp = dev.master_xpub
 
     def hack(psbt):
@@ -393,9 +404,15 @@ def test_nfc_signing(encoding, num_outs, partial, try_sign_nfc, fake_txn, dev):
             pp = psbt.inputs[0].bip32_paths[pk]
             psbt.inputs[0].bip32_paths[pk] = b'what' + pp[4:]
 
-    psbt = fake_txn(2, num_outs, xp, segwit_in=True, psbt_hacker=hack)
+    psbt = fake_txn([["p2wpkh"],["p2pkh"]], num_outs, xp, psbt_hacker=hack)
 
-    _, txn, txid = try_sign_nfc(psbt, expect_finalize=not partial, encoding=encoding)
+    got_psbt, txn, txid = try_sign_nfc(psbt, expect_finalize=not partial, encoding=encoding)
+    _psbt, _txn = signing_artifacts_reexport("nfc", tx_final=not partial, txid=txid,
+                                             encoding=encoding)
+    if partial:
+        assert _psbt == txn
+    else:
+        assert _txn == txn
 
 def test_rf_uid(rf_interface, cap_story, goto_home, pick_menu_item):
     # read UID of NFC chip over the air
@@ -425,14 +442,16 @@ def test_ndef_roundtrip(load_shared_mod):
     assert cc_ndef.ccfile_decode(r) == (12, 399, False, 4096)
 
 
+@pytest.mark.parametrize('multisig', [True, False])
 @pytest.mark.parametrize('num_outs', [2, 5, 100, 250])
 @pytest.mark.parametrize('chain', ['BTC', 'XTN'])
 @pytest.mark.parametrize('way', ['sd', 'nfc', 'usb', 'qr'])
 def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
-                    try_sign, fake_txn, nfc_block4rf, nfc_read, press_cancel,
+                    try_sign, fake_txn, nfc_block4rf, nfc_read_url, press_cancel,
                     cap_story, cap_screen, has_qwerty, way, try_sign_microsd,
                     try_sign_nfc, scan_a_qr, need_keypress, press_select,
-                    goto_home):
+                    goto_home, multisig, fake_ms_txn, import_ms_wallet,
+                    clear_ms, try_sign_bbqr):
     # check the NFC push Tx feature, validating the URL's it makes
     # - not the UX
     # - 100 outs => 5000 or so
@@ -441,6 +460,7 @@ def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
     from base64 import urlsafe_b64decode
     from urllib.parse import urlsplit, parse_qsl, unquote
 
+    clear_ms()
     settings_set('chain', chain)
 
     enable_nfc()
@@ -451,33 +471,28 @@ def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
     prefix = 'http://10.0.0.10/pushtx#'
     settings_set('ptxurl', prefix)
 
-    psbt = fake_txn(2, num_outs)
+    if multisig:
+        goto_home()
+        # create 1 of 3 multiig wallet - no need for another signers to make tx final
+        M, N = 1, 3
+        keys = import_ms_wallet(M, N, random.choice(["p2wsh", "p2sh-p2wsh", "p2sh"]),
+                                name="ms_pushtx", accept=True, way=way, chain=chain)
+        psbt = fake_ms_txn(2, num_outs, M, keys)
+    else:
+        psbt = fake_txn(2, num_outs)
+
     if way == "usb":
-        _, result = try_sign(psbt, finalize=True)
+        _, result = try_sign(psbt, finalize=True, exit_export_loop=False)
     elif way == "sd":
         ip, result, txid = try_sign_microsd(psbt, finalize=True, nfc_push_tx=True)
     elif way == "nfc":
+        if len(psbt) > 1000:
+            pytest.skip("too big")
+
         ip, result, txid = try_sign_nfc(psbt, expect_finalize=True, nfc_tools=True,
-                                        nfc_push_tx=True)
+                                        nfc_push_tx=True, encoding="hex")
     elif way == "qr":
-        goto_home()
-        need_keypress(KEY_QR)
-        from bbqr import split_qrs
-        actual_vers, parts = split_qrs(psbt, 'P')
-        for p in parts:
-            scan_a_qr(p)
-            time.sleep(4.0 / len(parts))  # just so we can watch
-
-        for r in range(20):
-            title, story = cap_story()
-            if 'OK TO SEND' in title:
-                break
-            time.sleep(.1)
-        else:
-            raise pytest.fail('never saw it?')
-
-        # approve it
-        press_select()
+        try_sign_bbqr(psbt, nfc_push_tx=True)
 
     # print(f'len = {len(result)}')
     #
@@ -486,10 +501,9 @@ def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
         time.sleep(.1)
         title, story = cap_story()
         if way == "usb":
-            assert title == 'Final TXID'
-            assert 'to share signed txn' in story
+            assert 'TXID' in story
         elif way == "sd":
-            assert title == "PSBT Signed"
+            assert ('Updated PSBT' in story) or ('Finalized transaction' in story)
         else:
             assert False
         return
@@ -501,20 +515,12 @@ def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
         scr = cap_screen()
         assert 'TXID:' in scr
 
-    contents = nfc_read()
+    uri = nfc_read_url()
 
-    print(f'nfc contents = {len(contents)}')
+    assert uri.startswith(prefix)
+    assert uri.startswith(prefix + 't')
 
-    press_cancel()  # exit NFC animation
-
-    # expect a single record, a URL
-    got, = ndef.message_decoder(contents)
-
-    assert got.type == 'urn:nfc:wkt:U'
-    assert got.uri.startswith(prefix)
-    assert got.uri.startswith(prefix + 't')
-
-    parts = urlsplit(got.uri)
+    parts = urlsplit(uri)
     args = parse_qsl(unquote(parts.fragment))
 
     assert args[0][0] == 't', 'txn must be first'

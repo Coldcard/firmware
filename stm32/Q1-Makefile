@@ -10,7 +10,7 @@ HW_MODEL = q1
 PARENT_MKFILE = Q1-Makefile
 
 # This is release of the bootloader that will be built into the factory.dfu
-BOOTLOADER_VERSION = 1.0.4
+BOOTLOADER_VERSION = 1.1.0
 BOOTLOADER_DIR = q1-bootloader
 
 LATEST_RELEASE = $(shell ls -t1 ../releases/*-q1-*.dfu | head -1)

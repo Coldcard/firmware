@@ -8,7 +8,6 @@ from mnemonic import Mnemonic
 from constants import simulator_fixed_words
 from xor import prepare_test_pairs, xor
 from bip32 import BIP32Node
-from test_ux import word_menu_entry, pass_word_quiz
 from charcodes import KEY_QR, KEY_RIGHT, KEY_DOWN
 
 wordlist = Mnemonic('english').wordlist

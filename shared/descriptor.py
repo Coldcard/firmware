@@ -10,7 +10,7 @@ from utils import cleanup_deriv_path, check_xpub, xfp2str, swab32
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from public_constants import AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, MAX_SIGNERS, MAX_TR_SIGNERS
 from desc_utils import parse_desc_str, append_checksum, descriptor_checksum, Key
-from desc_utils import taproot_tree_helper, fill_policy, Unspend
+from desc_utils import taproot_tree_helper, fill_policy
 from miniscript import Miniscript
 
 
@@ -24,19 +24,17 @@ class WrongCheckSumError(Exception):
 
 class Tapscript:
     def __init__(self, tree=None, keys=None, policy=None):
-        self.tree = tree
+        self.tree = tree  # miniscript or (tapscript, tapscript)
         self.keys = keys
         self.policy = policy
         self._merkle_root = None
 
-    @staticmethod
-    def iter_leaves(tree):
-        if isinstance(tree, Miniscript):
-            yield tree
+    def iter_leaves(self):
+        if isinstance(self.tree, Miniscript):
+            yield self.tree
         else:
-            assert isinstance(tree, list)
-            for lv in tree:
-                yield from Tapscript.iter_leaves(lv)
+            for ts in self.tree:
+                yield from ts.iter_leaves()
 
     @property
     def merkle_root(self):
@@ -44,23 +42,24 @@ class Tapscript:
             self.process_tree()
         return self._merkle_root
 
-    @staticmethod
-    def _derive(tree, idx, key_map, change=False):
-        if isinstance(tree, Miniscript):
-            return tree.derive(idx, key_map, change=change)
+    def _derive(self, idx, key_map, change=False):
+        if isinstance(self.tree, Miniscript):
+            tree = self.tree.derive(idx, key_map, change=change)
         else:
-            if len(tree) == 1 and isinstance(tree[0], Miniscript):
-                return tree[0].derive(idx, key_map, change=change)
-            l, r = tree
-            return [Tapscript._derive(l, idx, key_map, change=change),
-                    Tapscript._derive(r, idx, key_map, change=change)]
+            l, r = self.tree
+            tree = (l._derive(idx, key_map, change=change),
+                    r._derive(idx, key_map, change=change))
+
+        return type(self)(tree)
 
     def derive(self, idx=None, change=False):
         derived_keys = OrderedDict()
         for k in self.keys:
             derived_keys[k] = k.derive(idx, change=change)
-        tree = Tapscript._derive(self.tree, idx, derived_keys, change=change)
-        return type(self)(tree, policy=self.policy, keys=list(derived_keys.values()))
+        ts = self._derive(idx, derived_keys, change=change)
+        ts.policy = self.policy
+        ts.keys = list(derived_keys.values())
+        return ts
 
     def process_tree(self):
         info, mr = taproot_tree_helper(self.tree)
@@ -69,76 +68,31 @@ class Tapscript:
 
     @classmethod
     def read_from(cls, s):
-        num_leafs = 0
-        depth = 0
-        tapscript = []
-        p0 = s.read(1)
-        if p0 != b"{":
-            # depth zero
-            s.seek(-1, 1)
-            alone = Miniscript.read_from(s, taproot=True)
-            alone.is_sane(taproot=True)
-            alone.verify()
-            tapscript.append(alone)
-            num_leafs += 1
-        else:
-            assert p0 == b"{"
-            depth += 1
-            itmp = None
-            itmp_p = None
-            while True:
-                p1 = s.read(1)
-                if p1 == b'':
-                    break
-                elif p1 == b")":
-                    s.seek(-1, 1)
-                    break
-                elif p1 == b",":
-                    continue
-                elif p1 == b"{":
-                    if itmp is None:
-                        itmp = []
-                    else:
-                        if itmp_p:
-                            itmp[itmp_p].append([])
-                        else:
-                            itmp.append(([]))
-                        itmp_p = -1
+        c = s.read(1)
+        if len(c) == 0:
+            return cls()
+        if c == b"{":  # more than one miniscript
+            left = cls.read_from(s)
+            c = s.read(1)
+            if c == b"}":
+                return left
+            if c != b",":
+                raise ValueError("Invalid tapscript: expected ','")
 
-                    depth += 1
-                    continue
-                elif p1 == b"}":
-                    depth -= 1
-                    if depth == 1:
-                        tapscript.append(itmp)
-                        itmp = None
+            right = cls.read_from(s)
+            if s.read(1) != b"}":
+                raise ValueError("Invalid tapscript: expected '}'")
 
-                    if depth <= 2:
-                        itmp_p = None
-                    continue
+            return cls((left, right))
 
-                s.seek(-1, 1)
-                item = Miniscript.read_from(s, taproot=True)
-                item.is_sane(taproot=True)
-                item.verify()
-                num_leafs += 1
-                if itmp is None:
-                    tapscript.append(item)
-                else:
-                    if itmp_p and depth == 4:
-                        itmp[itmp_p][itmp_p].append(item)
-                    elif itmp_p:
-                        itmp[itmp_p].append(item)
-                    else:
-                        itmp.append(item)
-
-        assert num_leafs <= 8, "num_leafs > 8"
-        ts = cls(tapscript)
-        ts.parse_policy()
-        return ts
+        s.seek(-1, 1)
+        ms = Miniscript.read_from(s, taproot=True)
+        ms.is_sane(taproot=True)
+        ms.verify()
+        return cls(ms)
 
     def parse_policy(self):
-        self.policy, self.keys = self._parse_policy(self.tree, [])
+        self.policy, self.keys = self._parse_policy([])
         orig_keys = OrderedDict()
         for k in self.keys:
             if k.origin not in orig_keys:
@@ -148,43 +102,26 @@ class Tapscript:
             # always keep subderivation in policy string
             self.policy = self.policy.replace(k_lst[0].to_string(subderiv=False), chr(64) + str(i))
 
-    @staticmethod
-    def _parse_policy(tree, all_keys):
-        if isinstance(tree, Miniscript):
-            keys, leaf_str = tree.keys, tree.to_string()
+    def _parse_policy(self, all_keys):
+        if isinstance(self.tree, Miniscript):
+            keys, leaf_str = self.tree.keys, self.tree.to_string()
             for k in keys:
                 if k not in all_keys:
                     all_keys.append(k)
 
             return leaf_str, all_keys
         else:
-            assert isinstance(tree, list)
-            if len(tree) == 1 and isinstance(tree[0], Miniscript):
-                keys, leaf_str = tree[0].keys, tree[0].to_string()
-                for k in keys:
-                    if k not in all_keys:
-                        all_keys.append(k)
+            l, r = self.tree
+            ll, all_keys = l._parse_policy(all_keys)
+            rr, all_keys = r._parse_policy(all_keys)
+            return "{" + ll + "," + rr + "}", all_keys
 
-                return leaf_str, all_keys
-            else:
-                l, r = tree
-                ll, all_keys = Tapscript._parse_policy(l, all_keys)
-                rr, all_keys = Tapscript._parse_policy(r, all_keys)
-                return "{" + ll + "," + rr + "}", all_keys
-
-    @staticmethod
-    def script_tree(tree):
-        if isinstance(tree, Miniscript):
-            return b2a_hex(chains.tapscript_serialize(tree.compile())).decode()
+    def script_tree(self):
+        if isinstance(self.tree, Miniscript):
+            return b2a_hex(chains.tapscript_serialize(self.tree.compile())).decode()
         else:
-            assert isinstance(tree, list)
-            if len(tree) == 1 and isinstance(tree[0], Miniscript):
-                return b2a_hex(chains.tapscript_serialize(tree[0].compile())).decode()
-            else:
-                l, r = tree
-                ll = Tapscript.script_tree(l)
-                rr = Tapscript.script_tree(r)
-                return "{" + ll + "," + rr + "}"
+            l, r = self.tree
+            return "{" + l.script_tree() + "," +r.script_tree() + "}"
 
     def to_string(self, external=True, internal=True):
         return fill_policy(self.policy, self.keys, external, internal)
@@ -520,6 +457,7 @@ class Descriptor:
             else:
                 assert sep == b","
                 tapscript = Tapscript.read_from(s)
+                tapscript.parse_policy()
         elif start.startswith(b"sh(wsh("):
             sh = True
             wsh = True

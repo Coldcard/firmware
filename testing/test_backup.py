@@ -142,7 +142,7 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
             words = ['zoo'] * 12
         else:
             assert title == 'NO-TITLE'
-            assert 'Record this' in body
+            assert 'Record this (12 word)' in body
             assert 'password:' in body
 
             words = seed_story_to_words(body)
@@ -176,6 +176,31 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
 
     return doit
 
+@pytest.fixture
+def make_big_notes(settings_set, sim_exec):
+    def doit(count=9):
+        print(">>> Making huge backup file")
+
+        # - to bypass USB msg limit, append as we go
+        notes = []
+        settings_set('notes', [])
+        for n in range(count):
+            v = { fld:('a'*30) if fld != 'misc' else 'b'*1800
+                    for fld in ['user', 'password', 'site', 'misc'] }
+            v['title'] = f'Note {n+1}'
+            notes.append(v)
+            rv = sim_exec(cmd := f'settings.current["notes"].append({v!r})')
+            assert 'error' not in rv.lower()
+
+        rv = sim_exec('settings.changed()')
+        assert 'error' not in rv.lower()
+
+        assert len(notes) == count
+
+        return notes
+
+    return doit
+
 
 @pytest.mark.qrcode
 @pytest.mark.parametrize('multisig', [False, 'multisig'])
@@ -191,7 +216,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
                      generate_ephemeral_words, set_bip39_pw, verify_backup_file,
                      check_and_decrypt_backup, restore_backup_cs, clear_ms, seedvault,
                      restore_main_seed, import_ephemeral_xprv, backup_system,
-                     press_cancel, sim_exec, pass_way, garbage_collector):
+                     press_cancel, sim_exec, pass_way, garbage_collector, make_big_notes):
     # Make an encrypted 7z backup, verify it, and even restore it!
     clear_ms()
     reset_seed_words()
@@ -201,20 +226,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     # test larger backup files > 10,000 bytes
     if multisig == False and st == None and not reuse_pw and not save_pw and not seedvault:
         # pick just one test case.
-        # - to bypass USB msg limit, append as we go
-        print(">>> Making huge backup file")
-        notes = []
-        settings_set('notes', [])
-        for n in range(9):
-            v = { fld:('a'*30) if fld != 'misc' else 'b'*1800
-                    for fld in ['user', 'password', 'site', 'misc'] }
-            v['title'] = f'Note {n+1}'
-            notes.append(v)
-            rv = sim_exec(cmd := f'settings.current["notes"].append({v!r})')
-            print(rv)
-            assert 'error' not in rv.lower()
-        rv = sim_exec(cmd := f'settings.changed()')
-        assert 'error' not in rv.lower()
+        notes = make_big_notes()
     else:
         notes = None
 
@@ -547,28 +559,10 @@ def test_seed_vault_backup(settings_set, reset_seed_words, generate_ephemeral_wo
         assert xfp_ui in sv_xfp_menu
 
 
-def test_seed_vault_backup_frozen(reset_seed_words, settings_set, repl):
-    from test_ephemeral import SEEDVAULT_TEST_DATA
-
+def test_seed_vault_backup_frozen(reset_seed_words, settings_set, repl, build_test_seed_vault):
     reset_seed_words()
     settings_set("seedvault", 1)
-
-    sv = []
-    for item in SEEDVAULT_TEST_DATA:
-        xfp, entropy, mnemonic = item
-
-        # build stashed encoded secret
-        entropy_bytes = bytes.fromhex(entropy)
-        if mnemonic:
-            vlen = len(entropy_bytes)
-            assert vlen in [16, 24, 32]
-            marker = 0x80 | ((vlen // 8) - 2)
-            stored_secret = bytes([marker]) + entropy_bytes
-        else:
-            stored_secret = entropy_bytes
-
-        sv.append((xfp, stored_secret.hex(), f"[{xfp}]", "meta"))
-
+    sv = build_test_seed_vault()
     settings_set("seeds", sv)
     bk = repl.exec('import backups; RV.write(backups.render_backup_contents())', raw=1)
     assert 'Coldcard backup file' in bk
@@ -598,10 +592,12 @@ def test_clone_start(reset_seed_words, pick_menu_item, cap_story, goto_home):
 
 
 def test_bkpw_override(reset_seed_words, override_bkpw, goto_home, pick_menu_item,
-                       cap_story, press_select, garbage_collector, microsd_path):
+                       cap_story, press_select, garbage_collector, microsd_path,
+                       restore_backup_cs):
     reset_seed_words()  # clean slate
     old_pw = None
     test_cases = [
+        "arm prob slot merc hub fiel wing aver tale undo diar boos army cabl mous teac drif risk frow achi poet ecol boss grit",
         " ".join(12 * ["elevator"]),
         " ".join(12 * ["fever"]),
         32 * "a",
@@ -609,6 +605,7 @@ def test_bkpw_override(reset_seed_words, override_bkpw, goto_home, pick_menu_ite
         64 * "Q",
         (26 * "?") + "!@#$%^&*()",
     ]
+    fnames = []
     for pw in test_cases:
         override_bkpw(pw, old_pw)
 
@@ -630,7 +627,12 @@ def test_bkpw_override(reset_seed_words, override_bkpw, goto_home, pick_menu_ite
         time.sleep(1)
         title, story = cap_story()
         assert "Backup file written" in story
-        garbage_collector.append(microsd_path(story.split("\n\n")[1]))
+        fname = story.split("\n\n")[1]
+        garbage_collector.append(microsd_path(fname))
+        fnames.append(fname)
         press_select()
+
+    for pw, fn in zip(test_cases, fnames):
+        restore_backup_cs(fn, pw, custom_bkpw=True)
 
 # EOF

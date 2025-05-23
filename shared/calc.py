@@ -1,6 +1,6 @@
 # (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# calc.py - Simple python REPL before login
+# calc.py - Simple TOY calculator, before login. Not meant to be useful, just fun!
 #
 # Test with: ./simulator.py --q1 --eff -g --set calc=1 
 #
@@ -19,22 +19,25 @@ async def login_repl():
     re_pin = re.compile(r'^(\d\d+)[-_ ](\d\d+)$')
 
     # in decreasing order of hazard...
-    blacklist = ['import', '__', 'exec', 'locals', 'globals', 'eval', 'input']
+    # - find these with: import builtins; help(builtins)
+    blacklist = ['import', '__', 'exec', 'locals', 'globals', 'eval', 'input',
+                    'getattr', 'setattr', 'delattr', 'open', 'execfile', 'compile' ]
 
     lines = '''\
 
 Example Commands:
 >> 23 + 55 / 22
->> a = 4; b = 3;
->> a*b
->> sha256('123456123456')
->> cls()   # clear screen\
+>> 1.020 * 45.88
+>> sha256('some message')
+>> cls    # clear screen
+>> help\
 '''.split('\n')
 
     state = dict()
     state['sha256'] = lambda x: B2A(ngu.hash.sha256s(x))
     state['sha512'] = lambda x: B2A(ngu.hash.sha512(x).digest())
     state['ripemd'] = lambda x: B2A(ngu.hash.ripemd160(x))
+    state['rand'] = lambda x=32: B2A(ngu.random.bytes(x))
     state['cls'] = lambda: lines.clear()
     state['help'] = lambda: 'Commands: ' + (', '.join(state))
 
@@ -59,8 +62,8 @@ Example Commands:
             if ln == None :
                 # Cancel key - do nothing
                 ans = None
-            elif ln in state and callable(state[ln]):
-                # no needs for () in my world
+            elif ln in ('help', 'cls', 'rand'):
+                # no need for () for these commands
                 ans = state[ln]()
             elif re_pin.match(ln) and len(ln) <= 13:
                 # try login
@@ -86,10 +89,8 @@ Example Commands:
             else:
                 if any((b in ln) for b in blacklist):
                     ans = None
-                elif '=' in ln:
-                    ans = exec(ln, state)
                 else:
-                    ans = eval(ln, state)
+                    ans = eval(ln, state.copy())
 
         except Exception as exc:
             lines.extend(word_wrap(str(exc), 34))

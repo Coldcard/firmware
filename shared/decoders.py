@@ -101,7 +101,7 @@ def decode_qr_result(got, expect_secret=False, expect_text=False, expect_bbqr=Fa
         try:
             ty, final_size, got = got.storage.finalize()
         except BaseException as exc:
-            import sys; sys.print_exception(exc)
+            #import sys; sys.print_exception(exc)
             raise QRDecodeExplained("BBQr decode failed: " + str(exc))
 
         if expect_bbqr:
@@ -136,6 +136,13 @@ def decode_qr_result(got, expect_secret=False, expect_text=False, expect_bbqr=Fa
                 what = "smsg"
 
             return what, (got,)
+
+        elif ty in 'RSE':
+            # key-teleport related
+            if ty == 'R' and len(got) != 33:
+                raise QRDecodeExplained("Truncated KT RX")
+
+            return 'teleport', (ty, got)
         else:
             msg = TYPE_LABELS.get(ty, 'Unknown FileType')
             raise QRDecodeExplained("Sorry, %s not useful." % msg)

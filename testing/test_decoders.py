@@ -141,8 +141,8 @@ def test_detector_xp(code, try_decode):
 def test_urldecode(url, sim_exec):
     from urllib.parse import unquote_plus
 
-    cmd = "from utils import url_decode;  " + \
-                f"RV.write(url_decode({url!r}))"
+    cmd = "from utils import url_unquote;  " + \
+                f"RV.write(url_unquote({url!r}))"
     result = sim_exec(cmd)
 
     assert result == unquote_plus(url)

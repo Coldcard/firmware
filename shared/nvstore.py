@@ -64,7 +64,8 @@ from utils import call_later_ms
 #   b85max = (bool) allow max BIP-32 int value in BIP-85 derivations
 #   ptxurl = (str) URL for PushTx feature, clear to disable feature
 #   hmx    = (bool) Force display of current XFP in home menu, even w/o tmp seed active
-#   unsort_ms = (bool) Allow unsorted multisig with BIP-67 disabled
+#   ccc = (complex) If present, CCC feature is enabled and key details stored here.
+#   ktrx = (privkey) Key teleport Rx has been started, this will be our keypair
 
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
@@ -278,6 +279,7 @@ class SettingsObject:
 
     def leaving_master_seed(self):
         # going from master seed to a tmp seed, so capture a few values we need.
+        self.save_if_dirty()
 
         SettingsObject.master_nvram_key = self.nvram_key
 
@@ -414,7 +416,7 @@ class SettingsObject:
 
         if previous:
             for k in KEEP_IF_BLANK_SETTINGS:
-                if k in previous and k not in self.current:
+                if (k in previous) and (k not in self.current):
                     self.current[k] = previous[k]
 
         # nfc, usb, vidsk handling

@@ -16,7 +16,6 @@
     Advanced
       12 Word Dice Roll
       24 Word Dice Roll
-  Migrate COLDCARD
   Import Existing
     12 Words
     [SEED WORD ENTRY]
@@ -30,6 +29,7 @@
     Import XPRV
     Tapsigner Backup
     Seed XOR
+  Migrate Coldcard
   Help
   Advanced/Tools
     View Identity
@@ -54,17 +54,22 @@
       From VirtDisk [IF VIRTDISK ENABLED]
     File Management
       Verify Backup
+      Teleport Multisig PSBT [IF QR AND SECRET]
       List Files
       Verify Sig File
       NFC File Share [IF NFC ENABLED]
+      BBQr File Share [IF QR SCANNER]
+      QR File Share [IF QR SCANNER]
       Format SD Card
       Format RAM Disk [IF VIRTDISK ENABLED]
+    Key Teleport (start)
     Paper Wallets
     Perform Selftest
     I Am Developer.
       Serial REPL
       Warm Reset
-      Restore Txt Bkup
+      Restore Bkup
+      Reflash GPU [IF QWERTY KEYBOARD]
     Secure Logout
   Settings
     Login Settings
@@ -106,6 +111,11 @@
       NFC Sharing
         Default Off
         Enable NFC
+    NFC Push Tx
+      coldcard.com
+      mempool.space
+      Custom URL...
+      Disable
     Display Units
       BTC
       mBTC
@@ -140,8 +150,9 @@
       50%
       60%
       70%
-      80% (default)
+      80%
       90%
+      95% (default)
       100%
     Delete PSBTs
       Default Keep
@@ -149,6 +160,9 @@
     Menu Wrapping
       Default Off
       Enable
+    Home Menu XFP [IF SECRET AND NOT TMP SEED]
+      Only Tmp
+      Always Show
 ---
 
 [NORMAL OPERATION]
@@ -223,8 +237,13 @@
       Clone Coldcard
     Export Wallet
       Bitcoin Core
+      Fully Noded
       Sparrow Wallet
+      Nunchuk
+      Zeus
       Electrum Wallet
+      Theya
+      Bitcoin Safe
       Wasabi Wallet
       Unchained
       Lily Wallet
@@ -235,7 +254,7 @@
       Export XPUB
         Segwit (BIP-84)
         Classic (BIP-44)
-        P2WPKH/P2SH (49)
+        P2WPKH/P2SH (BIP-49)
         Master XPUB
         Current XFP
       Dump Summary
@@ -248,8 +267,13 @@
       Backup System
       Export Wallet
         Bitcoin Core
+        Fully Noded
         Sparrow Wallet
+        Nunchuk
+        Zeus
         Electrum Wallet
+        Theya
+        Bitcoin Safe
         Wasabi Wallet
         Unchained
         Lily Wallet
@@ -260,15 +284,18 @@
         Export XPUB
           Segwit (BIP-84)
           Classic (BIP-44)
-          P2WPKH/P2SH (49)
+          P2WPKH/P2SH (BIP-49)
           Master XPUB
           Current XFP
         Dump Summary
       Sign Text File
       Batch Sign PSBT
+      Teleport Multisig PSBT [IF QR AND SECRET]
       List Files
       Verify Sig File
       NFC File Share [IF NFC ENABLED]
+      BBQr File Share [IF QR SCANNER]
+      QR File Share [IF QR SCANNER]
       Clone Coldcard
       Format SD Card
       Format RAM Disk [IF VIRTDISK ENABLED]
@@ -314,18 +341,23 @@
       Import XPRV
       Tapsigner Backup
       Coldcard Backup
+    Key Teleport (start)
     Paper Wallets
     Enable HSM [IF HSM AND SECRET]
       Default Off
       Enable
+    Coldcard Co-Signing [IF NOT TMP SEED]
     User Management [IF HSM AND SECRET]
+      (no users yet)
     NFC Tools [IF NFC ENABLED]
+      Sign PSBT
       Show Address
       Sign Message
       Verify Sig File
       Verify Address
       File Share
       Import Multisig
+      Push Transaction [IF ENBALED]
     Danger Zone
       Debug Functions
       Seed Functions
@@ -334,13 +366,15 @@
           Split Existing [IF WORD BASED SEED]
           Restore Seed XOR
         Destroy Seed [IF SECRET AND NOT TMP SEED]
-        Lock Down Seed
+        Lock Down Seed [MAYBE]
         Export SeedQR [IF WORD BASED SEED]
       I Am Developer.
         Serial REPL
         Warm Reset
-        Restore Txt Bkup
-      Seed Vault [IF SECRET]
+        Restore Bkup
+        BKPW Override
+        Reflash GPU [IF QWERTY KEYBOARD]
+      Seed Vault [IF SECRET AND NOT TMP SEED]
         Default Off
         Enable
       Perform Selftest
@@ -353,11 +387,14 @@
         Warn
       Testnet Mode
         Bitcoin
-        Testnet3
+        Testnet4
         Regtest
-      AE Start IDX
+      AE Start Index
         Default Off
         Enable
+      B85 Idx Values
+        Default Off
+        Unlimited
       Settings Space
       MCU Key Slots
       Bless Firmware
@@ -427,11 +464,21 @@
           Bitcoin Core
         Electrum Wallet
       Import from File
+      Import from QR [IF QR SCANNER]
       Import via NFC [IF NFC ENABLED]
       Export XPUB
       Create Airgapped
       Trust PSBT?
       Skip Checks?
+      Full Address View?
+        Partly Censor
+        Show Full
+      Unsorted Multisig?
+    NFC Push Tx
+      coldcard.com
+      mempool.space
+      Custom URL...
+      Disable
     Display Units
       BTC
       mBTC
@@ -466,8 +513,9 @@
       50%
       60%
       70%
-      80% (default)
+      80%
       90%
+      95% (default)
       100%
     Delete PSBTs
       Default Keep
@@ -475,22 +523,27 @@
     Menu Wrapping
       Default Off
       Enable
+    Home Menu XFP [IF SECRET AND NOT TMP SEED]
+      Only Tmp
+      Always Show
     Keyboard EMU
       Default Off
       Enable
   Secure Logout
   SHORTCUT [IF NFC ENABLED]
+    Sign PSBT
     Show Address
     Sign Message
     Verify Sig File
     Verify Address
     File Share
     Import Multisig
+    Push Transaction [IF ENBALED]
 ---
 
 [FACTORY MODE]
-  Version: 5.x.x
   Bag Me Now
+  Version: 5.x.x
   DFU Upgrade
   Ship W/O Bag
   Debug Functions

@@ -7,6 +7,7 @@ from helpers import prandom
 from binascii import a2b_hex
 from bbqr import split_qrs, join_qrs
 from charcodes import KEY_QR
+from base64 import b32decode, b32encode
 
 # All tests in this file are exclusively meant for Q
 #
@@ -149,6 +150,60 @@ def render_bbqr(need_keypress, cap_screen_qr, sim_exec, readback_bbqr_ll):
 
     return doit
 
+
+@pytest.fixture
+def split_scan_bbqr(scan_a_qr, goto_home, need_keypress):
+
+    # take big data and send it via series of BBQr thru emulated scanner
+    def doit(raw_data, type_code, **kws):
+        goto_home()
+        need_keypress(KEY_QR)
+
+        # def split_qrs(raw, type_code, encoding=None,
+        #  min_split=1, max_split=1295, min_version=5, max_version=40
+        actual_vers, parts = split_qrs(raw_data, type_code, **kws)
+        random.shuffle(parts)
+
+        for p in parts:
+            scan_a_qr(p)
+            time.sleep(2.0 / len(parts))  # just so we can watch
+
+    return doit
+
+@pytest.fixture
+def try_sign_bbqr(cap_story, scan_a_qr, press_select, press_cancel, need_keypress,
+                  readback_bbqr, split_scan_bbqr):
+    def doit(psbt, type_code="P", approve=True, nfc_push_tx=False, **kws):
+
+        split_scan_bbqr(psbt, type_code, **kws)
+
+        for r in range(20):
+            title, story = cap_story()
+            if 'OK TO SEND' in title:
+                break
+            time.sleep(.1)
+        else:
+            raise pytest.fail('never saw it?')
+
+        if not approve:
+            press_cancel()
+            return
+
+        # approve it
+        press_select()
+
+        if nfc_push_tx:
+            return psbt, None, None
+
+        time.sleep(.2)
+
+        # expect signed txn back
+        file_type, rb = readback_bbqr()
+        assert file_type in 'TP'
+        return psbt, file_type, rb
+
+    return doit
+
 @pytest.mark.parametrize('size', [ 1, 20, 990, 2060*2,  5000, 65537] )
 def test_show_bbqr_sizes(size, cap_screen_qr, sim_exec, render_bbqr):
     # test lengths
@@ -188,67 +243,35 @@ def test_show_bbqr_contents(src, cap_screen_qr, sim_exec, render_bbqr, load_shar
     assert ft == 'B'
 
 @pytest.mark.bitcoind
+@pytest.mark.reexport
 @pytest.mark.parametrize('size', [ 2, 10 ] )
 @pytest.mark.parametrize('max_ver', [ 20 ] )        # 20 max due to 4k USB buffer limit
 @pytest.mark.parametrize('encoding', '2HZ' )
 @pytest.mark.parametrize('partial', [False, True])
 @pytest.mark.parametrize('base64str', [False, True])
-@pytest.mark.parametrize('segwit', [True, False])
-def test_bbqr_psbt(size, encoding, max_ver, partial, segwit, scan_a_qr, readback_bbqr,
+@pytest.mark.parametrize('addr_fmt', ["p2wpkh", "p2tr"])
+def test_bbqr_psbt(size, encoding, max_ver, partial, addr_fmt, scan_a_qr, readback_bbqr,
                    cap_screen_qr, render_bbqr, goto_home, use_regtest, cap_story,
                    decode_psbt_with_bitcoind, decode_with_bitcoind, fake_txn, dev,
                    start_sign, end_sign, press_cancel, press_select, need_keypress,
-                   base64str):
+                   base64str, try_sign_bbqr, signing_artifacts_reexport):
 
     num_in = size
     num_out = size*10
 
-    def hack(psbt):
-        if partial:
-            # change first input to not be ours
-            pk = list(psbt.inputs[0].bip32_paths.keys())[0]
-            pp = psbt.inputs[0].bip32_paths[pk]
-            psbt.inputs[0].bip32_paths[pk] = b'what' + pp[4:]
+    inputs = [[]] * (num_in - int(partial))
+    if partial:
+        inputs += [[addr_fmt, None, None, False]]  # foreign input
 
-    if not segwit:
-        psbt = fake_txn(num_in, num_out, dev.master_xpub, psbt_hacker=hack)
-    else:
-        psbt = fake_txn(num_in, num_out, dev.master_xpub, psbt_hacker=hack,
-                            segwit_in=True, outstyles=['p2wpkh'])
+    psbt = fake_txn(inputs, num_out, dev.master_xpub, addr_fmt=addr_fmt)
+
     if base64str:
         psbt = base64.b64encode(psbt).decode()
 
     open('debug/last.psbt', 'w' if base64str else 'wb').write(psbt)
 
-    goto_home()
-    need_keypress(KEY_QR)
-
-    # def split_qrs(raw, type_code, encoding=None, 
-    #  min_split=1, max_split=1295, min_version=5, max_version=40
-    actual_vers, parts = split_qrs(psbt, 'U' if base64str else 'P',
-                                   max_version=max_ver, encoding=encoding)
-    random.shuffle(parts)
-
-    for p in parts:
-        scan_a_qr(p)
-        time.sleep(4.0 / len(parts))       # just so we can watch
-
-    for r in range(20):
-        title, story = cap_story()
-        if 'OK TO SEND' in title:
-            break
-        time.sleep(.1)
-    else:
-        raise pytest.fail('never saw it?')
-
-    # approve it
-    press_select()
-
-    time.sleep(.2)
-
-    # expect signed txn back
-    file_type, rb = readback_bbqr()
-    assert file_type in 'TP'
+    _, file_type, rb = try_sign_bbqr(psbt, type_code="U" if base64str else "P",
+                                  max_version=max_ver, encoding=encoding)
 
     if file_type == 'T':
         assert not partial
@@ -274,6 +297,12 @@ def test_bbqr_psbt(size, encoding, max_ver, partial, segwit, scan_a_qr, readback
     assert oc == num_out
 
     press_cancel()      # back to menu
+    _psbt, _txn = signing_artifacts_reexport("qr", tx_final=not partial,
+                                             encoding="binary")
+    if partial:
+        assert _psbt == rb
+    else:
+        assert _txn == rb
 
 @pytest.mark.parametrize('test_size', [7854, 4592,
     758, 375, 465,       # v15 capacity
@@ -330,38 +359,13 @@ def test_split_unit(test_size, encoding, sim_exec, sim_eval):
 ])
 def test_psbt_static(file, goto_home, cap_story, scan_a_qr, press_select,
                      readback_bbqr, need_keypress, press_cancel, start_sign,
-                     end_sign, bitcoind):
-
-    goto_home()
-    need_keypress(KEY_QR)
+                     end_sign, bitcoind, try_sign_bbqr):
+    # final tx qrs are versions 23,24,25
 
     with open(file, "rb") as f:
         psbt = f.read()
 
-    # def split_qrs(raw, type_code, encoding=None,
-    #  min_split=1, max_split=1295, min_version=5, max_version=40
-    actual_vers, parts = split_qrs(psbt, 'P', max_version=20, encoding="2")
-    random.shuffle(parts)
-
-    for p in parts:
-        scan_a_qr(p)
-        time.sleep(4.0 / len(parts))       # just so we can watch
-
-    for r in range(20):
-        title, story = cap_story()
-        if 'OK TO SEND' in title:
-            break
-        time.sleep(.1)
-    else:
-        raise pytest.fail('never saw it?')
-
-    # approve it
-    press_select()
-    time.sleep(.3)
-
-    # expect signed txn back
-    file_type, rb = readback_bbqr()
-    assert file_type in 'TP'
+    _, file_type, rb = try_sign_bbqr(psbt, type_code="P", max_version=20, encoding="2")
 
     press_cancel()      # back to menu
 
@@ -394,5 +398,17 @@ KDOloGMDU3fv+Y3NRSe17SoO4uSKo9IUU2+baJ/pqaHZBuvmW6j5nnv/N4M5BCVawiUig/qzExZpFsA7
     title, story = cap_story()
     assert "Good signature by address" in story
 
+@pytest.mark.qrcode
+@pytest.mark.manual
+@pytest.mark.parametrize("i", range(1,25))
+def test_qr_sizes(i, dev, fake_txn, press_cancel, cap_screen_qr, try_sign_bbqr):
+
+    # QRs from version 10 to version 25, everything from v26(included) and above is BBQR
+    # only v17 contains 2 lines of txid
+    psbt = fake_txn(1, i, dev.master_xpub, addr_fmt='p2wpkh')
+
+    try_sign_bbqr(psbt, type_code="P")
+    cap_screen_qr()
+    press_cancel()
 
 # EOF

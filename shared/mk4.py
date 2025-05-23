@@ -57,8 +57,7 @@ def init0():
 
     try:
         make_psram_fs()
-    except BaseException as exc:
-        sys.print_exception(exc)
+    except: pass
 
     if version.is_devmode:
         try:
@@ -70,10 +69,13 @@ def init0():
     rng_seeding()
 
 async def dev_enable_repl(*a):
-    # Mk4: Enable serial port connection. You'll have to break case open.
+    # Enable serial port connection. You'll have to break case open.
+
     from ux import ux_show_story
+    from utils import wipe_if_deltamode
 
     wipe_if_deltamode()
+    if not version.is_devmode: return
 
     # allow REPL access
     ckcc.vcp_enabled(True)
@@ -81,16 +83,5 @@ async def dev_enable_repl(*a):
     print("REPL enabled.")
     await ux_show_story("""\
 The serial port has now been enabled.\n\n3.3v TTL on Tx/Rx/Gnd pads @ 115,200 bps.""")
-
-def wipe_if_deltamode():
-    # If in deltamode, give up and wipe self rather do
-    # a thing that might reveal true master secret...
-
-    from pincodes import pa
-
-    if not pa.is_deltamode():
-        return
-
-    callgate.fast_wipe()
 
 # EOF

@@ -58,6 +58,7 @@ class Bitcoind:
                 "-noprinttoconsole",
                 "-fallbackfee=0.0002",
                 "-server=1",
+                "-listen=0",
                 "-keypool=1",
                 f"-port={self.p2p_port}",
                 f"-rpcport={self.rpc_port}"
@@ -68,8 +69,9 @@ class Bitcoind:
         # Wait for cookie file to be created
         cookie_path = os.path.join(self.datadir, "regtest", ".cookie")
         for i in range(20):
-            if not os.path.exists(cookie_path):
-                time.sleep(0.5)
+            if os.path.exists(cookie_path):
+                break
+            time.sleep(0.5)
         else:
             RuntimeError("'.cookie' not found. Is bitcoind running?")
         # Read .cookie file to get user and pass

@@ -22,7 +22,7 @@ TREE = {
     7: '{{%s,{%s,%s}},{%s,{%s,{%s,%s}}}}',
     8: '{{{%s,%s},{%s,%s}},{{%s,%s},{%s,%s}}}',
     # more than MAX (4) for test purposes
-    9: '{{{%s{%s,%s}},{%s,%s}},{{%s,%s},{%s,%s}}}'
+    9: '{{{%s,{%s,%s}},{%s,%s}},{{%s,%s},{%s,%s}}}'
 }
 
 
@@ -273,8 +273,8 @@ def bitcoin_core_signer(bitcoind):
 
 @pytest.fixture
 def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
-                           cap_story, load_export, miniscript_descriptors,
-                           usb_miniscript_addr, cap_screen_qr):
+                           cap_story, miniscript_descriptors, load_export,
+                           usb_miniscript_addr, cap_screen_qr, press_select):
     def doit(way, addr_fmt, wallet, cc_minsc_name, export_check=True):
         goto_home()
         pick_menu_item("Address Explorer")
@@ -295,8 +295,10 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
                 time.sleep(.2)
             need_keypress(KEY_CANCEL)
         else:
-            contents = load_export(way, label="Address summary", is_json=False, sig_check=False)
+            contents = load_export(way, label="Address summary", is_json=False,
+                                   sig_check=addr_fmt != "bech32m")
             addr_cont = contents.strip()
+            press_select()
 
         time.sleep(.5)
         title, story = cap_story()
@@ -318,8 +320,9 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
             need_keypress(KEY_CANCEL)
         else:
             contents_change = load_export(way, label="Address summary", is_json=False,
-                                          sig_check=False)
+                                          sig_check=addr_fmt != "bech32m")
             addr_cont_change = contents_change.strip()
+
 
         if way == "nfc":
             addr_range = [0, 9]
@@ -380,6 +383,25 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
                 ek = node.hwif()
                 cc_external = cc_external.replace(uns, ek)
                 cc_internal = cc_internal.replace(uns, ek)
+
+            def remove_minisc_syntactic_sugar(descriptor, a, b):
+                # syntactic sugar https://bitcoin.sipa.be/miniscript/
+                target_len = len(a)
+                idx = 0
+                while idx != -1:
+                    idx = descriptor.find(a, idx)
+                    if idx == -1: break
+                    # needs colon more identities than just 'c'
+                    rep = f":{b}" if descriptor[idx-1] in "asctdvjnlu" else f"{b}"
+                    descriptor = descriptor[:idx] + rep + descriptor[idx+target_len:]
+
+                return descriptor
+
+            cc_external = remove_minisc_syntactic_sugar(cc_external, "c:pk_k(", "pk(")
+            cc_internal = remove_minisc_syntactic_sugar(cc_internal, "c:pk_k(", "pk(")
+
+            cc_external = remove_minisc_syntactic_sugar(cc_external, "c:pk_h(", "pkh(")
+            cc_internal = remove_minisc_syntactic_sugar(cc_internal, "c:pk_h(", "pkh(")
 
             assert cc_external.split("#")[0] == external_desc.split("#")[0].replace("'", "h")
             assert cc_internal.split("#")[0] == internal_desc.split("#")[0].replace("'", "h")
@@ -1025,7 +1047,7 @@ def test_bitcoind_tapscript_address(M_N, clear_miniscript, bitcoind_miniscript,
 def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, bitcoind, goto_home, cap_menu,
                             pick_menu_item, cap_story, microsd_path, load_export, microsd_wipe, dev, way,
                             bitcoind_miniscript, clear_miniscript, get_cc_key, press_cancel, press_select,
-                            skip_if_useless_way, garbage_collector):
+                            skip_if_useless_way, garbage_collector, file_tx_signing_done):
     skip_if_useless_way(way)
     M, N = m_n
     clear_miniscript()
@@ -1073,22 +1095,8 @@ def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, 
     press_select()
     time.sleep(0.1)
     title, story = cap_story()
-    split_story = story.split("\n\n")
-    cc_tx_id = None
-    if "(ready for broadcast)" in story:
-        signed_fname = split_story[1]
-        signed_txn_fname = split_story[-2]
-        cc_tx_id = split_story[-1].split("\n")[-1]
-        txn_fpath = microsd_path(signed_txn_fname)
-        with open(txn_fpath, "r") as f:
-            signed_txn = f.read().strip()
-        garbage_collector.append(txn_fpath)
-    else:
-        signed_fname = split_story[-1]
 
-    fpath = microsd_path(signed_fname)
-    with open(fpath, "r") as f:
-        signed_psbt = f.read().strip()
+    signed_psbt, signed_txn, cc_tx_id = file_tx_signing_done(story)
 
     garbage_collector.append(fpath)
     if cc_first:

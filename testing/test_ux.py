@@ -10,7 +10,7 @@ from bip32 import BIP32Node
 
 @pytest.fixture
 def enable_hw_ux(pick_menu_item, cap_story, press_select, goto_home):
-    def doit(way):
+    def doit(way, disable=False):
         pick_menu_item("Settings")
         pick_menu_item("Hardware On/Off")
         if way == "vdisk":
@@ -18,13 +18,19 @@ def enable_hw_ux(pick_menu_item, cap_story, press_select, goto_home):
             _, story = cap_story()
             if "emulate a virtual disk drive" in story:
                 press_select()
-            pick_menu_item("Enable")
+            if disable:
+                pick_menu_item("Default Off")
+            else:
+                pick_menu_item("Enable")
         elif way == "nfc":
             pick_menu_item("NFC Sharing")
             _, story = cap_story()
             if "(Near Field Communications)" in story:
                 press_select()
-            pick_menu_item("Enable NFC")
+            if disable:
+                pick_menu_item("Default Off")
+            else:
+                pick_menu_item("Enable NFC")
         else:
             raise RuntimeError("TODO")
 
@@ -95,33 +101,34 @@ def word_menu_entry(cap_menu, pick_menu_item, is_q1, do_keypresses, cap_screen):
             # easier for us on Q, but have to anticipate the autocomplete
             for n, w in enumerate(words, start=1):
                 do_keypresses(w[0:2])
-                time.sleep(0.50)
+                time.sleep(0.05)
                 if 'Next key' in cap_screen():
                     do_keypresses(w[2])
-                    time.sleep(.1)
+                    time.sleep(.01)
                 if 'Next key' in cap_screen():
                     if len(w) > 3:
                         do_keypresses(w[3])
                     else:
                         do_keypresses(KEY_DOWN)
-                    time.sleep(.1)
+                    time.sleep(.01)
 
                 pat = rf'{n}:\s?{w}'
                 for x in range(10):
                     if re.search(pat, cap_screen()):
                         break
-                    time.sleep(0.20)
+                    time.sleep(0.02)
                 else:
                     raise RuntimeError('timeout')
 
             if len(words) == 23:
                 do_keypresses(KEY_DOWN)
-                time.sleep(.3)
+                time.sleep(.03)
                 cap_scr = cap_screen()
                 while 'Next key' in cap_scr:
                     target = cap_scr.split("\n")[-1].replace("Next key: ", "")
+                    # picks first choice!?
                     do_keypresses(target[0])
-                    time.sleep(.3)
+                    time.sleep(.03)
                     cap_scr = cap_screen()
             else:
                 cap_scr = cap_screen()
@@ -338,12 +345,13 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
         time.sleep(0.1)
         title, body = cap_story()
 
-    assert f'Record these {nwords}' in body
-
-    assert f'{KEY_QR if is_q1 else "(1)"} to view as QR Code' in body
+    target = f'Record these {nwords}'
     if is_q1:
+        assert target in title
         words = [i[:4].upper() for i in seed_story_to_words(body)]
     else:
+        assert target in body
+        assert  "(1) to view as QR Code" in body
         words = [i[4:4+4].upper() for i in re.findall(r'[ 0-9][0-9]: \w*', body)]
 
     if not is_headless:
@@ -389,8 +397,12 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, expect_ftux,
     pick_menu_item(f'{nwords} Words')
 
     title, body = cap_story()
-    assert title == 'NO-TITLE'
-    assert f'Record these {nwords} secret words!' in body
+    target = f'Record these {nwords} secret words!'
+    if is_q1:
+        assert target in title
+    else:
+        assert title == 'NO-TITLE'
+        assert target in body
 
     if is_q1:
         words = seed_story_to_words(body)
@@ -584,10 +596,11 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
     time.sleep(0.01)
 
     title, body = cap_story()
-    assert title == 'NO-TITLE'
+    if not is_q1:
+        assert title == 'NO-TITLE'
 
     if mode == 'words':
-        assert '24' in body
+        assert '24' in (title if is_q1 else body)
 
         lines = body.split('\n')
         if is_q1:
@@ -597,10 +610,10 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
 
         if b39_word:
             if is_q1:
-                assert lines[11] == 'BIP-39 Passphrase:'
-                assert "*" in lines[12]
-                assert "Seed+Passphrase" in lines[14]
-                ek = lines[15]
+                assert lines[9] == 'BIP-39 Passphrase:'
+                assert "*" in lines[10]
+                assert "Seed+Passphrase" in lines[12]
+                ek = lines[13]
             else:
                 assert lines[26] == 'BIP-39 Passphrase:'
                 assert "*" in lines[27]
@@ -949,19 +962,47 @@ def test_custom_pushtx_url(goto_home, pick_menu_item, press_select, enter_comple
     assert settings_get('ptxurl', None) is None
 
 
-@pytest.mark.parametrize("fname,mode,ftype", [
-    ("ccbk-start.json", "r", "J"),
-    ("ckcc-backup.txt", "r", "U"),
-    ("devils-txn.txn", "rb", "T"),
-    ("example-change.psbt", "rb", "P"),
-    ("sim_conso5.psbt", "rb", "P"),  # binary psbt
-    ("payjoin.psbt", "r", "U"),  # base64 string in file
-    ("worked-unsigned.psbt", "rb", "U"),  # hex string psbt
-    ("coldcard-export.json", "rb", "J"),
-    ("coldcard-export.sig", "r", "U"),
+@pytest.mark.parametrize("fname,ftype", [
+    ("ccbk-start.json", "J"),
+    ("ckcc-backup.txt", "U"),
+    ("devils-txn.txn", "T"),
+    ("example-change.psbt", "P"),
+    ("sim_conso5.psbt", "P"),  # binary psbt
+    ("payjoin.psbt", "U"),  # base64 string in file
+    ("worked-unsigned.psbt", "U"),  # hex string psbt
+    ("coldcard-export.json", "J"),
+    ("coldcard-export.sig", "U"),
 ])
-def test_qr_share_files(fname, mode, ftype, readback_bbqr, need_keypress,
-                        goto_home, pick_menu_item, is_q1, cap_menu):
+def test_bbqr_share_files(fname, ftype, readback_bbqr, need_keypress,
+                          goto_home, pick_menu_item, is_q1, cap_menu):
+    goto_home()
+    if not is_q1:
+        pick_menu_item("Advanced/Tools")
+        pick_menu_item("File Management")
+        assert "BBQr File Share" not in cap_menu()
+        return
+
+    fpath = "data/" + fname
+    shutil.copy2(fpath, '../unix/work/MicroSD')
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("File Management")
+    pick_menu_item("BBQr File Share")
+    time.sleep(.1)
+    pick_menu_item(fname)
+    file_type, rb = readback_bbqr()
+    assert file_type == ftype
+    with open(fpath, "rb") as f:
+        res = f.read()
+
+    assert res == rb
+    os.remove('../unix/work/MicroSD/' + fname)
+
+@pytest.mark.parametrize("fname", [
+    "ccbk-start.json",
+    "devils-txn.txn",
+    "payjoin.psbt",  # base64 string in file
+])
+def test_qr_share_files(fname, pick_menu_item, goto_home, is_q1, cap_menu, cap_screen_qr):
     goto_home()
     if not is_q1:
         pick_menu_item("Advanced/Tools")
@@ -976,15 +1017,11 @@ def test_qr_share_files(fname, mode, ftype, readback_bbqr, need_keypress,
     pick_menu_item("QR File Share")
     time.sleep(.1)
     pick_menu_item(fname)
-    file_type, rb = readback_bbqr()
-    assert file_type == ftype
-    with open(fpath, mode) as f:
+    qr = cap_screen_qr()
+    with open(fpath, "r") as f:
         res = f.read()
 
-    if fname.endswith(".txn"):
-        res = bytes.fromhex(res.decode())
-
-    assert res == rb
+    assert res == qr.decode()
     os.remove('../unix/work/MicroSD/' + fname)
 
 
@@ -994,7 +1031,7 @@ def test_dump_menutree(sim_execfile):
     sim_execfile('devtest/menu_dump.py')
 
 if 0:
-    # show what the final word can be (debug only)
+    # show what the final word can be (debug only) Mk4 only
     def test_23_words(goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, reset_seed_words, cap_screen_qr, qr_quality_check):
         
         unit_test('devtest/clear_seed.py')

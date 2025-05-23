@@ -167,10 +167,10 @@ def test_positive(addr_fmt, offset, subaccount, chain, from_empty, change_idx,
     assert got_path == (change_idx, offset)
 
 @pytest.mark.parametrize('valid', [ True, False] )
-@pytest.mark.parametrize('testnet', [ True, False] )
+@pytest.mark.parametrize('netcode', [ "BTC", "XTN"] )
 @pytest.mark.parametrize('method', [ 'qr', 'nfc'] )
 @pytest.mark.parametrize('multisig', [ True, False] )
-def test_ux(valid, testnet, method,
+def test_ux(valid, netcode, method,
     sim_exec, wipe_cache, make_myself_wallet, use_testnet, goto_home, pick_menu_item,
     press_cancel, press_select, settings_set, is_q1, nfc_write, need_keypress,
     cap_screen, cap_story, load_shared_mod, scan_a_qr, skip_if_useless_way,
@@ -178,6 +178,8 @@ def test_ux(valid, testnet, method,
 ):
     skip_if_useless_way(method)
     addr_fmt = AF_CLASSIC
+
+    testnet = (netcode == "XTN")
 
     if valid:
         if multisig:
@@ -198,7 +200,7 @@ def test_ux(valid, testnet, method,
             mk = BIP32Node.from_wallet_key(simulator_fixed_tprv if testnet else simulator_fixed_xprv)
             path = "m/44h/{ct}h/{acc}h/0/3".format(acc=0, ct=(1 if testnet else 0))
             sk = mk.subkey_for_path(path)
-            addr = sk.address(chain="XTN" if testnet else "BTC")
+            addr = sk.address(chain=netcode)
     else:
         addr = fake_address(addr_fmt, testnet)
 
@@ -258,7 +260,7 @@ def test_ux(valid, testnet, method,
             assert "Press (0) to sign message with this key" in story
             need_keypress('0')
             msg = "coinkite CC the most solid HWW"
-            sign_msg_from_address(msg, addr, path, addr_fmt, method, testnet)
+            sign_msg_from_address(msg, addr, path, addr_fmt, method, netcode)
 
     else:
         assert title == 'Unknown Address'
@@ -297,11 +299,11 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
     assert lst
 
     title, body = cap_story()
-    if af in ("Taproot P2TR", "ms0", "msc0", "msc2"):
+    if af in ("Taproot P2TR", "msc2"):
         # p2tr - no signature file
         contents = load_export("sd", label="Address summary", is_json=False, sig_check=False)
     else:
-        contents, _ = load_export_and_verify_signature(body, "sd", label="Address summary")
+        contents, _, _ = load_export_and_verify_signature(body, "sd", label="Address summary")
 
     addr_dump = io.StringIO(contents)
     cc = csv.reader(addr_dump)
@@ -338,5 +340,45 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
         assert " P2WPKH " in story
     else:
         assert af in story
+
+
+def test_regtest_addr_on_mainnet(goto_home, is_q1, pick_menu_item, scan_a_qr, nfc_write, cap_story,
+                                 need_keypress, load_shared_mod, use_mainnet):
+    # testing bug in chains.possible_address_fmt
+    # allowed regtest addresses to be allowed on main chain
+    goto_home()
+    use_mainnet()
+    addr = "bcrt1qmff7njttlp6tqtj0nq7svcj2p9takyqm3mfl06"
+    if is_q1:
+        pick_menu_item('Scan Any QR Code')
+        scan_a_qr(addr)
+        time.sleep(1)
+
+        title, story = cap_story()
+
+        assert addr == addr_from_display_format(story.split("\n\n")[0])
+        assert '(1) to verify ownership' in story
+        need_keypress('1')
+
+    else:
+        cc_ndef = load_shared_mod('cc_ndef', '../shared/ndef.py')
+        n = cc_ndef.ndefMaker()
+        n.add_text(addr)
+        ccfile = n.bytes()
+
+        # run simulator w/ --set nfc=1 --eff
+        pick_menu_item('Advanced/Tools')
+        pick_menu_item('NFC Tools')
+        pick_menu_item('Verify Address')
+        open('debug/nfc-addr.ndef', 'wb').write(ccfile)
+        nfc_write(ccfile)
+        # press_select()
+
+    time.sleep(1)
+    title, story = cap_story()
+    assert addr == addr_from_display_format(story.split("\n\n")[0])
+
+    assert title == 'Unknown Address'
+    assert "not valid on Bitcoin Mainnet" in story
 
 # EOF

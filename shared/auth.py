@@ -3,25 +3,24 @@
 # Operations that require user authorization, like our core features: signing messages
 # and signing bitcoin transactions.
 #
-import stash, ure, ux, chains, sys, gc, uio, version, ngu, ujson
+import stash, ure, chains, sys, gc, uio, version, ngu, ujson
 from ubinascii import b2a_base64, a2b_base64
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from uhashlib import sha256
-from public_constants import MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS, AF_P2TR
-from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH, AF_P2WPKH_P2SH
-from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
+from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, SUPPORTED_ADDR_FORMATS, AF_P2TR
+from public_constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
-from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
-from ux import show_qr_code, OK, X, ux_input_text, ux_enter_bip32_index
+from ux import ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
+from ux import show_qr_code, OK, X, abort_and_push, AbortInteraction
 from usb import CCBusyError
-from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
-from utils import B2A, to_ascii_printable, show_single_address
+from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A, show_single_address
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
-from files import CardSlot, CardMissingError, needs_microsd
+from files import CardSlot, CardMissingError
 from exceptions import HSMDenied
 from version import MAX_TXN_LEN
 from charcodes import KEY_QR, KEY_NFC, KEY_ENTER, KEY_CANCEL, KEY_LEFT, KEY_RIGHT
+from msgsign import sign_message_digest
 
 # Where in SPI flash/PSRAM the two PSBT files are (in and out)
 TXN_INPUT_OFFSET = 0
@@ -73,13 +72,12 @@ class UserAuthorizedAction:
         if allowed_cls and isinstance(cls.active_request, allowed_cls):
             return
 
-        # check if UX actally was cleared, and we're not really doing that anymore; recover
+        # check if UX actually was cleared, and we're not really doing that anymore; recover
         # - happens if USB caller never comes back for their final results
         from ux import the_ux
         top_ux = the_ux.top_of_stack()
         if not isinstance(top_ux, cls) and cls.active_request.ux_done:
             # do cleaup
-            print('recovery cleanup')
             cls.cleanup()
             return
 
@@ -91,8 +89,8 @@ class UserAuthorizedAction:
 
         # show line number and/or simple text about error
         if exc:
-            print("%s:" % msg)
-            sys.print_exception(exc)
+            #print("%s:" % msg)
+            #sys.print_exception(exc)
 
             msg += '\n\n'
             em = str(exc)
@@ -128,245 +126,14 @@ Using the key associated with address:
 
 Press %s to continue, otherwise %s to cancel.''' % (OK, X)
 
-# RFC2440 <https://www.ietf.org/rfc/rfc2440.txt> style signatures, popular
-# since the genesis block, but not really part of any BIP as far as I know.
-#
-def rfc_signature_template_gen(msg, addr, sig):
-    template = [
-        "-----BEGIN BITCOIN SIGNED MESSAGE-----\n",
-        "%s\n" % msg,
-        "-----BEGIN BITCOIN SIGNATURE-----\n",
-        "%s\n" % addr,
-        "%s\n" % sig,
-        "-----END BITCOIN SIGNATURE-----\n"
-    ]
-    for part in template:
-        yield part
-
-def parse_armored_signature_file(contents):
-    sep = "-----"
-    assert contents.count(sep) == 6, "Armor text MUST be surrounded by exactly five (5) dashes."
-    temp = contents.split(sep)
-    msg = temp[2].strip()
-    addr_sig = temp[4].strip()
-    addr, sig_str = addr_sig.split()
-    return msg, addr, sig_str
-
-def sign_message_digest(digest, subpath, prompt, addr_fmt=AF_CLASSIC, pk=None):
-    # do the signature itself!
-    from glob import dis
-
-    ch = chains.current_chain()
-
-    if prompt:
-        dis.fullscreen(prompt, percent=.25)
-
-    if pk is None:
-        with stash.SensitiveValues() as sv:
-        # if private key is provided, derivation subpath is ignored
-        # and provided private key is used for signing
-            node = sv.derive_path(subpath)
-            dis.progress_bar_show(.50)
-            pk = node.privkey()
-            addr = ch.address(node, addr_fmt)
-    else:
-        node = ngu.hdnode.HDNode().from_chaincode_privkey(bytes(32), pk)
-        dis.progress_bar_show(.50)
-        addr = ch.address(node, addr_fmt)
-
-    dis.progress_bar_show(.75)
-    rv = ngu.secp256k1.sign(pk, digest, 0).to_bytes()
-    # AF_CLASSIC header byte base 31 is returned by default from ngu - NOOP
-    if addr_fmt != AF_CLASSIC:
-        header_byte, rs = rv[0], rv[1:]
-        # ngu only produces header base for compressed p2pkh, anyways get only rec_id
-        rec_id = (header_byte - 27) & 0x03
-        new_header_byte = rec_id + ch.sig_hdr_base(addr_fmt=addr_fmt)
-        rv = bytes([new_header_byte]) + rs
-
-    dis.progress_bar_show(1)
-
-    return rv, addr
-
-def make_signature_file_msg(content_list):
-    # list of tuples consisting of (hash, file_name)
-    return b"\n".join([
-        b2a_hex(h) + b"  " + fname.encode()
-        for h, fname in content_list
-    ])
-
-def parse_signature_file_msg(msg):
-    # only succeed for our format digest + 2 spaces + fname
-    try:
-        res = []
-        lines = msg.split('\n')
-        for ln in lines:
-            d, fn = ln.split('  ')
-            # should not need to strip if our file format, so dont
-            # is hex? is 32 bytes long?
-            assert len(a2b_hex(d)) == 32
-            res.append((d, fn))
-
-        return res
-    except:
-        return
-
-def sign_export_contents(content_list, deriv, addr_fmt, pk=None):
-    msg2sign = make_signature_file_msg(content_list)
-    bitcoin_digest = chains.current_chain().hash_message(msg2sign)
-    sig_bytes, addr = sign_message_digest(bitcoin_digest, deriv, "Signing...", addr_fmt, pk=pk)
-    sig = b2a_base64(sig_bytes).decode().strip()
-    gen = rfc_signature_template_gen(addr=addr, msg=msg2sign.decode(), sig=sig)
-    return gen
-
-def verify_signed_file_digest(msg):
-    from files import CardSlot
-
-    parsed_msg = parse_signature_file_msg(msg)
-    if not parsed_msg:
-        # not our format
-        return
-
-    try:
-        err, warn = [], []
-        with CardSlot() as card:
-            for digest, fname in parsed_msg:
-                path = card.abs_path(fname)
-                if not card.exists(path):
-                    warn.append((fname, None))
-                    continue
-                path = card.abs_path(fname)
-
-                md = sha256()
-                with open(path, "rb") as f:
-                    while True:
-                        chunk = f.read(1024)
-                        if not chunk:
-                            break
-                        md.update(chunk)
-
-                h = b2a_hex(md.digest()).decode().strip()
-                if h != digest:
-                    err.append((fname, h, digest))
-    except:
-        # fail silently if issues with reading files or SD issues
-        # no digest checking
-        return
-
-    return err, warn
-
-def write_sig_file(content_list, derive=None, addr_fmt=AF_CLASSIC, pk=None, sig_name=None):
-    from glob import dis
-
-    if derive is None:
-        ct = chains.current_chain().b44_cointype
-        derive = "m/44'/%d'/0'/0/0" % ct
-
-    fpath = content_list[0][1]
-    if len(content_list) > 1:
-        # we're signing contents of more files - need generic name for sig file
-        assert sig_name
-        sig_nice = sig_name + ".sig"
-        sig_fpath = fpath.rsplit("/", 1)[0] + "/" + sig_nice
-    else:
-        sig_fpath = fpath.rsplit(".", 1)[0] + ".sig"
-        sig_nice = sig_fpath.split("/")[-1]
-
-    sig_gen = sign_export_contents([(h, f.split("/")[-1]) for h, f in content_list],
-                                   derive, addr_fmt, pk=pk)
-
-    with open(sig_fpath, 'wt') as fd:
-        for i, part in enumerate(sig_gen):
-            fd.write(part)
-            # rfc template generator has length of 6
-            dis.progress_bar_show(i / 6)
-    return sig_nice
-
-def validate_text_for_signing(text, only_printable=True):
-    # Check for some UX/UI traps in the message itself.
-    # - messages must be short and ascii only. Our charset is limited
-    # - too many spaces, leading/trailing can be an issue
-    # MSG_MAX_SPACES = 4      # impt. compared to -=- positioning
-
-    result = to_ascii_printable(text, only_printable=only_printable)
-
-    length = len(result)
-    assert length >= 2, "msg too short (min. 2)"
-    assert length <= MSG_SIGNING_MAX_LENGTH, "msg too long (max. %d)" % MSG_SIGNING_MAX_LENGTH
-    assert "   " not in result, 'too many spaces together in msg(max. 3)'
-    # other confusion w/ whitepace
-    assert result[0] != ' ', 'leading space(s) in msg'
-    assert result[-1] != ' ', 'trailing space(s) in msg'
-
-    # looks ok
-    return result
-
-def addr_fmt_from_subpath(subpath):
-    if not subpath:
-        af = "p2pkh"
-    elif subpath[:4] == "m/84":
-        af = "p2wpkh"
-    elif subpath[:4] == "m/49":
-        af = "p2sh-p2wpkh"
-    else:
-        af = "p2pkh"
-    return af
-
-def parse_msg_sign_request(data):
-    subpath = ""
-    addr_fmt = None
-    is_json = False
-
-    # sparrow compat
-    if "signmessage" in data:
-        try:
-            mark, subpath, *msg_line = data.split(" ", 2)
-            assert mark == "signmessage"
-            # subpath will be verified & cleaned later
-            assert msg_line[0][:6] == "ascii:"
-            text = msg_line[0][6:]
-            return text, subpath, addr_fmt_from_subpath(subpath), is_json
-        except:pass
-    # ===
-
-    try:
-        data_dict = ujson.loads(data.strip())
-        text = data_dict.get("msg", None)
-        if text is None:
-            raise AssertionError("MSG required")
-        subpath = data_dict.get("subpath", subpath)
-        addr_fmt = data_dict.get("addr_fmt", addr_fmt)
-        is_json = True
-    except ValueError:
-        lines = data.split("\n")
-        assert len(lines) >= 1, "min 1 line"
-        assert len(lines) <= 3, "max 3 lines"
-
-        if len(lines) == 1:
-            text = lines[0]
-        elif len(lines) == 2:
-            text, subpath = lines
-        else:
-            text, subpath, addr_fmt = lines
-
-    if not addr_fmt:
-        addr_fmt = addr_fmt_from_subpath(subpath)
-
-    if not subpath:
-        subpath = chains.STD_DERIVATIONS[addr_fmt]
-        subpath = subpath.format(
-            coin_type=chains.current_chain().b44_cointype,
-            account=0, change=0, idx=0
-        )
-
-    return text, subpath, addr_fmt, is_json
-
-
 class ApproveMessageSign(UserAuthorizedAction):
     def __init__(self, text, subpath, addr_fmt, approved_cb=None,
                  msg_sign_request=None, only_printable=True):
         super().__init__()
         is_json = False
+
+        from msgsign import validate_text_for_signing, parse_msg_sign_request
+
         if msg_sign_request:
             text, subpath, addr_fmt, is_json = parse_msg_sign_request(msg_sign_request)
 
@@ -392,7 +159,7 @@ class ApproveMessageSign(UserAuthorizedAction):
 
     async def interact(self):
         # Prompt user w/ details and get approval
-        from glob import dis, hsm_active
+        from glob import hsm_active
 
         if hsm_active:
             ch = await hsm_active.approve_msg_sign(self.text, self.address, self.subpath)
@@ -407,7 +174,7 @@ class ApproveMessageSign(UserAuthorizedAction):
         else:
             # perform signing (progress bar shown)
             digest = chains.current_chain().hash_message(self.text.encode())
-            self.result = sign_message_digest(digest, self.subpath, "Signing...", self.addr_fmt)[0]
+            self.result, _ = sign_message_digest(digest, self.subpath, "Signing...", self.addr_fmt)
 
             if self.approved_cb:
                 # for micro sd case
@@ -422,48 +189,18 @@ class ApproveMessageSign(UserAuthorizedAction):
     
 
 def sign_msg(text, subpath, addr_fmt):
+    # Start the approval process for message signing.
     UserAuthorizedAction.check_busy()
     UserAuthorizedAction.active_request = ApproveMessageSign(text, subpath, addr_fmt)
+
     # kill any menu stack, and put our thing at the top
     abort_and_goto(UserAuthorizedAction.active_request)
-
-
-async def msg_sign_ux_get_subpath(addr_fmt):
-    purpose = chains.af_to_bip44_purpose(addr_fmt)
-    chain_n = chains.current_chain().b44_cointype
-    acct = await ux_enter_bip32_index('Account Number:') or 0
-    ch = await ux_show_story(title="Change?",
-                             msg="Press (0) to use internal/change address,"
-                                 " %s to use external/receive address." % OK, escape="0")
-    change = 1 if ch == '0' else 0
-    idx = await ux_enter_bip32_index('Index Number:') or 0
-    return "m/%dh/%dh/%dh/%d/%d" % (purpose, chain_n, acct, change, idx)
-
-
-async def ux_sign_msg(txt, approved_cb=None, kill_menu=True):
-    from menu import MenuSystem, MenuItem
-    from ux import the_ux
-
-    async def done(_1, _2, item):
-        from auth import approve_msg_sign, msg_sign_ux_get_subpath
-
-        text, af = item.arg
-        subpath = await msg_sign_ux_get_subpath(af)
-
-        await approve_msg_sign(text, subpath, af, approved_cb=approved_cb,
-                               kill_menu=kill_menu, only_printable=False)
-
-    # pick address format
-    rv = [
-        MenuItem(chains.addr_fmt_label(af), f=done, arg=(txt, af))
-        for af in (AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH)  # cannot use SINGLE_AF here as it contains taproot
-    ]
-    the_ux.push(MenuSystem(rv))
-
 
 async def approve_msg_sign(text, subpath, addr_fmt, approved_cb=None,
                            msg_sign_request=None, kill_menu=False,
                            only_printable=True):
+
+    # Ask user if they want to sign some short text message.
     UserAuthorizedAction.cleanup()
     UserAuthorizedAction.check_busy(ApproveMessageSign)
     try:
@@ -473,114 +210,22 @@ async def approve_msg_sign(text, subpath, addr_fmt, approved_cb=None,
             msg_sign_request=msg_sign_request,
             only_printable=only_printable,
         )
+
         if kill_menu:
             abort_and_goto(UserAuthorizedAction.active_request)
         else:
-            # do not kill the menu stack! just append
+            # do not kill the menu stack! just push
             from ux import the_ux
             the_ux.push(UserAuthorizedAction.active_request)
+
     except (AssertionError, ValueError) as exc:
         await ux_show_story("Problem: %s\n\nMessage to be signed must be a single line of ASCII text." % exc)
-        return
-
-
-async def msg_signing_done(signature, address, text):
-    from ux import import_export_prompt
-
-    ch = await import_export_prompt("Signed Msg", is_import=False,
-                                    no_qr=not version.has_qwerty)
-    if ch == KEY_CANCEL:
-        return
-
-    if isinstance(ch, dict):
-        await sd_sign_msg_done(signature, address, text, "msg_sign", **ch)
-    elif version.has_qr and ch == KEY_QR:
-        from ux_q1 import qr_msg_sign_done
-        await qr_msg_sign_done(signature, address, text)
-    elif ch in KEY_NFC+"3":
-        from glob import NFC
-        if NFC:
-            await NFC.msg_sign_done(signature, address, text)
-
-
-async def sign_with_own_address(subpath, addr_fmt):
-    # used for cases where we already have the key picked, but need the message:
-    #     * address_explorer custom path
-    #     * positive ownership test
-    from glob import dis
-
-    to_sign = await ux_input_text("", scan_ok=True, prompt="Enter MSG")  # max len is 100 only here
-    if not to_sign: return
-
-    await approve_msg_sign(to_sign, subpath, addr_fmt, approved_cb=msg_signing_done, kill_menu=True)
-
-
-async def sd_sign_msg_done(signature, address, text, base=None, orig_path=None,
-                           slot_b=None, force_vdisk=False):
-    from glob import dis
-    dis.fullscreen('Generating...')
-
-    out_fn = None
-    sig = b2a_base64(signature).decode('ascii').strip()
-
-    while 1:
-        # try to put back into same spot
-        # add -signed to end.
-        target_fname = base + '-signed.txt'
-        lst = [orig_path]
-        if orig_path:
-            lst.append(None)
-
-        for path in lst:
-            try:
-                with CardSlot(readonly=True, slot_b=slot_b, force_vdisk=force_vdisk) as card:
-                    out_full, out_fn = card.pick_filename(target_fname, path)
-                    out_path = path
-                    if out_full: break
-            except CardMissingError:
-                prob = 'Missing card.\n\n'
-                out_fn = None
-
-        if not out_fn:
-            # need them to insert a card
-            prob = ''
-        else:
-            # attempt write-out
-            try:
-                dis.fullscreen("Saving...")
-                with CardSlot(slot_b=slot_b, force_vdisk=force_vdisk) as card:
-                    with card.open(out_full, 'wt') as fd:
-                        # save in full RFC style
-                        # gen length is 6
-                        gen = rfc_signature_template_gen(addr=address, msg=text, sig=sig)
-                        for i, part in enumerate(gen):
-                            fd.write(part)
-                            dis.progress_bar_show(i / 6)
-
-                # success and done!
-                break
-
-            except OSError as exc:
-                prob = 'Failed to write!\n\n%s\n\n' % exc
-                sys.print_exception(exc)
-                # fall through to try again
-
-        # prompt them to input another card?
-        ch = await ux_show_story(prob + "Please insert an SDCard to receive signed message, "
-                                        "and press %s." % OK, title="Need Card")
-        if ch == 'x':
-            await ux_aborted()
-            return
-
-    # done.
-    msg = "Created new file:\n\n%s" % out_fn
-    await ux_show_story(msg, title='File Signed')
-
 
 async def sign_txt_file(filename):
     # sign a one-line text file found on a MicroSD card
     # - not yet clear how to do address types other than 'classic'
     from ux import the_ux
+    from msgsign import sd_sign_msg_done
 
     async def done(signature, address, text):
         # complete. write out result
@@ -603,139 +248,10 @@ async def sign_txt_file(filename):
     await approve_msg_sign(None, None, None, approved_cb=done,
                            msg_sign_request=res)
 
-def verify_signature(msg, addr, sig_str):
-    warnings = ""
-    script = None
-    hash160 = None
-    invalid_addr_fmt_msg = "Invalid address format - must be one of p2pkh, p2sh-p2wpkh, or p2wpkh."
-    invalid_addr = "Invalid signature for message."
-
-    if addr[0] in "1mn":
-        addr_fmt = AF_CLASSIC
-        decoded_addr = ngu.codecs.b58_decode(addr)
-        hash160 = decoded_addr[1:]  # remove prefix
-    elif addr.startswith("bc1q") or addr.startswith("tb1q") or addr.startswith("bcrt1q"):
-        if len(addr) > 44:  # testnet/mainnet max singlesig len 42, regtest 44
-            # p2wsh
-            raise ValueError(invalid_addr_fmt_msg)
-        addr_fmt = AF_P2WPKH
-        _, _, hash160 = ngu.codecs.segwit_decode(addr)
-    elif addr[0] in "32":
-        addr_fmt = AF_P2WPKH_P2SH
-        decoded_addr = ngu.codecs.b58_decode(addr)
-        script = decoded_addr[1:]  # remove prefix
-    else:
-        raise ValueError(invalid_addr_fmt_msg)
-
-    try:
-        sig_bytes = a2b_base64(sig_str)
-        if not sig_bytes or len(sig_bytes) != 65:
-            # can return b'' in case of wrong, can also raise
-            raise ValueError("invalid encoding")
-
-        header_byte = sig_bytes[0]
-        header_base = chains.current_chain().sig_hdr_base(addr_fmt)
-        if (header_byte - header_base) not in (0, 1, 2, 3):
-            # wrong header value only - this can still verify OK
-            warnings += "Specified address format does not match signature header byte format."
-
-        # least two significant bits
-        rec_id = (header_byte - 27) & 0x03
-        # need to normalize it to 31 base for ngu
-        new_header_byte = 31 + rec_id
-        sig = ngu.secp256k1.signature(bytes([new_header_byte]) + sig_bytes[1:])
-    except ValueError as e:
-        raise ValueError("Parsing signature failed - %s." % str(e))
-
-    digest = chains.current_chain().hash_message(msg.encode('ascii'))
-    try:
-        rec_pubkey = sig.verify_recover(digest)
-    except ValueError as e:
-        raise ValueError("Invalid signature for msg - %s." % str(e))
-
-    rec_pubkey_bytes = rec_pubkey.to_bytes()
-    rec_hash160 = ngu.hash.hash160(rec_pubkey_bytes)
-
-    if script:
-        target = bytes([0, 20]) + rec_hash160
-        target = ngu.hash.hash160(target)
-        if target != script:
-            raise ValueError(invalid_addr)
-    else:
-        if rec_hash160 != hash160:
-            raise ValueError(invalid_addr)
-
-    return warnings
-
-async def verify_armored_signed_msg(contents, digest_check=True):
-    # digest_check=False for NFC cases, where we do not have filesystem
-    from glob import dis
-
-    dis.fullscreen("Verifying...")
-
-    try:
-        msg, addr, sig_str = parse_armored_signature_file(contents)
-    except Exception as e:
-        e_line = problem_file_line(e)
-        await ux_show_story("Malformed signature file. %s %s" % (str(e), e_line), title="FAILURE")
-        return
-
-    try:
-        sig_warn = verify_signature(msg, addr, sig_str)
-    except Exception as e:
-        await ux_show_story(str(e), title="ERROR")
-        return
-
-    title = "CORRECT"
-    warn_msg = ""
-    err_msg = ""
-    story = "Good signature by address:\n%s" % show_single_address(addr)
-
-    if digest_check:
-        digest_prob = verify_signed_file_digest(msg)
-        if digest_prob:
-            err, digest_warn = digest_prob
-            if digest_warn:
-                title = "WARNING"
-                wmsg_base = "not present. Contents verification not possible."
-                if len(digest_warn) == 1:
-                    fname = digest_warn[0][0]
-                    warn_msg += "'%s' is %s" % (fname, wmsg_base)
-                else:
-                    warn_msg += "Files:\n" + "\n".join("> %s" % fname for fname, _ in digest_warn)
-                    warn_msg += "\nare %s" % wmsg_base
-
-            if err:
-                title = "ERROR"
-                for fname, calc, got in err:
-                    err_msg += ("Referenced file '%s' has wrong contents.\n"
-                                "Got:\n%s\n\nExpected:\n%s" % (fname, got, calc))
-
-    if sig_warn:
-        # we know not ours only because wrong recid header used & not BIP-137 compliant
-        story = "Correctly signed, but not by this Coldcard. %s" % sig_warn
-
-    await ux_show_story('\n\n'.join(m for m in [err_msg, story, warn_msg] if m), title=title)
-
-async def verify_txt_sig_file(filename):
-    # copy message into memory
-    try:
-        with CardSlot() as card:
-            with card.open(filename, 'rt') as fd:
-                text = fd.read()
-    except CardMissingError:
-        await needs_microsd()
-        return
-    except Exception as e:
-        await ux_show_story('Error: ' + str(e))
-        return
-
-    await verify_armored_signed_msg(text)
-
-
 async def try_push_tx(data, txid, txn_sha=None):
-    from glob import settings, PSRAM, NFC
     # if NFC PushTx is enabled, do that w/o questions.
+    from glob import settings, PSRAM, NFC
+
     url = settings.get('ptxurl', False)
     if NFC and url:
         try:
@@ -746,21 +262,29 @@ async def try_push_tx(data, txid, txn_sha=None):
             await NFC.share_push_tx(url, txid, data, txn_sha)
             return True
         except: pass  # continue normally if it fails, perhaps too big?
+
     return False
 
-
 class ApproveTransaction(UserAuthorizedAction):
-    def __init__(self, psbt_len, flags=0x0, approved_cb=None, psbt_sha=None, is_sd=None):
+    def __init__(self, psbt_len, flags=None, psbt_sha=None, input_method=None,
+                 output_encoder=None, filename=None):
         super().__init__()
         self.psbt_len = psbt_len
-        self.do_finalize = bool(flags & STXN_FINALIZE)
-        self.do_visualize = bool(flags & STXN_VISUALIZE)
+
+        # do finalize is None if not USB, None = decide based on is_complete
+        if flags is None:
+            self.do_finalize = self.do_visualize = None
+        else:
+            self.do_finalize = bool(flags & STXN_FINALIZE)
+            self.do_visualize = bool(flags & STXN_VISUALIZE)
+
         self.stxn_flags = flags
         self.psbt = None
         self.psbt_sha = psbt_sha
-        self.approved_cb = approved_cb
+        self.input_method = input_method
+        self.output_encoder = output_encoder
+        self.filename = filename
         self.result = None      # will be (len, sha256) of the resulting PSBT
-        self.is_sd = is_sd
         self.chain = chains.current_chain()
 
     def render_output(self, o):
@@ -786,15 +310,13 @@ class ApproveTransaction(UserAuthorizedAction):
             return to_ret + "\n"
 
         # Handle future things better: allow them to happen at least.
-        self.psbt.warnings.append(
-            ('Output?', 'Sending to a script that is not well understood.'))
         dest = B2A(o.scriptPubKey)
-
         return '%s\n - to script -\n%s\n' % (val, dest)
 
     async def interact(self):
         # Prompt user w/ details and get approval
         from glob import dis, hsm_active
+        from ccc import CCCFeature
 
         # step 1: parse PSBT from PSRAM into in-memory objects.
 
@@ -803,6 +325,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 # NOTE: psbtObject captures the file descriptor and uses it later
                 self.psbt = psbtObject.read_psbt(fd)
         except BaseException as exc:
+            # sys.print_exception(exc)
             if isinstance(exc, MemoryError):
                 msg = "Transaction is too complex"
                 exc = None
@@ -815,23 +338,29 @@ class ApproveTransaction(UserAuthorizedAction):
 
         # Do some analysis/ validation
         try:
-            await self.psbt.validate()      # might do UX: accept multisig import
-            dis.progress_bar_show(0.10)
-            self.psbt.consider_inputs()
+            await self.psbt.validate()  # might do UX: accept multisig import
+            dis.progress_sofar(10, 100)
 
-            dis.progress_bar_show(0.33)
+            # consider_keys only needs num_our_keys to be set
+            # it set during psbt.validate()
             self.psbt.consider_keys()
+            dis.progress_sofar(20, 100)
 
-            dis.progress_bar_show(0.66)
+            ccc_c_xfp = CCCFeature.get_xfp()  # can be None
+            self.psbt.consider_inputs(cosign_xfp=ccc_c_xfp)
+            dis.progress_sofar(50, 100)
+
             self.psbt.consider_outputs()
-            self.psbt.consider_dangerous_sighash()
+            dis.progress_sofar(75, 100)
 
-            dis.progress_bar_show(0.85)
+            self.psbt.consider_dangerous_sighash()
+            dis.progress_sofar(90, 100)
+
         except FraudulentChangeOutput as exc:
-            print('FraudulentChangeOutput: ' + exc.args[0])
+            #print('FraudulentChangeOutput: ' + exc.args[0])
             return await self.failure(exc.args[0], title='Change Fraud')
         except FatalPSBTIssue as exc:
-            print('FatalPSBTIssue: ' + exc.args[0])
+            #print('FatalPSBTIssue: ' + exc.args[0])
             return await self.failure(exc.args[0])
         except BaseException as exc:
             del self.psbt
@@ -844,6 +373,10 @@ class ApproveTransaction(UserAuthorizedAction):
                 msg = "Invalid PSBT"
 
             return await self.failure(msg, exc)
+
+        # early test for spending policy; not an error if violates policy
+        # - might add warnings
+        could_ccc_sign, needs_2fa = CCCFeature.could_sign(self.psbt)
 
         # step 2: figure out what we are approving, so we can get sign-off
         # - outputs, amounts
@@ -895,7 +428,6 @@ class ApproveTransaction(UserAuthorizedAction):
 
                 for label, m in self.psbt.ux_notes:
                     msg.write('- %s: %s\n' % (label, m))
-                msg.write("\n")
 
             if self.psbt.warnings:
                 msg.write('---WARNING---\n\n')
@@ -912,16 +444,21 @@ class ApproveTransaction(UserAuthorizedAction):
 
             ux_clear_keys(True)
             dis.progress_bar_show(1)  # finish the Validating...
+
             if not hsm_active:
-                msg.write("\nPress %s to approve and sign transaction." % OK)
+                esc = ""
+                msg.write("Press %s to approve and sign transaction." % OK)
                 if needs_txn_explorer:
+                    esc += "2"
                     msg.write(" Press (2) to explore txn.")
-                if self.is_sd and CardSlot.both_inserted():
+                if (self.input_method == "sd") and CardSlot.both_inserted():
+                    esc += "b"
                     msg.write(" (B) to write to lower SD slot.")
-                msg.write(" X to abort.")
+                msg.write(" %s to abort." % X)
+
                 while True:
-                    ch = await ux_show_story(msg, title="OK TO SEND?", escape="2b")
-                    if ch == "2" and needs_txn_explorer:
+                    ch = await ux_show_story(msg, title="OK TO SEND?", escape=esc)
+                    if ch == "2":
                         await self.txn_explorer()
                         continue
                     else:
@@ -929,8 +466,8 @@ class ApproveTransaction(UserAuthorizedAction):
                         del msg
                         break
             else:
+                # get approval (maybe) from the HSM
                 ch = await hsm_active.approve_transaction(self.psbt, self.psbt_sha, msg.getvalue())
-                dis.progress_bar_show(1)     # finish the Validating...
 
         except MemoryError:
             # recovery? maybe.
@@ -944,7 +481,7 @@ class ApproveTransaction(UserAuthorizedAction):
             return await self.failure(msg)
 
         if ch not in 'yb':
-            # they don't want to!
+            # they don't want to sign!
             self.refused = True
 
             await ux_dramatic_pause("Refused.", 1)
@@ -954,11 +491,27 @@ class ApproveTransaction(UserAuthorizedAction):
             self.done()
             return
 
+        if needs_2fa and could_ccc_sign:
+            # They still need to pass web2fa challenge (but it meets other specs ok)
+            try:
+                await CCCFeature.web2fa_challenge()
+            except:
+                could_ccc_sign = False
+                ch2 = await ux_show_story("Will not add CCC signature. Proceed anyway?")
+                if ch2 != 'y':
+                    return await self.failure("2FA Failed")
+
         # do the actual signing.
         try:
             dis.fullscreen('Wait...')
             gc.collect()           # visible delay caused by this but also sign_it() below
             self.psbt.sign_it()
+
+            if could_ccc_sign:
+                dis.fullscreen('CCC Sign...')
+                gc.collect()
+                CCCFeature.sign_psbt(self.psbt)
+
         except FraudulentChangeOutput as exc:
             return await self.failure(exc.args[0], title='Change Fraud')
         except MemoryError:
@@ -967,60 +520,17 @@ class ApproveTransaction(UserAuthorizedAction):
         except BaseException as exc:
             return await self.failure("Signing failed late", exc)
 
-        if self.approved_cb:
-            # for NFC, micro SD cases
-            kws = dict(psbt=self.psbt)
-            if self.is_sd and (ch == "b"):
-                kws["slot_b"] = True
-            await self.approved_cb(**kws)
-            self.done()
-            return
-
-        txid = None
         try:
-            # re-serialize the PSBT back out
-            with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd:
-                if self.do_finalize:
-                    txid = self.psbt.finalize(fd)
-                else:
-                    self.psbt.serialize(fd)
-
-                self.result = (fd.tell(), fd.checksum.digest())
-
-            self.done(redraw=(not txid))
-
+            await done_signing(self.psbt, self, self.input_method, self.filename, self.output_encoder,
+                               slot_b=True if ch == "b" else False, finalize=self.do_finalize)
+            self.done()
+        except AbortInteraction:
+            # user might have sent new sign cmd, while we still at export prompt
+            pass
         except BaseException as exc:
+            # sys.print_exception(exc)
             return await self.failure("PSBT output failed", exc)
 
-        from glob import NFC
-
-        if self.do_finalize and txid and not hsm_active:
-
-            if await try_push_tx(self.result[0], txid, self.result[1]):
-                return  # success, exit
-
-            kq, kn = "(1)", "(3)"
-            if version.has_qwerty:
-                kq, kn = KEY_QR, KEY_NFC
-            while 1:
-                # Show txid when we can; advisory
-                # - maybe even as QR, hex-encoded in alnum mode
-                tmsg = txid + '\n\nPress %s for QR Code of TXID. ' % kq
-
-                if NFC:
-                    tmsg += 'Press %s to share signed txn via NFC.' % kn
-
-                ch = await ux_show_story(tmsg, "Final TXID", escape='13'+KEY_NFC+KEY_QR)
-
-                if ch in '1'+KEY_QR:
-                    await show_qr_code(txid, True)
-                    continue
-
-                if ch in KEY_NFC+"3" and NFC:
-                    await NFC.share_signed_txn(txid, TXN_OUTPUT_OFFSET,
-                                               self.result[0], self.result[1])
-                    continue
-                break
 
     async def txn_explorer(self):
         # Page through unlimited-sized transaction details
@@ -1043,7 +553,7 @@ class ApproveTransaction(UserAuthorizedAction):
             rv += 'Press RIGHT to see next group'
             if offset:
                 rv += ', LEFT to go back'
-            rv += '. X to quit.'
+            rv += ('. %s to quit.' % X)
 
             return rv
 
@@ -1095,7 +605,7 @@ class ApproveTransaction(UserAuthorizedAction):
             if chk:
                 # append the signature
                 digest = ngu.hash.sha256s(chk.digest())
-                sig = sign_message_digest(digest, 'm', None, AF_CLASSIC)[0]
+                sig, _ = sign_message_digest(digest, 'm', None, AF_CLASSIC)
                 fd.write(b2a_base64(sig).decode('ascii').strip())
                 fd.write('\n')
 
@@ -1117,10 +627,12 @@ class ApproveTransaction(UserAuthorizedAction):
         largest_outs = []
         largest_change = []
         total_change = 0
+        has_change = False
 
         for idx, tx_out in self.psbt.output_iter():
             outp = self.psbt.outputs[idx]
             if outp.is_change:
+                has_change = True
                 total_change += tx_out.nValue
                 if len(largest_change) < MAX_VISIBLE_CHANGE:
                     largest_change.append((tx_out.nValue, self.chain.render_address(tx_out.scriptPubKey)))
@@ -1172,12 +684,12 @@ class ApproveTransaction(UserAuthorizedAction):
             msg.write("\n")
 
         # change outputs - verified to be coming back to our wallet
-        if total_change > 0:
+        if has_change:
             msg.write("Change back:\n%s %s\n" % self.chain.render_value(total_change))
             visible_change_sum = 0
             if len(largest_change) == 1:
                 visible_change_sum += largest_change[0][0]
-                msg.write(' - to address -\n%s\n' % show_single_address(largest_change[0][1]))
+                msg.write(' - to address -\n%s\n\n' % show_single_address(largest_change[0][1]))
             else:
                 msg.write(' - to addresses -\n')
                 for val, addr in largest_change:
@@ -1189,9 +701,7 @@ class ApproveTransaction(UserAuthorizedAction):
             if left_c:
                 needs_txn_explorer = True
                 msg.write('.. plus %d smaller change output(s), not shown here, which total: ' % left_c)
-                msg.write('%s %s\n' % self.chain.render_value(total_change - visible_change_sum))
-
-            msg.write("\n")
+                msg.write('%s %s\n\n' % self.chain.render_value(total_change - visible_change_sum))
 
         # if we didn't already show all outputs, then give user a chance to
         # view them individually
@@ -1201,7 +711,9 @@ class ApproveTransaction(UserAuthorizedAction):
 def sign_transaction(psbt_len, flags=0x0, psbt_sha=None):
     # transaction (binary) loaded into PSRAM already, checksum checked
     UserAuthorizedAction.check_busy(ApproveTransaction)
-    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, flags, psbt_sha=psbt_sha)
+    UserAuthorizedAction.active_request = ApproveTransaction(
+        psbt_len, flags, psbt_sha=psbt_sha, input_method="usb",
+    )
 
     # kill any menu stack, and put our thing at the top
     abort_and_goto(UserAuthorizedAction.active_request)
@@ -1226,21 +738,291 @@ def psbt_encoding_taster(taste, psbt_len):
         raise ValueError("not psbt")
 
     return decoder, output_encoder, psbt_len
-    
-async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
+
+
+async def done_signing(psbt, tx_req, input_method=None, filename=None,
+                       output_encoder=None, slot_b=False, finalize=None):
+    # User authorized PSBT for signing, and we added signatures.
+    # - allow PushTX if enabled (first thing)
+    # - can save final TXN out to SD card/VirtDisk, share by NFC, QR.
+
+    from glob import PSRAM, hsm_active
+    from sffile import SFFile
+    from ux import show_qr_code, import_export_prompt
+
+    first_time = True
+    msg = None
+    title = None
+
+    is_complete = psbt.is_complete()
+    if finalize is not None:
+        # USB case - user can choose whether to attempt finalization
+        is_complete = finalize
+
+    with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as psram:
+        if is_complete:
+            txid = psbt.finalize(psram)
+            noun = "Finalized TX ready for broadcast"
+        else:
+            psbt.serialize(psram)
+            noun = "Partly Signed PSBT"
+            txid = None
+
+        data_len = psram.tell()
+        data_sha2 = psram.checksum.digest()
+
+    if input_method == "usb":
+        # return result over USB before going to all options
+        tx_req.result = data_len, data_sha2
+        if hsm_active:
+            # it is enough to just return back via USB, other options
+            # are pointless
+            return
+
+        first_time = False
+        msg = noun + " shared via USB."
+        title = "PSBT Signed"
+
+    if txid and await try_push_tx(data_len, txid, data_sha2):
+        # go directly to reexport menu after pushTX
+        first_time = False
+        title = "TX Pushed"
+
+    # for specific cases, key teleport is an option
+    offer_kt = False
+    if not is_complete and psbt.active_multisig and version.has_qwerty:
+        offer_kt = 'use Key Teleport to send PSBT to other co-signers'
+
+    while True:
+        ch = None
+        if first_time:
+            # first time, assume they want to send out same way it came in -- don't prompt
+            if input_method == "qr":
+                ch = KEY_QR
+            elif input_method == "nfc":
+                ch = KEY_NFC
+            elif input_method == "kt":
+                ch = 't'
+            else:
+                # SD/VDisk
+                ch = {"force_vdisk": input_method == "vdisk", "slot_b": slot_b}
+
+        if not ch:
+            # show all possible export options (based on hardware enabled, features)
+            intro = []
+            if msg:
+                intro.append(msg)
+            if txid:
+                intro.append('TXID:\n' + txid)
+
+            # "force_prompt" is needed after first iteration as we can be Mk4, with NFC,Vdisk off,
+            # no QR support & not finalizing (no option to show txid provided).
+            # In that case this would just return dict and keep producing signed
+            # files on SD infinitely (would never actually prompt).
+            ch = await import_export_prompt(noun, intro="\n\n".join(intro), offer_kt=offer_kt,
+                                            txid=txid, title=title, force_prompt=not first_time,
+                                            no_qr=not version.has_qwerty)
+        if ch == KEY_CANCEL:
+            UserAuthorizedAction.cleanup()
+            break
+
+        elif txid and (ch == '6'):
+            await show_qr_code(txid, is_alnum=True, force_msg=True)
+            continue
+
+        elif ch == KEY_QR:
+            here = PSRAM.read_at(TXN_OUTPUT_OFFSET, data_len)
+            msg = txid or 'Partly Signed PSBT'
+            try:
+                if len(here) > 920:
+                    # too big for simple QR - use BBQr instead
+                    raise ValueError
+                hex_here = b2a_hex(here).upper().decode()
+                await show_qr_code(hex_here, is_alnum=True, msg=msg)
+            except (ValueError, RuntimeError, TypeError):
+                from ux_q1 import show_bbqr_codes
+                await show_bbqr_codes('T' if txid else 'P', here, msg)
+
+            msg = noun + " shared via QR."
+            del here
+
+        elif ch == KEY_NFC:
+            from glob import NFC
+            if is_complete:
+                await NFC.share_signed_txn(txid, TXN_OUTPUT_OFFSET, data_len, data_sha2)
+            else:
+                await NFC.share_psbt(TXN_OUTPUT_OFFSET, data_len, data_sha2)
+
+            msg = noun + " shared via NFC."
+
+        elif (ch == 't') and not is_complete:
+            # they might want to teleport it, but only if we have PSBT
+            # there is no need to teleport PSBT if txn is already complete & ready to be broadcast
+            from teleport import kt_send_psbt
+            ok = await kt_send_psbt(psbt, data_len)
+            if ok is None:
+                title = "Failed to Teleport"
+            else:
+                title = "Sent by Teleport"
+                _, num_sigs_needed = ok
+                if num_sigs_needed > 0:
+                    s, aux = ("", "is") if num_sigs_needed == 1 else ("s", "are")
+                    msg = "%d more signature%s %s still required." % (num_sigs_needed, s, aux)
+            continue
+
+        else:
+            # typical case: save to SD card, show filenames we used
+            assert isinstance(ch, dict)
+            msg = await _save_to_disk(psbt, txid, ch, is_complete, data_len,
+                                      output_encoder, filename)
+
+        input_method = None
+        first_time = False
+        title = "PSBT Signed"
+
+async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_encoder, filename=None):
+    # Saving a PSBT from PSRAM to something disk-like.
+    # - handle save-to-SD/VirtDisk cases. With re-attempt when no card, etc.
+    assert isinstance(save_options, dict)       # from import_export_prompt
+
+    from glob import dis, settings, PSRAM
+    import os
+
+    dis.fullscreen("Wait...")
+
+    if filename:
+        _, basename = filename.rsplit('/', 1)
+        base = basename.rsplit('.', 1)[0]
+    else:
+        base = 'recent-txn'
+
+    # default encoding is binary
+    output_encoder = output_encoder or (lambda x:x)
+
+    out2_fn = None
+    out_fn = None
+
+    del_after = settings.get('del', 0)
+
+    def _chunk_write(file_d, ofs, chunk=4096):
+        written = 0
+        while written < data_len:
+            if (written + chunk) > data_len:
+                chunk = data_len - written
+
+            file_d.write(PSRAM.read_at(ofs, chunk))
+            written += chunk
+            ofs += chunk
+
+    while 1:
+        # try to put back into same spot, but also do top-of-card
+        if not is_complete:
+            # keep the filename under control during multiple passes
+            target_fname = base.replace('-part', '') + '-part.psbt'
+        else:
+            # add -signed to end. We won't offer to sign again.
+            target_fname = base + '-signed.psbt'
+
+        # attempt write-out
+        try:
+            with CardSlot(**save_options) as card:
+                out_full, out_fn = card.pick_filename(target_fname)
+                out_path = out_full.rsplit("/", 1)[0] + "/"
+
+                if is_complete and del_after:
+                    # don't write signed PSBT if we'd just delete it anyway
+                    out_fn = None
+                else:
+                    with output_encoder(card.open(out_full, 'wb')) as fd:
+                        # save as updated PSBT
+                        if not is_complete:
+                            _chunk_write(fd, TXN_OUTPUT_OFFSET)
+                        else:
+                            psbt.serialize(fd)
+
+                if is_complete:
+                    # write out as hex too, if it's final
+                    out2_full, out2_fn = card.pick_filename(
+                        base + '-final.txn' if not del_after else 'tmp.txn',
+                        out_path)
+
+                    if out2_full:
+                        with HexWriter(card.open(out2_full, 'w+t')) as fd:
+                            # save transaction, in hex
+                            if is_complete:
+                                _chunk_write(fd, TXN_OUTPUT_OFFSET)
+                            else:
+                                txid = psbt.finalize(fd)
+
+                        if del_after:
+                            # rename it now that we know the txid
+                            after_full, out2_fn = card.pick_filename(
+                                txid + '.txn', out_path, overwrite=True)
+                            os.rename(out2_full, after_full)
+
+                if del_after and filename:
+                    # this can do nothing if they swapped SDCard between steps, which is ok,
+                    # but if the original file is still there, this blows it away.
+                    # - if not yet final, the foo-part.psbt file stays
+                    try:
+                        card.securely_blank_file(filename)
+                    except: pass
+
+            # success and done!
+            break
+
+        except CardMissingError:
+            prob = 'Need a card!\n\n'
+
+        except OSError as exc:
+            prob = 'Failed to write!\n\n%s\n\n' % exc
+            # sys.print_exception(exc)
+            # fall through to try again
+
+        # If this point reached, some problem, we could not write.
+
+        if save_options.get('force_vdisk'):
+            await ux_show_story(prob, title='Error')
+            # they can't fix here, so give up
+            return
+
+        # prompt them to input another card?
+        ch = await ux_show_story(
+            prob + "Please insert a card to receive signed transaction, "
+                   "and press OK.", title="Need Card")
+        if ch == 'x':
+            return
+
+    # Done, show the filenames we used.
+    if out_fn:
+        msg = "Updated PSBT is:\n\n%s" % out_fn
+        if out2_fn:
+            msg += '\n\n'
+    else:
+        # del_after is probably set
+        msg = ''
+
+    if out2_fn:
+        msg += 'Finalized transaction (ready for broadcast):\n\n%s' % out2_fn
+
+    return msg
+
+
+async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, just_read=False, ux_abort=False):
     # sign a PSBT file found on a MicroSD card
     # - or from VirtualDisk (mk4)
+    # - to re-use reading/decoding logic, pass just_read
     from glob import dis
     from ux import the_ux
 
-    tmp_buf = bytearray(1024)
+    tmp_buf = bytearray(4096)
 
     # copy file into PSRAM
     # - can't work in-place on the card because we want to support writing out to different card
-    # - accepts hex or base64 encoding, but binary prefered
+    # - accepts hex or base64 encoding, but binary preferred
     with CardSlot(force_vdisk, readonly=True, slot_b=slot_b) as card:
         with card.open(filename, 'rb') as fd:
-            dis.fullscreen('Reading...')
+            dis.fullscreen('Reading...', 0)
 
             # see how long it is
             psbt_len = fd.seek(0, 2)
@@ -1271,138 +1053,25 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
                             out.write(here)
                             total += len(here)
 
-                    dis.progress_bar_show(total / psbt_len)
+                    dis.progress_sofar(total, psbt_len)
 
             # might have been whitespace inflating initial estimate of PSBT size
             assert total <= psbt_len
             psbt_len = total
 
-    async def done(psbt, slot_b=None):
-        dis.fullscreen("Wait...")
-        orig_path, basename = filename.rsplit('/', 1)
-        orig_path += '/'
-        base = basename.rsplit('.', 1)[0]
-        out2_fn = None
-        out_fn = None
-        txid = None
-
-        from glob import settings
-        import os
-        del_after = settings.get('del', 0)
-
-        while 1:
-            # try to put back into same spot, but also do top-of-card
-            is_comp = psbt.is_complete()
-            if not is_comp:
-                # keep the filename under control during multiple passes
-                target_fname = base.replace('-part', '')+'-part.psbt'
-            else:
-                # add -signed to end. We won't offer to sign again.
-                target_fname = base+'-signed.psbt'
-
-            for path in [orig_path, None]:
-                try:
-                    with CardSlot(force_vdisk, readonly=True, slot_b=slot_b) as card:
-                        out_full, out_fn = card.pick_filename(target_fname, path)
-                        out_path = path
-                        if out_full: break
-                except CardMissingError:
-                    prob = 'Missing card.\n\n'
-                    out_fn = None
-
-            if not out_fn: 
-                # need them to insert a card
-                prob = ''
-            else:
-                # attempt write-out
-                try:
-                    with CardSlot(force_vdisk, slot_b=slot_b) as card:
-                        if is_comp and del_after:
-                            # don't write signed PSBT if we'd just delete it anyway
-                            out_fn = None
-                        else:
-                            with output_encoder(card.open(out_full, 'wb')) as fd:
-                                # save as updated PSBT
-                                psbt.serialize(fd)
-
-                        if is_comp:
-                            # write out as hex too, if it's final
-                            out2_full, out2_fn = card.pick_filename(
-                                base+'-final.txn' if not del_after else 'tmp.txn', out_path)
-
-                            with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd0:
-                                txid = psbt.finalize(fd0)
-                                fd0.flush_out()  # need to flush here as we are probably not gona call .read( again
-                                tx_len, tx_sha = fd0.tell(), fd0.checksum.digest()
-                                if txid and await try_push_tx(tx_len, txid, tx_sha):
-                                    return  # success, exit
-
-                                if out2_full:
-                                    fd0.seek(0)
-
-                                    with HexWriter(card.open(out2_full, 'w+t')) as fd:
-                                        # save transaction, in hex
-                                        tmp_buf = bytearray(4096)
-                                        while True:
-                                            rv = fd0.readinto(tmp_buf)
-                                            if not rv: break
-                                            fd.write(memoryview(tmp_buf)[:rv])
-
-                                    if del_after:
-                                        # rename it now that we know the txid
-                                        after_full, out2_fn = card.pick_filename(
-                                                                txid+'.txn', out_path, overwrite=True)
-                                        os.rename(out2_full, after_full)
-
-                        if del_after:
-                            # this can do nothing if they swapped SDCard between steps, which is ok,
-                            # but if the original file is still there, this blows it away.
-                            # - if not yet final, the foo-part.psbt file stays
-                            try:
-                                card.securely_blank_file(filename)
-                            except: pass
-
-                    # success and done!
-                    break
-
-                except OSError as exc:
-                    prob = 'Failed to write!\n\n%s\n\n' % exc
-                    sys.print_exception(exc)
-                    # fall thru to try again
-
-            if force_vdisk:
-                await ux_show_story(prob, title='Error')
-                return
-
-            # prompt them to input another card?
-            ch = await ux_show_story(prob+"Please insert an SDCard to receive signed transaction, "
-                                        "and press %s." % OK, title="Need Card")
-            if ch == 'x':
-                await ux_aborted()
-                return
-
-        # done.
-        if out_fn:
-            msg = "Updated PSBT is:\n\n%s" % out_fn
-            if out2_fn:
-                msg += '\n\n'
-        else:
-            # del_after is probably set
-            msg = ''
-
-        if out2_fn:
-            msg += 'Finalized transaction (ready for broadcast):\n\n%s' % out2_fn
-            if txid and not del_after:
-                msg += '\n\nFinal TXID:\n'+txid
-
-        await ux_show_story(msg, title='PSBT Signed')
-
-        UserAuthorizedAction.cleanup()
+    if just_read:
+        return psbt_len
 
     UserAuthorizedAction.cleanup()
-    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done,
-                                                             is_sd=not force_vdisk)
-    the_ux.push(UserAuthorizedAction.active_request)
+    UserAuthorizedAction.active_request = ApproveTransaction(
+        psbt_len, input_method="vdisk" if force_vdisk else "sd",
+        filename=filename, output_encoder=output_encoder,
+    )
+    if ux_abort:
+        # needed for auto vdisk mode
+        abort_and_push(UserAuthorizedAction.active_request)
+    else:
+        the_ux.push(UserAuthorizedAction.active_request)
 
 class RemoteBackup(UserAuthorizedAction):
     def __init__(self):
@@ -1424,8 +1093,8 @@ class RemoteBackup(UserAuthorizedAction):
 
         except BaseException as exc:
             self.failed = "Error during backup process."
-            print("Backup failure: ")
-            sys.print_exception(exc)
+            #print("Backup failure: ")
+            #sys.print_exception(exc)
         finally:
             self.done()
 
@@ -1486,7 +1155,7 @@ class NewPassphrase(UserAuthorizedAction):
 
         except BaseException as exc:
             self.failed = "Exception"
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
         finally:
             self.done()
 
@@ -1528,14 +1197,16 @@ class ShowAddressBase(UserAuthorizedAction):
             msg = self.get_msg()
             msg += '\n\nCompare this payment address to the one shown on your other, less-trusted, software.'
 
+            esc = "4"
             if not version.has_qwerty:
                 if NFC:
-                    msg += ' Press %s to share via NFC.' % (KEY_NFC if version.has_qwerty else "(3)")
+                    msg += ' Press (3) to share via NFC.'
+                    esc += "3"
                 msg += ' Press (4) to view QR Code.'
 
             while 1:
-                ch = await ux_show_story(msg, title=self.title, escape='34',
-                                        hint_icons=KEY_QR+(KEY_NFC if NFC else ''))
+                ch = await ux_show_story(msg, title=self.title, escape=esc,
+                                         hint_icons=KEY_QR+(KEY_NFC if NFC else ''))
 
                 if ch in '4'+KEY_QR:
                     await show_qr_code(self.address, (self.addr_fmt & AFC_BECH32), is_addrs=True)
@@ -1740,7 +1411,7 @@ class NewMiniscriptEnrollRequest(UserAuthorizedAction):
             return await self.failure('No space left')
         except BaseException as exc:
             self.failed = "Exception"
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
         finally:
             UserAuthorizedAction.cleanup()  # because no results to store
             if self.bsms_index is not None:
@@ -1791,9 +1462,9 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_
         if miniscript is None:
             # autodetect
             try:
-                msc = MiniScriptWallet.from_file(config, name=name)
-            except AssertionError:
                 msc = MultisigWallet.from_file(config, name=name)
+            except:
+                msc = MiniScriptWallet.from_file(config, name=name)
 
         elif miniscript:
             msc = MiniScriptWallet.from_file(config, name=name)
@@ -1874,7 +1545,7 @@ Binary checksum and signature will be further verified before any changes are ma
 
         except BaseException as exc:
             self.failed = "Exception"
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
         finally:
             UserAuthorizedAction.cleanup()      # because no results to store
             self.pop_menu()

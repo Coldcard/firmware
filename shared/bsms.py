@@ -15,7 +15,7 @@ from public_constants import AF_P2WSH, AF_P2WSH_P2SH, AF_CLASSIC, MAX_SIGNERS
 from utils import xfp2str, problem_file_line
 from menu import MenuSystem, MenuItem
 from files import CardSlot, CardMissingError, needs_microsd
-from ux import ux_show_story, ux_enter_number, restore_menu, ux_input_numbers, ux_input_text
+from ux import ux_show_story, ux_enter_number, restore_menu, ux_input_text
 from ux import the_ux, _import_prompt_builder, export_prompt_builder
 from descriptor import Descriptor, Key, append_checksum
 from miniscript import Sortedmulti, Number
@@ -820,7 +820,8 @@ async def bsms_signer_round1(*a):
                 if version.has_qwerty:
                     token_int = await ux_input_text("", scan_ok=True, prompt="Decimal Token")
                 else:
-                    token_int = await ux_input_numbers("", lambda: True)
+                    from ux_mk4 import ux_input_digits
+                    token_int = await ux_input_digits("", prompt="Decimal Token")
                 token_hex = hex(int(token_int))
             else:
                 return

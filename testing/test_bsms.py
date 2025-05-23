@@ -271,7 +271,8 @@ def make_coordinator_round2(make_coordinator_round1, settings_get, settings_set,
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
 def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home, need_keypress,
                             pick_menu_item, cap_menu, cap_story, microsd_path, settings_remove,
-                            nfc_read_text, request, settings_get, microsd_wipe, press_select, is_q1):
+                            nfc_read_text, request, settings_get, microsd_wipe, press_select,
+                            is_q1, press_cancel):
     if way == "vdisk":
         virtdisk_wipe = request.getfixturevalue("virtdisk_wipe")
         virtdisk_path = request.getfixturevalue("virtdisk_path")
@@ -335,7 +336,7 @@ def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_
                 time.sleep(0.2)
                 bsms_tokens = nfc_read_text()
                 time.sleep(0.2)
-                press_select()  # exit NFC UI simulation
+                press_cancel()  # exit NFC UI simulation
                 time.sleep(0.5)
         else:
             # virtual disk
@@ -423,10 +424,10 @@ def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_
 @pytest.mark.parametrize("encryption_type", ["1", "2", "3"])
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
-def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home, need_keypress, pick_menu_item, cap_menu,
+def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home, need_keypress,
                        cap_story, microsd_path, settings_remove, nfc_read_text, request, settings_get,
                        make_coordinator_round1, nfc_write_text, microsd_wipe, press_select,
-                       is_q1):
+                       is_q1, pick_menu_item, cap_menu, press_cancel):
     if way == "vdisk":
         virtdisk_wipe = request.getfixturevalue("virtdisk_wipe")
         virtdisk_path = request.getfixturevalue("virtdisk_path")
@@ -513,7 +514,7 @@ def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home,
             time.sleep(0.2)
             signer_r1 = nfc_read_text()
             time.sleep(0.2)
-            press_select()  # exit NFC UI simulation
+            press_cancel()  # exit NFC UI simulation
             time.sleep(0.5)
     else:
         # virtual disk
@@ -580,10 +581,10 @@ def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home,
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
 @pytest.mark.parametrize("auto_collect", [True, False])
-def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, clear_ms, goto_home, need_keypress,
+def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, clear_ms, goto_home,
                             cap_menu, cap_story, microsd_path, settings_remove, nfc_read_text, request,
                             settings_get, make_coordinator_round1, make_signer_round1, nfc_write_text,
-                            microsd_wipe, pick_menu_item, press_select, is_q1):
+                            microsd_wipe, pick_menu_item, press_select, is_q1, need_keypress, press_cancel):
     def get_token(index):
         if len(tokens) == 1 and encryption_type == "1":
             token = tokens[0]
@@ -724,7 +725,7 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
                 rv = nfc_read_text()
                 time.sleep(.5)
                 descriptor_templates.append(rv)
-                press_select()  # exit animation
+                press_cancel()  # exit animation
 
             time.sleep(.1)
             title, story = cap_story()
@@ -735,7 +736,7 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
             rv = nfc_read_text()
             time.sleep(.5)
             descriptor_templates.append(rv)
-            press_select()  # exit animation
+            press_cancel()  # exit animation
     else:
         if way == "sd":
             path_fn = microsd_path

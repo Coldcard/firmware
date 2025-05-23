@@ -5,8 +5,8 @@
 import compat7z, stash, ckcc, chains, gc, sys, bip39, uos, ngu
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
-from utils import pad_raw_secret
-from ux import ux_show_story, ux_confirm, ux_dramatic_pause, OK, X
+from utils import deserialize_secret
+from ux import ux_show_story, ux_confirm, ux_dramatic_pause, OK, X, ux_input_text
 import version, ujson
 from uio import StringIO
 import seed
@@ -44,12 +44,7 @@ def render_backup_contents(bypass_tmp=False):
 
     COMMENT('Private key details: ' + chain.name)
 
-    with stash.SensitiveValues(bypass_tmp=bypass_tmp) as sv:
-        if sv.deltamode:
-            # die rather than give up our secrets
-            import callgate
-            callgate.fast_wipe()
-
+    with stash.SensitiveValues(bypass_tmp=bypass_tmp, enforce_delta=True) as sv:
         if sv.mode == 'words':
             ADD('mnemonic', bip39.b2a_words(sv.raw))
 
@@ -104,6 +99,8 @@ def render_backup_contents(bypass_tmp=False):
         if k == 'bkpw': continue        # confusing/circular
         if k == 'sd2fa': continue       # do NOT backup SD 2FA (card can be lost or damaged)
         if k == 'words': continue       # words length is recalculated from secret
+        if k == 'ccc': continue         # not supported, security issue
+        if k == 'ktrx': continue        # not useful after the fact
         if k == 'seedvault' and not v: continue
         if k == 'seeds' and not v: continue
         ADD('setting.' + k, v)
@@ -131,7 +128,7 @@ def extract_raw_secret(chain, vals):
     assert 'raw_secret' in vals
     rs = vals.pop('raw_secret')
 
-    raw = pad_raw_secret(rs)
+    raw = deserialize_secret(rs)
 
     # check we can decode this right (might be different firmare)
     opmode, bits, node = stash.SecretStash.decode(raw)
@@ -149,9 +146,10 @@ def extract_long_secret(vals):
     if ('long_secret' in vals) and version.has_608:
         try:
             ls = a2b_hex(vals.pop('long_secret'))
-        except Exception as exc:
-            sys.print_exception(exc)
+        except:
+            # sys.print_exception(exc)
             # but keep going.
+            pass
     return ls
 
 def restore_from_dict_ll(vals):
@@ -189,9 +187,7 @@ def restore_from_dict_ll(vals):
     if ls is not None:
         try:
             pa.ls_change(ls)
-        except Exception as exc:
-            sys.print_exception(exc)
-            # but keep going
+        except: pass # but keep going
         pb = .70
         dis.progress_bar_show(pb)
 
@@ -215,13 +211,17 @@ def restore_from_dict_ll(vals):
             # old backups need this to function properly
             continue
 
+        if k == 'ccc':
+            # CCC feature cannot be backed-up nor restored for security reasons
+            # (would allow replay attacks)
+            continue
+
         if k == 'tp':
             # restore trick pins, which may involve many ops
             from trick_pins import tp
             try:
                 tp.restore_backup(vals[key])
-            except Exception as exc:
-                sys.print_exception(exc)
+            except: pass
 
             # continue as `tp.restore_backup` handles
             # saving into settings
@@ -262,6 +262,25 @@ def restore_from_dict_ll(vals):
 
     return None, need_ftux
 
+def text_bk_parser(contents):
+    # given a (binary encoded) text file, decode into a dict of values
+    # - use json rules to decode the "value" sides
+    vals = {}
+    for line in contents.decode().split('\n'):
+        if not line: continue
+        if line[0] == '#': continue
+
+        try:
+            k,v = line.split(' = ', 1)
+            #print("%s = %s" % (k, v))
+
+            vals[k] = ujson.loads(v)
+        except:
+            print("unable to decode line: %r" % line)
+            # but keep going!
+
+    return vals
+
 async def restore_tmp_from_dict_ll(vals):
     from glob import dis
 
@@ -276,14 +295,14 @@ async def restore_tmp_from_dict_ll(vals):
     from seed import set_ephemeral_seed
     from actions import goto_top_menu
 
-    await set_ephemeral_seed(raw, chain, meta="Coldcard Backup")
+    await set_ephemeral_seed(raw, chain, origin="Coldcard Backup")
     for k, v in vals.items():
         if not k[:8] == "setting.":
             continue
         key = k[8:]
         if key in ["multisig", "miniscript"]:
             # whitelist
-            settings.set(k, v)
+            settings.set(key, v)
 
     goto_top_menu()
 
@@ -362,15 +381,17 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
             ckcc.rng_bytes(b)
             pwd = bip39.b2a_words(b).rsplit(' ', num_pw_words)[0]
 
-            ch = await seed.show_words(prompt="Record this (%d word) backup file password:\n",
-                                       words=pwd.split(" "), escape='6')
+            ch = await seed.show_words(
+                prompt="Record this (%d word) backup file password:\n" % num_pw_words,
+                words=pwd.split(" "), escape='6'
+            )
 
-            if ch == '6' and not write_sflash:
+            if (ch == '6') and not write_sflash:
                 # Secret feature: plaintext mode
                 # - only safe for people living in faraday cages inside locked vaults.
                 if await ux_confirm("The file will **NOT** be encrypted and "
                                     "anyone who finds the file will get all of your money for free!"):
-                    words = []
+                    pwd = []
                     fname_pattern = 'backup.txt'
                     break
                 continue
@@ -465,11 +486,9 @@ async def write_complete_backup(pwd, fname_pattern, write_sflash=False,
 
         except Exception as e:
             # includes CardMissingError
-            import sys
-            sys.print_exception(e)
             # catch any error
             ch = await ux_show_story('Failed to write! Please insert formated MicroSD card, '
-                                    'and press %s to try again.\n\nX to cancel.\n\n\n' % OK +str(e))
+                                    'and press %s to try again.\n\n%s to cancel.\n\n\n%s' % (OK, X, e))
             if ch == 'x': break
             continue
 
@@ -535,12 +554,13 @@ async def verify_backup_file(fname):
     await ux_show_story("Backup file CRC checks out okay.\n\nPlease note this is only a check against accidental truncation and similar. Targeted modifications can still pass this test.")
 
 
-async def restore_complete(fname_or_fd, temporary=False):
+async def restore_complete(fname_or_fd, temporary=False, words=True):
     from ux import the_ux
 
     async def done(words):
         # remove all pw-picking from menu stack
-        seed.WordNestMenu.pop_all()
+        if not version.has_qwerty and words:
+            seed.WordNestMenu.pop_all()
 
         prob = await restore_complete_doit(fname_or_fd, words,
                                            temporary=temporary)
@@ -548,14 +568,24 @@ async def restore_complete(fname_or_fd, temporary=False):
         if prob:
             await ux_show_story(prob, title='FAILED')
 
-    if version.has_qwerty:
-        from ux_q1 import seed_word_entry
-        return await seed_word_entry('Enter Password:', num_pw_words,
-                                     done_cb=done, has_checksum=False)
-    # give them a menu to pick from, and start picking
-    m = seed.WordNestMenu(num_words=num_pw_words, has_checksum=False, done_cb=done)
+    if words:
+        if version.has_qwerty:
+            from ux_q1 import seed_word_entry
+            return await seed_word_entry('Enter Password:', num_pw_words,
+                                         done_cb=done, has_checksum=False)
+        # give them a menu to pick from, and start picking
+        m = seed.WordNestMenu(num_words=num_pw_words, has_checksum=False, done_cb=done)
 
-    the_ux.push(m)
+        the_ux.push(m)
+
+    else:
+        pwd = []  # cleartext if words=None
+        if words is False:
+            ipw = await ux_input_text("", prompt="Your Backup Password",
+                                      min_len=bkpw_min_len, max_len=128)
+            pwd.append(ipw)
+
+        await done(pwd)
 
 async def restore_complete_doit(fname_or_fd, words, file_cleanup=None, temporary=False):
     # Open file, read it, maybe decrypt it; return string if any error
@@ -566,7 +596,6 @@ async def restore_complete_doit(fname_or_fd, words, file_cleanup=None, temporary
 
     # build password
     password = ' '.join(words)
-
     prob = None
 
     try:
@@ -613,19 +642,7 @@ async def restore_complete_doit(fname_or_fd, words, file_cleanup=None, temporary
         await needs_microsd()
         return
 
-    vals = {}
-    for line in contents.decode().split('\n'):
-        if not line: continue
-        if line[0] == '#': continue
-
-        try:
-            k,v = line.split(' = ', 1)
-            #print("%s = %s" % (k, v))
-
-            vals[k] = ujson.loads(v)
-        except:
-            print("unable to decode line: %r" % line)
-            # but keep going!
+    vals = text_bk_parser(contents)
 
     # this leads to reboot if it works, else errors shown, etc.
     if temporary:

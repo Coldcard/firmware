@@ -299,9 +299,12 @@ class TrickPinMgmt:
     def check_new_main_pin(self, pin):
         # user is trying to change main PIN to new value; check for issues
         # - dups bad but also: delta mode pin might not work w/ longer main true pin
+        # - deciding whether TP already exists must be done via comms with SE2
+        #   as checking only self.tp is not sufficient for hidden TPs or after fast wipe
         # - return error msg or None
         assert isinstance(pin, str)
-        if pin in self.tp:
+        b, slot = tp.get_by_pin(pin)
+        if slot is not None:
             return 'That PIN is already in use as a Trick PIN.'
 
         for d_pin in self.get_deltamode_pins():
@@ -371,8 +374,7 @@ class TrickPinMgmt:
 
                 b, slot = tp.update_slot(pin.encode(), new=True,
                                      tc_flags=flags, tc_arg=arg, secret=new_secret)
-            except Exception as exc:
-                sys.print_exception(exc)        # not visible
+            except: pass
             
 
 tp = TrickPinMgmt()
@@ -489,7 +491,7 @@ class TrickPinMenu(MenuSystem):
                            tc_arg=tc_arg, secret=new_secret)
             await ux_dramatic_pause("Saved.", 1)
         except BaseException as exc:
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
             await ux_show_story("Failed: %s" % exc)
 
         self.update_contents()
@@ -632,14 +634,17 @@ setting) the Coldcard will always brick after 13 failed PIN attempts.''')
             #              xxxxxxxxxxxxxxxx
             MenuItem('[%s WRONG PIN]' % rel),
             StoryMenuItem('Wipe, Stop', "Seed is wiped and a message is shown.",
-                arg=num, flags=TC_WIPE),
+                          arg=num, flags=TC_WIPE),
             StoryMenuItem('Wipe & Reboot', "Seed is wiped and Coldcard reboots without notice.",
-                            arg=num, flags=TC_WIPE|TC_REBOOT),
+                          arg=num, flags=TC_WIPE|TC_REBOOT),
             StoryMenuItem('Silent Wipe', "Seed is silently wiped and Coldcard acts as if PIN code was just wrong.",
-                            arg=num, flags=TC_WIPE|TC_FAKE_OUT),
-            StoryMenuItem('Brick Self', "Become a brick instantly and forever.", flags=TC_BRICK, arg=num),
-            StoryMenuItem('Last Chance', "Wipe seed, then give one more try and then brick if wrong PIN.", arg=num, flags=TC_WIPE|TC_BRICK),
-            StoryMenuItem('Just Reboot', "Reboot when this happens. Doesn't do anything else.", arg=num, flags=TC_REBOOT),
+                          arg=num, flags=TC_WIPE|TC_FAKE_OUT),
+            StoryMenuItem('Brick Self', "Become a brick instantly and forever.",
+                          arg=num, flags=TC_BRICK,),
+            StoryMenuItem('Last Chance', "Wipe seed, then give one more try and then brick if wrong PIN.",
+                          arg=num, flags=TC_WIPE|TC_BRICK),
+            StoryMenuItem('Just Reboot', "Reboot when this happens. Doesn't do anything else.",
+                          arg=num, flags=TC_REBOOT),
         ])
 
         m.goto_idx(1)
@@ -706,7 +711,7 @@ You can restore it by trying to re-add the same PIN (%s) again later.''' % pin
 
             self.pop_submenu()      # too lazy to get redraw right
         except BaseException as exc:
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
             await ux_show_story("Failed: %s" % exc)
 
     async def delete_pin(self, m,l, item):
@@ -747,7 +752,6 @@ so you may perform transactions with it. Reboot the Coldcard to restore \
 normal operation.''')
         if ch != 'y': return
 
-        from pincodes import pa, AE_SECRET_LEN
         b, slot = tp.get_by_pin(pin)
         assert slot
 
@@ -771,7 +775,7 @@ normal operation.''')
 
         # switch over to new secret!
         dis.fullscreen("Applying...")
-        await set_ephemeral_seed(encoded, meta=name)
+        await set_ephemeral_seed(encoded, origin=name)
         goto_top_menu()
 
     async def countdown_details(self, m, l, item):
@@ -808,8 +812,7 @@ normal operation.''')
                 # save it
                 try:
                     b, slot = tp.update_slot(pin.encode(), tc_flags=flags, tc_arg=new_val)
-                except BaseException as exc:
-                    sys.print_exception(exc)
+                except: pass
 
             return va.index(cd_val), lgto_ch[1:], set_it
 
@@ -833,7 +836,8 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
         if ch != '6': return
 
         b, s = tp.get_by_pin(pin)
-        if s == None:
+        if s is None:
+            title = None
             # could not find in SE2. Our settings vs. SE2 are not in sync.
             msg = "Not found in SE2. Delete and remake."
         else:
@@ -845,14 +849,14 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
                 ch, pk = s.xdata[0:32], s.xdata[32:64]
                 node.from_chaincode_privkey(ch, pk)
 
-                msg, *_ = render_master_secrets('xprv', None, node)
+                title, msg, *_ = render_master_secrets('xprv', None, node)
             elif flags & TC_WORD_WALLET:
                 raw = s.xdata[0:(32 if nwords == 24 else 16)]
-                msg, *_ = render_master_secrets('words', raw, None)
+                title, msg, *_ = render_master_secrets('words', raw, None)
             else:
                 raise ValueError(hex(flags))
 
-        await ux_show_story(msg, sensitive=True)
+        await ux_show_story(msg, title=title, sensitive=True)
         
 
     async def pin_submenu(self, menu, label, item):

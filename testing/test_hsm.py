@@ -532,12 +532,12 @@ def test_simple_limit(dev, amount, over, start_hsm, fake_txn, attempt_psbt, twea
     assert 'Rule #2' not in stat.summary
 
     # create a transaction
-    psbt = fake_txn(2, 2, dev.master_xpub, outvals=[amount, 2E8-amount],
-                        change_outputs=[1], fee=0)
+    psbt = fake_txn(2, [["p2tr", int(amount)],["p2wpkh", int(2E8-amount), True]],
+                    dev.master_xpub, fee=0)
     attempt_psbt(psbt)
 
-    psbt = fake_txn(2, 2, dev.master_xpub, outvals=[amount+over, 2E8-amount-over],
-                                                    change_outputs=[1], fee=0)
+    psbt = fake_txn(2, [["p2tr", int(amount+over)],["p2wpkh", int(2E8-amount-over), True]],
+                    dev.master_xpub, fee=0)
     attempt_psbt(psbt, "amount exceeded")
 
     if tweak_rule:
@@ -569,7 +569,8 @@ def test_named_wallets(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_statu
 
     # simple p2pkh should fail
 
-    psbt = fake_txn(1, 2, dev.master_xpub, outvals=[amount, 1E8-amount], change_outputs=[1], fee=0)
+    psbt = fake_txn(1, [["p2tr", int(amount)],["p2wpkh", int(1E8-amount), True]],
+                    dev.master_xpub, fee=0)
     attempt_psbt(psbt, "singlesig only")
 
     # but txn w/ multisig wallet should work
@@ -648,7 +649,7 @@ def test_named_wallets_miniscript(dev, start_hsm, tweak_rule, make_myself_wallet
     assert 'wallets' not in stat
 
     # simple p2pkh should fail
-    psbt = fake_txn(1, 2, outvals=[5E6, 1E8-5E6], change_outputs=[1], fee=0)
+    psbt = fake_txn(1, [["p2tr", int(5E6)],["p2wpkh", int(1E8-5E6), True]], fee=0)
     attempt_psbt(psbt, "singlesig only")
 
     # but txn from target miniscript wallet 0 must work
@@ -708,11 +709,9 @@ def test_whitelist_single(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, wi
     # try all addr types
     for style in ['p2wpkh', 'p2wsh', 'p2sh', 'p2pkh', 'p2wsh-p2sh', 'p2wpkh-p2sh', 'p2tr']:
         dests = []
-        psbt = fake_txn(1, 2, dev.master_xpub,
-                            outstyles=[style, 'p2wpkh'],
-                            outvals=[amount, 1E8-amount], change_outputs=[1], fee=0,
-                            capture_scripts=dests)
 
+        psbt = fake_txn(1, [[style, int(amount)], ["p2wpkh", int(1E8-amount), True]],
+                        dev.master_xpub, fee=0, capture_scripts=dests)
         dest = render_address(dests[0])
 
         tweak_rule(0, dict(whitelist=[dest]))
@@ -734,8 +733,7 @@ def test_whitelist_multi(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, amo
     # make a txn that sends to every type of output
     styles = ['p2wpkh', 'p2wsh', 'p2sh', 'p2pkh', 'p2wsh-p2sh', 'p2wpkh-p2sh']
     dests = []
-    psbt = fake_txn(1, len(styles), dev.master_xpub,
-                        outstyles=styles, capture_scripts=dests)
+    psbt = fake_txn(1, [[outs] for outs in styles], dev.master_xpub, capture_scripts=dests)
 
     dests = [render_address(s) for s in dests]
 
@@ -870,7 +868,7 @@ def test_big_txn(num_in, num_out, dev, quick_start_hsm, hsm_status, is_simulator
         attempt_psbt(psbt)
 
 
-@pytest.mark.veryslow
+@pytest.mark.manual
 def test_multiple_signings(dev, quick_start_hsm, is_simulator,
                            attempt_psbt, fake_txn, load_hsm_users,
                            auth_user):
@@ -886,7 +884,7 @@ def test_multiple_signings(dev, quick_start_hsm, is_simulator,
         attempt_psbt(psbt)
 
 
-@pytest.mark.veryslow
+@pytest.mark.manual
 @pytest.mark.parametrize("cc_first", [True, False])
 @pytest.mark.parametrize("M_N", [(2,3), (3,5), (15,15)])
 def test_multiple_signings_multisig(cc_first, M_N, dev, quick_start_hsm,
@@ -1356,7 +1354,7 @@ def test_velocity(dev, start_hsm, fake_txn, attempt_psbt, fast_forward, hsm_stat
     psbt = fake_txn(2, 10, dev.master_xpub)
     attempt_psbt(psbt, 'would exceed period spending')
 
-    psbt = fake_txn(2, 2, dev.master_xpub, outvals=[level, 2E8-level], change_outputs=[1])
+    psbt = fake_txn(2, [["p2wpkh", level], ["p2tr", int(2E8-level), True]], dev.master_xpub)
     attempt_psbt(psbt)      # exactly the limit
 
     s = hsm_status()
@@ -1375,7 +1373,7 @@ def test_velocity(dev, start_hsm, fake_txn, attempt_psbt, fast_forward, hsm_stat
     assert 'has_spend' not in s
 
     amt = 0.30E8
-    psbt = fake_txn(1, 2, dev.master_xpub, outvals=[amt, 1E8-amt], change_outputs=[1])
+    psbt = fake_txn(1, [["p2tr", int(amt)], ["p2wpkh", int(1E8-amt), True]], dev.master_xpub)
     attempt_psbt(psbt)      # 1/3rd of limit
     attempt_psbt(psbt)      # 1/3rd of limit
     attempt_psbt(psbt)      # 1/3rd of limit
@@ -1390,16 +1388,16 @@ def test_min_pct_self_transfer(dev, start_hsm, fake_txn, attempt_psbt):
 
     start_hsm(policy)
 
-    psbt = fake_txn(1, 2, invals = [1000], outvals = [500, 500], change_outputs = [], fee = 0)
+    psbt = fake_txn([["p2pkh", None, 1000]], [["p2tr", 500], ["p2pkh", 500]], fee = 0)
     attempt_psbt(psbt, 'does not meet self transfer threshold, expected: %.2f, actual: %.2f' % (75, 0))
 
-    psbt = fake_txn(1, 2, invals = [1000], outvals = [750, 250], change_outputs = [1], fee = 0)
+    psbt = fake_txn([["p2tr", None, 1000]], [["p2pkh", 750], ["p2tr", 250, True]], fee = 0)
     attempt_psbt(psbt, 'does not meet self transfer threshold, expected: %.2f, actual: %.2f' % (75, 25))
 
-    psbt = fake_txn(1, 2, invals = [1000], outvals = [250, 750], change_outputs = [1], fee = 0)
+    psbt = fake_txn([["p2wpkh", None, 1000]], [["p2tr", 250], ["p2wpkh", 750, True]], fee = 0)
     attempt_psbt(psbt) # exact threshold
 
-    psbt = fake_txn(1, 2, invals = [1000], outvals = [1, 999], change_outputs = [1], fee = 0)
+    psbt = fake_txn([["p2sh-p2wpkh", None, 1000]], [["p2tr", 1], ["p2sh-p2wpkh", 999, True]], fee = 0)
     attempt_psbt(psbt) # exceeding the threshold
 
 @pytest.mark.parametrize('pattern', ['EQ_NUM_INS_OUTS', 'EQ_NUM_OWN_INS_OUTS', 'EQ_OUT_AMOUNTS'] )
@@ -1419,17 +1417,17 @@ def test_patterns(pattern, dev, start_hsm, fake_txn, attempt_psbt):
         psbt = fake_txn(2, 2)
         attempt_psbt(psbt, 'unequal number of own inputs and outputs')
 
-        psbt = fake_txn(2, 2, change_outputs = [0])
+        psbt = fake_txn(2, [["p2pkh", None, True], ["p2tr"]])
         attempt_psbt(psbt, 'unequal number of own inputs and outputs')
 
-        psbt = fake_txn(2, 2, change_outputs = [0, 1])
+        psbt = fake_txn(2, [["p2pkh", None, True], ["p2tr", None, True]])
         attempt_psbt(psbt) # equal number of own ins and outs
 
     if pattern == 'EQ_OUT_AMOUNTS':
-        psbt = fake_txn(1, 2, invals = [1500], outvals = [1000, 500], fee = 0)
+        psbt = fake_txn([["p2wpkh", None, 1500]], [["p2tr", 1000], ["p2pkh", 500]], fee=0)
         attempt_psbt(psbt, 'not all output amounts are equal')
 
-        psbt = fake_txn(1, 2, invals = [2000], outvals = [1000, 1000], fee = 0)
+        psbt = fake_txn([["p2tr", None, 2000]], [["p2wpkh", 1000], ["p2tr", 1000]], fee=0)
         attempt_psbt(psbt) # all output amounts are equal
 
 def test_user_subset(dev, start_hsm, tweak_rule, load_hsm_users, fake_txn, attempt_psbt, auth_user):
@@ -1655,7 +1653,9 @@ def test_priv_over_ux(quick_start_hsm, hsm_status, load_hsm_users):
 @pytest.mark.parametrize("allow_op_return", [False, True])
 def test_op_return_output_local(op_return_data, start_hsm, attempt_psbt, fake_txn, allow_op_return):
     dests = []
-    psbt = fake_txn(2, 2, op_return=[(0, op_return_data)], capture_scripts=dests)
+    psbt = fake_txn(2, [["p2tr", 10000], ["p2tr", 10000], ["op_return", 0, None, op_return_data]],
+                    input_amount=10000, capture_scripts=dests)
+
     if allow_op_return:
         policy = DICT(rules=[dict(whitelist=[render_address(d) for d in dests[0:2]],
             whitelist_opts=dict(allow_zeroval_outs=True))])

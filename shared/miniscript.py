@@ -13,7 +13,7 @@ from wallet import BaseStorageWallet
 from menu import MenuSystem, MenuItem
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 from files import CardSlot, CardMissingError, needs_microsd
-from utils import problem_file_line, xfp2str, to_ascii_printable, swab32, show_single_address
+from utils import problem_file_line, xfp2str, to_ascii_printable, swab32, show_single_address, keypath_to_str
 from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC, KEY_ENTER
 
 
@@ -106,6 +106,7 @@ class MiniScriptWallet(BaseStorageWallet):
             if self._taproot and self._policy:
                 # tapscript
                 ts = Tapscript.read_from(uio.BytesIO(filled_policy))
+                ts.parse_policy()
             elif self._policy:
                 # miniscript
                 ms = Miniscript.read_from(uio.BytesIO(filled_policy))
@@ -213,6 +214,13 @@ class MiniScriptWallet(BaseStorageWallet):
 
         return branch, idx
 
+    def get_my_deriv(self, my_xfp):
+        # TODO we can have more our keys in descriptor
+        # maybe lowest account/change index should be chosen
+        for e in self.xfp_paths():
+            if e[0] == my_xfp:
+                return keypath_to_str(e)
+
     def derive_desc(self, xfp_paths):
         branch, idx = self.subderivation_indexes(xfp_paths)
         derived_desc = self.desc.derive(branch).derive(idx)
@@ -272,24 +280,23 @@ class MiniScriptWallet(BaseStorageWallet):
                 return True
 
     def taproot_internal_key_detail(self, short=False):
-        if self.taproot:
-            key = Key.from_string(self.key)
-            s = "Taproot internal key:\n\n"
-            if key.is_provably_unspendable:
-                note = "provably unspendable"
-                if short:
-                    s += note
-                else:
-                    s += self.key
-                    if type(key) is Key:
-                        # it is unspendable, BUT not unspend(
-                        s += "\n (%s)" % note
-                s += "\n\n"
+        key = Key.from_string(self.key)
+        s = "Taproot internal key:\n\n"
+        if key.is_provably_unspendable:
+            note = "provably unspendable"
+            if short:
+                s += note
             else:
-                xfp, deriv, xpub = key.to_cc_data()
-                s += '%s:\n  %s\n\n%s/%s\n\n' % (xfp2str(xfp), deriv, xpub,
-                                                 key.derivation.to_string())
-            return s
+                s += self.key
+                if type(key) is Key:
+                    # it is unspendable, BUT not unspend(
+                    s += "\n (%s)" % note
+            s += "\n\n"
+        else:
+            xfp, deriv, xpub = key.to_cc_data()
+            s += '%s:\n  %s\n\n%s/%s\n\n' % (xfp2str(xfp), deriv, xpub,
+                                             key.derivation.to_string())
+        return s
 
     async def show_keys(self):
         msg = ""
@@ -323,7 +330,7 @@ class MiniScriptWallet(BaseStorageWallet):
         else:
             name = to_ascii_printable(name)
             desc_obj = Descriptor.from_string(config.strip())
-        assert not desc_obj.is_basic_multisig, "Use Settings -> Multisig Wallets"
+
         wal = cls(desc_obj, name=name, chain_type=desc_obj.keys[0].chain_type)
         return wal
 
@@ -376,7 +383,7 @@ class MiniScriptWallet(BaseStorageWallet):
             script = ""
             if scripts:
                 if d.tapscript:
-                    script = d.tapscript.script_tree(d.tapscript.tree)
+                    script = d.tapscript.script_tree()
                 else:
                     script = b2a_hex(ser_string(d.miniscript.compile())).decode()
 
@@ -630,7 +637,6 @@ async def miniscript_wallet_detail(menu, label, item):
 async def import_miniscript(*a):
     # pick text file from SD card, import as multisig setup file
     from actions import file_picker
-    from glob import dis
     from ux import import_export_prompt
 
     ch = await import_export_prompt("miniscript wallet file", is_import=True)
@@ -665,14 +671,14 @@ async def import_miniscript(*a):
         possible_name = (fn.split('/')[-1].split('.'))[0] if fn else None
         maybe_enroll_xpub(config=data, name=possible_name, miniscript=True)
     except BaseException as e:
-        await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
+        await ux_show_story('Failed to import miniscript.\n\n%s\n%s' % (e, problem_file_line(e)))
 
 async def import_miniscript_nfc(*a):
     from glob import NFC
     try:
         return await NFC.import_miniscript_nfc()
     except Exception as e:
-        await ux_show_story(title="ERROR", msg="Failed to import miniscript. %s" % str(e))
+        await ux_show_story('Failed to import miniscript.\n\n%s\n%s' % (e, problem_file_line(e)))
 
 async def import_miniscript_qr(*a):
     from auth import maybe_enroll_xpub
@@ -681,7 +687,6 @@ async def import_miniscript_qr(*a):
     if not data:
         # press pressed CANCEL
         return
-
     try:
         maybe_enroll_xpub(config=data, miniscript=True)
     except Exception as e:
@@ -868,15 +873,12 @@ class Miniscript:
 
     def is_sane(self, taproot=False):
         err = "multi mixin"
-        # cannot have same keys in single miniscript
-        forbiden = (Sortedmulti_a, Multi_a)
         keys = self.keys
+        # cannot have same keys in single miniscript
         # provably unspendable taproot internal key is not covered here
         # all other keys (miniscript,tapscript) require key origin info
         assert len(keys) == len(set(keys)), "Insane"
-        if taproot:
-            forbiden = (Sortedmulti, Multi)
-
+        forbiden = (Sortedmulti, Multi) if taproot else (Sortedmulti_a, Multi_a)
         assert type(self) not in forbiden, err
 
         for arg in self.args:

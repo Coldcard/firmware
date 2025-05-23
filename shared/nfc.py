@@ -224,6 +224,11 @@ class NFCHandler:
 
         self.set_rf_disable(1)
 
+    async def share_loop(self, n, **kws):
+        while 1:
+            done = await self.share_start(n, **kws)
+            if done: break
+
     async def share_signed_txn(self, txid, file_offset, txn_len, txn_sha):
         # we just signed something, share it over NFC
         if txn_len >= MAX_NFC_SIZE:
@@ -231,13 +236,20 @@ class NFCHandler:
             return
 
         n = ndef.ndefMaker()
+        line2 = None
         if txid is not None:
             n.add_text('Signed Transaction: ' + txid)
             n.add_custom('bitcoin.org:txid', a2b_hex(txid))          # want binary
+            line2 = self.txid_line2(txid)
+
         n.add_custom('bitcoin.org:sha256', txn_sha)
         n.add_large_object('bitcoin.org:txn', file_offset, txn_len)
         
-        return await self.share_start(n)
+        return await self.share_loop(n, line2=line2)
+
+    @staticmethod
+    def txid_line2(txid):
+        return "Signed TXID: %s⋯%s" % (txid[0:8], txid[-8:])
 
     async def share_push_tx(self, url, txid, txn, txn_sha, line2=None):
         # Given a signed TXN, we convert to URL which a web backend can broadcast directly
@@ -267,13 +279,9 @@ class NFCHandler:
         n.add_url(url, https=is_https)
 
         if line2 is None:
-            line2 = "Signed TXID: %s⋯%s" % (txid[0:8], txid[-8:])
+            line2 = self.txid_line2(txid)
 
-        while 1:
-            done = await self.share_start(n, prompt="Tap to broadcast, CANCEL when done", 
-                                                line2=line2)
-
-            if done: break
+        await self.share_loop(n, prompt="Tap to broadcast, CANCEL when done", line2=line2)
 
     async def push_tx_from_file(self):
         # Pick (signed txn) file from SD card and broadcast via PushTx
@@ -343,24 +351,19 @@ class NFCHandler:
             return
 
         n = ndef.ndefMaker()
-        n.add_text(label or 'Partly signed PSBT')
+        label = label or 'Partly signed PSBT'
+        n.add_text(label)
         n.add_custom('bitcoin.org:sha256', psbt_sha)
         n.add_large_object('bitcoin.org:psbt', file_offset, psbt_len)
 
-        return await self.share_start(n)
-        
-    async def share_deposit_address(self, addr, **kws):
-        n = ndef.ndefMaker()
-        n.add_text('Deposit Address')
-        n.add_custom('bitcoin.org:addr', addr.encode())
-        return await self.share_start(n, **kws)
+        return await self.share_loop(n, line2=label)
 
     async def share_json(self, json_data, **kws):
         # a text file of JSON for programs to read
         n = ndef.ndefMaker()
         n.add_mime_data('application/json', json_data)
 
-        return await self.share_start(n, **kws)
+        return await self.share_loop(n, **kws)
 
     async def share_text(self, data, **kws):
         # share text from a list of values
@@ -368,7 +371,7 @@ class NFCHandler:
         n = ndef.ndefMaker()
         n.add_text(data)
 
-        return await self.share_start(n, **kws)
+        return await self.share_loop(n, **kws)
 
     async def wait_ready(self):
         # block until chip ready to continue (ACK happens)
@@ -394,7 +397,8 @@ class NFCHandler:
         self.write_dyn(GPO_CTRL_Dyn, 0x01)      # GPO_EN
         self.read_dyn(IT_STS_Dyn)               # clear interrupt
 
-    async def ux_animation(self, write_mode, allow_enter=True, prompt=None, line2=None):
+    async def ux_animation(self, write_mode, allow_enter=True, prompt=None, line2=None,
+                           is_secret=False):
         # Run the pretty animation, and detect both when we are written, and/or key to exit/abort.
         # - similar when "read" and then removed from field
         # - return T if aborted by user
@@ -468,7 +472,8 @@ class NFCHandler:
 
         self.set_rf_disable(1)
         if not write_mode:
-            await self.wipe(False)
+            # function argument secret decides whether to do full wipe after writing to chip
+            await self.wipe(is_secret)
 
         return aborted
 
@@ -514,7 +519,6 @@ class NFCHandler:
         await self.wipe(False)
         return rv
 
-
     async def start_psbt_rx(self):
         from auth import psbt_encoding_taster, TXN_INPUT_OFFSET
         from auth import UserAuthorizedAction, ApproveTransaction
@@ -540,10 +544,7 @@ class NFCHandler:
                 if urn == 'urn:nfc:ext:bitcoin.org:sha256' and len(msg) == 32:
                     # probably produced by another Coldcard: SHA256 over expected contents
                     psbt_sha = bytes(msg)
-        except Exception as e:
-            # dont crash when given garbage
-            import sys; sys.print_exception(e)
-            pass
+        except Exception: pass  # dont crash when given garbage
 
         if psbt_in is None:
             await ux_show_story("Could not find PSBT in what was written.", title="Sorry!")
@@ -564,43 +565,12 @@ class NFCHandler:
 
         # start signing UX
         UserAuthorizedAction.cleanup()
-        UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, 0x0, psbt_sha=psbt_sha,
-                                                approved_cb=self.signing_done)
+        UserAuthorizedAction.active_request = ApproveTransaction(
+            psbt_len, psbt_sha=psbt_sha, input_method="nfc",
+            output_encoder=output_encoder
+        )
         # kill any menu stack, and put our thing at the top
         the_ux.push(UserAuthorizedAction.active_request)
-
-    async def signing_done(self, psbt):
-        # User approved the PSBT, and signing worked... share result over NFC (only)
-        from auth import TXN_OUTPUT_OFFSET, try_push_tx
-        from version import MAX_TXN_LEN
-        from sffile import SFFile
-
-        txid = None
-
-        # asssume they want final transaction when possible, else PSBT output
-        is_comp = psbt.is_complete()
-
-        # re-serialize the PSBT back out (into PSRAM)
-        with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd:
-            if is_comp:
-                txid = psbt.finalize(fd)
-            else:
-                psbt.serialize(fd)
-
-            self.result = (fd.tell(), fd.checksum.digest())
-
-        out_len, out_sha = self.result
-
-        if is_comp:
-            if txid and await try_push_tx(out_len, txid, out_sha):
-                return  # success, exit
-
-            await self.share_signed_txn(txid, TXN_OUTPUT_OFFSET, out_len, out_sha)
-        else:
-            await self.share_psbt(TXN_OUTPUT_OFFSET, out_len, out_sha)
-
-        # ? show txid on screen ?
-        # thank them?
 
     @classmethod
     async def selftest(cls):
@@ -610,7 +580,10 @@ class NFCHandler:
         n.setup()
         assert n.uid
 
-        aborted = await n.share_text("NFC is working: %s" % n.get_uid(), allow_enter=False)
+        nn = ndef.ndefMaker()
+        nn.add_text("NFC is working: %s" % n.get_uid())
+
+        aborted = await n.share_start(nn, allow_enter=False)
         assert not aborted, "Aborted"
 
     async def share_file(self):
@@ -692,20 +665,10 @@ class NFCHandler:
         if winner:
             try:
                 from seed import set_ephemeral_seed_words
-                await set_ephemeral_seed_words(winner, meta='NFC Import')
+                await set_ephemeral_seed_words(winner, origin='NFC Import')
             except Exception as e:
                 #import sys; sys.print_exception(e)
                 await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
-
-    async def confirm_share_loop(self, string):
-        while True:
-            # added loop here as NFC send can fail, or not send the data
-            # and in that case one would have to start from beginning (send us cmd, approve, etc.)
-            # => get chance to check if you received the data and if something went wrong - retry just send
-            await self.share_text(string)
-            ch = await ux_show_story(title="Shared", msg="Press %s to share again, otherwise %s to stop." % (OK, X))
-            if ch != "y":
-                break
 
     async def address_show_and_share(self):
         from auth import show_address
@@ -752,16 +715,15 @@ class NFCHandler:
         await approve_msg_sign(None, None, None, approved_cb=self.msg_sign_done,
                                msg_sign_request=winner)
 
-
     async def msg_sign_done(self, signature, address, text):
-        from auth import rfc_signature_template_gen
+        from msgsign import rfc_signature_template
 
         sig = b2a_base64(signature).decode('ascii').strip()
-        armored_str = "".join(rfc_signature_template_gen(addr=address, msg=text, sig=sig))
-        await self.confirm_share_loop(armored_str)
+        armored_str = "".join(rfc_signature_template(addr=address, msg=text, sig=sig))
+        await self.share_text(armored_str)
 
     async def verify_sig_nfc(self):
-        from auth import verify_armored_signed_msg
+        from msgsign import verify_armored_signed_msg
 
         f = lambda x: x.decode().strip() if b"SIGNED MESSAGE" in x else None
         winner = await self._nfc_reader(f, 'Unable to find signed message.')
@@ -769,8 +731,8 @@ class NFCHandler:
         if winner:
             await verify_armored_signed_msg(winner, digest_check=False)
 
-    async def verify_address_nfc(self):
-        # Get an address or complete bip-21 url even and search it... slow.
+    async def read_address(self):
+        # Read an address or BIP-21 url and parse out addr (just one)
         from utils import decode_bip21_text
 
         def f(m):
@@ -781,6 +743,11 @@ class NFCHandler:
 
         winner = await self._nfc_reader(f, 'Unable to find address from NFC data.')
 
+        return winner
+
+    async def verify_address_nfc(self):
+        # Get an address or complete bip-21 url even and search it... slow.
+        winner = await self.read_address()
         if winner:
             from ownership import OWNERSHIP
             await OWNERSHIP.search_ux(winner)

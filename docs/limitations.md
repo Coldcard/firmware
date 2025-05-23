@@ -55,8 +55,11 @@
 
 - only one signature will be added per input. However, if needed the partly-signed 
   PSBT can be given again, and the "next" leg will be signed.
-- we do not support PSBT combining or finalizing of transactions involving
-  P2SH signatures (so the combine step must be off-device)
+- finalizing of multisig transactions involving P2SH signatures:
+    * SD/Vdisk signing exports both signed PSBT and finalized txn ready for broadcast (if txn is complete)
+    * QR/NFC outputs finalized txn ready for broadcast if txn is complete otherwise signed PSBT only
+    * USB signing requires `--finalize` parameter (as for standard single signature wallets)
+
 - we can sign for P2SH and P2WSH addresses that represent multisig (M of N) but
   we cannot sign for non-standard scripts because we don't know how to present
   that to the user for approval.
@@ -198,4 +201,17 @@ We will summarize transaction outputs as "change" back into same wallet, however
 - does not search Seed Vault, you'll need to load each of those and re-search
 - if you have an XFP collision between multiple wallets in SeedVault (ie. two wallets
   with same descriptors, but different seeds) you will get false negatives
+
+# CCC Feature (ColdCard Cosigning)
+
+- only 12 or 24 word seeds (not XPRV) are accepted for "key C"
+- velocity limit:
+    - based on a max magnitude per txn, and a required minimum block height
+      gap, based on previous `nLockTime` value in last-signed PSBT.
+    - if you sign a transaction, but never broadcast it, you will still have to wait out 
+      the velocity policy.
+    - PSBT creator must put in `nLockTime` block heights (most already do to avoid fee sniping)
+- maximum of 25 whitelisted addresses can be stored
+- Web2FA: any number of mobile devices can be enrolled, but all will have the same shared secret
+- any warning from the PSBT, such as huge fees, will prevent CCC cosign.
 

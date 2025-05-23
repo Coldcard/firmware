@@ -22,7 +22,7 @@ class WalletABC:
     #   chain
 
     def yield_addresses(self, start_idx, count, change_idx=0):
-        # TODO: returns various tuples, with at least (idx, address, ...)
+        # returns various tuples, with at least (idx, address, ...)
         pass
 
     def render_address(self, change_idx, idx):

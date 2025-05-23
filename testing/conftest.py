@@ -1,6 +1,6 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, io, math, bech32, pdb
+import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, io, math, bech32, pdb, base64
 from subprocess import check_output
 from ckcc.protocol import CCProtocolPacker
 from helpers import B2A, U2SAT, hash160, taptweak, addr_from_display_format
@@ -31,6 +31,8 @@ def pytest_addoption(parser):
                      default=False, help="run on real dev")
     parser.addoption("--sim", action="store_true",
                      default=True, help="run on simulator")
+    parser.addoption("--localhost", action="store_true",
+                     default=False, help="test web stuff against coldcard.com code running on localhost:5070")
     parser.addoption("--manual", action="store_true",
                      default=False, help="operator must press keys on real CC")
 
@@ -816,6 +818,7 @@ def open_microsd(simulator, microsd_path):
     # open a file from the simulated microsd
 
     def doit(fn, mode='rb'):
+        assert fn, 'empty fname'
         return open(microsd_path(fn), mode)
 
     return doit
@@ -833,7 +836,7 @@ def settings_path(simulator):
 @pytest.fixture
 def settings_slots(settings_path):
     def doit():
-        return [fn
+        return [settings_path(fn)
                 for fn in os.listdir(settings_path(""))
                 if fn.endswith(".aes")]
     return doit
@@ -935,7 +938,18 @@ def use_regtest(request, settings_set):
 
 
 @pytest.fixture(scope="function")
-def set_seed_words(sim_exec, sim_execfile, simulator, reset_seed_words):
+def set_seed_words(change_seed_words, reset_seed_words):
+    def doit(w):
+        return change_seed_words(w)
+
+    yield doit
+
+    # Important cleanup: restore normal key, because other tests assume that
+
+    reset_seed_words()
+
+@pytest.fixture(scope="function")
+def change_seed_words(sim_exec, sim_execfile, simulator):
     # load simulator w/ a specific bip32 master key
 
     def doit(words):
@@ -950,30 +964,19 @@ def set_seed_words(sim_exec, sim_execfile, simulator, reset_seed_words):
         #print("sim xfp: 0x%08x" % simulator.master_fingerprint)
         return simulator.master_fingerprint
 
-    yield doit
-
-    # Important cleanup: restore normal key, because other tests assume that
-
-    reset_seed_words()
+    return doit
 
 @pytest.fixture()
-def reset_seed_words(sim_exec, sim_execfile, simulator):
+def reset_seed_words(change_seed_words):
     # load simulator w/ a specific bip39 seed phrase
 
     def doit():
-        words = simulator_fixed_words
-        cmd = 'import main; main.WORDS = %r;' % words.split()
-        sim_exec(cmd)
-        rv = sim_execfile('devtest/set_seed.py')
-        if rv: pytest.fail(rv)
-
-        simulator.start_encryption()
-        simulator.check_mitm()
+        new_xfp = change_seed_words(simulator_fixed_words)
 
         #print("sim xfp: 0x%08x (reset)" % simulator.master_fingerprint)
-        assert simulator.master_fingerprint == simulator_fixed_xfp
+        assert new_xfp == simulator_fixed_xfp
 
-        return words
+        return simulator_fixed_words
 
     return doit
 
@@ -1004,7 +1007,7 @@ def settings_get(sim_exec):
 def master_settings_get(sim_exec):
 
     def doit(key):
-        cmd = f"RV.write(repr(settings.master_get('{key}')))"
+        cmd = f"RV.write(repr(settings.master_get('{key}', False)))"
         resp = sim_exec(cmd)
         assert 'Traceback' not in resp, resp
         return eval(resp)
@@ -1293,17 +1296,23 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
         for r in range(10):
             time.sleep(0.1)
             title, story = cap_story()
-            if title == 'PSBT Signed': break
+            if 'Updated PSBT' in story: break
+            if 'Finalized transaction' in story: break
         else:
             assert False, 'timed out'
 
-        txid = None
         lines = story.split('\n')
-        if 'Final TXID:' in lines:
-            txid = lines[-1]
-            result_fname = lines[-4]
-        else:
-            result_fname = lines[-1]
+        txid = None
+        if 'TXID:' in lines:
+            txid = lines[lines.index('TXID:')+1]
+
+        # This is fragile!
+        # ignore "Press (T) to use Key Teleport to send PSBT to other co-signers" footer
+        # ignore "Press (0) to save again by..."
+        # - want the .txn if present, else the .psbt file
+        t, = [l for l in lines if l.endswith('.txn')] or [None]
+        p, = [l for l in lines if l.endswith('.psbt')] or [None]
+        result_fname = t or p
 
         result = open_microsd(result_fname, 'rb').read()
 
@@ -1360,9 +1369,11 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
 @pytest.fixture
 def try_sign(start_sign, end_sign):
 
-    def doit(filename_or_data, accept=True, finalize=False, accept_ms_import=False):
+    def doit(filename_or_data, accept=True, finalize=False, accept_ms_import=False,
+             exit_export_loop=True):
         ip = start_sign(filename_or_data, finalize=finalize)
-        return ip, end_sign(accept, finalize=finalize, accept_ms_import=accept_ms_import)
+        return ip, end_sign(accept, finalize=finalize, accept_ms_import=accept_ms_import,
+                            exit_export_loop=exit_export_loop)
 
     return doit
 
@@ -1388,29 +1399,30 @@ def start_sign(dev):
     return doit
 
 @pytest.fixture
-def end_sign(dev, need_keypress):
+def end_sign(dev, need_keypress, press_cancel):
     from ckcc_protocol.protocol import CCUserRefused
 
-    def doit(accept=True, in_psbt=None, finalize=False, accept_ms_import=False, expect_txn=True):
+    def doit(accept=True, finalize=False, accept_ms_import=False, expect_txn=True,
+             exit_export_loop=True):
 
         if accept_ms_import:
             # XXX would be better to do cap_story here, but that would limit test to simulator
             need_keypress('y', timeout=None)
             time.sleep(0.050)
 
-        if accept != None:
+        if accept is not None:
             need_keypress('y' if accept else 'x', timeout=None)
 
-        if accept == False:
+        if accept is False:
             with pytest.raises(CCUserRefused):
                 done = None
-                while done == None:
+                while done is None:
                     time.sleep(0.050)
                     done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
             return
         else:
             done = None
-            while done == None:
+            while done is None:
                 time.sleep(0.00)
                 done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
 
@@ -1445,6 +1457,9 @@ def end_sign(dev, need_keypress):
                     
         for sig in sigs:
             assert len(sig) <= 71, "overly long signature observed"
+
+        if exit_export_loop:
+            press_cancel()  # landed back to export prompt - exit
 
         return psbt_out
 
@@ -1618,6 +1633,24 @@ def nfc_read(request, needs_nfc):
         return doit_usb
 
 @pytest.fixture()
+def nfc_read_url(nfc_read, press_cancel):
+    # gives URL from ndef
+
+    def doit():
+        contents = nfc_read()
+
+        press_cancel()  # exit NFC animation
+
+        # expect a single record, a URL
+        got, = ndef.message_decoder(contents)
+
+        assert got.type == 'urn:nfc:wkt:U'
+
+        return got.uri
+
+    return doit
+
+@pytest.fixture()
 def nfc_write(request, needs_nfc, is_q1):
     # WRITE data into NFC "chip"
     def doit_usb(ccfile):
@@ -1645,9 +1678,15 @@ def enable_nfc(needs_nfc, sim_exec, settings_set):
     return doit
 
 @pytest.fixture()
-def nfc_disabled(needs_nfc, settings_get):
+def nfc_disabled(settings_get):
     def doit():
         return not bool(settings_get('nfc', 0))
+    return doit
+
+@pytest.fixture()
+def vdisk_disabled(settings_get):
+    def doit():
+        return not bool(settings_get('vidsk', 0))
     return doit
 
 @pytest.fixture()
@@ -1711,6 +1750,42 @@ def nfc_read_text(nfc_read):
         assert got.type == 'urn:nfc:wkt:T'
         return got.text
     return doit
+
+@pytest.fixture()
+def nfc_read_txn(nfc_read, press_select):
+    def doit(txid=None, contents=None):
+        if contents is None:
+            contents = nfc_read()
+            time.sleep(.5)
+            press_select()
+
+        got_txid = None
+        got_txn = None
+        got_psbt = None
+        got_hash = None
+        for got in ndef.message_decoder(contents):
+            if got.type == 'urn:nfc:wkt:T':
+                assert 'Transaction' in got.text or 'PSBT' in got.text
+                if 'Transaction' in got.text and txid:
+                    assert b2a_hex(txid).decode() in got.text
+            elif got.type == 'urn:nfc:ext:bitcoin.org:txid':
+                got_txid = b2a_hex(got.data).decode('ascii')
+            elif got.type == 'urn:nfc:ext:bitcoin.org:txn':
+                got_txn = got.data
+            elif got.type == 'urn:nfc:ext:bitcoin.org:psbt':
+                got_psbt = got.data
+            elif got.type == 'urn:nfc:ext:bitcoin.org:sha256':
+                got_hash = got.data
+            else:
+                raise ValueError(got.type)
+
+        assert got_psbt or got_txn, 'no data?'
+        assert got_hash
+        assert got_hash == hashlib.sha256(got_psbt or got_txn).digest()
+
+        return got_txid, got_psbt, got_txn
+    return doit
+
 
 @pytest.fixture()
 def nfc_block4rf(sim_eval):
@@ -1816,17 +1891,55 @@ def load_export_and_verify_signature(microsd_path, virtdisk_path, verify_detache
         contents, address = verify_detached_signature_file([fname], sig_fn, way, addr_fmt)
 
         if is_json:
-            return json.loads(contents), address
-        return contents, address
+            return json.loads(contents), address, fname
+        return contents, address, fname
+    return doit
+
+@pytest.fixture
+def file_tx_signing_done(virtdisk_path, microsd_path):
+    def doit(story, encoding="base64", is_vdisk=False):
+        path_f = virtdisk_path if is_vdisk else microsd_path
+        enc = "rb" if encoding == "binary" else "r"
+        _split = story.split("\n\n")
+        export = None
+        if 'Updated PSBT is:' == _split[0]:
+            fname = _split[1]
+            path = path_f(fname)
+            with open(path, enc) as f:
+                export = f.read().strip()
+
+            export_tx = None
+            if "Finalized transaction (ready for broadcast)" in _split[2]:
+                fname_tx = _split[3]
+                path_tx = path_f(fname_tx)
+                with open(path_tx, enc) as f:
+                    export_tx = f.read().strip()
+        else:
+            # just finalized tx
+            assert "Finalized transaction (ready for broadcast):" == _split[0]
+            fname_tx = _split[1]
+            path_tx = path_f(fname_tx)
+            with open(path_tx, enc) as f:
+                export_tx = f.read()
+
+        txid = None
+        for l in _split:
+            if "TXID" in l:
+                txid = l.split("\n")[-1].strip()
+                assert len(txid) == 64, "wrong txid"
+                break
+
+        return export, export_tx, txid
+
     return doit
 
 @pytest.fixture
 def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_text, nfc_read_json,
                 load_export_and_verify_signature, is_q1, press_cancel, press_select, readback_bbqr,
-                cap_screen_qr, garbage_collector):
+                cap_screen_qr, nfc_read_txn, file_tx_signing_done, garbage_collector):
     def doit(way, label, is_json, sig_check=True, addr_fmt=AF_CLASSIC, ret_sig_addr=False,
              tail_check=None, sd_key=None, vdisk_key=None, nfc_key=None, ret_fname=False,
-             fpattern=None, qr_key=None, skip_query=False):
+             fpattern=None, qr_key=None, is_tx=False, encoding="base64", skip_query=False):
         
         s_label = None
         if label == "Address summary":
@@ -1842,7 +1955,8 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
             time.sleep(0.2)
             title, story = cap_story()
             if way == "sd":
-                if f"({key_map['sd']}) to save {s_label if s_label else label} file to SD Card" in story:
+                if (f"({key_map['sd']}) to save {s_label if s_label else label} "
+                    f"{'' if is_tx else 'file '}to SD Card") in story:
                     need_keypress(key_map['sd'])
 
             elif way == "nfc":
@@ -1851,6 +1965,10 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 else:
                     need_keypress(key_map['nfc'])
                     time.sleep(0.2)
+                    if is_tx:
+                        nfc_export = nfc_read_txn()
+                        return nfc_export[1:]
+
                     if is_json:
                         nfc_export = nfc_read_json()
                     else:
@@ -1873,6 +1991,8 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                         return json.loads(data)
                     elif file_type == "U":
                         return data.decode('utf-8') if not isinstance(data, str) else data
+                    elif file_type in ("P", "T"):
+                        return data
                     else:
                         raise NotImplementedError
                 except:
@@ -1890,11 +2010,15 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
 
         time.sleep(0.2)
         title, story = cap_story()
+        path_f = microsd_path if way == "sd" else virtdisk_path
         if sig_check:
-            export, sig_addr = load_export_and_verify_signature(story, way, is_json=is_json,
-                                                                addr_fmt=addr_fmt, label=label,
-                                                                tail_check=tail_check,
-                                                                fpattern=fpattern)
+            export, sig_addr, fname = load_export_and_verify_signature(
+                story, way, is_json=is_json, addr_fmt=addr_fmt,
+                label=label, tail_check=tail_check, fpattern=fpattern
+            )
+        elif is_tx:
+            export, export_tx, _ = file_tx_signing_done(story, encoding, is_vdisk=(way == "vdisk"))
+            return export, export_tx
         else:
             assert f"{label} file written" in story
             if tail_check:
@@ -1906,10 +2030,8 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 assert fpattern in fname
             if is_json:
                 assert fname.endswith(".json")
-            if way == "sd":
-                path = microsd_path(fname)
-            else:
-                path = virtdisk_path(fname)
+
+            path = path_f(fname)
             with open(path, "r") as f:
                 export = f.read()
                 if is_json:
@@ -1925,6 +2047,111 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
             # ret_fname now only works if sig is not checked
             return export, fname
         return export
+    return doit
+
+
+@pytest.fixture
+def signing_artifacts_reexport(cap_story, need_keypress, load_export, press_cancel, is_q1,
+                               settings_get):
+
+    def doit(way, tx_final=False, txid=None, encoding=None, del_after=False, is_usb=False):
+        label = "Finalized TX ready for broadcast" if tx_final else "Partly Signed PSBT"
+        def _check_story(the_way):
+            time.sleep(.2)
+            title, story = cap_story()
+
+            if the_way in ["qr", "nfc"]:
+                what = label + " shared via %s." % the_way.upper()
+                assert what in story
+            else:
+                if not del_after:
+                    assert "Updated PSBT is" in story
+                if tx_final:
+                    assert "Finalized transaction (ready for broadcast)" in story
+                    if txid:
+                        assert txid in story
+
+        to_do = ["sd", "vdisk", "nfc", "qr"]
+        if not is_usb:
+            _check_story(way)
+            to_do.remove(way)  # put it as the last item
+            to_do.append(way)
+
+        if not is_q1:
+            to_do.remove("qr")
+
+        if not settings_get("nfc", None):
+            to_do.remove("nfc")
+
+        res = []
+        res_tx = []
+        for _way in to_do:
+            try:
+                rv = load_export(_way, label, is_json=False, sig_check=False,
+                                 is_tx=True, encoding=encoding)
+                if isinstance(rv, tuple):
+                    _psbt, _tx = rv
+                    if _psbt:
+                        res.append(_psbt)
+                    if _tx:
+                        res_tx.append(_tx)
+                else:
+                    if tx_final:
+                        res_tx.append(rv)
+                    else:
+                        res.append(rv)
+                if _way in ("qr", "nfc"):
+                    # nfc now needs cancel as it keeps reexporting
+                    # qr needs to go back from qr view
+                    press_cancel()
+                _check_story(_way)
+            except BaseException as e:
+                if _way != "vdisk":
+                    raise
+
+        # check we exported the same - even if in different format
+        final_res = []
+        for x in res:
+            if x is not None:
+                x = x.strip()
+                if isinstance(x, bytearray):
+                    x = bytes(x)
+                if not isinstance(x, bytes):
+                    try:
+                        # is just a hex string
+                        x = bytes.fromhex(x)
+                    except:
+                        x = base64.b64decode(x)
+                else:
+                    try:
+                        x = base64.b64decode(x.decode())
+                    except: pass
+
+                final_res.append(x)
+
+        final_res_tx = []
+        for y in res_tx:
+            if y is not None:
+                y = y.strip()
+                try:
+                    y = a2b_hex(y)
+                except: pass
+                if isinstance(y, bytearray):
+                    # bytearray is unhashable type
+                    y = bytes(y)
+
+                final_res_tx.append(y)
+
+        if not del_after and final_res:
+            assert len(set(final_res)) == 1
+
+        fin_tx = None
+        if final_res_tx:
+            assert len(set(final_res_tx)) == 1
+            fin_tx = final_res_tx[0]
+
+        return final_res[0] if final_res else None, fin_tx
+
     return doit
 
 
@@ -2024,38 +2251,16 @@ def check_and_decrypt_backup(microsd_path):
 
 
 @pytest.fixture
-def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
+def restore_backup_unpacked(unit_test, pick_menu_item, cap_story, cap_menu,
                       press_select, word_menu_entry, get_setting, is_q1,
-                      need_keypress, scan_a_qr, cap_screen):
-    # restore backup with clear seed as first step
-    def doit(fn, passphrase, avail_settings=None, pass_way=None):
-        unit_test('devtest/clear_seed.py')
+                      need_keypress, scan_a_qr, cap_screen, enter_complex):
 
-        m = cap_menu()
-        assert m[0] == 'New Seed Words'
-        pick_menu_item('Import Existing')
-        pick_menu_item('Restore Backup')
-
-        time.sleep(.1)
-        pick_menu_item(fn)
-
-        time.sleep(.1)
-        if is_q1 and pass_way and pass_way == "qr":
-            need_keypress(KEY_QR)
-            time.sleep(.1)
-            qr = ' '.join(w[:4] for w in passphrase)
-            scan_a_qr(qr)
-            for _ in range(20):
-                scr = cap_screen()
-                if 'ENTER if all done' in scr:
-                    break
-                time.sleep(.1)
-            press_select()
-        else:
-            word_menu_entry(passphrase, has_checksum=False)
+    # check things are right after unpack & install; FTUX shown
+    def doit(avail_settings=None):
 
         time.sleep(.3)
         title, body = cap_story()
+
         # on simulator Disable USB is always off - so FTUX all the time
         assert title == 'NO-TITLE'  # no Welcome!
         assert "best security practices" in body
@@ -2081,6 +2286,48 @@ def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
 
         # avoid simulator reboot; restore normal state
         unit_test('devtest/abort_ux.py')
+
+    return doit
+
+@pytest.fixture
+def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
+                      press_select, word_menu_entry, get_setting, is_q1,
+                      need_keypress, scan_a_qr, cap_screen, enter_complex, restore_backup_unpacked):
+    # restore backup with clear seed as first step
+    def doit(fn, passphrase, avail_settings=None, pass_way=None, custom_bkpw=False):
+        unit_test('devtest/clear_seed.py')
+
+        m = cap_menu()
+        assert m[0] == 'New Seed Words'
+        if custom_bkpw:
+            pick_menu_item('Advanced/Tools')
+            pick_menu_item('I Am Developer.')
+            pick_menu_item('Restore Bkup')
+        else:
+            pick_menu_item('Import Existing')
+            pick_menu_item('Restore Backup')
+
+        time.sleep(.1)
+        pick_menu_item(fn)
+
+        time.sleep(.1)
+        if is_q1 and pass_way and pass_way == "qr":
+            need_keypress(KEY_QR)
+            time.sleep(.1)
+            qr = ' '.join(w[:4] for w in passphrase)
+            scan_a_qr(qr)
+            for _ in range(20):
+                scr = cap_screen()
+                if 'ENTER if all done' in scr:
+                    break
+                time.sleep(.1)
+            press_select()
+        elif custom_bkpw:
+            enter_complex(passphrase, b39pass=False)
+        else:
+            word_menu_entry(passphrase, has_checksum=False)
+
+        restore_backup_unpacked(avail_settings=avail_settings)
 
     return doit
 
@@ -2277,16 +2524,18 @@ def validate_address():
 
 
 @pytest.fixture
-def skip_if_useless_way(is_q1, nfc_disabled):
+def skip_if_useless_way(is_q1, nfc_disabled, vdisk_disabled):
     # when NFC is disabled, no point trying to do a PSBT via NFC
     # - important: run_sim_tests.py will enable NFC for complete testing
     # - similarly: the Mk4 and earlier had no QR scanner, so cannot use that as input
     def doit(way):
         if way == "qr" and not is_q1:
             raise pytest.skip("mk4 QR not supported")
-        if way == 'nfc' and nfc_disabled():
+        elif way == 'nfc' and nfc_disabled():
             # runner will test these cases, but fail faster otherwise
             raise pytest.skip("NFC disabled")
+        elif way == "vdisk" and vdisk_disabled():
+            raise pytest.skip("VirtualDisk disabled")
 
     return doit
 
@@ -2330,9 +2579,33 @@ def garbage_collector():
             os.remove(pth)
         except: pass
 
+
+@pytest.fixture
+def build_test_seed_vault():
+    def doit():
+        from test_ephemeral import SEEDVAULT_TEST_DATA
+        sv = []
+        for item in SEEDVAULT_TEST_DATA:
+            xfp, entropy, mnemonic = item
+
+            # build stashed encoded secret
+            entropy_bytes = bytes.fromhex(entropy)
+            if mnemonic:
+                vlen = len(entropy_bytes)
+                assert vlen in [16, 24, 32]
+                marker = 0x80 | ((vlen // 8) - 2)
+                stored_secret = bytes([marker]) + entropy_bytes
+            else:
+                stored_secret = entropy_bytes
+
+            sv.append((xfp, stored_secret.hex(), f"[{xfp}]", "meta"))
+        return sv
+    return doit
+
+
 # useful fixtures
 from test_backup import backup_system
-from test_bbqr import readback_bbqr, render_bbqr, readback_bbqr_ll
+from test_bbqr import readback_bbqr, render_bbqr, readback_bbqr_ll, try_sign_bbqr, split_scan_bbqr
 from test_bip39pw import set_bip39_pw
 from test_drv_entro import derive_bip85_secret, activate_bip85_ephemeral
 from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto_eph_seed_menu
@@ -2342,9 +2615,12 @@ from test_msg import verify_msg_sign_story, sign_msg_from_text, msg_sign_export,
 from test_multisig import import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn
 from test_miniscript import offer_minsc_import, get_cc_key, bitcoin_core_signer
 from test_multisig import make_ms_address, clear_ms, make_myself_wallet, import_multisig
+from test_notes import need_some_notes, need_some_passwords
+from test_nfc import try_sign_nfc, ndef_parse_txn_psbt
 from test_se2 import goto_trick_menu, clear_all_tricks, new_trick_pin, se2_gate, new_pin_confirmed
 from test_seed_xor import restore_seed_xor
-from test_ux import pass_word_quiz, word_menu_entry
+from test_sign import txid_from_export_prompt
+from test_ux import pass_word_quiz, word_menu_entry, enable_hw_ux
 from txn import fake_txn
 
 # EOF

@@ -102,7 +102,7 @@ def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, mic
         else:
             time.sleep(.5)  # always long enough to write the file?
             title, body = cap_story()
-            contents, sig_addr = load_export_and_verify_signature(body, way, label="Address summary")
+            contents, sig_addr, _ = load_export_and_verify_signature(body, way, label="Address summary")
 
         addr_dump = io.StringIO(contents)
         cc = csv.reader(addr_dump)
@@ -508,7 +508,7 @@ def test_custom_path(path_sidx, which_fmt, addr_vs_path, pick_menu_item, goto_ad
             assert "Press (0) to sign message with this key" in body
             need_keypress('0')
             msg = "COLDCARD the rock solid HWW"
-            sign_msg_from_address(msg, addr, path, which_fmt, "sd", True)
+            sign_msg_from_address(msg, addr, path, which_fmt, "sd", "XTN")
             press_cancel()
     else:
         n = 10

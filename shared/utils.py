@@ -2,25 +2,15 @@
 #
 # utils.py - Misc utils. My favourite kind of source file.
 #
-import gc, sys, ustruct, ngu, chains, ure, time, version, uos, uio, bip39
+import gc, sys, ustruct, ngu, chains, ure, uos, uio, time, bip39, version, uasyncio
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
 from charcodes import OUT_CTRL_ADDRESS
 from uhashlib import sha256
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR, MAX_PATH_DEPTH
-from public_constants import AF_P2WSH, AF_P2WSH_P2SH
-
+from public_constants import MAX_PATH_DEPTH, AF_CLASSIC
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
-
-STD_DERIVATIONS = {
-    "p2pkh": "m/44h/{chain}h/0h/0/0",
-    "p2sh-p2wpkh": "m/49h/{chain}h/0h/0/0",
-    "p2wpkh-p2sh": "m/49h/{chain}h/0h/0/0",
-    "p2wpkh": "m/84h/{chain}h/0h/0/0",
-    "p2tr": "m/86h/{chain}h/0h/0/0",
-}
 
 try:
     from font_iosevka import FontIosevka
@@ -231,6 +221,7 @@ def to_ascii_printable(s, strip=False, only_printable=True):
 def problem_file_line(exc):
     # return a string of just the filename.py and line number where
     # an exception occured. Best used on AssertionError.
+
     tmp = uio.StringIO()
     sys.print_exception(exc, tmp)
     lines = tmp.getvalue().split('\n')[-3:]
@@ -260,7 +251,6 @@ def cleanup_deriv_path(bin_path, allow_star=False):
     # - assume 'm' prefix, so '34' becomes 'm/34', etc
     # - do not assume /// is m/0/0/0
     # - if allow_star, then final position can be * or *h (wildcard)
-    from public_constants import MAX_PATH_DEPTH
 
     s = to_ascii_printable(bin_path, strip=True).lower()
 
@@ -446,7 +436,7 @@ def clean_shutdown(style=0):
     # wipe SPI flash and shutdown (wiping main memory)
     # - mk4: SPI flash not used, but NFC may hold data (PSRAM cleared by bootrom)
     # - bootrom wipes every byte of SRAM, so no need to repeat here
-    import callgate, uasyncio
+    import callgate
 
     # save if anything pending
     from glob import settings
@@ -469,36 +459,44 @@ def clean_shutdown(style=0):
     callgate.show_logout(style)
 
 def call_later_ms(delay, cb, *args, **kws):
-    import uasyncio
-
     async def doit():
         await uasyncio.sleep_ms(delay)
         await cb(*args, **kws)
         
     uasyncio.create_task(doit())
 
-def txtlen(s):
-    # width of string in chars, accounting for
-    # double-wide characters which happen on Q.
-    rv = len(s)
-
-    if DOUBLE_WIDE:
-        rv += sum(1 for ch in s if ch in DOUBLE_WIDE)
-
-    return rv
 
 def word_wrap(ln, w):
     # Generate the lines needed to wrap one line into X "width"-long lines.
     #  - tests in testing/test_unit.py
+    while True:
+        # ln_len considers DOUBLE_WIDTH chars
+        ln_len = 0
+        idx = 0
+        sp = None
+        for idx, ch in enumerate(ln):
+            if ch == ' ':
+                # split point on space if possible
+                sp = idx
+            if ln_len < w:
+                ln_len += 1
+                if ch in DOUBLE_WIDE:
+                    ln_len += 1
+            else:
+                if (ln_len == w) and (ch in ".,:;"):
+                    # boundary of allowed width
+                    # if . or , allow one more character
+                    # even if only half visible on Mk4
+                    # on Q it's OK as (CHARS_W-1) is used as w
+                    sp = None
+                    idx += 1
 
-    if txtlen(ln) <= w:
-        yield ln
-        return
+                break
+        else:
+            yield ln
+            return
 
-    while ln:
-        # find a space in (width) first part of remainder
-        sp = ln.rfind(' ', 0, w-1)
-        if sp == -1:
+        if sp is None:
             if ln[0] == OUT_CTRL_ADDRESS:
                 # special handling for lines w/ payment address in them
                 # - add same marker to newly split lines
@@ -514,8 +512,7 @@ def word_wrap(ln, w):
                 return
 
             # bad-break the line
-            sp = min(txtlen(ln), w)
-            nsp = sp
+            sp = nsp = idx
             if ln[nsp:nsp+1] == ' ':
                 nsp += 1
         else:
@@ -523,14 +520,10 @@ def word_wrap(ln, w):
             nsp = sp+1
 
         left = ln[0:sp]
-        ln = ln[nsp:]
-
-        if txtlen(left) + 1 + txtlen(ln) <= w:
-            # not clear when this would happen? final bit??
-            left = left + ' ' + ln
-            ln = ''
-
         yield left
+        ln = ln[nsp:]
+        if not ln: return
+
 
 def parse_extended_key(ln, private=False):
     # read an xpub/ypub/etc and return BIP-32 node and what chain it's on.
@@ -557,27 +550,17 @@ def parse_extended_key(ln, private=False):
 
     return node, chain, addr_fmt
 
-def chunk_writer(fd, body):
-    from glob import dis
-    dis.fullscreen("Saving...")
-    body_len = len(body)
-    chunk = body_len // 10
-    for idx, i in enumerate(range(0, body_len, chunk)):
-        fd.write(body[i:i + chunk])
-        dis.progress_bar_show(idx / 10)
-    dis.progress_bar_show(1)
-
-
-def pad_raw_secret(raw_sec_str):
+def deserialize_secret(text_sec_str):
     # Chip can hold 72-bytes as a secret
-    # every secret has 0th byte as marker
-    # then secret and padded to zero to AE_SECRET_LEN
+    # - has 0th byte as marker, secret and zero padding to AE_SECRET_LEN
+    # - also does hex to binary conversion
+    # - converse of: SecretStash.storage_serialize()
     from pincodes import AE_SECRET_LEN
 
     raw = bytearray(AE_SECRET_LEN)
-    if len(raw_sec_str) % 2:
-        raw_sec_str += '0'
-    x = a2b_hex(raw_sec_str)
+    if len(text_sec_str) % 2:
+        text_sec_str += '0'
+    x = a2b_hex(text_sec_str)
     raw[0:len(x)] = x
     return raw
 
@@ -626,7 +609,7 @@ def txid_from_fname(fname):
         except: pass
     return None
 
-def url_decode(u):
+def url_unquote(u):
     # expand control chars from %XX and '+'
     # - equiv to urllib.parse.unquote_plus
     # - ure.sub is missing, so not being clever here.
@@ -646,10 +629,17 @@ def url_decode(u):
 
     return u
 
+def url_quote(u):
+    # convert non-text chars into %hex for URL usage
+    # - urllib.parse.quote() but w/o as much thought
+    return ''.join( (ch if 33 <= ord(ch) <= 127 else '%%%02x' % ord(ch)) \
+                    for ch in u)
+
 def decode_bip21_text(got):
     # Assume text is a BIP-21 payment address (url), with amount, description
     # and url protocol prefix ... all optional except the address.
     # - also will detect correctly encoded & checksummed xpubs
+    # - always verifies checksum of data it finds
 
     proto, args, addr = None, None, None
 
@@ -666,7 +656,7 @@ def decode_bip21_text(got):
         args = dict()
         for p in parts:
             k, v = p.split('=', 1)
-            args[k] = url_decode(v)
+            args[k] = url_unquote(v)
 
     # assume it's an bare address for now
     if not addr:
@@ -676,10 +666,12 @@ def decode_bip21_text(got):
     try:
         raw = ngu.codecs.b58_decode(addr)
 
-        # it's valid base58
-        # an address, P2PKH or xpub (xprv checked above)
+        # It's valid base58: could be
+        # an address, P2PKH or xpub/xprv
         if addr[1:4] == 'pub':
             return 'xpub', (addr,)
+        if addr[1:4] == 'prv':
+            return 'xprv', (addr,)
 
         return 'addr', (proto, addr, args)
     except:
@@ -786,5 +778,92 @@ def show_single_address(addr):
 def chunk_address(addr):
     # useful to show payment addresses specially
     return [addr[i:i+4] for i in range(0, len(addr), 4)]
+
+def cleanup_payment_address(s):
+    # Cleanup a payment  address, or raise if bad checksum
+    # - later matching is string-based, so just doing basic syntax check here
+    # - must be checksumed-base58 or bech32
+    try:
+        ngu.codecs.b58_decode(s)
+        assert len(s) < 40          # or else it's an xpub/xprv
+        return s
+    except: pass
+
+    try:
+        ngu.codecs.segwit_decode(s)
+        return s.lower()
+    except: pass
+
+    raise ValueError('bad address value: ' + s)
+
+def truncate_address(addr):
+    # Truncates address to width of screen, replacing middle chars
+    if not version.has_qwerty:
+        # - 16 chars screen width
+        # - but 2 lost at left (menu arrow, corner arrow)
+        # - want to show not truncated on right side
+        return addr[0:6] + '⋯' + addr[-6:]
+    else:
+        # tons of space on Q1
+        return addr[0:12] + '⋯' + addr[-12:]
+
+def wipe_if_deltamode():
+    # If in deltamode, give up and wipe self rather do
+    # a thing that might reveal true master secret...
+    from pincodes import pa
+
+    if pa.is_deltamode():
+        import callgate
+        callgate.fast_wipe()
+
+def chunk_checksum(fd, chunk=1024):
+    # reads from open file descriptor
+    md = sha256()
+    while True:
+        data = fd.read(chunk)
+        if not data:
+            break
+        md.update(data)
+
+    return md.digest()
+
+def xor(*args):
+    # bit-wise xor between all args
+    vlen = len(args[0])
+    # all have to be same length
+    assert all(len(e) == vlen for e in args)
+    rv = bytearray(vlen)
+
+    for i in range(vlen):
+        for a in args:
+            rv[i] ^= a[i]
+
+    return rv
+
+def extract_cosigner(data, af_str):
+    # decodes any text, looking for key expression [xfp/p/a/t/h]xpub123
+    # BIP-380 https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki#key-expressions
+    # only first key expression will be parsed from the data
+    # key origin info is required
+    # failure to find "proper" key expression results in None being returned
+    pub = "%spub" % chains.current_chain().slip132[AF_CLASSIC].hint
+    if pub not in data:
+        return
+
+    o_start = data.find("[")
+    o_end = data.find("]")
+    if 0 <= o_start < o_end:
+        key_orig_info = data[o_start+1:o_end]
+        ss = key_orig_info.split("/")
+        xfp = ss[0]
+        if (len(xfp) == 8) and (data[o_end+1:o_end+1+len(pub)] == pub):
+            deriv = "m"
+            der_nums = "/".join(ss[1:])
+            if der_nums:
+                deriv += ("/" + der_nums)
+            ek = data[o_end+1:o_end+1+112]
+            key_deriv = "%s_deriv" %  af_str
+            # emulate coldcard export xpubs
+            return {"xfp": xfp, af_str: ek, key_deriv: deriv}
 
 # EOF

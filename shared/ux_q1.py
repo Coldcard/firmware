@@ -2,16 +2,14 @@
 #
 # ux_q1.py - UX/UI interactions that are Q1 specific and use big screen, keyboard.
 #
-import utime, gc, ngu, sys, chains
+import utime, gc, ngu, sys, bip39
 import uasyncio as asyncio
 from uasyncio import sleep_ms
 from charcodes import *
 from lcd_display import CHARS_W, CHARS_H, CursorSpec, CURSOR_SOLID, CURSOR_OUTLINE
 from exceptions import AbortInteraction, QRDecodeExplained
-import bip39
 from decoders import decode_qr_result
 from ubinascii import hexlify as b2a_hex
-from ubinascii import unhexlify as a2b_hex
 from ubinascii import b2a_base64
 
 from utils import problem_file_line, show_single_address
@@ -77,16 +75,8 @@ class PressRelease:
             else:
                 self.last_key = ch
                 return ch
-            
-async def ux_confirm(msg):
-    # confirmation screen, with stock title and Y=of course.
-    from ux import ux_show_story
 
-    resp = await ux_show_story(msg, title="Are you SURE ?!?")
-
-    return resp == 'y'
-
-async def ux_enter_number(prompt, max_value, can_cancel=False):
+async def ux_enter_number(prompt, max_value, can_cancel=False, value=''):
     # return the decimal number which the user has entered
     # - default/blank value assumed to be zero
     # - clamps large values to the max
@@ -96,7 +86,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
     # allow key repeat on X only?
     press = PressRelease()
 
-    value = ''
+    value = str(value)
     max_w = int(log(max_value, 10) + 1)
 
     dis.clear()
@@ -125,6 +115,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
         elif ch == KEY_DELETE:
             if value:
                 value = value[0:-1]
+                dis.text(0, 4, ' '*CHARS_W)
         elif ch == KEY_CLEAR:
             value = ''
             dis.text(0, 4, ' '*CHARS_W)
@@ -140,11 +131,6 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
 
             # cleanup leading zeros and such
             value = str(min(int(value), max_value))
-
-async def ux_input_numbers(val):
-    # collect a series of digits
-    # - not wanted on Q1; just get the digits mixed in w/ the text.
-    pass
 
 async def ux_input_text(value, confirm_exit=False, hex_only=False, max_len=100,
             prompt='Enter value', min_len=0, b39_complete=False, scan_ok=False,
@@ -543,11 +529,9 @@ async def ux_login_countdown(sec):
 
     dis.busy_bar(0)
 
-def ux_render_words(words, leading_blanks=1):
+def ux_render_words(words, leading_blanks=0):
     # re-use word-list rendering code to show as a string in a story.
     # - because I want them all on-screen at once, and not simple to do that
-    buf = [bytearray(CHARS_W) for y in range(CHARS_H)]
-
     rv = [''] * leading_blanks
 
     num_words = len(words)
@@ -572,6 +556,7 @@ def ux_draw_words(y, num_words, words):
         cols = 2
         xpos = [2, 18]
     else:
+        assert num_words in (18, 24)
         cols = 3
         xpos = [0, 11, 23]
 
@@ -604,8 +589,9 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
     # - max word length is 8, min is 3
     # - useful: simulator.py --q1 --eff --seq 'aa ee 4i '
     from glob import dis
+    from ux import ux_confirm
 
-    assert num_words and prompt and done_cb
+    assert num_words and prompt
 
     def redraw_words(wrds=None):
         if not wrds:
@@ -695,8 +681,7 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
         elif ch == KEY_CANCEL:
             if word_num >= 2:
                 tmp = dis.save_state()
-                ok = await ux_confirm("Everything you've entered will be lost.")
-                if not ok: 
+                if not await ux_confirm("Everything you've entered will be lost."):
                     dis.restore_state(tmp)
                     continue
             return None
@@ -717,7 +702,7 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
                 maybe = [i for i in last_words if i.startswith(value)]
                 if len(maybe) == 1:
                     value = maybe[0]
-                elif len(maybe) == 0:
+                elif not maybe:
                     if len(last_words) == 8:        # 24 words case
                         ll = ''.join(sorted(set([w[0] for w in last_words])))
                         err_msg = 'Final word starts with: ' + ll
@@ -764,7 +749,10 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
             else:
                 err_msg = 'Next key: ' + nextchars
 
-    await done_cb(words)
+    if done_cb:
+        await done_cb(words)
+
+    return words
 
 def ux_dice_rolling():
     from glob import dis
@@ -791,7 +779,7 @@ class QRScannerInteraction:
         pass
 
     @staticmethod
-    async def scan(prompt, line2=None):
+    async def scan(prompt, line2=None, enter_quits=False):
         # draw animation, while waiting for them to scan something
         # - CANCEL to abort
         # - returns a string, BBQr object or None.
@@ -810,6 +798,8 @@ class QRScannerInteraction:
 
         task = asyncio.create_task(SCAN.scan_once())
 
+        escape = KEY_CANCEL + (KEY_ENTER if enter_quits else '')
+
         ph = 0
         while 1:
             if task.done():
@@ -821,9 +811,9 @@ class QRScannerInteraction:
             ph  = (ph + 1) % len(frames)
 
             # wait for key or 250ms animation delay
-            ch = await ux_wait_keydown(KEY_CANCEL, 250)
+            ch = await ux_wait_keydown(escape, 250)
 
-            if ch == KEY_CANCEL:
+            if ch and (ch in escape):
                 data = None
                 break
 
@@ -835,14 +825,14 @@ class QRScannerInteraction:
 
         return data
 
-    async def scan_general(self, prompt, convertor):
+    async def scan_general(self, prompt, convertor, line2=None, enter_quits=False):
         # Scan stuff, and parse it .. raise QRDecodeExplained if you don't like it
         # continues until something is accepted
-        problem = None
+        problem = line2
 
         while 1:
             try:
-                got = await self.scan(prompt, line2=problem)
+                got = await self.scan(prompt, line2=problem, enter_quits=enter_quits)
                 if got is None:
                     return None
 
@@ -852,7 +842,7 @@ class QRScannerInteraction:
                 problem = str(exc)
                 continue
             except Exception as exc:
-                #import sys; sys.print_exception(exc)
+                # import sys; sys.print_exception(exc)
                 problem = "Unable to decode QR"
                 continue
 
@@ -882,9 +872,35 @@ class QRScannerInteraction:
             
         return await self.scan_general(prompt, convertor)
 
+    async def scan_for_addresses(self, prompt, line2=None):
+        # accept only payment addresses; strips BIP-21 junk that might be there
+        # - always a list result, might be size one
+        from utils import decode_bip21_text
+
+        def addr_taster(got):
+            # could be muliple-line text file via BBQR or single line
+            got = decode_qr_result(got, expect_text=True)
+
+            try:
+                rv = []
+                for ln in got.split():
+                    what, args = decode_bip21_text(ln)
+                    if what == 'addr':
+                        rv.append(args[1])
+                if rv:
+                    return rv
+            except QRDecodeExplained:
+                raise
+            except:
+                pass
+            raise QRDecodeExplained("Not a payment address?")
+
+        return await self.scan_general(prompt, addr_taster, line2=line2, enter_quits=True)
+
 
     async def scan_anything(self, expect_secret=False, tmp=False):
         # start a QR scan, and act on what we find, whatever it may be.
+        from ux import ux_show_story
         problem = None
         while 1:
             prompt = 'Scan any QR code, or CANCEL' if not expect_secret else \
@@ -897,104 +913,99 @@ class QRScannerInteraction:
 
                 # Figure out what we got.
                 what, vals = decode_qr_result(got, expect_secret=expect_secret)
+                break
             except QRDecodeExplained as exc:
                 problem = str(exc)
                 continue
-            except Exception as exc:
-                import sys; sys.print_exception(exc)
+            except Exception:
+                # import sys; sys.print_exception(exc)
                 problem = "Unable to decode QR"
                 continue
 
-            if what == 'xprv':
-                from actions import import_extended_key_as_secret
-                text_xprv, = vals
-                await import_extended_key_as_secret(text_xprv, tmp)
-                return
+        if what == 'xprv':
+            from actions import import_extended_key_as_secret
+            text_xprv, = vals
+            await import_extended_key_as_secret(text_xprv, tmp)
+            return
 
-            if what == 'words':
-                from seed import commit_new_words, set_ephemeral_seed_words       # dirty API
-                words, = vals
-                if tmp:
-                    await set_ephemeral_seed_words(words, 'From QR')
-                else:
-                    await commit_new_words(words)
+        if what == 'words':
+            from seed import commit_new_words, set_ephemeral_seed_words       # dirty API
+            words, = vals
+            if tmp:
+                await set_ephemeral_seed_words(words, 'From QR')
+            else:
+                await commit_new_words(words)
 
-                return
+            return
 
-            if what == 'psbt':
-                decoder, psbt_len, got = vals
-                await qr_psbt_sign(decoder, psbt_len, got)
-                return
+        if what == 'psbt':
+            decoder, psbt_len, got = vals
+            await qr_psbt_sign(decoder, psbt_len, got)
 
-            if what == 'txn':
-                bin_txn, = vals
-                await ux_visualize_txn(bin_txn)
-                return 
+        elif what == 'txn':
+            bin_txn, = vals
+            await ux_visualize_txn(bin_txn)
 
-            if what == 'addr':
-                proto, addr, args = vals
-                await ux_visualize_bip21(proto, addr, args)
-                return
+        elif what == 'addr':
+            proto, addr, args = vals
+            await ux_visualize_bip21(proto, addr, args)
 
-            if what in ("multi", "minisc"):
-                from auth import maybe_enroll_xpub
-                from ux import ux_show_story
-                ms_config, = vals
-                try:
-                    maybe_enroll_xpub(config=ms_config,
-                                      miniscript=False if what == "multi" else None)
-                except Exception as e:
-                    await ux_show_story(
-                        'Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
-                return
+        elif what in ("multi", "minisc"):
+            from auth import maybe_enroll_xpub
+            ms_config, = vals
+            try:
+                maybe_enroll_xpub(config=ms_config,
+                                  miniscript=False if what == "multi" else None)
+            except Exception as e:
+                await ux_show_story(
+                    'Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
+            return
 
-            if what == "wif":
-                data, = vals
-                wif_str, key_pair, compressed, testnet = data
-                await ux_visualize_wif(wif_str, key_pair, compressed, testnet)
-                return
+        elif what == "wif":
+            data, = vals
+            wif_str, key_pair, compressed, testnet = data
+            await ux_visualize_wif(wif_str, key_pair, compressed, testnet)
 
-            if what == "vmsg":
-                data, = vals
-                from auth import verify_armored_signed_msg
-                await verify_armored_signed_msg(data)
-                return
+        elif what == "vmsg":
+            data, = vals
+            from msgsign import verify_armored_signed_msg
+            await verify_armored_signed_msg(data)
 
-            if what == "smsg":
-                data, = vals
-                from auth import approve_msg_sign, msg_signing_done
-                await approve_msg_sign(None, None, None,
-                                       msg_sign_request=data, kill_menu=True,
-                                       approved_cb=msg_signing_done)
-                return
+        elif what == "smsg":
+            data, = vals
+            from auth import approve_msg_sign
+            from msgsign import msg_signing_done
+            await approve_msg_sign(None, None, None,
+                                   msg_sign_request=data, kill_menu=True,
+                                   approved_cb=msg_signing_done)
 
-            if what == 'text' or what == 'xpub':
-                # we couldn't really decode it.
-                txt, = vals
-                await ux_visualize_textqr(txt)
-                return 
+        elif what == 'text' or what == 'xpub':
+            # we couldn't really decode it.
+            txt, = vals
+            await ux_visualize_textqr(txt)
 
-            # not reached?
-            problem = 'Unhandled: ' + what
-            
+        elif what == 'teleport':
+            from teleport import kt_incoming
+            await kt_incoming(*vals)
+
+        else:
+            await ux_show_story(what, title='Unhandled')
+
 
 async def qr_psbt_sign(decoder, psbt_len, raw):
     # Got a PSBT coming in from QR scanner. Sign it.
     # - similar to auth.sign_psbt_file()
-    from auth import UserAuthorizedAction, ApproveTransaction, try_push_tx
-    from utils import CapsHexWriter
-    from glob import dis, PSRAM
-    from ux import show_qr_code, the_ux, ux_show_story
-    from ux_q1 import show_bbqr_codes
+    from auth import UserAuthorizedAction, ApproveTransaction
+    from ux import the_ux
     from sffile import SFFile
-    from auth import MAX_TXN_LEN, TXN_INPUT_OFFSET, TXN_OUTPUT_OFFSET
+    from auth import TXN_INPUT_OFFSET, psbt_encoding_taster
 
     if raw != 'PSRAM':      # might already be in place
-
+        # copy to PSRAM, and convert encoding at same time
         if isinstance(raw, str):
             raw = raw.encode()
 
-        # copy to PSRAM, and convert encoding at same time
+        _, output_encoder, _ = psbt_encoding_taster(raw[:10], psbt_len)
         total = 0
         with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as out:
             if not decoder:
@@ -1008,39 +1019,16 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
         assert total <= psbt_len
         psbt_len = total
 
-    async def done(psbt):
-        dis.fullscreen("Wait...")
-        txid = None
-
-        with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as psram:
-
-            # save transaction, as hex into PSRAM
-            with CapsHexWriter(psram) as fd:
-                if psbt.is_complete():
-                    txid = psbt.finalize(fd)
-                else:
-                    psbt.serialize(fd)
-
-            data_len, sha = psram.tell(), fd.checksum.digest()
-
-        UserAuthorizedAction.cleanup()
-
-        # Show the result as a QR, perhaps many BBQr's
-        # - note: already HEX here!
-        here = PSRAM.read_at(TXN_OUTPUT_OFFSET, data_len)
-        if txid and await try_push_tx(a2b_hex(here), txid, sha):
-            return  # success, exit
-
-        try:
-            await show_qr_code(here.decode(), is_alnum=True,
-                               msg=(txid or 'Partly Signed PSBT'))
-        except (ValueError, RuntimeError):
-            await show_bbqr_codes('T' if txid else 'P', here,
-                                  (txid or 'Partly Signed PSBT'),
-                                  already_hex=True)
+    else:
+        with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as out:
+            taste = out.read(10)
+            _, output_encoder, _ = psbt_encoding_taster(taste, psbt_len)
 
     UserAuthorizedAction.cleanup()
-    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done)
+    UserAuthorizedAction.active_request = ApproveTransaction(
+        psbt_len, input_method="qr",
+        output_encoder=output_encoder
+    )
     the_ux.push(UserAuthorizedAction.active_request)
 
 async def ux_visualize_txn(bin_txn):
@@ -1073,7 +1061,7 @@ async def ux_visualize_txn(bin_txn):
         msg += '\n\nTxid:\n' + b2a_hex(txid).decode()
 
     except Exception as exc:
-        sys.print_exception(exc)
+        # sys.print_exception(exc)
         msg = "Unable to deserialize"
 
     await ux_show_story(msg, title="Signed Transaction")
@@ -1126,7 +1114,7 @@ async def ux_visualize_wif(wif_str, kp, compressed, testnet):
 
 async def qr_msg_sign_done(signature, address, text):
     from ux import ux_show_story
-    from auth import rfc_signature_template_gen
+    from msgsign import rfc_signature_template
     from export import export_by_qr
 
     sig = b2a_base64(signature).decode('ascii').strip()
@@ -1138,12 +1126,13 @@ async def qr_msg_sign_done(signature, address, text):
         if ch == "y":
             await export_by_qr(sig, "Signature", "U")
         if ch == "0":
-            armored_str = "".join(rfc_signature_template_gen(addr=address, msg=text,
+            armored_str = "".join(rfc_signature_template(addr=address, msg=text,
                                                              sig=sig))
             await show_bbqr_codes("U", armored_str, "Armored MSG")
 
 async def qr_sign_msg(txt):
-    from auth import ux_sign_msg
+    from msgsign import ux_sign_msg
+
     await ux_sign_msg(txt, approved_cb=qr_msg_sign_done, kill_menu=True)
 
 async def ux_visualize_textqr(txt, maxlen=MSG_SIGNING_MAX_LENGTH):
@@ -1160,8 +1149,6 @@ async def ux_visualize_textqr(txt, maxlen=MSG_SIGNING_MAX_LENGTH):
     msg = "%s\n\nAbove is text that was scanned. " % txt
     if escape:
         msg += " Press (0) to sign the text. "
-    else:
-        msg += "We can't do any more with it."
 
     ch = await ux_show_story(title="Simple Text", msg=msg, escape=escape)
     if escape and (ch == "0"):
@@ -1179,7 +1166,7 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
     #    - BUT: need zlib compress (not present) .. delayed for now
     from bbqr import TYPE_LABELS, int2base36, b32encode, num_qr_needed
     from glob import PSRAM, dis
-    from ux import ux_wait_keyup, ux_wait_keydown
+    from ux import ux_wait_keydown
     import uqr
 
     assert not PSRAM.is_at(data, 0)     # input data would be overwritten with our work
@@ -1207,20 +1194,25 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
         # BBQr header
         hdr = 'B$' + encoding + type_code + int2base36(num_parts) + int2base36(pkt)
 
-        # encode the bytes
         assert pos < data_len, (pkt, pos, data_len)
         if already_hex:
-            # not encoding, just chars->bytes
+            # not encoding, just hex string
             hp = pos*2
-            body = data[hp:hp+(part_size*2)].decode()
+            body = data[hp:hp+(part_size*2)]
         else:
-            # base32 encoding
+            # encode bytes to base32 encoding
             body = b32encode(data[pos:pos+part_size])
 
         pos += part_size
 
+        # first packet, want to discover a working small value for QR version
+        if pkt == 0:
+            mnv = 10 if num_parts > 1 else 1
+        else:
+            mnv = force_version
+
         # do the hard work
-        qr_data = uqr.make(hdr+body, min_version=(10 if pkt == 0 else force_version),
+        qr_data = uqr.make(hdr+body, min_version=mnv,
                                     max_version=force_version, encoding=uqr.Mode_ALPHANUMERIC)
 
         # save the rendered QR
@@ -1238,7 +1230,7 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
 
         del qr_data
 
-        dis.progress_bar_show((pkt+1) / num_parts)
+        dis.progress_sofar((pkt+1), num_parts)
     
     # display rate (plus time to send to display, etc)
     ms_per_each = 200

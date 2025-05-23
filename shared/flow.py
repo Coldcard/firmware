@@ -20,9 +20,11 @@ from countdowns import countdown_chooser
 from paper import make_paper_wallet
 from trick_pins import TrickPinMenu
 from tapsigner import import_tapsigner_backup_file
+from ccc import toggle_ccc_feature
 
 # useful shortcut keys
 from charcodes import KEY_QR, KEY_NFC
+from public_constants import AF_P2WPKH_P2SH, AF_P2WPKH
 
 
 # Optional feature: HSM, depends on hardware
@@ -39,12 +41,14 @@ if version.has_battery:
     from battery import battery_idle_timeout_chooser, brightness_chooser
     from q1 import scan_and_bag
     from notes import make_notes_menu
+    from teleport import kt_start_rx, kt_send_file_psbt
 else:
     battery_idle_timeout_chooser = None
     brightness_chooser = None
     scan_and_bag = None
     make_notes_menu = None
-
+    kt_start_rx = None
+    kt_send_file_psbt = None
 
 #
 # NOTE: "Always In Title Case"
@@ -69,6 +73,8 @@ def has_secrets():
     # Secret is loaded, may be from SE or tmp
     from pincodes import pa
     return pa.has_secrets()
+
+qr_and_has_secrets = has_secrets if version.has_qr else False
 
 def nfc_enabled():
     from glob import NFC
@@ -140,7 +146,7 @@ SettingsMenu = [
     NonDefaultMenuItem('Multisig Wallets', 'multisig',
                        menu=make_multisig_menu, predicate=has_secrets),
     NonDefaultMenuItem('Miniscript', 'miniscript',
-                       menu=make_miniscript_menu, predicate=has_secrets),
+                       menu=make_miniscript_menu, predicate=has_secrets, shortcut="m"),
     NonDefaultMenuItem('NFC Push Tx', 'ptxurl', menu=pushtx_setup_menu),
     MenuItem('Display Units', chooser=value_resolution_chooser),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
@@ -195,6 +201,7 @@ WalletExportMenu = [
              arg=(True, [AF_P2WPKH, AF_P2WPKH_P2SH], "Zeus Wallet", "zeus-export.txt")),
     MenuItem("Electrum Wallet", f=electrum_skeleton),
     MenuItem("Theya", f=named_generic_skeleton, arg="Theya"),
+    MenuItem("Bitcoin Safe", f=named_generic_skeleton, arg="Bitcoin Safe"),
     MenuItem("Wasabi Wallet", f=wasabi_skeleton),
     MenuItem("Unchained", f=unchained_capital_export),
     MenuItem("Lily Wallet", f=named_generic_skeleton, arg="Lily"),
@@ -215,6 +222,7 @@ FileMgmtMenu = [
     MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu),        #dup elsewhere
     MenuItem('Sign Text File', predicate=has_secrets, f=sign_message_on_sd),
     MenuItem('Batch Sign PSBT', predicate=has_secrets, f=batch_sign),
+    MenuItem('Teleport Multisig PSBT', predicate=qr_and_has_secrets, f=kt_send_file_psbt),
     MenuItem('List Files', f=list_files),
     MenuItem('Verify Sig File', f=verify_sig_file),
     MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file, shortcut=KEY_NFC),
@@ -236,8 +244,9 @@ DevelopersMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Serial REPL", f=dev_enable_repl),
     MenuItem('Warm Reset', f=reset_self),
-    MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
-    MenuItem("BKPW Override", menu=bkpw_override),
+    MenuItem("Restore Bkup", f=restore_backup_dev),
+    MenuItem("BKPW Override", menu=bkpw_override, predicate=has_secrets),
+    MenuItem('Reflash GPU', f=reflash_gpu, predicate=version.has_qwerty),
 ]
 
 AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
@@ -254,6 +263,7 @@ AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
     MenuItem("Upgrade Firmware", menu=UpgradeMenu, predicate=is_not_tmp),
     MenuItem("File Management", menu=FileMgmtMenu),
+    MenuItem("Key Teleport (start)", f=kt_start_rx, predicate=version.has_qr),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
     MenuItem("I Am Developer.", menu=maybe_dev_menu),
@@ -329,7 +339,6 @@ correctly- crafted transactions signed on Testnet could be broadcast on Mainnet.
     MenuItem('Settings Space', f=show_settings_space),
     MenuItem('MCU Key Slots', f=show_mcu_keys_left),
     MenuItem('Bless Firmware', f=bless_flash),          # no need for this anymore?
-    MenuItem('Reflash GPU', f=reflash_gpu, predicate=version.has_qwerty),
     MenuItem("Wipe LFS", f=wipe_filesystem),    # kills other-seed settings, HSM stuff, addr cache
 ]
 
@@ -337,7 +346,7 @@ BackupStuffMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Backup System", f=backup_everything),
     MenuItem("Verify Backup", f=verify_backup),
-    MenuItem("Restore Backup", f=restore_everything),   # just a redirect really
+    MenuItem("Restore Backup", f=need_clear_seed),   # just a UX msg really
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
 ]
 
@@ -364,11 +373,13 @@ AdvancedNormalMenu = [
                             f=drv_entro_start),
     MenuItem("View Identity", f=view_ident),
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
+    MenuItem("Key Teleport (start)", f=kt_start_rx, predicate=version.has_qr),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     ToggleMenuItem('Enable HSM', 'hsmcmd', ['Default Off', 'Enable'],
                    story=("Enable HSM? Enables all user management commands, and other HSM-only USB commands. "
                           "By default these commands are disabled."),
                    predicate=hsm_available),
+    NonDefaultMenuItem('Coldcard Co-Signing', 'ccc', f=toggle_ccc_feature, predicate=is_not_tmp),
     MenuItem('User Management', menu=make_users_menu,
              predicate=hsm_available),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu, shortcut=KEY_NFC),
@@ -379,7 +390,7 @@ AdvancedNormalMenu = [
 VirginSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Choose PIN Code', f=initial_pin_setup),
-    MenuItem('Advanced/Tools', menu=AdvancedVirginMenu),
+    MenuItem('Advanced/Tools', menu=AdvancedVirginMenu, shortcut='t'),
     MenuItem('Bag Number', f=show_bag_number),
     MenuItem('Help', f=virgin_help, predicate=not version.has_qwerty),
 ]
@@ -390,7 +401,7 @@ ImportWallet = [
     MenuItem("24 Words", menu=start_seed_import, arg=24),
     MenuItem('Scan QR Code', predicate=version.has_qr,
              shortcut=KEY_QR, f=scan_any_qr, arg=(True, False)),
-    MenuItem("Restore Backup", f=restore_everything),
+    MenuItem("Restore Backup", f=restore_backup, arg=False),  # tmp=False
     MenuItem("Clone Coldcard", menu=clone_start),
     MenuItem("Import XPRV", f=import_xprv, arg=False),  # ephemeral=False
     MenuItem("Tapsigner Backup", f=import_tapsigner_backup_file, arg=False),
@@ -415,8 +426,9 @@ EmptyWallet = [
     MenuItem('Import Existing', menu=ImportWallet),
     MenuItem("Migrate Coldcard", menu=clone_start),
     MenuItem('Help', f=virgin_help, predicate=not version.has_qwerty),
-    MenuItem('Advanced/Tools', menu=AdvancedPinnedVirginMenu),
+    MenuItem('Advanced/Tools', menu=AdvancedPinnedVirginMenu, shortcut='t'),
     MenuItem('Settings', menu=SettingsMenu),
+    ShortcutItem(KEY_QR, predicate=version.has_qr, f=scan_any_qr, arg=(True, False)),
 ]
 
 # In operation, normal system, after a good PIN received.
@@ -443,8 +455,8 @@ NormalSystem = [
 
 # Shown until unit is put into a numbered bag
 FactoryMenu = [
-    MenuItem('Version: ' + version.get_mpy_version()[1], f=show_version),
     MenuItem('Bag Me Now', f=scan_and_bag),
+    MenuItem('Version: ' + version.get_mpy_version()[1], f=show_version),
     MenuItem('DFU Upgrade', f=start_dfu, shortcut='u'),
     MenuItem('Ship W/O Bag', f=ship_wo_bag),
     MenuItem("Debug Functions", menu=DebugFunctionsMenu, shortcut='f'),
