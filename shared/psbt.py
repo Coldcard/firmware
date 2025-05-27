@@ -1827,7 +1827,6 @@ class psbtObject(psbtProxy):
 
         # check fee is reasonable
         the_fee = self.calculate_fee()
-
         if the_fee is None:
             return
         if the_fee < 0:
@@ -1866,7 +1865,7 @@ class psbtObject(psbtProxy):
         if zero_val_outs:
             self.warnings.append(
                 ('Zero Value',
-                 'Non-standard zero value outputs: %d' % zero_val_outs)
+                 'Non-standard zero value output(s).')
             )
 
         self.consolidation_tx = (self.num_change_outputs == self.num_outputs)

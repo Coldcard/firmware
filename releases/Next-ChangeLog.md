@@ -4,7 +4,9 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk4 and Q
 
-
+- Bugfix: If all change outputs have `nValue=0` they're not shown in UX
+- Bugfix: Disallow negative input/output amounts in PSBT
+- Enhancement: Add warning for zero value outputs if not OP_RETURNs
 
 # Mk4 Specific Changes
 
