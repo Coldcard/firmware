@@ -1395,7 +1395,7 @@ class psbtObject(psbtProxy):
             assert not self.has_goc, "v0 requires exclusion of global output count"
             assert not self.has_gtv, "v0 requires exclusion of global txn version"
             assert self.txn, "v0 requires inclusion of global unsigned tx"
-            assert self.txn[1] > 63, 'txn too short'
+            assert self.txn[1] > 61, 'txn too short'
             assert self.fallback_locktime is None, "v0 requires exclusion of global fallback locktime"
             assert self.txn_modifiable is None, "v0 requires exclusion of global txn modifiable"
 
@@ -1494,13 +1494,20 @@ class psbtObject(psbtProxy):
         num_op_return = 0
         num_op_return_size = 0
         num_unknown_scripts = 0
+        zero_val_outs = 0  # only those that are not OP_RETURN are considered
         self.num_change_outputs = 0
 
         for idx, txo in self.output_iter():
             output = self.outputs[idx]
             # perform output validation
             af = output.validate(idx, txo, self.my_xfp, self.active_multisig, self)
+            assert txo.nValue >= 0, "negative output value: o%d" % idx
             total_out += txo.nValue
+
+            if (txo.nValue == 0) and (af != "op_return"):
+                # OP_RETURN outputs have nValue=0 standard
+                zero_val_outs += 1
+
             if output.is_change:
                 self.num_change_outputs += 1
                 total_change += txo.nValue
@@ -1526,16 +1533,16 @@ class psbtObject(psbtProxy):
                 '%s != %s' % (self.total_change_value, total_change)
 
         # check fee is reasonable
-        if self.total_value_out == 0:
-            per_fee = 100
-        else:
-            the_fee = self.calculate_fee()
-            if the_fee is None:
-                return
-            if the_fee < 0:
-                raise FatalPSBTIssue("Outputs worth more than inputs!")
+        the_fee = self.calculate_fee()
+        if the_fee is None:
+            return
+        if the_fee < 0:
+            raise FatalPSBTIssue("Outputs worth more than inputs!")
 
+        if self.total_value_out:
             per_fee = the_fee * 100 / self.total_value_out
+        else:
+            per_fee = 100
 
         fee_limit = settings.get('fee_limit', DEFAULT_MAX_FEE_PERCENTAGE)
 
@@ -1560,6 +1567,12 @@ class psbtObject(psbtProxy):
             self.warnings.append(
                 ('Output?',
                  'Sending to %d not well understood script(s).' % num_unknown_scripts)
+            )
+
+        if zero_val_outs:
+            self.warnings.append(
+                ('Zero Value',
+                 'Non-standard zero value output(s).')
             )
 
         self.consolidation_tx = (self.num_change_outputs == self.num_outputs)
@@ -1703,7 +1716,7 @@ class psbtObject(psbtProxy):
             # pull out just the CTXOut object (expensive)
             utxo = inp.get_utxo(txi.prevout.n)
 
-            assert utxo.nValue > 0
+            assert utxo.nValue >= 0, "negative input value: i%d" % i
             total_in += utxo.nValue
 
             # Look at what kind of input this will be, and therefore what
@@ -1723,7 +1736,7 @@ class psbtObject(psbtProxy):
 
         if not foreign:
             # no foreign inputs, we can calculate the total input value
-            assert total_in > 0
+            assert total_in > 0, "zero value txn"
             self.total_value_in = total_in
         else:
             # 1+ inputs don't belong to us, we can't calculate the total input value
