@@ -132,7 +132,7 @@ class OutptValueCache:
 
         # save new addition
         assert len(key) == ENCKEY_LEN
-        assert amount > 0
+        # assert amount > 0
         entry = key + cls.encode_value(prevout, amount)
         cls.runtime_cache.append(entry)
 

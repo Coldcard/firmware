@@ -3135,6 +3135,97 @@ def test_null_data_op_return(fake_txn, start_sign, end_sign, reset_seed_words):
     assert "null-data" in story
     assert "OP_RETURN" in story
 
+def test_smallest_txn(fake_txn, start_sign, end_sign, reset_seed_words, settings_set):
+    # serialized txn has just 62 bytes and is the smallest that we support
+    # 1 input (iregardless of script type) and 1 zero value null OP_RETURN
+    reset_seed_words()
+    settings_set('fee_limit', -1)
+    psbt = fake_txn(1, 0, op_return=[(10, b"")], input_amount=10)
+    start_sign(psbt, False, stxn_flags=STXN_VISUALIZE)
+    story = end_sign(accept=None, expect_txn=False).decode()
+    assert "null-data" in story
+    assert "OP_RETURN" in story
+
+
+@pytest.mark.parametrize("num_outs", [1, 12])
+@pytest.mark.parametrize("change", [True, False])
+def test_zero_value_outputs(num_outs, change, fake_txn, start_sign, end_sign, reset_seed_words,
+                            settings_set):
+    reset_seed_words()
+    # user needs to disable fee limit checks to be able to do this
+    settings_set("fee_limit", -1)
+    change_outs = list(range(num_outs)) if change else []
+    psbt = fake_txn(1, num_outs, outvals=num_outs*[0], change_outputs=change_outs, input_amount=1)
+    start_sign(psbt, False, stxn_flags=STXN_VISUALIZE)
+    story = end_sign(accept=None, expect_txn=False).decode()
+    assert f"Zero Value: Non-standard zero value outputs: {num_outs}" in story
+    assert "1 input" in story
+    assert f"{num_outs} output{'' if num_outs == 1 else 's'}" in story
+    assert 'Network fee 0.00000001 XTN' in story
+
+    if change:
+        assert "0.00000000 XTN" in story.split("\n\n")[4]  # change back is zero
+        assert "Consolidating 0.00000000 XTN" in story
+        assert "Change back" in story
+        if num_outs > 1:
+            assert "to addresses" in story
+        else:
+            assert "to address" in story
+    else:
+        # even
+        if num_outs == 12:
+            # even tho we do not see 2 outputs, fee is also 0 and 2 smaller not shown here have also value o 0
+            assert story.count('0.00000000 XTN') == 12
+        else:
+            assert story.count('0.00000000 XTN') == 2
+        assert "Change back" not in story
+
+
+@pytest.mark.parametrize("change", [True, False])
+@pytest.mark.parametrize("num_ins", [True, False])
+def test_zero_value_input(change, num_ins, fake_txn, start_sign, end_sign, reset_seed_words,
+                          cap_story):
+    # 0 value inputs - not allowed
+    reset_seed_words()
+    psbt = fake_txn(1, 1, fee=0, input_amount=0)
+    start_sign(psbt, False, stxn_flags=STXN_VISUALIZE)
+    with pytest.raises(Exception):
+        end_sign(accept=None, expect_txn=False).decode()
+
+    _, story = cap_story()
+    assert "zero value txn" in story
+
+
+@pytest.mark.parametrize("change", [True, False])
+def test_zero_value_inputs(change, fake_txn, start_sign, end_sign, reset_seed_words):
+    # one input is-non zero
+    # others are zero  --> allowed
+    reset_seed_words()
+    invals = [0 for i in range(4)] + [100]
+    psbt = fake_txn(5, 1, invals=invals, outvals=[99], change_outputs=[0] if change else [], fee=20)
+    start_sign(psbt, False, stxn_flags=STXN_VISUALIZE)
+    end_sign(accept=None, expect_txn=False).decode()
+
+
+def test_negative_amount_inputs(reset_seed_words, fake_txn, start_sign, end_sign, cap_story):
+    reset_seed_words()
+    psbt = fake_txn(1, 1, fee=0, input_amount=-1000)
+    start_sign(psbt, False, stxn_flags=STXN_VISUALIZE)
+    with pytest.raises(Exception):
+        end_sign(accept=None, expect_txn=False).decode()
+
+    _, story = cap_story()
+    assert "negative input value: i0" in story
+
+def test_negative_amount_outputs(reset_seed_words, fake_txn, start_sign, end_sign, cap_story):
+    reset_seed_words()
+    psbt = fake_txn(1, 1, outvals=[-1000], fee=0)
+    start_sign(psbt, False, stxn_flags=STXN_VISUALIZE)
+    with pytest.raises(Exception):
+        end_sign(accept=None, expect_txn=False).decode()
+
+    _, story = cap_story()
+    assert "negative output value: o0" in story
 
 def test_mk4_done_signing_infinite_loop(goto_home, try_sign, fake_txn, enable_hw_ux,
                                         settings_get, is_q1):

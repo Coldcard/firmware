@@ -358,6 +358,7 @@ class ApproveTransaction(UserAuthorizedAction):
             #print('FatalPSBTIssue: ' + exc.args[0])
             return await self.failure(exc.args[0])
         except BaseException as exc:
+            # sys.print_exception(exc)
             del self.psbt
             gc.collect()
 
@@ -622,10 +623,12 @@ class ApproveTransaction(UserAuthorizedAction):
         largest_outs = []
         largest_change = []
         total_change = 0
+        has_change = False
 
         for idx, tx_out in self.psbt.output_iter():
             outp = self.psbt.outputs[idx]
             if outp.is_change:
+                has_change = True
                 total_change += tx_out.nValue
                 if len(largest_change) < MAX_VISIBLE_CHANGE:
                     largest_change.append((tx_out.nValue, self.chain.render_address(tx_out.scriptPubKey)))
@@ -677,7 +680,7 @@ class ApproveTransaction(UserAuthorizedAction):
             msg.write("\n")
 
         # change outputs - verified to be coming back to our wallet
-        if total_change > 0:
+        if has_change:
             msg.write("Change back:\n%s %s\n" % self.chain.render_value(total_change))
             visible_change_sum = 0
             if len(largest_change) == 1:
