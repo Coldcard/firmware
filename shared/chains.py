@@ -12,6 +12,7 @@ from public_constants import TAPROOT_LEAF_TAPSCRIPT, TAPROOT_LEAF_MASK
 from serializations import hash160, ser_compact_size, disassemble, ser_string
 from ucollections import namedtuple
 from opcodes import OP_RETURN, OP_1, OP_16
+from precomp_tag_hash import TAP_TWEAK_H, TAP_LEAF_H
 
 
 SINGLESIG_AF = (AF_P2WPKH, AF_CLASSIC, AF_P2TR, AF_P2WPKH_P2SH)
@@ -40,7 +41,7 @@ def taptweak(internal_key, tweak=None):
     # This can be achieved by computing the output key point as:
     # Q = P + int(hashTapTweak(bytes(P)))G."
     actual_tweak = internal_key if tweak is None else internal_key + tweak
-    tweak = ngu.secp256k1.tagged_sha256(b"TapTweak", actual_tweak)
+    tweak = ngu.hash.sha256t(TAP_TWEAK_H, actual_tweak, True)
     xo_pubkey = ngu.secp256k1.xonly_pubkey(internal_key)
     xo_pubkey_tweaked = xo_pubkey.tweak_add(tweak)
     return xo_pubkey_tweaked.to_bytes()
@@ -51,8 +52,7 @@ def tapscript_serialize(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
     return bytes([lv]) + ser_string(script)
 
 def tapleaf_hash(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
-    return ngu.secp256k1.tagged_sha256(b"TapLeaf",
-                                       tapscript_serialize(script, leaf_version))
+    return ngu.hash.sha256t(TAP_LEAF_H, tapscript_serialize(script, leaf_version), True)
 
 
 class ChainsBase:

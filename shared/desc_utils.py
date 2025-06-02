@@ -9,6 +9,7 @@ from binascii import unhexlify as a2b_hex
 from binascii import hexlify as b2a_hex
 from utils import keypath_to_str, str_to_keypath, swab32, xfp2str
 from serializations import ser_compact_size
+from precomp_tag_hash import TAP_BRANCH_H
 
 
 WILDCARD = "*"
@@ -516,8 +517,7 @@ def taproot_tree_helper(scripts):
 
     if isinstance(scripts, Miniscript):
         script = scripts.compile()
-        assert isinstance(script, bytes)
-        h = ngu.secp256k1.tagged_sha256(b"TapLeaf", chains.tapscript_serialize(script))
+        h = chains.tapleaf_hash(script)
         return [(chains.TAPROOT_LEAF_TAPSCRIPT, script, bytes())], h
 
     left, left_h = taproot_tree_helper(scripts[0].tree)
@@ -526,5 +526,6 @@ def taproot_tree_helper(scripts):
     right = [(version, script, control + left_h) for version, script, control in right]
     if right_h < left_h:
         right_h, left_h = left_h, right_h
-    h = ngu.secp256k1.tagged_sha256(b"TapBranch", left_h + right_h)
+
+    h = ngu.hash.sha256t(TAP_BRANCH_H, left_h + right_h, True)
     return left + right, h

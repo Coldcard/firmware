@@ -20,8 +20,9 @@ from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, COutPoint
 from serializations import ser_sig_der, uint256_from_str, ser_push_data
 from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_ANYONECANPAY
 from serializations import ALL_SIGHASH_FLAGS, SIGHASH_DEFAULT
-from opcodes import OP_CHECKMULTISIG, OP_RETURN
+from opcodes import OP_CHECKMULTISIG
 from glob import settings
+from precomp_tag_hash import TAP_TWEAK_H, TAP_SIGHASH_H
 
 from public_constants import (
     PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_XPUB, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
@@ -2473,7 +2474,8 @@ class psbtObject(psbtProxy):
                                 # merkle root needs to be added to tweak with internal key
                                 # merkle root was already verified against registered script in determine_my_signing_key
                                 tweak += self.get(inp.taproot_merkle_root)
-                            tweak = ngu.secp256k1.tagged_sha256(b"TapTweak", tweak)
+
+                            tweak = ngu.hash.sha256t(TAP_TWEAK_H, tweak, True)
                             kpt = kp.xonly_tweak_add(tweak)
                             sig = ngu.secp256k1.sign_schnorr(kpt, digest, ngu.random.bytes(32))
                             if inp.sighash != SIGHASH_DEFAULT:
@@ -2688,7 +2690,7 @@ class psbtObject(psbtProxy):
                 out_type != SIGHASH_ALL and out_type != SIGHASH_SINGLE) * 32 + (
                        annex is not None) * 32 + scriptpath * 37, "taproot SigMsg length does not make sense"
         fd.seek(old_pos)
-        sighash = ngu.secp256k1.tagged_sha256(b"TapSighash", msg)
+        sighash = ngu.hash.sha256t(TAP_SIGHASH_H, msg, True)
         return sighash
 
     def make_txn_segwit_sighash(self, replace_idx, replacement, amount, scriptCode, sighash_type):

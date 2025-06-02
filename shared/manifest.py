@@ -36,6 +36,7 @@ freeze_as_mpy('', [
 	'opcodes.py',
 	'paper.py',
 	'pincodes.py',
+	'precomp_tag_hash.py',
 	'psbt.py',
 	'pwsave.py',
 	'queues.py',
