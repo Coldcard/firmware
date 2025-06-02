@@ -512,16 +512,16 @@ def fill_policy(policy, keys, external=True, internal=True):
     return policy
 
 
-def taproot_tree_helper(scripts):
+def taproot_tree_helper(ts):
     from miniscript import Miniscript
 
-    if isinstance(scripts, Miniscript):
-        script = scripts.compile()
+    if isinstance(ts.tree, Miniscript):
+        script = ts.tree.compile()
         h = chains.tapleaf_hash(script)
         return [(chains.TAPROOT_LEAF_TAPSCRIPT, script, bytes())], h
 
-    left, left_h = taproot_tree_helper(scripts[0].tree)
-    right, right_h = taproot_tree_helper(scripts[1].tree)
+    left, left_h = taproot_tree_helper(ts.tree[0])
+    right, right_h = taproot_tree_helper(ts.tree[1])
     left = [(version, script, control + right_h) for version, script, control in left]
     right = [(version, script, control + left_h) for version, script, control in right]
     if right_h < left_h:

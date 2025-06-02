@@ -62,7 +62,7 @@ class Tapscript:
         return ts
 
     def process_tree(self):
-        info, mr = taproot_tree_helper(self.tree)
+        info, mr = taproot_tree_helper(self)
         self._merkle_root = mr
         return info, mr
 
