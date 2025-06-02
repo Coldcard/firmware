@@ -1710,7 +1710,7 @@ def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
     assert "num_leafs > 8" in story
 
 @pytest.mark.bitcoind
-# @pytest.mark.parametrize("lt_type", ["older", "after"])
+@pytest.mark.parametrize("lt_type", ["older", "after"])
 @pytest.mark.parametrize("same_acct", [True, False])
 @pytest.mark.parametrize("recovery", [True, False])
 @pytest.mark.parametrize("leaf2_mine", [True, False])
@@ -1729,7 +1729,7 @@ def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home
                        use_regtest, bitcoind, microsd_wipe, load_export, dev,
                        address_explorer_check, get_cc_key, import_miniscript,
                        bitcoin_core_signer, same_acct, import_duplicate, press_select,
-                       garbage_collector):
+                       garbage_collector, lt_type):
     lt_type = "older"
     # needs bitcoind 26.0
     normal_cosign_core = False

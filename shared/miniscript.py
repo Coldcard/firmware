@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2020 Stepan Snigirev MIT License embit/miniscript.py
 #
-import ngu, ujson, uio, chains, ure, version
+import ngu, ujson, uio, chains, ure, version, stash
 from ucollections import OrderedDict
 from binascii import unhexlify as a2b_hex
 from binascii import hexlify as b2a_hex
@@ -15,7 +15,9 @@ from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 from files import CardSlot, CardMissingError, needs_microsd
 from utils import problem_file_line, xfp2str, to_ascii_printable, swab32, show_single_address, keypath_to_str
 from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC, KEY_ENTER
+from glob import settings
 
+KT_RXPUBKEY_DERIV = const(20250317)
 
 class MiniscriptException(ValueError):
     pass
@@ -603,6 +605,114 @@ class MiniScriptWallet(BaseStorageWallet):
         except Exception as e:
             await ux_show_story('Failed to write!\n\n%s\n%s' % (e, problem_file_line(e)))
             return
+
+    def xpubs_from_xfp(self, xfp):
+        # return list of XPUB's which match xfp
+        res = []
+        if self.key:
+            print("has key", type(self.key), self.key)
+            if isinstance(self.key, str):
+                k = Key.from_string(self.key)
+                if k.origin:
+                    print("origin", k.origin.cc_fp)
+                else:
+                    print("my fp", k.node.my_fp())
+                if k.origin and k.origin.cc_fp == xfp:
+                    res.append(k)
+                elif not k.origin and swab32(k.node.my_fp()) == xfp:
+                    res.append(k)
+
+        for k in self.keys:
+            print("k", type(k), k)
+            if isinstance(k, str):
+                k = Key.from_string(k)
+
+            print("xfp", xfp)
+            print("fp", k.origin.cc_fp)
+            if xfp == k.origin.cc_fp:
+                res.append(k)
+
+        return res
+
+    def kt_make_rxkey(self, xfp):
+        # Derive the receiver's pubkey from preshared xpub and a special derivation
+        # - also provide the keypair we're using from our side of connection
+        # - returns 4 byte nonce which is sent un-encrypted, his_pubkey and my_keypair
+        ri = ngu.random.uniform(1<<28)
+        keys =  self.xpubs_from_xfp(xfp)
+        if not keys:
+            raise RuntimeError("missing xfp")
+        elif len(keys) > 1:
+            # what to  do here, out key is there more than once but has different origin derivation
+            print("len keys is more than 1", keys)
+
+        the_key = keys[0]
+        the_key.node.derive(KT_RXPUBKEY_DERIV, False)
+        the_key.derive(ri, False)
+        pubkey = the_key.node.pubkey()
+
+        kp = self.kt_my_keypair(ri)
+
+        #print("psbt sender: ri=%d toward xfp: %s ... %s" % (ri, xfp2str(xfp), B2A(pubkey)))
+
+        return ri.to_bytes(4, 'big'), pubkey, kp
+
+    def kt_my_keypair(self, ri):
+        # Calc my keypair for sending PSBT files.
+        #
+        my_xfp = settings.get('xfp')
+        keys = self.xpubs_from_xfp(my_xfp)
+        assert keys
+        the_key = keys[0]
+        deriv = the_key.origin.psbt_derivation()[1:]
+        deriv.append(KT_RXPUBKEY_DERIV)
+        deriv.append(ri)
+
+        path = keypath_to_str(deriv)
+
+        with stash.SensitiveValues() as sv:
+            node = sv.derive_path(path)
+
+            kp = ngu.secp256k1.keypair(node.privkey())
+
+            #print("my keypair: ri=%d my_xfp=%s ... %s" % (
+            #        ri, xfp2str(my_xfp), B2A(kp.pubkey().to_bytes())))
+
+            return kp
+
+    @classmethod
+    def kt_search_rxkey(cls, payload):
+        # Construct the keypair for to be decryption
+        # - has to try pubkey each all the unique XFP for all co-signers in all wallets
+        # - checks checksum of ECDH unwrapped data to see if it's the right one
+        # - returns session key, decrypted first layer, and XFP of sender
+        from teleport import decode_step1
+
+        # this nonce is part of the derivation path so each txn gets new keys
+        ri = int.from_bytes(payload[0:4], 'big')
+
+        my_xfp = settings.get('xfp')
+
+        for msc in cls.iter_wallets():
+            kp = msc.kt_my_keypair(ri)
+
+            for k in msc.keys:
+                if k.origin.cc_fp == my_xfp: continue
+                k = k.node.derive(KT_RXPUBKEY_DERIV, False)
+                k = k.node.derive(ri, False)
+
+                his_pubkey = k.node.pubkey()
+
+                #print("try decode: ri=%d toward xfp: %s ... from %s <= to %s" % (
+                #    ri, xfp2str(xfp), B2A(his_pubkey), B2A(kp.pubkey().to_bytes())), end=' ... ')
+
+                # if implied session key decodes the checksum, it is right
+                ses_key, body = decode_step1(kp, his_pubkey, payload[4:])
+
+                if ses_key:
+                    return ses_key, body, k.origin.cc_fp
+
+        return None, None, None
 
 async def no_miniscript_yet(*a):
     await ux_show_story("You don't have any miniscript wallets yet.")

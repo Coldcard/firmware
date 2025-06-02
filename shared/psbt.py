@@ -2840,16 +2840,30 @@ class psbtObject(psbtProxy):
 
         return ssig
 
-    def multisig_xfps_needed(self):
+    def miniscript_xfps_needed(self):
         # provide the set of xfp's that still need to sign PSBT
         # - used to find which multisig-signer needs to go next
         rv = set()
         for inp in self.inputs:
-            for pk, pth in inp.subpaths.items():
-                if pk in inp.part_sigs:
-                    continue
+            if inp.subpaths:
+                for pk, pth in inp.subpaths.items():
+                    if pk not in inp.part_sigs:
+                        rv.add(pth[0])
 
-                rv.add(pth[0])
+            elif inp.taproot_subpaths:
+                for xpk, lhs_pths in inp.taproot_subpaths.items():
+                    if not lhs_pths[0]:
+                        # no leaf hashes - internal key
+                        if inp.taproot_key_sig:
+                            continue
+
+                    else:
+                        signed = {xonly for (xonly, lhs) in inp.taproot_script_sigs.keys()}
+                        if xpk in signed:
+                            continue
+
+                    rv.add(lhs_pths[1])
+
         return rv
 
     def finalize(self, fd):

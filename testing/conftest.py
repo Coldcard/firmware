@@ -2613,7 +2613,7 @@ from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed, confir
 from test_ephemeral import verify_ephemeral_secret_ui, get_identity_story, get_seed_value_ux, seed_vault_enable
 from test_msg import verify_msg_sign_story, sign_msg_from_text, msg_sign_export, sign_msg_from_address
 from test_multisig import import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn
-from test_miniscript import offer_minsc_import, get_cc_key, bitcoin_core_signer
+from test_miniscript import offer_minsc_import, get_cc_key, bitcoin_core_signer, import_miniscript
 from test_multisig import make_ms_address, clear_ms, make_myself_wallet, import_multisig
 from test_notes import need_some_notes, need_some_passwords
 from test_nfc import try_sign_nfc, ndef_parse_txn_psbt

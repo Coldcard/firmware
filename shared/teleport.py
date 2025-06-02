@@ -16,6 +16,7 @@ from menu import MenuItem, MenuSystem
 from notes import NoteContentBase
 from sffile import SFFile
 from multisig import MultisigWallet
+from miniscript import MiniScriptWallet
 from stash import SensitiveValues, SecretStash, blank_object, bip39_passphrase
 
 # One page github-hosted static website that shows QR based on URL contents pushed by NFC
@@ -251,11 +252,15 @@ async def kt_decode_rx(is_psbt, payload):
         ses_key, body = decode_step1(pair, his_pubkey, body)
     else:
         # Multisig PSBT: will need to iterate over a few wallets and each N-1 possible senders
-        if not MultisigWallet.exists():
-            await ux_show_story("Incoming PSBT requires multisig wallet(s) to be already setup, but you have none.")
+        if (not MultisigWallet.exists()) and (not MiniScriptWallet.exists()):
+            await ux_show_story("Incoming PSBT requires miniscript wallet(s) to be already setup, but you have none.")
             return
 
         ses_key, body, sender_xfp = MultisigWallet.kt_search_rxkey(payload)
+
+        if sender_xfp is None:
+            ses_key, body, sender_xfp = MiniScriptWallet.kt_search_rxkey(payload)
+
 
         if sender_xfp is not None:
             prompt = 'Teleport Password from [%s]' % xfp2str(sender_xfp)
@@ -570,10 +575,10 @@ class SecretPickerMenu(MenuSystem):
     async def share_full_backup(self, *a):
         # context, and warn them
         ch = await ux_show_story("Sending complete backup, including master secret, "
-            "seed vault (if any), multisig wallets, notes/passwords, and all settings! "
+            "seed vault (if any), miniscript wallets, notes/passwords, and all settings! "
             "The receiving "
             "COLDCARD must already have the master seed wiped to be able to install "
-            "everything, otherwise only master secret and multisig are saved into a tmp seed. "
+            "everything, otherwise only master secret and miniscripts are saved into a tmp seed. "
             "OK to proceed?")
         if ch != 'y': return
 
@@ -625,10 +630,18 @@ async def kt_send_psbt(psbt, psbt_len):
     # User wants to send to one or more other senders for them to complete signing.
 
     # who remains to sign? look at inputs
-    ms = psbt.active_multisig
-    all_xfps = [x for x,*p in ms.get_xfp_paths()]
-    need = [x for x in psbt.multisig_xfps_needed() if x in all_xfps]
+    # all_xfps is set, no need to list one master xfp more than once - assuming CC can sign it all
+    if psbt.active_multisig:
+        ms = psbt.active_multisig
+        all_xfps = {x for x,*p in psbt.active_multisig.get_xfp_paths()}
 
+    elif psbt.active_miniscript:
+        ms = psbt.active_miniscript
+        all_xfps = {x for x,*p in psbt.active_miniscript.xfp_paths()}
+    else:
+        assert False
+
+    need = [x for x in psbt.miniscript_xfps_needed() if x in all_xfps]
     # maybe it's not really a PSBT where we know the other signers? might be
     # a weird coinjoin we don't fully understand
     if not need:
@@ -701,7 +714,13 @@ async def kt_send_psbt(psbt, psbt_len):
         await kt_do_send(rx_pubkey, 'p', raw=bin_psbt, prefix=ri, kp=kp,
                         rx_label='[%s] co-signer' % xfp2str(m.next_xfp))
 
-        return True, ms.M - (ms.N - len(need))
+        c = None
+        if hasattr(ms, "M"):
+            c = ms.M - ms.N - len(need)
+
+        return True, c
+
+    return None
 
 async def kt_send_file_psbt(*a):
     # Menu item: choose a PSBT file from SD card, and send to co-signers.
@@ -759,7 +778,7 @@ async def kt_send_file_psbt(*a):
     finally:
         dis.progress_bar_show(1)
 
-    if not psbt.active_multisig:
+    if (not psbt.active_multisig) and (not psbt.active_miniscript):
         await ux_show_story("We are not part of this multisig wallet.", "Cannot Teleport PSBT")
         return
 

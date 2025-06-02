@@ -790,7 +790,7 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
 
     # for specific cases, key teleport is an option
     offer_kt = False
-    if not is_complete and psbt.active_multisig and version.has_qwerty:
+    if not is_complete and (psbt.active_multisig or psbt.active_miniscript) and version.has_qwerty:
         offer_kt = 'use Key Teleport to send PSBT to other co-signers'
 
     while True:
@@ -865,7 +865,7 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
             else:
                 title = "Sent by Teleport"
                 _, num_sigs_needed = ok
-                if num_sigs_needed > 0:
+                if num_sigs_needed is not None and (num_sigs_needed > 0):
                     s, aux = ("", "is") if num_sigs_needed == 1 else ("s", "are")
                     msg = "%d more signature%s %s still required." % (num_sigs_needed, s, aux)
             continue
