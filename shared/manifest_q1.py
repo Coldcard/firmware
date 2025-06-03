@@ -1,24 +1,24 @@
 # Q1 only files; would not be needed on Mk4
 freeze_as_mpy('', [
-	'q1.py',
-	'keyboard.py',
-	'scanner.py',
-	'bbqr.py',
-    'decoders.py',
-	'lcd_display.py',
-	'st7788.py',
-	'gpu.py',
-	'ux_q1.py',
 	'battery.py',
-	'notes.py',
+	'bbqr.py',
 	'calc.py',
+	'decoders.py',
+	'gpu.py',
+	'keyboard.py',
+	'lcd_display.py',
+	'notes.py',
+	'q1.py',
+	'scanner.py',
+	'st7788.py',
 	'teleport.py',
+	'ux_q1.py'
 ], opt=0)
 
 # Optimize data-like files, since no need to debug them.
 freeze_as_mpy('', [
-	'graphics_q1.py',
 	'font_iosevka.py',
 	'gpu_binary.py',        # remove someday?
+	'graphics_q1.py',
 ], opt=3)
 
