@@ -258,21 +258,12 @@ class ChainsBase:
 
         try:
             data = next(gen)[0]
-            if data is None: raise RuntimeError
-        except (RuntimeError, StopIteration):
-            return "null-data", ""
+            if data:
+                return data
+        except StopIteration:
+            pass
 
-        data_ascii = None
-        if len(data) > 200:
-            # completely arbitrary limit, prevents huge stories
-            data_hex = b2a_hex(data[:100]).decode() + "\n ⋯\n" + b2a_hex(data[-100:]).decode()
-        else:
-            data_hex = b2a_hex(data).decode()
-            if min(data) >= 32 and max(data) < 127:  # printable
-                try:
-                    data_ascii = data.decode("ascii")
-                except: pass
-        return data_hex, data_ascii
+        return b""
 
     @classmethod
     def possible_address_fmt(cls, addr):
