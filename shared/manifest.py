@@ -1,6 +1,6 @@
 # Freeze everything in this list.
 # - not optimized because we need asserts to work
-# - for specific boards, see manifest_mk[34].py and manifest_q1.py
+# - for specific boards, see manifest_{mk4,q1}.py and manifest_q1.py
 freeze_as_mpy('', [
 	'actions.py',
 	'address_explorer.py',
@@ -58,6 +58,12 @@ freeze_as_mpy('', [
 	'ownership.py',
 	'ccc.py',
 	'web2fa.py',
+	'psram.py',
+	'mk4.py',
+	'vdisk.py',
+	'nfc.py',
+	'ndef.py',
+	'trick_pins.py',
 ], opt=0)
 
 # Optimize data-like files, since no need to debug them.

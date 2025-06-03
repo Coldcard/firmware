@@ -1,7 +1,5 @@
 # Q1 only files; would not be needed on Mk4
 freeze_as_mpy('', [
-	'psram.py',
-	'mk4.py',
 	'q1.py',
 	'keyboard.py',
 	'scanner.py',
@@ -10,10 +8,6 @@ freeze_as_mpy('', [
 	'lcd_display.py',
 	'st7788.py',
 	'gpu.py',
-	'vdisk.py',
-	'nfc.py',
-	'ndef.py',
-	'trick_pins.py',
 	'ux_q1.py',
 	'battery.py',
 	'notes.py',
