@@ -775,8 +775,11 @@ class Display:
                     self.text(-1, 0, idx_hint)
 
             if is_addr and is_change:
-                for i, c in enumerate("CHANGE"):
-                    self.text(0, i, c)
+                for i, c in enumerate("CHANGE", start=4):
+                    self.text(1, i, c)
+
+                for i, c in enumerate("BACK", start=6):
+                    self.text(-1, i, c)
 
             # pass a max brightness flag here, which will be cleared after next show
             self.show(max_bright=True)
