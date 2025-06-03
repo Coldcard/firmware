@@ -302,12 +302,26 @@ class ApproveTransaction(UserAuthorizedAction):
 
         # check for OP_RETURN
         data = self.chain.op_return(o.scriptPubKey)
-        if data:
-            data_hex, data_ascii = data
-            to_ret = '%s\n - OP_RETURN -\n%s' % (val, data_hex)
-            if data_ascii:
-                to_ret += " (ascii: %s)" % data_ascii
-            return to_ret + "\n", data_hex
+        if data is not None:
+            base = '%s\n - OP_RETURN -\n%s'
+            if not data:
+                return base % (val, "null-data\n"), ""
+            else:
+                data_ascii = None
+                if len(data) > 200:
+                    # completely arbitrary limit, prevents huge stories
+                    data_hex = b2a_hex(data[:100]).decode() + "\n ⋯\n" + b2a_hex(data[-100:]).decode()
+                else:
+                    data_hex = b2a_hex(data).decode()
+                    if (min(data) >= 32) and (max(data) < 127):  # printable & not huge
+                        try:
+                            data_ascii = data.decode("ascii")
+                        except: pass
+
+                to_ret = base % (val, data_hex)
+                if data_ascii:
+                    to_ret += " (ascii: %s)" % data_ascii
+                return to_ret + "\n", data_hex
 
         # Handle future things better: allow them to happen at least.
         dest = B2A(o.scriptPubKey)

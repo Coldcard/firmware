@@ -3029,6 +3029,7 @@ def test_txout_explorer(chain, data, fake_txn, start_sign, settings_set, txout_e
 @pytest.mark.parametrize("data", [
     [(1, b"Coinkite"), (0, b"Mk1 Mk2 Mk3 Mk4 Q"), (100, b"binarywatch.org"), (100, b"a" * 75)],
     [(0, b"a" * 300), (10, b"x" * 1000), (0, b"anchor output")],
+    [(0, b""), (10, b"")],
 ])
 def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_story, is_q1,
                                   need_keypress, press_cancel, press_select, end_sign):
@@ -3067,7 +3068,7 @@ def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_stor
     need_keypress(KEY_QR if is_q1 else "4")
     qr_list = []
     for _ in range(len(data)):
-        qr = cap_screen_qr().decode('ascii')
+        qr = cap_screen_qr().decode()
         qr_list.append(qr)
         need_keypress(KEY_RIGHT if is_q1 else "9")
         time.sleep(.5)
@@ -3083,14 +3084,21 @@ def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_stor
             val, name, dd0, _, dd1 = sb.split("\n")
         assert "OP_RETURN" in name
         assert f'{amount / 100000000:.8f} XTN' == val
-        if dd:
+        if dd == "null-data":
+            assert qr_list[i - 20] == ""
+        elif dd:
             hex_str, ascii_str = dd.split(" ", 1)
             assert hex_str == qr_list[i-20]
             assert f"(ascii: {data.decode()})" == ascii_str
             assert data.hex() == hex_str
         else:
-            assert data.hex()[:200] == dd0
-            assert data.hex()[-200:] == dd1
+            s = data[:100].hex()
+            e = data[-100:].hex()
+            assert s == dd0
+            assert e == dd1
+            qr = qr_list[i - 20]
+            assert qr.startswith(s)
+            assert qr.endswith(e)
 
     press_cancel()  # exit txn out explorer
     end_sign(finalize=finalize)
