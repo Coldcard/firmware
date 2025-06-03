@@ -404,7 +404,7 @@ class Display:
                 y += 8
 
             if is_addr and is_change:
-                self.text(x+4, y+8, "CHANGE", FontTiny)
+                self.text(x+4, y+8, "CHANGE BACK", FontTiny)
         else:
             # hand-positioned for known cases
             # - sidebar = (text, #of char per line)

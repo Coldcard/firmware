@@ -622,21 +622,35 @@ def verify_qr_address(cap_screen_qr, cap_screen, is_q1):
         # - insists on some spaces
         full = cap_screen()
         if is_q1:
+            full_split = full.split("\n")
             if is_change:
-                for c, line in zip("CHANGE", full.split('\n')):
-                    assert line.startswith(c)
+                for i, (c, line) in enumerate(zip("XXXXCHANGE", full_split)):
+                    if i > 3:
+                        assert line.startswith(c)
+                    else:
+                        assert not line.startswith(c)
+
+                for i, (c, line) in enumerate(zip("XXXXXXBACK", full_split)):
+                    if i > 5:
+                        assert line.endswith(c)
+                    else:
+                        assert not line.endswith(c)
+
             elif is_change is False:
-                for c, line in zip("CHANGE", full.split('\n')):
+                for c, line in zip("XXXXCHANGE", full_split):
                     assert not line.startswith(c)
+
+                for c, line in zip("XXXXXXBACK", full_split):
+                    assert not line.endswith(c)
 
             txt = ''.join(l for l in full.split() if len(l)>4).replace('~', '')
         else:
             if is_change:
-                assert "CHANGE" in full
+                assert "CHANGE BACK" in full
             elif is_change is False:
-                assert "CHANGE" not in full
+                assert "CHANGE BACK" not in full
 
-            txt = ''.join(full.split()).replace('CHANGE', '')
+            txt = ''.join(full.split("\n")).replace('CHANGE BACK', '')
 
         if txt:
             assert txt == qr
