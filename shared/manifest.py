@@ -1,6 +1,6 @@
 # Freeze everything in this list.
 # - not optimized because we need asserts to work
-# - for specific boards, see manifest_{mk4,q1}.py and manifest_q1.py
+# - for specific boards, see manifest_{mk4,q1}.py
 freeze_as_mpy('', [
 	'actions.py',
 	'address_explorer.py',
