@@ -467,32 +467,26 @@ def word_wrap(ln, w):
     while True:
         # ln_len considers DOUBLE_WIDTH chars
         ln_len = 0
-        idx = 0
         sp = None
         for idx, ch in enumerate(ln):
             if ch == ' ':
                 # split point on space if possible
                 sp = idx
-            if ln_len < w:
+
+            ln_len += 1
+            if ch in DOUBLE_WIDE:
                 ln_len += 1
-                if ch in DOUBLE_WIDE:
-                    ln_len += 1
-            else:
-                if ln_len == w:
-                    if ch in ".,:;":
-                        # boundary of allowed width
-                        # if one of .,:; is last -> allow one more character
-                        # even if only half visible on Mk4
-                        # on Q it's OK as (CHARS_W-1) is used as w
-                        sp = None
-                        idx += 1
-                else:
-                    # Q: double wide char was last
-                    # put on next line
+
+            if ln_len > w:
+                # if one of .,:; is last -> allow one more character
+                # even if only half visible on Mk4
+                # on Q it's OK as (CHARS_W-1) is used as w
+                if ch in ".,:;":
+                    idx += 1
                     sp = None
-                    idx -= 1
 
                 break
+
         else:
             yield ln
             return
@@ -514,7 +508,7 @@ def word_wrap(ln, w):
 
             # bad-break the line
             sp = nsp = idx
-            if ln[nsp:nsp+1] == ' ':
+            if ln[sp:nsp+1] == " ":
                 nsp += 1
         else:
             # split on found space
