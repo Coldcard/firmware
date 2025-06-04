@@ -280,13 +280,13 @@ DOUBLE_W = ['⋯', '✔', '✓', '→', '←', '↦', '◉', '◯', '◌', '※'
 
 @pytest.mark.parametrize('txt, target', [
     ('Disk, press \x0e to share via NFC, \x11 to share', ['Disk, press \x0e to share via NFC,', '\x11 to share']),
-    ((KEY_NFC * 17)+".", [KEY_NFC * 17, '.']),
-    ((KEY_NFC * 17)+(17*KEY_QR), [KEY_NFC * 17, KEY_QR * 17]),
-    ((KEY_NFC * 17)+" "+(17*KEY_QR), [KEY_NFC * 17, KEY_QR * 17]),
+    ((KEY_NFC * 17)+".", [KEY_NFC * 16, KEY_NFC + '.']),
+    ((KEY_NFC * 17)+(17*KEY_QR), [KEY_NFC * 16, KEY_NFC +(KEY_QR * 15), 2 * KEY_QR]),
+    ((KEY_NFC * 17)+" "+(17*KEY_QR), [KEY_NFC * 16, KEY_NFC, KEY_QR * 16, KEY_QR]),
     ((KEY_NFC * 16)+".", [(KEY_NFC * 16)+'.']),
-    (f"Use {KEY_NFC}, or {KEY_F1}, {KEY_F2}, {KEY_F3}, or or or {KEY_F4}", [f"Use {KEY_NFC}, or {KEY_F1}, {KEY_F2}, {KEY_F3}, or or or {KEY_F4}"]),
-    ("".join(DOUBLE_W), ["".join(DOUBLE_W[:17]), "".join(DOUBLE_W[17:])]),
-    ("".join(6*DOUBLE_W), ["".join(6*DOUBLE_W)[i:i + 17] for i in range(0, len(6*DOUBLE_W), 17)]),
+    (f"Use {KEY_NFC}, or {KEY_F1}, {KEY_F2}, {KEY_F3}, or or or {KEY_F4}", [f"Use {KEY_NFC}, or {KEY_F1}, {KEY_F2}, {KEY_F3}, or or or", f"{KEY_F4}"]),
+    ("".join(DOUBLE_W), ["".join(DOUBLE_W[:16]), "".join(DOUBLE_W[16:])]),
+    ("".join(6*DOUBLE_W), ["".join(6*DOUBLE_W)[i:i + 16] for i in range(0, len(6*DOUBLE_W), 16)]),
 ])
 def test_word_wrap_double_wide(only_q1, txt, target, sim_exec):
     width = 33  # check shared/ux.py CHAR_PER_W
