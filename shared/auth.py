@@ -17,7 +17,7 @@ from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A, show_single_address
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from files import CardSlot, CardMissingError
-from exceptions import HSMDenied
+from exceptions import HSMDenied, QRTooBigError
 from version import MAX_TXN_LEN
 from charcodes import KEY_QR, KEY_NFC, KEY_ENTER, KEY_CANCEL, KEY_LEFT, KEY_RIGHT
 from msgsign import sign_message_digest
@@ -287,42 +287,52 @@ class ApproveTransaction(UserAuthorizedAction):
         # Pretty-print a transactions output. 
         # - expects CTxOut object
         # - gives user-visible string
+        # returns: tuple(ux_output_rendition, address_or_script_str_for_qr_display)
         # 
         val = ' '.join(self.chain.render_value(o.nValue))
         try:
             dest = self.chain.render_address(o.scriptPubKey)
-
+            # known script types are short enough that we can display QR on both hw versions
             return '%s\n - to address -\n%s\n' % (val, show_single_address(dest)), dest
         except ValueError:
             pass
 
+        # Handle future things better: allow them to happen at least.
+        # sending to some unknown script, possibly very long
+        # but full-show required for verification
+        # OP_RETURN dest contains also OP_RETURN itself (for PSBT qr explorer)
+        dest = B2A(o.scriptPubKey)
+
         # check for OP_RETURN
         data = self.chain.op_return(o.scriptPubKey)
-        if data is not None:
+        # In UX story only data are shown as OP_RETURN is part of base msg
+        if data is None:
+            rv = '%s\n - to script -\n%s\n' % (val, dest)
+        else:
             base = '%s\n - OP_RETURN -\n%s'
             if not data:
-                return base % (val, "null-data\n"), ""
+                dest = ""
+                rv = base % (val, "null-data\n")
             else:
                 data_ascii = None
-                if len(data) > 200:
+                if len(data) > 160:
                     # completely arbitrary limit, prevents huge stories
-                    data_hex = b2a_hex(data[:100]).decode() + "\n ⋯\n" + b2a_hex(data[-100:]).decode()
+                    # anchor data are not relevant for verification - can be hidden
+                    ss = b2a_hex(data[:80]).decode() + "\n ⋯\n" + b2a_hex(data[-80:]).decode()
+                    # but we show empty QR in txn explorer for these big, modified data
                 else:
-                    data_hex = b2a_hex(data).decode()
+                    ss = b2a_hex(data).decode()
                     if (min(data) >= 32) and (max(data) < 127):  # printable & not huge
                         try:
                             data_ascii = data.decode("ascii")
                         except: pass
 
-                to_ret = base % (val, data_hex)
+                rv = base % (val, ss)
                 if data_ascii:
-                    to_ret += " (ascii: %s)" % data_ascii
-                return to_ret + "\n", data_hex
+                    rv += " (ascii: %s)" % data_ascii
+                rv += "\n"
 
-        # Handle future things better: allow them to happen at least.
-        dest = B2A(o.scriptPubKey)
-
-        return '%s\n - to script -\n%s\n' % (val, dest), dest
+        return rv, dest
 
     async def interact(self):
         # Prompt user w/ details and get approval
@@ -605,7 +615,10 @@ class ApproveTransaction(UserAuthorizedAction):
                 return
             elif ch in "4"+KEY_QR:
                 from ux import show_qr_codes
-                await show_qr_codes(addrs, False, start, is_addrs=True, change_idxs=change)
+                # showing addresses from PSBT, no idea what is in there
+                # handle QR code failures gracefully
+                await show_qr_codes(addrs, False, start, is_addrs=True,
+                                    change_idxs=change, can_raise=False)
                 continue
             elif (ch in KEY_LEFT+"7"):
                 if (start - n) < 0:
@@ -873,10 +886,10 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
             try:
                 if len(here) > 920:
                     # too big for simple QR - use BBQr instead
-                    raise ValueError
+                    raise QRTooBigError
                 hex_here = b2a_hex(here).upper().decode()
                 await show_qr_code(hex_here, is_alnum=True, msg=msg)
-            except (ValueError, RuntimeError, TypeError):
+            except QRTooBigError:
                 from ux_q1 import show_bbqr_codes
                 await show_bbqr_codes('T' if txid else 'P', here, msg)
 

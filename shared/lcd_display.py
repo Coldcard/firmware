@@ -656,6 +656,59 @@ class Display:
 
         return prev_x
 
+    @staticmethod
+    def handle_qr_msg(msg, max_lines=False):
+        if len(msg) <= CHARS_W:
+            parts = [msg]
+        elif ' ' not in msg and (len(msg) <= (CHARS_W * 2)):
+            # fits in two lines, but has no spaces
+            hh = len(msg) // 2
+            parts = [msg[0:hh], msg[hh:]]
+        else:
+            if not max_lines:
+                # do word wrap
+                parts = list(word_wrap(msg, CHARS_W))
+            else:
+                # 2 lines max
+                parts = [msg[:30] + "⋯", "⋯" + msg[-30:]]
+
+        return parts
+
+    def draw_qr_lines(self, lines, is_addr):
+        y = CHARS_H - len(lines)
+        prev_x = 0
+        for line in lines:
+            if not is_addr:
+                self.text(None, y, line)
+            else:
+                prev_x = self._draw_addr(y, line, prev_x=prev_x)
+            y += 1
+
+    def draw_qr_idx_hint(self, str_idx):
+        lh = len(str_idx)
+        assert lh <= 10
+        if lh > 5:
+            # needs 2 lines
+            self.text(-1, 0, str_idx[:5])
+            self.text(-1, 1, str_idx[5:])
+        else:
+            self.text(-1, 0, str_idx)
+
+    def draw_qr_error(self, idx_hint, msg=None):
+        x = 85
+        y = 30
+        w = 150
+        self.clear()
+        self.dis.fill_rect(x, y, w, w, COL_TEXT)
+        self.dis.fill_rect(x + 1, y + 1, w - 2, w - 2)  # Black
+        self.text(12, 3, "QR too big")
+        if msg:
+            lines = self.handle_qr_msg(msg, max_lines=True)
+            self.draw_qr_lines(lines, False)
+
+        self.draw_qr_idx_hint(idx_hint)
+        self.show()
+
     def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, partial_bar=None,
                         is_addr=False, force_msg=False, is_change=False):
         # Show a QR code on screen w/ some text under it
@@ -677,16 +730,7 @@ class Display:
                 # p2wsh address would need 3 lines to show, so we won't
                 num_lines = 0
         elif msg:
-            if len(msg) <= CHARS_W:
-                parts = [msg]
-            elif ' ' not in msg and (len(msg) <= CHARS_W*2):
-                # fits in two lines, but has no spaces
-                hh = len(msg) // 2
-                parts = [msg[0:hh], msg[hh:]]
-            else:
-                # do word wrap
-                parts = list(word_wrap(msg, CHARS_W))
-
+            parts = self.handle_qr_msg(msg)
             num_lines = len(parts)
         else:
             num_lines = 0
@@ -755,24 +799,10 @@ class Display:
 
             if num_lines:
                 # centered text under that
-                y = CHARS_H - num_lines
-                prev_x = 0
-                for line in parts:
-                    if not is_addr:
-                        self.text(None, y, line)
-                    else:
-                        prev_x = self._draw_addr(y, line, prev_x=prev_x)
-                    y += 1
+                self.draw_qr_lines(parts, is_addr)
 
             if idx_hint:
-                lh = len(idx_hint)
-                assert lh <= 10
-                if lh > 5:
-                    # needs 2 lines
-                    self.text(-1, 0, idx_hint[:5])
-                    self.text(-1, 1, idx_hint[5:])
-                else:
-                    self.text(-1, 0, idx_hint)
+                self.draw_qr_idx_hint(idx_hint)
 
             if is_addr and is_change:
                 for i, c in enumerate("CHANGE", start=4):

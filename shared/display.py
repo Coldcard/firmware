@@ -332,15 +332,25 @@ class Display:
         # no status bar on Mk4
         return
 
+    def draw_qr_error(self, idx_hint, msg):
+        self.clear()
+        lm = 4
+        bw = 54
+        y = (self.HEIGHT - bw) // 2
+        # empty rectangle
+        self.dis.fill_rect(lm, y, bw, bw, 1)
+        self.dis.fill_rect(lm+1, y+1, bw-2, bw-2, 0)
+        # error in rectangle - handpicked position
+        self.text(lm+5,y+10, "QR too")
+        self.text(lm+16,y+24, "big")
+        self._draw_qr_display(bw, lm, msg, False, None, idx_hint, False)
+
     def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert,
                         is_addr=False, force_msg=False, is_change=False):
         # 'sidebar' is a pre-formated obj to show to right of QR -- oled life
         # - 'msg' will appear to right if very short, else under in tiny
         # - ignores "is_addr" because exactly zero space to do anything special
-        from utils import word_wrap
-
         self.clear()
-
         w = qr_data.width()
         if w <= 29:
             # version 1,2,3 => we can double-up the pixels
@@ -379,6 +389,13 @@ class Display:
             packed = bytes(i^0xff for i in packed)
             gly = framebuf.FrameBuffer(bytearray(packed), w, w, framebuf.MONO_HLSB)
             self.dis.blit(gly, XO, YO, 1)
+
+        self._draw_qr_display(bw, lm, msg, is_alnum, sidebar, idx_hint, invert, is_addr, is_change)
+
+    def _draw_qr_display(self, bw, lm, msg, is_alnum, sidebar, idx_hint, invert,
+                        is_addr=False, is_change=False):
+        # does not draw actual QR, but all other things in the screen
+        from utils import word_wrap
 
         if not sidebar and not msg:
             pass
