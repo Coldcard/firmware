@@ -83,7 +83,7 @@ def simulator(request):
 
     try:
         return ColdcardDevice(sn=request.config.getoption("--sim-socket"), is_simulator=True)
-    except:
+    except Exception as e:
         print("Simulator is required for this test")
         raise pytest.fail('missing simulator')
 

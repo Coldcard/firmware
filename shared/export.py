@@ -12,6 +12,7 @@ from msgsign import write_sig_file
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR
 from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
 from ownership import OWNERSHIP
+from exceptions import QRTooBigError
 
 async def export_by_qr(body, label, type_code, force_bbqr=False):
     # render as QR and show on-screen
@@ -19,10 +20,10 @@ async def export_by_qr(body, label, type_code, force_bbqr=False):
 
     try:
         if force_bbqr or len(body) > 2000:
-            raise ValueError
+            raise QRTooBigError
 
         await show_qr_code(body)
-    except (ValueError, RuntimeError, TypeError):
+    except QRTooBigError:
         if version.has_qwerty:
             # do BBQr on Q
             from ux_q1 import show_bbqr_codes

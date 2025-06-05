@@ -3085,12 +3085,14 @@ def test_txout_explorer(chain, data, fake_txn, start_sign, settings_set, txout_e
 @pytest.mark.parametrize("finalize", [True, False])
 @pytest.mark.parametrize("data", [
     [(1, b"Coinkite"), (0, b"Mk1 Mk2 Mk3 Mk4 Q"), (100, b"binarywatch.org"), (100, b"a" * 75)],
+    [(0, b"W"*160), (10000, b"W"*153)],
     [(0, b"a" * 300), (10, b"x" * 1000), (0, b"anchor output")],
     [(0, b""), (10, b"")],
+    [(0, os.urandom(32)), (10, os.urandom(64)), (1000, os.urandom(160)), (0, os.urandom(161))],
 ])
 def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_story, is_q1,
                                   need_keypress, press_cancel, press_select, end_sign,
-                                  cap_screen_qr):
+                                  cap_screen_qr, cap_screen):
     outputs = [["p2tr", 50000, not i] for i in range(20)]
     outputs += [["op_return", am, None, d] for am, d in data]
     out_val = sum(o[1] for o in outputs)
@@ -3125,9 +3127,23 @@ def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_stor
     # collect QR codes first
     need_keypress(KEY_QR if is_q1 else "4")
     qr_list = []
-    for _ in range(len(data)):
-        qr = cap_screen_qr().decode()
-        qr_list.append(qr)
+    for v, d in data:
+        try:
+            qr = cap_screen_qr().decode()
+            qr_list.append(qr)
+        except RuntimeError:
+            scr = cap_screen()
+            if is_q1:
+                too_big = 650
+                assert "QR too big" in scr
+            else:
+                too_big = 158
+                assert "QR too" in scr
+                assert "big" in scr
+
+            assert len(d) > too_big
+            qr_list.append(None)
+
         need_keypress(KEY_RIGHT if is_q1 else "9")
         time.sleep(.5)
 
@@ -3145,17 +3161,28 @@ def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_stor
         if dd == "null-data":
             assert qr_list[i - 20] == ""
         elif dd:
-            hex_str, ascii_str = dd.split(" ", 1)
-            assert hex_str == qr_list[i-20]
-            assert f"(ascii: {data.decode()})" == ascii_str
-            assert data.hex() == hex_str
+            is_ascii = False
+            try:
+                data.decode("ascii")
+                is_ascii = True
+            except UnicodeDecodeError: pass
+            if is_ascii:
+                hex_str, ascii_str = dd.split(" ", 1)
+            else:
+                hex_str = dd
+
+            qr_target = qr_list[i-20]
+            if qr_target:
+                assert hex_str in qr_target
+                assert qr_target.startswith("6a")  # OP_RETURN
+                assert data.hex() == hex_str
+            if is_ascii:
+                assert f"(ascii: {data.decode()})" == ascii_str
         else:
-            s = data[:100].hex()
-            e = data[-100:].hex()
+            s = data[:80].hex()
+            e = data[-80:].hex()
             assert s == dd0
             assert e == dd1
-            qr = qr_list[i - 20]
-            assert qr == ""
 
     press_cancel()  # exit txn out explorer
     end_sign(finalize=finalize)
