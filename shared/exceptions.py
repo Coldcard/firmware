@@ -55,4 +55,8 @@ class UnknownAddressExplained(ValueError):
 class SpendPolicyViolation(RuntimeError):
     pass
 
+# data too big for simple QR
+class QRTooBigError(ValueError):
+    pass
+
 # EOF
