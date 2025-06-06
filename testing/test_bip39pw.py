@@ -50,7 +50,7 @@ def test_b9p_basic(pw, set_bip39_pw):
     set_bip39_pw(pw)
 
 
-@pytest.fixture()
+@pytest.fixture
 def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story,
                  sim_execfile, press_select):
 

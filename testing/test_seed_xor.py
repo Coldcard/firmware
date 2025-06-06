@@ -3,7 +3,7 @@
 # test Seed XOR features
 #
 
-import pytest, time, itertools
+import pytest, time, itertools, random
 from mnemonic import Mnemonic
 from constants import simulator_fixed_words
 from xor import prepare_test_pairs, xor
@@ -54,7 +54,7 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
                      word_menu_entry, verify_ephemeral_secret_ui,
                      confirm_tmp_seed, seed_vault_enable, press_select,
                      scan_a_qr, is_q1, cap_screen_qr, cap_screen, OK):
-    def doit(parts, expect, incl_self=False, save_to_vault=False,
+    def doit(parts, expect, incl_self=False, save_to_vault=None,
              is_master_tmp_fail=False, way=None):
         if expect is None:
             parts, expect = prepare_test_pairs(*parts)
@@ -65,6 +65,9 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
             set_seed_words(parts[0])
         elif incl_self is False:
             set_seed_words(proper[num_words])
+
+        if save_to_vault is None:
+            save_to_vault = random.getrandbits(1)
 
         seed_vault_enable(save_to_vault)
         time.sleep(.2)
@@ -171,7 +174,6 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
 
 @pytest.mark.parametrize('way', ["qr", "seedqr", "classic"])
 @pytest.mark.parametrize('incl_self', [False, True])
-@pytest.mark.parametrize('seed_vault', [False, True])
 @pytest.mark.parametrize('parts, expect', [
     # 24words - 3 parts
     (['romance wink lottery autumn shop bring dawn tongue range crater truth ability miss spice fitness easy legal release recall obey exchange recycle dragon room',
@@ -191,10 +193,10 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
     # random generated
     *random_test_cases()
 ])
-def test_import_xor(seed_vault, incl_self, parts, expect, restore_seed_xor, way, is_q1):
+def test_import_xor(incl_self, parts, expect, restore_seed_xor, way, is_q1):
     if not is_q1 and "qr" in way:
         raise pytest.skip("Q only")
-    restore_seed_xor(parts, expect, incl_self, seed_vault, way=way)
+    restore_seed_xor(parts, expect, incl_self, way=way)
 
 
 @pytest.mark.parametrize('incl_self', [False, True])

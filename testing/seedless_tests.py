@@ -3,9 +3,9 @@
 import pytest, pdb, time, random, os
 from charcodes import KEY_CANCEL
 from core_fixtures import _pick_menu_item, _press_select
-from core_fixtures import _need_keypress, _cap_screen, _sim_exec
+from core_fixtures import _need_keypress, _sim_exec
 from run_sim_tests import ColdcardSimulator, clean_sim_data
-from ckcc_protocol.client import ColdcardDevice, CKCC_SIMULATOR_PATH
+from ckcc_protocol.client import ColdcardDevice
 
 
 def test_status_bar_rewrite_after_restore_master(request):
@@ -13,7 +13,7 @@ def test_status_bar_rewrite_after_restore_master(request):
     clean_sim_data()  # remove all from previous
     sim = ColdcardSimulator(args=["--q1", "-l"])
     sim.start(start_wait=3)
-    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    device = ColdcardDevice(is_simulator=True)
 
     _pick_menu_item(device, True, "Advanced/Tools")
     _pick_menu_item(device, True, "Temporary Seed")

@@ -826,7 +826,8 @@ def test_sign_file_from_list_files(f_len, goto_home, cap_story, pick_menu_item, 
 
 
 def test_bip39_pw_signing_xfp_ux(pick_menu_item, press_select, cap_story, enter_complex,
-                                 reset_seed_words, cap_menu, go_to_passphrase):
+                                 reset_seed_words, cap_menu, go_to_passphrase, microsd_wipe):
+    microsd_wipe()  # need to wipe all PSBT on SD card so we do not proceed to signing
     go_to_passphrase()
     enter_complex("21coinkite21", apply=True)
     time.sleep(0.3)
@@ -834,6 +835,7 @@ def test_bip39_pw_signing_xfp_ux(pick_menu_item, press_select, cap_story, enter_
     assert title == "[0C9DC99D]"
     assert 'Above is the master key fingerprint of the new wallet' in story
     press_select()  # confirm passphrase
+    time.sleep(0.1)
     m = cap_menu()
     assert m[0] == "[0C9DC99D]"
     pick_menu_item("Ready To Sign")
@@ -973,8 +975,8 @@ def test_custom_pushtx_url(goto_home, pick_menu_item, press_select, enter_comple
     ("coldcard-export.json", "J"),
     ("coldcard-export.sig", "U"),
 ])
-def test_bbqr_share_files(fname, ftype, readback_bbqr, need_keypress,
-                          goto_home, pick_menu_item, is_q1, cap_menu):
+def test_bbqr_share_files(fname, ftype, readback_bbqr, need_keypress, src_root_dir,
+                          goto_home, pick_menu_item, is_q1, cap_menu, sim_root_dir):
     goto_home()
     if not is_q1:
         pick_menu_item("Advanced/Tools")
@@ -982,8 +984,8 @@ def test_bbqr_share_files(fname, ftype, readback_bbqr, need_keypress,
         assert "BBQr File Share" not in cap_menu()
         return
 
-    fpath = "data/" + fname
-    shutil.copy2(fpath, '../unix/work/MicroSD')
+    fpath = f"{src_root_dir}/testing/data/" + fname
+    shutil.copy2(fpath, f'{sim_root_dir}/MicroSD')
     pick_menu_item("Advanced/Tools")
     pick_menu_item("File Management")
     pick_menu_item("BBQr File Share")
@@ -995,14 +997,15 @@ def test_bbqr_share_files(fname, ftype, readback_bbqr, need_keypress,
         res = f.read()
 
     assert res == rb
-    os.remove('../unix/work/MicroSD/' + fname)
+    os.remove(f'{sim_root_dir}/MicroSD/' + fname)
 
 @pytest.mark.parametrize("fname", [
     "ccbk-start.json",
     "devils-txn.txn",
     "payjoin.psbt",  # base64 string in file
 ])
-def test_qr_share_files(fname, pick_menu_item, goto_home, is_q1, cap_menu, cap_screen_qr):
+def test_qr_share_files(fname, pick_menu_item, goto_home, is_q1, cap_menu, cap_screen_qr,
+                        src_root_dir, sim_root_dir):
     goto_home()
     if not is_q1:
         pick_menu_item("Advanced/Tools")
@@ -1010,8 +1013,8 @@ def test_qr_share_files(fname, pick_menu_item, goto_home, is_q1, cap_menu, cap_s
         assert "QR File Share" not in cap_menu()
         return
 
-    fpath = "data/" + fname
-    shutil.copy2(fpath, '../unix/work/MicroSD')
+    fpath = f"{src_root_dir}/testing/data/" + fname
+    shutil.copy2(fpath, f'{sim_root_dir}/MicroSD')
     pick_menu_item("Advanced/Tools")
     pick_menu_item("File Management")
     pick_menu_item("QR File Share")
@@ -1022,7 +1025,7 @@ def test_qr_share_files(fname, pick_menu_item, goto_home, is_q1, cap_menu, cap_s
         res = f.read()
 
     assert res == qr.decode()
-    os.remove('../unix/work/MicroSD/' + fname)
+    os.remove(f'{sim_root_dir}/MicroSD/' + fname)
 
 
 @pytest.mark.onetime

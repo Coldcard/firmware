@@ -1,18 +1,16 @@
 diff --git a/unix/variant/pyb.py b/unix/variant/pyb.py
-index d22bb1b..fe8e7ca 100644
+index 5e108da3..5a15fc9c 100644
 --- a/unix/variant/pyb.py
 +++ b/unix/variant/pyb.py
-@@ -36,10 +36,10 @@ class USB_HID:
-         import usocket as socket
+@@ -40,9 +40,9 @@ class USB_HID:
+         sfp_b = SOCKET_FILE_PATH.encode()
          self.pipe = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
          # If on linux, try commenting the following line
--        addr = bytes([len(self.fn)+2, socket.AF_UNIX] + list(self.fn))
-+        # addr = bytes([len(self.fn)+2, socket.AF_UNIX] + list(self.fn))
+-        addr = bytes([len(sfp_b)+2, socket.AF_UNIX] + list(sfp_b))
++        #addr = bytes([len(sfp_b)+2, socket.AF_UNIX] + list(sfp_b))
          # If on linux, try uncommenting the following two lines
--        #import struct
--        #addr = struct.pack('H108s', socket.AF_UNIX, self.fn)
-+        import struct
-+        addr = struct.pack('H108s', socket.AF_UNIX, self.fn)
+-        # addr = struct.pack('H108s', socket.AF_UNIX, sfp_b)
++        addr = struct.pack('H108s', socket.AF_UNIX, sfp_b)
          while 1:
              try:
                  self.pipe.bind(addr)

@@ -284,13 +284,13 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
                 press_select()
 
             pick_menu_item(vel_mi)
-            pick_menu_item(vel)  # actually a full menu item
             if vel == "Unlimited":
                 target = 0
             else:
                 target = int(vel.split()[0])
 
-            time.sleep(.2)
+            pick_menu_item(vel)  # actually a full menu item
+            time.sleep(.3)
             assert settings_get("ccc")["pol"]["vel"] == target
 
         if whitelist:
@@ -304,10 +304,14 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
                 pick_menu_item("Scan QR")
                 for i, addr in enumerate(whitelist, start=1):
                     scan_a_qr(addr)
-                    time.sleep(.5)
-                    scr = cap_screen()
-                    assert f"Got {i} so far" in scr
-                    assert "ENTER to apply" in scr
+
+                    for _ in range(10):
+                        scr = cap_screen()
+                        if (f"Got {i} so far" in scr) and ("ENTER to apply" in scr):
+                            break
+                        time.sleep(.2)
+                    else:
+                        assert False, "updating whitelist failed"
 
                 press_select()
             else:
@@ -385,7 +389,7 @@ def enter_enabled_ccc(goto_home, pick_menu_item, cap_story, press_select, is_q1,
 @pytest.fixture
 def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_menu_item,
                  cap_story, press_select, need_keypress, enter_number, press_cancel,
-                 garbage_collector):
+                 garbage_collector, cap_screen):
 
     def doit(N=3, b_words=12, way="sd", addr_fmt=AF_P2WSH, ftype="cc", bbqr=True):
 
@@ -449,56 +453,72 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
 
         time.sleep(.1)
         title, story = cap_story()
-        if is_q1:
-            assert title == "QR or SD Card?"
-            if way in ("sd", "vdisk"):
+
+        if way in ("sd", "vdisk"):
+            if is_q1:
+                assert "ENTER to use SD card" in story
+                press_select()
+
+            if addr_fmt == AF_P2WSH:
                 press_select()
             else:
-                need_keypress(KEY_QR)
-                time.sleep(.1)
-                title, story = cap_story()
-                assert title == "Address Format"
-                assert "Press ENTER for default address format (P2WSH" in story
-                assert "press (1) for P2SH-P2WSH" in story
-                if addr_fmt == AF_P2WSH:
-                    press_select()
-                else:
-                    need_keypress("1")
+                need_keypress("1")
+        else:
+            assert way == "qr"
+            if not is_q1:
+                raise pytest.skip("mk4 no qr")
 
-                for d, dd in res:
-                    if ftype == "cc":
-                        conts = json.dumps(dd)
-                        tc = "J"
-                    else:
-                        deriv = dd[f"{label}_deriv"].replace("m/", "")
-                        conts = f"[{dd['xfp']}/{deriv}]{dd[label]}"
-                        tc = "U"
-
-                    if bbqr:
-                        _, parts = split_qrs(conts, tc, max_version=20)
-                        for p in parts:
-                            scan_a_qr(p)
-                            time.sleep(.1)
-                    else:
-                        scan_a_qr(conts)
-                        time.sleep(.1)
-
-                    time.sleep(.5)
-
-                press_cancel()  # after we're done scanning keys, exit QR animation to proceed
-
-        # casual on-device multisig create
-        if way != "qr":
+            assert title == "QR or SD Card?"
+            need_keypress(KEY_QR)
+            time.sleep(.1)
+            title, story = cap_story()
+            assert title == "Address Format"
+            assert "Press ENTER for default address format (P2WSH" in story
+            assert "press (1) for P2SH-P2WSH" in story
             if addr_fmt == AF_P2WSH:
                 press_select()
             else:
                 need_keypress("1")
 
+            for i, (d, dd) in enumerate(res, start=1):
+                if ftype == "cc":
+                    conts = json.dumps(dd)
+                    tc = "J"
+                else:
+                    deriv = dd[f"{label}_deriv"].replace("m/", "")
+                    conts = f"[{dd['xfp']}/{deriv}]{dd[label]}"
+                    tc = "U"
+
+                if bbqr:
+                    _, parts = split_qrs(conts, tc, max_version=20)
+                    for p in parts:
+                        scan_a_qr(p)
+                        time.sleep(.25)
+                else:
+                    scan_a_qr(conts)
+
+                for _ in range(10):
+                    time.sleep(.2)
+                    scr = cap_screen()
+                    if ("Number of keys scanned: %d" % i) in scr:
+                        break
+                else:
+                    assert False, f"failed to scan ms xpubs ({i})"
+
+            press_cancel()  # after we're done scanning keys, exit QR animation to proceed
+
+        time.sleep(.1)
         # CCC C key account number
         enter_number("0")
-        time.sleep(.1)
-        title, story = cap_story()
-        assert "Create new multisig wallet" in story
+        for _ in range(5):
+            time.sleep(.1)
+            title, story = cap_story()
+            if  "Create new multisig wallet" in story:
+                break
+        else:
+            press_cancel()
+            assert False, "failed to create ms wallet"
+
         assert f"Policy: 2 of {N}" in story
         if is_q1:
             assert "Coldcard Co-sign" in story

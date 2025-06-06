@@ -51,7 +51,7 @@ class Bitcoind:
             [
                 self.bitcoind_path,
                 # needed for newest master
-                # TODO legacy wallet will be deprecated in 26
+                # TODO legacy wallet will be deprecated in 29
                 "-deprecatedrpc=create_bdb",
                 "-regtest",
                 f"-datadir={self.datadir}",
@@ -59,6 +59,7 @@ class Bitcoind:
                 "-fallbackfee=0.0002",
                 "-server=1",
                 "-keypool=1",
+                "-listen=0"
                 f"-port={self.p2p_port}",
                 f"-rpcport={self.rpc_port}"
             ]

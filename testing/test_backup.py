@@ -570,13 +570,14 @@ def test_seed_vault_backup_frozen(reset_seed_words, settings_set, repl, build_te
     assert target in bk
 
 
-def test_clone_start(reset_seed_words, pick_menu_item, cap_story, goto_home):
-    sd_dir = "../unix/work/MicroSD"
+def test_clone_start(reset_seed_words, pick_menu_item, cap_story, goto_home, src_root_dir,
+                     sim_root_dir):
+    sd_dir = f"{sim_root_dir}/MicroSD"
     num_7z = len([i for i in os.listdir(sd_dir) if i.endswith(".7z")])
     fname = "ccbk-start.json"
     reset_seed_words()
     goto_home()
-    shutil.copy(f"data/{fname}", sd_dir)
+    shutil.copy(f"{src_root_dir}/testing/data/{fname}", sd_dir)
     pick_menu_item("Advanced/Tools")
     pick_menu_item("Backup")
     pick_menu_item("Clone Coldcard")
@@ -593,18 +594,23 @@ def test_clone_start(reset_seed_words, pick_menu_item, cap_story, goto_home):
 
 def test_bkpw_override(reset_seed_words, override_bkpw, goto_home, pick_menu_item,
                        cap_story, press_select, garbage_collector, microsd_path,
-                       restore_backup_cs):
+                       restore_backup_cs, is_q1):
     reset_seed_words()  # clean slate
     old_pw = None
     test_cases = [
-        "arm prob slot merc hub fiel wing aver tale undo diar boos army cabl mous teac drif risk frow achi poet ecol boss grit",
-        " ".join(12 * ["elevator"]),
-        " ".join(12 * ["fever"]),
         32 * "a",
-        (16 * "0") + "   " + (16 *"1"),
-        64 * "Q",
         (26 * "?") + "!@#$%^&*()",
     ]
+    if is_q1:
+        # not needed on mk4 - even tho works (takes too much time)
+        # Mk4 display is not suitable for these type of passwords anyways
+        test_cases += [
+            "arm prob slot merc hub fiel wing aver tale undo diar boos army cabl mous teac drif risk frow achi poet ecol boss grit",
+            " ".join(12 * ["elevator"]),
+            " ".join(12 * ["fever"]),
+            64 * "Q",
+        ]
+
     fnames = []
     for pw in test_cases:
         override_bkpw(pw, old_pw)
