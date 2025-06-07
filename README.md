@@ -183,7 +183,9 @@ git clone --recursive https://github.com/Coldcard/firmware.git
 cd firmware
 
 # Apply address patch
-git apply unix/linux_addr.patch
+# if unix/linux_addr.patch exists use below command
+# not needed in current revision
+# git apply unix/linux_addr.patch
 
 #  * below is needed for ubuntu 24.04
 pushd external/micropython
