@@ -37,12 +37,8 @@ class USB_HID:
     def _open(self):
 
         assert SOCKET_FILE_PATH  # has to be set in sim_boot.py by caller
-        sfp_b = SOCKET_FILE_PATH.encode()
         self.pipe = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-        # If on linux, try commenting the following line
-        addr = bytes([len(sfp_b)+2, socket.AF_UNIX] + list(sfp_b))
-        # If on linux, try uncommenting the following two lines
-        # addr = struct.pack('H108s', socket.AF_UNIX, sfp_b)
+        addr = struct.pack('H108s', socket.AF_UNIX, SOCKET_FILE_PATH.encode())
         while 1:
             try:
                 self.pipe.bind(addr)
