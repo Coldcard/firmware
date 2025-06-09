@@ -65,7 +65,8 @@
   that to the user for approval.
 - during USB "show address" for multisig, we limit subkey paths to
   16 levels deep (including master fingerprint)
-- max of 15 co-signers due to 1650 byte `scriptSig` limitation in policy with classic P2SH (same limit applies to segwit even though consensus allows up to 20 co-signers)
+- max of 15 co-signers due to 1650 byte `scriptSig` limitation in policy with classic P2SH (same limit applies to segwit even though consensus allows up to 20 co-signers).
+  note: the consensus layer sets an upper bound of 520 bytes for the length of each stack element
 - (mk3) we have space for up to 8 M-of-3 wallets, or a single M-of-15 wallet. YMMV
 - only a single multisig wallet can be involved in a PSBT; can't sign inputs from two different
     multisig wallets at the same time.
