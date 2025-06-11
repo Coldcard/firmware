@@ -35,12 +35,13 @@ def ranged_unspendable_internal_key(chain_code=32 * b"\x01", subderiv="/<0;1>/*"
 
 
 @pytest.fixture
-def offer_minsc_import(cap_story, dev):
+def offer_minsc_import(cap_story, dev, sim_root_dir):
     def doit(config, allow_non_ascii=False):
         # upload the file, trigger import
         file_len, sha = dev.upload_file(config.encode('utf-8' if allow_non_ascii else 'ascii'))
 
-        open('debug/last-config-msc.txt', 'wt').write(config)
+        with open(f'{sim_root_dir}/debug/last-config-msc.txt', 'wt') as f:
+            f.write(config)
         dev.send_recv(CCProtocolPacker.miniscript_enroll(file_len, sha))
 
         time.sleep(.2)
