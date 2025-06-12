@@ -188,18 +188,18 @@ XpubExportMenu = [
 
 WalletExportMenu = [  
     #         xxxxxxxxxxxxxxxx
+    MenuItem("Sparrow", f=named_generic_skeleton, arg="Sparrow"),
+    MenuItem("Cove", f=named_generic_skeleton, arg="Cove"),
     MenuItem("Bitcoin Core", f=bitcoin_core_skeleton),
-    MenuItem("Fully Noded", f=named_generic_skeleton, arg="Fully Noded"),
-    MenuItem("Sparrow Wallet", f=named_generic_skeleton, arg="Sparrow"),
     MenuItem("Nunchuk", f=named_generic_skeleton, arg="Nunchuk"),
     MenuItem("Zeus", f=ss_descriptor_skeleton,
              arg=(True, [AF_P2WPKH, AF_P2WPKH_P2SH], "Zeus Wallet", "zeus-export.txt")),
     MenuItem("Electrum Wallet", f=electrum_skeleton),
+    MenuItem("Wasabi Wallet", f=wasabi_skeleton),
+    MenuItem("Fully Noded", f=named_generic_skeleton, arg="Fully Noded"),
+    MenuItem("Unchained", f=unchained_capital_export),
     MenuItem("Theya", f=named_generic_skeleton, arg="Theya"),
     MenuItem("Bitcoin Safe", f=named_generic_skeleton, arg="Bitcoin Safe"),
-    MenuItem("Wasabi Wallet", f=wasabi_skeleton),
-    MenuItem("Unchained", f=unchained_capital_export),
-    MenuItem("Lily Wallet", f=named_generic_skeleton, arg="Lily"),
     MenuItem("Samourai Postmix", f=samourai_post_mix_descriptor_export),
     MenuItem("Samourai Premix", f=samourai_pre_mix_descriptor_export),
     # MenuItem("Samourai BadBank", f=samourai_bad_bank_descriptor_export),  # not released yet
