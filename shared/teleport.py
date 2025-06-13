@@ -714,11 +714,7 @@ async def kt_send_psbt(psbt, psbt_len):
         await kt_do_send(rx_pubkey, 'p', raw=bin_psbt, prefix=ri, kp=kp,
                         rx_label='[%s] co-signer' % xfp2str(m.next_xfp))
 
-        c = None
-        if hasattr(ms, "M"):
-            c = ms.M - ms.N - len(need)
-
-        return True, c
+        return True
 
     return None
 
