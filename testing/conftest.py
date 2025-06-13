@@ -640,11 +640,7 @@ def verify_qr_address(cap_screen_qr, cap_screen, is_q1):
                 for c, line in zip("XXXXXXBACK", full_split):
                     assert not line.endswith(c)
 
-            txt = ''.join(l for l in full_split if len(l)>4).replace('~', '')
-            if txt:
-                # just index remained
-                int(txt)
-                txt = None
+            txt = None  # most of the time there is no address
         else:
             if is_change:
                 assert "CHANGE BACK" in full

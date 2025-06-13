@@ -319,7 +319,7 @@ def main():
                         help="run simulator instance in headless mode")
     parser.add_argument("--multiproc", action="store_true", default=False,
                         help="Run tests & simulators in parallel")
-    parser.add_argument("--num-proc", type=int, default=14,
+    parser.add_argument("--num-proc", type=int, default=16,
                         help="How many executors/simulators to run in parallel in --multiproc mode")
     parser.add_argument("--turbo", action="store_true", default=False,
                         help="Both Mk4 and Q at the same time")
@@ -389,7 +389,14 @@ def main():
     if args.multiproc:
         start_time = time.time()
         def add_to_queue(module_name, simulator_args, queue):
-            if module_name == "test_multisig.py":
+            if module_name == "test_miniscript.py":
+                queue.append((2, [module_name, simulator_args, "not liana_miniscripts_simple and not test_tapscript and not test_bitcoind_tapscript_address and not test_minitapscript", ""]))
+                queue.append((0, [module_name, simulator_args, "liana_miniscripts_simple", "-sep1"]))
+                queue.append((2, [module_name, simulator_args, "test_tapscript", "-sep2"]))
+                queue.append((0, [module_name, simulator_args, "test_bitcoind_tapscript_address", "-sep3"]))
+                queue.append((0, [module_name, simulator_args, "test_minitapscript", "-sep4"]))
+
+            elif module_name == "test_multisig.py":
                 # split takes too much time
                 queue.append((0, [module_name, simulator_args, "not tutorial and not airgapped and not ms_address and not descriptor_export", ""]))
                 queue.append((0, [module_name, simulator_args, "airgapped", "-sep1"]))
@@ -403,7 +410,7 @@ def main():
                 queue.append((0, [module_name, simulator_args, "not test_import_xor", ""]))
 
             elif module_name in ["test_export.py", "test_ephemeral.py", "test_sign.py", "test_msg.py",
-                              "test_backup.py"]:
+                                 "test_backup.py", "test_bsms.py"]:
                 # higher priority
                 queue.append((1, [module_name, simulator_args, None, ""]))
 
