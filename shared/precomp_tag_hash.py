@@ -1,4 +1,7 @@
+# (c) Copyright 2025 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
 # taproot precomputed tag hashes
+#
 # SHA256(TapLeaf)
 TAP_LEAF_H    = b'\xae\xea\x8f\xdcB\x08\x981\x05sKX\x08\x1d\x1e&8\xd3_\x1c\xb5@\x08\xd4\xd3W\xca\x03\xbex\xe9\xee'
 # SHA256(TapBranch)
