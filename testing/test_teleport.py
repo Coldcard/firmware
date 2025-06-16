@@ -721,6 +721,7 @@ def test_send_backup(testcase, rx_start, tx_start, cap_menu, enter_complex, pick
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("taproot", [True, False])
+@pytest.mark.parametrize("keys", [False])
 @pytest.mark.parametrize("policy", [
     "thresh(4,pk(@0),s:pk(@1),s:pk(@2),s:pk(@3),sln:older(SEQ))",
 ])
@@ -728,7 +729,7 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
                                   clear_miniscript, set_bip39_pw, press_select, pick_menu_item,
                                   need_keypress, offer_minsc_import, load_export, reset_seed_words,
                                   cap_story, cap_menu, grab_payload, sim_root_dir, rx_complete,
-                                  settings_set, try_sign, settings_get, press_cancel):
+                                  settings_set, try_sign, settings_get, press_cancel, keys):
 
     reset_seed_words()
     use_regtest()
@@ -741,17 +742,53 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
     name = "msc_tele"
     wo = bitcoind.create_wallet(name, disable_private_keys=True, blank=True)
 
-    deriv = "86h/1h/0h" if taproot else "48h/1h/0h/2h"
-    # default simulator key always on index 0
-    keys = [get_cc_key(deriv)]
+    deriv = "86h/%dh/0h" if taproot else "48h/1h/%dh/2h"
+    if keys is True:
+        # actually just 2 signers - both with 2 keys with different subderivation (change based)
+        deriv = deriv % 0
+        keys = [get_cc_key(deriv)]
+        keys.append(get_cc_key(deriv, subderiv="/<2;3>/*"))
 
-    # 4 more keys for other co-signers
-    for i in range(1, 4):
-        seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=str(i)*2)
+        seed = Mnemonic.to_seed(simulator_fixed_words, passphrase="11")
         master = BIP32Node.from_master_secret(seed, netcode="XTN")
         master_xfp = master.fingerprint().hex()
         account_key = master.subkey_for_path(deriv)
         keys.append(f"[{master_xfp}/{deriv}]{account_key.hwif()}/<0;1>/*")
+        keys.append(f"[{master_xfp}/{deriv}]{account_key.hwif()}/<2;3>/*")
+
+        signers = [keys[0], keys[2]]
+    elif keys is False:
+        # 3 signers, account based
+        keys = [get_cc_key(deriv % 0)]
+        for i in range(1, 3):
+            seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=str(i)+str(i))
+            master = BIP32Node.from_master_secret(seed, netcode="XTN")
+            master_xfp = master.fingerprint().hex()
+            dd = deriv % 0
+            account_key = master.subkey_for_path(dd)
+            keys.append(f"[{master_xfp}/{dd}]{account_key.hwif()}/<0;1>/*")
+            if i == 1:
+                dd = deriv % 1
+                account_key = master.subkey_for_path(dd)
+                keys.append(f"[{master_xfp}/{dd}]{account_key.hwif()}/<0;1>/*")
+
+        signers = [keys[0], keys[1], keys[3]]
+
+    else:
+        # all keys different
+        # default simulator key always on index 0
+        deriv = deriv % 0
+        keys = [get_cc_key(deriv)]
+
+        # 4 more keys for other co-signers
+        for i in range(1, 4):
+            seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=str(i)*2)
+            master = BIP32Node.from_master_secret(seed, netcode="XTN")
+            master_xfp = master.fingerprint().hex()
+            account_key = master.subkey_for_path(deriv)
+            keys.append(f"[{master_xfp}/{deriv}]{account_key.hwif()}/<0;1>/*")
+
+        signers = keys
 
     for i, key in enumerate(keys):
         policy = policy.replace(f"@{i}", key)
@@ -801,9 +838,9 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
     assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
 
     my_xfp = xfp2str(simulator_fixed_xfp)
-    for i in range(len(keys)):
+    for i in range(len(signers)):
         # expect: a menu of other signers to pick from
-        if i == (len(keys) - 1):
+        if i == (len(signers) - 1):
             done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
             resp_len, chk = done
             psbt_out = dev.download_file(resp_len, chk)
@@ -822,14 +859,14 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
         time.sleep(.1)
 
         m = cap_menu()
-        assert len(m) == len(keys)
+        assert len(m) == len(signers)
         assert 'YOU' in [ln for ln in m if my_xfp in ln][0]
 
         unsigned = [ln[1:9] for ln in m if (my_xfp not in ln) and ('DONE' not in ln)]
         assert unsigned
 
         # find another signer
-        for idx, k in enumerate(keys):
+        for idx, k in enumerate(signers):
             if k[1:9].upper() in unsigned:
                 next_xfp = k[1:9].upper()
                 break
@@ -856,7 +893,7 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
         assert title == 'Sent by Teleport'
 
         # switch personalities, and try to read that QR
-        new_xfp = set_bip39_pw(str(idx) + str(idx), reset=True)
+        new_xfp = set_bip39_pw(str(idx) + str(idx))
         use_regtest()
         clear_miniscript()
         dev.start_encryption()  #
