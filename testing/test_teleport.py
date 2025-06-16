@@ -721,7 +721,7 @@ def test_send_backup(testcase, rx_start, tx_start, cap_menu, enter_complex, pick
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("taproot", [True, False])
-@pytest.mark.parametrize("keys", [False])
+@pytest.mark.parametrize("keys", [True, False, None])
 @pytest.mark.parametrize("policy", [
     "thresh(4,pk(@0),s:pk(@1),s:pk(@2),s:pk(@3),sln:older(SEQ))",
 ])
