@@ -212,14 +212,16 @@ class Descriptor:
             return 22 # 00 <20:pkh>
         return 25 # OP_DUP OP_HASH160 <20:pkh> OP_EQUALVERIFY OP_CHECKSIG
 
-    def xfp_paths(self):
+    def xfp_paths(self, skip_unspend_ik=False):
         res = []
         if self.taproot:
-            if self.key.origin:
+            if self.key.is_provably_unspendable:
+                if not skip_unspend_ik:
+                    res.append([swab32(self.key.node.my_fp())])
+
+            elif self.key.origin:
                 # spendable internal key
                 res.append(self.key.origin.psbt_derivation())
-            elif self.key.is_provably_unspendable:
-                res.append([swab32(self.key.node.my_fp())])
 
         for k in self.keys:
             if k.origin:

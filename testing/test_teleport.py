@@ -5,6 +5,8 @@
 # - you'll need v1.0.1 of bbqr library for this to work
 #
 import pytest, time, re, pdb, os, json, base64
+from mnemonic import Mnemonic
+from bip32 import BIP32Node
 from helpers import prandom, xfp2str, str2xfp, str_to_path
 from bbqr import join_qrs
 from charcodes import KEY_QR, KEY_NFC
@@ -12,6 +14,7 @@ from base64 import b32encode
 from constants import *
 from test_ephemeral import SEEDVAULT_TEST_DATA
 from test_backup import make_big_notes
+from ckcc.protocol import CCProtocolPacker
 
 # All tests in this file are exclusively meant for Q
 #
@@ -629,9 +632,6 @@ def test_teleport_real_ms(dev, fake_ms_txn):
     #
     # py.test test_teleport.py --dev --manual -k test_teleport_real_ms
     #
-    from bip32 import BIP32Node
-    from ckcc_protocol.protocol import CCProtocolPacker
-
     M = N = 2
 
     #p2wsh
@@ -718,167 +718,169 @@ def test_send_backup(testcase, rx_start, tx_start, cap_menu, enter_complex, pick
         assert settings_get('notes') == notes
         settings_set('notes', [])
 
-#
-# @pytest.mark.bitcoind
-# @pytest.mark.parametrize("same_acct", [True, False])
-# @pytest.mark.parametrize("recovery", [True, False])
-# @pytest.mark.parametrize("leaf2_mine", [True, False])
-# @pytest.mark.parametrize("internal_type", ["unspend(", "xpub"])
-# @pytest.mark.parametrize("minisc", [
-#     "or_d(pk(@A),and_v(v:pkh(@B),locktime(N)))",
-#
-#     "or_d(pk(@A),and_v(v:pk(@B),locktime(N)))",
-#
-#     "or_d(multi_a(2,@A,@C),and_v(v:pkh(@B),locktime(N)))",
-#
-#     "or_d(pk(@A),and_v(v:multi_a(2,@B,@C),locktime(N)))",
-# ])
-# def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home,
-#                        pick_menu_item, cap_menu, cap_story, microsd_path, internal_type,
-#                        use_regtest, bitcoind, microsd_wipe, load_export, dev,
-#                        get_cc_key, import_miniscript, start_sign,
-#                        bitcoin_core_signer, same_acct, press_select, garbage_collector):
-#     # needs bitcoind 26.0
-#
-#     sequence = 5
-#     locktime = 0
-#     # 101 blocks are mined by default
-#     to_replace = "older(5)"
-#
-#     minisc = minisc.replace("locktime(N)", to_replace)
-#
-#     core_keys = []
-#     signers = []
-#     for i in range(3):
-#         # core signers
-#         signer, core_key = bitcoin_core_signer(f"co-signer{i}")
-#         core_keys.append(core_key)
-#         signers.append(signer)
-#
-#     # cc device key
-#     if same_acct:
-#         cc_key = get_cc_key("86h/1h/0h", subderiv="/<4;5>/*")
-#         cc_key1 = get_cc_key("86h/1h/0h", subderiv="/<6;7>/*")
-#     else:
-#         cc_key = get_cc_key("86h/1h/0h")
-#         cc_key1 = get_cc_key("86h/1h/1h")
-#
-#     if recovery:
-#         # recevoery path is always B
-#         minisc = minisc.replace("@B", cc_key)
-#         minisc = minisc.replace("@A", core_keys[0])
-#     else:
-#         minisc = minisc.replace("@A", cc_key)
-#         minisc = minisc.replace("@B", core_keys[0])
-#
-#     if "@C" in minisc:
-#         minisc = minisc.replace("@C", core_keys[1])
-#
-#     if internal_type == "unspend(":
-#         ik = f"unspend({os.urandom(32).hex()})/<2;3>/*"
-#     else:
-#         assert internal_type == "xpub"
-#         from test_miniscript import ranged_unspendable_internal_key
-#         ik = ranged_unspendable_internal_key(os.urandom(32))
-#
-#     if leaf2_mine:
-#         desc = f"tr({ik},{{{minisc},pk({cc_key1})}})"
-#     else:
-#         desc = f"tr({ik},{{pk({core_keys[2]}),{minisc}}})"
-#
-#     use_regtest()
-#     clear_miniscript()
-#     name = "minisc_teleport"
-#     fname = f"{name}.txt"
-#     fpath = microsd_path(fname)
-#     with open(fpath, "w") as f:
-#         f.write(desc)
-#
-#     garbage_collector.append(fpath)
-#
-#     wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
-#                                   passphrase=None, avoid_reuse=False, descriptors=True)
-#
-#     _, story = import_miniscript(fname)
-#     assert "Create new miniscript wallet?" in story
-#     # do some checks on policy --> helper function to replace keys with letters
-#     press_select()
-#     menu = cap_menu()
-#     assert menu[0] == name
-#     pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
-#     pick_menu_item("Descriptors")
-#     pick_menu_item("Bitcoin Core")
-#     text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-#     text = text.replace("importdescriptors ", "").strip()
-#     # remove junk
-#     r1 = text.find("[")
-#     r2 = text.find("]", -1, 0)
-#     text = text[r1: r2]
-#     core_desc_object = json.loads(text)
-#     res = wo.importdescriptors(core_desc_object)
-#     for obj in res:
-#         assert obj["success"]
-#     addr = wo.getnewaddress("", "bech32m")
-#     addr_dest = wo.getnewaddress("", "bech32m")  # self-spend
-#     assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-#     bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
-#     all_of_it = wo.getbalance()
-#     unspent = wo.listunspent()
-#     assert len(unspent) == 1
-#     inp = {"txid": unspent[0]["txid"], "vout": unspent[0]["vout"]}
-#     if recovery and sequence and not leaf2_mine:
-#         inp["sequence"] = sequence
-#     psbt_resp = wo.walletcreatefundedpsbt(
-#         [inp],
-#         [{addr_dest: all_of_it - 1}],
-#         locktime if (recovery and not leaf2_mine) else 0,
-#         {"fee_rate": 20, "change_type": "bech32m", "subtractFeeFromOutputs": [0]},
-#     )
-#     psbt = psbt_resp.get("psbt")
-#
-#     # if (normal_cosign_core or recovery_cosign_core) and not leaf2_mine:
-#     #     psbt = signers[1].walletprocesspsbt(psbt, True, "ALL")["psbt"]
-#
-#     name = f"{name}.psbt"
-#     start_sign(base64.b64decode(psbt))
-#     title, story = cap_story()
-#     if "OK TO SEND?" not in title:
-#         time.sleep(0.1)
-#         pick_menu_item(name)
-#         time.sleep(0.1)
-#         title, story = cap_story()
-#     assert title == "OK TO SEND?"
-#     assert "Consolidating" in story
-#     press_select()  # confirm signing
-#     time.sleep(0.5)
-#     title, story = cap_story()
-#     assert "PSBT Signed" == title
-#     import pdb;pdb.set_trace()
-#     press_select()
-#     fname_psbt = story.split("\n\n")[1]
-#     # fname_txn = story.split("\n\n")[3]
-#     fpath_psbt = microsd_path(fname_psbt)
-#     with open(microsd_path(fname_psbt), "r") as f:
-#         final_psbt = f.read().strip()
-#     garbage_collector.append(fpath)
-#     # with open(microsd_path(fname_txn), "r") as f:
-#     #     final_txn = f.read().strip()
-#     res = wo.finalizepsbt(final_psbt)
-#     assert res["complete"]
-#     tx_hex = res["hex"]
-#     # assert tx_hex == final_txn
-#     res = wo.testmempoolaccept([tx_hex])
-#     if recovery and not leaf2_mine:
-#         assert not res[0]["allowed"]
-#         assert res[0]["reject-reason"] == 'non-BIP68-final' if sequence else "non-final"
-#         bitcoind.supply_wallet.generatetoaddress(6, bitcoind.supply_wallet.getnewaddress())
-#         res = wo.testmempoolaccept([tx_hex])
-#         assert res[0]["allowed"]
-#     else:
-#         assert res[0]["allowed"]
-#
-#     res = wo.sendrawtransaction(tx_hex)
-#     assert len(res) == 64  # tx id
 
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("taproot", [True, False])
+@pytest.mark.parametrize("policy", [
+    "thresh(4,pk(@0),s:pk(@1),s:pk(@2),s:pk(@3),sln:older(SEQ))",
+])
+def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, use_regtest,
+                                  clear_miniscript, set_bip39_pw, press_select, pick_menu_item,
+                                  need_keypress, offer_minsc_import, load_export, reset_seed_words,
+                                  cap_story, cap_menu, grab_payload, sim_root_dir, rx_complete,
+                                  settings_set, try_sign, settings_get, press_cancel):
+
+    reset_seed_words()
+    use_regtest()
+    clear_miniscript()
+    sequence = 5
+    locktime = 0
+    policy = policy.replace("SEQ", str(sequence))
+
+    # bitcoin core is PSBT provider
+    name = "msc_tele"
+    wo = bitcoind.create_wallet(name, disable_private_keys=True, blank=True)
+
+    deriv = "86h/1h/0h" if taproot else "48h/1h/0h/2h"
+    # default simulator key always on index 0
+    keys = [get_cc_key(deriv)]
+
+    # 4 more keys for other co-signers
+    for i in range(1, 4):
+        seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=str(i)*2)
+        master = BIP32Node.from_master_secret(seed, netcode="XTN")
+        master_xfp = master.fingerprint().hex()
+        account_key = master.subkey_for_path(deriv)
+        keys.append(f"[{master_xfp}/{deriv}]{account_key.hwif()}/<0;1>/*")
+
+    for i, key in enumerate(keys):
+        policy = policy.replace(f"@{i}", key)
+
+    if taproot:
+        from test_miniscript import ranged_unspendable_internal_key
+        desc = f"tr(%s,%s)" % (ranged_unspendable_internal_key(), policy)
+    else:
+        desc = f"wsh(%s)" % policy
+
+    title, story = offer_minsc_import(json.dumps({"name": name, "desc": desc}))
+    assert "Create new miniscript wallet?" in story
+    press_select()
+    time.sleep(.2)
+
+    pick_menu_item("Settings")
+    pick_menu_item("Miniscript")
+    pick_menu_item(name)
+    pick_menu_item("Descriptors")
+    pick_menu_item("Bitcoin Core")
+    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
+    text = text.replace("importdescriptors ", "").strip()
+    # remove junk
+    r1 = text.find("[")
+    r2 = text.find("]", -1, 0)
+    text = text[r1: r2]
+    core_desc_object = json.loads(text)
+    res = wo.importdescriptors(core_desc_object)
+    for obj in res:
+        assert obj["success"]
+
+    af = "bech32m" if taproot else "bech32"
+    addr = wo.getnewaddress("", af)
+    assert bitcoind.supply_wallet.sendtoaddress(addr, 20)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    psbt_resp = wo.walletcreatefundedpsbt(
+        [],
+        [{bitcoind.supply_wallet.getnewaddress(): 2.5}],
+        locktime,
+        {"fee_rate": 2, "change_type": af},
+    )
+    psbt = psbt_resp.get("psbt")
+
+    _, psbt = try_sign(base64.b64decode(psbt), accept=True, exit_export_loop=False)
+    title, body = cap_story()
+    assert title == "PSBT Signed"
+    assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
+
+    my_xfp = xfp2str(simulator_fixed_xfp)
+    for i in range(len(keys)):
+        # expect: a menu of other signers to pick from
+        if i == (len(keys) - 1):
+            done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
+            resp_len, chk = done
+            psbt_out = dev.download_file(resp_len, chk)
+            res = wo.finalizepsbt(base64.b64encode(psbt_out).decode())
+            assert res["complete"]
+            tx_hex = res["hex"]
+            res = wo.testmempoolaccept([tx_hex])
+            assert res[0]["allowed"]
+            res = wo.sendrawtransaction(tx_hex)
+            assert len(res) == 64  # tx id
+            press_cancel()
+            # done
+            break
+
+        need_keypress('t')
+        time.sleep(.1)
+
+        m = cap_menu()
+        assert len(m) == len(keys)
+        assert 'YOU' in [ln for ln in m if my_xfp in ln][0]
+
+        unsigned = [ln[1:9] for ln in m if (my_xfp not in ln) and ('DONE' not in ln)]
+        assert unsigned
+
+        # find another signer
+        for idx, k in enumerate(keys):
+            if k[1:9].upper() in unsigned:
+                next_xfp = k[1:9].upper()
+                break
+        else:
+            assert 0, 'missing unsigned'
+
+        # check XFP changes
+        assert next_xfp != my_xfp
+        last_xfp = my_xfp
+
+        # pick other xfp to send to
+        nm, = [mi for mi in m if next_xfp in mi]
+        pick_menu_item(nm)
+
+        # grab the payload and pw
+        pw, data, qr_raw = grab_payload('E')
+        assert len(pw) == 8
+
+        with open(f'{sim_root_dir}/debug/next_qr_{next_xfp}.txt', 'wt') as f:
+            f.write(f'{next_xfp}\n\n{pw}\n\n{data}')
+
+        time.sleep(.1)
+        title, story = cap_story()
+        assert title == 'Sent by Teleport'
+
+        # switch personalities, and try to read that QR
+        new_xfp = set_bip39_pw(str(idx) + str(idx), reset=True)
+        use_regtest()
+        clear_miniscript()
+        dev.start_encryption()  #
+        assert xfp2str(new_xfp) == next_xfp
+        assert settings_get('xfp') == new_xfp
+        my_xfp = xfp2str(new_xfp)
+
+        # need miniscript wallet
+        title, story = offer_minsc_import(json.dumps({"name": name, "desc": desc}))
+        assert "Create new miniscript wallet?" in story
+        press_select()
+        time.sleep(.2)
+
+        # import and sign
+        rx_complete(('E', qr_raw), pw, expect_xfp=str2xfp(last_xfp))
+
+        title, body = cap_story()
+        assert title == 'OK TO SEND?'
+
+        press_select()
+        time.sleep(.25)
+
+        title, body = cap_story()
+
+        assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
 
 # EOF

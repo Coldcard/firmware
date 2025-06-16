@@ -637,7 +637,7 @@ async def kt_send_psbt(psbt, psbt_len):
 
     elif psbt.active_miniscript:
         ms = psbt.active_miniscript
-        all_xfps = {x for x,*p in psbt.active_miniscript.xfp_paths()}
+        all_xfps = {x for x,*p in psbt.active_miniscript.xfp_paths(skip_unspend_ik=True)}
     else:
         assert False
 

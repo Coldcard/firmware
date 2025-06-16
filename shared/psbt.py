@@ -12,7 +12,7 @@ from uhashlib import sha256
 from uio import BytesIO
 from sffile import SizerFile
 from chains import taptweak, tapleaf_hash
-from miniscript import MiniScriptWallet
+from miniscript import MiniScriptWallet, Key
 from multisig import MultisigWallet, disassemble_multisig_mn
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160
@@ -2853,9 +2853,12 @@ class psbtObject(psbtProxy):
                 for xpk, lhs_pths in inp.taproot_subpaths.items():
                     if not lhs_pths[0]:
                         # no leaf hashes - internal key
+                        if self.active_miniscript:
+                            k = Key.from_string(self.active_miniscript.key)
+                            if k.is_provably_unspendable:
+                                continue
                         if inp.taproot_key_sig:
                             continue
-
                     else:
                         signed = {xonly for (xonly, lhs) in inp.taproot_script_sigs.keys()}
                         if xpk in signed:

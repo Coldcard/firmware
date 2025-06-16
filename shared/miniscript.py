@@ -154,22 +154,23 @@ class MiniScriptWallet(BaseStorageWallet):
         rv.storage_idx = idx
         return rv
 
-    def xfp_paths(self):
+    def xfp_paths(self, skip_unspend_ik=False):
         if self._desc is None:
             res = []
             if self._key:
                 ik = Key.from_string(self.key)
-                if ik.origin:
+                if ik.is_provably_unspendable:
+                    if not skip_unspend_ik:
+                        res.append([swab32(ik.node.my_fp())])
+                elif ik.origin:
                     res.append(ik.origin.psbt_derivation())
-                elif ik.is_provably_unspendable:
-                    res.append([swab32(ik.node.my_fp())])
 
             for k in self.keys:
                 k = Key.from_string(k)
                 if k.origin:
                     res.append(k.origin.psbt_derivation())
             return res
-        return self.desc.xfp_paths()
+        return self.desc.xfp_paths(skip_unspend_ik)
 
     @classmethod
     def find_match(cls, xfp_paths, addr_fmt=None):
@@ -610,25 +611,17 @@ class MiniScriptWallet(BaseStorageWallet):
         # return list of XPUB's which match xfp
         res = []
         if self.key:
-            print("has key", type(self.key), self.key)
             if isinstance(self.key, str):
                 k = Key.from_string(self.key)
-                if k.origin:
-                    print("origin", k.origin.cc_fp)
-                else:
-                    print("my fp", k.node.my_fp())
                 if k.origin and k.origin.cc_fp == xfp:
                     res.append(k)
                 elif not k.origin and swab32(k.node.my_fp()) == xfp:
                     res.append(k)
 
         for k in self.keys:
-            print("k", type(k), k)
             if isinstance(k, str):
                 k = Key.from_string(k)
 
-            print("xfp", xfp)
-            print("fp", k.origin.cc_fp)
             if xfp == k.origin.cc_fp:
                 res.append(k)
 
@@ -646,10 +639,9 @@ class MiniScriptWallet(BaseStorageWallet):
             # what to  do here, out key is there more than once but has different origin derivation
             print("len keys is more than 1", keys)
 
-        the_key = keys[0]
-        the_key.node.derive(KT_RXPUBKEY_DERIV, False)
-        the_key.derive(ri, False)
-        pubkey = the_key.node.pubkey()
+        k = keys[0]
+        k = k.derive(KT_RXPUBKEY_DERIV).derive(ri)
+        pubkey = k.node.pubkey()
 
         kp = self.kt_my_keypair(ri)
 
@@ -664,10 +656,12 @@ class MiniScriptWallet(BaseStorageWallet):
         keys = self.xpubs_from_xfp(my_xfp)
         assert keys
         the_key = keys[0]
-        deriv = the_key.origin.psbt_derivation()[1:]
+        # including xfp(bytes) at index 0
+        deriv = the_key.origin.psbt_derivation()
         deriv.append(KT_RXPUBKEY_DERIV)
         deriv.append(ri)
 
+        # skip index 0 where xfp is
         path = keypath_to_str(deriv)
 
         with stash.SensitiveValues() as sv:
@@ -695,13 +689,12 @@ class MiniScriptWallet(BaseStorageWallet):
 
         for msc in cls.iter_wallets():
             kp = msc.kt_my_keypair(ri)
-
             for k in msc.keys:
-                if k.origin.cc_fp == my_xfp: continue
-                k = k.node.derive(KT_RXPUBKEY_DERIV, False)
-                k = k.node.derive(ri, False)
+                kk = Key.from_string(k)
+                if kk.origin.cc_fp == my_xfp: continue
+                kk = kk.derive(KT_RXPUBKEY_DERIV).derive(ri)
 
-                his_pubkey = k.node.pubkey()
+                his_pubkey = kk.node.pubkey()
 
                 #print("try decode: ri=%d toward xfp: %s ... from %s <= to %s" % (
                 #    ri, xfp2str(xfp), B2A(his_pubkey), B2A(kp.pubkey().to_bytes())), end=' ... ')
@@ -710,7 +703,7 @@ class MiniScriptWallet(BaseStorageWallet):
                 ses_key, body = decode_step1(kp, his_pubkey, payload[4:])
 
                 if ses_key:
-                    return ses_key, body, k.origin.cc_fp
+                    return ses_key, body, kk.origin.cc_fp
 
         return None, None, None
 
