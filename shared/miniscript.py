@@ -947,10 +947,13 @@ class Miniscript:
 
     @property
     def keys(self):
-        return sum(
-            [arg.keys for arg in self.args if isinstance(arg, Miniscript)],
-            [k for k in self.args if isinstance(k, Key) or isinstance(k, KeyHash)],
-        )
+        res = []
+        for arg in self.args:
+            if isinstance(arg, Miniscript):
+                res += arg.keys
+            elif isinstance(arg, Key):  # KeyHash is subclass of Key
+                res.append(arg)
+        return res
 
     def is_sane(self, taproot=False):
         err = "multi mixin"
@@ -979,7 +982,7 @@ class Miniscript:
         args = []
         for arg in self.args:
             if hasattr(arg, "derive"):
-                if isinstance(arg, Key) or isinstance(arg, KeyHash):
+                if isinstance(arg, Key):  # KeyHash is subclass of Key
                     arg = self.key_derive(arg, idx, key_map, change=change)
                 else:
                     arg = arg.derive(idx, change=change)
