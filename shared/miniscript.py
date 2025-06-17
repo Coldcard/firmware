@@ -218,11 +218,9 @@ class MiniScriptWallet(BaseStorageWallet):
         return branch, idx
 
     def get_my_deriv(self, my_xfp):
-        # TODO we can have more our keys in descriptor
-        # maybe lowest account/change index should be chosen
-        for e in self.xfp_paths():
-            if e[0] == my_xfp:
-                return keypath_to_str(e)
+        # lowest public key from lexicographically sorted list is at index 0
+        mine = self.xpubs_from_xfp(my_xfp)
+        return mine[0].origin.str_derivation()
 
     def derive_desc(self, xfp_paths):
         branch, idx = self.subderivation_indexes(xfp_paths)
@@ -625,53 +623,38 @@ class MiniScriptWallet(BaseStorageWallet):
             if xfp == k.origin.cc_fp:
                 res.append(k)
 
-        return res
+        assert res, "missing xfp %s" % xfp2str(xfp)
+        # returned is list of keys with corresponding master xfp
+        # key in list are lexicographically sorted based on their public keys
+        # lowes public key first
+        return sorted(res, key=lambda o: o.serialize())
 
     def kt_make_rxkey(self, xfp):
         # Derive the receiver's pubkey from preshared xpub and a special derivation
         # - also provide the keypair we're using from our side of connection
         # - returns 4 byte nonce which is sent un-encrypted, his_pubkey and my_keypair
         ri = ngu.random.uniform(1<<28)
-        keys =  self.xpubs_from_xfp(xfp)
-        if not keys:
-            raise RuntimeError("missing xfp")
-        elif len(keys) > 1:
-            # what to  do here, out key is there more than once but has different origin derivation
-            print("len keys is more than 1", keys)
 
+        # sorted lexicographically, always use the lowest pubkey from the list at index 0
+        keys =  self.xpubs_from_xfp(xfp)
         k = keys[0]
         k = k.derive(KT_RXPUBKEY_DERIV).derive(ri)
         pubkey = k.node.pubkey()
 
         kp = self.kt_my_keypair(ri)
-
-        #print("psbt sender: ri=%d toward xfp: %s ... %s" % (ri, xfp2str(xfp), B2A(pubkey)))
-
         return ri.to_bytes(4, 'big'), pubkey, kp
 
     def kt_my_keypair(self, ri):
         # Calc my keypair for sending PSBT files.
         #
-        my_xfp = settings.get('xfp')
-        keys = self.xpubs_from_xfp(my_xfp)
-        assert keys
-        the_key = keys[0]
-        # including xfp(bytes) at index 0
-        deriv = the_key.origin.psbt_derivation()
-        deriv.append(KT_RXPUBKEY_DERIV)
-        deriv.append(ri)
+        # sorted lexicographically, always use the lowest pubkey from the list at index 0
+        keys = self.xpubs_from_xfp(settings.get('xfp'))
 
-        # skip index 0 where xfp is
-        path = keypath_to_str(deriv)
-
+        subpath = "/%d/%d" % (KT_RXPUBKEY_DERIV, ri)
+        path = keys[0].origin.str_derivation() + subpath
         with stash.SensitiveValues() as sv:
             node = sv.derive_path(path)
-
             kp = ngu.secp256k1.keypair(node.privkey())
-
-            #print("my keypair: ri=%d my_xfp=%s ... %s" % (
-            #        ri, xfp2str(my_xfp), B2A(kp.pubkey().to_bytes())))
-
             return kp
 
     @classmethod
@@ -691,17 +674,12 @@ class MiniScriptWallet(BaseStorageWallet):
             kp = msc.kt_my_keypair(ri)
             for k in msc.keys:
                 kk = Key.from_string(k)
-                if kk.origin.cc_fp == my_xfp: continue
+                if kk.origin.cc_fp == my_xfp:
+                    continue
                 kk = kk.derive(KT_RXPUBKEY_DERIV).derive(ri)
-
                 his_pubkey = kk.node.pubkey()
-
-                #print("try decode: ri=%d toward xfp: %s ... from %s <= to %s" % (
-                #    ri, xfp2str(xfp), B2A(his_pubkey), B2A(kp.pubkey().to_bytes())), end=' ... ')
-
                 # if implied session key decodes the checksum, it is right
                 ses_key, body = decode_step1(kp, his_pubkey, payload[4:])
-
                 if ses_key:
                     return ses_key, body, kk.origin.cc_fp
 

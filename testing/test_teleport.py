@@ -723,7 +723,7 @@ def test_send_backup(testcase, rx_start, tx_start, cap_menu, enter_complex, pick
 @pytest.mark.parametrize("taproot", [True, False])
 @pytest.mark.parametrize("keys", [True, False, None])
 @pytest.mark.parametrize("policy", [
-    "thresh(4,pk(@0),s:pk(@1),s:pk(@2),s:pk(@3),sln:older(SEQ))",
+    "thresh(4,pk(@0),s:pk(@1),s:pk(@2),s:pk(@3),sln:older(12960))",
 ])
 def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, use_regtest,
                                   clear_miniscript, set_bip39_pw, press_select, pick_menu_item,
@@ -734,15 +734,12 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
     reset_seed_words()
     use_regtest()
     clear_miniscript()
-    sequence = 5
-    locktime = 0
-    policy = policy.replace("SEQ", str(sequence))
 
     # bitcoin core is PSBT provider
     name = "msc_tele"
     wo = bitcoind.create_wallet(name, disable_private_keys=True, blank=True)
 
-    deriv = "86h/%dh/0h" if taproot else "48h/1h/%dh/2h"
+    deriv = "86h/1h/%dh" if taproot else "48h/1h/%dh/2h"
     if keys is True:
         # actually just 2 signers - both with 2 keys with different subderivation (change based)
         deriv = deriv % 0
@@ -758,7 +755,7 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
 
         signers = [keys[0], keys[2]]
     elif keys is False:
-        # 3 signers, account based
+        # 3 signers, 1 signer has two keys with different account derivation index
         keys = [get_cc_key(deriv % 0)]
         for i in range(1, 3):
             seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=str(i)+str(i))
@@ -827,7 +824,7 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
     psbt_resp = wo.walletcreatefundedpsbt(
         [],
         [{bitcoind.supply_wallet.getnewaddress(): 2.5}],
-        locktime,
+        0,
         {"fee_rate": 2, "change_type": af},
     )
     psbt = psbt_resp.get("psbt")
