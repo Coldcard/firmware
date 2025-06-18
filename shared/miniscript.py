@@ -379,26 +379,29 @@ class MiniScriptWallet(BaseStorageWallet):
         while count:
             # make the redeem script, convert into address
             d = dd.derive(idx)
-            addr = ch.render_address(d.script_pubkey())
+            scr = d.miniscript.compile() if d.miniscript else None
+            addr = ch.render_address(d.script_pubkey(compiled_scr=scr))
 
             script = ""
+            ders = None
             if scripts:
+                ders = ["[%s]" % str(k.origin) for k in d.keys]
                 if d.tapscript:
                     script = d.tapscript.script_tree()
                 else:
-                    script = b2a_hex(ser_string(d.miniscript.compile())).decode()
+                    script = b2a_hex(ser_string(scr)).decode()
 
             if d.tapscript:
                 yield (idx,
                        addr,
-                       ["[%s]" % str(k.origin) for k in d.keys],
+                       ders,
                        script,
                        d.key.serialize(),
                        str(d.key.origin) if d.key.origin else "")
             else:
                 yield (idx,
                        addr,
-                       ["[%s]" % str(k.origin) for k in d.keys],
+                       ders,
                        script,
                        None,
                        None)
@@ -411,18 +414,10 @@ class MiniScriptWallet(BaseStorageWallet):
 
         addrs = []
 
-        for idx, addr, paths, _, ik, _ in self.yield_addresses(start, n,
-                                                             change=bool(change),
-                                                             scripts=False):
-            if idx == 0 and len(paths) <= 4 and not ik:
-                msg += '\n'.join(paths) + '\n =>\n'
-            else:
-                change_idx = set([int(p.split("/")[-2]) for p in paths])
-                if len(change_idx) == 1:
-                    msg += '.../%d/%d =>\n' % (list(change_idx)[0], idx)
-                else:
-                    msg += '.../%d =>\n' % idx
-
+        for idx, addr, _, _, ik, _ in self.yield_addresses(start, n,
+                                                           change=bool(change),
+                                                           scripts=False):
+            msg += '.../%d =>\n' % idx  # just idx, if derivations or scripts needed - export csv
             addrs.append(addr)
             msg += show_single_address(addr) + '\n\n'
             dis.progress_sofar(idx - start + 1, n)
