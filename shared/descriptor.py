@@ -358,37 +358,34 @@ class Descriptor:
                 self.wpkh, self.taproot, tapscript=None
             )
 
-    def witness_script(self):
-        if self.wsh and self.miniscript is not None:
-            return self.miniscript.compile()
-
-    def redeem_script(self):
-        if not self.sh:
-            return None
-        if self.miniscript:
-            if self.wsh:
-                return b"\x00\x20" + ngu.hash.sha256s(self.miniscript.compile())
-            else:
-                return self.miniscript.compile()
-
-        else:
-            return b"\x00\x14" + ngu.hash.hash160(self.key.node.pubkey())
-
-    def script_pubkey(self):
+    def script_pubkey(self, compiled_scr=None):
         if self.taproot:
             tweak = None
             if self.tapscript:
                 tweak = self.tapscript.merkle_root
             output_pubkey = chains.taptweak(self.key.serialize(), tweak)
             return b"\x51\x20" + output_pubkey
+
         if self.sh:
-            return b"\xa9\x14" + ngu.hash.hash160(self.redeem_script()) + b"\x87"
+            if self.miniscript:
+                # caller may have already built a script
+                scr = compiled_scr or self.miniscript.compile()
+                redeem_scr = scr
+                if self.wsh:
+                    redeem_scr = b"\x00\x20" + ngu.hash.sha256s(scr)
+            else:
+                redeem_scr = b"\x00\x14" + ngu.hash.hash160(self.key.node.pubkey())
+
+            return b"\xa9\x14" + ngu.hash.hash160(redeem_scr) + b"\x87"
+
         if self.wsh:
-            return b"\x00\x20" + ngu.hash.sha256s(self.witness_script())
-        if self.miniscript:
-            return self.miniscript.compile()
+            # witness script p2wsh only
+            return b"\x00\x20" + ngu.hash.sha256s(compiled_scr or self.miniscript.compile())
+
         if self.wpkh:
             return b"\x00\x14" + ngu.hash.hash160(self.key.serialize())
+
+        # p2pkh
         return b"\x76\xa9\x14" + ngu.hash.hash160(self.key.serialize()) + b"\x88\xac"
 
     @classmethod
