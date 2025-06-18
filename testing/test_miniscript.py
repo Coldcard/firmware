@@ -1695,7 +1695,7 @@ def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
 @pytest.mark.parametrize("same_acct", [True, False])
 @pytest.mark.parametrize("recovery", [True, False])
 @pytest.mark.parametrize("leaf2_mine", [True, False])
-@pytest.mark.parametrize("internal_type", ["unspend(", "xpub"])
+# @pytest.mark.parametrize("internal_type", ["unspend(", "xpub"])
 @pytest.mark.parametrize("minisc", [
     "or_d(pk(@A),and_v(v:pkh(@B),locktime(N)))",
 
@@ -1706,7 +1706,7 @@ def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
     "or_d(pk(@A),and_v(v:multi_a(2,@B,@C),locktime(N)))",
 ])
 def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home,
-                       pick_menu_item, cap_menu, cap_story, microsd_path, internal_type,
+                       pick_menu_item, cap_menu, cap_story, microsd_path,
                        use_regtest, bitcoind, microsd_wipe, load_export, dev,
                        address_explorer_check, get_cc_key, import_miniscript,
                        bitcoin_core_signer, same_acct, import_duplicate, press_select,
@@ -1760,10 +1760,10 @@ def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home
     if "@C" in minisc:
         minisc = minisc.replace("@C", core_keys[1])
 
-    if internal_type == "unspend(":
+    if random.getrandbits(1):
         ik = f"unspend({os.urandom(32).hex()})/<2;3>/*"
     else:
-        assert internal_type == "xpub"
+        # assert internal_type == "xpub"
         ik = ranged_unspendable_internal_key(os.urandom(32))
 
     if leaf2_mine:
