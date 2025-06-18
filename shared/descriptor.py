@@ -229,20 +229,8 @@ class Descriptor:
         return res
 
     @property
-    def is_wrapped(self):
-        return self.sh and self.is_segwit
-
-    @property
-    def is_legacy(self):
-        return not (self.is_segwit or self.is_taproot)
-
-    @property
     def is_segwit(self):
         return (self.wsh and self.miniscript) or (self.wpkh and self.key) or self.taproot
-
-    @property
-    def is_pkh(self):
-        return self.key is not None and not self.taproot
 
     @property
     def is_taproot(self):
@@ -316,19 +304,6 @@ class Descriptor:
             # AF_CLASSIC
             assert self.key
             assert not self.miniscript
-
-    def scriptpubkey_type(self):
-        if self.is_taproot:
-            return "p2tr"
-        if self.sh:
-            return "p2sh"
-        if self.is_pkh:
-            if self.is_legacy:
-                return "p2pkh"
-            if self.is_segwit:
-                return "p2wpkh"
-        else:
-            return "p2wsh"
 
     def derive(self, idx=None, change=False):
         if self.taproot:
