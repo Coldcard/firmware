@@ -1686,30 +1686,39 @@ async def list_files(*A):
     from pincodes import pa
 
     digest = chk.digest()
-    basename = fn.rsplit('/', 1)[-1]
-    msg_base = 'SHA256(%s)\n\n%s\n\nPress ' % (basename, B2A(digest))
-    escape = "6"
+    path, basename = fn.rsplit('/', 1)
+    msg_base = 'SHA256(%s)\n\n' + B2A(digest) + '\n\nPress (1) to rename file, '
+    escape = "61"
     if pa.has_secrets():
-        msg_sign = '(4) to sign file digest and export detached signature, '
+        msg_base += '(4) to sign file digest and export detached signature, '
         escape += "4"
-    else:
-        msg_sign = ""
-    msg_delete = '(6) to delete.'
-    msg = msg_base + msg_sign + msg_delete
+    msg_base += '(6) to delete.'
+
     while True:
-        ch = await ux_show_story(msg, escape=escape)
+        ch = await ux_show_story(msg_base % basename, escape=escape)
         if ch == "x": break
-        if ch in '46':
+        if ch in '461':
             with CardSlot() as card:
                 if ch == '6':
                     card.securely_blank_file(fn)
                     break
+                elif ch == '1':
+                    new_basename = await ux_input_text(basename, max_len=32, min_len=3)
+                    if new_basename:
+                        try:
+                            # prohibit both slashes and space in filenames
+                            for s in "\/ ":
+                                assert s not in new_basename, "illegal char"
+                            uos.rename(path + "/" + basename, path + "/" + new_basename)
+                            basename = new_basename
+                        except Exception as e:
+                            await ux_show_story("Failed to rename the file. " + str(e),
+                                                title="Failure")
                 else:
                     from msgsign import write_sig_file
 
                     sig_nice = write_sig_file([(digest, fn)])
                     await ux_show_story("Signature file %s written." % sig_nice)
-                    msg = msg_base + msg_delete
     return
 
 async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,

@@ -8,6 +8,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Enhancement: Add warning for zero value outputs if not `OP_RETURN`
 - Enhancement: Show QR codes of output addresses in transaction output explorer. Explorer is
   now offered for transactions of all sizes, not just complex ones.
+ Enhancement: Add ability to rename files on SD card via `Advanced/Tools -> File Management -> List Files`
 - Bugfix: If all change outputs have `nValue=0` they were not shown in UX.
 - Bugfix: Disallow negative input/output amounts in PSBT.
 - Bugfix: Fix filesystem initialization after Wife LFS or Destroy Seed.
