@@ -2,7 +2,7 @@
 #
 import pytest, time, os, re, hashlib, shutil
 from helpers import xfp2str, prandom
-from charcodes import KEY_DOWN, KEY_QR, KEY_NFC, KEY_DELETE
+from charcodes import KEY_DOWN, KEY_QR, KEY_NFC, KEY_DELETE, KEY_CANCEL
 from constants import AF_CLASSIC, simulator_fixed_words, simulator_fixed_xfp
 from mnemonic import Mnemonic
 from bip32 import BIP32Node
@@ -815,7 +815,6 @@ def test_sign_file_from_list_files(f_len, goto_home, cap_story, pick_menu_item, 
         verify_detached_signature_file([fname], signame, "sd", AF_CLASSIC)
         time.sleep(0.1)
         _, story = cap_story()
-        assert "(4) to sign file digest and export detached signature" not in story
 
     assert "(6) to delete" in story
 
@@ -823,6 +822,68 @@ def test_sign_file_from_list_files(f_len, goto_home, cap_story, pick_menu_item, 
     time.sleep(0.1)
     menu = cap_menu()
     assert "List Files" in menu
+
+
+def test_rename_from_list_files(goto_home, cap_story, pick_menu_item, need_keypress, is_q1,
+                                microsd_path, press_select, cap_screen, enter_complex):
+    def clear(fname):
+        for i in range(len(fname)):
+            if not is_q1 and not i:
+                # Mk4 different menu entry UX
+                continue
+            need_keypress(KEY_DELETE if is_q1 else "x")
+            time.sleep(0.01)
+
+    fname = "file_to_rename.pdf"
+    fpath = microsd_path(fname)
+    contents = os.urandom(64)
+    digest = hashlib.sha256(contents).digest().hex()
+    with open(fpath, "wb") as f:
+        f.write(contents)
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item('File Management')
+    pick_menu_item('List Files')
+    time.sleep(0.1)
+    pick_menu_item(fname)
+    time.sleep(0.1)
+    _, story = cap_story()
+    assert f"SHA256({fname})" in story
+    assert digest in story
+    assert "Press (1) to rename file" in story
+    need_keypress("1")
+    time.sleep(0.1)
+    if is_q1:
+        scr = cap_screen()
+        assert fname in scr
+
+    clear(fname)
+
+    bad_fnames = ["renamed file.txt", "/sd/renamed_file.txt", "renamed\\file.txt"]
+    for bad in bad_fnames:
+        enter_complex(bad, b39pass=False)
+        time.sleep(.1)
+        title, story = cap_story()
+        assert title == "Failure"
+        assert "Failed to rename the file" in story
+        assert "illegal char" in story
+        press_select()
+        time.sleep(.1)
+        need_keypress("1")  # rename again
+        time.sleep(.1)
+        clear(fname)
+        if not is_q1:
+            need_keypress("1")  # toggle case back to upper (enter complex expect to start in that state)
+
+    new_fname = "renamed_file.txt"
+    enter_complex(new_fname, b39pass=False)
+    time.sleep(.1)
+    _, story = cap_story()
+    assert f"SHA256({new_fname})" in story
+    assert digest in story
+    assert not os.path.exists(fpath)
+    assert os.path.exists(microsd_path(new_fname))
 
 
 def test_bip39_pw_signing_xfp_ux(pick_menu_item, press_select, cap_story, enter_complex,
