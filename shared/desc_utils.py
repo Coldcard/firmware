@@ -9,7 +9,6 @@ from binascii import unhexlify as a2b_hex
 from binascii import hexlify as b2a_hex
 from utils import keypath_to_str, str_to_keypath, swab32, xfp2str
 from serializations import ser_compact_size
-from precomp_tag_hash import TAP_BRANCH_H
 
 
 WILDCARD = "*"
@@ -279,9 +278,23 @@ class Key:
     def parse(cls, s):
         first = s.read(1)
         origin = None
-        if first == b"u":
-            s.seek(-1, 1)
-            return Unspend.parse(s)
+        # if first == b"u":
+        #     s.seek(-1, 1)
+        #     assert s.read(8) == b"unspend("
+        #     chain_code, c = read_until(s, b")")
+        #     chain_code = a2b_hex(chain_code)
+        #     assert len(chain_code) == 32, "chain code length"
+        #     char = s.read(1)
+        #     if char != b"/":
+        #         raise ValueError("ranged unspend required")
+        #
+        #     der = KeyDerivationInfo.parse(s)
+        #     if char is not None:
+        #         s.seek(-1, 1)
+        #
+        #     node = ngu.hdnode.HDNode().from_chaincode_pubkey(chain_code,
+        #                                                      PROVABLY_UNSPENDABLE)
+        #     return cls(node, None, der, chain_type=None)
 
         if first == b"[":
             prefix, char = read_until(s, b"]")
@@ -404,112 +417,40 @@ class Key:
         return cls.parse(s)
 
 
-class Unspend(Key):
-    def __init__(self, node, origin=None, derivation=None, taproot=True, chain_type=None):
-        super().__init__(node, origin, derivation, taproot, chain_type)
-        assert self.taproot
-
-    def __eq__(self, other):
-        return self.node.chain_code() == other.node.chain_code() \
-            and self.node.pubkey() == other.node.pubkey() \
-            and self.derivation.indexes == other.derivation.indexes
-
-    @classmethod
-    def parse(cls, s):
-        assert s.read(8) == b"unspend("
-        chain_code, c = read_until(s, b")")
-        chain_code = a2b_hex(chain_code)
-        assert len(chain_code) == 32, "chain code length"
-        assert c
-        char = s.read(1)
-        if char != b"/":
-            raise ValueError("ranged unspend required")
-
-        der = KeyDerivationInfo.parse(s)
-        if char is not None:
-            s.seek(-1, 1)
-
-        node = ngu.hdnode.HDNode().from_chaincode_pubkey(chain_code,
-                                                         PROVABLY_UNSPENDABLE)
-        return cls(node, None, der, chain_type=None)
-
-    def to_string(self, external=True, internal=True, subderiv=True):
-        res = "unspend(%s)" % b2a_hex(self.node.chain_code()).decode()
-        if self.derivation and subderiv:
-            res += "/" + self.derivation.to_string(external, internal)
-
-        return res
-
-    @property
-    def is_provably_unspendable(self):
-        return True
-
-
-def fill_policy(policy, keys, external=True, internal=True):
-    orig_keys = []
-    for k in keys:
-        if not isinstance(k, str):
-            k_orig = k.to_string(external, internal, subderiv=False)
-        else:
-            _idx = k.find("]")  # end of key origin info - no more / expected besides subderivation
-            if _idx != -1:
-                ek = k[_idx+1:].split("/")[0]
-                k_orig = k[:_idx+1] + ek
-            else:
-                # no origin info
-                k_orig = k.split("/")[0]
-
-        if k_orig not in orig_keys:
-            orig_keys.append(k_orig)
-
-    for i in range(len(orig_keys) - 1, -1, -1):
-        k = orig_keys[i]
+def bip388_wallet_policy_to_descriptor(desc_tmplt, keys_info):
+    for i in range(len(keys_info) - 1, -1, -1):
+        k_str = keys_info[i]
         ph = "@%d" % i
-        ph_len = len(ph)
-        while True:
-            ix = policy.find(ph)
-            if ix == -1:
-                break
+        desc_tmplt = desc_tmplt.replace(ph, k_str)
+    return desc_tmplt
 
-            assert policy[ix+ph_len] == "/"
-            # subderivation is part of the policy
-            x = ix + ph_len
-            substr = policy[x:x+26]  # 26 is the longest possible subderivation allowed "/<2147483647;2147483646>/*"
-            mp_start = substr.find("<")
-            assert mp_start != -1
-            mp_end = substr.find(">")
-            mp = substr[mp_start:mp_end + 1]
-            _ext, _int = mp[1:-1].split(";")
-            if external and not internal:
-                sub = _ext
-            elif internal and not external:
-                sub = _int
-            else:
-                sub = None
-            if sub is not None:
-                policy = policy[:x + mp_start] + sub + policy[x + mp_end + 1:]
-
-            x = policy[ix:ix + ph_len]
-            assert x == ph
-            policy = policy[:ix] + k + policy[ix + ph_len:]
-
-    return policy
-
-
-def taproot_tree_helper(ts):
-    from miniscript import Miniscript
-
-    if isinstance(ts.tree, Miniscript):
-        script = ts.tree.compile()
-        h = chains.tapleaf_hash(script)
-        return [(chains.TAPROOT_LEAF_TAPSCRIPT, script, bytes())], h
-
-    left, left_h = taproot_tree_helper(ts.tree[0])
-    right, right_h = taproot_tree_helper(ts.tree[1])
-    left = [(version, script, control + right_h) for version, script, control in left]
-    right = [(version, script, control + left_h) for version, script, control in right]
-    if right_h < left_h:
-        right_h, left_h = left_h, right_h
-
-    h = ngu.hash.sha256t(TAP_BRANCH_H, left_h + right_h, True)
-    return left + right, h
+        # ph_len = len(ph)
+        # while True:
+        #     ix = policy.find(ph)
+        #     if ix == -1:
+        #         break
+        #
+        #     assert policy[ix+ph_len] == "/"
+        #     # subderivation is part of the policy
+        #     x = ix + ph_len
+        #     substr = policy[x:x+26]  # 26 is the longest possible subderivation allowed "/<2147483647;2147483646>/*"
+        #     mp_start = substr.find("<")
+        #     assert mp_start != -1
+        #     mp_end = substr.find(">")
+        #     mp = substr[mp_start:mp_end + 1]
+        #     _ext, _int = mp[1:-1].split(";")
+        #     if external and not internal:
+        #         sub = _ext
+        #     elif internal and not external:
+        #         sub = _int
+        #     else:
+        #         sub = None
+        #
+        #     if sub is not None:
+        #         policy = policy[:x + mp_start] + sub + policy[x + mp_end + 1:]
+        #
+        #     x = policy[ix:ix + ph_len]
+        #     assert x == ph
+        #     policy = policy[:ix] + k + policy[ix + ph_len:]
+    #
+    # return policy

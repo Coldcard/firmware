@@ -131,8 +131,8 @@ class MultisigWallet(BaseStorageWallet):
     disable_checks = False
     key_name = "multisig"
 
-    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type=None, bip67=True):
-        super().__init__(chain_type=chain_type)
+    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, bip67=True):
+        super().__init__()
 
         self.name = name
         assert len(m_of_n) == 2
@@ -174,9 +174,8 @@ class MultisigWallet(BaseStorageWallet):
     def get_trust_policy(cls):
 
         which = settings.get('pms', None)
-        exists, _ = cls.exists()
         if which is None:
-            which = TRUST_VERIFY if exists else TRUST_OFFER
+            which = TRUST_VERIFY if cls.exists() else TRUST_OFFER
 
         return which
 
@@ -242,31 +241,12 @@ class MultisigWallet(BaseStorageWallet):
         return rv
 
     @classmethod
-    def is_correct_chain(cls, o, curr_chain):
-        # for newer versions, last element can be bip67 marker
-        d = o[-1] if isinstance(o[-1], dict) else o[-2]
-        if "ch" not in d:
-            # mainnet
-            ch = "BTC"
-        else:
-            ch = d["ch"]
-
-        if ch == "XRT":
-            ch = "XTN"
-        if ch == curr_chain.ctype:
-            return True
-        return False
-
-    @classmethod
     def iter_wallets(cls, M=None, N=None, addr_fmt=None):
         # yield MS wallets we know about, that match at least right M,N if known.
         # - this is only place we should be searching this list, please!!
         lst = settings.get(cls.key_name, [])
         c = chains.current_key_chain()
         for idx, rec in enumerate(lst):
-            if not cls.is_correct_chain(rec, c):
-                continue
-
             if M or N:
                 # peek at M/N
                 has_m, has_n = tuple(rec[1])
@@ -724,8 +704,7 @@ class MultisigWallet(BaseStorageWallet):
         ]
         _cls = Sortedmulti if self.bip67 else Multi
         miniscript = _cls(Number(self.M), *keys)
-        desc = Descriptor(miniscript=miniscript)
-        desc.set_from_addr_fmt(self.addr_fmt)
+        desc = Descriptor(miniscript=miniscript, addr_fmt=self.addr_fmt)
         return desc
 
     @classmethod
@@ -1305,9 +1284,8 @@ class MultisigMenu(MenuSystem):
 
         from bsms import make_ms_wallet_bsms_menu
 
-        exists, exists_other_chain = MultisigWallet.exists()
-        if not exists:
-            rv = [MenuItem(MultisigWallet.none_setup_yet(exists_other_chain), f=no_ms_yet)]
+        if not MultisigWallet.exists():
+            rv = [MenuItem(MultisigWallet.none_setup_yet(), f=no_ms_yet)]
         else:
             rv = []
             for ms in MultisigWallet.get_all():
@@ -1758,7 +1736,7 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
     else:
         name = 'CC-%d-of-%d' % (M, N)
 
-    ms = MultisigWallet(name, (M, N), xpubs, chain_type=chain.ctype, addr_fmt=addr_fmt)
+    ms = MultisigWallet(name, (M, N), xpubs, addr_fmt=addr_fmt)
 
     if num_mine:
         from auth import NewMiniscriptEnrollRequest, UserAuthorizedAction

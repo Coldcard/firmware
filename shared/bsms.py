@@ -700,8 +700,7 @@ async def bsms_coordinator_round2(menu, label, item):
 
     dis.fullscreen("Generating...")
     miniscript = Sortedmulti(Number(M), *keys)
-    desc_obj = Descriptor(miniscript=miniscript)
-    desc_obj.set_from_addr_fmt(addr_fmt)
+    desc_obj = Descriptor(miniscript=miniscript, addr_fmt=addr_fmt)
     desc = desc_obj.to_string(checksum=False)
     desc = desc.replace("<0;1>/*", "**")
     if not is_encrypted:

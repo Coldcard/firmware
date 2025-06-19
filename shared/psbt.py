@@ -1035,7 +1035,7 @@ class psbtInputProxy(psbtProxy):
                             output_key = taptweak(xonly_pubkey, merkle_root)
                             if output_key == pubkey:
                                 which_key = xonly_pubkey
-                                # if we find a possibiity to spend keypath (internal_key) - we do keypath
+                                # if we find a possibility to spend keypath (internal_key) - we do keypath
                                 # even though script path is available
                                 self.use_keypath = True
                                 break

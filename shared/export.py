@@ -184,8 +184,7 @@ be needed for different systems.
             yield ('\n\n')
 
     from multisig import MultisigWallet
-    exists, exists_other_chain = MultisigWallet.exists()
-    if exists:
+    if MultisigWallet.exists():
         yield '\n# Your Multisig Wallets\n\n'
 
         for ms in MultisigWallet.get_all():
@@ -306,12 +305,10 @@ def generate_bitcoin_core_wallet(account_num, example_addrs):
 
     xfp = settings.get('xfp')
     key0 = Key.from_cc_data(xfp, derive_v0, xpub_v0)
-    desc_v0 = Descriptor(key=key0)
-    desc_v0.set_from_addr_fmt(AF_P2WPKH)
+    desc_v0 = Descriptor(key=key0, addr_fmt=AF_P2WPKH)
 
     key1 = Key.from_cc_data(xfp, derive_v1, xpub_v1)
-    desc_v1 = Descriptor(key=key1)
-    desc_v1.set_from_addr_fmt(AF_P2TR)
+    desc_v1 = Descriptor(key=key1, addr_fmt=AF_P2TR)
 
     OWNERSHIP.note_wallet_used(AF_P2WPKH, account_num)
     OWNERSHIP.note_wallet_used(AF_P2TR, account_num)
@@ -428,8 +425,7 @@ def generate_generic_export(account_num=0):
                 desc = multisig_descriptor_template(xp, dd, master_xfp_str, fmt)
             else:
                 key = Key.from_cc_data(master_xfp, dd, xp)
-                desc_obj = Descriptor(key=key)
-                desc_obj.set_from_addr_fmt(fmt)
+                desc_obj = Descriptor(key=key, addr_fmt=fmt)
                 desc = desc_obj.to_string()
 
                 OWNERSHIP.note_wallet_used(fmt, account_num)
@@ -519,8 +515,7 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
     dis.progress_bar_show(0.7)
 
     key = Key.from_cc_data(xfp, derive, xpub)
-    desc = Descriptor(key=key)
-    desc.set_from_addr_fmt(addr_type)
+    desc = Descriptor(key=key, addr_fmt=addr_type)
     dis.progress_bar_show(0.8)
     if int_ext:
         #  with <0;1> notation

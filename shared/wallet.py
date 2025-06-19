@@ -123,51 +123,24 @@ class MasterSingleSigWallet(WalletABC):
         from descriptor import Descriptor, Key
         xfp = settings.get('xfp')
         xpub = settings.get('xpub')
-        d = Descriptor(key=Key.from_cc_data(xfp, self._path, xpub))
-        d.set_from_addr_fmt(self.addr_fmt)
+        d = Descriptor(key=Key.from_cc_data(xfp, self._path, xpub), addr_fmt=self.addr_fmt)
         return d
 
 
 class BaseStorageWallet(WalletABC):
     key_name = None
 
-    def __init__(self, chain_type=None):
+    def __init__(self):
         self.storage_idx = -1
-        self.chain_type = chain_type or 'BTC'
-
-    @property
-    def chain(self):
-        return chains.get_chain(self.chain_type)
 
     @classmethod
-    def none_setup_yet(cls, other_chain=False):
-        return '(none setup yet)' + ("*" if other_chain else "")
-
-    @classmethod
-    def is_correct_chain(cls, o, curr_chain):
-        if o[1] is None:
-            # mainnet
-            ch = "BTC"
-        else:
-            ch = o[1]
-
-        if ch == curr_chain.ctype:
-            return True
-        return False
+    def none_setup_yet(cls):
+        return '(none setup yet)'
 
     @classmethod
     def exists(cls):
         # are there any wallets defined?
-        exists = False
-        exists_other_chain = False
-        c = chains.current_key_chain()
-        for o in settings.get(cls.key_name, []):
-            if cls.is_correct_chain(o, c):
-                exists = True
-            else:
-                exists_other_chain = True
-
-        return exists, exists_other_chain
+        return bool(settings.get(cls.key_name, []))
 
     @classmethod
     def get_all(cls):
@@ -178,11 +151,8 @@ class BaseStorageWallet(WalletABC):
     def iter_wallets(cls):
         # - this is only place we should be searching this list, please!!
         lst = settings.get(cls.key_name, [])
-        c = chains.current_key_chain()
-
         for idx, rec in enumerate(lst):
-            if cls.is_correct_chain(rec, c):
-                yield cls.deserialize(rec, idx)
+            yield cls.deserialize(rec, idx)
 
     def serialize(self):
         raise NotImplemented
@@ -200,7 +170,8 @@ class BaseStorageWallet(WalletABC):
         except IndexError:
             return None
 
-        return cls.deserialize(obj, nth)
+        x = cls.deserialize(obj, nth)
+        return x
 
     def commit(self):
         # data to save

@@ -3,17 +3,16 @@
 # Copyright (c) 2020 Stepan Snigirev MIT License embit/miniscript.py
 #
 import ngu, ujson, uio, chains, ure, version, stash
-from ucollections import OrderedDict
 from binascii import unhexlify as a2b_hex
 from binascii import hexlify as b2a_hex
 from serializations import ser_compact_size, ser_string
-from desc_utils import Key, read_until, fill_policy, append_checksum
-from public_constants import MAX_TR_SIGNERS
+from desc_utils import Key, read_until, bip388_wallet_policy_to_descriptor
+from public_constants import MAX_TR_SIGNERS, AF_P2TR
 from wallet import BaseStorageWallet
 from menu import MenuSystem, MenuItem
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 from files import CardSlot, CardMissingError, needs_microsd
-from utils import problem_file_line, xfp2str, to_ascii_printable, swab32, show_single_address, keypath_to_str
+from utils import problem_file_line, xfp2str, to_ascii_printable, swab32, show_single_address
 from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC, KEY_ENTER
 from glob import settings
 
@@ -26,151 +25,45 @@ class MiniscriptException(ValueError):
 class MiniScriptWallet(BaseStorageWallet):
     key_name = "miniscript"
 
-    def __init__(self, desc=None, policy=None, keys=None, key=None,
-                 af=None, name=None, taproot=False, sh=False, wsh=False,
-                 wpkh=False, chain_type=None):
-        super().__init__(chain_type=chain_type)
-        self._policy = policy
-        self._keys = keys
-        self._key = key
-        self._af = af
-        self._taproot = taproot
-        self._sh = sh
-        self._wsh = wsh
-        self._wpkh = wpkh
-        self._desc = desc
+    def __init__(self, name, desc_tmplt=None, keys_info=None, desc=None,
+                 af=None, ik_u=None):
+
+        assert (desc_tmplt and keys_info) or desc
+
+        super().__init__()
         self.name = name
-
-    @property
-    def policy(self):
-        if not self._policy:
-            self._policy = self.desc.storage_policy()
-        return self._policy
-
-    @property
-    def keys(self):
-        if not self._keys:
-            self._keys = self.desc.keys
-            if self._keys is not None:
-                self._keys = [k.to_string() for k in self._keys]
-        return self._keys
-
-    @property
-    def key(self):
-        if not self._key:
-            self._key = self.desc.key
-            if self._key is not None:
-                self._key = self._key.to_string()
-        return self._key
-
-    @property
-    def addr_fmt(self):
-        if not self._af:
-            self._af = self.desc.addr_fmt
-        return self._af
-
-    @property
-    def taproot(self):
-        if not self._taproot:
-            self._taproot = self.desc.taproot
-        return self._taproot
-
-    @property
-    def sh(self):
-        if not self._sh:
-            self._sh = self.desc.sh
-        return self._sh
-
-    @property
-    def wsh(self):
-        if not self._wsh:
-            self._wsh = self.desc.wsh
-        return self._wsh
-
-    @property
-    def wpkh(self):
-        if not self._wpkh:
-            self._wpkh = self.desc.wpkh
-        return self._wpkh
-
-    @property
-    def desc(self):
-        if self._desc is None:
-            from descriptor import Descriptor, Tapscript
-
-            ts = None
-            ms = None
-            key = None
-            if self._key:
-                key = Key.from_string(self._key)
-
-            filled_policy = fill_policy(self.policy, self.keys)
-            if self._taproot and self._policy:
-                # tapscript
-                ts = Tapscript.read_from(uio.BytesIO(filled_policy))
-                ts.parse_policy()
-            elif self._policy:
-                # miniscript
-                ms = Miniscript.read_from(uio.BytesIO(filled_policy))
-            self._desc = Descriptor(key=key, tapscript=ts, miniscript=ms,
-                                    taproot=self._taproot, sh=self._sh,
-                                    wsh=self._wsh, wpkh=self._wpkh)
-            self._desc.set_from_addr_fmt(self._af)
-        return self._desc
+        self.desc_tmplt = desc_tmplt
+        self.keys_info = keys_info
+        self.desc = desc
+        self.af = af
+        self.ik_u = ik_u
 
     def to_descriptor(self):
+        if self.desc is None:
+            # actual descriptor is not loaded, but was asked for
+            # fill policy - aka storage format - to actual descriptor
+            from descriptor import Descriptor
+
+            desc_str = bip388_wallet_policy_to_descriptor(self.desc_tmplt, self.keys_info)
+            print("loading... filled policy:\n", desc_str)
+            self.desc = Descriptor.from_string(desc_str)
+
         return self.desc
 
     def serialize(self):
-        policy = None
-        key = None
-        if self.desc.key:
-            key = self.desc.key.to_string()
-
-        keys = [k.to_string() for k in self.desc.keys]
-        if self.desc.tapscript or self.desc.miniscript:
-            policy = self.desc.storage_policy()
-
-        sh = self.desc.sh
-        wsh = self.desc.wsh
-        wpkh = self.desc.wpkh
-        taproot = self.desc.taproot
-        return (
-            self.name,
-            self.chain_type,
-            self.desc.addr_fmt,
-            key,
-            keys,
-            policy,
-            sh, wsh, wpkh, taproot
-        )
+        x = self.name, self.desc_tmplt, self.keys_info, self.af, self.ik_u
+        # print("serialize:", x)
+        return x
 
     @classmethod
     def deserialize(cls, c, idx=-1):
-        name, ct, af, key, keys, policy, sh, wsh, wpkh, taproot = c
-        rv = cls(name=name, key=key, keys=keys, policy=policy, af=af,
-                 taproot=taproot, sh=sh, wsh=wsh, wpkh=wpkh,
-                 chain_type=ct)
+        # after deserialization - we lack loaded descriptor object
+        # we do not need it for everything
+        name, desc_tmplt, keys_info, af, ik_u = c
+        # print("deserialize:", c)
+        rv = cls(name, desc_tmplt, keys_info, af=af, ik_u=ik_u)
         rv.storage_idx = idx
         return rv
-
-    def xfp_paths(self, skip_unspend_ik=False):
-        if self._desc is None:
-            res = []
-            if self._key:
-                ik = Key.from_string(self.key)
-                if ik.is_provably_unspendable:
-                    if not skip_unspend_ik:
-                        res.append([swab32(ik.node.my_fp())])
-                elif ik.origin:
-                    res.append(ik.origin.psbt_derivation())
-
-            for k in self.keys:
-                k = Key.from_string(k)
-                if k.origin:
-                    res.append(k.origin.psbt_derivation())
-            return res
-        return self.desc.xfp_paths(skip_unspend_ik)
 
     @classmethod
     def find_match(cls, xfp_paths, addr_fmt=None):
@@ -183,7 +76,7 @@ class MiniScriptWallet(BaseStorageWallet):
         return None
 
     def matching_subpaths(self, xfp_paths):
-        my_xfp_paths = self.xfp_paths()
+        my_xfp_paths = self.to_descriptor().xfp_paths()
         if len(xfp_paths) != len(my_xfp_paths):
             return False
         for x in my_xfp_paths:
@@ -197,7 +90,7 @@ class MiniScriptWallet(BaseStorageWallet):
 
     def subderivation_indexes(self, xfp_paths):
         # we already know that they do match
-        my_xfp_paths = self.desc.xfp_paths()
+        my_xfp_paths = self.to_descriptor().xfp_paths()
         res = set()
         for x in my_xfp_paths:
             prefix_len = len(x)
@@ -242,25 +135,17 @@ class MiniScriptWallet(BaseStorageWallet):
             assert derived_desc.tapscript.merkle_root == merkle_root, "psbt merkle root"
         return derived_desc
 
-    def ux_policy(self):
-        if self.taproot and self.policy:
-            return "Tapscript:\n\n" + self.policy
-        return self.policy
+    async def _detail(self, new_wallet=False, is_duplicate=False):
 
-    async def _detail(self, new_wallet=False, is_duplicate=False, short=False):
-
-        s = chains.addr_fmt_label(self.addr_fmt) + "\n\n"
-        if self.taproot:
-            s += self.taproot_internal_key_detail(short=short)
-
-        s += self.ux_policy()
+        s = chains.addr_fmt_label(self.af) + "\n\n"
+        s += self.desc_tmplt
 
         story = s + "\n\nPress (1) to see extended public keys"
         if new_wallet and not is_duplicate:
             story += ", OK to approve, X to cancel."
         return story
 
-    async def show_detail(self, new_wallet=False, duplicates=None, short=False):
+    async def show_detail(self, new_wallet=False, duplicates=None):
         title = self.name
         story = ""
         if duplicates:
@@ -269,7 +154,13 @@ class MiniScriptWallet(BaseStorageWallet):
         elif new_wallet:
             title = None
             story += "Create new miniscript wallet?\n\nWallet Name:\n  %s\n\n" % self.name
-        story += await self._detail(new_wallet, is_duplicate=duplicates, short=short)
+
+        story += (chains.addr_fmt_label(self.af) + "\n\n" + self.desc_tmplt)
+        story += "\n\nPress (1) to see extended public keys"
+
+        if new_wallet and not duplicates:
+            story += ", OK to approve, X to cancel."
+
         while True:
             ch = await ux_show_story(story, title=title, escape="1")
             if ch == "1":
@@ -280,45 +171,18 @@ class MiniScriptWallet(BaseStorageWallet):
             else:
                 return True
 
-    def taproot_internal_key_detail(self, short=False):
-        key = Key.from_string(self.key)
-        s = "Taproot internal key:\n\n"
-        if key.is_provably_unspendable:
-            note = "provably unspendable"
-            if short:
-                s += note
-            else:
-                s += self.key
-                if type(key) is Key:
-                    # it is unspendable, BUT not unspend(
-                    s += "\n (%s)" % note
-            s += "\n\n"
-        else:
-            xfp, deriv, xpub = key.to_cc_data()
-            s += '%s:\n  %s\n\n%s/%s\n\n' % (xfp2str(xfp), deriv, xpub,
-                                             key.derivation.to_string())
-        return s
-
     async def show_keys(self):
         msg = ""
-        if self.taproot:
-            msg = self.taproot_internal_key_detail()
-            msg += "Taproot tree keys:\n\n"
-
-        orig_keys = OrderedDict()
-        for k in self.keys:
-            if isinstance(k, str):
-                k = Key.from_string(k)
-            if k.origin not in orig_keys:
-                orig_keys[k.origin] = []
-            orig_keys[k.origin].append(k)
-
-        for idx, k_lst in enumerate(orig_keys.values()):
-            subderiv = True if len(k_lst) == 1 else False
+        for idx, k_str in enumerate(self.keys_info):
             if idx:
                 msg += '\n---===---\n\n'
+            elif self.af == AF_P2TR:
+                # index 0, taproot internal key
+                msg += "Taproot internal key:\n\n"
+                if self.ik_u:
+                    msg += "(provably unspendable)"
 
-            msg += '@%s:\n  %s\n\n' % (idx, k_lst[0].to_string(subderiv=subderiv))
+            msg += '@%s:\n  %s\n\n' % (idx, k_str)
 
         await ux_show_story(msg)
 
@@ -332,7 +196,13 @@ class MiniScriptWallet(BaseStorageWallet):
             name = to_ascii_printable(name)
             desc_obj = Descriptor.from_string(config.strip())
 
-        wal = cls(desc_obj, name=name, chain_type=desc_obj.keys[0].chain_type)
+        wal = cls(name, desc=desc_obj)
+
+        # BIP388 wasn't generated yet - generating from descriptor upon import/enroll
+        wal.desc_tmplt, wal.keys_info = desc_obj.bip388_wallet_policy()
+
+        wal.ik_u = desc_obj.key and desc_obj.key.is_provably_unspendable
+        wal.af = desc_obj.addr_fmt
         return wal
 
     def find_duplicates(self):
@@ -341,13 +211,9 @@ class MiniScriptWallet(BaseStorageWallet):
         for rv in self.iter_wallets():
             if self.name == rv.name:
                 name_unique = False
-            if self.key != rv.key:
+            if self.desc_tmplt != rv.desc_tmplt:
                 continue
-            if self.policy != rv.policy:
-                continue
-            if len(self.keys) != len(rv.keys):
-                continue
-            if self.keys != rv.keys:
+            if self.keys_info != rv.keys_info:
                 continue
 
             matches.append(rv)
@@ -374,7 +240,7 @@ class MiniScriptWallet(BaseStorageWallet):
 
     def yield_addresses(self, start_idx, count, change=False, scripts=True, change_idx=0):
         ch = chains.current_chain()
-        dd = self.desc.derive(None, change=change)
+        dd = self.to_descriptor().derive(None, change=change)
         idx = start_idx
         while count:
             # make the redeem script, convert into address
@@ -454,72 +320,13 @@ class MiniScriptWallet(BaseStorageWallet):
 
             yield ln
 
-    def bitcoin_core_serialize(self):
-        # this will become legacy one day
-        # instead use <0;1> descriptor format
-        res = []
-        for external in (True, False):
-            desc_obj = {
-                "desc": self.to_string(external, not external, unspend_compat=True),
-                "active": True,
-                "timestamp": "now",
-                "internal": not external,
-                "range": [0, 100],
-            }
-            res.append(desc_obj)
-        return res
-
-    def to_string(self, external=True, internal=True, checksum=True, unspend_compat=False):
-        if self._key:
-            key = self._key
-            if "unspend(" in key and unspend_compat:
-                # for bitcoin core that does not support 'unspend(' descriptor notation
-                # serialize 'unspend(' as classic extended key
-                k = Key.from_string(self.key)
-                key = k.extended_public_key()
-                if k.derivation:
-                    key += "/" + k.derivation.to_string(external, internal)
-
-            multipath_rgx = ure.compile(r"<\d+;\d+>")
-            match = multipath_rgx.search(key)
-            if match:
-                mp = match.group(0)
-                ext, int = mp[1:-1].split(";")
-                if internal != external:
-                    to_replace = ext if external else int
-                    key = self._key.replace(mp, to_replace)
-        if self._taproot:
-            desc = "tr(%s" % key
-            if self.policy:
-                desc += ","
-                tree = fill_policy(self._policy, self._keys,
-                                   external, internal)
-                desc += tree
-
-            res = desc + ")"
-
-        elif self._policy:
-            res = fill_policy(self._policy, self._keys,
-                              external, internal)
-            if self._wsh:
-                res = "wsh(%s)" % res
-        else:
-            if self._wpkh:
-                res = "wpkh(%s)" % self._key
-            else:
-                res = "pkh(%s)" % self._key
-
-        if self._sh:
-            res = "sh(%s)" % res
-
-        if checksum:
-            res = append_checksum(res)
-        return res
-
     async def export_wallet_file(self, mode="exported from", extra_msg=None, descriptor=False,
                                  core=False, desc_pretty=True):
         from glob import NFC, dis
         from ux import import_export_prompt
+
+        dis.fullscreen('Wait...')
+        desc = self.to_descriptor()  # load descriptor from policy if not already
 
         if core:
             name = "Bitcoin Core miniscript"
@@ -532,31 +339,13 @@ class MiniScriptWallet(BaseStorageWallet):
 
         if core:
             msg = "importdescriptors cmd"
-            dis.fullscreen('Wait...')
-            core_obj = self.bitcoin_core_serialize()
+            core_obj = desc.bitcoin_core_serialize()
             core_str = ujson.dumps(core_obj)
             res = "importdescriptors '%s'\n" % core_str
-        # elif desc_pretty:
-        #     pass TODO
+
         else:
             msg = self.name
-            int_ext = True
-            ch = await ux_show_story(
-                "To export receiving and change descriptors in one descriptor (<0;1> notation) press OK, "
-                "press (1) to export receiving and change descriptors separately.", escape='1')
-            if ch == "1":
-                int_ext = False
-            elif ch != "y":
-                return
-
-            dis.fullscreen('Wait...')
-            if int_ext:
-                res = self.to_string()
-            else:
-                res = "%s\n%s" % (
-                    self.to_string(internal=False),
-                    self.to_string(external=False),
-                )
+            res = desc.to_string()
 
         ch = await import_export_prompt("%s file" % name)
         if isinstance(ch, str):
@@ -603,19 +392,11 @@ class MiniScriptWallet(BaseStorageWallet):
     def xpubs_from_xfp(self, xfp):
         # return list of XPUB's which match xfp
         res = []
-        if self.key:
-            if isinstance(self.key, str):
-                k = Key.from_string(self.key)
-                if k.origin and k.origin.cc_fp == xfp:
-                    res.append(k)
-                elif not k.origin and swab32(k.node.my_fp()) == xfp:
-                    res.append(k)
-
-        for k in self.keys:
-            if isinstance(k, str):
-                k = Key.from_string(k)
-
-            if xfp == k.origin.cc_fp:
+        desc = self.to_descriptor()
+        for k in desc.keys:
+            if k.origin and k.origin.cc_fp == xfp:
+                res.append(k)
+            elif swab32(k.node.my_fp()) == xfp:
                 res.append(k)
 
         assert res, "missing xfp %s" % xfp2str(xfp)
@@ -708,7 +489,7 @@ async def miniscript_wallet_detail(menu, label, item):
 
     msc = item.arg
 
-    return await msc.show_detail(short=True)
+    return await msc.show_detail()
 
 async def import_miniscript(*a):
     # pick text file from SD card, import as multisig setup file
@@ -806,9 +587,8 @@ class MiniscriptMenu(MenuSystem):
         import version
         from menu import ShortcutItem
 
-        exists, exists_other_chain = MiniScriptWallet.exists()
-        if not exists:
-            rv = [MenuItem(MiniScriptWallet.none_setup_yet(exists_other_chain), f=no_miniscript_yet)]
+        if not MiniScriptWallet.exists():
+            rv = [MenuItem(MiniScriptWallet.none_setup_yet(), f=no_miniscript_yet)]
         else:
             rv = []
             for msc in MiniScriptWallet.get_all():

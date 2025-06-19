@@ -1301,9 +1301,9 @@ class ShowMiniscriptAddress(ShowAddressBase):
         self.change = change
         self.idx = idx
 
-        d = self.msc.desc.derive(None, change=change).derive(idx)
+        d = self.msc.to_descriptor().derive(None, change=change).derive(idx)
         self.address = chains.current_chain().render_address(d.script_pubkey())
-        self.addr_fmt = self.msc.addr_fmt
+        self.addr_fmt = self.msc.af
 
     def get_msg(self):
         return '''\
@@ -1432,7 +1432,7 @@ class NewMiniscriptEnrollRequest(UserAuthorizedAction):
             return await self.failure('No space left')
         except BaseException as exc:
             self.failed = "Exception"
-            # sys.print_exception(exc)
+            sys.print_exception(exc)
         finally:
             UserAuthorizedAction.cleanup()  # because no results to store
             if self.bsms_index is not None:

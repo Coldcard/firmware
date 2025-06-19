@@ -221,9 +221,7 @@ class OwnershipCache:
 
         possibles = []
 
-        msc_exists = MiniScriptWallet.exists()[0]
-
-        if addr_fmt == AF_P2TR and msc_exists:
+        if addr_fmt == AF_P2TR and MiniScriptWallet.exists():
             possibles.extend([w for w in MiniScriptWallet.iter_wallets() if w.addr_fmt == AF_P2TR])
 
         if addr_fmt & AFC_SCRIPT:
