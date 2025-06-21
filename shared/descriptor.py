@@ -23,8 +23,9 @@ class WrongCheckSumError(Exception):
 
 
 class Tapscript:
-    def __init__(self, tree=None, keys=None, policy=None):
-        self.tree = tree  # miniscript or (tapscript, tapscript)
+    def __init__(self, tree):
+        self.tree = tree   # miniscript or (tapscript, tapscript)
+        self._keys = None  # de-duped cached keys
         self._merkle_root = None
 
     def iter_leaves(self):
@@ -35,30 +36,54 @@ class Tapscript:
                 yield from ts.iter_leaves()
 
     @property
+    def keys(self):
+        if self._keys:
+            return self._keys
+
+        keys = set()
+        for lv in self.iter_leaves():
+            for k in lv.keys:
+                keys.add(k)
+
+        self._keys = list(keys)  # cache for later
+        return self._keys
+
+    @property
     def merkle_root(self):
         if not self._merkle_root:
-            self.process_tree()
+            _, mr = self.process_tree()
+            self._merkle_root = mr
         return self._merkle_root
 
-    def derive(self, idx, key_map, change=False):
-        if isinstance(self.tree, Miniscript):
-            tree = self.tree.derive(idx, key_map, change=change)
-        else:
-            l, r = self.tree
-            tree = (l.derive(idx, key_map, change=change),
-                    r.derive(idx, key_map, change=change))
+    def derive(self, idx, change=False):
+        derived_keys = OrderedDict()
+        for k in self.keys:
+            dk = k.derive(idx, change=change)
+            dk.taproot=True
+            derived_keys[k] = dk
 
-        return type(self)(tree)
+        return type(self)(self._derive(self.tree, idx, derived_keys, change))
 
     @staticmethod
-    def _process_tree(ts):
-        if isinstance(ts.tree, Miniscript):
-            script = ts.tree.compile()
+    def _derive(tree, idx, key_map, change=False):
+        if isinstance(tree, Miniscript):
+            tree = tree.derive(idx, key_map, change=change)
+        else:
+            l, r = tree
+            tree = [Tapscript(l._derive(l.tree, idx, key_map, change=change)),
+                    Tapscript(r._derive(r.tree, idx, key_map, change=change))]
+
+        return tree
+
+    def process_tree(self):
+        if isinstance(self.tree, Miniscript):
+            script = self.tree.compile()
             h = chains.tapleaf_hash(script)
             return [(chains.TAPROOT_LEAF_TAPSCRIPT, script, bytes())], h
 
-        left, left_h = Tapscript._process_tree(ts.tree[0])
-        right, right_h = Tapscript._process_tree(ts.tree[1])
+        l, r = self.tree
+        left, left_h = l.process_tree()
+        right, right_h = r.process_tree()
         left = [(version, script, control + right_h) for version, script, control in left]
         right = [(version, script, control + left_h) for version, script, control in right]
         if right_h < left_h:
@@ -67,16 +92,10 @@ class Tapscript:
         h = ngu.hash.sha256t(TAP_BRANCH_H, left_h + right_h, True)
         return left + right, h
 
-    def process_tree(self):
-        info, mr = self._process_tree(self)
-        self._merkle_root = mr
-        return info, mr
-
     @classmethod
     def read_from(cls, s):
         c = s.read(1)
-        if len(c) == 0:
-            return cls()
+        assert len(c)
         if c == b"{":  # more than one miniscript
             left = cls.read_from(s)
             c = s.read(1)
@@ -96,18 +115,6 @@ class Tapscript:
         ms.is_sane(taproot=True)
         ms.verify()
         return cls(ms)
-
-    # def _parse_policy(self, all_keys):
-    #     if isinstance(self.tree, Miniscript):
-    #         keys, leaf_str = self.tree.keys, self.tree.to_string()
-    #         all_keys += keys
-    #
-    #         return leaf_str, all_keys
-    #
-    #     l, r = self.tree
-    #     ll, all_keys = l._parse_policy(all_keys)
-    #     rr, all_keys = r._parse_policy(all_keys)
-    #     return "{" + ll + "," + rr + "}", all_keys
 
     def script_tree(self):
         if isinstance(self.tree, Miniscript):
@@ -153,25 +160,20 @@ class Descriptor:
 
         has_mine = 0
         my_xfp = settings.get('xfp')
-        to_check = self.keys.copy()
+
+        c = 0
+        for k in self.keys:
+            has_mine += k.validate(my_xfp)
+            c += 1
+
         if self.tapscript:
-            assert len(self.keys) <= MAX_TR_SIGNERS
+            if self.key.is_provably_unspendable:
+                c -= 1
+
+            assert c <= MAX_TR_SIGNERS
             assert self.key  # internal key (would fail during parse)
-            if not self.key.is_provably_unspendable:
-                to_check += [self.key]
         else:
             assert self.key is None and self.miniscript, "not miniscript"
-
-        c = chains.current_key_chain().ctype
-        for k in to_check:
-            assert k.chain_type == c, "wrong chain"
-            xfp = k.origin.cc_fp
-            deriv = k.origin.str_derivation()
-            xpub = k.extended_public_key()
-            deriv = cleanup_deriv_path(deriv)
-            is_mine, _ = check_xpub(xfp, xpub, deriv, c, my_xfp, False)
-            if is_mine:
-                has_mine += 1
 
         assert has_mine != 0, 'My key %s missing in descriptor.' % xfp2str(my_xfp).upper()
 
@@ -239,10 +241,9 @@ class Descriptor:
     @property
     def keys(self):
         if self.tapscript:
-            keys = [self.key]
-            for lv in self.tapscript.iter_leaves():
-                keys += lv.keys
-            return keys
+            # internal is always first
+            # otherwise order of keys is not preserved after set operations
+            return [self.key] + self.tapscript.keys
 
         elif self.miniscript:
             return self.miniscript.keys
@@ -362,7 +363,6 @@ class Descriptor:
             else:
                 assert sep == b","
                 tapscript = Tapscript.read_from(s)
-                tapscript.parse_policy()
 
         elif start.startswith(b"sh(wsh("):
             af = AF_P2WSH_P2SH

@@ -26,7 +26,7 @@ class MiniScriptWallet(BaseStorageWallet):
     key_name = "miniscript"
 
     def __init__(self, name, desc_tmplt=None, keys_info=None, desc=None,
-                 af=None, ik_u=None):
+                 af=None, ik_u=None, chain=None):
 
         assert (desc_tmplt and keys_info) or desc
 
@@ -35,25 +35,44 @@ class MiniScriptWallet(BaseStorageWallet):
         self.desc_tmplt = desc_tmplt
         self.keys_info = keys_info
         self.desc = desc
-        self.af = af
+        self.addr_fmt = af
         self.ik_u = ik_u
+        # self.chain =
+
+    @property
+    def chain(self):
+        return chains.current_chain()
+
+    def to_string(self):
+        # argument-less - attempt to fill policy only
+        if self.desc_tmplt and self.keys_info:
+            return bip388_wallet_policy_to_descriptor(self.desc_tmplt, self.keys_info)
+
+        return self.desc.to_string()
 
     def to_descriptor(self):
         if self.desc is None:
             # actual descriptor is not loaded, but was asked for
             # fill policy - aka storage format - to actual descriptor
             from descriptor import Descriptor
+            import glob
 
-            desc_str = bip388_wallet_policy_to_descriptor(self.desc_tmplt, self.keys_info)
-            print("loading... filled policy:\n", desc_str)
-            self.desc = Descriptor.from_string(desc_str)
+            if self.name in glob.DESC_CACHE:
+                # loaded descriptor from cache
+                print("to_descriptor CACHE")
+                self.desc = glob.DESC_CACHE[self.name]
+            else:
+                desc_str = bip388_wallet_policy_to_descriptor(self.desc_tmplt, self.keys_info)
+                print("loading... filled policy:\n", desc_str)
+                self.desc = Descriptor.from_string(desc_str)
+                # cache len always 1
+                glob.DESC_CACHE = {}
+                glob.DESC_CACHE[self.name] = self.desc
 
         return self.desc
 
     def serialize(self):
-        x = self.name, self.desc_tmplt, self.keys_info, self.af, self.ik_u
-        # print("serialize:", x)
-        return x
+        return self.name, self.desc_tmplt, self.keys_info, self.addr_fmt, self.ik_u
 
     @classmethod
     def deserialize(cls, c, idx=-1):
@@ -79,6 +98,7 @@ class MiniScriptWallet(BaseStorageWallet):
         my_xfp_paths = self.to_descriptor().xfp_paths()
         if len(xfp_paths) != len(my_xfp_paths):
             return False
+
         for x in my_xfp_paths:
             prefix_len = len(x)
             for y in xfp_paths:
@@ -120,13 +140,6 @@ class MiniScriptWallet(BaseStorageWallet):
         derived_desc = self.desc.derive(branch).derive(idx)
         return derived_desc
 
-    def validate_script(self, redeem_script, xfp_paths, script_pubkey=None):
-        derived_desc = self.derive_desc(xfp_paths)
-        assert derived_desc.miniscript.compile() == redeem_script, "script mismatch"
-        if script_pubkey:
-            assert script_pubkey == derived_desc.script_pubkey(), "spk mismatch"
-        return derived_desc
-
     def validate_script_pubkey(self, script_pubkey, xfp_paths, merkle_root=None):
         derived_desc = self.derive_desc(xfp_paths)
         derived_spk = derived_desc.script_pubkey()
@@ -137,7 +150,7 @@ class MiniScriptWallet(BaseStorageWallet):
 
     async def _detail(self, new_wallet=False, is_duplicate=False):
 
-        s = chains.addr_fmt_label(self.af) + "\n\n"
+        s = chains.addr_fmt_label(self.addr_fmt) + "\n\n"
         s += self.desc_tmplt
 
         story = s + "\n\nPress (1) to see extended public keys"
@@ -155,7 +168,7 @@ class MiniScriptWallet(BaseStorageWallet):
             title = None
             story += "Create new miniscript wallet?\n\nWallet Name:\n  %s\n\n" % self.name
 
-        story += (chains.addr_fmt_label(self.af) + "\n\n" + self.desc_tmplt)
+        story += (chains.addr_fmt_label(self.addr_fmt) + "\n\n" + self.desc_tmplt)
         story += "\n\nPress (1) to see extended public keys"
 
         if new_wallet and not duplicates:
@@ -176,11 +189,11 @@ class MiniScriptWallet(BaseStorageWallet):
         for idx, k_str in enumerate(self.keys_info):
             if idx:
                 msg += '\n---===---\n\n'
-            elif self.af == AF_P2TR:
+            elif self.addr_fmt == AF_P2TR:
                 # index 0, taproot internal key
                 msg += "Taproot internal key:\n\n"
                 if self.ik_u:
-                    msg += "(provably unspendable)"
+                    msg += "(provably unspendable)\n\n"
 
             msg += '@%s:\n  %s\n\n' % (idx, k_str)
 
@@ -189,6 +202,7 @@ class MiniScriptWallet(BaseStorageWallet):
     @classmethod
     def from_file(cls, config, name=None):
         from descriptor import Descriptor
+
         if name is None:
             desc_obj, cs = Descriptor.from_string(config.strip(), checksum=True)
             name = cs
@@ -202,7 +216,7 @@ class MiniScriptWallet(BaseStorageWallet):
         wal.desc_tmplt, wal.keys_info = desc_obj.bip388_wallet_policy()
 
         wal.ik_u = desc_obj.key and desc_obj.key.is_provably_unspendable
-        wal.af = desc_obj.addr_fmt
+        wal.addr_fmt = desc_obj.addr_fmt
         return wal
 
     def find_duplicates(self):
@@ -234,11 +248,16 @@ class MiniScriptWallet(BaseStorageWallet):
         if to_save and not dups:
             assert self.storage_idx == -1
             self.commit()
+            import glob
+            # new wallet was imported - cache descriptor
+            glob.DESC_CACHE = {}
+            assert self.desc
+            glob.DESC_CACHE[self.name] = self.desc
             await ux_dramatic_pause("Saved.", 2)
 
         return ch
 
-    def yield_addresses(self, start_idx, count, change=False, scripts=True, change_idx=0):
+    def yield_addresses(self, start_idx, count, change=False, scripts=False, change_idx=0):
         ch = chains.current_chain()
         dd = self.to_descriptor().derive(None, change=change)
         idx = start_idx
@@ -247,9 +266,7 @@ class MiniScriptWallet(BaseStorageWallet):
             d = dd.derive(idx)
             scr = d.miniscript.compile() if d.miniscript else None
             addr = ch.render_address(d.script_pubkey(compiled_scr=scr))
-
-            script = ""
-            ders = None
+            ders = script = None
             if scripts:
                 ders = ["[%s]" % str(k.origin) for k in d.keys]
                 if d.tapscript:
@@ -257,20 +274,7 @@ class MiniScriptWallet(BaseStorageWallet):
                 else:
                     script = b2a_hex(ser_string(scr)).decode()
 
-            if d.tapscript:
-                yield (idx,
-                       addr,
-                       ders,
-                       script,
-                       d.key.serialize(),
-                       str(d.key.origin) if d.key.origin else "")
-            else:
-                yield (idx,
-                       addr,
-                       ders,
-                       script,
-                       None,
-                       None)
+            yield idx, addr, ders, script
 
             idx += 1
             count -= 1
@@ -280,9 +284,7 @@ class MiniScriptWallet(BaseStorageWallet):
 
         addrs = []
 
-        for idx, addr, _, _, ik, _ in self.yield_addresses(start, n,
-                                                           change=bool(change),
-                                                           scripts=False):
+        for idx, addr, *_ in self.yield_addresses(start, n, change=bool(change), scripts=False):
             msg += '.../%d =>\n' % idx  # just idx, if derivations or scripts needed - export csv
             addrs.append(addr)
             msg += show_single_address(addr) + '\n\n'
@@ -291,33 +293,11 @@ class MiniScriptWallet(BaseStorageWallet):
         return msg, addrs
 
     def generate_address_csv(self, start, n, change):
-        part = []
-        if self.taproot:
-            scr_h = "Taptree"
-            if self.desc.key.is_provably_unspendable:
-                part = ["Unspendable Internal Key"]
-            else:
-                part = ["Internal Key"]
-
-        else:
-            scr_h = "Script"
-
         yield '"' + '","'.join(
-            ['Index', 'Payment Address', scr_h] + ['Derivation'] * len(self.keys)
-            + part
+            ['Index', 'Payment Address']
         ) + '"\n'
-        for (idx, addr, derivs, script, ik, ikp) in self.yield_addresses(start, n,
-                                                                         change=bool(change)):
-            ln = '%d,"%s","%s","' % (idx, addr, script)
-            ln += '","'.join(derivs)
-            if ik:
-                # internal xonly key with its derivation (if any)
-                if ikp:
-                    ln += '","[%s]%s' % (ikp, b2a_hex(ik).decode())
-                else:
-                    ln += '","%s' % (b2a_hex(ik).decode())
-            ln += '"\n'
-
+        for idx, addr, *_ in self.yield_addresses(start, n, change=bool(change)):
+            ln = '%d,"%s"\n' % (idx, addr)
             yield ln
 
     async def export_wallet_file(self, mode="exported from", extra_msg=None, descriptor=False,
@@ -760,7 +740,7 @@ class Miniscript:
                 if isinstance(arg, Key):  # KeyHash is subclass of Key
                     arg = self.key_derive(arg, idx, key_map, change=change)
                 else:
-                    arg = arg.derive(idx, change=change)
+                    arg = arg.derive(idx, key_map, change)
 
             args.append(arg)
         return type(self)(*args)

@@ -1303,7 +1303,7 @@ class ShowMiniscriptAddress(ShowAddressBase):
 
         d = self.msc.to_descriptor().derive(None, change=change).derive(idx)
         self.address = chains.current_chain().render_address(d.script_pubkey())
-        self.addr_fmt = self.msc.af
+        self.addr_fmt = self.msc.addr_fmt
 
     def get_msg(self):
         return '''\

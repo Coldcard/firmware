@@ -236,7 +236,7 @@ class MultisigWallet(BaseStorageWallet):
                 xpubs = [(a, derivs[b], c) for a,b,c in xpubs]
 
         rv = cls(name, m_of_n, xpubs, addr_fmt=opts.get('ft', AF_P2SH),
-                 chain_type=opts.get('ch', 'BTC'), bip67=bool(bip67))
+                 bip67=bool(bip67))
         rv.storage_idx = idx
         return rv
 
@@ -766,8 +766,7 @@ class MultisigWallet(BaseStorageWallet):
         assert has_mine == 1, 'my key included more than once'
 
         # done. have all the parts
-        return cls(name, (M, N), xpubs, addr_fmt=addr_fmt,
-                   chain_type=expect_chain, bip67=bip67)
+        return cls(name, (M, N), xpubs, addr_fmt=addr_fmt, bip67=bip67)
 
     def make_fname(self, prefix, suffix='txt'):
         rv = '%s-%s.%s' % (prefix, self.name, suffix)

@@ -250,7 +250,7 @@ class AddressListMenu(MenuSystem):
     async def pick_miniscript(self, _1, _2, item):
         msc_wallet = item.arg
         settings.put('axi', item.label)  # update last clicked address
-        await self.show_n_addresses(None, msc_wallet.af, msc_wallet)
+        await self.show_n_addresses(None, msc_wallet.addr_fmt, msc_wallet)
 
     async def make_custom(self, *a):
         # picking a custom derivation path: makes a tree of menus, with chance

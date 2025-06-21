@@ -542,6 +542,7 @@ class USBHandler:
             for w in MiniScriptWallet.iter_wallets():
                 if w.name == str(args, 'ascii'):
                     import ujson
+                    # MiniscriptWallet.to_string only fills policy
                     return b'asci' + ujson.dumps({"name": w.name, "desc": w.to_string()})
             return b'err_Miniscript wallet not found'
 

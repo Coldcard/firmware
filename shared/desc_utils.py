@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2020 Stepan Snigirev MIT License embit/arguments.py
 #
-import ngu, chains, ustruct
+import ngu, chains, ustruct, stash
 from io import BytesIO
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AF_CLASSIC, AF_P2TR
 from binascii import unhexlify as a2b_hex
@@ -148,7 +148,7 @@ class KeyOriginInfo:
     def __str__(self):
         rv = "%s" % b2a_hex(self.fingerprint).decode()
         if self.derivation:
-            rv += "/%s" % keypath_to_str(self.derivation, prefix='', skip=0).replace("'", "h")
+            rv += "/%s" % keypath_to_str(self.derivation, prefix='', skip=0)
         return rv
 
 
@@ -278,23 +278,6 @@ class Key:
     def parse(cls, s):
         first = s.read(1)
         origin = None
-        # if first == b"u":
-        #     s.seek(-1, 1)
-        #     assert s.read(8) == b"unspend("
-        #     chain_code, c = read_until(s, b")")
-        #     chain_code = a2b_hex(chain_code)
-        #     assert len(chain_code) == 32, "chain code length"
-        #     char = s.read(1)
-        #     if char != b"/":
-        #         raise ValueError("ranged unspend required")
-        #
-        #     der = KeyDerivationInfo.parse(s)
-        #     if char is not None:
-        #         s.seek(-1, 1)
-        #
-        #     node = ngu.hdnode.HDNode().from_chaincode_pubkey(chain_code,
-        #                                                      PROVABLY_UNSPENDABLE)
-        #     return cls(node, None, der, chain_type=None)
 
         if first == b"[":
             prefix, char = read_until(s, b"]")
@@ -329,7 +312,32 @@ class Key:
         node = ngu.hdnode.HDNode()
         node.deserialize(key_str)
 
+        assert node.privkey() is None
+
         return node, chain_type
+
+    def validate(self, my_xfp):
+        assert self.chain_type == chains.current_key_chain().ctype, "wrong chain"
+        depth = self.node.depth()
+
+        xfp = self.origin.cc_fp
+
+        if depth == 1:
+            target = swab32(self.node.parent_fp())
+            assert xfp == target, 'xfp depth=1 wrong'
+
+        if xfp == my_xfp:
+            # it's supposed to be my key, so I should be able to generate pubkey
+            # - might indicate collision on xfp value between co-signers,
+            #   and that's not supported
+            deriv = self.origin.str_derivation()
+            with stash.SensitiveValues() as sv:
+                chk_node = sv.derive_path(deriv)
+                assert self.node.pubkey() == chk_node.pubkey(), \
+                            "[%s/%s] wrong pubkey" % (xfp2str(xfp), deriv[2:])
+            return 1
+        return 0
+
 
     def derive(self, idx=None, change=False):
         if isinstance(idx, list):

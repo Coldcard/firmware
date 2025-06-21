@@ -561,35 +561,20 @@ class psbtOutputProxy(psbtProxy):
                     expect_pkh = None
 
             else:
-                if not redeem_script and not witness_script:
-                    if active_miniscript:
-                        # TODO
-                        # this should be also acceptable for any other script type, we do not need
-                        # redeem/witness script
-                        # scriptPubkey can be compared against script that we build - if exact match change
-                        # if not not change - definitely not FatalPSBTIssue
-                        #
-                        # without this I cannot sign with liana as they do not provide witness/redeem
-                        try:
-                            active_miniscript.validate_script_pubkey(txo.scriptPubKey,
-                                                                     list(self.subpaths.values()))
-                            self.is_change = True
-                            return af
-                        except Exception as e:
-                            raise FraudulentChangeOutput(out_idx, "Change output scriptPubkey: %s" % e)
-                    else:
-                        # Perhaps an omission, so let's not call fraud on it
-                        # But definately required, else we don't know what script we're sending to.
-                        raise FatalPSBTIssue("Missing redeem/witness script for output #%d" % out_idx)
+                if active_miniscript:
+                    # scriptPubkey can be compared against script that we build - if exact match change
+                    # if not - not change - no need for redeem/witness script
+                    #
+                    # for instance liana & core do not provide witness/redeem
+                    try:
+                        active_miniscript.validate_script_pubkey(txo.scriptPubKey,
+                                                                 list(self.subpaths.values()))
+                        self.is_change = True
+                        return af
+                    except Exception as e:
+                        raise FraudulentChangeOutput(out_idx, "Change output scriptPubkey: %s" % e)
 
-                # it cannot be change if it doesn't precisely match our multisig setup
-                if not active_multisig and not active_miniscript:
-                    # - might be a p2sh output for another wallet that isn't us
-                    # - not fraud, just an output with more details than we need.
-                    self.is_change = False
-                    return af
-
-                if active_multisig:
+                elif active_multisig:
                     # Multisig change output, for wallet we're supposed to be a part of.
                     # - our key must be part of it
                     # - must look like input side redeem script (same fingerprints)
@@ -602,26 +587,26 @@ class psbtOutputProxy(psbtProxy):
                         self.is_change = False
                         return af
 
+                    scr = witness_script or redeem_script
+                    if not scr:
+                        raise FatalPSBTIssue("Missing redeem/witness script for output #%d" % out_idx)
+
                     # redeem script must be exactly what we expect
                     # - pubkeys will be reconstructed from derived paths here
                     # - BIP-45, BIP-67 rules applied (BIP-67 optional from now - depending on imported descriptor)
                     # - p2sh-p2wsh needs witness script here, not redeem script value
                     # - if details provided in output section, must our match multisig wallet
                     try:
-                        active_multisig.validate_script(witness_script or redeem_script,
-                                                        subpaths=self.subpaths)
+                        active_multisig.validate_script(scr, subpaths=self.subpaths)
                     except BaseException as exc:
                         raise FraudulentChangeOutput(out_idx,
                                                      "P2WSH or P2SH change output script: %s" % exc)
                 else:
-                    # active miniscript
-                    try:
-                        active_miniscript.validate_script(witness_script or redeem_script,
-                                                          list(self.subpaths.values()),
-                                                          script_pubkey=txo.scriptPubKey)
-                    except BaseException as exc:
-                        raise FraudulentChangeOutput(out_idx,
-                                                     "P2WSH or P2SH change output script: %s" % exc)
+                    # it cannot be change if it doesn't precisely match our multisig setup
+                    # - might be a p2sh output for another wallet that isn't us
+                    # - not fraud, just an output with more details than we need.
+                    self.is_change = False
+                    return af
 
                 if is_segwit:
                     # p2wsh case

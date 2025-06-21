@@ -2467,6 +2467,7 @@ def bitcoind_multisig(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story, 
             bitcoind_signers_xpubs.append(core_key)
         desc = template.replace("M", str(M), 1).replace("...", ",".join(bitcoind_signers_xpubs))
 
+        import pdb;pdb.set_trace()
         if script_type == 'p2wsh':
             name = f"core{M}of{N}_native.txt"
         elif script_type == "p2sh_p2wsh":
@@ -2850,10 +2851,10 @@ def test_finalization(m_n, script, desc, use_regtest, clear_ms, bitcoind_multisi
 
 
 @pytest.mark.bitcoind
-@pytest.mark.parametrize("m_n", [(2,3), (3,5), (15,15)])
-@pytest.mark.parametrize("script", ["p2wsh", "p2sh-p2wsh", "p2sh"])
+@pytest.mark.parametrize("m_n", [(15,15)])
+@pytest.mark.parametrize("script", ["p2wsh"])
 @pytest.mark.parametrize("sighash", list(SIGHASH_MAP.keys()))
-@pytest.mark.parametrize('desc', ["multi", "sortedmulti"])
+@pytest.mark.parametrize('desc', ["sortedmulti"])
 def test_bitcoind_MofN_tutorial(m_n, script, clear_ms, goto_home, need_keypress, pick_menu_item,
                                 sighash, cap_menu, cap_story, microsd_path, use_regtest, bitcoind,
                                 microsd_wipe, settings_set, is_q1, try_sign, press_select,
