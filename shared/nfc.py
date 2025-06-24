@@ -227,7 +227,9 @@ class NFCHandler:
     async def share_loop(self, n, **kws):
         while 1:
             done = await self.share_start(n, **kws)
-            if done: break
+            if done:
+                # do not wipe if we are not done
+                await self.wipe(kws.get("is_secret", False))
 
     async def share_signed_txn(self, txid, file_offset, txn_len, txn_sha):
         # we just signed something, share it over NFC
@@ -471,10 +473,6 @@ class NFCHandler:
                     break
 
         self.set_rf_disable(1)
-        # do not wipe if we are not aborted
-        if not write_mode and aborted:
-            # function argument secret decides whether to do full wipe after writing to chip
-            await self.wipe(is_secret)
 
         return aborted
 
@@ -482,9 +480,7 @@ class NFCHandler:
         # do the UX while we are sharing a value over NFC
         # - assumpting is people know what they are scanning
         # - x key to abort early, but also self-clears
-
         await self.big_write(ndef_obj.bytes())
-
         return await self.ux_animation(False, **kws)
 
     async def start_nfc_rx(self, **kws):
