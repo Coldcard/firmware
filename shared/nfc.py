@@ -402,7 +402,7 @@ class NFCHandler:
         # Run the pretty animation, and detect both when we are written, and/or key to exit/abort.
         # - similar when "read" and then removed from field
         # - return T if aborted by user
-        from glob import dis, numpad
+        from glob import dis
 
         await self.wait_ready()
         self.set_rf_disable(0)
@@ -471,7 +471,8 @@ class NFCHandler:
                     break
 
         self.set_rf_disable(1)
-        if not write_mode:
+        # do not wipe if we are not aborted
+        if not write_mode and aborted:
             # function argument secret decides whether to do full wipe after writing to chip
             await self.wipe(is_secret)
 
