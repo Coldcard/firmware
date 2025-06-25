@@ -715,11 +715,14 @@ def test_destroy_seed(goto_home, pick_menu_item, cap_story, press_select,
 
 def test_menu_wrapping(goto_home, pick_menu_item, cap_story, cap_menu,
                        press_select, press_up, press_down, press_cancel,
-                       is_q1):
+                       is_q1, settings_remove):
+    settings_remove("wa")  # disable
     goto_home()
     # first try that infinite scroll is turned off
     # home
-    for i in range(10):  # settings on 5th in home (10 is way past that)
+    assert len(cap_menu()) < 10
+
+    for i in range(10):
         press_down()
 
     # sitting at Logout
@@ -730,7 +733,7 @@ def test_menu_wrapping(goto_home, pick_menu_item, cap_story, cap_menu,
     press_select()
     pick_menu_item("Menu Wrapping")
     press_select()
-    pick_menu_item("Enable")
+    pick_menu_item("Always Wrap")
     time.sleep(1)
     press_cancel()  # back to home menu
     press_cancel()  # at Ready To Sign
@@ -741,7 +744,7 @@ def test_menu_wrapping(goto_home, pick_menu_item, cap_story, cap_menu,
     press_select()
 
     pick_menu_item("Menu Wrapping")
-    pick_menu_item("Default Off")
+    pick_menu_item("Default")
     time.sleep(1)
     press_cancel()  # back in home menu
     press_cancel()  # at Ready To Sign

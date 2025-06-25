@@ -29,7 +29,7 @@ This lists the new changes that have not yet been published in a normal release.
 ## 5.4.4 - 2025-09-1x
 
 - Bugfix: Part of extended keys in stories were not always visible.
-
+- Change: Mk4 default menu wrap-around lowered from 16 to 10
 
 # Q Specific Changes
 

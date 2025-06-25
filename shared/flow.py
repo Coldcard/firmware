@@ -187,9 +187,9 @@ The signed transaction will be named <TXID>.txn, so the file name does not leak 
 MS-DOS tools should not be able to find the PSBT data (ie. undelete), but forensic tools \
 which take apart the flash chips of the SDCard may still be able to find the \
 data or filenames.'''),
-    ToggleMenuItem('Menu Wrapping', 'wa', ['Default Off', 'Enable'],
+    ToggleMenuItem('Menu Wrapping', 'wa', ['Default', 'Always Wrap'],
            story='''When enabled, allows scrolling past menu top/bottom \
-(wrap around). By default, this only happens in very large menus.'''),
+(wrap around). By default, this only happens in menus whose length is greater than 10.'''),
     ToggleMenuItem('Home Menu XFP', 'hmx', ['Only Tmp', 'Always Show'],
                    story=('Forces display of XFP (seed fingerprint) '
                           'at top of main menu. Normally, XFP is shown only when '
