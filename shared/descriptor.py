@@ -6,20 +6,12 @@ import ngu, chains
 from io import BytesIO
 from collections import OrderedDict
 from binascii import hexlify as b2a_hex
-from utils import cleanup_deriv_path, check_xpub, xfp2str, swab32
+from utils import xfp2str
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from public_constants import AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, MAX_SIGNERS, MAX_TR_SIGNERS
 from desc_utils import parse_desc_str, append_checksum, descriptor_checksum, Key
 from miniscript import Miniscript
 from precomp_tag_hash import TAP_BRANCH_H
-
-
-class DescriptorException(ValueError):
-    pass
-
-
-class WrongCheckSumError(Exception):
-    pass
 
 
 class Tapscript:
@@ -112,8 +104,6 @@ class Tapscript:
 
         s.seek(-1, 1)
         ms = Miniscript.read_from(s, taproot=True)
-        ms.is_sane(taproot=True)
-        ms.verify()
         return cls(ms)
 
     def script_tree(self):
@@ -148,32 +138,39 @@ class Descriptor:
         self.addr_fmt = addr_fmt
 
     def validate(self):
+        # should only be run once while importing wallet
         from glob import settings
-        if self.miniscript:
-            if self.is_basic_multisig:
-                assert len(self.keys) <= MAX_SIGNERS
-            else:
-                assert len(self.keys) <= 20
-            self.miniscript.verify()
-            if self.miniscript.type != "B":
-                raise DescriptorException("Top level miniscript should be 'B'")
-
-        has_mine = 0
-        my_xfp = settings.get('xfp')
 
         c = 0
+        has_mine = 0
+        err_top_B = "Top level miniscript should be 'B'"
+        max_signers = 20
+
+        if self.tapscript:
+            assert self.key  # internal key (would fail during parse)
+            max_signers = MAX_TR_SIGNERS
+            for l in self.tapscript.iter_leaves():
+                assert l.type == "B", err_top_B
+                l.verify()
+                l.is_sane(taproot=True)
+                # cannot have same keys in single miniscript
+                # provably unspendable taproot internal key is not covered here
+                assert len(l.keys) == len(set(l.keys)), "Insane"
+
+        elif self.miniscript:
+            assert self.key is None
+            assert self.miniscript.type == "B", err_top_B
+            self.miniscript.verify()
+            self.miniscript.is_sane(taproot=False)
+            # cannot have same keys in single miniscript
+            assert len(self.miniscript.keys) == len(set(self.miniscript.keys)), "Insane"
+
+        my_xfp = settings.get('xfp')
         for k in self.keys:
             has_mine += k.validate(my_xfp)
             c += 1
 
-        if self.tapscript:
-            if self.key.is_provably_unspendable:
-                c -= 1
-
-            assert c <= MAX_TR_SIGNERS
-            assert self.key  # internal key (would fail during parse)
-        else:
-            assert self.key is None and self.miniscript, "not miniscript"
+        assert c <= max_signers, "max signers"
 
         assert has_mine != 0, 'My key %s missing in descriptor.' % xfp2str(my_xfp).upper()
 
@@ -207,11 +204,9 @@ class Descriptor:
         for k in self.keys:
             if self.is_taproot and k.is_provably_unspendable and skip_unspend_ik:
                 continue
-            elif k.origin:
-                res.append(k.origin.psbt_derivation())
-            else:
-                # origin less - TODO should not be here, origin should already be created
-                res.append([swab32(self.key.node.my_fp())])
+
+            res.append(k.origin.psbt_derivation())
+
         return res
 
     @property
@@ -301,7 +296,7 @@ class Descriptor:
 
     @classmethod
     def is_descriptor(cls, desc_str):
-        """Quick method to guess whether this is a descriptor"""
+        # Quick method to guess whether this is a descriptor
         try:
             temp = parse_desc_str(desc_str)
         except:
@@ -328,15 +323,15 @@ class Descriptor:
             return desc_w_checksum, None
         calc_checksum = descriptor_checksum(desc)
         if calc_checksum != checksum:
-            raise WrongCheckSumError("Wrong checksum %s, expected %s" % (checksum, calc_checksum))
+            raise ValueError("Wrong checksum %s, expected %s" % (checksum, calc_checksum))
         return desc, checksum
 
     @classmethod
-    def from_string(cls, desc, checksum=False):
+    def from_string(cls, desc, checksum=False, validate=True):
         desc = parse_desc_str(desc)
         desc, cs = cls.checksum_check(desc)
         s = BytesIO(desc.encode())
-        res = cls.read_from(s)
+        res = cls.read_from(s, validate)
         left = s.read()
         if len(left) > 0:
             raise ValueError("Unexpected characters after descriptor: %r" % left)
@@ -347,7 +342,7 @@ class Descriptor:
         return res
 
     @classmethod
-    def read_from(cls, s):
+    def read_from(cls, s, validate=True):
         start = s.read(8)
         af = AF_CLASSIC
         internal_key = None
@@ -389,7 +384,6 @@ class Descriptor:
             nbrackets = 1
         elif af in [AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH]:
             miniscript = Miniscript.read_from(s)
-            miniscript.is_sane(taproot=False)
             key = internal_key
             nbrackets = 1 + int(af == AF_P2WSH_P2SH)
         else:
@@ -400,9 +394,10 @@ class Descriptor:
         if end != b")" * nbrackets:
             raise ValueError("Invalid descriptor")
 
-        o = cls(key, miniscript, tapscript, af)
-        o.validate()
-        return o
+        desc = cls(key, miniscript, tapscript, af)
+        if validate:
+            desc.validate()
+        return desc
 
     def to_string(self, external=True, internal=True, checksum=True, unspent_compat=False):
         if self.is_taproot:

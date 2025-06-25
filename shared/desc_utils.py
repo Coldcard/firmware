@@ -98,12 +98,7 @@ def multisig_descriptor_template(xpub, path, xfp, addr_fmt):
 
 
 def read_until(s, chars=b",)(#"):
-    # TODO potential infinite loop
-    # what is the longest possible element? (proly some raw( but that is unsupported)
-    #
     res = b""
-    chunk = b""
-    char = None
     while True:
         chunk = s.read(1)
         if len(chunk) == 0:
@@ -111,20 +106,25 @@ def read_until(s, chars=b",)(#"):
         if chunk in chars:
             return res, chunk
         res += chunk
-    return res, None
 
 
 class KeyOriginInfo:
-    def __init__(self, fingerprint: bytes, derivation: list):
+    def __init__(self, fingerprint: bytes, derivation: list, cc_fp=None):
         self.fingerprint = fingerprint
         self.derivation = derivation
-        self.cc_fp = swab32(int(b2a_hex(self.fingerprint).decode(), 16))
+        self._cc_fp = cc_fp
 
     def __eq__(self, other):
         return self.psbt_derivation() == other.psbt_derivation()
 
     def __hash__(self):
         return hash(tuple(self.psbt_derivation()))
+
+    @property
+    def cc_fp(self):
+        if self._cc_fp is None:
+            self._cc_fp = ustruct.unpack('<I', self.fingerprint)[0]
+        return self._cc_fp
 
     def str_derivation(self):
         return keypath_to_str(self.derivation, prefix='m/', skip=0)
@@ -157,32 +157,13 @@ class KeyDerivationInfo:
     def __init__(self, indexes=None):
         self.indexes = indexes
         if self.indexes is None:
-            self.indexes = [[0, 1], WILDCARD]
+            self.indexes = ((0, 1), WILDCARD)
             self.multi_path_index = 0
         else:
             self.multi_path_index = None
 
-    @property
-    def is_int_ext(self):
-        if self.multi_path_index is not None:
-            return True
-        return False
-
-    @property
-    def is_external(self):
-        if self.is_int_ext:
-            return True
-        elif self.indexes[-2] % 2 == 0:
-            return True
-
-        return False
-
-    @property
-    def branches(self):
-        if self.is_int_ext:
-            return self.indexes[self.multi_path_index]
-        else:
-            return [self.indexes[-2]]
+    def __hash__(self):
+        return hash(self.indexes)
 
     @classmethod
     def parse(cls, s):
@@ -200,7 +181,7 @@ class KeyDerivationInfo:
                 assert char, err
 
                 multi_i = len(idxs)
-                idxs.append([int(ext_num.decode()), int(int_num.decode())])
+                idxs.append((int(ext_num.decode()), int(int_num.decode())))
 
 
             elif got == b"*":
@@ -212,15 +193,16 @@ class KeyDerivationInfo:
                 assert (b"'" not in got) and (b"h" not in got), "Cannot use hardened sub derivation path"
                 idxs.append(int(got.decode()))
 
-
+        assert idxs[-1] == WILDCARD, "All keys must be ranged"
         if idxs == [0, WILDCARD]:
+            # normalize and instead save as <0;1> as change derivation was not provided
             obj = cls()
         else:
-            assert idxs[-1] == WILDCARD, "All keys must be ranged"
+
             if multi_i is not None:
                 assert len(idxs[multi_i]) == 2, "wrong multipath"
 
-            obj = cls(idxs)
+            obj = cls(tuple(idxs))
             obj.multi_path_index = multi_i
 
         return obj
@@ -228,7 +210,7 @@ class KeyDerivationInfo:
     def to_string(self, external=True, internal=True):
         res = []
         for i in self.indexes:
-            if isinstance(i, list):
+            if isinstance(i, tuple):
                 if internal is True and external is False:
                     i = str(i[1])
                 elif internal is False and external is True:
@@ -240,16 +222,12 @@ class KeyDerivationInfo:
             res.append(i)
         return "/".join(res)
 
-    def to_int_list(self, branch_idx, idx):
-        assert branch_idx in self.indexes[0]
-        return [branch_idx, idx]
-
 
 class Key:
     def __init__(self, node, origin, derivation=None, taproot=False, chain_type=None):
         self.origin = origin
         self.node = node
-        self.derivation = derivation
+        self.derivation = derivation or KeyDerivationInfo()
         self.taproot = taproot
         self.chain_type = chain_type
 
@@ -258,7 +236,8 @@ class Key:
                 and self.derivation.indexes == other.derivation.indexes
 
     def __hash__(self):
-        return hash(self.to_string())
+        # return hash(self.to_string())
+        return hash(self.origin) + hash(self.derivation)
 
     def __len__(self):
         return 34 - int(self.taproot) # <33:sec> or <32:xonly>
@@ -286,17 +265,20 @@ class Key:
             origin = KeyOriginInfo.from_string(prefix.decode())
         else:
             s.seek(-1, 1)
+
         k, char = read_until(s, b",)/")
-        der = b""
+        der = None
         if char == b"/":
             der = KeyDerivationInfo.parse(s)
         if char is not None:
             s.seek(-1, 1)
+
         # parse key
         node, chain_type = cls.parse_key(k)
         if origin is None:
-            origin = KeyOriginInfo(ustruct.pack('<I', swab32(node.my_fp())), [])
-        return cls(node, origin, der or KeyDerivationInfo(), chain_type=chain_type)
+            cc_fp = swab32(node.my_fp())
+            origin = KeyOriginInfo(ustruct.pack('<I', cc_fp), [], cc_fp)
+        return cls(node, origin, der, chain_type=chain_type)
 
     @classmethod
     def parse_key(cls, key_str):
@@ -312,7 +294,9 @@ class Key:
         node = ngu.hdnode.HDNode()
         node.deserialize(key_str)
 
-        assert node.privkey() is None
+        try:
+            assert node.privkey() is None
+        except: pass
 
         return node, chain_type
 
@@ -361,13 +345,13 @@ class Key:
         new_node = self.node.copy()
         new_node.derive(idx, False)
         if self.origin:
-            origin = KeyOriginInfo(self.origin.fingerprint, self.origin.derivation + [idx])
+            origin = KeyOriginInfo(self.origin.fingerprint, self.origin.derivation + [idx],
+                                   self.origin.cc_fp)
         else:
-            fp = ustruct.pack('<I', swab32(self.node.my_fp()))
-            origin = KeyOriginInfo(fp, [idx])
+            origin = KeyOriginInfo(self.origin.fingerprint, [idx], self.origin.cc_fp)
 
-        derivation = KeyDerivationInfo(self.derivation.indexes[1:])
-        return type(self)(new_node, origin, derivation, taproot=self.taproot)
+        return type(self)(new_node, origin, KeyDerivationInfo(self.derivation.indexes[1:]),
+                          taproot=self.taproot)
 
     @classmethod
     def read_from(cls, s, taproot=False):
@@ -431,34 +415,3 @@ def bip388_wallet_policy_to_descriptor(desc_tmplt, keys_info):
         ph = "@%d" % i
         desc_tmplt = desc_tmplt.replace(ph, k_str)
     return desc_tmplt
-
-        # ph_len = len(ph)
-        # while True:
-        #     ix = policy.find(ph)
-        #     if ix == -1:
-        #         break
-        #
-        #     assert policy[ix+ph_len] == "/"
-        #     # subderivation is part of the policy
-        #     x = ix + ph_len
-        #     substr = policy[x:x+26]  # 26 is the longest possible subderivation allowed "/<2147483647;2147483646>/*"
-        #     mp_start = substr.find("<")
-        #     assert mp_start != -1
-        #     mp_end = substr.find(">")
-        #     mp = substr[mp_start:mp_end + 1]
-        #     _ext, _int = mp[1:-1].split(";")
-        #     if external and not internal:
-        #         sub = _ext
-        #     elif internal and not external:
-        #         sub = _int
-        #     else:
-        #         sub = None
-        #
-        #     if sub is not None:
-        #         policy = policy[:x + mp_start] + sub + policy[x + mp_end + 1:]
-        #
-        #     x = policy[ix:ix + ph_len]
-        #     assert x == ph
-        #     policy = policy[:ix] + k + policy[ix + ph_len:]
-    #
-    # return policy

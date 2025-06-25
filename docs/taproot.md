@@ -31,7 +31,8 @@ There are 2 methods to provide provably unspendable internal key, if users wish 
 
    `tr(xpub/<0:1>/*, sortedmulti_a(2,@0,@1))` which is the same thing as `tr(xpub, sortedmulti_a(2,@0,@1))` because `/<0;1>/*` is implied if not derivation path not provided.
 
-2. **(recommended)** Use `unspend(` [notation](https://gist.github.com/sipa/06c5c844df155d4e5044c2c8cac9c05e#unspendable-keys). Has to be ranged.
+### Below option was deprecated in version 6.3.5X & 6.3.5QX
+2. Use `unspend(` [notation](https://gist.github.com/sipa/06c5c844df155d4e5044c2c8cac9c05e#unspendable-keys). Has to be ranged.
 
     `tr(unspend(77ec0c0fdb9733e6a3c753b1374c4a465cba80dff52fc196972640a26dd08b76)/<0:1>/*, sortedmulti_a(2,@0,@1))`
 
@@ -58,7 +59,7 @@ Options 4. and 5. are problematic to some extent as internal key is static. Use 
 
 In current version only `TREE` of max depth 4 is allowed (max 8 leaf script allowed).
 Taproot single leaf multisig has artificial limit of max 32 signers (M=N=32).
-Number of keys in taptree is limited to 32.
+Number of keys in whole taptree is limited to 32.
 
 If Coldcard can sign by both key path and script path - key path has precedence.
 
@@ -68,9 +69,9 @@ PSBT provider MUST provide following Taproot specific input fields in PSBT:
 1. `PSBT_IN_TAP_BIP32_DERIVATION` with all the necessary keys with their leaf hashes and derivation (including XFP). Internal key has to be specified here with empty leaf hashes.
 2. `PSBT_IN_TAP_INTERNAL_KEY` MUST match internal key provided in `PSBT_IN_TAP_BIP32_DERIVATION`
 3. `PSBT_IN_TAP_MERKLE_ROOT` MUST be empty if there is no script path. Otherwise it MUST match what Coldcard can calculate from registered descriptor.
-4. `PSBT_IN_TAP_LEAF_SCRIPT` MUST be specified if there is a script path. Currently MUST be of length 1 (only one script allowed)
+4. `PSBT_IN_TAP_LEAF_SCRIPT` MUST be specified if there is a script path.
 
 PSBT provider MUST provide following Taproot specific output fields in PSBT:
 1. `PSBT_OUT_TAP_BIP32_DERIVATION` with all the necessary keys with their leaf hashes and derivation (including XFP). Internal key has to be specified here with empty leaf hashes.
 2. `PSBT_OUT_TAP_INTERNAL_KEY` must match internal key provided in `PSBT_OUT_TAP_BIP32_DERIVATION`
-3. `PSBT_OUT_TAP_TREE` with depth, leaf version and script defined. Currently only one script is allowed.
+3. `PSBT_OUT_TAP_TREE` with depth, leaf version and script defined.

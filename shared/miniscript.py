@@ -8,7 +8,7 @@ from binascii import hexlify as b2a_hex
 from serializations import ser_compact_size, ser_string
 from desc_utils import Key, read_until, bip388_wallet_policy_to_descriptor
 from public_constants import MAX_TR_SIGNERS, AF_P2TR
-from wallet import BaseStorageWallet
+from wallet import BaseStorageWallet, MAX_BIP32_IDX
 from menu import MenuSystem, MenuItem
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 from files import CardSlot, CardMissingError, needs_microsd
@@ -37,7 +37,6 @@ class MiniScriptWallet(BaseStorageWallet):
         self.desc = desc
         self.addr_fmt = af
         self.ik_u = ik_u
-        # self.chain =
 
     @property
     def chain(self):
@@ -64,7 +63,8 @@ class MiniScriptWallet(BaseStorageWallet):
             else:
                 desc_str = bip388_wallet_policy_to_descriptor(self.desc_tmplt, self.keys_info)
                 print("loading... filled policy:\n", desc_str)
-                self.desc = Descriptor.from_string(desc_str)
+                # no need to validate already saved descriptor - was validated upon enroll
+                self.desc = Descriptor.from_string(desc_str, validate=False)
                 # cache len always 1
                 glob.DESC_CACHE = {}
                 glob.DESC_CACHE[self.name] = self.desc
@@ -90,12 +90,14 @@ class MiniScriptWallet(BaseStorageWallet):
             if addr_fmt is not None:
                 if rv.addr_fmt != addr_fmt:
                     continue
+
             if rv.matching_subpaths(xfp_paths):
                 return rv
         return None
 
     def matching_subpaths(self, xfp_paths):
         my_xfp_paths = self.to_descriptor().xfp_paths()
+
         if len(xfp_paths) != len(my_xfp_paths):
             return False
 
@@ -262,6 +264,8 @@ class MiniScriptWallet(BaseStorageWallet):
         dd = self.to_descriptor().derive(None, change=change)
         idx = start_idx
         while count:
+            if idx > MAX_BIP32_IDX:
+                break
             # make the redeem script, convert into address
             d = dd.derive(idx)
             scr = d.miniscript.compile() if d.miniscript else None
@@ -712,11 +716,6 @@ class Miniscript:
 
     def is_sane(self, taproot=False):
         err = "multi mixin"
-        keys = self.keys
-        # cannot have same keys in single miniscript
-        # provably unspendable taproot internal key is not covered here
-        # all other keys (miniscript,tapscript) require key origin info
-        assert len(keys) == len(set(keys)), "Insane"
         forbiden = (Sortedmulti, Multi) if taproot else (Sortedmulti_a, Multi_a)
         assert type(self) not in forbiden, err
 
@@ -736,11 +735,10 @@ class Miniscript:
     def derive(self, idx, key_map=None, change=False):
         args = []
         for arg in self.args:
-            if hasattr(arg, "derive"):
-                if isinstance(arg, Key):  # KeyHash is subclass of Key
-                    arg = self.key_derive(arg, idx, key_map, change=change)
-                else:
-                    arg = arg.derive(idx, key_map, change)
+            if isinstance(arg, Key):  # KeyHash is subclass of Key
+                arg = self.key_derive(arg, idx, key_map, change=change)
+            elif hasattr(arg, "derive"):
+                arg = arg.derive(idx, key_map, change)
 
             args.append(arg)
         return type(self)(*args)

@@ -13,7 +13,7 @@ from descriptor import Descriptor
 from miniscript import Key, Sortedmulti, Number, Multi
 from desc_utils import multisig_descriptor_template
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS, AF_P2TR, AF_CLASSIC
-from menu import MenuSystem, MenuItem, NonDefaultMenuItem, start_chooser
+from menu import MenuSystem, MenuItem, start_chooser
 from opcodes import OP_CHECKMULTISIG
 from exceptions import FatalPSBTIssue
 from glob import settings

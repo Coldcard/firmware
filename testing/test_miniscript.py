@@ -280,7 +280,7 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
         wal_name = m[-1]
         pick_menu_item(wal_name)
 
-        time.sleep(5)
+        time.sleep(1)
         if way == "qr":
             need_keypress(KEY_QR)
             cc_addrs = []
@@ -296,13 +296,13 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
             press_select()
 
 
-        time.sleep(2)
+        time.sleep(1)
         title, story = cap_story()
 
         assert "change addresses." in story and "(0)" in story
         need_keypress("0")
 
-        time.sleep(2)
+        time.sleep(1)
         title, story = cap_story()
 
         assert "(0)" not in story
@@ -347,7 +347,7 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
             else:
                 external_desc = desc["desc"]
 
-        time.sleep(5)
+        time.sleep(1)
 
         if export_check:
             desc_export = miniscript_descriptors(cc_minsc_name)
