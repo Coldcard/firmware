@@ -6,7 +6,7 @@ import ngu, ujson, uio, chains, ure, version, stash
 from binascii import unhexlify as a2b_hex
 from binascii import hexlify as b2a_hex
 from serializations import ser_compact_size, ser_string
-from desc_utils import Key, read_until, bip388_wallet_policy_to_descriptor
+from desc_utils import Key, read_until, bip388_wallet_policy_to_descriptor, append_checksum
 from public_constants import MAX_TR_SIGNERS, AF_P2TR
 from wallet import BaseStorageWallet, MAX_BIP32_IDX
 from menu import MenuSystem, MenuItem
@@ -17,9 +17,6 @@ from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC, KEY_ENTER
 from glob import settings
 
 KT_RXPUBKEY_DERIV = const(20250317)
-
-class MiniscriptException(ValueError):
-    pass
 
 
 class MiniScriptWallet(BaseStorageWallet):
@@ -42,12 +39,17 @@ class MiniScriptWallet(BaseStorageWallet):
     def chain(self):
         return chains.current_chain()
 
-    def to_string(self):
-        # argument-less - attempt to fill policy only
-        if self.desc_tmplt and self.keys_info:
-            return bip388_wallet_policy_to_descriptor(self.desc_tmplt, self.keys_info)
+    def serialize(self):
+        return self.name, self.desc_tmplt, self.keys_info, self.addr_fmt, self.ik_u
 
-        return self.desc.to_string()
+    @classmethod
+    def deserialize(cls, c, idx=-1):
+        # after deserialization - we lack loaded descriptor object
+        # we do not need it for everything
+        name, desc_tmplt, keys_info, af, ik_u = c
+        rv = cls(name, desc_tmplt, keys_info, af=af, ik_u=ik_u)
+        rv.storage_idx = idx
+        return rv
 
     def to_descriptor(self):
         if self.desc is None:
@@ -70,19 +72,6 @@ class MiniScriptWallet(BaseStorageWallet):
                 glob.DESC_CACHE[self.name] = self.desc
 
         return self.desc
-
-    def serialize(self):
-        return self.name, self.desc_tmplt, self.keys_info, self.addr_fmt, self.ik_u
-
-    @classmethod
-    def deserialize(cls, c, idx=-1):
-        # after deserialization - we lack loaded descriptor object
-        # we do not need it for everything
-        name, desc_tmplt, keys_info, af, ik_u = c
-        # print("deserialize:", c)
-        rv = cls(name, desc_tmplt, keys_info, af=af, ik_u=ik_u)
-        rv.storage_idx = idx
-        return rv
 
     @classmethod
     def find_match(cls, xfp_paths, addr_fmt=None):
@@ -300,36 +289,61 @@ class MiniScriptWallet(BaseStorageWallet):
         yield '"' + '","'.join(
             ['Index', 'Payment Address']
         ) + '"\n'
-        for idx, addr, *_ in self.yield_addresses(start, n, change=bool(change)):
-            ln = '%d,"%s"\n' % (idx, addr)
+        for idx, addr, ders, script in self.yield_addresses(start, n, change=bool(change)):
+            ln = '%d,"%s"' % (idx, addr)
+            if ders:
+                ln += ',"%s","' % script
+                ln += '","'.join(ders)
+                ln += '"'
+            ln += '\n'
             yield ln
 
-    async def export_wallet_file(self, mode="exported from", extra_msg=None, descriptor=False,
-                                 core=False, desc_pretty=True):
+    def to_string(self, checksum=True):
+        # policy filling - not posible to specify internal/external always multipath export
+        # only supported from bitcoin-core 29.0
+        if self.desc_tmplt and self.keys_info:
+            desc = bip388_wallet_policy_to_descriptor(self.desc_tmplt, self.keys_info)
+            if checksum:
+                desc = append_checksum(desc)
+            return desc
+
+        return self.desc.to_string()
+
+    def bitcoin_core_serialize(self):
+        return [{
+            "desc": self.to_string(),  # policy fill
+            "active": True,
+            "timestamp": "now",
+            "range": [0, 100],
+        }]
+
+    async def export_wallet_file(self, extra_msg=None, core=False, bip388=False):
+        # do not load descriptor - just fill policy
+        # only with multipath format <0;1>
         from glob import NFC, dis
         from ux import import_export_prompt
 
         dis.fullscreen('Wait...')
-        desc = self.to_descriptor()  # load descriptor from policy if not already
 
         if core:
             name = "Bitcoin Core miniscript"
-            fname_pattern = 'bitcoin-core-%s' % self.name
-        else:
-            name = "Miniscript"
-            fname_pattern = 'minsc-%s' % self.name
-
-        fname_pattern = fname_pattern + ".txt"
-
-        if core:
+            fname_pattern = 'bitcoin-core-%s.txt' % self.name
             msg = "importdescriptors cmd"
-            core_obj = desc.bitcoin_core_serialize()
+            core_obj = self.bitcoin_core_serialize()
             core_str = ujson.dumps(core_obj)
             res = "importdescriptors '%s'\n" % core_str
-
+        elif bip388:
+            # policy as JSON
+            name = "BIP-388 Wallet Policy"
+            fname_pattern = 'b388-%s.json' % self.name
+            res = ujson.dumps({"name": self.name,
+                               "desc_tmplt": self.desc_tmplt.replace("/<0;1>/*", "/**"),
+                               "keys_info": self.keys_info})
         else:
+            name = "Miniscript"
+            fname_pattern = 'minsc-%s.txt' % self.name
             msg = self.name
-            res = desc.to_string()
+            res = self.to_string()
 
         ch = await import_export_prompt("%s file" % name)
         if isinstance(ch, str):
@@ -355,6 +369,7 @@ class MiniScriptWallet(BaseStorageWallet):
                 #     fp.seek(0)
                 #     contents = fp.read()
                 # TODO re-enable once we know how to proceed with regards to with which key to sign
+                # TODO need function to get my xpub from just policy
                 # from auth import write_sig_file
                 # h = ngu.hash.sha256s(contents.encode())
                 # sig_nice = write_sig_file([(h, fname)])
@@ -386,7 +401,7 @@ class MiniScriptWallet(BaseStorageWallet):
         assert res, "missing xfp %s" % xfp2str(xfp)
         # returned is list of keys with corresponding master xfp
         # key in list are lexicographically sorted based on their public keys
-        # lowes public key first
+        # lowest public key first
         return sorted(res, key=lambda o: o.serialize())
 
     def kt_make_rxkey(self, xfp):
@@ -548,6 +563,7 @@ async def make_miniscript_wallet_descriptor_menu(menu, label, item):
     rv = [
         MenuItem('Export', f=miniscript_wallet_export, arg=(msc, {"core": False})),
         MenuItem('Bitcoin Core', f=miniscript_wallet_export, arg=(msc, {"core": True})),
+        MenuItem('BIP-388 Policy', f=miniscript_wallet_export, arg=(msc, {"bip388":True})),
     ]
     return rv
 
@@ -759,16 +775,16 @@ class Miniscript:
         if ":" in op:
             wrappers, op = op.split(":")
         if char != b"(":
-            raise MiniscriptException("Missing operator")
+            raise ValueError("Missing operator")
         if op not in OPERATOR_NAMES:
-            raise MiniscriptException("Unknown operator '%s'" % op)
+            raise ValueError("Unknown operator '%s'" % op)
         # number of arguments, classes of arguments, compile function, type, validity checker
         MiniscriptCls = OPERATORS[OPERATOR_NAMES.index(op)]
         args = MiniscriptCls.read_arguments(s, taproot=taproot)
         miniscript = MiniscriptCls(*args, taproot=taproot)
         for w in reversed(wrappers):
             if w not in WRAPPER_NAMES:
-                raise MiniscriptException("Unknown wrapper %s" % w)
+                raise ValueError("Unknown wrapper %s" % w)
             WrapperCls = WRAPPERS[WRAPPER_NAMES.index(w)]
             miniscript = WrapperCls(miniscript, taproot=taproot)
         return miniscript
@@ -790,7 +806,7 @@ class Miniscript:
                 elif char == b")":
                     break
                 else:
-                    raise MiniscriptException(
+                    raise ValueError(
                         "Expected , or ), got: %s" % (char + s.read())
                     )
         else:
@@ -799,10 +815,10 @@ class Miniscript:
                 if i < cls.NARGS - 1:
                     char = s.read(1)
                     if char != b",":
-                        raise MiniscriptException("Missing arguments, %s" % char)
+                        raise ValueError("Missing arguments, %s" % char)
             char = s.read(1)
             if char != b")":
-                raise MiniscriptException("Expected ) got %s" % (char + s.read()))
+                raise ValueError("Expected ) got %s" % (char + s.read()))
         return args
 
     def to_string(self, external=True, internal=True):
@@ -877,7 +893,7 @@ class Older(OneArg):
     def verify(self):
         super().verify()
         if (self.arg.num < 1) or (self.arg.num >= 0x80000000):
-            raise MiniscriptException(
+            raise ValueError(
                 "%s should have an argument in range [1, 0x80000000)" % self.NAME
             )
 
@@ -945,14 +961,14 @@ class AndOr(Miniscript):
         # requires: X is Bdu; Y and Z are both B, K, or V
         super().verify()
         if self.args[0].type != "B":
-            raise MiniscriptException("andor: X should be 'B'")
+            raise ValueError("andor: X should be 'B'")
         px = self.args[0].properties
         if "d" not in px and "u" not in px:
-            raise MiniscriptException("andor: X should be 'du'")
+            raise ValueError("andor: X should be 'du'")
         if self.args[1].type != self.args[2].type:
-            raise MiniscriptException("andor: Y and Z should have the same types")
+            raise ValueError("andor: Y and Z should have the same types")
         if self.args[1].type not in "BKV":
-            raise MiniscriptException("andor: Y and Z should be B K or V")
+            raise ValueError("andor: Y and Z should be B K or V")
 
     @property
     def properties(self):
@@ -1000,9 +1016,9 @@ class AndV(Miniscript):
         # X is V; Y is B, K, or V
         super().verify()
         if self.args[0].type != "V":
-            raise MiniscriptException("and_v: X should be 'V'")
+            raise ValueError("and_v: X should be 'V'")
         if self.args[1].type not in "BKV":
-            raise MiniscriptException("and_v: Y should be B K or V")
+            raise ValueError("and_v: Y should be B K or V")
 
     @property
     def type(self):
@@ -1042,9 +1058,9 @@ class AndB(Miniscript):
         # X is B; Y is W
         super().verify()
         if self.args[0].type != "B":
-            raise MiniscriptException("and_b: X should be B")
+            raise ValueError("and_b: X should be B")
         if self.args[1].type != "W":
-            raise MiniscriptException("and_b: Y should be W")
+            raise ValueError("and_b: Y should be W")
 
     @property
     def properties(self):
@@ -1092,12 +1108,12 @@ class AndN(Miniscript):
         # requires: X is Bdu; Y and Z are both B, K, or V
         super().verify()
         if self.args[0].type != "B":
-            raise MiniscriptException("and_n: X should be 'B'")
+            raise ValueError("and_n: X should be 'B'")
         px = self.args[0].properties
         if "d" not in px and "u" not in px:
-            raise MiniscriptException("and_n: X should be 'du'")
+            raise ValueError("and_n: X should be 'du'")
         if self.args[1].type != "B":
-            raise MiniscriptException("and_n: Y should be B")
+            raise ValueError("and_n: Y should be B")
 
     @property
     def properties(self):
@@ -1135,13 +1151,13 @@ class OrB(Miniscript):
         # X is Bd; Z is Wd
         super().verify()
         if self.args[0].type != "B":
-            raise MiniscriptException("or_b: X should be B")
+            raise ValueError("or_b: X should be B")
         if "d" not in self.args[0].properties:
-            raise MiniscriptException("or_b: X should be d")
+            raise ValueError("or_b: X should be d")
         if self.args[1].type != "W":
-            raise MiniscriptException("or_b: Z should be W")
+            raise ValueError("or_b: Z should be W")
         if "d" not in self.args[1].properties:
-            raise MiniscriptException("or_b: Z should be d")
+            raise ValueError("or_b: Z should be d")
 
     @property
     def properties(self):
@@ -1173,12 +1189,12 @@ class OrC(Miniscript):
         # X is Bdu; Z is V
         super().verify()
         if self.args[0].type != "B":
-            raise MiniscriptException("or_c: X should be B")
+            raise ValueError("or_c: X should be B")
         if self.args[1].type != "V":
-            raise MiniscriptException("or_c: Z should be V")
+            raise ValueError("or_c: Z should be V")
         px = self.args[0].properties
         if "d" not in px or "u" not in px:
-            raise MiniscriptException("or_c: X should be du")
+            raise ValueError("or_c: X should be du")
 
     @property
     def properties(self):
@@ -1209,12 +1225,12 @@ class OrD(Miniscript):
         # X is Bdu; Z is B
         super().verify()
         if self.args[0].type != "B":
-            raise MiniscriptException("or_d: X should be B")
+            raise ValueError("or_d: X should be B")
         if self.args[1].type != "B":
-            raise MiniscriptException("or_d: Z should be B")
+            raise ValueError("or_d: Z should be B")
         px = self.args[0].properties
         if "d" not in px or "u" not in px:
-            raise MiniscriptException("or_d: X should be du")
+            raise ValueError("or_d: X should be du")
 
     @property
     def properties(self):
@@ -1254,9 +1270,9 @@ class OrI(Miniscript):
         # both are B, K, or V
         super().verify()
         if self.args[0].type != self.args[1].type:
-            raise MiniscriptException("or_i: X and Z should be the same type")
+            raise ValueError("or_i: X and Z should be the same type")
         if self.args[0].type not in "BKV":
-            raise MiniscriptException("or_i: X and Z should be B K or V")
+            raise ValueError("or_i: X and Z should be B K or V")
 
     @property
     def type(self):
@@ -1298,21 +1314,21 @@ class Thresh(Miniscript):
         # 1 <= k <= n; X1 is Bdu; others are Wdu
         super().verify()
         if self.args[0].num < 1 or self.args[0].num >= len(self.args):
-            raise MiniscriptException(
+            raise ValueError(
                 "thresh: Invalid k! Should be 1 <= k <= %d, got %d"
                 % (len(self.args) - 1, self.args[0].num)
             )
         if self.args[1].type != "B":
-            raise MiniscriptException("thresh: X1 should be B")
+            raise ValueError("thresh: X1 should be B")
         px = self.args[1].properties
         if "d" not in px or "u" not in px:
-            raise MiniscriptException("thresh: X1 should be du")
+            raise ValueError("thresh: X1 should be du")
         for i, arg in enumerate(self.args[2:]):
             if arg.type != "W":
-                raise MiniscriptException("thresh: X%d should be W" % (i + 1))
+                raise ValueError("thresh: X%d should be W" % (i + 1))
             p = arg.properties
             if "d" not in p or "u" not in p:
-                raise MiniscriptException("thresh: X%d should be du" % (i + 1))
+                raise ValueError("thresh: X%d should be du" % (i + 1))
 
     @property
     def properties(self):
@@ -1500,7 +1516,7 @@ class A(Wrapper):
     def verify(self):
         super().verify()
         if self.arg.type != "B":
-            raise MiniscriptException("a: X should be B")
+            raise ValueError("a: X should be B")
 
     @property
     def properties(self):
@@ -1526,9 +1542,9 @@ class S(Wrapper):
     def verify(self):
         super().verify()
         if self.arg.type != "B":
-            raise MiniscriptException("s: X should be B")
+            raise ValueError("s: X should be B")
         if "o" not in self.arg.properties:
-            raise MiniscriptException("s: X should be o")
+            raise ValueError("s: X should be o")
 
     @property
     def properties(self):
@@ -1554,7 +1570,7 @@ class C(Wrapper):
     def verify(self):
         super().verify()
         if self.arg.type != "K":
-            raise MiniscriptException("c: X should be K")
+            raise ValueError("c: X should be K")
 
     @property
     def properties(self):
@@ -1607,9 +1623,9 @@ class D(Wrapper):
     def verify(self):
         super().verify()
         if self.arg.type != "V":
-            raise MiniscriptException("d: X should be V")
+            raise ValueError("d: X should be V")
         if "z" not in self.arg.properties:
-            raise MiniscriptException("d: X should be z")
+            raise ValueError("d: X should be z")
 
     @property
     def properties(self):
@@ -1637,7 +1653,7 @@ class V(Wrapper):
     def verify(self):
         super().verify()
         if self.arg.type != "B":
-            raise MiniscriptException("v: X should be B")
+            raise ValueError("v: X should be B")
 
     @property
     def properties(self):
@@ -1659,9 +1675,9 @@ class J(Wrapper):
     def verify(self):
         super().verify()
         if self.arg.type != "B":
-            raise MiniscriptException("j: X should be B")
+            raise ValueError("j: X should be B")
         if "n" not in self.arg.properties:
-            raise MiniscriptException("j: X should be n")
+            raise ValueError("j: X should be n")
 
     @property
     def properties(self):
@@ -1686,7 +1702,7 @@ class N(Wrapper):
     def verify(self):
         super().verify()
         if self.arg.type != "B":
-            raise MiniscriptException("n: X should be B")
+            raise ValueError("n: X should be B")
 
     @property
     def properties(self):
@@ -1712,7 +1728,7 @@ class L(Wrapper):
         # both are B, K, or V
         super().verify()
         if self.arg.type != "B":
-            raise MiniscriptException("or_i: X and Z should be the same type")
+            raise ValueError("or_i: X and Z should be the same type")
 
     @property
     def properties(self):

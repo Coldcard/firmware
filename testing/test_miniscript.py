@@ -525,8 +525,8 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
         core_desc_object = json.loads(text)
         # import descriptors to watch only wallet
         res = ms.importdescriptors(core_desc_object)
-        assert res[0]["success"]
-        assert res[1]["success"]
+        for obj in res:
+            assert obj["success"]
 
         if funded:
             if script_type == "p2wsh":
@@ -1136,8 +1136,8 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
     core_desc_object = json.loads(text)
     # import descriptors to watch only wallet
     res = ts.importdescriptors(core_desc_object)
-    assert res[0]["success"]
-    assert res[1]["success"]
+    for obj in res:
+        assert obj["success"]
 
     addr = ts.getnewaddress("", "bech32m")
     assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
@@ -1270,8 +1270,8 @@ def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe,
     )
     # import descriptors to watch only wallet
     res = ts.importdescriptors(core_desc_object)
-    assert res[0]["success"]
-    assert res[1]["success"]
+    for obj in res:
+        assert obj["success"]
 
     addr = ts.getnewaddress("", "bech32m")
     assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
@@ -1366,8 +1366,8 @@ def test_same_key_account_based_minisc(goto_home, pick_menu_item, cap_story,
     )
     # import descriptors to watch only wallet
     res = wo.importdescriptors(core_desc_object)
-    assert res[0]["success"]
-    assert res[1]["success"]
+    for obj in res:
+        assert obj["success"]
 
     addr = wo.getnewaddress("", "bech32")
     assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
@@ -1504,8 +1504,8 @@ def test_same_key_change_based_minisc(goto_home, pick_menu_item, cap_story,
     )
     # import descriptors to watch only wallet
     res = wo.importdescriptors(core_desc_object)
-    assert res[0]["success"]
-    assert res[1]["success"]
+    for obj in res:
+        assert obj["success"]
 
     addr = wo.getnewaddress("", af)
     assert bitcoind.supply_wallet.sendtoaddress(addr, 49)

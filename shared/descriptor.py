@@ -399,7 +399,7 @@ class Descriptor:
             desc.validate()
         return desc
 
-    def to_string(self, external=True, internal=True, checksum=True, unspent_compat=False):
+    def to_string(self, external=True, internal=True, checksum=True):
         if self.is_taproot:
             desc = "tr(%s" % self.key.to_string(external, internal)
             if self.tapscript:
