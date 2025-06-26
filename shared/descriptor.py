@@ -407,23 +407,21 @@ class Descriptor:
                 tree = self.tapscript.to_string(external, internal)
                 desc += tree
 
-            desc = desc + ")"
-            if checksum:
-                desc =  append_checksum(desc)
-            return desc
+            res = desc + ")"
 
-        if self.miniscript is not None:
-            res = self.miniscript.to_string(external, internal)
-            if self.addr_fmt in [AF_P2WSH, AF_P2WSH_P2SH]:
-                res = "wsh(%s)" % res
         else:
-            if self.addr_fmt == AF_P2WPKH:
-                res = "wpkh(%s)" % self.key.to_string(external, internal)
+            if self.miniscript is not None:
+                res = self.miniscript.to_string(external, internal)
+                if self.addr_fmt in [AF_P2WSH, AF_P2WSH_P2SH]:
+                    res = "wsh(%s)" % res
             else:
-                res = "pkh(%s)" % self.key.to_string(external, internal)
+                if self.addr_fmt in [AF_P2WPKH, AF_P2WPKH_P2SH]:
+                    res = "wpkh(%s)" % self.key.to_string(external, internal)
+                else:
+                    res = "pkh(%s)" % self.key.to_string(external, internal)
 
-        if self.is_legacy_sh:
-            res = "sh(%s)" % res
+            if self.is_legacy_sh:
+                res = "sh(%s)" % res
 
         if checksum:
             res = append_checksum(res)

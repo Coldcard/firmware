@@ -179,14 +179,16 @@ class MultisigWallet(BaseStorageWallet):
 
         return which
 
+    @property
+    def chain(self):
+        return chains.current_chain()
+
     def serialize(self):
         # return a JSON-able object
 
         opts = dict()
         if self.addr_fmt != AF_P2SH:
             opts['ft'] = self.addr_fmt
-        if self.chain_type != 'BTC':
-            opts['ch'] = self.chain_type
 
         # Data compression: most legs will all use same derivation.
         # put a int(0) in place and set option 'pp' to be derivation
@@ -684,7 +686,7 @@ class MultisigWallet(BaseStorageWallet):
 
         M, N = descriptor.miniscript.m_n()
         for key in descriptor.miniscript.keys:
-            assert key.derivation.is_external, "Invalid subderivation path - only 0/* or <0;1>/* allowed"
+            assert key.derivation.indexes == ((0,1), "*"), "Invalid subderivation path - only 0/* or <0;1>/* allowed"
             xfp = key.origin.cc_fp
             deriv = key.origin.str_derivation()
             xpub = key.extended_public_key()
@@ -939,7 +941,7 @@ class MultisigWallet(BaseStorageWallet):
         name = 'PSBT-%d-of-%d' % (M, N)
         # this will always create sortedmulti multisig (BIP-67)
         # because BIP-174 came years after wide spread acceptance of BIP-67 policy
-        ms = cls(name, (M, N), xpubs, chain_type=expect_chain, addr_fmt=addr_fmt or AF_P2SH) # TODO why legacy
+        ms = cls(name, (M, N), xpubs, addr_fmt=addr_fmt or AF_P2SH) # TODO why legacy
 
         # may just keep in-memory version, no approval required, if we are
         # trusting PSBT's today, otherwise caller will need to handle UX w.r.t new wallet
@@ -964,7 +966,7 @@ class MultisigWallet(BaseStorageWallet):
             # cleanup and normalize xpub
             tmp = []
             is_mine, item = check_xpub(xfp, xpub, keypath_to_str(path, skip=0),
-                                       self.chain_type, 0, self.disable_checks)
+                                       chains.current_chain().ctype, 0, self.disable_checks)
             tmp.append(item)
             (_, deriv, xpub_reserialized) = tmp[0]
             assert deriv            # because given as arg
@@ -1091,7 +1093,7 @@ Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=
             vmsg = ('Policy: {M} of {N}\n'
                     'Blockchain: {ctype}\n'
                     'Addresses: {at}\n\n')
-            vmsg = vmsg.format(M=self.M, N=self.N, ctype=self.chain_type,
+            vmsg = vmsg.format(M=self.M, N=self.N, ctype=chains.current_chain().ctype,
                                at=self.render_addr_fmt(self.addr_fmt))
             msg.write(vmsg)
 

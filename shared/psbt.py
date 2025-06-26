@@ -2838,11 +2838,11 @@ class psbtObject(psbtProxy):
                 for xpk, lhs_pths in inp.taproot_subpaths.items():
                     if not lhs_pths[0]:
                         # no leaf hashes - internal key
-                        if self.active_miniscript:
-                            k = Key.from_string(self.active_miniscript.key)
-                            if k.is_provably_unspendable:
-                                continue
                         if inp.taproot_key_sig:
+                            # already signed
+                            continue
+                        if self.active_miniscript.to_descriptor().key.is_provably_unspendable:
+                            # no way to sign with unspend
                             continue
                     else:
                         signed = {xonly for (xonly, lhs) in inp.taproot_script_sigs.keys()}

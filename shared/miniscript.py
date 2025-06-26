@@ -447,11 +447,10 @@ class MiniScriptWallet(BaseStorageWallet):
 
         for msc in cls.iter_wallets():
             kp = msc.kt_my_keypair(ri)
-            for k in msc.keys:
-                kk = Key.from_string(k)
-                if kk.origin.cc_fp == my_xfp:
+            for k in msc.to_descriptor().keys:
+                if k.origin.cc_fp == my_xfp:
                     continue
-                kk = kk.derive(KT_RXPUBKEY_DERIV).derive(ri)
+                kk = k.derive(KT_RXPUBKEY_DERIV).derive(ri)
                 his_pubkey = kk.node.pubkey()
                 # if implied session key decodes the checksum, it is right
                 ses_key, body = decode_step1(kp, his_pubkey, payload[4:])

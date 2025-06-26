@@ -2424,131 +2424,6 @@ def test_bitcoind_ms_address(change, M_N, addr_fmt, clear_ms, goto_home, need_ke
         assert bitcoind_addrs[idx] == address
 
 
-@pytest.fixture
-def bitcoind_multisig(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story, load_export, pick_menu_item, goto_home,
-                      cap_menu, microsd_path, use_regtest, press_select):
-    def doit(M, N, script_type, cc_account=0, funded=True):
-        use_regtest()
-        bitcoind_signers = [
-            bitcoind.create_wallet(wallet_name=f"bitcoind--signer{i}", disable_private_keys=False, blank=False,
-                                   passphrase=None, avoid_reuse=False, descriptors=True)
-            for i in range(N - 1)
-        ]
-        for signer in bitcoind_signers:
-            signer.keypoolrefill(10)
-        # watch only wallet where multisig descriptor will be imported
-        ms = bitcoind.create_wallet(
-            wallet_name=f"watch_only_{script_type}_{M}of{N}", disable_private_keys=True,
-            blank=True, passphrase=None, avoid_reuse=False, descriptors=True
-        )
-        goto_home()
-        pick_menu_item('Settings')
-        pick_menu_item('Multisig Wallets')
-        pick_menu_item('Export XPUB')
-        time.sleep(0.5)
-        title, story = cap_story()
-        assert "extended public keys (XPUB) you would need to join a multisig wallet" in story
-        press_select()
-        need_keypress(str(cc_account))  # account
-        press_select()
-        xpub_obj = load_export("sd", label="Multisig XPUB", is_json=True, sig_check=False)
-        template = xpub_obj[script_type +"_desc"]
-        # get keys from bitcoind signers
-        bitcoind_signers_xpubs = []
-        for signer in bitcoind_signers:
-            target_desc = ""
-            bitcoind_descriptors = signer.listdescriptors()["descriptors"]
-            for desc in bitcoind_descriptors:
-                if desc["desc"].startswith("pkh(") and desc["internal"] is False:
-                    target_desc = desc["desc"]
-            core_desc, checksum = target_desc.split("#")
-            # remove pkh(....)
-            core_key = core_desc[4:-1]
-            bitcoind_signers_xpubs.append(core_key)
-        desc = template.replace("M", str(M), 1).replace("...", ",".join(bitcoind_signers_xpubs))
-
-        import pdb;pdb.set_trace()
-        if script_type == 'p2wsh':
-            name = f"core{M}of{N}_native.txt"
-        elif script_type == "p2sh_p2wsh":
-            name = f"core{M}of{N}_wrapped.txt"
-        else:
-            name = f"core{M}of{N}_legacy.txt"
-        with open(microsd_path(name), "w") as f:
-            f.write(desc + "\n")
-        goto_home()
-        pick_menu_item('Settings')
-        pick_menu_item('Multisig Wallets')
-        pick_menu_item('Import from File')
-        time.sleep(0.3)
-        _, story = cap_story()
-        if "Press (1) to import multisig wallet file from SD Card" in story:
-            # in case Vdisk is enabled
-            need_keypress("1")
-        time.sleep(0.5)
-        pick_menu_item(name)
-        _, story = cap_story()
-        assert "Create new multisig wallet?" in story
-        assert name.split(".")[0] in story
-        assert f"{M} of {N}" in story
-        if M == N:
-            assert f"All {N} co-signers must approve spends" in story
-        else:
-            assert f"{M} signatures, from {N} possible" in story
-        if script_type == "p2wsh":
-            assert "P2WSH" in story
-        elif script_type == "p2sh":
-            assert "P2SH" in story
-        else:
-            assert "P2SH-P2WSH" in story
-        assert "Derivation:\n  Varies (2)" in story
-        press_select()  # approve multisig import
-        goto_home()
-        pick_menu_item('Settings')
-        pick_menu_item('Multisig Wallets')
-        menu = cap_menu()
-        pick_menu_item(menu[0])  # pick imported descriptor multisig wallet
-        pick_menu_item("Descriptors")
-        pick_menu_item("Bitcoin Core")
-        text = load_export("sd", label="Bitcoin Core multisig setup", is_json=False, sig_check=False)
-        text = text.replace("importdescriptors ", "").strip()
-        # remove junk
-        r1 = text.find("[")
-        r2 = text.find("]", -1, 0)
-        text = text[r1: r2]
-        core_desc_object = json.loads(text)
-        # import descriptors to watch only wallet
-        res = ms.importdescriptors(core_desc_object)
-        assert res[0]["success"]
-        assert res[1]["success"]
-
-        if funded:
-            if script_type == "p2wsh":
-                addr_type = "bech32"
-            elif script_type == "p2tr":
-                addr_type = "bech32m"
-            elif script_type == "p2sh":
-                addr_type = "legacy"
-            else:
-                addr_type = "p2sh-segwit"
-
-            addr = ms.getnewaddress("", addr_type)
-            if script_type == "p2wsh":
-                sw = "bcrt1q"
-            elif script_type == "p2tr":
-                sw = "bcrt1p"
-            else:
-                sw = "2"
-            assert addr.startswith(sw)
-            # get some coins and fund above multisig address
-            bitcoind.supply_wallet.sendtoaddress(addr, 49)
-            bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())  # mine above
-
-        return ms, bitcoind_signers
-
-    return doit
-
-
 @pytest.mark.bitcoind
 def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, microsd_wipe, goto_home, need_keypress,
                                               pick_menu_item, cap_story, load_export, microsd_path, cap_menu, try_sign,
@@ -2851,10 +2726,10 @@ def test_finalization(m_n, script, desc, use_regtest, clear_ms, bitcoind_multisi
 
 
 @pytest.mark.bitcoind
-@pytest.mark.parametrize("m_n", [(15,15)])
-@pytest.mark.parametrize("script", ["p2wsh"])
+@pytest.mark.parametrize("m_n", [(2,3), (3,5), (15,15)])
+@pytest.mark.parametrize("script", ["p2wsh", "p2sh-p2wsh", "p2sh"])
 @pytest.mark.parametrize("sighash", list(SIGHASH_MAP.keys()))
-@pytest.mark.parametrize('desc', ["sortedmulti"])
+@pytest.mark.parametrize('desc', ["multi", "sortedmulti"])
 def test_bitcoind_MofN_tutorial(m_n, script, clear_ms, goto_home, need_keypress, pick_menu_item,
                                 sighash, cap_menu, cap_story, microsd_path, use_regtest, bitcoind,
                                 microsd_wipe, settings_set, is_q1, try_sign, press_select,
@@ -2872,8 +2747,7 @@ def test_bitcoind_MofN_tutorial(m_n, script, clear_ms, goto_home, need_keypress,
     microsd_wipe()
 
     # actual bitcoind watch-only creation + COLDCARD enroll
-    bitcoind_watch_only, bitcoind_signers = bitcoind_multisig(M, N, script, ms_script=desc,
-                                                              keypool_size=30)
+    bitcoind_watch_only, bitcoind_signers = bitcoind_multisig(M, N, script, ms_script=desc, keypool_size=30)
 
     dest_addr = bitcoind_watch_only.getnewaddress("", addr_type)
     # create funded PSBT
@@ -3058,11 +2932,11 @@ def test_bitcoind_MofN_tutorial(m_n, script, clear_ms, goto_home, need_keypress,
     ("Wrong checksum", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M))#gs2fqgl7"),
     ("Invalid subderivation path - only 0/* or <0;1>/* allowed", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/1/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0/*))#sj7lxn0l"),
     ("All keys must be ranged", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/0,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0/*))#9h02aqg5"),
-    ("Key derivation too long", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0/*))#fy9mm8dt"),
+    ("Invalid subderivation path - only 0/* or <0;1>/* allowed", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0/*))#fy9mm8dt"),
     # ("Key origin info is required", "wsh(sortedmulti(2,tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M))#ypuy22nw"),
-    ("xpub xfp wrong 0F056943", "wsh(sortedmulti(2,[0f056943]tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M))#nhjvt4wd"),
+    ("wrong pubkey", "wsh(sortedmulti(2,[0f056943]tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M))#nhjvt4wd"),
     ("xpub depth", "wsh(sortedmulti(2,[0f056943/0h]tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M))"),
-    ("Key derivation too long", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0))#s487stua"),
+    ("Invalid subderivation path - only 0/* or <0;1>/* allowed", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0))#s487stua"),
     ("Cannot use hardened sub derivation path", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0'/*))#3w6hpha3"),
     ("M must be <= N", "wsh(sortedmulti(3,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0/*))#uueddtsy"),
 ])

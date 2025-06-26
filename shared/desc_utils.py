@@ -165,6 +165,10 @@ class KeyDerivationInfo:
     def __hash__(self):
         return hash(self.indexes)
 
+    @staticmethod
+    def not_hardened(x):
+        assert (b"'" not in x) and (b"h" not in x), "Cannot use hardened sub derivation path"
+
     @classmethod
     def parse(cls, s):
         err = "Malformed key derivation"
@@ -172,26 +176,31 @@ class KeyDerivationInfo:
         idxs = []
         while True:
             got, char = read_until(s, b"<,)/")
-
             if char == b"<":
                 assert multi_i is None, "too many multipaths"
                 ext_num, char = read_until(s, b";")
                 assert char, err
+                cls.not_hardened(ext_num)
                 int_num, char = read_until(s, b">")
                 assert char, err
+                cls.not_hardened(int_num)
 
+                assert int_num != ext_num  # cannot be the same
                 multi_i = len(idxs)
                 idxs.append((int(ext_num.decode()), int(int_num.decode())))
 
+            else:
+                # char in "/),"
+                if got == b"*":
+                    # every derivation has to end with wildcard (only ranged keys allowed)
+                    idxs.append(WILDCARD)
+                    break
+                elif got:
+                    cls.not_hardened(got)
+                    idxs.append(int(got.decode()))
 
-            elif got == b"*":
-                # every derivation has to end with wildcard (only ranged keys allowed)
-                idxs.append(WILDCARD)
-                break
-
-            elif char == b"/" and got:
-                assert (b"'" not in got) and (b"h" not in got), "Cannot use hardened sub derivation path"
-                idxs.append(int(got.decode()))
+            # comma and parenthesis not allowed in subderivation, marker of the end
+            if char in b",)": break
 
         assert idxs[-1] == WILDCARD, "All keys must be ranged"
         if idxs == [0, WILDCARD]:
