@@ -19,15 +19,6 @@ from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME, KEY
 from charcodes import KEY_CANCEL
 from utils import show_single_address, problem_file_line, truncate_address
 
-def censor_address(addr):
-    # We don't like to show the user full multisig addresses because we cannot be certain
-    # they could actually be signed. And yet, don't blank too many
-    # spots or else an attacker could grind out a suitable replacement.
-    # 3 chars in the middle hidden by default
-    # censoring can be disabled by msas setting
-    if settings.get("msas", 0):
-        return addr
-    return addr[0:12] + '___' + addr[12+3:]
 
 class KeypathMenu(MenuSystem):
     def __init__(self, path=None, nl=0):
