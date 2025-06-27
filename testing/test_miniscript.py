@@ -22,7 +22,10 @@ TREE = {
     7: '{{%s,{%s,%s}},{%s,{%s,{%s,%s}}}}',
     8: '{{{%s,%s},{%s,%s}},{{%s,%s},{%s,%s}}}',
     # more than MAX (4) for test purposes
-    9: '{{{%s,{%s,%s}},{%s,%s}},{{%s,%s},{%s,%s}}}'
+    9: '{{{%s,{%s,%s}},{%s,%s}},{{%s,%s},{%s,%s}}}',
+    10: '{{{{%s,%s},{%s,%s}},{%s,%s}},{{%s,%s},{%s,%s}}}',
+    11: '{{{{%s,%s},{%s,%s}},{%s,%s}},{{%s,%s},{%s,{%s,%s}}}}',
+    12: '{{{{%s,%s},{%s,%s}},{%s,%s}},{{%s,%s},{{%s,%s},{%s,%s}}}}',
 }
 
 
@@ -406,11 +409,61 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
 
 
 @pytest.fixture
+def create_core_wallet(goto_home, pick_menu_item, load_export, bitcoind):
+    def doit(name, addr_type, way="sd", funded=True):
+        try:
+            pick_menu_item(name)  # pick imported descriptor multisig wallet
+        except:
+            # probably not in Miniscript
+            goto_home()
+            pick_menu_item('Settings')
+            pick_menu_item('Miniscript')
+            pick_menu_item(name)
+
+        pick_menu_item("Descriptors")
+        pick_menu_item("Bitcoin Core")
+        text = load_export(way, label="Bitcoin Core miniscript", is_json=False, sig_check=False)
+        text = text.replace("importdescriptors ", "").strip()
+        # remove junk
+        r1 = text.find("[")
+        r2 = text.find("]", -1, 0)
+        text = text[r1: r2]
+        core_desc_object = json.loads(text)
+
+        # watch only wallet where miniscript descriptor will be imported
+        ms = bitcoind.create_wallet(
+            wallet_name=name, disable_private_keys=True,
+            blank=True, passphrase=None, avoid_reuse=False, descriptors=True
+        )
+
+        # import descriptors to watch only wallet
+        res = ms.importdescriptors(core_desc_object)
+        for obj in res:
+            assert obj["success"]
+
+        if funded:
+            addr = ms.getnewaddress("", addr_type)
+            if addr_type == "bech32":
+                sw = "bcrt1q"
+            elif addr_type == "bech32m":
+                sw = "bcrt1p"
+            else:
+                sw = "2"
+            assert addr.startswith(sw)
+            # get some coins and fund above multisig address
+            bitcoind.supply_wallet.sendtoaddress(addr, 49)
+            bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())  # mine above
+
+        return ms
+    return doit
+
+
+@pytest.fixture
 def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
                         pick_menu_item, goto_home, cap_menu, microsd_path,
                         use_regtest, get_cc_key, import_miniscript,
                         bitcoin_core_signer, import_duplicate, press_select,
-                        virtdisk_path, garbage_collector):
+                        virtdisk_path, garbage_collector, create_core_wallet):
     def doit(M, N, script_type, internal_key=None, cc_account=0, funded=True,
              tapscript_threshold=False, add_own_pk=False, same_account=False, way="sd"):
 
@@ -423,11 +476,6 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
             bitcoind_signers.append(s)
             bitcoind_signers_xpubs.append(core_key)
 
-        # watch only wallet where multisig descriptor will be imported
-        ms = bitcoind.create_wallet(
-            wallet_name=f"watch_only_{script_type}_{M}of{N}", disable_private_keys=True,
-            blank=True, passphrase=None, avoid_reuse=False, descriptors=True
-        )
         me_pth = f"m/48h/1h/{cc_account}h/3h"
         me = get_cc_key(me_pth)
         ik = internal_key or ranged_unspendable_internal_key()
@@ -499,56 +547,21 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
         assert name in story
         assert "Press (1) to see extended public keys" in story
         if script_type == "p2wsh":
+            af = "bech32"
             assert "P2WSH" in story
         elif script_type == "p2sh":
+            af = "legacy"
             assert "P2SH" in story
         elif script_type == "p2tr":
+            af = "bech32m"
             assert "P2TR" in story
         else:
+            af = "p2sh-segwit"
             assert "P2SH-P2WSH" in story
         # assert "Derivation:\n  Varies (2)" in story
         press_select()  # approve multisig import
         import_duplicate(fname, way=way, data=data)
-        goto_home()
-        pick_menu_item('Settings')
-        pick_menu_item('Miniscript')
-        menu = cap_menu()
-        pick_menu_item(menu[0])  # pick imported descriptor multisig wallet
-        pick_menu_item("Descriptors")
-        pick_menu_item("Bitcoin Core")
-        text = load_export(way, label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-        text = text.replace("importdescriptors ", "").strip()
-        # remove junk
-        r1 = text.find("[")
-        r2 = text.find("]", -1, 0)
-        text = text[r1: r2]
-        core_desc_object = json.loads(text)
-        # import descriptors to watch only wallet
-        res = ms.importdescriptors(core_desc_object)
-        for obj in res:
-            assert obj["success"]
-
-        if funded:
-            if script_type == "p2wsh":
-                addr_type = "bech32"
-            elif script_type == "p2tr":
-                addr_type = "bech32m"
-            elif script_type == "p2sh":
-                addr_type = "legacy"
-            else:
-                addr_type = "p2sh-segwit"
-
-            addr = ms.getnewaddress("", addr_type)
-            if script_type == "p2wsh":
-                sw = "bcrt1q"
-            elif script_type == "p2tr":
-                sw = "bcrt1p"
-            else:
-                sw = "2"
-            assert addr.startswith(sw)
-            # get some coins and fund above multisig address
-            bitcoind.supply_wallet.sendtoaddress(addr, 49)
-            bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())  # mine above
+        ms = create_core_wallet(name, af, way, funded)
 
         return ms, bitcoind_signers
 
@@ -569,12 +582,13 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
 
     "or_d(pk(@A),and_v(v:multi(2,@B,@C),locktime(N)))",
 ])
-def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_miniscript, goto_home,
-                                  pick_menu_item, cap_menu, cap_story, microsd_path, way,
-                                  use_regtest, bitcoind, microsd_wipe, load_export, dev,
+def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_miniscript,
+                                  pick_menu_item, cap_story, microsd_path, way, dev,
+                                  use_regtest, bitcoind, microsd_wipe, load_export,
                                   address_explorer_check, get_cc_key, import_miniscript,
                                   bitcoin_core_signer, import_duplicate, press_select,
-                                  virtdisk_path, skip_if_useless_way, garbage_collector):
+                                  virtdisk_path, skip_if_useless_way, garbage_collector,
+                                  create_core_wallet, goto_home):
     skip_if_useless_way(way)
     normal_cosign_core = False
     recovery_cosign_core = False
@@ -633,41 +647,18 @@ def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_min
         with open(fpath, "w") as f:
             f.write(desc)
 
-    wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
-                                passphrase=None, avoid_reuse=False, descriptors=True)
-
     _, story = import_miniscript(fname, way=way, data=data)
-    try:
-        assert "Create new miniscript wallet?" in story
-    except:
-        time.sleep(.2)
-        _, story = cap_story()
-        assert "Create new miniscript wallet?" in story
-    # do some checks on policy --> helper function to replace keys with letters
+    time.sleep(.2)
+    assert "Create new miniscript wallet?" in story
     press_select()
     import_duplicate(fname, way=way, data=data)
-    menu = cap_menu()
-    assert menu[0] == name
-    pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export(way, label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
-    addr = wo.getnewaddress("", addr_fmt)
-    addr_dest = wo.getnewaddress("", addr_fmt)  # self-spend
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    wo = create_core_wallet(name, addr_fmt, way, True)
+
     all_of_it = wo.getbalance()
     unspent = wo.listunspent()
     assert len(unspent) == 1
+    addr_dest = wo.getnewaddress("", addr_fmt)  # self-spend
     inp = {"txid": unspent[0]["txid"], "vout": unspent[0]["vout"]}
     if recovery and sequence:
         inp["sequence"] = sequence
@@ -745,7 +736,7 @@ def test_liana_miniscripts_complex(addr_fmt, minsc, bitcoind, use_regtest, clear
                                    load_export, goto_home, address_explorer_check, cap_menu,
                                    get_cc_key, import_miniscript, bitcoin_core_signer,
                                    import_duplicate, press_select, way, skip_if_useless_way,
-                                   garbage_collector):
+                                   garbage_collector, create_core_wallet):
     skip_if_useless_way(way)
     use_regtest()
     clear_miniscript()
@@ -803,33 +794,16 @@ def test_liana_miniscripts_complex(addr_fmt, minsc, bitcoind, use_regtest, clear
 
         garbage_collector.append(fpath)
 
-    wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
-                                  passphrase=None, avoid_reuse=False, descriptors=True)
     _, story = import_miniscript(fname, way=way, data=data)
+    time.sleep(.2)
     assert "Create new miniscript wallet?" in story
     # do some checks on policy --> helper function to replace keys with letters
     press_select()
     import_duplicate(fname, way=way, data=data)
-    menu = cap_menu()
-    assert menu[0] == name
-    pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export(way, label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
 
-    addr = wo.getnewaddress("", addr_fmt)
+    wo = create_core_wallet(name, addr_fmt, way, True)
+
     addr_dest = wo.getnewaddress("", addr_fmt)  # self-spend
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
     unspent = wo.listunspent()
     assert len(unspent) == 1
     inp = {"txid": unspent[0]["txid"], "vout": unspent[0]["vout"]}
@@ -1076,7 +1050,7 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
                       internal_key_spendable, dev, microsd_path, get_cc_key,
                       pick_menu_item, cap_story, goto_home, cap_menu, load_export,
                       import_miniscript, bitcoin_core_signer, import_duplicate,
-                      press_select, garbage_collector):
+                      press_select, garbage_collector, create_core_wallet):
     use_regtest()
     clear_miniscript()
     microsd_wipe()
@@ -1101,11 +1075,6 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
         random.shuffle(leafs)
         desc = f"tr({internal_key},{tmplt % (*leafs,)})"
 
-    ts = bitcoind.create_wallet(
-        wallet_name=f"watch_only_pk_ts", disable_private_keys=True,
-        blank=True, passphrase=None, avoid_reuse=False, descriptors=True
-    )
-
     fname = "ts_pk.txt"
     fpath = microsd_path(fname)
     with open(fpath, "w") as f:
@@ -1120,28 +1089,13 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
 
     press_select()
     import_duplicate(fname)
+
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Miniscript')
     menu = cap_menu()
-    pick_menu_item(menu[0])
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    # import descriptors to watch only wallet
-    res = ts.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
 
-    addr = ts.getnewaddress("", "bech32m")
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    ts = create_core_wallet(menu[0], "bech32m", "sd", True)
 
     dest_addr = ts.getnewaddress("", "bech32m")  # selfspend
     psbt = ts.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 2})["psbt"]
@@ -1220,14 +1174,15 @@ def test_tapscript_import_export(clear_miniscript, pick_menu_item, cap_story,
 def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe, bitcoind, dev,
                                     goto_home, pick_menu_item, microsd_path, import_miniscript,
                                     cap_story, load_export, get_cc_key, garbage_collector,
-                                    bitcoin_core_signer, import_duplicate, press_select):
+                                    bitcoin_core_signer, import_duplicate, press_select,
+                                    create_core_wallet):
     # works in core - but some discussions are ongoing
     # https://github.com/bitcoin/bitcoin/issues/27104
     # CC also allows this for now... (experimental branch)
     use_regtest()
     clear_miniscript()
     microsd_wipe()
-    ss, core_key = bitcoin_core_signer(f"dup_leafs")
+    ss, core_key = bitcoin_core_signer(f"s1_dup_leafs")
 
     cc_key = get_cc_key("86h/0h/100h")
     cc_leaf = f"pk({cc_key})"
@@ -1250,32 +1205,8 @@ def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe,
 
     press_select()
     import_duplicate(fname)
-    goto_home()
-    pick_menu_item('Settings')
-    pick_menu_item('Miniscript')
-    pick_menu_item(fname.split(".")[0])
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    # wo wallet
-    ts = bitcoind.create_wallet(
-        wallet_name=f"dup_leafs_wo", disable_private_keys=True,
-        blank=True, passphrase=None, avoid_reuse=False, descriptors=True
-    )
-    # import descriptors to watch only wallet
-    res = ts.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
 
-    addr = ts.getnewaddress("", "bech32m")
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    ts = create_core_wallet(fname.split(".")[0], "bech32m", "sd", True)
 
     dest_addr = ts.getnewaddress("", "bech32m")  # selfspend
     psbt = ts.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 2})["psbt"]
@@ -1322,7 +1253,7 @@ def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe,
 def test_same_key_account_based_minisc(goto_home, pick_menu_item, cap_story,
                                        clear_miniscript, microsd_path, load_export, bitcoind,
                                        import_miniscript, use_regtest, import_duplicate,
-                                       press_select, garbage_collector):
+                                       press_select, garbage_collector, create_core_wallet):
     clear_miniscript()
     use_regtest()
 
@@ -1346,32 +1277,8 @@ def test_same_key_account_based_minisc(goto_home, pick_menu_item, cap_story,
 
     press_select()
     import_duplicate(fname)
-    goto_home()
-    pick_menu_item('Settings')
-    pick_menu_item('Miniscript')
-    pick_menu_item(fname.split(".")[0])
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    # wo wallet
-    wo = bitcoind.create_wallet(
-        wallet_name=f"multi-account", disable_private_keys=True,
-        blank=True, passphrase=None, avoid_reuse=False, descriptors=True
-    )
-    # import descriptors to watch only wallet
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
 
-    addr = wo.getnewaddress("", "bech32")
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    wo = create_core_wallet(fname.split(".")[0], "bech32", "sd", True)
 
     dest_addr = wo.getnewaddress("", "bech32")  # selfspend
     psbt = wo.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 2})["psbt"]
@@ -1463,7 +1370,7 @@ CHANGE_BASED_DESCS = [
 def test_same_key_change_based_minisc(goto_home, pick_menu_item, cap_story,
                                       clear_miniscript, microsd_path, load_export, bitcoind,
                                       import_miniscript, address_explorer_check, use_regtest,
-                                      desc, press_select, garbage_collector):
+                                      desc, press_select, garbage_collector, create_core_wallet):
     clear_miniscript()
     use_regtest()
     if desc.startswith("tr("):
@@ -1482,34 +1389,9 @@ def test_same_key_change_based_minisc(goto_home, pick_menu_item, cap_story,
     assert "Create new miniscript wallet?" in story
     assert fname.split(".")[0] in story
     assert "Press (1) to see extended public keys" in story
-
     press_select()
-    goto_home()
-    pick_menu_item('Settings')
-    pick_menu_item('Miniscript')
-    pick_menu_item(fname.split(".")[0])
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    # wo wallet
-    wo = bitcoind.create_wallet(
-        wallet_name=f"minsc-change", disable_private_keys=True,
-        blank=True, passphrase=None, avoid_reuse=False, descriptors=True
-    )
-    # import descriptors to watch only wallet
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
 
-    addr = wo.getnewaddress("", af)
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    wo = create_core_wallet(name, af, "sd", True)
 
     dest_addr = wo.getnewaddress("", af)  # selfspend
     psbt = wo.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 2})["psbt"]
@@ -1645,7 +1527,6 @@ def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
 @pytest.mark.parametrize("same_acct", [True, False])
 @pytest.mark.parametrize("recovery", [True, False])
 @pytest.mark.parametrize("leaf2_mine", [True, False])
-# @pytest.mark.parametrize("internal_type", ["unspend(", "xpub"])
 @pytest.mark.parametrize("minisc", [
     "or_d(pk(@A),and_v(v:pkh(@B),locktime(N)))",
 
@@ -1660,7 +1541,7 @@ def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home
                        use_regtest, bitcoind, microsd_wipe, load_export, dev,
                        address_explorer_check, get_cc_key, import_miniscript,
                        bitcoin_core_signer, same_acct, import_duplicate, press_select,
-                       garbage_collector, start_sign, end_sign):
+                       garbage_collector, start_sign, end_sign, create_core_wallet):
     lt_type = "older"
     # needs bitcoind 26.0
     normal_cosign_core = False
@@ -1726,33 +1607,14 @@ def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home
         f.write(desc)
 
     garbage_collector.append(fpath)
-
-    wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
-                                passphrase=None, avoid_reuse=False, descriptors=True)
-
     _, story = import_miniscript(fname)
     assert "Create new miniscript wallet?" in story
     # do some checks on policy --> helper function to replace keys with letters
     press_select()
     import_duplicate(fname)
-    menu = cap_menu()
-    assert menu[0] == name
-    pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
-    addr = wo.getnewaddress("", "bech32m")
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    wo = create_core_wallet(name, "bech32m", "sd", True)
+
     all_of_it = wo.getbalance()
     unspent = wo.listunspent()
     assert len(unspent) == 1
@@ -1914,7 +1776,7 @@ def test_timelock_mixin():
 def test_d_wrapper(addr_fmt, bitcoind, get_cc_key, goto_home, pick_menu_item, cap_story, cap_menu,
                    load_export, microsd_path, use_regtest, clear_miniscript, cc_first,
                    address_explorer_check, import_miniscript, bitcoin_core_signer, press_select,
-                   garbage_collector):
+                   garbage_collector, create_core_wallet):
 
     # check D wrapper u property for segwit v0 and v1
     # https://github.com/bitcoin/bitcoin/pull/24906/files
@@ -1946,9 +1808,6 @@ def test_d_wrapper(addr_fmt, bitcoind, get_cc_key, goto_home, pick_menu_item, ca
         f.write(desc)
     garbage_collector.append(fpath)
 
-    wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
-                                  passphrase=None, avoid_reuse=False, descriptors=True)
-
     clear_miniscript()
     use_regtest()
     _, story = import_miniscript(fname)
@@ -1960,26 +1819,10 @@ def test_d_wrapper(addr_fmt, bitcoind, get_cc_key, goto_home, pick_menu_item, ca
     assert "Create new miniscript wallet?" in story
     # do some checks on policy --> helper function to replace keys with letters
     press_select()
-    menu = cap_menu()
-    assert menu[0] == name
-    pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
 
-    addr = wo.getnewaddress("", addr_fmt)  # self-spend
+    wo = create_core_wallet(name, addr_fmt, "sd", True)
+
     addr_dest = wo.getnewaddress("", addr_fmt)  # self-spend
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
     all_of_it = wo.getbalance()
     unspent = wo.listunspent()
     assert len(unspent) == 1
@@ -2528,7 +2371,8 @@ aA+bduIqWCMpBW2K5F0FuxfY4ofjfGWLKDMAAAgAEAAIAAAACAAgAAgAEAAAADAAAAAA=="""
 def test_expanding_multisig(tmplt, clear_miniscript, goto_home, pick_menu_item, garbage_collector,
                             cap_menu, cap_story, microsd_path, use_regtest, bitcoind, microsd_wipe,
                             load_export, dev, address_explorer_check, get_cc_key, import_miniscript,
-                            bitcoin_core_signer, import_duplicate, press_select, start_sign, end_sign):
+                            bitcoin_core_signer, import_duplicate, press_select, start_sign, end_sign,
+                            create_core_wallet):
     use_regtest()
     clear_miniscript()
     sequence = 10
@@ -2566,33 +2410,12 @@ def test_expanding_multisig(tmplt, clear_miniscript, goto_home, pick_menu_item, 
 
     garbage_collector.append(fpath)
 
-    wo = bitcoind.create_wallet(wallet_name=wname, disable_private_keys=True, blank=True,
-                                  passphrase=None, avoid_reuse=False, descriptors=True)
-
     _, story = import_miniscript(fname)
     assert "Create new miniscript wallet?" in story
     # do some checks on policy --> helper function to replace keys with letters
     press_select()
-    menu = cap_menu()
-    assert menu[0] == wname
-    pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
 
-    # fund wallet
-    addr = wo.getnewaddress("", af)
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    wo = create_core_wallet(wname, af, "sd", True)
 
     # use non-recovery path to split into 5 utxos + 1 going back to supply (not a conso)
     unspent = wo.listunspent()
@@ -2727,7 +2550,8 @@ def test_expanding_multisig(tmplt, clear_miniscript, goto_home, pick_menu_item, 
 @pytest.mark.parametrize("blinded", [True, False])
 def test_big_boy(use_regtest, clear_miniscript, bitcoin_core_signer, get_cc_key, microsd_path,
                  garbage_collector, pick_menu_item, bitcoind, import_miniscript, press_select,
-                 cap_story, cap_menu, load_export, start_sign, end_sign, blinded):
+                 cap_story, cap_menu, load_export, start_sign, end_sign, blinded,
+                 create_core_wallet):
     # keys (@0,@4,@5) are more important (primary) than keys (@1,@2,@3) (secondary)
     # currently requires to tweak MAX_TR_SIGNERS = 33
     # with blinded=True, all co-signer keys are blinded (have no key origin info)
@@ -2770,33 +2594,12 @@ def test_big_boy(use_regtest, clear_miniscript, bitcoin_core_signer, get_cc_key,
 
     garbage_collector.append(fpath)
 
-    wo = bitcoind.create_wallet(wallet_name=wname, disable_private_keys=True, blank=True,
-                                passphrase=None, avoid_reuse=False, descriptors=True)
-
     _, story = import_miniscript(fname)
     assert "Create new miniscript wallet?" in story
     # do some checks on policy --> helper function to replace keys with letters
     press_select()
-    menu = cap_menu()
-    assert menu[0] == wname
-    pick_menu_item(menu[0])  # pick imported descriptor multisig wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
 
-    # fund wallet
-    addr = wo.getnewaddress("", af)
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    wo = create_core_wallet(wname, af, "sd", True)
 
     unspent = wo.listunspent()
     assert len(unspent) == 1
@@ -2841,7 +2644,7 @@ def test_big_boy(use_regtest, clear_miniscript, bitcoin_core_signer, get_cc_key,
 def test_single_key_miniscript(af, settings_set, clear_miniscript, goto_home, get_cc_key,
                                garbage_collector, microsd_path, bitcoind, import_miniscript,
                                press_select, cap_menu, pick_menu_item, load_export, cap_story,
-                               start_sign, end_sign):
+                               start_sign, end_sign, create_core_wallet):
     sequence = 10
     goto_home()
     clear_miniscript()
@@ -2864,33 +2667,12 @@ def test_single_key_miniscript(af, settings_set, clear_miniscript, goto_home, ge
 
     garbage_collector.append(fpath)
 
-    wo = bitcoind.create_wallet(wallet_name=wname, disable_private_keys=True, blank=True,
-                                passphrase=None, avoid_reuse=False, descriptors=True)
-
     _, story = import_miniscript(fname)
     assert "Create new miniscript wallet?" in story
     # do some checks on policy --> helper function to replace keys with letters
     press_select()
-    menu = cap_menu()
-    assert menu[0] == wname
-    pick_menu_item(menu[0])  # pick imported descriptor multisig wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
 
-    # fund wallet
-    addr = wo.getnewaddress("", af)
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    wo = create_core_wallet(wname, af, "sd", True)
 
     unspent = wo.listunspent()
     assert len(unspent) == 1
@@ -2981,7 +2763,7 @@ def test_single_key_miniscript(af, settings_set, clear_miniscript, goto_home, ge
 def test_originless_keys(tmplt, offer_minsc_import, get_cc_key, bitcoin_core_signer, bitcoind,
                          pick_menu_item, load_export, goto_home, cap_menu, clear_miniscript,
                          use_regtest, press_select, start_sign, end_sign, cap_story, cc_sign,
-                         has_orig, address_explorer_check):
+                         has_orig, address_explorer_check, create_core_wallet):
     # can be both:
     #   a.) just ranged xpub without origin info -> xpub1/<0;1>/*
     #   b.) ranged xpub with its fp -> [xpub1_fp]xpub1/<0;1>/*
@@ -3006,32 +2788,7 @@ def test_originless_keys(tmplt, offer_minsc_import, get_cc_key, bitcoin_core_sig
     offer_minsc_import(json.dumps(to_import))
     press_select()
 
-    wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
-                                passphrase=None, avoid_reuse=False, descriptors=True)
-
-    goto_home()
-    pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
-    menu = cap_menu()
-    assert menu[0] == name
-    pick_menu_item(menu[0])  # pick imported descriptor miniscript wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
-
-    # fund wallet
-    addr = wo.getnewaddress("", af)
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    wo = create_core_wallet(name, af, "sd", True)
 
     unspent = wo.listunspent()
     assert len(unspent) == 1
@@ -3105,3 +2862,45 @@ def test_static_internal_key(internal_key, clear_miniscript, microsd_path, pick_
     title, story = import_miniscript(fname)
     assert "Failed to import" in story
     assert "only extended keys allowed" in story
+
+
+@pytest.mark.bitcoind
+def test_csa_tapscript(clear_miniscript, bitcoin_core_signer, get_cc_key,
+                       use_regtest, address_explorer_check, bitcoind,
+                       offer_minsc_import, create_core_wallet, press_select):
+    use_regtest()
+    clear_miniscript()
+    M, N = 11, 12
+
+    bitcoind_signers = []
+    bitcoind_signers_xpubs = []
+    for i in range(N - 1):
+        s, core_key = bitcoin_core_signer(f"bitcoind--signer{i}")
+        s.keypoolrefill(10)
+        bitcoind_signers.append(s)
+        bitcoind_signers_xpubs.append(core_key)
+
+    me = get_cc_key(f"m/48h/1h/0h/3h")
+    ik = ranged_unspendable_internal_key()
+
+    signers_xp = [me] + bitcoind_signers_xpubs
+    assert len(signers_xp) == N
+    desc = f"tr({ik},%s)"
+
+    scripts = []
+    for c in itertools.combinations(signers_xp, M):
+        tmplt = f"multi_a({M},{','.join(c)})"
+        scripts.append(tmplt)
+
+    assert len(scripts) == 12
+    temp = TREE[len(scripts)]
+    temp = temp % tuple(scripts)
+
+    desc = desc % temp
+
+    title, story = offer_minsc_import(desc)
+    name = story.split("\n")[3].strip()
+    assert "Create new miniscript wallet?" in story
+    press_select()
+    ms_wo = create_core_wallet(name, "bech32m", "sd", False)
+    address_explorer_check("sd", "bech32m", ms_wo, "minisc")

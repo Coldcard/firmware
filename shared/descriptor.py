@@ -8,7 +8,7 @@ from collections import OrderedDict
 from binascii import hexlify as b2a_hex
 from utils import xfp2str
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
-from public_constants import AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, MAX_SIGNERS, MAX_TR_SIGNERS
+from public_constants import AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, MAX_TR_SIGNERS
 from desc_utils import parse_desc_str, append_checksum, descriptor_checksum, Key
 from miniscript import Miniscript
 from precomp_tag_hash import TAP_BRANCH_H
@@ -17,7 +17,6 @@ from precomp_tag_hash import TAP_BRANCH_H
 class Tapscript:
     def __init__(self, tree):
         self.tree = tree   # miniscript or (tapscript, tapscript)
-        self._keys = None  # de-duped cached keys
         self._merkle_root = None
 
     def iter_leaves(self):
@@ -28,44 +27,21 @@ class Tapscript:
                 yield from ts.iter_leaves()
 
     @property
-    def keys(self):
-        if self._keys:
-            return self._keys
-
-        keys = set()
-        for lv in self.iter_leaves():
-            for k in lv.keys:
-                keys.add(k)
-
-        self._keys = list(keys)  # cache for later
-        return self._keys
-
-    @property
     def merkle_root(self):
         if not self._merkle_root:
             _, mr = self.process_tree()
             self._merkle_root = mr
         return self._merkle_root
 
-    def derive(self, idx, change=False):
-        derived_keys = OrderedDict()
-        for k in self.keys:
-            dk = k.derive(idx, change=change)
-            dk.taproot=True
-            derived_keys[k] = dk
-
-        return type(self)(self._derive(self.tree, idx, derived_keys, change))
-
-    @staticmethod
-    def _derive(tree, idx, key_map, change=False):
-        if isinstance(tree, Miniscript):
-            tree = tree.derive(idx, key_map, change=change)
+    def derive(self, idx, key_map, change=False):
+        if isinstance(self.tree, Miniscript):
+            tree = self.tree.derive(idx, key_map, change=change)
         else:
-            l, r = tree
-            tree = [Tapscript(l._derive(l.tree, idx, key_map, change=change)),
-                    Tapscript(r._derive(r.tree, idx, key_map, change=change))]
+            l, r = self.tree
+            tree = [l.derive(idx, key_map, change=change),
+                    r.derive(idx, key_map, change=change)]
 
-        return tree
+        return type(self)(tree)
 
     def process_tree(self):
         if isinstance(self.tree, Miniscript):
@@ -123,7 +99,7 @@ class Tapscript:
 
 
 class Descriptor:
-    def __init__(self, key=None, miniscript=None, tapscript=None, addr_fmt=None):
+    def __init__(self, key=None, miniscript=None, tapscript=None, addr_fmt=None, keys=None):
         if addr_fmt in [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH]:
             assert miniscript
             assert not key
@@ -136,6 +112,8 @@ class Descriptor:
         self.miniscript = miniscript
         self.tapscript = tapscript
         self.addr_fmt = addr_fmt
+        # cached keys
+        self._keys = keys
 
     def validate(self):
         # should only be run once while importing wallet
@@ -172,7 +150,7 @@ class Descriptor:
 
         assert c <= max_signers, "max signers"
 
-        assert has_mine != 0, 'My key %s missing in descriptor.' % xfp2str(my_xfp).upper()
+        assert has_mine > 0, 'My key %s missing in descriptor.' % xfp2str(my_xfp).upper()
 
     def bip388_wallet_policy(self):
         keys_info = OrderedDict()
@@ -235,29 +213,53 @@ class Descriptor:
 
     @property
     def keys(self):
+        if self._keys:
+            return self._keys
+
         if self.tapscript:
             # internal is always first
-            # otherwise order of keys is not preserved after set operations
-            return [self.key] + self.tapscript.keys
+            # otherwise order of keys is not preserved (after set ops)
+            keys = set()
+            for lv in self.tapscript.iter_leaves():
+                for k in lv.keys:
+                    keys.add(k)
+
+            self._keys = [self.key] + list(keys)
 
         elif self.miniscript:
-            return self.miniscript.keys
+            self._keys = self.miniscript.keys
 
-        # single-sig
-        return [self.key]
+        else:
+            # single-sig
+            self._keys = [self.key]
+
+        return self._keys
 
     def derive(self, idx=None, change=False):
+        # derive keys first
+        derived_keys = OrderedDict()
+        for i, k in enumerate(self.keys):
+            if not i and self.is_taproot:
+                # internal key is always at index 0 in self.keys
+                # ik is derived few lines later
+                continue
+            dk = k.derive(idx, change=change)
+            dk.taproot=self.is_taproot
+            derived_keys[k] = dk
+
         if self.is_taproot:
             return type(self)(
                 self.key.derive(idx, change=change),
-                tapscript=self.tapscript.derive(idx, change=change),
+                tapscript=self.tapscript.derive(idx, derived_keys, change=change),
                 addr_fmt=self.addr_fmt,
+                keys=list(derived_keys.values()),
             )
         if self.miniscript:
             return type(self)(
                 None,
-                self.miniscript.derive(idx, change=change),
+                self.miniscript.derive(idx, derived_keys, change=change),
                 addr_fmt=self.addr_fmt,
+                keys=list(derived_keys.values())
             )
 
         # single-sig
