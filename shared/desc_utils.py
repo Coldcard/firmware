@@ -396,9 +396,8 @@ class Key:
     def key_bytes(self):
         kb = self.node.pubkey()
         if self.taproot:
-            if len(kb) == 33:
-                kb = kb[1:]
-            assert len(kb) == 32
+            # xonly
+            kb = kb[1:]
         return kb
 
     def extended_public_key(self):

@@ -662,9 +662,8 @@ class KeyHash(Key):
         return super().parse_key(k, *args, **kwargs)
 
     def serialize(self, *args, **kwargs):
-        if self.taproot:
-            return ngu.hash.hash160(self.node.pubkey()[1:33])
-        return ngu.hash.hash160(self.node.pubkey())
+        start = 1 if self.taproot else 0
+        return ngu.hash.hash160(self.node.pubkey()[start:33])
 
     def __len__(self):
         return 21 # <20:pkh>
@@ -1354,8 +1353,14 @@ class Multi(Miniscript):
     N_MAX = 20
 
     def inner_compile(self):
+        # scr = [arg.compile() for arg in self.args[1:]]
+        # optimization - it is all keys with known length (xonly keys not allowed here)
+        scr = [b'\x21' + arg.key_bytes() for arg in self.args[1:]]
+        if self.NAME == "sortedmulti":
+            scr.sort()
         return (
-            b"".join([arg.compile() for arg in self.args])
+            self.args[0].compile()
+            + b"".join(scr)
             + Number(len(self.args) - 1).compile()
             + b"\xae"
         )
@@ -1381,13 +1386,6 @@ class Sortedmulti(Multi):
     # <k> <key1> ... <keyn> <n> CHECKMULTISIG
     NAME = "sortedmulti"
 
-    def inner_compile(self):
-        return (
-            self.args[0].compile()
-            + b"".join(sorted([arg.compile() for arg in self.args[1:]]))
-            + Number(len(self.args) - 1).compile()
-            + b"\xae"
-        )
 
 class Multi_a(Multi):
     # <key1> CHECKSIG <key> CHECKSIGADD ... <keyn> CHECKSIGADD EQUALVERIFY
@@ -1398,12 +1396,19 @@ class Multi_a(Multi):
     def inner_compile(self):
         from opcodes import OP_CHECKSIGADD, OP_NUMEQUAL, OP_CHECKSIG
         script = b""
-        for i, key in enumerate(self.args[1:]):
-            script += key.compile()
+        # scr = [arg.compile() for arg in self.args[1:]]
+        # optimization - it is all keys with known length (only xonly keys allowed here)
+        scr = [b"\x20" + arg.key_bytes() for arg in self.args[1:]]
+        if self.NAME == "sortedmulti_a":
+            scr.sort()
+
+        for i, key in enumerate(scr):
+            script += key
             if i == 0:
                 script += bytes([OP_CHECKSIG])
             else:
                 script += bytes([OP_CHECKSIGADD])
+
         script += self.args[0].compile()  # M (threshold)
         script += bytes([OP_NUMEQUAL])
         return script
@@ -1416,19 +1421,6 @@ class Multi_a(Multi):
 class Sortedmulti_a(Multi_a):
     # <key1> CHECKSIG <key> CHECKSIGADD ... <keyn> CHECKSIGADD EQUALVERIFY
     NAME = "sortedmulti_a"
-
-    def inner_compile(self):
-        from opcodes import OP_CHECKSIGADD, OP_NUMEQUAL, OP_CHECKSIG
-        script = b""
-        for i, key in enumerate(sorted([arg.compile() for arg in self.args[1:]])):
-            script += key
-            if i == 0:
-                script += bytes([OP_CHECKSIG])
-            else:
-                script += bytes([OP_CHECKSIGADD])
-        script += self.args[0].compile()  # M (threshold)
-        script += bytes([OP_NUMEQUAL])
-        return script
 
 
 class Pk(OneArg):

@@ -236,20 +236,22 @@ class Descriptor:
         return self._keys
 
     def derive(self, idx=None, change=False):
-        # derive keys first
-        derived_keys = OrderedDict()
-        for i, k in enumerate(self.keys):
-            if not i and self.is_taproot:
-                # internal key is always at index 0 in self.keys
-                # ik is derived few lines later
-                continue
-            dk = k.derive(idx, change=change)
-            dk.taproot=self.is_taproot
-            derived_keys[k] = dk
-
         if self.is_taproot:
+            # derive keys first
+            # duplicate keys can be may be found in different leaves
+            # use map to derive each key just once
+            derived_keys = OrderedDict()
+            ikd = None
+            for i, k in enumerate(self.keys):
+                dk = k.derive(idx, change=change)
+                dk.taproot = self.is_taproot
+                derived_keys[k] = dk
+                if not i:
+                    # internal key is always at index 0 in self.keys
+                    ikd = dk
+
             return type(self)(
-                self.key.derive(idx, change=change),
+                ikd,
                 tapscript=self.tapscript.derive(idx, derived_keys, change=change),
                 addr_fmt=self.addr_fmt,
                 keys=list(derived_keys.values()),
@@ -257,9 +259,8 @@ class Descriptor:
         if self.miniscript:
             return type(self)(
                 None,
-                self.miniscript.derive(idx, derived_keys, change=change),
+                self.miniscript.derive(idx, change=change),
                 addr_fmt=self.addr_fmt,
-                keys=list(derived_keys.values())
             )
 
         # single-sig
