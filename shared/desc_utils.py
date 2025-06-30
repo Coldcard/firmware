@@ -169,6 +169,9 @@ class KeyDerivationInfo:
     def not_hardened(x):
         assert (b"'" not in x) and (b"h" not in x), "Cannot use hardened sub derivation path"
 
+    def get_ext_int(self):
+        return self.indexes[self.multi_path_index]
+
     @classmethod
     def parse(cls, s):
         err = "Malformed key derivation"
@@ -183,6 +186,7 @@ class KeyDerivationInfo:
                 cls.not_hardened(ext_num)
                 int_num, char = read_until(s, b">")
                 assert char, err
+                assert b";" not in int_num, "Solved cardinality > 2"
                 cls.not_hardened(int_num)
 
                 assert int_num != ext_num  # cannot be the same
@@ -241,12 +245,11 @@ class Key:
         self.chain_type = chain_type
 
     def __eq__(self, other):
-        return self.origin == other.origin \
-                and self.derivation.indexes == other.derivation.indexes
+        return hash(self) == hash(other)
 
     def __hash__(self):
         # return hash(self.to_string())
-        return hash(self.origin) + hash(self.derivation)
+        return hash(self.node.pubkey()) + hash(self.derivation)
 
     def __len__(self):
         return 34 - int(self.taproot) # <33:sec> or <32:xonly>
@@ -422,4 +425,29 @@ def bip388_wallet_policy_to_descriptor(desc_tmplt, keys_info):
         k_str = keys_info[i]
         ph = "@%d" % i
         desc_tmplt = desc_tmplt.replace(ph, k_str)
-    return desc_tmplt
+    return desc_tmplt.replace("/**", "/<0;1>/*")
+
+
+def bip388_validate_policy(desc_tmplt, keys_info):
+    from uio import BytesIO
+
+    s = BytesIO(desc_tmplt)
+    r = []
+    while True:
+        got, char = read_until(s, b"@")
+        if not char:
+            # no more - done
+            break
+
+        # key derivation info required for policy
+        got, char = read_until(s, b"/")
+        assert char, "key derivation missing"
+        num = int(got.decode())
+        if num not in r:
+            r.append(num)
+
+        assert s.read(1) in b"<*", "need multipath"
+
+
+    assert len(r) == len(keys_info), "Invalid policy"
+    assert r == list(range(len(r))), "Out of order"

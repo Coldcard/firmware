@@ -6,7 +6,7 @@ import ngu, ujson, uio, chains, ure, version, stash
 from binascii import unhexlify as a2b_hex
 from binascii import hexlify as b2a_hex
 from serializations import ser_compact_size, ser_string
-from desc_utils import Key, read_until, bip388_wallet_policy_to_descriptor, append_checksum
+from desc_utils import Key, read_until, bip388_wallet_policy_to_descriptor, append_checksum, bip388_validate_policy
 from public_constants import MAX_TR_SIGNERS, AF_P2TR
 from wallet import BaseStorageWallet, MAX_BIP32_IDX
 from menu import MenuSystem, MenuItem
@@ -23,7 +23,7 @@ class MiniScriptWallet(BaseStorageWallet):
     key_name = "miniscript"
 
     def __init__(self, name, desc_tmplt=None, keys_info=None, desc=None,
-                 af=None, ik_u=None, chain=None):
+                 af=None, ik_u=None):
 
         assert (desc_tmplt and keys_info) or desc
 
@@ -51,7 +51,7 @@ class MiniScriptWallet(BaseStorageWallet):
         rv.storage_idx = idx
         return rv
 
-    def to_descriptor(self):
+    def to_descriptor(self, validate=False):
         if self.desc is None:
             # actual descriptor is not loaded, but was asked for
             # fill policy - aka storage format - to actual descriptor
@@ -66,7 +66,7 @@ class MiniScriptWallet(BaseStorageWallet):
                 desc_str = bip388_wallet_policy_to_descriptor(self.desc_tmplt, self.keys_info)
                 print("loading... filled policy:\n", desc_str)
                 # no need to validate already saved descriptor - was validated upon enroll
-                self.desc = Descriptor.from_string(desc_str, validate=False)
+                self.desc = Descriptor.from_string(desc_str, validate=validate)
                 # cache len always 1
                 glob.DESC_CACHE = {}
                 glob.DESC_CACHE[self.name] = self.desc
@@ -191,23 +191,37 @@ class MiniScriptWallet(BaseStorageWallet):
         await ux_show_story(msg)
 
     @classmethod
-    def from_file(cls, config, name=None):
+    def from_bip388_wallet_policy(cls, name, desc_template, keys_info):
+        bip388_validate_policy(desc_template, keys_info)
+        msc = cls(name, desc_template, keys_info)
+        msc.to_descriptor(validate=True)
+        return msc
+
+    @classmethod
+    def from_file(cls, config, name=None, bip388=False):
         from descriptor import Descriptor
 
-        if name is None:
-            desc_obj, cs = Descriptor.from_string(config.strip(), checksum=True)
-            name = cs
+        if bip388:
+            # config is JSON wallet policy
+            wal = cls.from_bip388_wallet_policy(config["name"], config["desc_template"],
+                                                config["keys_info"])
         else:
-            name = to_ascii_printable(name)
-            desc_obj = Descriptor.from_string(config.strip())
+            if name is None:
+                desc_obj, cs = Descriptor.from_string(config.strip(), checksum=True)
+                name = cs
+            else:
+                name = to_ascii_printable(name)
+                desc_obj = Descriptor.from_string(config.strip())
 
-        wal = cls(name, desc=desc_obj)
+            wal = cls(name, desc=desc_obj)
 
-        # BIP388 wasn't generated yet - generating from descriptor upon import/enroll
-        wal.desc_tmplt, wal.keys_info = desc_obj.bip388_wallet_policy()
+            # BIP388 wasn't generated yet - generating from descriptor upon import/enroll
+            wal.desc_tmplt, wal.keys_info = desc_obj.bip388_wallet_policy()
 
-        wal.ik_u = desc_obj.key and desc_obj.key.is_provably_unspendable
-        wal.addr_fmt = desc_obj.addr_fmt
+            bip388_validate_policy(wal.desc_tmplt, wal.keys_info)
+
+        wal.ik_u = wal.desc.key and wal.desc.key.is_provably_unspendable
+        wal.addr_fmt = wal.desc.addr_fmt
         return wal
 
     def find_duplicates(self):
@@ -337,7 +351,7 @@ class MiniScriptWallet(BaseStorageWallet):
             name = "BIP-388 Wallet Policy"
             fname_pattern = 'b388-%s.json' % self.name
             res = ujson.dumps({"name": self.name,
-                               "desc_tmplt": self.desc_tmplt.replace("/<0;1>/*", "/**"),
+                               "desc_template": self.desc_tmplt.replace("/<0;1>/*", "/**"),
                                "keys_info": self.keys_info})
         else:
             name = "Miniscript"

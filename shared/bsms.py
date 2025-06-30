@@ -1047,7 +1047,7 @@ async def bsms_signer_round2(menu, label, item):
     nodes = []
     progress_counter = 0.2  # last displayed progress
     # (desired value after loop - last displayed progress) / N
-    progress_chunk = (0.5 - progress_counter) / len(desc_obj.miniscript.keys)
+    progress_chunk = (0.5 - progress_counter) / len(desc_obj.keys)
     for key in desc_obj.keys:
         if key.origin.cc_fp == my_xfp:
             my_keys.append(key)

@@ -1451,7 +1451,8 @@ class NewMiniscriptEnrollRequest(UserAuthorizedAction):
                 self.pop_menu()
 
 
-def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_index=None, miniscript=False):
+def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_index=None,
+                      miniscript=False):
     # Offer to import (enroll) a new multisig/miniscript wallet. Allow reject by user.
     from glob import dis
     from multisig import MultisigWallet
@@ -1461,6 +1462,7 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_
     dis.fullscreen('Wait...')
     dis.busy_bar(True)
 
+    bip388 = False
     try:
         if sf_len:
             with SFFile(TXN_INPUT_OFFSET, length=sf_len) as fd:
@@ -1468,9 +1470,14 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_
 
         try:
             j_conf = ujson.loads(config)
-            assert "desc" in j_conf, "'desc' key required"
-            config = j_conf["desc"]
-            assert config, "'desc' empty"
+            if "desc_template" in j_conf and "keys_info" in j_conf:
+                assert "name" in j_conf
+                config = j_conf
+                bip388 = miniscript = True
+            else:
+                assert "desc" in j_conf, "'desc' key required"
+                config = j_conf["desc"]
+                assert config, "'desc' empty"
 
             if "name" in j_conf:
                 # name from json has preference over filenames and desc checksum
@@ -1488,7 +1495,7 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_
                 msc = MiniScriptWallet.from_file(config, name=name)
 
         elif miniscript:
-            msc = MiniScriptWallet.from_file(config, name=name)
+            msc = MiniScriptWallet.from_file(config, name=name, bip388=bip388)
         else:
             msc = MultisigWallet.from_file(config, name=name)
 

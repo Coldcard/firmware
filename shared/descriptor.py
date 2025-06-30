@@ -144,21 +144,29 @@ class Descriptor:
             assert len(self.miniscript.keys) == len(set(self.miniscript.keys)), "Insane"
 
         my_xfp = settings.get('xfp')
+        ext_nums = set()
+        int_nums = set()
         for k in self.keys:
             has_mine += k.validate(my_xfp)
+            ext, int = k.derivation.get_ext_int()
+            ext_nums.add(ext)
+            int_nums.add(int)
             c += 1
 
+        assert ext_nums.isdisjoint(int_nums), "Non-disjoint multipath"
         assert c <= max_signers, "max signers"
 
         assert has_mine > 0, 'My key %s missing in descriptor.' % xfp2str(my_xfp).upper()
 
     def bip388_wallet_policy(self):
+        # only same origin keys
         keys_info = OrderedDict()
         for k in self.keys:
-            if k.origin not in keys_info:
-                keys_info[k.origin] = k.to_string(subderiv=False)
+            pk = k.node.pubkey()
+            if pk not in keys_info:
+                keys_info[pk] = k.to_string(subderiv=False)
 
-        desc_tmplt = self.to_string(checksum=False)
+        desc_tmplt = self.to_string(checksum=False).replace("/<0;1>/*", "/**")
 
         keys_info = list(keys_info.values())
         for i, k_str in enumerate(keys_info):
@@ -218,13 +226,16 @@ class Descriptor:
 
         if self.tapscript:
             # internal is always first
-            # otherwise order of keys is not preserved (after set ops)
-            keys = set()
+            # use ordered dict as order preserving set
+            keys = OrderedDict()
+            # add internal key
+            keys[self.key] = None
+            # taptree keys
             for lv in self.tapscript.iter_leaves():
                 for k in lv.keys:
-                    keys.add(k)
+                    keys[k] = None
 
-            self._keys = [self.key] + list(keys)
+            self._keys = list(keys)
 
         elif self.miniscript:
             self._keys = self.miniscript.keys
