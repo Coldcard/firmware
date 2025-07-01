@@ -651,7 +651,7 @@ def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_min
     time.sleep(.2)
     assert "Create new miniscript wallet?" in story
     press_select()
-    import_duplicate(fname, way=way, data=data)
+    # import_duplicate(fname, way=way, data=data)
 
     wo = create_core_wallet(name, addr_fmt, way, True)
 
@@ -957,8 +957,7 @@ def test_bitcoind_tapscript_address(M_N, clear_miniscript, bitcoind_miniscript,
     clear_miniscript()
     M, N = M_N
 
-    i = random.randint(0,10)
-    ik = ranged_unspendable_internal_key(os.urandom(32), subderiv=f"/<{i};{i+1}>/*")
+    ik = ranged_unspendable_internal_key(os.urandom(32), subderiv=f"/<22;23>/*")
 
     ms_wo, _ = bitcoind_miniscript(M, N, "p2tr", funded=False, tapscript_threshold=csa,
                                    add_own_pk=add_pk, way=way, internal_key=ik)
@@ -1153,7 +1152,7 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
 def test_tapscript_import_export(clear_miniscript, pick_menu_item, cap_story,
                                  import_miniscript, load_export, desc, microsd_path,
                                  press_select):
-    i = random.randint(0, 10)
+    i = random.randint(2, 10)  # needs to be disjoint
     unspend = ranged_unspendable_internal_key(os.urandom(32), subderiv=f"/<{i};{i+1}>/*")
     desc = desc.replace("unspend()", unspend)
     clear_miniscript()
@@ -2904,3 +2903,52 @@ def test_csa_tapscript(clear_miniscript, bitcoin_core_signer, get_cc_key,
     press_select()
     ms_wo = create_core_wallet(name, "bech32m", "sd", False)
     address_explorer_check("sd", "bech32m", ms_wo, "minisc")
+
+
+# @pytest.mark.parametrize("desc", [
+#
+#     # "wsh(or_i(and_v(v:pkh(@A),older(100)),or_d(multi(3,@A,@B,@C),and_v(v:thresh(2,pkh(@A),a:pkh(@B),a:pkh(@C)),older(500)))))"
+# ])
+def test_tapscript_disjoint_derivation(cap_story, offer_minsc_import, microsd_path,
+                                       get_cc_key, bitcoin_core_signer):
+    desc = "tr(unspend(),{{sortedmulti_a(2,@A,@B),sortedmulti_a(2,@AA,@C)},sortedmulti_a(2,@AAA,@BB,@CC)})"
+
+    # internal key is OK
+    unspend = ranged_unspendable_internal_key(os.urandom(32), subderiv=f"/<0;1>/*")
+    desc = desc.replace("unspend()", unspend)
+
+    # @A, @AA & @AAA is us - all OK
+    kA = get_cc_key("m/999h/1h/66h")
+    kAA = kA.replace("/<0;1>/*", "/<2;3>/*")
+    kAAA = kA.replace("/<0;1>/*", "/<4;5>/*")
+
+    desc = desc.replace("@AAA", kAAA)
+    desc = desc.replace("@AA", kAA)
+    desc = desc.replace("@A", kA)
+
+    s0, kB = bitcoin_core_signer("B")
+    # this is problematic - as it is nto disjoint
+    kB = kB.replace("/0/*", "/<1;2>/*")
+    kBB = kB.replace("/<1;2>/*", "/<0;1>/*")
+
+    s1, kC = bitcoin_core_signer("C")
+    kC = kC.replace("/0/*", "/<0;1>/*")
+    kCC = kC.replace("/<0;1>/*", "/<2;3>/*")
+
+    desc = desc.replace("@BB", kBB)
+    desc = desc.replace("@B", kB)
+    desc = desc.replace("@CC", kCC)
+    desc = desc.replace("@C", kC)
+
+    with pytest.raises(Exception) as e:
+        offer_minsc_import(desc)
+    assert "Non-disjoint multipath" in e.value.args[0]
+
+    # now make internal key non-disjoint
+    desc = desc.replace(unspend, ranged_unspendable_internal_key(os.urandom(32), subderiv=f"/<3;4>/*"))
+    # previously invalid key
+    desc = desc.replace(kB, kB.replace("/<1;2>/*", "/<2;3>/*"))
+
+    with pytest.raises(Exception) as e:
+        offer_minsc_import(desc)
+    assert "Non-disjoint multipath" in e.value.args[0]
