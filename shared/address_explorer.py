@@ -9,7 +9,6 @@ from ux import ux_show_story, the_ux, ux_enter_bip32_index
 from ux import export_prompt_builder, import_export_prompt_decode
 from menu import MenuSystem, MenuItem
 from public_constants import AFC_BECH32, AFC_BECH32M, AF_P2WPKH, AF_P2TR, AF_CLASSIC
-from multisig import MultisigWallet
 from miniscript import MiniScriptWallet
 from uasyncio import sleep_ms
 from uhashlib import sha256
@@ -199,11 +198,6 @@ class AddressListMenu(MenuSystem):
             items.append(MenuItem("Account Number", f=self.change_account))
             items.append(MenuItem("Custom Path", menu=self.make_custom))
 
-            # if they have MS wallets, add those next
-            for ms in MultisigWallet.iter_wallets():
-                if not ms.addr_fmt: continue
-                items.append(MenuItem(ms.name, f=self.pick_miniscript, arg=ms))
-
             # if they have miniscript wallets, add those next
             for msc in MiniScriptWallet.iter_wallets():
                 items.append(MenuItem(msc.name, f=self.pick_miniscript, arg=msc))
@@ -267,7 +261,7 @@ Press (3) if you really understand and accept these risks.
     async def show_n_addresses(self, path, addr_fmt, ms_wallet, start=0, n=10, allow_change=True):
         # Displays n addresses by replacing {idx} in path format.
         # - also for other {account} numbers
-        # - or multisig case
+        # - or miniscript case
         from glob import dis, NFC
         from wallet import MAX_BIP32_IDX
 

@@ -1451,11 +1451,9 @@ class NewMiniscriptEnrollRequest(UserAuthorizedAction):
                 self.pop_menu()
 
 
-def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_index=None,
-                      miniscript=False):
+def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_index=None):
     # Offer to import (enroll) a new multisig/miniscript wallet. Allow reject by user.
     from glob import dis
-    from multisig import MultisigWallet
     from miniscript import MiniScriptWallet
 
     UserAuthorizedAction.cleanup()
@@ -1487,17 +1485,7 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_
 
         # this call will raise on parsing errors, so let them rise up
         # and be shown on screen/over usb
-        if miniscript is None:
-            # autodetect
-            try:
-                msc = MultisigWallet.from_file(config, name=name)
-            except:
-                msc = MiniScriptWallet.from_file(config, name=name)
-
-        elif miniscript:
-            msc = MiniScriptWallet.from_file(config, name=name, bip388=bip388)
-        else:
-            msc = MultisigWallet.from_file(config, name=name)
+        msc = MiniScriptWallet.from_file(config, name=name, bip388=bip388)
 
         UserAuthorizedAction.active_request = NewMiniscriptEnrollRequest(msc, bsms_index=bsms_index)
 

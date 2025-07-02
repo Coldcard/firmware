@@ -12,8 +12,8 @@ from uhashlib import sha256
 from uio import BytesIO
 from sffile import SizerFile
 from chains import taptweak, tapleaf_hash
-from miniscript import MiniScriptWallet, Key
-from multisig import MultisigWallet, disassemble_multisig_mn
+from miniscript import MiniScriptWallet
+from multisig import disassemble_multisig_mn
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160
 from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, COutPoint
@@ -483,7 +483,7 @@ class psbtOutputProxy(psbtProxy):
             for k, v in self.unknown.items():
                 wr(k[0], v, k[1:])
 
-    def validate(self, out_idx, txo, my_xfp, active_multisig, active_miniscript, parent):
+    def validate(self, out_idx, txo, my_xfp, active_miniscript, parent):
         # Do things make sense for this output?
     
         # NOTE: We might think it's a change output just because the PSBT
@@ -535,11 +535,9 @@ class psbtOutputProxy(psbtProxy):
         pkh = addr_or_pubkey
 
         if af == 'p2sh':
-            # P2SH or Multisig output
 
             # Can be both, or either one depending on address type
             redeem_script = self.get(self.redeem_script) if self.redeem_script else None
-            witness_script = self.get(self.witness_script) if self.witness_script else None
 
             if expect_pubkey:
                 # num_ours == 1 and len(subpaths) == 1, single sig, we only allow p2sh-p2wpkh
@@ -562,6 +560,12 @@ class psbtOutputProxy(psbtProxy):
 
             else:
                 if active_miniscript:
+                    # TODO disable checks
+                    # if MultisigWallet.disable_checks:
+                    #     # Without validation, we have to assume all outputs
+                    #     # will be taken from us, and are not really change.
+                    #     self.is_change = False
+                    #     return af
                     # scriptPubkey can be compared against script that we build - if exact match change
                     # if not - not change - no need for redeem/witness script
                     #
@@ -574,65 +578,12 @@ class psbtOutputProxy(psbtProxy):
                     except Exception as e:
                         raise FraudulentChangeOutput(out_idx, "Change output scriptPubkey: %s" % e)
 
-                elif active_multisig:
-                    # Multisig change output, for wallet we're supposed to be a part of.
-                    # - our key must be part of it
-                    # - must look like input side redeem script (same fingerprints)
-                    # - assert M/N structure of output to match any inputs we have signed in PSBT!
-                    # - assert all provided pubkeys are in redeem script, not just ours
-                    # - we get all of that by re-constructing the script from our wallet details
-                    if MultisigWallet.disable_checks:
-                        # Without validation, we have to assume all outputs
-                        # will be taken from us, and are not really change.
-                        self.is_change = False
-                        return af
-
-                    scr = witness_script or redeem_script
-                    if not scr:
-                        raise FatalPSBTIssue("Missing redeem/witness script for output #%d" % out_idx)
-
-                    # redeem script must be exactly what we expect
-                    # - pubkeys will be reconstructed from derived paths here
-                    # - BIP-45, BIP-67 rules applied (BIP-67 optional from now - depending on imported descriptor)
-                    # - p2sh-p2wsh needs witness script here, not redeem script value
-                    # - if details provided in output section, must our match multisig wallet
-                    try:
-                        active_multisig.validate_script(scr, subpaths=self.subpaths)
-                    except BaseException as exc:
-                        raise FraudulentChangeOutput(out_idx,
-                                                     "P2WSH or P2SH change output script: %s" % exc)
                 else:
-                    # it cannot be change if it doesn't precisely match our multisig setup
-                    # - might be a p2sh output for another wallet that isn't us
+                    # it cannot be change if it doesn't precisely match our miniscript setup
+                    # - might be a output for another wallet that isn't us
                     # - not fraud, just an output with more details than we need.
                     self.is_change = False
                     return af
-
-                if is_segwit:
-                    # p2wsh case
-                    # - need witness script and check it's hash against proposed p2wsh value
-                    assert len(addr_or_pubkey) == 32
-                    expect_wsh = ngu.hash.sha256s(witness_script)
-                    if expect_wsh != addr_or_pubkey:
-                        raise FraudulentChangeOutput(out_idx, "P2WSH witness script has wrong hash")
-
-                    self.is_change = True
-                    return af
-
-                if witness_script:
-                    # p2sh-p2wsh case (because it had witness script)
-                    expect_rs = b'\x00\x20' + ngu.hash.sha256s(witness_script)
-                    
-                    if redeem_script and expect_rs != redeem_script:
-                        # iff they provide a redeeem script, then it needs to match
-                        # what we expect it to be
-                        raise FraudulentChangeOutput(out_idx,
-                                        "P2SH-P2WSH redeem script provided, and doesn't match")
-
-                    expect_pkh = hash160(expect_rs)
-                else:
-                    # old BIP-16 style; looks like payment addr
-                    expect_pkh = hash160(redeem_script)
 
         elif af == 'p2pkh':
             # input is hash160 of a single public key
@@ -680,10 +631,10 @@ class psbtInputProxy(psbtProxy):
 
     blank_flds = (
         'unknown', 'utxo', 'witness_utxo', 'sighash', 'redeem_script', 'witness_script',
-        'fully_signed', 'is_segwit', 'is_multisig', 'is_p2sh', 'num_our_keys',
+        'fully_signed', 'is_segwit', 'is_p2sh', 'num_our_keys',
         'required_key', 'scriptSig', 'amount', 'scriptCode', 'previous_txid',
         'prevout_idx', 'sequence', 'req_time_locktime', 'req_height_locktime', 'taproot_key_sig',
-        'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts', "use_keypath", "subpaths",
+        'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts', "subpaths",
         "taproot_subpaths", "taproot_internal_key", "is_miniscript",
     )
 
@@ -706,7 +657,6 @@ class psbtInputProxy(psbtProxy):
 
         # we can't really learn this until we take apart the UTXO's scriptPubKey
         #self.is_segwit = None
-        #self.is_multisig = None
         #self.is_p2sh = False
 
         #self.required_key = None    # which of our keys will be used to sign input
@@ -812,7 +762,7 @@ class psbtInputProxy(psbtProxy):
             # - could consider structure of MofN in p2sh cases
             self.fully_signed = (len(self.part_sigs) >= len(self.subpaths))
         else:
-            # No signatures at all yet for this input (typical non multisig)
+            # No signatures at all yet for this input (typical non miniscript)
             self.fully_signed = False
 
         if self.taproot_key_sig:
@@ -912,7 +862,6 @@ class psbtInputProxy(psbtProxy):
             self.required_key = None
             return
 
-        self.is_multisig = False
         self.is_miniscript = False
         self.is_p2sh = False
         which_key = None
@@ -931,7 +880,7 @@ class psbtInputProxy(psbtProxy):
             self.is_segwit = True
 
         if addr_type == 'p2sh':
-            # multisig input
+            # miniscript input
             self.is_p2sh = True
 
             # we must have the redeem script already (else fail)
@@ -948,7 +897,6 @@ class psbtInputProxy(psbtProxy):
                 which_key, = self.subpaths.keys()
             else:
                 # Assume we'll be signing with any key we know
-                # - limitation: we cannot be two legs of a multisig (only if CCC feature used)
                 # - but if partial sig already in place, ignore that one
                 if not which_key:
                     which_key = set()
@@ -970,14 +918,10 @@ class psbtInputProxy(psbtProxy):
                 addr = redeem_script[2:22]
                 self.is_segwit = True
             else:
-                # multiple keys involved, we probably can't do the finalize step
-                M, N = disassemble_multisig_mn(redeem_script)
-                if M is None and N is None:
-                    self.is_miniscript = True
-                else:
-                    self.is_multisig = True
+                # multiple keys involved
+                self.is_miniscript = True
 
-            if self.witness_script and not self.is_segwit and (self.is_miniscript or self.is_multisig):
+            if self.witness_script and (not self.is_segwit) and self.is_miniscript:
                 # bugfix
                 addr_type = 'p2sh-p2wsh'
                 self.is_segwit = True
@@ -1022,7 +966,6 @@ class psbtInputProxy(psbtProxy):
                                 which_key = xonly_pubkey
                                 # if we find a possibility to spend keypath (internal_key) - we do keypath
                                 # even though script path is available
-                                self.use_keypath = True
                                 break
                         else:
                             internal_key = self.get(self.taproot_internal_key)
@@ -1047,34 +990,6 @@ class psbtInputProxy(psbtProxy):
             # we don't know how to "solve" this type of input
             pass
 
-        if self.is_multisig:
-            # We will be signing this input, so 
-            # - find which wallet it is or
-            # - check it's the right M/N to match redeem script
-            # - which_key can be empty set, meaning all is already signed
-
-            #print("redeem: %s" % b2a_hex(redeem_script))
-            xfp_paths = list(self.subpaths.values())
-            xfp_paths.sort()
-
-            if not psbt.active_multisig:
-                # search for multisig wallet
-                wal = MultisigWallet.find_match(M, N, xfp_paths)
-                if not wal:
-                    raise FatalPSBTIssue('Unknown multisig wallet')
-
-                psbt.active_multisig = wal
-            else:
-                # check consistent w/ already selected wallet
-                psbt.active_multisig.assert_matching(M, N, xfp_paths)
-
-            # validate redeem script, by disassembling it and checking all pubkeys
-            try:
-                psbt.active_multisig.validate_script(redeem_script, subpaths=self.subpaths)
-            except BaseException as exc:
-                # sys.print_exception(exc)
-                raise FatalPSBTIssue('Input #%d: %s' % (my_idx, exc))
-
         if self.is_miniscript:
             try:
                 xfp_paths = [item[1:] for item in self.taproot_subpaths.values() if len(item[1:]) > 1]
@@ -1082,13 +997,14 @@ class psbtInputProxy(psbtProxy):
                 xfp_paths = list(self.subpaths.values())
 
             xfp_paths.sort()
-            if not psbt.active_miniscript:
+            if psbt.active_miniscript:
+                psbt.active_miniscript.matching_subpaths(xfp_paths), "wrong wallet"
+            else:
                 wal = MiniScriptWallet.find_match(xfp_paths)
                 if not wal:
                     raise FatalPSBTIssue('Unknown miniscript wallet')
                 psbt.active_miniscript = wal
 
-            assert psbt.active_miniscript
             try:
                 # contains PSBT merkle root verification
                 psbt.active_miniscript.validate_script_pubkey(utxo.scriptPubKey,
@@ -1114,7 +1030,7 @@ class psbtInputProxy(psbtProxy):
                 #
                 # Also need this scriptCode for native segwit p2pkh
                 #
-                assert not self.is_multisig
+                assert not self.is_miniscript
                 self.scriptCode = b'\x19\x76\xa9\x14' + addr + b'\x88\xac'
             elif not self.scriptCode:
                 # Segwit P2SH. We need the witness script to be provided.
@@ -1297,9 +1213,8 @@ class psbtObject(psbtProxy):
         self.hashValues = None
         self.hashScriptPubKeys = None
 
-        # this points to a MS wallet, during operation
-        # - we are only supporting a single multisig wallet during signing
-        self.active_multisig = None
+        # this points to a Miniscript wallet, during operation
+        # - we are only supporting a single miniscript wallet during signing
         self.active_miniscript = None
 
         self.warnings = []
@@ -1778,7 +1693,7 @@ class psbtObject(psbtProxy):
         for idx, txo in self.output_iter():
             output = self.outputs[idx]
             # perform output validation
-            af = output.validate(idx, txo, self.my_xfp, self.active_multisig, self.active_miniscript, self)
+            af = output.validate(idx, txo, self.my_xfp, self.active_miniscript, self)
             assert txo.nValue >= 0, "negative output value: o%d" % idx
             total_out += txo.nValue
 
@@ -2028,7 +1943,7 @@ class psbtObject(psbtProxy):
             # Look at what kind of input this will be, and therefore what
             # type of signing will be required, and which key we need.
             # - also validates redeem_script when present
-            # - also finds appropriate multisig wallet to be used
+            # - also finds appropriate miniscript wallet to be used
             inp.determine_my_signing_key(i, utxo, self.my_xfp, self, cosign_xfp)
 
             # iff to UTXO is segwit, then check it's value, and also
@@ -2037,8 +1952,6 @@ class psbtObject(psbtProxy):
                 history.verify_amount(txi.prevout, inp.amount, i)
 
             del utxo
-
-        # XXX scan witness data provided, and consider those ins signed if not multisig?
 
         if not foreign:
             # no foreign inputs, we can calculate the total input value
@@ -2078,8 +1991,9 @@ class psbtObject(psbtProxy):
                 'Some input(s) provided were already completely signed by other parties: ' +
                         seq_to_str(self.presigned_inputs)))
 
-        if MultisigWallet.disable_checks:
-            self.warnings.append(('Danger', 'Some multisig checks are disabled.'))
+        # TODO
+        # if MultisigWallet.disable_checks:
+        #     self.warnings.append(('Danger', 'Some multisig checks are disabled.'))
 
     def calculate_fee(self):
         # what miner's reward is included in txn?
@@ -2273,7 +2187,7 @@ class psbtObject(psbtProxy):
                                 res = self.check_pubkey_at_path(sv, subpath, pubkey)
                                 if res:
                                     good += 1
-                                    # TODO is this needed if output is multisig?
+                                    # TODO is this needed if output is multisig? imo not needed note_subpath used is only used with single-sig
                                     OWNERSHIP.note_subpath_used(subpath)
 
                     if oup.taproot_subpaths:
@@ -2283,7 +2197,7 @@ class psbtObject(psbtProxy):
                                 res = self.check_pubkey_at_path(sv, subpath, xonly_pk, is_xonly=True)
                                 if res:
                                     good += 1
-                                    # TODO is this needed if output is miniscript?
+                                    # TODO is this needed if output is miniscript? imo not needed note_subpath used is only used with single-sig
                                     OWNERSHIP.note_subpath_used(subpath)
 
                     if not good:
@@ -2319,7 +2233,7 @@ class psbtObject(psbtProxy):
                 tr_sh = []
                 inp.handle_none_sighash()
                 to_sign = []
-                if isinstance(inp.required_key, set) and (inp.is_multisig or inp.is_miniscript):
+                if isinstance(inp.required_key, set) and inp.is_miniscript:
                     # need to consider a set of possible keys, since xfp may not be unique
                     for which_key in inp.required_key:
                         # get node required
@@ -2761,11 +2675,14 @@ class psbtObject(psbtProxy):
         # double SHA256
         return ngu.hash.sha256s(rv.digest())
 
-    def multi_input_complete(self, inp):
-        # raises if input is not multisig or no active_multisig loaded
-        assert inp.is_multisig
-        if len(inp.part_sigs) >= self.active_multisig.M:
-            return True
+    def miniscript_input_complete(self, inp):
+        desc = self.active_miniscript.to_descriptor()
+        if desc.is_basic_multisig:
+            # we can only finalize multisig inputs from all miniscript set
+            M, N = desc.miniscript.m_n
+            if len(inp.part_sigs) >= M:
+                return True
+        return False
 
     def is_complete(self):
         # Are all the inputs (now) signed?
@@ -2776,11 +2693,8 @@ class psbtObject(psbtProxy):
         # plus we added some signatures
         for i, inp in enumerate(self.inputs):
             if i in self.presigned_inputs: continue
-            if inp.is_miniscript and not inp.use_keypath:
-                # but we can't combine/finalize miniscript stuff, so will never't be 'final'7
-                return False
-            elif inp.is_multisig and self.active_multisig:
-                if self.multi_input_complete(inp):
+            elif inp.is_miniscript and self.active_miniscript:
+                if self.miniscript_input_complete(inp):
                     signed += 1
             elif inp.part_sigs and len(inp.part_sigs) == len(inp.subpaths):
                 signed += 1
@@ -2790,24 +2704,27 @@ class psbtObject(psbtProxy):
         return signed == self.num_inputs
 
     def multisig_signatures(self, inp):
-        assert self.active_multisig
+        assert self.active_miniscript
+        desc = self.active_miniscript.to_descriptor()
+        assert desc.is_basic_multisig
+        M, N = desc.miniscript.m_n
 
-        if self.active_multisig.bip67:
+        if desc.is_sortedmulti:
             # BIP-67 easy just sort by public keys
             sigs = [sig for pk, sig in sorted(inp.part_sigs.items())]
         else:
             # need to respect the order of keys in actual descriptor
             sigs = []
-            for xfp, _, _ in self.active_multisig.xpubs:
+            for key in desc.keys:
                 for pk, pth in inp.subpaths.items():
                     # if xfp matches but pk not in all_sigs -> signer haven't signed
                     # it is ok in threshold multisig - just skip
-                    if (xfp == pth[0]) and (pk in inp.part_sigs):
+                    if (key.origin.cc_fp == pth[0]) and (pk in inp.part_sigs):
                         sigs.append(inp.part_sigs[pk])
                         break
 
         # save space and only provide necessary amount of signatures (smaller tx, less fees)
-        sigs = sigs[:self.active_multisig.M]
+        sigs = sigs[:M]
         return sigs
 
     def singlesig_signature(self, inp):
@@ -2879,8 +2796,8 @@ class psbtObject(psbtProxy):
             inp = self.inputs[in_idx]
 
             # first check - if no signature(s) - fail soon
-            if inp.is_multisig:
-                assert self.multi_input_complete(inp), 'Incomplete signature set on input #%d' % in_idx
+            if inp.is_miniscript:
+                assert self.miniscript_input_complete(inp), 'Incomplete signature set on input #%d' % in_idx
             else:
                 # single signature
                 ssig = self.singlesig_signature(inp)
@@ -2903,7 +2820,7 @@ class psbtObject(psbtProxy):
 
             else:
                 # insert the new signature(s), assuming fully signed txn.
-                if inp.is_multisig:
+                if inp.is_miniscript:
                     # p2sh multisig (non-segwit)
                     sigs = self.multisig_signatures(inp)
                     ss = b"\x00"
@@ -2942,7 +2859,7 @@ class psbtObject(psbtProxy):
                         # can be 65 bytes if sighash != SIGHASH_DEFAULT (0x00)
                         assert len(inp.taproot_key_sig) in (64, 65)
                         wit.scriptWitness.stack = [inp.taproot_key_sig]
-                    elif inp.is_multisig:
+                    elif inp.is_miniscript:
                         sigs = self.multisig_signatures(inp)
                         wit.scriptWitness.stack = [b""] + sigs + [self.get(inp.witness_script)]
                     else:

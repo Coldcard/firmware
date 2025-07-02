@@ -802,7 +802,7 @@ class NFCHandler:
 
         return await self._nfc_reader(f, 'Unable to find BSMS data in NDEF data')
 
-    async def import_miniscript_nfc(self, legacy_multisig=False):
+    async def import_miniscript_nfc(self):
         def f(m):
             if len(m) < 70: return
             m = m.decode()
@@ -816,7 +816,7 @@ class NFCHandler:
 
         from auth import maybe_enroll_xpub
         try:
-            maybe_enroll_xpub(config=winner, miniscript=not legacy_multisig)
+            maybe_enroll_xpub(config=winner)
         except Exception as e:
             await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 

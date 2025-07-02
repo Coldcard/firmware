@@ -15,7 +15,6 @@ from bbqr import b32encode, b32decode
 from menu import MenuItem, MenuSystem
 from notes import NoteContentBase
 from sffile import SFFile
-from multisig import MultisigWallet
 from miniscript import MiniScriptWallet
 from stash import SensitiveValues, SecretStash, blank_object, bip39_passphrase
 
@@ -252,15 +251,11 @@ async def kt_decode_rx(is_psbt, payload):
         ses_key, body = decode_step1(pair, his_pubkey, body)
     else:
         # Multisig PSBT: will need to iterate over a few wallets and each N-1 possible senders
-        if (not MultisigWallet.exists()) and (not MiniScriptWallet.exists()):
+        if not MiniScriptWallet.exists():
             await ux_show_story("Incoming PSBT requires miniscript wallet(s) to be already setup, but you have none.")
             return
 
-        ses_key, body, sender_xfp = MultisigWallet.kt_search_rxkey(payload)
-
-        if sender_xfp is None:
-            ses_key, body, sender_xfp = MiniScriptWallet.kt_search_rxkey(payload)
-
+        ses_key, body, sender_xfp = MiniScriptWallet.kt_search_rxkey(payload)
 
         if sender_xfp is not None:
             prompt = 'Teleport Password from [%s]' % xfp2str(sender_xfp)

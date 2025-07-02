@@ -11,7 +11,6 @@ from pincodes import AE_LONG_SECRET_LEN
 from stash import blank_object
 from users import Users, MAX_NUMBER_USERS, calc_local_pincode
 from public_constants import MAX_USERNAME_LEN
-from multisig import MultisigWallet
 from miniscript import MiniScriptWallet
 from ubinascii import hexlify as b2a_hex
 from uhashlib import sha256
@@ -179,7 +178,7 @@ class ApprovalRule:
     # - users: list of authorized users
     # - min_users: how many of those are needed to approve
     # - local_conf: local user must also confirm w/ code
-    # - wallet: which multisig/miniscript wallet to restrict to, or '1' for single signer only
+    # - wallet: which miniscript wallet to restrict to, or '1' for single signer only
     # - min_pct_self_transfer: minimum percentage of own input value that must go back to self
     # - patterns: list of transaction patterns to check for. Valid values:
     #       * EQ_NUM_INS_OUTS:      the number of inputs and outputs must be equal
@@ -196,7 +195,6 @@ class ApprovalRule:
             return u
 
         self.index = idx+1
-        self.ms_type = "multisig"
         self.per_period = pop_int(j, 'per_period', 0, MAX_SATS)
         self.max_amount = pop_int(j, 'max_amount', 0, MAX_SATS)
         self.users = pop_list(j, 'users', check_user)
@@ -221,13 +219,10 @@ class ApprovalRule:
             # redundant w/ code in pop_int() above
             assert 1 <= self.min_users <= len(self.users), "range"
 
-        # if specified, 'wallet' must be an existing multisig wallet's name
+        # if specified, 'wallet' must be an existing miniscript wallet's name
         if self.wallet and self.wallet != '1':
-            ms_names = [ms.name for ms in MultisigWallet.get_all()]
             msc_names = [msc.name for msc in MiniScriptWallet.get_all()]
-            assert self.wallet in (ms_names+msc_names), "unknown wallet: "+self.wallet
-            if self.wallet in msc_names:
-                self.ms_type = "miniscript"
+            assert self.wallet in msc_names, "unknown wallet: " + self.wallet
 
         # patterns must be valid
         for p in self.patterns:
@@ -273,7 +268,7 @@ class ApprovalRule:
         if self.wallet == '1':
             rv += ' (singlesig only)'
         elif self.wallet:
-            rv += ' from %s wallet "%s"' % (self.ms_type, self.wallet)
+            rv += ' from miniscript wallet "%s"' % self.wallet
 
         if self.users:
             rv += ' may be authorized by '
@@ -314,13 +309,10 @@ class ApprovalRule:
         # Does this rule apply to this PSBT file? 
         if self.wallet:
             # rule limited to one wallet
-            if psbt.active_multisig:
-                # if multisig signing, might need to match specific wallet name
-                assert self.wallet == psbt.active_multisig.name, 'wrong multisig wallet'
-            elif psbt.active_miniscript:
+            if psbt.active_miniscript:
                 assert self.wallet == psbt.active_miniscript.name, 'wrong miniscript wallet'
             else:
-                # non multisig, but does this rule apply to all wallets or single-singers
+                # not miniscript, but does this rule apply to all wallets or single-singers
                 assert self.wallet == '1', 'singlesig only'
 
         if self.max_amount is not None:
@@ -988,8 +980,7 @@ def hsm_status_report():
             rv['approval_wait'] = True
 
         rv['users'] = Users.list()
-        rv['wallets'] = [ms.name for ms in MultisigWallet.get_all()] \
-                        + [msc.name for msc in MiniScriptWallet.get_all()]
+        rv['wallets'] = [msc.name for msc in MiniScriptWallet.get_all()]
 
     rv['chain'] = settings.get('chain', 'BTC')
 

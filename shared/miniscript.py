@@ -16,11 +16,18 @@ from utils import problem_file_line, xfp2str, to_ascii_printable, swab32, show_s
 from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC, KEY_ENTER
 from glob import settings
 
+# Arbitrary value, not 0 or 1, used to derive a pubkey from preshared xpub in Key Teleport
 KT_RXPUBKEY_DERIV = const(20250317)
+
+# PSBT Xpub trust policies
+TRUST_VERIFY = const(0)
+TRUST_OFFER = const(1)
+TRUST_PSBT = const(2)
 
 
 class MiniScriptWallet(BaseStorageWallet):
     key_name = "miniscript"
+    disable_checks = False
 
     def __init__(self, name, desc_tmplt=None, keys_info=None, desc=None,
                  af=None, ik_u=None):
@@ -34,6 +41,15 @@ class MiniScriptWallet(BaseStorageWallet):
         self.desc = desc
         self.addr_fmt = af
         self.ik_u = ik_u
+
+    @classmethod
+    def get_trust_policy(cls):
+
+        which = settings.get('pms', None)
+        if which is None:
+            which = TRUST_VERIFY if cls.exists() else TRUST_OFFER
+
+        return which
 
     @property
     def chain(self):
@@ -538,7 +554,7 @@ async def import_miniscript(*a):
     from auth import maybe_enroll_xpub
     try:
         possible_name = (fn.split('/')[-1].split('.'))[0] if fn else None
-        maybe_enroll_xpub(config=data, name=possible_name, miniscript=True)
+        maybe_enroll_xpub(config=data, name=possible_name)
     except BaseException as e:
         await ux_show_story('Failed to import miniscript.\n\n%s\n%s' % (e, problem_file_line(e)))
 
@@ -557,7 +573,7 @@ async def import_miniscript_qr(*a):
         # press pressed CANCEL
         return
     try:
-        maybe_enroll_xpub(config=data, miniscript=True)
+        maybe_enroll_xpub(config=data)
     except Exception as e:
         await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
@@ -610,6 +626,11 @@ class MiniscriptMenu(MenuSystem):
                                    arg=msc.storage_idx))
         from glob import NFC
         rv.append(MenuItem('Import', f=import_miniscript))
+        rv.append(MenuItem('Export XPUB', f=export_miniscript_xpubs))
+        rv.append(MenuItem('BSMS (BIP-129)', menu=make_ms_wallet_bsms_menu))
+        rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
+        rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
+        rv.append(MenuItem('Skip Checks?', f=disable_checks_menu))
         rv.append(ShortcutItem(KEY_NFC, predicate=lambda: NFC is not None,
                                f=import_miniscript_nfc))
         rv.append(ShortcutItem(KEY_QR, predicate=lambda: version.has_qwerty,
@@ -632,6 +653,164 @@ async def make_miniscript_menu(*a):
 
     rv = MiniscriptMenu.construct()
     return MiniscriptMenu(rv)
+
+
+def disable_checks_chooser():
+    ch = ['Normal', 'Skip Checks']
+
+    def xset(idx, text):
+        MiniScriptWallet.disable_checks = bool(idx)
+
+    return int(MiniScriptWallet.disable_checks), ch, xset
+
+async def disable_checks_menu(*a):
+
+    if not MiniScriptWallet.disable_checks:
+        ch = await ux_show_story('''\
+With many different wallet vendors and implementors involved, it can \
+be hard to create a PSBT consistent with the many keys involved. \
+With this setting, you can \
+disable the more stringent verification checks your Coldcard normally provides.
+
+USE AT YOUR OWN RISK. These checks exist for good reason! Signed txn may \
+not be accepted by network.
+
+This settings lasts only until power down.
+
+Press (4) to confirm entering this DANGEROUS mode.
+''', escape='4')
+
+        if ch != '4': return
+
+    start_chooser(disable_checks_chooser)
+
+
+def psbt_xpubs_policy_chooser():
+    # Chooser for trust policy
+    ch = ['Verify Only', 'Offer Import', 'Trust PSBT']
+
+    def xset(idx, text):
+        settings.set('pms', idx)
+
+    return MiniScriptWallet.get_trust_policy(), ch, xset
+
+async def trust_psbt_menu(*a):
+    # show a story then go into chooser
+
+    ch = await ux_show_story('''\
+This setting controls what the Coldcard does \
+with the co-signer public keys (XPUB) that may \
+be provided inside a PSBT file. Three choices:
+
+- Verify Only. Do not import the xpubs found, but do \
+verify the correct wallet already exists on the Coldcard.
+
+- Offer Import. If it's a new multisig wallet, offer to import \
+the details and store them as a new wallet in the Coldcard.
+
+- Trust PSBT. Use the wallet data in the PSBT as a temporary,
+multisig wallet, and do not import it. This permits some \
+deniability and additional privacy.
+
+When the XPUB data is not provided in the PSBT, regardless of the above, \
+we require the appropriate multisig wallet to already exist \
+on the Coldcard. Default is to 'Offer' unless a multisig wallet already \
+exists, otherwise 'Verify'.''')
+
+    if ch == 'x': return
+    start_chooser(psbt_xpubs_policy_chooser)
+
+
+async def ms_wallet_electrum_export(menu, label, item):
+    # create a JSON file that Electrum can use. Challenges:
+    # - file contains derivation paths for each co-signer to use
+    # - electrum is using BIP-43 with purpose=48 (purpose48_derivation) to make paths like:
+    #       m/48h/1h/0h/2h
+    # - above is now called BIP-48
+    # - other signers might not be coldcards (we don't know)
+    # solution:
+    # - when building air-gap, pick address type at that point, and matching path to suit
+    # - could check path prefix and addr_fmt make sense together, but meh.
+    ms = item.arg
+    from actions import electrum_export_story
+
+    derivs, dsum = ms.get_deriv_paths()
+
+    msg = 'The new wallet will have derivation path:\n  %s\n and use %s addresses.\n' % (
+            dsum, MultisigWallet.render_addr_fmt(ms.addr_fmt) )
+
+    if await ux_show_story(electrum_export_story(msg)) != 'y':
+        return
+
+    await ms.export_electrum()
+
+
+async def export_miniscript_xpubs(*a, xfp=None, alt_secret=None, skip_prompt=False):
+    # WAS: Create a single text file with lots of docs, and all possible useful xpub values.
+    # THEN: Just create the one-liner xpub export value they need/want to support BIP-45
+    # NOW: Export JSON with one xpub per useful address type and semi-standard derivation path
+    #
+    # - consumer for this file is supposed to be ourselves, when we build on-device multisig.
+    # - however some 3rd parties are making use of it as well.
+    # - used for CCC feature now as well, but result looks just like normal export
+    #
+    xfp = xfp2str(xfp or settings.get('xfp', 0))
+    chain = chains.current_chain()
+
+    fname_pattern = 'ccxp-%s.json' % xfp
+    label = "Multisig XPUB"
+
+    if not skip_prompt:
+        msg = '''\
+This feature creates a small file containing \
+the extended public keys (XPUB) you would need to join \
+a multisig wallet.
+
+Public keys for BIP-48 conformant paths are used:
+
+P2SH-P2WSH:
+   m/48h/{coin}h/{{acct}}h/1h
+P2WSH:
+   m/48h/{coin}h/{{acct}}h/2h
+P2TR:
+   m/48h/{coin}h/{{acct}}h/3h
+
+{ok} to continue. {x} to abort.'''.format(coin=chain.b44_cointype, ok=OK, x=X)
+
+        ch = await ux_show_story(msg)
+        if ch != "y":
+            return
+
+    acct = await ux_enter_bip32_index('Account Number:') or 0
+
+    def render(acct_num):
+        sign_der = None
+        with uio.StringIO() as fp:
+            fp.write('{\n')
+            with stash.SensitiveValues(secret=alt_secret) as sv:
+                for name, deriv, fmt in chains.MS_STD_DERIVATIONS:
+                    if fmt == AF_P2SH and acct_num:
+                        continue
+                    dd = deriv.format(coin=chain.b44_cointype, acct_num=acct_num)
+                    if fmt == AF_P2WSH:
+                        sign_der = dd + "/0/0"
+                    node = sv.derive_path(dd)
+                    xp = chain.serialize_public(node, fmt)
+                    fp.write('  "%s_deriv": "%s",\n' % (name, dd))
+                    fp.write('  "%s": "%s",\n' % (name, xp))
+                    xpub = chain.serialize_public(node)
+                    descriptor_template = multisig_descriptor_template(xpub, dd, xfp, fmt)
+                    if descriptor_template is None:
+                        continue
+                    fp.write('  "%s_desc": "%s",\n' % (name, descriptor_template))
+
+            fp.write('  "account": "%d",\n' % acct_num)
+            fp.write('  "xfp": "%s"\n}\n' % xfp)
+            return fp.getvalue(), sign_der, AF_CLASSIC
+
+    from export import export_contents
+    await export_contents(label, lambda: render(acct), fname_pattern,
+                          force_bbqr=True, is_json=True)
 
 
 class Number:

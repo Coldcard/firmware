@@ -331,8 +331,8 @@ class CCCConfigMenu(MenuSystem):
         xfp = CCCFeature.get_xfp()
         enc = CCCFeature.get_encoded_secret()
 
-        from multisig import export_multisig_xpubs
-        await export_multisig_xpubs(xfp=xfp, alt_secret=enc, skip_prompt=True)
+        from miniscript import export_miniscript_xpubs
+        await export_miniscript_xpubs(xfp=xfp, alt_secret=enc, skip_prompt=True)
 
     async def build_2ofN(self, m, l, i):
         count = i.arg

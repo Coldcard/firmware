@@ -208,7 +208,6 @@ class OwnershipCache:
         # Find it!
         # - returns wallet object, and tuple2 of final 2 subpath components
         # - if you start w/ testnet, we'll follow that
-        from multisig import MultisigWallet
         from miniscript import MiniScriptWallet
         from glob import dis
 
@@ -226,15 +225,11 @@ class OwnershipCache:
 
         if addr_fmt & AFC_SCRIPT:
             # multisig or script at least.. must exist already
-            possibles.extend(MultisigWallet.iter_wallets(addr_fmt=addr_fmt))
-            msc = [w for w in MiniScriptWallet.iter_wallets() if w.addr_fmt == addr_fmt]
-            possibles.extend(msc)
+            possibles.extend([w for w in MiniScriptWallet.iter_wallets() if w.addr_fmt == addr_fmt])
 
             if addr_fmt == AF_P2SH:
                 # might look like P2SH but actually be AF_P2WSH_P2SH
-                possibles.extend(MultisigWallet.iter_wallets(addr_fmt=AF_P2WSH_P2SH))
-                msc = [w for w in MiniScriptWallet.iter_wallets() if w.addr_fmt == AF_P2WSH_P2SH]
-                possibles.extend(msc)
+                possibles.extend([w for w in MiniScriptWallet.iter_wallets() if w.addr_fmt == AF_P2WSH_P2SH])
 
                 # Might be single-sig p2wpkh wrapped in p2sh ... but that was a transition
                 # thing that hopefully is going away, so if they have any multisig wallets,
@@ -313,13 +308,12 @@ class OwnershipCache:
         # Provide a simple UX. Called functions do fullscreen, progress bar stuff.
         from ux import ux_show_story, show_qr_code
         from charcodes import KEY_QR
-        from multisig import MultisigWallet
         from miniscript import MiniScriptWallet
         from public_constants import AFC_BECH32, AFC_BECH32M
 
         try:
             wallet, subpath = OWNERSHIP.search(addr)
-            is_complex = isinstance(wallet, MultisigWallet) or isinstance(wallet, MiniScriptWallet)
+            is_complex = isinstance(wallet, MiniScriptWallet)
 
             sp = None
             msg = show_single_address(addr)

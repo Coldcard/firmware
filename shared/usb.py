@@ -505,7 +505,7 @@ class USBHandler:
 
             # Start an UX interaction, return immediately here
             from auth import maybe_enroll_xpub
-            maybe_enroll_xpub(sf_len=file_len, ux_reset=True, miniscript=True)
+            maybe_enroll_xpub(sf_len=file_len, ux_reset=True)
 
             return None
 
@@ -570,13 +570,6 @@ class USBHandler:
 
             from auth import start_show_miniscript_address
             return b'asci' + start_show_miniscript_address(msc, change, idx)
-
-        if cmd == 'msck':
-            # Quick check to test if we have a wallet already installed.
-            from multisig import MultisigWallet
-            M, N, xfp_xor = unpack_from('<3I', args)
-
-            return int(MultisigWallet.quick_check(M, N, xfp_xor))
 
         if cmd == 'stxn':
             # sign transaction
