@@ -208,7 +208,7 @@ class OwnershipCache:
         # Find it!
         # - returns wallet object, and tuple2 of final 2 subpath components
         # - if you start w/ testnet, we'll follow that
-        from miniscript import MiniScriptWallet
+        from wallet import MiniScriptWallet
         from glob import dis
 
         ch = chains.current_chain()
@@ -308,7 +308,7 @@ class OwnershipCache:
         # Provide a simple UX. Called functions do fullscreen, progress bar stuff.
         from ux import ux_show_story, show_qr_code
         from charcodes import KEY_QR
-        from miniscript import MiniScriptWallet
+        from wallet import MiniScriptWallet
         from public_constants import AFC_BECH32, AFC_BECH32M
 
         try:

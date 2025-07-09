@@ -218,21 +218,6 @@ def decode_short_text(got):
             # was something else.
             pass
 
-    if ("\n" in got) and ('pub' in got):
-        # legacy multisig import/export format
-        # [0-9a-fA-F]{8}\s*:\s*[xtyYzZuUvV]pub[1-9A-HJ-NP-Za-km-z]{107}
-        # above is more precise BUT counted repetitions not supported in mpy
-        cc_ms_pat = r"[0-9a-fA-F]+\s*:\s*[xtyYzZuUvV]pub[1-9A-HJ-NP-Za-km-z]+"
-        rgx = ure.compile(cc_ms_pat)
-        # go line by line and match above, once 2 matches observed - considered multisig
-        # important to not use ure.search for big strings (can run out of stack)
-        c = 0  # match count
-        for l in got.split("\n"):
-            if rgx.search(l):
-                c += 1
-            if c > 1:
-                return 'multi', (got,)
-
     from descriptor import Descriptor
     if Descriptor.is_descriptor(got):
         return 'minisc', (got,)

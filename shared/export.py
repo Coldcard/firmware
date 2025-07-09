@@ -390,7 +390,6 @@ def generate_unchained_export(account_num=0):
 def generate_generic_export(account_num=0):
     # Generate data that other programers will use to import Coldcard (single-signer)
     from descriptor import Descriptor, Key
-    from desc_utils import multisig_descriptor_template
 
     chain = chains.current_chain()
     master_xfp = settings.get("xfp")
@@ -422,7 +421,9 @@ def generate_generic_export(account_num=0):
             xp = chain.serialize_public(node, AF_CLASSIC)
             zp = chain.serialize_public(node, fmt) if fmt not in (AF_CLASSIC, AF_P2TR) else None
             if is_ms:
-                desc = multisig_descriptor_template(xp, dd, master_xfp_str, fmt)
+                # TODO
+                # desc = multisig_descriptor_template(xp, dd, master_xfp_str, fmt)
+                pass
             else:
                 key = Key.from_cc_data(master_xfp, dd, xp)
                 desc_obj = Descriptor(key=key, addr_fmt=fmt)

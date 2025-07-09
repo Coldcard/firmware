@@ -45,7 +45,7 @@ def fake_dest_addr(style='p2pkh'):
     if style == 'p2wsh':
         return bytes([0, 32]) + prandom(32)
 
-    if style in ['p2sh', 'p2wsh-p2sh', 'p2wpkh-p2sh']:
+    if style in ['p2sh', 'p2wsh-p2sh', 'p2sh-p2wsh', 'p2wpkh-p2sh']:
         # all equally bogus P2SH outputs
         return bytes([0xa9, 0x14]) + prandom(20) + bytes([0x87])
 

@@ -269,7 +269,7 @@ def make_coordinator_round2(make_coordinator_round1, settings_get, settings_set,
 @pytest.mark.parametrize("encryption_type", ["1", "2", "3"])
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
-def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home, need_keypress,
+def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_miniscript, goto_home, need_keypress,
                             pick_menu_item, cap_menu, cap_story, microsd_path, settings_remove,
                             nfc_read_text, request, settings_get, microsd_wipe, press_select,
                             is_q1, press_cancel):
@@ -424,7 +424,7 @@ def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_
 @pytest.mark.parametrize("encryption_type", ["1", "2", "3"])
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
-def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home, need_keypress,
+def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_miniscript, goto_home, need_keypress,
                        cap_story, microsd_path, settings_remove, nfc_read_text, request, settings_get,
                        make_coordinator_round1, nfc_write_text, microsd_wipe, press_select,
                        is_q1, pick_menu_item, cap_menu, press_cancel):
@@ -581,7 +581,7 @@ def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home,
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
 @pytest.mark.parametrize("auto_collect", [True, False])
-def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, clear_ms, goto_home,
+def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, clear_miniscript, goto_home,
                             cap_menu, cap_story, microsd_path, settings_remove, nfc_read_text, request,
                             settings_get, make_coordinator_round1, make_signer_round1, nfc_write_text,
                             microsd_wipe, pick_menu_item, press_select, is_q1, need_keypress, press_cancel):
@@ -806,7 +806,7 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
 @pytest.mark.parametrize("with_checksum", [True, False])
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
-def test_signer_round2(refuse, way, encryption_type, M_N, addr_fmt, clear_ms, goto_home, need_keypress, pick_menu_item,
+def test_signer_round2(refuse, way, encryption_type, M_N, addr_fmt, clear_miniscript, goto_home, need_keypress, pick_menu_item,
                        cap_menu, cap_story, microsd_path, settings_remove, nfc_read_text, request, settings_get,
                        make_coordinator_round2, nfc_write_text, microsd_wipe, with_checksum,
                        press_select, press_cancel, is_q1):
@@ -815,7 +815,7 @@ def test_signer_round2(refuse, way, encryption_type, M_N, addr_fmt, clear_ms, go
         virtdisk_path = request.getfixturevalue("virtdisk_path")
         virtdisk_wipe()
     M, N = M_N
-    clear_ms()
+    clear_miniscript()
     microsd_wipe()
     desc_template, token = make_coordinator_round2(M, N, addr_fmt, encryption_type, way=way, add_checksum=with_checksum)
     goto_home()
@@ -1184,7 +1184,7 @@ def test_failure_signer_round2(encryption_type, goto_home, press_select, pick_me
 @pytest.mark.parametrize("encryption_type", ["1", "2", "3"])
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
-def test_integration_signer(encryption_type, M_N, addr_fmt, clear_ms, microsd_wipe, goto_home, pick_menu_item, cap_story,
+def test_integration_signer(encryption_type, M_N, addr_fmt, clear_miniscript, microsd_wipe, goto_home, pick_menu_item, cap_story,
                             press_select, settings_remove, microsd_path, settings_get, cap_menu, use_mainnet,
                             need_keypress):
     # test CC signer full with bsms lib coordinator (test just SD card no need to retest IO paths again - tested above)
@@ -1200,7 +1200,7 @@ def test_integration_signer(encryption_type, M_N, addr_fmt, clear_ms, microsd_wi
     M, N = M_N
     settings_remove(BSMS_SETTINGS)
     use_mainnet()
-    clear_ms()
+    clear_miniscript()
     microsd_wipe()
     coordinator = CoordinatorSession(M, N, addr_fmt, et_map[encryption_type])
     session_data = coordinator.generate_token_key_pairs()
@@ -1332,13 +1332,13 @@ def test_integration_signer(encryption_type, M_N, addr_fmt, clear_ms, microsd_wi
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
 @pytest.mark.parametrize("cr1_shortcut", [True, False])
-def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_ms, microsd_wipe, goto_home, pick_menu_item,
+def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_miniscript, microsd_wipe, goto_home, pick_menu_item,
                                  cap_story, need_keypress, settings_remove, microsd_path, settings_get, cap_menu,
                                  use_mainnet, cr1_shortcut, press_select):
     M, N = M_N
     settings_remove(BSMS_SETTINGS)
     use_mainnet()
-    clear_ms()
+    clear_miniscript()
     microsd_wipe()
     goto_home()
     pick_menu_item('Settings')

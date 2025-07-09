@@ -9,8 +9,7 @@ from glob import settings
 from actions import *
 from choosers import *
 from mk4 import dev_enable_repl
-from multisig import make_multisig_menu, import_multisig_nfc
-from miniscript import make_miniscript_menu
+from wallet import make_miniscript_menu, import_miniscript_nfc
 from seed import make_ephemeral_seed_menu, make_seed_vault_menu, start_b39_pw
 from address_explorer import address_explore
 from drv_entro import drv_entro_start, password_entry
@@ -143,8 +142,6 @@ SettingsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Login Settings', menu=LoginPrefsMenu),
     MenuItem('Hardware On/Off', menu=HWTogglesMenu),
-    NonDefaultMenuItem('Multisig Wallets', 'multisig',
-                       menu=make_multisig_menu, predicate=has_secrets),
     NonDefaultMenuItem('Miniscript', 'miniscript',
                        menu=make_miniscript_menu, predicate=has_secrets, shortcut="m"),
     NonDefaultMenuItem('NFC Push Tx', 'ptxurl', menu=pushtx_setup_menu),
@@ -357,7 +354,7 @@ NFCToolsMenu = [
     MenuItem('Verify Sig File', f=nfc_sign_verify),
     MenuItem('Verify Address', f=nfc_address_verify),
     MenuItem('File Share', f=nfc_share_file),
-    MenuItem('Import Multisig', f=import_multisig_nfc),
+    MenuItem('Import Miniscript', f=import_miniscript_nfc),
     MenuItem('Push Transaction', f=nfc_pushtx_file, predicate=lambda: settings.get("ptxurl", False)),
 ]
 

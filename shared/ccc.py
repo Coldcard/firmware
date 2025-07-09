@@ -183,7 +183,7 @@ class CCCFeature:
         if not cls.is_enabled:
             return False, False
 
-        ms = psbt.active_multisig
+        ms = psbt.active_miniscript
         if not ms:
             # single-sig CCC not supported
             return False, False
@@ -192,7 +192,7 @@ class CCCFeature:
         #       don't try to sign; maybe show warning?
 
         xfp = cls.get_xfp()
-        if  xfp not in ms.xfp_paths:
+        if  xfp not in [i[0] for i in ms.to_descriptor().xfp_paths()]:
             # does not involve us
             return False, False
 
@@ -253,7 +253,7 @@ class CCCConfigMenu(MenuSystem):
         self.replace_items(tmp)
 
     def construct(self):
-        from multisig import MultisigWallet, make_ms_wallet_menu
+        from wallet import MiniScriptWallet, make_miniscript_wallet_menu
 
         my_xfp = CCCFeature.get_xfp()
         items = [
@@ -266,10 +266,13 @@ class CCCConfigMenu(MenuSystem):
 
         # look for wallets that are defined related to CCC feature, shortcut to them
         count = 0
-        for ms in MultisigWallet.get_all():
-            if my_xfp in ms.xfp_paths:
-                items.append(MenuItem('↳ %d/%d: %s' % (ms.M, ms.N, ms.name),
-                                        menu=make_ms_wallet_menu, arg=ms.storage_idx))
+        for ms in MiniScriptWallet.get_all():
+            if not ms.m_n:  # basic multisig check
+                continue
+            if my_xfp in [i[0] for i in ms.xfp_paths()]:
+                M, N = ms.m_n
+                items.append(MenuItem('↳ %d/%d: %s' % (M, N, ms.name),
+                                        menu=make_miniscript_wallet_menu, arg=ms.storage_idx))
                 count += 1
 
         items.append(MenuItem('↳ Build 2-of-N', f=self.build_2ofN, arg=count))
@@ -331,7 +334,7 @@ class CCCConfigMenu(MenuSystem):
         xfp = CCCFeature.get_xfp()
         enc = CCCFeature.get_encoded_secret()
 
-        from miniscript import export_miniscript_xpubs
+        from wallet import export_miniscript_xpubs
         await export_miniscript_xpubs(xfp=xfp, alt_secret=enc, skip_prompt=True)
 
     async def build_2ofN(self, m, l, i):

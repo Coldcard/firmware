@@ -58,7 +58,7 @@ def test_negative(addr_fmt, testnet, sim_exec):
 @pytest.mark.parametrize('from_empty', [ True, False] )
 def test_positive(addr_fmt, offset, subaccount, chain, from_empty, change_idx,
     sim_exec, wipe_cache, make_myself_wallet, use_testnet, goto_home, pick_menu_item,
-    enter_number, press_cancel, settings_set, import_ms_wallet, clear_ms
+    enter_number, press_cancel, settings_set, import_ms_wallet, clear_miniscript
 ):
     from bech32 import encode as bech32_encode
 
@@ -86,7 +86,7 @@ def test_positive(addr_fmt, offset, subaccount, chain, from_empty, change_idx,
         M, N = 1, 3
 
         expect_name = f'search-test-{addr_fmt}'
-        clear_ms()
+        clear_miniscript()
         keys = import_ms_wallet(M, N, name=expect_name, accept=1, addr_fmt=addr_fmt_names[addr_fmt])
 
         # iffy: no cosigner index in this wallet, so indicated that w/ path_mapper
@@ -103,7 +103,7 @@ def test_positive(addr_fmt, offset, subaccount, chain, from_empty, change_idx,
         elif addr_fmt == AF_P2WPKH_P2SH:
             menu_item = expect_name = 'P2SH-Segwit'
             path = "m/49h/{ct}h/{acc}h"
-            clear_ms()
+            clear_miniscript()
         elif addr_fmt == AF_P2WPKH:
             menu_item = expect_name = 'Segwit P2WPKH'
             path = "m/84h/{ct}h/{acc}h"
@@ -174,7 +174,7 @@ def test_ux(valid, netcode, method,
     sim_exec, wipe_cache, make_myself_wallet, use_testnet, goto_home, pick_menu_item,
     press_cancel, press_select, settings_set, is_q1, nfc_write, need_keypress,
     cap_screen, cap_story, load_shared_mod, scan_a_qr, skip_if_useless_way,
-    sign_msg_from_address, multisig, import_ms_wallet, clear_ms, verify_qr_address,
+    sign_msg_from_address, multisig, import_ms_wallet, clear_miniscript, verify_qr_address,
     src_root_dir, sim_root_dir
 ):
     skip_if_useless_way(method)
@@ -188,7 +188,7 @@ def test_ux(valid, netcode, method,
             M, N = 2, 3
 
             expect_name = f'own_ux_test'
-            clear_ms()
+            clear_miniscript()
             keys = import_ms_wallet(M, N, AF_P2WSH, name=expect_name, accept=1)
 
             # iffy: no cosigner index in this wallet, so indicated that w/ path_mapper
@@ -271,7 +271,7 @@ def test_ux(valid, netcode, method,
 
 @pytest.mark.parametrize("af", ["P2SH-Segwit", "Segwit P2WPKH", "Classic P2PKH", "Taproot P2TR", "ms0", "msc0", "msc2"])
 def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explorer,
-                                pick_menu_item, need_keypress, sim_exec, clear_ms,
+                                pick_menu_item, need_keypress, sim_exec, clear_miniscript,
                                 import_ms_wallet, press_select, goto_home, nfc_write,
                                 load_shared_mod, load_export_and_verify_signature,
                                 cap_story, load_export, offer_minsc_import, is_q1,
@@ -281,7 +281,7 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
     settings_set('accts', [])
 
     if af == "ms0":
-        clear_ms()
+        clear_miniscript()
         import_ms_wallet(2, 3, name=af)
         press_select()  # accept ms import
     elif "msc" in af:

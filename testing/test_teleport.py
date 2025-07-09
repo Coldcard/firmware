@@ -420,7 +420,7 @@ def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_ite
 
 @pytest.mark.unfinalized
 @pytest.mark.parametrize('M', [2, 4])
-def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, dev, clear_ms, settings_set,
+def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, dev, clear_miniscript, settings_set,
                           fake_ms_txn, try_sign, bitcoind, cap_story, need_keypress,
                           cap_menu, pick_menu_item, grab_payload, rx_complete, press_select,
                           ndef_parse_txn_psbt, press_nfc, nfc_read, settings_get,
@@ -430,7 +430,7 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, dev, clear_ms, set
     all_out_styles = [af for af in unmap_addr_fmt.keys() if af != "p2tr"]
     num_outs = len(all_out_styles)
 
-    clear_ms()
+    clear_miniscript()
     use_regtest()
 
     # create a wallet, with 3 bip39 pw's
@@ -534,7 +534,7 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, dev, clear_ms, set
     assert got_txn
 
 
-def test_teleport_big_ms(make_myself_wallet, clear_ms, fake_ms_txn, try_sign, cap_story,
+def test_teleport_big_ms(make_myself_wallet, clear_miniscript, fake_ms_txn, try_sign, cap_story,
                          need_keypress, cap_menu, pick_menu_item, grab_payload, rx_complete,
                          press_select, ndef_parse_txn_psbt, set_master_key, goto_home, press_nfc,
                          nfc_read, settings_get, settings_set, open_microsd, import_ms_wallet,
@@ -542,7 +542,7 @@ def test_teleport_big_ms(make_myself_wallet, clear_ms, fake_ms_txn, try_sign, ca
 
     # define lots of wallets and do teleport from SD disk
 
-    clear_ms()
+    clear_miniscript()
     M, N = 2, 15
     for i in range(5):
         keys = import_ms_wallet(M, N, name=f'ms{i}-test', unique=(i*73), accept=True,
@@ -806,7 +806,7 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
     pick_menu_item(name)
     pick_menu_item("Descriptors")
     pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
+    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False)
     text = text.replace("importdescriptors ", "").strip()
     # remove junk
     r1 = text.find("[")

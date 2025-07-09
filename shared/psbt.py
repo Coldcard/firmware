@@ -12,7 +12,7 @@ from uhashlib import sha256
 from uio import BytesIO
 from sffile import SizerFile
 from chains import taptweak, tapleaf_hash
-from miniscript import MiniScriptWallet
+from wallet import MiniScriptWallet
 from multisig import disassemble_multisig_mn
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160
@@ -2679,7 +2679,7 @@ class psbtObject(psbtProxy):
         desc = self.active_miniscript.to_descriptor()
         if desc.is_basic_multisig:
             # we can only finalize multisig inputs from all miniscript set
-            M, N = desc.miniscript.m_n
+            M, N = desc.miniscript.m_n()
             if len(inp.part_sigs) >= M:
                 return True
         return False
@@ -2707,7 +2707,7 @@ class psbtObject(psbtProxy):
         assert self.active_miniscript
         desc = self.active_miniscript.to_descriptor()
         assert desc.is_basic_multisig
-        M, N = desc.miniscript.m_n
+        M, N = desc.miniscript.m_n()
 
         if desc.is_sortedmulti:
             # BIP-67 easy just sort by public keys
@@ -2804,7 +2804,7 @@ class psbtObject(psbtProxy):
                 assert ssig, 'No signature on input #%d' % in_idx
 
             if inp.is_segwit:
-                if inp.is_multisig:
+                if inp.is_miniscript:
                     if inp.redeem_script:
                         # p2sh-p2wsh
                         txi.scriptSig = ser_string(self.get(inp.redeem_script))

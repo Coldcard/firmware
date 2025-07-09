@@ -1,19 +1,18 @@
 # (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# multisig.py - support code for multisig signing and p2sh in general.
+# multisig.py - ms coordinator code mostly + some utils
 #
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson, version
+from public_constants import AF_P2WSH, AF_P2WSH_P2SH
 from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, keypath_to_str
-from utils import check_xpub
-from ux import ux_show_story, ux_dramatic_pause, ux_clear_keys
-from ux import OK, X
-from public_constants import AF_P2SH, MAX_SIGNERS, AF_CLASSIC
+from utils import xfp2str, extract_cosigner, problem_file_line, get_filesize
+from files import CardSlot, CardMissingError, needs_microsd
+from ux import ux_show_story, ux_dramatic_pause, ux_enter_number, ux_enter_bip32_index
+from public_constants import MAX_SIGNERS
 from opcodes import OP_CHECKMULTISIG
-from exceptions import FatalPSBTIssue
 from glob import settings
-from serializations import disassemble
-from wallet import BaseStorageWallet
+from charcodes import KEY_QR
+from desc_utils import Key, KeyOriginInfo
 
 
 def disassemble_multisig_mn(redeem_script):
@@ -26,51 +25,6 @@ def disassemble_multisig_mn(redeem_script):
     N = redeem_script[-2] - 80
 
     return M, N
-
-def disassemble_multisig(redeem_script):
-    # Take apart a standard multisig's redeem/witness script, and return M/N and public keys
-    # - only for multisig scripts, not general purpose
-    # - expect OP_1 (pk1) (pk2) (pk3) OP_3 OP_CHECKMULTISIG for 1 of 3 case
-    # - returns M, N, (list of pubkeys)
-    # - for very unlikely/impossible asserts, don't document reason; otherwise do.
-    M, N = disassemble_multisig_mn(redeem_script)
-    assert 1 <= M <= N <= MAX_SIGNERS, 'M/N range'
-    assert len(redeem_script) == 1 + (N * 34) + 1 + 1, 'bad len'
-
-    # generator function
-    dis = disassemble(redeem_script)
-
-    # expect M value first
-    ex_M, opcode =  next(dis)
-    assert ex_M == M and opcode is None, 'bad M'
-
-    # need N pubkeys
-    pubkeys = []
-    for idx in range(N):
-        data, opcode = next(dis)
-        assert opcode is None and len(data) == 33, 'data'
-        assert data[0] == 0x02 or data[0] == 0x03, 'Y val'
-        pubkeys.append(data)
-
-    assert len(pubkeys) == N
-
-    # next is N value
-    ex_N, opcode = next(dis)
-    assert ex_N == N and opcode is None
-
-    # finally, the opcode: CHECKMULTISIG
-    data, opcode = next(dis)
-    assert opcode == OP_CHECKMULTISIG
-
-    # must have reached end of script at this point
-    try:
-        next(dis)
-        raise AssertionError("too long")
-    except StopIteration:
-        # expected, since we're reading past end
-        pass
-
-    return M, N, pubkeys
 
 def make_redeem_script(M, nodes, subkey_idx, bip67=True):
     # take a list of BIP-32 nodes, and derive Nth subkey (subkey_idx) and make
@@ -95,285 +49,8 @@ def make_redeem_script(M, nodes, subkey_idx, bip67=True):
 
     return b''.join(pubkeys)
 
-class MultisigWallet(BaseStorageWallet):
 
-    def assert_matching(self, M, N, xfp_paths):
-        # compare in-memory wallet with details recovered from PSBT
-        # - xfp_paths must be sorted already
-        assert (self.M, self.N) == (M, N), "M/N mismatch"
-        assert len(xfp_paths) == N, "XFP count"
-        if self.disable_checks: return
-        assert self.matching_subpaths(xfp_paths), "wrong XFP/derivs"
-
-
-    def has_similar(self):
-        # check if we already have a saved duplicate to this proposed wallet
-        # - return (name_change, diff_items, count_similar) where:
-        #   - name_change is existing wallet that has exact match, different name
-        #   - diff_items: text list of similarity/differences
-        #   - count_similar: same N, same xfp+paths
-
-        lst = self.get_xfp_paths()
-        c = self.find_match(self.M, self.N, lst, addr_fmt=self.addr_fmt)
-        if c:
-            # All details are same: M/N, paths, addr fmt
-            if sorted(self.xpubs) != sorted(c.xpubs):
-                # this also applies to non-BIP-67 type multisig wallets
-                # multi(2,A,B) is treated as duplicate of multi(2,B,A)
-                # consensus-wise they are different script/wallet but CC
-                # don't allow to import one if other already imported
-                return None, ['xpubs'], 0
-            elif self.bip67 != c.bip67:
-                # treat same keys inside different desc multi/sortedmulti as duplicates
-                # sortedmulti(2,A,B) is considered same as multi(2,A,B) or multi(2,B,A)
-                # do not allow to import multi if sortedmulti with the same set of keys
-                # already imported and vice-versa
-                return None, ["BIP-67 clash"], 1
-            elif self.name == c.name:
-                return None, [], 1
-            else:
-                return c, ['name'], 0
-
-        similar = MultisigWallet.find_candidates(lst)
-        if not similar:
-            # no matches, good.
-            return None, [], 0
-
-        # See if the xpubs are changing, which is risky... other differences like
-        # name are okay.
-        diffs = set()
-        for c in similar:
-            if c.M != self.M:
-                diffs.add('M differs')
-            if c.addr_fmt != self.addr_fmt:
-                diffs.add('address type')
-            if c.name != self.name:
-                diffs.add('name')
-            if c.xpubs != self.xpubs:
-                diffs.add('xpubs')
-
-        return None, diffs, len(similar)
-
-    async def export_electrum(self):
-        # Generate and save an Electrum JSON file.
-        from export import export_contents
-
-        def doit():
-            rv = dict(seed_version=17, use_encryption=False,
-                        wallet_type='%dof%d' % (self.M, self.N))
-
-            ch = self.chain
-
-            # the important stuff.
-            for idx, (xfp, deriv, xpub) in enumerate(self.xpubs): 
-
-                node = None
-                if self.addr_fmt != AF_P2SH:
-                    # CHALLENGE: we must do slip-132 format [yz]pubs here when not p2sh mode.
-                    node = ch.deserialize_node(xpub, AF_P2SH); assert node
-                    xp = ch.serialize_public(node, self.addr_fmt)
-                else:
-                    xp = xpub
-
-                rv['x%d/' % (idx+1)] = dict(
-                                hw_type='coldcard', type='hardware',
-                                ckcc_xfp=xfp,
-                                label='Coldcard %s' % xfp2str(xfp),
-                                derivation=deriv, xpub=xp)
-
-            # sign export with first p2pkh key
-            return ujson.dumps(rv), self.get_my_deriv(settings.get('xfp'))+"/0/0", AF_CLASSIC
-            
-        await export_contents('Electrum multisig wallet', doit,
-                              self.make_fname('el', 'json'), is_json=True)
-
-
-    @classmethod
-    def import_from_psbt(cls, M, N, xpubs_list):
-        # given the raw data from PSBT global header, offer the user
-        # the details, and/or bypass that all and just trust the data.
-        # - xpubs_list is a list of (xfp+path, binary BIP-32 xpub)
-        # - already know not in our records.
-        trust_mode = cls.get_trust_policy()
-
-        if trust_mode == TRUST_VERIFY:
-            # already checked for existing import and wasn't found, so fail
-            raise FatalPSBTIssue("XPUBs in PSBT do not match any existing wallet")
-
-        # build up an in-memory version of the wallet.
-        #  - capture address format based on path used for my leg (if standards compliant)
-
-        assert N == len(xpubs_list)
-        assert 1 <= M <= N <= MAX_SIGNERS, 'M/N range'
-        my_xfp = settings.get('xfp')
-
-        expect_chain = chains.current_chain().ctype
-        xpubs = []
-        has_mine = 0
-
-        for k, v in xpubs_list:
-            xfp, *path = ustruct.unpack_from('<%dI' % (len(k)//4), k, 0)
-            xpub = ngu.codecs.b58_encode(v)
-            is_mine, item = check_xpub(xfp, xpub, keypath_to_str(path, skip=0),
-                                       expect_chain, my_xfp, cls.disable_checks)
-            xpubs.append(item)
-            if is_mine:
-                has_mine += 1
-                addr_fmt = cls.guess_addr_fmt(path)
-
-        assert has_mine == 1         # 'my key not included'
-
-        name = 'PSBT-%d-of-%d' % (M, N)
-        # this will always create sortedmulti multisig (BIP-67)
-        # because BIP-174 came years after wide spread acceptance of BIP-67 policy
-        ms = cls(name, (M, N), xpubs, addr_fmt=addr_fmt or AF_P2SH) # TODO why legacy
-
-        # may just keep in-memory version, no approval required, if we are
-        # trusting PSBT's today, otherwise caller will need to handle UX w.r.t new wallet
-        return ms, (trust_mode != TRUST_PSBT)
-
-    def validate_psbt_xpubs(self, xpubs_list):
-        # The xpubs provided in PSBT must be exactly right, compared to our record.
-        # But we're going to use our own values from setup time anyway.
-        # Check:
-        # - chain codes match what we have stored already
-        # - pubkey vs. path will be checked later
-        # - xfp+path already checked when selecting this wallet
-        # - some cases we cannot check, so count those for a warning
-        # Any issue here is a fraud attempt in some way, not innocent.
-        # But it would not have tricked us and so the attack targets some other signer.
-        assert len(xpubs_list) == self.N
-
-        for k, v in xpubs_list:
-            xfp, *path = ustruct.unpack_from('<%dI' % (len(k)//4), k, 0)
-            xpub = ngu.codecs.b58_encode(v)
-
-            # cleanup and normalize xpub
-            tmp = []
-            is_mine, item = check_xpub(xfp, xpub, keypath_to_str(path, skip=0),
-                                       chains.current_chain().ctype, 0, self.disable_checks)
-            tmp.append(item)
-            (_, deriv, xpub_reserialized) = tmp[0]
-            assert deriv            # because given as arg
-
-            if self.disable_checks:
-                # allow wrong derivation paths in PSBT; but also allows usage when
-                # old pre-3.2.1 MS wallet lacks derivation details for all legs
-                continue
-
-            # find in our records.
-            for (x_xfp, x_deriv, x_xpub) in self.xpubs: 
-                if x_xfp != xfp: continue
-                # found matching XFP
-                assert deriv == x_deriv
-
-                assert xpub_reserialized == x_xpub, 'xpub wrong (xfp=%s)' % xfp2str(xfp)
-                break
-            else:
-                assert False            # not reachable, since we picked wallet based on xfps
-
-    async def confirm_import(self):
-        # prompt them about a new wallet, let them see details and then commit change.
-        M, N = self.M, self.N
-
-        if M == N == 1:
-            exp = 'The one signer must approve spends.'
-        elif M == N:
-            exp = 'All %d co-signers must approve spends.' % N
-        elif M == 1:
-            exp = 'Any signature from %d co-signers will approve spends.' % N
-        else:
-            exp = '{M} signatures, from {N} possible co-signers, will be required to approve spends.'.format(M=M, N=N)
-
-        # Look for duplicate stuff
-        name_change, diff_items, num_dups = self.has_similar()
-
-        is_dup = False
-        if name_change:
-            story = 'Update NAME only of existing multisig wallet?'
-        elif num_dups and isinstance(diff_items, list):
-            # failures only
-            story = "Duplicate wallet."
-            if diff_items:
-                story += diff_items[0]
-            else:
-                story += ' All details are the same as existing!'
-            is_dup = True
-        elif diff_items:
-            # Concern here is overwrite when similar, but we don't overwrite anymore, so 
-            # more of a warning about funny business.
-            story = '''\
-WARNING: This new wallet is similar to an existing wallet, but will NOT replace it. Consider deleting previous wallet first. Differences: \
-''' + ', '.join(diff_items)
-        else:
-            story = 'Create new multisig wallet?'
-
-        derivs, dsum = self.get_deriv_paths()
-
-        if not self.bip67 and not is_dup:
-            # do not need to warn if duplicate, won;t be allowed to import anyways
-            story += "\nWARNING: BIP-67 disabled! Unsorted multisig - order of keys in descriptor/backup is crucial"
-
-        story += '''\n
-Wallet Name:
-  {name}
-
-Policy: {M} of {N}
-
-{exp}
-
-Addresses:
-  {at}
-
-Derivation:
-  {dsum}
-
-Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=exp, dsum=dsum,
-                                                  at=self.render_addr_fmt(self.addr_fmt))
-        if not is_dup:
-            story += ('%s to approve, %s to cancel.' % (OK, X))
-        else:
-            story += '%s to cancel' % X
-
-        ux_clear_keys(True)
-        while 1:
-            ch = await ux_show_story(story, escape='1')
-
-            if ch == '1':
-                await self.show_detail(verbose=False)
-                continue
-
-            if ch == 'y' and not is_dup:
-                # save to nvram, may raise WalletOutOfSpace
-                if name_change:
-                    name_change.delete()
-
-                assert self.storage_idx == -1
-                self.commit()
-                await ux_dramatic_pause("Saved.", 2)
-            break
-
-        return ch
-
-
-
-async def validate_xpub_for_ms(obj, af_str, chain, my_xfp, xpubs):
-    # Read xpub and validate from JSON received via SD card or BBQr
-    # - obj => JSON object (mapping)
-    # - af_str => address format we expect/need
-
-    # value in file is BE32, but we want LE32 internally
-    # - KeyError here handled by caller
-    xfp = str2xfp(obj['xfp'])
-    deriv = cleanup_deriv_path(obj[af_str + '_deriv'])
-    ln = obj.get(af_str)
-
-    is_mine, item = check_xpub(xfp, ln, deriv, chain.ctype, my_xfp, xpubs)
-    xpubs.append(item)
-    return is_mine
-
-
-async def ms_coordinator_qr(af_str, my_xfp, chain):
+async def ms_coordinator_qr(af_str, my_xfp):
     # Scan a number of JSON files from BBQr w/ derive, xfp and xpub details.
     #
     from ux_q1 import QRScannerInteraction, decode_qr_result, QRDecodeExplained
@@ -390,28 +67,32 @@ async def ms_coordinator_qr(af_str, my_xfp, chain):
                 file_type = 'J'
         if file_type == 'J':
             try:
-                import json
-                return json.loads(data)
+                return ujson.loads(data)
             except:
                 raise QRDecodeExplained('Unable to decode JSON data')
         else:
             for line in data.split("\n"):
-                if len(line) > 112:
-                    l_data = extract_cosigner(line, af_str)
-                    if l_data:
-                        return l_data
+                if len(line) > 112 and ("pub" in line):
+                    return line.strip()
 
     num_mine = 0
     num_files = 0
-    xpubs = []
+    keys = []
 
     msg = 'Scan Exported XPUB from Coldcard'
     while True:
-        vals = await QRScannerInteraction().scan_general(msg, convertor, enter_quits=True)
-        if vals is None:
+        key = await QRScannerInteraction().scan_general(msg, convertor, enter_quits=True)
+        if key is None:
             break
         try:
-            is_mine = await validate_xpub_for_ms(vals, af_str, chain, my_xfp, xpubs)
+            if isinstance(key, dict):
+                k = Key.from_cc_json(key, af_str)
+            else:
+                k = Key.from_string(key)
+
+            num_mine += k.validate(my_xfp)
+            keys.append(k)
+
         except KeyError as e:
             # random JSON will end up here
             msg = "Missing value: %s" % str(e)
@@ -421,19 +102,17 @@ async def ms_coordinator_qr(af_str, my_xfp, chain):
             msg = "Failure: %s" % str(e)
             continue
 
-        if is_mine:
-            num_mine += 1
         num_files += 1
 
         msg = "Number of keys scanned: %d" % num_files
 
-    return xpubs, num_mine, num_files
+    return keys, num_mine, num_files
 
 
-async def ms_coordinator_file(af_str, my_xfp, chain, slot_b=None):
+async def ms_coordinator_file(af_str, my_xfp, slot_b=None):
     num_mine = 0
     num_files = 0
-    xpubs = []
+    keys = []
     try:
         with CardSlot(slot_b=slot_b) as card:
             for path in card.get_paths():
@@ -471,10 +150,13 @@ async def ms_coordinator_file(af_str, my_xfp, chain, slot_b=None):
                                     if vals:
                                         break
 
-                        is_mine = await validate_xpub_for_ms(vals, af_str, chain,
-                                                             my_xfp, xpubs)
-                        if is_mine:
-                            num_mine += 1
+                        if isinstance(vals, dict):
+                            k = Key.from_cc_json(vals, af_str)
+                        else:
+                            k = Key.from_string(vals)
+
+                        num_mine += k.validate(my_xfp)
+                        keys.append(k)
 
                         num_files += 1
 
@@ -490,19 +172,21 @@ async def ms_coordinator_file(af_str, my_xfp, chain, slot_b=None):
         await needs_microsd()
         return
 
-    return xpubs, num_mine, num_files
+    return keys, num_mine, num_files
 
 
 def add_own_xpub(chain, acct_num, addr_fmt, secret=None):
     # Build out what's required for using master secret (or another
     # encoded secret) as a co-signer
-    deriv = "m/48h/%dh/%dh/%dh" % (chain.b44_cointype, acct_num,
-                                   2 if addr_fmt == AF_P2WSH else 1)
+    deriv = "48h/%dh/%dh/%dh" % (chain.b44_cointype, acct_num,
+                                 2 if addr_fmt == AF_P2WSH else 1)
 
     with stash.SensitiveValues(secret=secret) as sv:
-        node = sv.derive_path(deriv)
-        the_xfp = sv.get_xfp()
-        return (the_xfp, deriv, chain.serialize_public(node, AF_P2SH))
+        the_xfp = xfp2str(sv.get_xfp())
+        koi = KeyOriginInfo.from_string(the_xfp + "/" + deriv)
+        node = sv.derive_path(deriv, register=False)
+        key = Key(node, koi, chain_type=chain.ctype)
+        return key
 
 
 async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False, for_ccc=None):
@@ -518,21 +202,21 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
     my_xfp = settings.get('xfp')
 
     if is_qr:
-        xpubs, num_mine, num_files = await ms_coordinator_qr(mode, my_xfp, chain)
+        keys, num_mine, num_files = await ms_coordinator_qr(mode, my_xfp)
     else:
-        xpubs, num_mine, num_files = await ms_coordinator_file(mode, my_xfp, chain)
+        keys, num_mine, num_files = await ms_coordinator_file(mode, my_xfp)
         if CardSlot.both_inserted():
             # handle dual slot usage: assumes slot A used by first call above
-            bxpubs, bnum_mine, bnum_files = await ms_coordinator_file(mode, my_xfp,
-                                                                      chain, True)
-            xpubs.extend(bxpubs)
+            bkeys, bnum_mine, bnum_files = await ms_coordinator_file(mode, my_xfp,
+                                                                     slot_b=True)
+            keys.extend(bkeys)
             num_mine += bnum_mine
             num_files += bnum_files
 
     # remove dups; easy to happen if you double-tap the export
-    xpubs = list(set(xpubs))
+    keys = list(set(keys))
 
-    if not xpubs or (len(xpubs) == 1 and num_mine):
+    if not keys or (len(keys) == 1 and num_mine):
         if is_qr:
             msg = "No XPUBs scanned. Exit."
         else:
@@ -554,15 +238,15 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
         # problem: above file searching may find xpub export from key C
         # (or our master seed, exported) .. we can't add them again,
         # since xfp are not unique and that's probably not what they wanted
-        got_xfps = [a[0], c[0]]
-        xpubs = [x for x in xpubs if x[0] not in got_xfps]
+        got_xfps = [a.origin.fingerprint, c.origin.fingerprint]
+        keys = [k for k in keys if k.origin.fingerprint not in got_xfps]
 
-        if not xpubs:
+        if not keys:
             await ux_show_story("Need at least one other co-signer (key B).")
             return
 
         # master seed is always key0, key C is key1, k2..kn backup keys
-        xpubs = [a, c] + xpubs
+        keys = [a, c] + keys
         num_mine += 2
 
     elif not num_mine:
@@ -572,10 +256,10 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
         if ch == "y":
             acct = await ux_enter_bip32_index('Account Number:') or 0
             dis.fullscreen("Wait...")
-            xpubs.append(add_own_xpub(chain, acct, addr_fmt))
+            keys.append(add_own_xpub(chain, acct, addr_fmt))
             num_mine += 1
 
-    N = len(xpubs)
+    N = len(keys)
 
     if (N > MAX_SIGNERS) or (N < 2):
         await ux_show_story("Invalid number of signers,min is 2 max is %d." % MAX_SIGNERS)
@@ -603,12 +287,18 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
     else:
         name = 'CC-%d-of-%d' % (M, N)
 
-    ms = MultisigWallet(name, (M, N), xpubs, addr_fmt=addr_fmt)
+    from miniscript import Sortedmulti, Number
+    from wallet import MiniScriptWallet
+    from descriptor import Descriptor
+
+    desc_obj = Descriptor(miniscript=Sortedmulti(Number(M), *keys),
+                          addr_fmt=addr_fmt)
+    msc = MiniScriptWallet.from_descriptor_obj(name, desc_obj)
 
     if num_mine:
         from auth import NewMiniscriptEnrollRequest, UserAuthorizedAction
 
-        UserAuthorizedAction.active_request = NewMiniscriptEnrollRequest(ms)
+        UserAuthorizedAction.active_request = NewMiniscriptEnrollRequest(msc)
 
         # menu item case: add to stack
         from ux import the_ux
@@ -616,7 +306,8 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
     else:
         # we cannot enroll multisig in which we do not participate
         # thou we can put descriptor on screen or on SD
-        await ms.export_wallet_file(descriptor=True, desc_pretty=False)
+        # cannot sign export if my key not included
+        await msc.export_wallet_file(sign=False)
 
 
 async def create_ms_step1(*a, for_ccc=None):
@@ -654,6 +345,7 @@ Default is P2WSH addresses (segwit) or press (1) for P2SH-P2WSH.''', escape='1')
     try:
         return await ondevice_multisig_create(n, f, is_qr, for_ccc=for_ccc)
     except Exception as e:
+        # sys.print_exception(e)
         await ux_show_story('Failed to create multisig.\n\n%s\n%s' % (e, problem_file_line(e)),
                             title="ERROR")
 # EOF

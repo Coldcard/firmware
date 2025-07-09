@@ -15,7 +15,7 @@ from bbqr import b32encode, b32decode
 from menu import MenuItem, MenuSystem
 from notes import NoteContentBase
 from sffile import SFFile
-from miniscript import MiniScriptWallet
+from wallet import MiniScriptWallet
 from stash import SensitiveValues, SecretStash, blank_object, bip39_passphrase
 
 # One page github-hosted static website that shows QR based on URL contents pushed by NFC
@@ -626,15 +626,9 @@ async def kt_send_psbt(psbt, psbt_len):
 
     # who remains to sign? look at inputs
     # all_xfps is set, no need to list one master xfp more than once - assuming CC can sign it all
-    if psbt.active_multisig:
-        ms = psbt.active_multisig
-        all_xfps = {x for x,*p in psbt.active_multisig.get_xfp_paths()}
-
-    elif psbt.active_miniscript:
-        ms = psbt.active_miniscript
-        all_xfps = {x for x,*p in psbt.active_miniscript.to_descriptor().xfp_paths(skip_unspend_ik=True)}
-    else:
-        assert False
+    assert psbt.active_miniscript
+    ms = psbt.active_miniscript
+    all_xfps = {x for x,*p in psbt.active_miniscript.to_descriptor().xfp_paths(skip_unspend_ik=True)}
 
     need = [x for x in psbt.miniscript_xfps_needed() if x in all_xfps]
     # maybe it's not really a PSBT where we know the other signers? might be
@@ -769,8 +763,8 @@ async def kt_send_file_psbt(*a):
     finally:
         dis.progress_bar_show(1)
 
-    if (not psbt.active_multisig) and (not psbt.active_miniscript):
-        await ux_show_story("We are not part of this multisig wallet.", "Cannot Teleport PSBT")
+    if not psbt.active_miniscript:
+        await ux_show_story("We are not part of this wallet.", "Cannot Teleport PSBT")
         return
 
     await kt_send_psbt(psbt, psbt_len=psbt_len)

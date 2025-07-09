@@ -454,7 +454,7 @@ def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
                     cap_story, cap_screen, has_qwerty, way, try_sign_microsd,
                     try_sign_nfc, scan_a_qr, need_keypress, press_select,
                     goto_home, multisig, fake_ms_txn, import_ms_wallet,
-                    clear_ms, try_sign_bbqr):
+                    clear_miniscript, try_sign_bbqr):
     # check the NFC push Tx feature, validating the URL's it makes
     # - not the UX
     # - 100 outs => 5000 or so
@@ -463,7 +463,7 @@ def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
     from base64 import urlsafe_b64decode
     from urllib.parse import urlsplit, parse_qsl, unquote
 
-    clear_ms()
+    clear_miniscript()
     settings_set('chain', chain)
 
     enable_nfc()

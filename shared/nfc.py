@@ -631,29 +631,6 @@ class NFCHandler:
             else:
                 raise ValueError(ext)
 
-    async def import_multisig_nfc(self, *a):
-        # user is pushing a file downloaded from another CC over NFC
-        # - would need an NFC app in between for the sneakernet step
-        # get some data
-        def f(m):
-            if len(m) < 70:
-                return
-            m = m.decode()
-
-            # multi( catches both multi( and sortedmulti(
-            if 'pub' in m or "multi(" in m:
-                return m
-
-        winner = await self._nfc_reader(f, 'Unable to find multisig descriptor.')
-
-        if winner:
-            from auth import maybe_enroll_xpub
-            try:
-                maybe_enroll_xpub(config=winner)
-            except Exception as e:
-                #import sys; sys.print_exception(e)
-                await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
-
     async def import_ephemeral_seed_words_nfc(self, *a):
         def f(m):
             sm = m.decode().strip().split(" ")

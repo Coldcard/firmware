@@ -513,11 +513,11 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
         for _ in range(5):
             time.sleep(.1)
             title, story = cap_story()
-            if  "Create new multisig wallet" in story:
+            if  "Create new miniscript wallet" in story:
                 break
         else:
             press_cancel()
-            assert False, "failed to create ms wallet"
+            assert False, "failed to create miniscript wallet"
 
         assert f"Policy: 2 of {N}" in story
         if is_q1:
@@ -546,7 +546,7 @@ def bitcoind_create_watch_only_wallet(pick_menu_item, need_keypress, microsd_pat
         pick_menu_item("Descriptors")
         pick_menu_item("Bitcoin Core")
 
-        res = load_export("sd", label="Bitcoin Core multisig setup", is_json=False)
+        res = load_export("sd", label="Bitcoin Core miniscript", is_json=False)
 
         res = res.replace("importdescriptors ", "").strip()
         r1 = res.find("[")
@@ -563,7 +563,7 @@ def bitcoind_create_watch_only_wallet(pick_menu_item, need_keypress, microsd_pat
         for obj in res:
             assert obj["success"], obj
 
-        for _ in range(4):
+        for _ in range(3):
             press_cancel()
 
         return bitcoind_wo
@@ -622,7 +622,7 @@ def test_ccc_magnitude(mag_ok, mag, setup_ccc, ccc_ms_setup,
 
     settings_set("ccc", None)
     settings_set("chain", "XRT")
-    settings_set("multisig", [])
+    settings_set("miniscript", [])
 
     if mag_ok:
         # always try limit/border value
@@ -660,7 +660,7 @@ def test_ccc_whitelist(whitelist_ok, setup_ccc, ccc_ms_setup,
 
     settings_set("ccc", None)
     settings_set("chain", "XRT")
-    settings_set("multisig", [])
+    settings_set("miniscript", [])
 
     whitelist = [
         "bcrt1qqca9eefwz8tzn7rk6aumhwhapyf5vsrtrddxxp",
@@ -696,7 +696,7 @@ def test_ccc_velocity(velocity_mi, setup_ccc, ccc_ms_setup, bitcoind, settings_s
 
     settings_set("ccc", None)
     settings_set("chain", "XRT")
-    settings_set("multisig", [])
+    settings_set("miniscript", [])
 
     blocks = int(velocity_mi.split()[0])
 
@@ -780,7 +780,7 @@ def test_ccc_warnings(setup_ccc, ccc_ms_setup, bitcoind, settings_set, policy_si
 
     settings_set("ccc", None)
     settings_set("chain", "XRT")
-    settings_set("multisig", [])
+    settings_set("miniscript", [])
 
     whitelist = ["bcrt1qlk39jrclgnawa42tvhu2n7se987qm96qg8v76e",
                  "2Mxp1Dy2MyR4w36J2VaZhrFugNNFgh6LC1j",
@@ -836,12 +836,12 @@ def test_ccc_warnings(setup_ccc, ccc_ms_setup, bitcoind, settings_set, policy_si
 def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim_exec,
                    bitcoind, settings_get, load_export, press_cancel, restore_main_seed,
                    bitcoind_create_watch_only_wallet, policy_sign, goto_eph_seed_menu,
-                   pick_menu_item, word_menu_entry, press_select, import_multisig):
+                   pick_menu_item, word_menu_entry, press_select, import_miniscript):
 
     # - maxed out values: 24 words, 25 whitelisted p2wsh values
     settings_set("ccc", None)
     settings_set("chain", "XRT")
-    settings_set("multisig", [])
+    settings_set("miniscript", [])
 
     # C mnemonic is 24 words
     c_words = "cluster comic depend absent grain circle demand tag pass clock certain strategy lunar bless pulse useful comfort fatigue glove decorate taste allow adult journey".split()
@@ -862,8 +862,9 @@ def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim
 
 
     pick_menu_item(target_mi)  # choose already created multisig
-    pick_menu_item("Coldcard Export")
-    ms_conf = load_export("sd", "Coldcard multisig setup", is_json=False)
+    pick_menu_item("Descriptors")
+    pick_menu_item("Export")
+    ms_conf = load_export("sd", "Miniscript", is_json=False)
     press_cancel()
 
     # fund CCC multisig
@@ -884,7 +885,7 @@ def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim
     time.sleep(0.1)
     word_menu_entry(b_words)
     press_select()
-    import_multisig(data=ms_conf)
+    import_miniscript(data=ms_conf)
     press_select()  # confirm multisig import
 
     # get rid of last violation - as it is held as global
@@ -899,11 +900,11 @@ def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim
 def test_load_and_sign_key_C(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim_exec,
                              bitcoind_create_watch_only_wallet, pick_menu_item, load_export,
                              cap_story, press_cancel, bitcoind, policy_sign, restore_main_seed,
-                             verify_ephemeral_secret_ui, word_menu_entry, import_multisig,
+                             verify_ephemeral_secret_ui, word_menu_entry, import_miniscript,
                              press_select, settings_get, seed_vault, confirm_tmp_seed):
     settings_set("ccc", None)
     settings_set("chain", "XRT")
-    settings_set("multisig", [])
+    settings_set("miniscript", [])
     settings_set("seedvault", int(seed_vault))
     settings_set("seeds", [])
 
@@ -912,8 +913,9 @@ def test_load_and_sign_key_C(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_
     bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
 
     pick_menu_item(target_mi)  # choose already created multisig
-    pick_menu_item("Coldcard Export")
-    ms_conf = load_export("sd", "Coldcard multisig setup", is_json=False)
+    pick_menu_item("Descriptors")
+    pick_menu_item("Export")
+    ms_conf = load_export("sd", "Miniscript", is_json=False)
     press_cancel()
 
     # fund CCC multisig
@@ -942,7 +944,7 @@ def test_load_and_sign_key_C(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_
     confirm_tmp_seed(seedvault=seed_vault)
     verify_ephemeral_secret_ui(mnemonic=c_words.split(), seed_vault=seed_vault)
 
-    import_multisig(data=ms_conf)
+    import_miniscript(data=ms_conf)
     press_select()  # confirm multisig import
 
     # get rid of last violation - as it is held as global
@@ -974,7 +976,7 @@ def test_ccc_xpub_export(chain, c_num_words, acct, settings_set, load_export, se
     goto_home()
     settings_set("ccc", None)
     settings_set("chain", chain)
-    settings_set("multisig", [])
+    settings_set("miniscript", [])
 
     words = None
     if isinstance(c_num_words, int):
@@ -1018,18 +1020,18 @@ def test_ccc_xpub_export(chain, c_num_words, acct, settings_set, load_export, se
         subkey = master.subkey_for_path(xpub_obj[l+"_deriv"])
         xpub = subkey.hwif()
         assert slip132undo(xpub_obj[l])[0] == xpub
-        assert xpub in xpub_obj[l+"_desc"]
+        assert xpub in xpub_obj[l+"_key_exp"]
 
 
 def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
                                    bitcoind_create_watch_only_wallet, cap_story, bitcoind,
                                    policy_sign, settings_get, cap_menu, pick_menu_item,
-                                   press_select, load_export, offer_ms_import, goto_home):
+                                   press_select, load_export, offer_minsc_import, goto_home):
     # - 'build 2-of-N' path
     goto_home()
     settings_set("ccc", None)
     settings_set("chain", "XRT")
-    settings_set("multisig", [])
+    settings_set("miniscript", [])
 
     words = setup_ccc(c_words=None, mag=2, vel='6 blocks (hour)')
     b_keys_0, mi = ccc_ms_setup(N=5)
@@ -1091,16 +1093,17 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
     w_mn, w_name = ami.rsplit(" ", 1)
     new_name = "new"
     pick_menu_item(ami)  # just another ms wallet
-    pick_menu_item("Coldcard Export")
-    ms_conf = load_export("sd", label="Coldcard multisig setup", is_json=False)
+    pick_menu_item("Descriptors")
+    pick_menu_item("Export")
+    ms_conf = load_export("sd", "Miniscript", is_json=False)
 
     # try importing duplicate does not work
-    _, story = offer_ms_import(ms_conf)
-    assert "Duplicate wallet" in story
+    _, story = offer_minsc_import(ms_conf)
+    assert "duplicate of already saved wallet" in story
 
     # try rename
     ms_conf = ms_conf.replace(w_name, new_name)
-    _, story = offer_ms_import(ms_conf)
+    _, story = offer_minsc_import(ms_conf)
     assert "Update NAME only of existing multisig wallet?" in story
     press_select()
     time.sleep(.1)
@@ -1115,7 +1118,7 @@ def test_remove_ccc(settings_set, setup_ccc, ccc_ms_setup, settings_get, policy_
                     bitcoind_create_watch_only_wallet, bitcoind, goto_home):
     goto_home()
     settings_set("ccc", None)
-    settings_set("multisig", [])
+    settings_set("miniscript", [])
 
     setup_ccc(c_words=None, mag=2, vel='6 blocks (hour)')
     _, mi = ccc_ms_setup(N=3)
@@ -1124,7 +1127,7 @@ def test_remove_ccc(settings_set, setup_ccc, ccc_ms_setup, settings_get, policy_
 
     ccc_ms_setup(N=5)
 
-    assert len(settings_get("multisig")) == 2
+    assert len(settings_get("miniscript")) == 2
 
     pick_menu_item("Remove CCC")  # start remove
     time.sleep(.1)
@@ -1141,7 +1144,7 @@ def test_remove_ccc(settings_set, setup_ccc, ccc_ms_setup, settings_get, policy_
     need_keypress("4")
 
     # multisig wallets are not impacted by removal of ccc
-    assert len(settings_get("multisig")) == 2
+    assert len(settings_get("miniscript")) == 2
 
     bitcoind.supply_wallet.sendtoaddress(address=w0.getnewaddress(), amount=5)
     bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
@@ -1157,7 +1160,7 @@ def test_c_key_from_seed_vault(has_candidates, setup_ccc, build_test_seed_vault,
                                cap_story, press_cancel, enter_enabled_ccc):
     goto_home()
     settings_set("ccc", None)
-    settings_set("multisig", [])
+    settings_set("miniscript", [])
 
     settings_set("seedvault", True)
     sv = build_test_seed_vault()
@@ -1215,23 +1218,21 @@ def test_c_key_from_seed_vault(has_candidates, setup_ccc, build_test_seed_vault,
 @pytest.mark.parametrize("is_bbqr", [True, False])
 @pytest.mark.parametrize("N", [3, 15])
 def test_ms_setup_cosigner_import(way, ftype, is_bbqr, N, goto_home, settings_set, setup_ccc,
-                                  ccc_ms_setup, pick_menu_item, cap_story, is_q1):
+                                  ccc_ms_setup, pick_menu_item, is_q1, load_export):
     if ((way == "sd") and is_bbqr) or ((not is_q1) and (way == "qr")):
         pytest.skip("useless")
 
     goto_home()
     settings_set("ccc", None)
-    settings_set("multisig", [])
+    settings_set("miniscript", [])
 
     setup_ccc()
     keys, target_mi = ccc_ms_setup(N=N, way=way, ftype=ftype, bbqr=is_bbqr)
 
     pick_menu_item(target_mi)
     pick_menu_item("Descriptors")
-    pick_menu_item("View Descriptor")
-    time.sleep(.1)
-    _, story = cap_story()
-    desc = story.split("\n\n")[-1]
+    pick_menu_item("Export")
+    desc = load_export("sd", "Miniscript", is_json=False)
 
     for _, obj in keys:
         assert f"[{obj['xfp'].lower()}/{obj['p2wsh_deriv'].replace('m/', '')}]{obj['p2wsh']}" in desc

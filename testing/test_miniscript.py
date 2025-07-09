@@ -55,63 +55,104 @@ def offer_minsc_import(cap_story, dev, sim_root_dir):
 
 
 @pytest.fixture
-def import_miniscript(goto_home, pick_menu_item, cap_story, need_keypress,
-                      nfc_write_text, press_select, scan_a_qr, press_nfc):
-    def doit(fname, way="sd", data=None):
-        goto_home()
-        pick_menu_item('Settings')
-        pick_menu_item('Miniscript')
-        pick_menu_item('Import')
-        time.sleep(.3)
-        _, story = cap_story()
-        if way == "nfc":
-            if "via NFC" not in story:
-                pytest.skip("nfc disabled")
+def import_miniscript(request, is_q1, need_keypress, offer_minsc_import, press_cancel):
+    def doit(fname=None, way="sd", data=None, name=None):
+        assert fname or data
 
-            press_nfc()
-            time.sleep(.1)
-            if isinstance(data, dict):
-                data = json.dumps(data)
-            nfc_write_text(data)
-            time.sleep(1)
-            return cap_story()
-        elif way == "qr":
-            if isinstance(data, dict):
-                data = json.dumps(data)
-
-            need_keypress(KEY_QR)
-            try:
-                scan_a_qr(data)
-            except:
-                # always as text - even if it is json
-                actual_vers, parts = split_qrs(data, 'U', max_version=20)
-                random.shuffle(parts)
-
-                for p in parts:
-                    scan_a_qr(p)
-                    time.sleep(1)  # just so we can watch
-
-            time.sleep(1)
-            return cap_story()
-
-        if "Press (1) to import miniscript wallet file from SD Card" in story:
-            # in case Vdisk or NFC is enabled
+        if fname:
             if way == "sd":
-                need_keypress("1")
+                microsd_path = request.getfixturevalue("microsd_path")
+                fpath = microsd_path(fname)
+            else:
+                virtdisk_path = request.getfixturevalue("virtdisk_path")
+                fpath = virtdisk_path(fname)
+            with open(fpath, 'r') as f:
+                config = f.read()
+        else:
+            config = data
 
-            elif way == "vdisk":
-                if "ress (2)" not in story:
+        if way in ("usb", None):
+            return offer_minsc_import(config)
+        else:
+            # only get those simulator related fixtures here, to be able to
+            # use this with real HW
+            cap_menu = request.getfixturevalue('cap_menu')
+            cap_story = request.getfixturevalue('cap_story')
+            goto_home = request.getfixturevalue('goto_home')
+            press_nfc = request.getfixturevalue('press_nfc')
+            pick_menu_item = request.getfixturevalue('pick_menu_item')
+
+            if "Skip Checks?" not in cap_menu():
+                # we are not in multisig menu
+                goto_home()
+                pick_menu_item("Settings")
+                pick_menu_item("Miniscript")
+                time.sleep(.1)
+
+            pick_menu_item('Import')
+            time.sleep(.2)
+            _, story = cap_story()
+            if way == "nfc":
+                if "via NFC" not in story:
+                    press_cancel()
+                    pytest.skip("nfc disabled")
+
+                press_nfc()
+                time.sleep(.1)
+                if isinstance(config, dict):
+                    config = json.dumps(config)
+
+                nfc_write_text = request.getfixturevalue('nfc_write_text')
+                nfc_write_text(config)
+                time.sleep(1)
+                return cap_story()
+            elif way == "qr":
+                scan_a_qr = request.getfixturevalue('scan_a_qr')
+                if isinstance(data, dict):
+                    data = json.dumps(data)
+
+                need_keypress(KEY_QR)
+                try:
+                    scan_a_qr(data)
+                except:
+                    # always as text - even if it is json
+                    actual_vers, parts = split_qrs(data, 'U', max_version=20)
+                    random.shuffle(parts)
+
+                    for p in parts:
+                        scan_a_qr(p)
+                        time.sleep(1)  # just so we can watch
+
+                time.sleep(1)
+                return cap_story()
+
+            if "Press (1) to import miniscript wallet file from SD Card" in story:
+                # in case Vdisk or NFC is enabled
+                if way == "sd":
+                    need_keypress("1")
+
+                elif way == "vdisk":
+                    if "ress (2)" not in story:
+                        press_cancel()
+                        pytest.xfail(way)
+
+                    need_keypress("2")
+            else:
+                if way != "sd":
                     pytest.xfail(way)
 
-                need_keypress("2")
-        else:
-            if way != "sd":
-                pytest.xfail(way)
+            if not fname:
+                microsd_path = request.getfixturevalue("microsd_path")
+                virtdisk_path = request.getfixturevalue("virtdisk_path")
+                path_f = microsd_path if way == "sd" else virtdisk_path
+                fname = (name or "ms_wal") + ".txt"
+                with open(path_f(fname), "w") as f:
+                    f.write(config)
 
-        time.sleep(.5)
-        pick_menu_item(fname)
-        time.sleep(.1)
-        return cap_story()
+            time.sleep(.3)
+            pick_menu_item(fname)
+            time.sleep(.1)
+            return cap_story()
 
     return doit
 
@@ -1983,12 +2024,10 @@ def test_d_wrapper(addr_fmt, bitcoind, get_cc_key, goto_home, pick_menu_item, ca
     "or_d(pk(@A),and_v(v:pkh(@B),after(100)))",
     "or_d(multi(2,@A,@C),and_v(v:pkh(@B),after(100)))",
 ])
-def test_import_same_policy_same_keys_diff_order(taproot_ikspendable, minisc,
-                                                 clear_miniscript, use_regtest,
-                                                 get_cc_key, bitcoin_core_signer,
-                                                 offer_minsc_import, cap_menu,
-                                                 bitcoind, pick_menu_item,
-                                                 press_select):
+def test_import_same_policy_same_keys_diff_order(taproot_ikspendable, minisc, use_regtest,
+                                                 clear_miniscript, bitcoin_core_signer,
+                                                 get_cc_key, settings_get, cap_menu,
+                                                 offer_minsc_import, bitcoind, press_select):
     use_regtest()
     clear_miniscript()
     taproot, ik_spendable = taproot_ikspendable
@@ -2032,21 +2071,15 @@ def test_import_same_policy_same_keys_diff_order(taproot_ikspendable, minisc,
     title, story = offer_minsc_import(desc1)
     assert "Create new miniscript wallet?" in story
     press_select()
-    pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
-    m = cap_menu()
-    m = [i for i in m if not i.startswith("Import")]
-    assert len(m) == 2
+    assert len(settings_get("miniscript", [])) == 2
 
 
 @pytest.mark.parametrize("cs", [True, False])
 @pytest.mark.parametrize("way", ["usb", "nfc", "sd", "vdisk"])
-def test_import_miniscript_usb_json(use_regtest, cs, way, cap_menu,
-                                    clear_miniscript, pick_menu_item,
-                                    get_cc_key, bitcoin_core_signer,
-                                    offer_minsc_import, bitcoind, microsd_path,
-                                    virtdisk_path, import_miniscript, goto_home,
-                                    press_select):
+def test_import_miniscript_usb_json(use_regtest, cs, way, cap_menu, clear_miniscript, get_cc_key,
+                                    bitcoin_core_signer, offer_minsc_import, bitcoind, microsd_path,
+                                    virtdisk_path, import_miniscript, goto_home, press_select,
+                                    settings_get):
     name = "my_minisc"
     minsc = f"tr({ranged_unspendable_internal_key()},or_d(multi_a(2,@A,@C),and_v(v:pkh(@B),after(100))))"
     use_regtest()
@@ -2089,13 +2122,9 @@ def test_import_miniscript_usb_json(use_regtest, cs, way, cap_menu,
     assert name in story
     press_select()
     time.sleep(.2)
-    goto_home()
-    pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
-    m = cap_menu()
-    m = [i for i in m if not i.startswith("Import")]
-    assert len(m) == 1
-    assert m[0] == name
+    msc = settings_get("miniscript", [])
+    assert len(msc) == 1
+    assert msc[0][0] == name
 
 
 @pytest.mark.parametrize("config", [
@@ -2140,9 +2169,8 @@ def test_unique_name(clear_miniscript, use_regtest, offer_minsc_import,
     pick_menu_item("Settings")
     pick_menu_item("Miniscript")
     m = cap_menu()
-    m = [i for i in m if not i.startswith("Import")]
-    assert len(m) == 1
     assert m[0] == name
+    assert m[1] == "Import"
 
     # completely different wallet but with the same name (USB)
     yd = json.dumps({"name": name, "desc": y})
@@ -2154,9 +2182,8 @@ def test_unique_name(clear_miniscript, use_regtest, offer_minsc_import,
     pick_menu_item("Settings")
     pick_menu_item("Miniscript")
     m = cap_menu()
-    m = [i for i in m if not i.startswith("Import")]
-    assert len(m) == 1
     assert m[0] == name
+    assert m[1] == "Import"
 
     goto_home()
     fname = f"{name}.txt"

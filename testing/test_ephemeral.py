@@ -1252,7 +1252,7 @@ def test_add_current_active(reset_seed_words, settings_set, import_ephemeral_xpr
                             press_cancel, verify_ephemeral_secret_ui,
                             seed_vault_enable, refuse, press_select, set_bip39_pw,
                             need_some_notes, need_some_passwords, import_ms_wallet,
-                            restore_main_seed, settings_get, clear_ms):
+                            restore_main_seed, settings_get, clear_miniscript):
     ADD_MI = "Add current tmp"
 
     reset_seed_words()
@@ -1260,7 +1260,7 @@ def test_add_current_active(reset_seed_words, settings_set, import_ephemeral_xpr
     seed_vault_enable(True)
     # clear
     settings_set("seeds", [])
-    clear_ms()
+    clear_miniscript()
     settings_set("notes", [])
 
     if not refuse:
@@ -1329,7 +1329,7 @@ def test_add_current_active(reset_seed_words, settings_set, import_ephemeral_xpr
 @pytest.mark.parametrize('data', SEEDVAULT_TEST_DATA)
 def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_setting,
                                data, press_select, cap_story, set_encoded_secret,
-                               reset_seed_words, check_and_decrypt_backup, clear_ms,
+                               reset_seed_words, check_and_decrypt_backup, clear_miniscript,
                                goto_eph_seed_menu, pick_menu_item, word_menu_entry,
                                verify_ephemeral_secret_ui, seedvault, settings_set,
                                seed_vault_enable, confirm_tmp_seed, set_seed_words,
@@ -1343,7 +1343,7 @@ def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_se
         set_encoded_secret(encoded)
 
     settings_set("chain", "XTN")
-    clear_ms()
+    clear_miniscript()
 
     if multisig:
         import_ms_wallet(15, 15, dev_key=True)

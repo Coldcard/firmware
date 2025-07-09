@@ -186,7 +186,6 @@ class Descriptor:
 
     def xfp_paths(self, skip_unspend_ik=False):
         res = []
-
         for k in self.keys:
             if self.is_taproot and k.is_provably_unspendable and skip_unspend_ik:
                 continue

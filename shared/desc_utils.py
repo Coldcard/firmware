@@ -4,7 +4,7 @@
 #
 import ngu, chains, ustruct, stash
 from io import BytesIO
-from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AF_CLASSIC, AF_P2TR
+from public_constants import MAX_PATH_DEPTH
 from binascii import unhexlify as a2b_hex
 from binascii import hexlify as b2a_hex
 from utils import keypath_to_str, str_to_keypath, swab32, xfp2str
@@ -80,23 +80,6 @@ def parse_desc_str(string):
     return res
 
 
-def multisig_descriptor_template(xpub, path, xfp, addr_fmt):
-    key_exp = "[%s%s]%s/0/*" % (xfp.lower(), path.replace("m", ''), xpub)
-    if addr_fmt == AF_P2WSH_P2SH:
-        descriptor_template = "sh(wsh(sortedmulti(M,%s,...)))"
-    elif addr_fmt == AF_P2WSH:
-        descriptor_template = "wsh(sortedmulti(M,%s,...))"
-    elif addr_fmt == AF_P2SH:
-        descriptor_template = "sh(sortedmulti(M,%s,...))"
-    elif addr_fmt == AF_P2TR:
-        # provably unspendable BIP-0341
-        descriptor_template = "tr(" + b2a_hex(PROVABLY_UNSPENDABLE[1:]).decode() + ",sortedmulti_a(M,%s,...))"
-    else:
-        return None
-    descriptor_template = descriptor_template % key_exp
-    return descriptor_template
-
-
 def read_until(s, chars=b",)(#"):
     res = b""
     while True:
@@ -143,6 +126,7 @@ class KeyOriginInfo:
         arr[0] = "m"
         path = "/".join(arr)
         derivation = str_to_keypath(xfp, path)[1:]  # ignoring xfp here, already stored
+        assert len(derivation) <= MAX_PATH_DEPTH, "origin too deep"
         return cls(xfp, derivation)
 
     def __str__(self):
@@ -212,8 +196,8 @@ class KeyDerivationInfo:
             obj = cls()
         else:
 
-            if multi_i is not None:
-                assert len(idxs[multi_i]) == 2, "wrong multipath"
+            assert multi_i is not None, "need multipath"
+            assert len(idxs[multi_i]) == 2, "wrong multipath"
 
             obj = cls(tuple(idxs))
             obj.multi_path_index = multi_i
@@ -312,17 +296,27 @@ class Key:
 
         return node, chain_type
 
-    def validate(self, my_xfp):
+    def validate(self, my_xfp, disable_checks=False):
         assert self.chain_type == chains.current_key_chain().ctype, "wrong chain"
-        depth = self.node.depth()
 
+        # xfp is always available, even if key was serialized without origin info
+        # upon parse root origin info is generated from key itself
         xfp = self.origin.cc_fp
 
-        if depth == 1:
-            target = swab32(self.node.parent_fp())
-            assert xfp == target, 'xfp depth=1 wrong'
+        if not disable_checks:
+            depth = self.node.depth()
+            # TODO we now allow blinded keys that have depth X bud derivation len is 0
+            # print("depth", depth)
+            # print("origin der", self.origin.derivation)
+            # assert len(self.origin.derivation) == depth, "deriv len != xpub depth (xfp=%s)" % xfp2str(xfp)
+            if depth == 0:
+                assert swab32(self.node.my_fp()) == xfp, "master xfp mismatch"
+            elif depth == 1:
+                target = swab32(self.node.parent_fp())
+                assert xfp == target, 'xfp depth=1 wrong'
 
-        if xfp == my_xfp:
+        is_mine = (xfp == my_xfp)
+        if is_mine and not disable_checks:
             # it's supposed to be my key, so I should be able to generate pubkey
             # - might indicate collision on xfp value between co-signers,
             #   and that's not supported
@@ -331,8 +325,8 @@ class Key:
                 chk_node = sv.derive_path(deriv)
                 assert self.node.pubkey() == chk_node.pubkey(), \
                             "[%s/%s] wrong pubkey" % (xfp2str(xfp), deriv[2:])
-            return 1
-        return 0
+
+        return is_mine
 
 
     def derive(self, idx=None, change=False):
@@ -371,16 +365,21 @@ class Key:
 
     @classmethod
     def from_cc_data(cls, xfp, deriv, xpub):
-        koi = KeyOriginInfo.from_string("%s/%s" % (xfp2str(xfp), deriv.replace("m/", "")))
-        node = ngu.hdnode.HDNode()
-        node.deserialize(xpub)
-        return cls(node, koi, KeyDerivationInfo())
+        xfp_str = xfp if isinstance(xfp, str) else xfp2str(xfp)
+        koi = KeyOriginInfo.from_string("%s/%s" % (xfp_str, deriv.replace("m/", "")))
+        node, chain_type = cls.parse_key(xpub.encode())
 
-    def to_cc_data(self):
-        ch = chains.current_chain()
-        return (self.origin.cc_fp,
-                self.origin.str_derivation(),
-                ch.serialize_public(self.node, AF_CLASSIC))
+        return cls(node, koi, KeyDerivationInfo(), chain_type=chain_type)
+
+    @classmethod
+    def from_cc_json(cls, vals, af_str):
+        key_exp = af_str + "_key_exp"
+        if key_exp in vals:
+            # new firmware, prefer key expression
+            return cls.from_string(vals[key_exp])
+
+        ek = chains.slip32_deserialize(vals[af_str])
+        return cls.from_cc_data(vals["xfp"], vals["%s_deriv" % af_str], ek)
 
     @property
     def is_provably_unspendable(self):

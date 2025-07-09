@@ -814,7 +814,7 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
 
     # for specific cases, key teleport is an option
     offer_kt = False
-    if not is_complete and (psbt.active_multisig or psbt.active_miniscript) and version.has_qwerty:
+    if not is_complete and version.has_qwerty and psbt.active_miniscript:
         offer_kt = 'use Key Teleport to send PSBT to other co-signers'
 
     while True:
@@ -1330,36 +1330,6 @@ def start_show_miniscript_address(msc, change, index):
     # provide the value back to attached desktop
     return UserAuthorizedAction.active_request.address
 
-def start_show_p2sh_address(M, N, addr_format, xfp_paths, witdeem_script):
-    # Show P2SH address to user, also returns it.
-    # - first need to find appropriate multisig wallet associated
-    # - they must provide full redeem script, and we will re-verify it and check pubkeys inside it
-
-    from multisig import MultisigWallet
-
-    try:
-        assert addr_format in SUPPORTED_ADDR_FORMATS
-        assert addr_format & AFC_SCRIPT
-    except:
-        raise AssertionError('Unknown/unsupported addr format')
-
-    # Search for matching multisig wallet that we must already know about
-    xs = list(xfp_paths)
-    xs.sort()
-
-    ms = MultisigWallet.find_match(M, N, xs)
-    assert ms, 'Multisig wallet with those fingerprints not found'
-    assert ms.M == M
-    assert ms.N == N
-
-    UserAuthorizedAction.check_busy(ShowAddressBase)
-    UserAuthorizedAction.active_request = ShowP2SHAddress(ms, addr_format, xfp_paths, witdeem_script)
-
-    # kill any menu stack, and put our thing at the top
-    abort_and_goto(UserAuthorizedAction.active_request)
-
-    # provide the value back to attached desktop
-    return UserAuthorizedAction.active_request.address
 
 def show_address(addr_format, subpath, restore_menu=False):
     try:
@@ -1394,7 +1364,7 @@ class MiniscriptDeleteRequest(UserAuthorizedAction):
         self.wallet = msc
 
     async def interact(self):
-        from miniscript import miniscript_delete
+        from wallet import miniscript_delete
         await miniscript_delete(self.wallet)
         self.done()
 
@@ -1454,7 +1424,7 @@ class NewMiniscriptEnrollRequest(UserAuthorizedAction):
 def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_index=None):
     # Offer to import (enroll) a new multisig/miniscript wallet. Allow reject by user.
     from glob import dis
-    from miniscript import MiniScriptWallet
+    from wallet import MiniScriptWallet
 
     UserAuthorizedAction.cleanup()
     dis.fullscreen('Wait...')

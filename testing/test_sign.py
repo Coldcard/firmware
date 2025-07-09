@@ -479,7 +479,7 @@ def test_sign_p2sh_p2wpkh(match_key, use_regtest, start_sign, end_sign, bitcoind
 @pytest.mark.bitcoind
 @pytest.mark.unfinalized
 def test_sign_p2sh_example(set_master_key, use_regtest, sim_execfile, start_sign, end_sign,
-                           decode_psbt_with_bitcoind, offer_ms_import, press_select, clear_ms,
+                           decode_psbt_with_bitcoind, offer_ms_import, press_select, clear_miniscript,
                            sim_root_dir):
     # Use the private key given in BIP 174 and do similar signing
     # as the examples.
@@ -504,7 +504,7 @@ def test_sign_p2sh_example(set_master_key, use_regtest, sim_execfile, start_sign
     xfp = '4F6A0CD9'
     config += f'{xfp}: {n1}\n{xfp}: {n2}\n'
 
-    clear_ms()
+    clear_miniscript()
     offer_ms_import(config)
     time.sleep(.1)
     press_select()
@@ -3161,9 +3161,9 @@ def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_stor
 
 
 def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_ms_import,
-                        cap_story, try_sign, reset_seed_words, clear_ms):
+                        cap_story, try_sign, reset_seed_words, clear_miniscript):
     reset_seed_words()
-    clear_ms()
+    clear_miniscript()
     desc = "sh(sortedmulti(2,[6ba6cfd0/45h]tpubD9429UXFGCTKJ9NdiNK4rC5ygqSUkginycYHccqSg5gkmyQ7PZRHNjk99M6a6Y3NY8ctEUUJvCu6iCCui8Ju3xrHRu3Ez1CKB4ZFoRZDdP9/0/*,[747b698e/45h]tpubD97nVL37v5tWyMf9ofh5rznwhh1593WMRg6FT4o6MRJkKWANtwAMHYLrcJFsFmPfYbY1TE1LLQ4KBb84LBPt1ubvFwoosvMkcWJtMwvXgSc/0/*,[7bb026be/45h]tpubD9ArfXowvGHnuECKdGXVKDMfZVGdephVWg8fWGWStH3VKHzT4ph3A4ZcgXWqFu1F5xGTfxncmrnf3sLC86dup2a8Kx7z3xQ3AgeNTQeFxPa/0/*,[0f056943/45h]tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n/0/*))#up0sw2xp"
     # PSBT created via fake_ms_txn, grinded in test_ms_sign_myself
     psbt_fname = "myself-72sig.psbt"

@@ -11,7 +11,7 @@ from pincodes import AE_LONG_SECRET_LEN
 from stash import blank_object
 from users import Users, MAX_NUMBER_USERS, calc_local_pincode
 from public_constants import MAX_USERNAME_LEN
-from miniscript import MiniScriptWallet
+from wallet import MiniScriptWallet
 from ubinascii import hexlify as b2a_hex
 from uhashlib import sha256
 from ucollections import OrderedDict

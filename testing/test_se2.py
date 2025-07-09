@@ -515,7 +515,7 @@ def test_ux_countdown_choices(subchoice, expect, xflags, new_trick_pin, new_pin_
     # ( 'Blank Coldcard', 'freshly wiped Coldcard', TC_WIPE|TC_BLANK_WALLET, 0 ),
 ])
 def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs, words12,
-        reset_seed_words, repl, clear_all_tricks, import_ms_wallet, get_setting, clear_ms,
+        reset_seed_words, repl, clear_all_tricks, import_ms_wallet, get_setting, clear_miniscript,
         new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress,
         press_select, press_cancel, seed_story_to_words, is_q1, set_seed_words,
         stop_after_activated=False,
@@ -529,7 +529,7 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs, words12,
             xargs += 1000
 
     # import multisig
-    clear_ms()
+    clear_miniscript()
     import_ms_wallet(2, 2, dev_key=words12)
     press_select()
     time.sleep(.1)
@@ -879,7 +879,7 @@ def build_duress_wallets(request, seed_vault=False):
 
     # fixtures I need in test_ux_duress_choices
     args = {f: request.getfixturevalue(f)
-              for f in ['reset_seed_words', 'repl', 'clear_all_tricks', 'new_trick_pin', 'clear_ms',
+              for f in ['reset_seed_words', 'repl', 'clear_all_tricks', 'new_trick_pin', 'clear_miniscript',
                         'import_ms_wallet', 'get_setting', 'press_select', 'press_cancel', 'is_q1',
                         'new_pin_confirmed', 'cap_menu', 'pick_menu_item', 'cap_story', 'need_keypress',
                         'seed_story_to_words', 'set_seed_words']}

@@ -435,39 +435,6 @@ class USBHandler:
             sign_msg(msg, subpath, addr_fmt)
             return None
 
-        if cmd == 'p2sh':
-            # show P2SH (probably multisig) address on screen (also provides it back)
-            # - must provide redeem script, and list of [xfp+path]
-            from auth import start_show_p2sh_address
-
-            if hsm_active and not hsm_active.approve_address_share(is_p2sh=True):
-                raise HSMDenied
-
-            # new multsig goodness, needs mapping from xfp->path and M values
-            addr_fmt, M, N, script_len = unpack_from('<IBBH', args)
-
-            assert addr_fmt & AFC_SCRIPT
-            assert 1 <= M <= N <= 20
-            assert 30 <= script_len <= 520
-
-            offset = 8
-            witdeem_script = args[offset:offset+script_len]
-            offset += script_len
-
-            assert len(witdeem_script) == script_len
-
-            xfp_paths = []
-            for i in range(N):
-                ln = args[offset]
-                assert 1 <= ln <= 16, 'badlen'
-                xfp_paths.append(unpack_from('<%dI' % ln, args, offset+1))
-                offset += (ln*4) + 1
-
-            assert offset == len(args)
-
-            return b'asci' + start_show_p2sh_address(M, N, addr_fmt, xfp_paths,
-                                                     witdeem_script)
-
         if cmd == 'show':
             # simple cases, older code: text subpath
             from auth import usb_show_address
@@ -512,7 +479,7 @@ class USBHandler:
         if cmd == "msls":
             # list all registered miniscript wallet names
             assert self.encrypted_req, 'must encrypt'
-            from miniscript import MiniScriptWallet
+            from wallet import MiniScriptWallet
             wallets = [w.name for w in MiniScriptWallet.iter_wallets()]
             import ujson
             return b'asci' + ujson.dumps(wallets)
@@ -520,7 +487,7 @@ class USBHandler:
         if cmd == "msdl":
             # delete miniscript wallet by its name (unique id)
             assert self.encrypted_req, 'must encrypt'
-            from miniscript import MiniScriptWallet
+            from wallet import MiniScriptWallet
 
             assert len(args) < 40, "len args"
             for w in MiniScriptWallet.iter_wallets():
@@ -536,7 +503,7 @@ class USBHandler:
         if cmd == "msgt":
             # takes name and returns descriptor + name json
             assert self.encrypted_req, 'must encrypt'
-            from miniscript import MiniScriptWallet
+            from wallet import MiniScriptWallet
 
             assert len(args) < 40, "len args"
             for w in MiniScriptWallet.iter_wallets():
@@ -552,7 +519,7 @@ class USBHandler:
             if hsm_active and not hsm_active.approve_address_share(miniscript=True):
                 raise HSMDenied
 
-            from miniscript import MiniScriptWallet
+            from wallet import MiniScriptWallet
 
             change, idx, = unpack_from('<II', args)
             assert change in (0, 1), "change not bool"

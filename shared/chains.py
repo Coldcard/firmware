@@ -519,7 +519,8 @@ def addr_fmt_label(addr_fmt):
         AF_P2WPKH: "Segwit P2WPKH",
         AF_P2TR: "Taproot P2TR",
         AF_P2WSH: "Segwit P2WSH",
-        AF_P2WSH_P2SH: "P2SH-P2WSH"
+        AF_P2WSH_P2SH: "P2SH-P2WSH",
+        AF_P2SH: "Legacy P2SH",
     }[addr_fmt]
 
 def verify_recover_pubkey(sig, digest):

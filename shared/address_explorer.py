@@ -9,7 +9,7 @@ from ux import ux_show_story, the_ux, ux_enter_bip32_index
 from ux import export_prompt_builder, import_export_prompt_decode
 from menu import MenuSystem, MenuItem
 from public_constants import AFC_BECH32, AFC_BECH32M, AF_P2WPKH, AF_P2TR, AF_CLASSIC
-from miniscript import MiniScriptWallet
+from wallet import MiniScriptWallet
 from uasyncio import sleep_ms
 from uhashlib import sha256
 from glob import settings
