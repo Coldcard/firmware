@@ -267,20 +267,23 @@ class MiniScriptWallet(WalletABC):
         return chains.current_chain()
 
     @classmethod
-    def find_match(cls, xfp_paths, addr_fmt=None, M_N=None):
+    def find_match(cls, xfp_paths, addr_fmt=None, M=None, N=None):
         for rv in cls.iter_wallets():
             if addr_fmt is not None:
                 if rv.addr_fmt != addr_fmt:
                     continue
 
-            if M_N:
+            if M and N:
                 if not rv.m_n:
                     continue
-                if rv.m_n != M_N:
+
+                m, n = rv.m_n
+                if m != M or n != N:
                     continue
 
             if rv.matching_subpaths(xfp_paths):
                 return rv
+
         return None
 
     def xfp_paths(self, skip_unspend_ik=False):
@@ -354,7 +357,8 @@ class MiniScriptWallet(WalletABC):
         s = "Wallet Name:\n  %s\n\n" % self.name
         if self.m_n:
             # basic multisig
-            s += "Policy: %d of %d\n\n" % self.m_n
+            M, N = self.m_n
+            s += "Policy: %d of %d\n\n" % (M, N)
 
         s += chains.addr_fmt_label(self.addr_fmt)
         s += "\n\n" + self.desc_tmplt
@@ -487,10 +491,10 @@ class MiniScriptWallet(WalletABC):
                     err += "\n\n"
                     assert False, err
 
-            assert self.desc_tmplt != rv.desc_tmplt \
-                   and self.keys_info != rv.keys_info, ("This wallet is a duplicate "
-                                                        "of already saved wallet "
-                                                        "%s.\n\n" % rv.name)
+            else:
+                if self.desc_tmplt == rv.desc_tmplt and self.keys_info == rv.keys_info:
+                    raise AssertionError ("This wallet is a duplicate of already"
+                                          " saved wallet %s.\n\n" % rv.name)
 
     async def confirm_import(self):
         nope, yes = (KEY_CANCEL, KEY_ENTER) if version.has_qwerty else ("x", "y")

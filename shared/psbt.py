@@ -37,7 +37,8 @@ from public_constants import (
     PSBT_GLOBAL_TX_MODIFIABLE, PSBT_GLOBAL_OUTPUT_COUNT, PSBT_GLOBAL_INPUT_COUNT,
     PSBT_GLOBAL_FALLBACK_LOCKTIME, PSBT_GLOBAL_TX_VERSION, PSBT_IN_PREVIOUS_TXID,
     PSBT_IN_OUTPUT_INDEX, PSBT_IN_SEQUENCE, PSBT_IN_REQUIRED_TIME_LOCKTIME,
-    PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, MAX_PATH_DEPTH, MAX_SIGNERS
+    PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, MAX_SIGNERS,
+    AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR
 )
 
 psbt_tmp256 = bytearray(256)
@@ -866,7 +867,7 @@ class psbtInputProxy(psbtProxy):
         self.is_p2sh = False
         which_key = None
 
-        addr_type, addr_or_pubkey, addr_is_segwit = utxo.get_address()
+        addr_type, addr_or_pubkey, self.is_segwit = utxo.get_address()
         if addr_type == "op_return":
             self.required_key = None
             return
@@ -876,12 +877,12 @@ class psbtInputProxy(psbtProxy):
             # enough to allow the user to authorize the spend, so fail hard.
             raise FatalPSBTIssue('Unhandled scriptPubKey: ' + b2a_hex(addr_or_pubkey).decode())
 
-        if addr_is_segwit and not self.is_segwit:
-            self.is_segwit = True
-
         if addr_type == 'p2sh':
             # miniscript input
             self.is_p2sh = True
+            if self.is_segwit:
+                # we know this just from scriptPubKey --> utxo.get_address()
+                addr_type = "p2wsh"
 
             # we must have the redeem script already (else fail)
             ks = self.witness_script or self.redeem_script
@@ -910,7 +911,7 @@ class psbtInputProxy(psbtProxy):
                         # slight chance of dup xfps, so handle
                         which_key.add(pubkey)
 
-            if not addr_is_segwit and \
+            if not self.is_segwit and \
                     len(redeem_script) == 22 and \
                     redeem_script[0] == 0 and redeem_script[1] == 20:
                 # it's actually segwit p2pkh inside p2sh
@@ -986,13 +987,11 @@ class psbtInputProxy(psbtProxy):
                 # pubkey provided is just wrong vs. UTXO
                 raise FatalPSBTIssue('Input #%d: pubkey wrong' % my_idx)
 
-        else:
-            # we don't know how to "solve" this type of input
-            pass
-
         if self.is_miniscript:
             try:
-                xfp_paths = [item[1:] for item in self.taproot_subpaths.values() if len(item[1:]) > 1]
+                xfp_paths = [item[1:]
+                             for item in self.taproot_subpaths.values()
+                             if len(item[1:]) > 1]
             except AttributeError:
                 xfp_paths = list(self.subpaths.values())
 
@@ -1000,13 +999,18 @@ class psbtInputProxy(psbtProxy):
             if psbt.active_miniscript:
                 psbt.active_miniscript.matching_subpaths(xfp_paths), "wrong wallet"
             else:
-                wal = MiniScriptWallet.find_match(xfp_paths)
+                # if we do have actual script at hand, guess M/N for better matching
+                # basic multisig matching
+                M, N = disassemble_multisig_mn(self.scriptSig) if self.scriptSig else (None, None)
+                af = {"p2wsh": AF_P2WSH, "p2sh-p2wsh": AF_P2WSH_P2SH,
+                      "p2sh": AF_P2SH, "p2tr": AF_P2TR}[addr_type]
+                wal = MiniScriptWallet.find_match(xfp_paths, af, M, N)
                 if not wal:
                     raise FatalPSBTIssue('Unknown miniscript wallet')
                 psbt.active_miniscript = wal
 
             try:
-                # contains PSBT merkle root verification
+                # contains PSBT merkle root verification (if taproot)
                 psbt.active_miniscript.validate_script_pubkey(utxo.scriptPubKey,
                                                               xfp_paths, merkle_root)
             except BaseException as e:

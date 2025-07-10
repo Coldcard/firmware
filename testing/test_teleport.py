@@ -427,19 +427,20 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, dev, clear_miniscr
                           txid_from_export_prompt, sim_root_dir):
 
     # IMPORTANT: won't work if you start simulator with --ms flag. Use no args
-    all_out_styles = [af for af in unmap_addr_fmt.keys() if af != "p2tr"]
-    num_outs = len(all_out_styles)
+    num_outs = 4
+    af = "p2wsh"
 
     clear_miniscript()
     use_regtest()
 
     # create a wallet, with 3 bip39 pw's
-    keys, select_wallet = make_myself_wallet(M, do_import=True)
+    keys, select_wallet = make_myself_wallet(M, do_import=True, addr_fmt=af)
     N = len(keys)
     assert M<=N
 
-    psbt = fake_ms_txn(15, num_outs, M, keys, segwit_in=True, incl_xpubs=False,
-                       outstyles=all_out_styles, change_outputs=list(range(1,num_outs)))
+    psbt = fake_ms_txn(15, num_outs, M, keys, inp_addr_fmt=af, incl_xpubs=False,
+                       outstyles=["p2sh-p2wsh", af, af, af],
+                       change_outputs=list(range(1,num_outs)))
 
     with open(f'{sim_root_dir}/debug/myself-before.psbt', 'wb') as f:
         f.write(psbt)
@@ -537,16 +538,14 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, dev, clear_miniscr
 def test_teleport_big_ms(make_myself_wallet, clear_miniscript, fake_ms_txn, try_sign, cap_story,
                          need_keypress, cap_menu, pick_menu_item, grab_payload, rx_complete,
                          press_select, ndef_parse_txn_psbt, set_master_key, goto_home, press_nfc,
-                         nfc_read, settings_get, settings_set, open_microsd, import_ms_wallet,
-                         press_cancel):
+                         nfc_read, open_microsd, import_ms_wallet, press_cancel):
 
     # define lots of wallets and do teleport from SD disk
 
     clear_miniscript()
     M, N = 2, 15
     for i in range(5):
-        keys = import_ms_wallet(M, N, name=f'ms{i}-test', unique=(i*73), accept=True,
-                                    descriptor=False, bip67=True)
+        keys = import_ms_wallet(M, N, name=f'ms{i}-test', unique=(i*73), accept=True, bip67=True)
     
     # just use last wallet
     psbt = fake_ms_txn(1, 1, M, keys)
@@ -596,14 +595,12 @@ def test_teleport_big_ms(make_myself_wallet, clear_miniscript, fake_ms_txn, try_
     # capture QR+pw to go there
     pw, data, qr_raw = grab_payload('E')
 
-    tmp_ms = settings_get('multisig')
-
     # switch to that key, receive it
     node, = [n for x,n,_ in keys if x == target_xfp]
     set_master_key(node.hwif(as_private=True))
 
     # copy over the one MS wallet this xfp was involved in
-    settings_set('multisig', [tmp_ms[-1]])
+    import_ms_wallet(M, N, name=f'www', keys=keys, accept=True, bip67=True)
 
     # import and sign
     rx_complete(('E', qr_raw), pw, expect_xfp=simulator_fixed_xfp)
@@ -651,7 +648,7 @@ def test_teleport_real_ms(dev, fake_ms_txn):
         # match the default paths created by CC in airgapped MS wallet creation.
         return str_to_path(deriv)
 
-    psbt = fake_ms_txn(3, 2, M, keys, fee=10000, outvals=None, segwit_in=False,
+    psbt = fake_ms_txn(3, 2, M, keys, fee=10000, outvals=None, inp_addr_fmt="p2sh",
              outstyles=['p2pkh'], change_outputs=[], incl_xpubs=False,
              hack_change_out=False, input_amount=1E8, path_mapper=p2wsh_mapper)
 

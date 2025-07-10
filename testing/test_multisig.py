@@ -1000,10 +1000,11 @@ def fake_ms_txn(pytestconfig):
             # make a fake txn to supply each of the inputs
             # - each input is 1BTC
             # addr where the fake money will be stored.
-            addr, scriptPubKey, script, details = make_ms_address(M, keys, idx=i, bip67=bip67,
-                      violate_script_key_order=violate_script_key_order, path_mapper=path_mapper,
-                                                                  addr_fmt=af,
-                                                                  testnet=net)
+            addr, scriptPubKey, script, details = make_ms_address(
+                M, keys, idx=i, bip67=bip67,
+                violate_script_key_order=violate_script_key_order,
+                path_mapper=path_mapper, addr_fmt=af, testnet=net
+            )
 
             print(i, script.hex())
             # lots of supporting details needed for p2sh inputs
