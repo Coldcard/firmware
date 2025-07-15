@@ -146,12 +146,13 @@ class MasterSingleSigWallet(WalletABC):
 
 class MiniScriptWallet(WalletABC):
     skey = "miniscript"
+    # optional: user can short-circuit many checks (system wide, one power-cycle only)
     disable_checks = False
 
     def __init__(self, name, desc_tmplt, keys_info, af, ik_u,
-                 desc=None, m_n=None, bip67=None):
+                 desc=None, m_n=None, bip67=None, chain_type=None):
 
-        assert len(name) <= 20, "name > 20"
+        assert 1 <= len(name) <= 20, "name len"
 
         self.storage_idx = -1
         self.name = name
@@ -165,6 +166,16 @@ class MiniScriptWallet(WalletABC):
         # if m_n is not None, we are dealing with basic multisig
         self.m_n = m_n
         self.bip67 = bip67
+        # at this point all the keys are already validated
+        self.chain_type = chain_type or chains.current_chain().ctype
+
+    @property
+    def chain(self):
+        return chains.get_chain(self.chain_type)
+
+    @property
+    def key_chain(self):
+        return chains.get_chain("XTN" if self.chain_type == "XRT" else self.chain_type)
 
     @classmethod
     def exists(cls):
@@ -181,7 +192,9 @@ class MiniScriptWallet(WalletABC):
         # - this is only place we should be searching this list, please!!
         lst = settings.get(cls.skey, [])
         for idx, rec in enumerate(lst):
-            yield cls.deserialize(rec, idx)
+            w = cls.deserialize(rec, idx)
+            if w.key_chain.ctype == chains.current_key_chain().ctype:
+                yield w
 
     @classmethod
     def get_by_idx(cls, nth):
@@ -242,15 +255,16 @@ class MiniScriptWallet(WalletABC):
         self.storage_idx = -1
 
     def serialize(self):
-        return (self.name, self.desc_tmplt, self.keys_info,
-                self.addr_fmt, self.ik_u, self.m_n, self.bip67)
+        return (self.name, self.desc_tmplt, self.keys_info, self.addr_fmt,
+                self.ik_u, self.m_n, self.bip67, self.chain_type)
 
     @classmethod
     def deserialize(cls, c, idx=-1):
         # after deserialization - we lack loaded descriptor object
         # we do not need it for everything
-        name, desc_tmplt, keys_info, af, ik_u, m_n, b67 = c
-        rv = cls(name, desc_tmplt, keys_info, af, ik_u, m_n=m_n, bip67=b67)
+        name, desc_tmplt, keys_info, af, ik_u, m_n, b67, ct = c
+        rv = cls(name, desc_tmplt, keys_info, af, ik_u, m_n=m_n,
+                 bip67=b67, chain_type=ct)
         rv.storage_idx = idx
         return rv
 
@@ -261,10 +275,6 @@ class MiniScriptWallet(WalletABC):
             which = TRUST_VERIFY if cls.exists() else TRUST_OFFER
 
         return which
-
-    @property
-    def chain(self):
-        return chains.current_chain()
 
     @classmethod
     def find_match(cls, xfp_paths, addr_fmt=None, M=None, N=None):
@@ -424,22 +434,25 @@ class MiniScriptWallet(WalletABC):
             keys_info
         )
         from descriptor import Descriptor
-        desc_obj = Descriptor.from_string(desc_str, validate=validate)
+        desc_obj = Descriptor.from_string(desc_str)
+        if validate:
+            desc_obj.validate(MiniScriptWallet.disable_checks)
         return desc_obj
 
     @classmethod
     def from_bip388_wallet_policy(cls, name, desc_template, keys_info):
         bip388_validate_policy(desc_template, keys_info)
         desc_obj = cls._from_bip388_wallet_policy(desc_template, keys_info)
-        msc = cls.from_descriptor_obj(name, desc_obj)
+        msc = cls.from_descriptor_obj(name, desc_obj, desc_template, keys_info)
         return msc
 
     @classmethod
-    def from_descriptor_obj(cls, name, desc_obj):
-        # BIP388 wasn't generated yet - generating from descriptor upon import/enroll
-        desc_tmplt, keys_info = desc_obj.bip388_wallet_policy()
-        # self-validation
-        bip388_validate_policy(desc_tmplt, keys_info)
+    def from_descriptor_obj(cls, name, desc_obj, desc_tmplt=None, keys_info=None):
+        if not desc_tmplt or not keys_info:
+            # BIP388 wasn't generated yet - generating from descriptor upon import/enroll
+            desc_tmplt, keys_info = desc_obj.bip388_wallet_policy()
+            # self-validation
+            bip388_validate_policy(desc_tmplt, keys_info)
 
         ik_u = desc_obj.key and desc_obj.key.is_provably_unspendable
         af = desc_obj.addr_fmt
@@ -467,15 +480,63 @@ class MiniScriptWallet(WalletABC):
                 name = to_ascii_printable(name)
                 desc_obj = Descriptor.from_string(config.strip())
 
+            desc_obj.validate(cls.disable_checks)
+
             wal = cls.from_descriptor_obj(name, desc_obj)
 
         return wal
 
+    @classmethod
+    def import_from_psbt(cls, addr_fmt, M, N, xpubs_list):
+        # given the raw data from PSBT global header, offer the user
+        # the details, and/or bypass that all and just trust the data.
+        # - xpubs_list is a list of (xfp+path, binary BIP-32 xpub)
+        # - already know not in our records.
+        from descriptor import Descriptor
+        from miniscript import Sortedmulti, Number
+
+        # build up an in-memory version of the wallet.
+        #  - capture address format based on path used for my leg (if standards compliant)
+
+        assert N == len(xpubs_list)
+        assert 1 <= M <= N <= 20, 'M/N range'
+        my_xfp = settings.get('xfp')
+
+        has_mine = 0
+
+        keys = []
+        for k, v in xpubs_list:
+            k = Key.from_psbt_xpub(k, v)
+            has_mine += k.validate(my_xfp, cls.disable_checks)
+            keys.append(k)
+
+        assert has_mine == 1         # 'my key not included'
+
+        name = 'PSBT-%d-of-%d' % (M, N)
+        # this will always create sortedmulti multisig (BIP-67)
+        # because BIP-174 came years after wide-spread acceptance of BIP-67 policy
+        desc_obj = Descriptor(miniscript=Sortedmulti(Number(M), *keys),
+                              addr_fmt=addr_fmt)
+        return cls.from_descriptor_obj(name, desc_obj)
+
+    def validate_psbt_xpubs(self, psbt_xpubs):
+        keys = set()
+        for k, v in psbt_xpubs:
+            key = Key.from_psbt_xpub(k, v)
+            key.validate(settings.get('xfp', 0), self.disable_checks)
+            keys.add(key)
+
+        if not self.disable_checks:
+            assert set(self.to_descriptor().keys) == keys
+
+    def ux_unique_name_msg(self, name=None):
+        return ("Miniscript wallet with name '%s'"
+                " already exists. All wallets MUST"
+                " have unique names.\n\n" % (name or self.name))
+
     def find_duplicates(self):
         for rv in self.iter_wallets():
-            assert self.name != rv.name, ("Miniscript wallet with name '%s'"
-                                          " already exists. All wallets MUST"
-                                          " have unique names.\n\n" % self.name)
+            assert self.name != rv.name, self.ux_unique_name_msg()
 
             # optimization miniscript vs. multisig & different M/N multisigs
             if self.m_n != rv.m_n:
@@ -485,7 +546,7 @@ class MiniScriptWallet(WalletABC):
             if self.m_n:
                 # enrolling basic multisig wallet
                 if self.addr_fmt == rv.addr_fmt and sorted(self.keys_info) == sorted(rv.keys_info):
-                    err = "Duplicate wallet."
+                    err = "Duplicate wallet. Wallet '%s' is the same."
                     if self.bip67 != rv.bip67:
                         err += " BIP-67 clash."
                     err += "\n\n"
@@ -501,6 +562,9 @@ class MiniScriptWallet(WalletABC):
         try:
             self.find_duplicates()
             story, allow_import = "Create new miniscript wallet?\n\n", True
+            if self.m_n and not self.bip67:
+                story += ("WARNING: BIP-67 disabled! Unsorted multisig - "
+                          "order of keys in descriptor/backup is crucial\n\n")
         except AssertionError as e:
             story, allow_import = str(e), False
 
@@ -532,6 +596,7 @@ class MiniScriptWallet(WalletABC):
             addr = ch.render_address(d.script_pubkey(compiled_scr=scr))
             ders = script = None
             if scripts:
+                # maybe key.origin.to_string() ??
                 ders = ["[%s]" % str(k.origin) for k in d.keys]
                 if d.tapscript:
                     script = d.tapscript.script_tree()
@@ -639,7 +704,10 @@ class MiniScriptWallet(WalletABC):
                     fp.write(res)
 
                 if sign:
-                    # TODO need function to get my xpub from just policy
+                    # TODO need function to get my xpub from just policy (get_my_deriv)
+                    # as we have not loaded descriptor to this point
+                    # but now we're about to do it, just because of signed export
+
                     # sign with my key at the same path as first address of export
                     derive = self.get_my_deriv(settings.get('xfp')) + "/0/0"
                     from msgsign import write_sig_file
@@ -729,6 +797,36 @@ class MiniScriptWallet(WalletABC):
 
         return None, None, None
 
+    async def export_electrum(self):
+        # Generate and save an Electrum JSON file.
+        from export import export_contents
+
+        assert self.m_n, "not multisig"
+        M, N = self.m_n
+
+        def doit():
+            rv = dict(seed_version=17, use_encryption=False,
+                      wallet_type='%dof%d' % (M, N))
+
+            ch = self.chain
+
+            # the important stuff.
+            for idx, key in enumerate(self.to_descriptor().keys):
+                # CHALLENGE: we must do slip-132 format [yz]pubs here when not p2sh mode.
+                xp = ch.serialize_public(key.node, self.addr_fmt)
+
+                rv['x%d/' % (idx + 1)] = {"hw_type":"coldcard", "type":"hardware",
+                                          "ckcc_xfp": key.origin.cc_fp, "xpub":xp,
+                                          "label":"Coldcard %s" % xfp2str(key.origin.cc_fp),
+                                          "derivation":key.origin.str_derivation()}
+
+            # sign export with first p2pkh key
+            return ujson.dumps(rv), self.get_my_deriv(settings.get('xfp')) + "/0/0", AF_CLASSIC
+
+        fname = '%s-%s.%s' % ("el", self.name.replace(" ", "_"), "json")
+        await export_contents('Electrum multisig wallet', doit,
+                              fname, is_json=True)
+
 async def miniscript_delete(msc):
     if not await ux_confirm("Delete miniscript wallet '%s'?\n\nFunds may be impacted." % msc.name):
         await ux_dramatic_pause('Aborted.', 3)
@@ -749,11 +847,42 @@ async def miniscript_wallet_delete(menu, label, item):
     m = the_ux.top_of_stack()
     m.update_contents()
 
+async def miniscript_wallet_rename(menu, label, item):
+    from glob import dis
+    from ux import ux_input_text, the_ux
+
+    idx, msc = item.arg
+    new_name = await ux_input_text(msc.name, confirm_exit=False,
+                                   min_len=1, max_len=20)  # TODO should be a constant
+
+    if not new_name:
+        return
+
+    wallets = settings.get("miniscript", [])
+    names = [i[0] for i in wallets]
+    if new_name in names:
+        await ux_show_story(msc.ux_unique_name_msg(new_name), title="FAILED")
+        return
+
+    dis.fullscreen("Saving...")
+
+    # save it
+    old = wallets[idx]
+    updated = (new_name,) + old[1:]
+    wallets[idx] = updated
+    msc.name = new_name
+    settings.set("miniscript", wallets)
+
+    # update label in sub-menu
+    menu.items[0].label = new_name
+    # and name in parent menu too
+    parent = the_ux.parent_of(menu)
+    if parent:
+        parent.update_contents()
+
 async def miniscript_wallet_detail(menu, label, item):
     # show details of single multisig wallet
-
     msc = item.arg
-
     return await msc.show_detail()
 
 async def import_miniscript(*a):
@@ -841,9 +970,14 @@ async def make_miniscript_wallet_menu(menu, label, item):
     rv = [
         MenuItem('"%s"' % msc.name, f=miniscript_wallet_detail, arg=msc),
         MenuItem('View Details', f=miniscript_wallet_detail, arg=msc),
-        MenuItem('Delete', f=miniscript_wallet_delete, arg=msc),
         MenuItem('Descriptors', menu=make_miniscript_wallet_descriptor_menu, arg=msc),
+        MenuItem('Rename', f=miniscript_wallet_rename, arg=(item.arg, msc)),
+        MenuItem('Delete', f=miniscript_wallet_delete, arg=msc),
     ]
+    if msc.m_n and msc.bip67:
+        # basic multisig but only sortedmulti
+        rv.append(MenuItem('Electrum Wallet', f=ms_wallet_electrum_export, arg=msc))
+
     return rv
 
 
@@ -855,14 +989,14 @@ class MiniscriptMenu(MenuSystem):
         from bsms import make_ms_wallet_bsms_menu
         from multisig import create_ms_step1
 
-        if not MiniScriptWallet.exists():
-            rv = [MenuItem("(none setup yet)")]
-        else:
-            rv = []
-            for msc in MiniScriptWallet.get_all():
-                rv.append(MenuItem('%s' % msc.name,
-                                   menu=make_miniscript_wallet_menu,
-                                   arg=msc.storage_idx))
+        rv = []
+        for msc in MiniScriptWallet.get_all():
+            rv.append(MenuItem('%s' % msc.name,
+                               menu=make_miniscript_wallet_menu,
+                               arg=msc.storage_idx))
+
+        rv = rv or [MenuItem("(none setup yet)")]
+
         from glob import NFC
         rv.append(MenuItem('Import', f=import_miniscript))
         rv.append(MenuItem('Export XPUB', f=export_miniscript_xpubs))
@@ -970,18 +1104,8 @@ async def ms_wallet_electrum_export(menu, label, item):
     # solution:
     # - when building air-gap, pick address type at that point, and matching path to suit
     # - could check path prefix and addr_fmt make sense together, but meh.
-    ms = item.arg
-    from actions import electrum_export_story
-
-    derivs, dsum = ms.get_deriv_paths()
-
-    msg = 'The new wallet will have derivation path:\n  %s\n and use %s addresses.\n' % (
-            dsum, MultisigWallet.render_addr_fmt(ms.addr_fmt) )
-
-    if await ux_show_story(electrum_export_story(msg)) != 'y':
-        return
-
-    await ms.export_electrum()
+    msc = item.arg
+    await msc.export_electrum()
 
 
 async def export_miniscript_xpubs(*a, xfp=None, alt_secret=None, skip_prompt=False):
@@ -1039,11 +1163,6 @@ P2TR:
                     fp.write('  "%s": "%s",\n' % (name, xp))
                     xpub = chain.serialize_public(node)
                     fp.write('  "%s_key_exp": "%s",\n' % (name, "[%s/%s]%s" % (xfp, dd.replace("m/", ""), xpub)))
-
-                    # descriptor_template = multisig_descriptor_template(xpub, dd, xfp, fmt)
-                    # if descriptor_template is None:
-                    #     continue
-                    # fp.write('  "%s_desc": "%s",\n' % (name, descriptor_template))
 
             fp.write('  "account": "%d",\n' % acct_num)
             fp.write('  "xfp": "%s"\n}\n' % xfp)

@@ -398,4 +398,8 @@ def test_bip388(sim_execfile):
     res = sim_execfile('devtest/unit_bip388.py')
     assert res == ""
 
+def test_bip32(sim_execfile):
+    res = sim_execfile('devtest/unit_bip32.py')
+    assert res == ""
+
 # EOF

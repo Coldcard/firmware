@@ -524,32 +524,6 @@ def word_wrap(ln, w):
         ln = ln[nsp:]
         if not ln: return
 
-
-def parse_extended_key(ln, private=False):
-    # read an xpub/ypub/etc and return BIP-32 node and what chain it's on.
-    # - can handle any garbage line
-    # - returns (node, chain, addr_fmt)
-    # - people are using SLIP132 so we need this
-    node, chain, addr_fmt = None, None, None
-    if ln is None:
-        return node, chain, addr_fmt
-
-    ln = ln.strip()
-    if private:
-        rgx = r'.prv[A-Za-z0-9]+'
-    else:
-        rgx = r'.pub[A-Za-z0-9]+'
-
-    pat = ure.compile(rgx)
-    found = pat.search(ln)
-    # serialize, and note version code
-    try:
-        node, chain, addr_fmt, is_private = chains.slip32_deserialize(found.group(0))
-    except:
-        pass
-
-    return node, chain, addr_fmt
-
 def deserialize_secret(text_sec_str):
     # Chip can hold 72-bytes as a secret
     # - has 0th byte as marker, secret and zero padding to AE_SECRET_LEN
@@ -758,31 +732,5 @@ def xor(*args):
             rv[i] ^= a[i]
 
     return rv
-
-def extract_cosigner(data, af_str):
-    # decodes any text, looking for key expression [xfp/p/a/t/h]xpub123
-    # BIP-380 https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki#key-expressions
-    # only first key expression will be parsed from the data
-    # key origin info is required
-    # failure to find "proper" key expression results in None being returned
-    pub = "%spub" % chains.current_chain().slip132[AF_CLASSIC].hint
-    if pub not in data:
-        return
-
-    o_start = data.find("[")
-    o_end = data.find("]")
-    if 0 <= o_start < o_end:
-        key_orig_info = data[o_start+1:o_end]
-        ss = key_orig_info.split("/")
-        xfp = ss[0]
-        if (len(xfp) == 8) and (data[o_end+1:o_end+1+len(pub)] == pub):
-            deriv = "m"
-            der_nums = "/".join(ss[1:])
-            if der_nums:
-                deriv += ("/" + der_nums)
-            ek = data[o_end+1:o_end+1+112]
-            key_deriv = "%s_deriv" %  af_str
-            # emulate coldcard export xpubs
-            return {"xfp": xfp, af_str: ek, key_deriv: deriv}
 
 # EOF

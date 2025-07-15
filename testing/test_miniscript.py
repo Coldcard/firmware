@@ -82,12 +82,10 @@ def import_miniscript(request, is_q1, need_keypress, offer_minsc_import, press_c
             press_nfc = request.getfixturevalue('press_nfc')
             pick_menu_item = request.getfixturevalue('pick_menu_item')
 
-            if "Skip Checks?" not in cap_menu():
-                # we are not in multisig menu
-                goto_home()
-                pick_menu_item("Settings")
-                pick_menu_item("Miniscript")
-                time.sleep(.1)
+            goto_home()
+            pick_menu_item("Settings")
+            pick_menu_item("Miniscript")
+            time.sleep(.1)
 
             pick_menu_item('Import')
             time.sleep(.2)
@@ -126,6 +124,14 @@ def import_miniscript(request, is_q1, need_keypress, offer_minsc_import, press_c
                 time.sleep(1)
                 return cap_story()
 
+            if not fname:
+                microsd_path = request.getfixturevalue("microsd_path")
+                virtdisk_path = request.getfixturevalue("virtdisk_path")
+                path_f = microsd_path if way == "sd" else virtdisk_path
+                fname = (name or "ms_wal") + ".txt"
+                with open(path_f(fname), "w") as f:
+                    f.write(config)
+
             if "Press (1) to import miniscript wallet file from SD Card" in story:
                 # in case Vdisk or NFC is enabled
                 if way == "sd":
@@ -140,14 +146,6 @@ def import_miniscript(request, is_q1, need_keypress, offer_minsc_import, press_c
             else:
                 if way != "sd":
                     pytest.xfail(way)
-
-            if not fname:
-                microsd_path = request.getfixturevalue("microsd_path")
-                virtdisk_path = request.getfixturevalue("virtdisk_path")
-                path_f = microsd_path if way == "sd" else virtdisk_path
-                fname = (name or "ms_wal") + ".txt"
-                with open(path_f(fname), "w") as f:
-                    f.write(config)
 
             time.sleep(.3)
             pick_menu_item(fname)
@@ -183,6 +181,7 @@ def import_duplicate(import_miniscript, press_cancel, virtdisk_path, microsd_pat
                 with open(new_fpath, "w") as f:
                     f.write(res)
 
+            press_cancel()
             title, story = import_miniscript(new_fname, way, data=data)
             time.sleep(.2)
 
@@ -231,7 +230,8 @@ def miniscript_descriptors(goto_home, pick_menu_item, need_keypress, cap_story,
             title, story = cap_story()
 
         assert "Miniscript file written" in story
-        fname = story.split("\n\n")[-1]
+        assert "signature file written" in story
+        fname = story.split("\n\n")[1]
         fpath = microsd_path(fname)
         garbage_collector.append(fpath)
         with open(fpath, "r") as f:
@@ -334,8 +334,7 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
                 time.sleep(.2)
             need_keypress(KEY_CANCEL)
         else:
-            contents = load_export(way, label="Address summary", is_json=False,
-                                   sig_check=addr_fmt != "bech32m")
+            contents = load_export(way, label="Address summary", is_json=False)
             addr_cont = contents.strip()
             press_select()
 
@@ -361,8 +360,7 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
                 time.sleep(.2)
             need_keypress(KEY_CANCEL)
         else:
-            contents_change = load_export(way, label="Address summary", is_json=False,
-                                          sig_check=addr_fmt != "bech32m")
+            contents_change = load_export(way, label="Address summary", is_json=False)
             addr_cont_change = contents_change.strip()
 
         if way == "nfc":
@@ -463,7 +461,7 @@ def create_core_wallet(goto_home, pick_menu_item, load_export, bitcoind):
 
         pick_menu_item("Descriptors")
         pick_menu_item("Bitcoin Core")
-        text = load_export(way, label="Bitcoin Core miniscript", is_json=False, sig_check=False)
+        text = load_export(way, label="Bitcoin Core miniscript", is_json=False)
         text = text.replace("importdescriptors ", "").strip()
         # remove junk
         r1 = text.find("[")
@@ -680,6 +678,7 @@ def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_min
     fname = f"{name}.txt"
     if way in ["qr", "nfc"]:
         data = dict(name=name, desc=desc)
+        fname = None
     else:
         path_f = microsd_path if way == "sd" else virtdisk_path
         data = None
@@ -1205,8 +1204,7 @@ def test_tapscript_import_export(clear_miniscript, pick_menu_item, cap_story,
     pick_menu_item(fname.split(".")[0])
     pick_menu_item("Descriptors")
     pick_menu_item("Export")
-    contents = load_export("sd", label="Miniscript", is_json=False, addr_fmt=AF_P2TR,
-                           sig_check=False)
+    contents = load_export("sd", label="Miniscript", is_json=False, addr_fmt=AF_P2TR)
     descriptor = contents.strip()
     assert desc.split("#")[0].replace("<0;1>/*", "0/*").replace("'", "h") == descriptor.split("#")[0].replace("<0;1>/*", "0/*").replace("'", "h")
 
@@ -1939,82 +1937,81 @@ def test_d_wrapper(addr_fmt, bitcoind, get_cc_key, goto_home, pick_menu_item, ca
     address_explorer_check("sd", addr_fmt, wo, "d_wrapper")
 
 
-# def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
-#                          clear_miniscript, goto_home, cap_menu, pick_menu_item,
-#                          import_miniscript, microsd_path, press_select, garbage_collector):
-#     clear_miniscript()
-#     use_regtest()
-#
-#     x = "wsh(or_d(pk([0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*),and_v(v:pkh([30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*),older(100))))"
-#     z = "wsh(or_d(pk([0f056943/48'/0'/0'/3']xpub6FQgdFZAHcAeDMVe9KxWoLMxziCjscCExzuKJhRSjM71CA9dUDZEGNgPe4S2SsRumCBXeaTBZ5nKz2cMDiK4UEbGkFXNipHLkm46inpjE9D/0/*),and_v(v:pkh([0f056943/48'/0'/0'/2']xpub6FQgdFZAHcAeAhQX2VvQ42CW2fDdKDhgwzhzXuUhWb4yfArmaZXkLbGS9W1UcgHwNxVESCS1b8BK8tgNYEF8cgmc9zkmsE45QSEvbwdp6Kr/0/*),older(100))))"
-#     y = f"tr({ranged_unspendable_internal_key()},or_d(pk([30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*),and_v(v:pk([0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*),after(800000))))"
-#
-#     fname_btc = "BTC.txt"
-#     fname_xtn = "XTN.txt"
-#     fname_xtn0 = "XTN0.txt"
-#
-#     for desc, fname in [(x, fname_xtn), (z, fname_btc), (y, fname_xtn0)]:
-#         fpath = microsd_path(fname)
-#         with open(fpath, "w") as f:
-#             f.write(desc)
-#         garbage_collector.append(fpath)
-#
-#     # cannot import XPUBS when testnet/regtest enabled
-#     _, story = import_miniscript(fname_btc)
-#     assert "Failed to import" in story
-#     assert "wrong chain" in story
-#
-#     import_miniscript(fname_xtn)
-#     press_select()
-#     # assert that wallets created at XRT always store XTN anywas (key_chain)
-#     res = settings_get("miniscript")
-#     assert len(res) == 1
-#     assert res[0][1] == "XTN"
-#
-#     goto_home()
-#     pick_menu_item("Settings")
-#     pick_menu_item("Miniscript")
-#     time.sleep(0.1)
-#     m = cap_menu()
-#     assert "(none setup yet)" not in m
-#     assert fname_xtn.split(".")[0] in m[0]
-#     goto_home()
-#     settings_set("chain", "BTC")
-#     pick_menu_item("Settings")
-#     pick_menu_item("Miniscript")
-#     time.sleep(0.1)
-#     m = cap_menu()
-#     # asterisk hints that some wallets are already stored
-#     # but not on current active chain
-#     assert "(none setup yet)*" in m
-#     import_miniscript(fname_btc)
-#     press_select()
-#     goto_home()
-#     pick_menu_item("Settings")
-#     pick_menu_item("Miniscript")
-#     time.sleep(0.1)
-#     m = cap_menu()
-#     assert fname_btc.split(".")[0] in m[0]
-#     for mi in m:
-#         assert fname_xtn.split(".")[0] not in mi
-#
-#     _, story = import_miniscript(fname_xtn)
-#     assert "Failed to import" in story
-#     assert "wrong chain" in story
-#
-#     settings_set("chain", "XTN")
-#     import_miniscript(fname_xtn0)
-#     press_select()
-#     goto_home()
-#     pick_menu_item("Settings")
-#     pick_menu_item("Miniscript")
-#     time.sleep(0.1)
-#     m = cap_menu()
-#     assert "(none setup yet)" not in m
-#     assert fname_xtn.split(".")[0] in m[0]
-#     assert fname_xtn0.split(".")[0] in m[1]
-#     for mi in m:
-#         assert fname_btc not in mi
+def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
+                         clear_miniscript, goto_home, cap_menu, pick_menu_item,
+                         import_miniscript, microsd_path, press_select, garbage_collector):
+    clear_miniscript()
+    use_regtest()
+
+    x = "wsh(or_d(pk([0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*),and_v(v:pkh([30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*),older(100))))"
+    z = "wsh(or_d(pk([0f056943/48'/0'/0'/3']xpub6FQgdFZAHcAeDMVe9KxWoLMxziCjscCExzuKJhRSjM71CA9dUDZEGNgPe4S2SsRumCBXeaTBZ5nKz2cMDiK4UEbGkFXNipHLkm46inpjE9D/0/*),and_v(v:pkh([0f056943/48'/0'/0'/2']xpub6FQgdFZAHcAeAhQX2VvQ42CW2fDdKDhgwzhzXuUhWb4yfArmaZXkLbGS9W1UcgHwNxVESCS1b8BK8tgNYEF8cgmc9zkmsE45QSEvbwdp6Kr/0/*),older(100))))"
+    y = f"tr({ranged_unspendable_internal_key()},or_d(pk([30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*),and_v(v:pk([0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*),after(800000))))"
+
+    fname_btc = "BTC.txt"
+    fname_xtn = "XTN.txt"
+    fname_xtn0 = "XTN0.txt"
+
+    for desc, fname in [(x, fname_xtn), (z, fname_btc), (y, fname_xtn0)]:
+        fpath = microsd_path(fname)
+        with open(fpath, "w") as f:
+            f.write(desc)
+        garbage_collector.append(fpath)
+
+    # cannot import XPUBS when testnet/regtest enabled
+    _, story = import_miniscript(fname_btc)
+    assert "Failed to import" in story
+    assert "wrong chain" in story
+
+    import_miniscript(fname_xtn)
+    press_select()
+    time.sleep(.1)
+    res = settings_get("miniscript", [])
+    assert len(res) == 1
+    assert res[0][-1] == "XRT"
+
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Miniscript")
+    time.sleep(0.1)
+    m = cap_menu()
+    assert "(none setup yet)" not in m
+    assert fname_xtn.split(".")[0] in m[0]
+    goto_home()
+    settings_set("chain", "BTC")
+    pick_menu_item("Settings")
+    pick_menu_item("Miniscript")
+    time.sleep(0.1)
+    m = cap_menu()
+    # but not on current active chain
+    assert "(none setup yet)" in m
+    import_miniscript(fname_btc)
+    press_select()
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Miniscript")
+    time.sleep(0.1)
+    m = cap_menu()
+    assert fname_btc.split(".")[0] in m[0]
+    for mi in m:
+        assert fname_xtn.split(".")[0] not in mi
+
+    _, story = import_miniscript(fname_xtn)
+    assert "Failed to import" in story
+    assert "wrong chain" in story
+
+    settings_set("chain", "XTN")
+    import_miniscript(fname_xtn0)
+    press_select()
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Miniscript")
+    time.sleep(0.1)
+    m = cap_menu()
+    assert "(none setup yet)" not in m
+    assert fname_xtn.split(".")[0] in m[0]
+    assert fname_xtn0.split(".")[0] in m[1]
+    for mi in m:
+        assert fname_btc not in mi
 
 
 @pytest.mark.parametrize("taproot_ikspendable", [
@@ -2175,7 +2172,7 @@ def test_unique_name(clear_miniscript, use_regtest, offer_minsc_import,
     # completely different wallet but with the same name (USB)
     yd = json.dumps({"name": name, "desc": y})
     title, story = offer_minsc_import(yd)
-    assert title == "FAILED"
+    assert ("'%s' already exists" % name) in story
     assert "MUST have unique names" in story
     press_select()
     # nothing imported
@@ -2205,7 +2202,7 @@ def test_unique_name(clear_miniscript, use_regtest, offer_minsc_import,
             f.write(yd if is_json else y)
 
     title, story = import_miniscript(fname=fname, way=way, data=nfc_data)
-    assert "FAILED" == title
+    assert ("'%s' already exists" % name) in story
     assert "MUST have unique names" in story
 
 
@@ -2887,7 +2884,7 @@ def test_static_internal_key(internal_key, clear_miniscript, microsd_path, pick_
 
     title, story = import_miniscript(fname)
     assert "Failed to import" in story
-    assert "only extended keys allowed" in story
+    assert "only extended pubkeys allowed" in story
 
 
 @pytest.mark.bitcoind

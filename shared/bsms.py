@@ -1038,6 +1038,7 @@ async def bsms_signer_round2(menu, label, item):
     ms_name = "bsms_" + desc[-4:]
 
     desc_obj = Descriptor.from_string(desc)
+    desc_obj.validate()
     assert desc_obj.is_sortedmulti, "sortedmulti required"
 
     dis.progress_bar_show(0.2)

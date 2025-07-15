@@ -438,7 +438,7 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, dev, clear_miniscr
     N = len(keys)
     assert M<=N
 
-    psbt = fake_ms_txn(15, num_outs, M, keys, inp_addr_fmt=af, incl_xpubs=False,
+    psbt = fake_ms_txn(15, num_outs, M, keys, inp_addr_fmt=af,
                        outstyles=["p2sh-p2wsh", af, af, af],
                        change_outputs=list(range(1,num_outs)))
 
@@ -649,7 +649,7 @@ def test_teleport_real_ms(dev, fake_ms_txn):
         return str_to_path(deriv)
 
     psbt = fake_ms_txn(3, 2, M, keys, fee=10000, outvals=None, inp_addr_fmt="p2sh",
-             outstyles=['p2pkh'], change_outputs=[], incl_xpubs=False,
+             outstyles=['p2pkh'], change_outputs=[],
              hack_change_out=False, input_amount=1E8, path_mapper=p2wsh_mapper)
 
     open('debug/teleport_real_ms.psbt', 'wb').write(psbt)

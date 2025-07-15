@@ -1320,10 +1320,6 @@ async def import_extended_key_as_secret(extended_key, ephemeral, origin=None):
             await seed.set_ephemeral_seed_extended_key(extended_key, origin=origin)
         else:
             await seed.set_seed_extended_key(extended_key)
-    except ValueError:
-        msg = ("Sorry, wasn't able to find a valid extended private key to import. "
-               "It should be at the start of a line, and probably starts with 'xprv'.")
-        await ux_show_story(title="FAILED", msg=msg)
     except Exception as e:
         await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 

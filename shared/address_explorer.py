@@ -458,16 +458,16 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
                     dis.progress_sofar(idx, count or 1)
 
             sig_nice = None
-            if addr_fmt != AF_P2TR:
-                if ms_wallet:
-                    # sign with my key at the same path as first address of export
-                    addr_fmt = AF_CLASSIC
-                    derive = ms_wallet.get_my_deriv(settings.get('xfp'))
-                    derive += "/%d/%d" % (change, start)
-                else:
-                    derive = path.format(account=account_num, change=change, idx=start)  # first addr
+            if ms_wallet:
+                # sign with my key at the same path as first address of export
+                addr_fmt = AF_CLASSIC
+                derive = ms_wallet.get_my_deriv(settings.get('xfp'))
+                derive += "/%d/%d" % (change, start)
+            else:
+                addr_fmt = AF_CLASSIC if addr_fmt == AF_P2TR else addr_fmt
+                derive = path.format(account=account_num, change=change, idx=start)  # first addr
 
-                sig_nice = write_sig_file([(h.digest(), fname)], derive, addr_fmt)
+            sig_nice = write_sig_file([(h.digest(), fname)], derive, addr_fmt)
 
 
         msg = '''Address summary file written:\n\n%s''' % nice

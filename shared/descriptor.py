@@ -115,7 +115,7 @@ class Descriptor:
         # cached keys
         self._keys = keys
 
-    def validate(self):
+    def validate(self, disable_checks=False):
         # should only be run once while importing wallet
         from glob import settings
 
@@ -143,11 +143,11 @@ class Descriptor:
             # cannot have same keys in single miniscript
             assert len(self.miniscript.keys) == len(set(self.miniscript.keys)), "Insane"
 
-        my_xfp = settings.get('xfp')
+        my_xfp = settings.get('xfp', 0)
         ext_nums = set()
         int_nums = set()
         for k in self.keys:
-            has_mine += k.validate(my_xfp)
+            has_mine += k.validate(my_xfp, disable_checks)
             ext, int = k.derivation.get_ext_int()
             ext_nums.add(ext)
             int_nums.add(int)
@@ -164,7 +164,7 @@ class Descriptor:
         for k in self.keys:
             pk = k.node.pubkey()
             if pk not in keys_info:
-                keys_info[pk] = k.to_string(subderiv=False)
+                keys_info[pk] = k.to_string(external=False, internal=False)
 
         desc_tmplt = self.to_string(checksum=False).replace("/<0;1>/*", "/**")
 
@@ -340,11 +340,11 @@ class Descriptor:
         return desc, checksum
 
     @classmethod
-    def from_string(cls, desc, checksum=False, validate=True):
+    def from_string(cls, desc, checksum=False):
         desc = parse_desc_str(desc)
         desc, cs = cls.checksum_check(desc)
         s = BytesIO(desc.encode())
-        res = cls.read_from(s, validate)
+        res = cls.read_from(s)
         left = s.read()
         if len(left) > 0:
             raise ValueError("Unexpected characters after descriptor: %r" % left)
@@ -355,7 +355,7 @@ class Descriptor:
         return res
 
     @classmethod
-    def read_from(cls, s, validate=True):
+    def read_from(cls, s):
         start = s.read(8)
         af = AF_CLASSIC
         internal_key = None
@@ -408,8 +408,6 @@ class Descriptor:
             raise ValueError("Invalid descriptor")
 
         desc = cls(key, miniscript, tapscript, af)
-        if validate:
-            desc.validate()
         return desc
 
     def to_string(self, external=True, internal=True, checksum=True):

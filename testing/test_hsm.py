@@ -546,7 +546,7 @@ def test_simple_limit(dev, amount, over, start_hsm, fake_txn, attempt_psbt, twea
         attempt_psbt(psbt)
 
 def test_named_wallets(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_status,
-                       attempt_psbt, fake_txn, fake_ms_txn, amount=5E6, incl_xpubs=False):
+                       attempt_psbt, fake_txn, fake_ms_txn, amount=5E6):
     wname = 'Myself-4'
     M = 4
 
@@ -576,7 +576,7 @@ def test_named_wallets(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_statu
 
     # but txn w/ multisig wallet should work
     psbt = fake_ms_txn(1, 2, M, keys, fee=0, outvals=[amount, 1E8-amount], outstyles=['p2wsh'],
-                                    change_outputs=[1], incl_xpubs=incl_xpubs)
+                                    change_outputs=[1])
     attempt_psbt(psbt)
 
     # check ms txn not accepted when rule spec's a single signer

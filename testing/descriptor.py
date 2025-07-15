@@ -158,7 +158,6 @@ class Descriptor:
 
     @staticmethod
     def parse_key_orig_info(key: str):
-        # key origin info is required for our MultisigWallet
         close_index = key.find("]")
         if key[0] != "[" or close_index == -1:
             raise ValueError("Key origin info is required for %s" % (key))

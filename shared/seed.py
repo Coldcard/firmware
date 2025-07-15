@@ -10,10 +10,10 @@
 #    - 'abandon' * 17 + 'agent'
 #    - 'abandon' * 11 + 'about'
 #
-import ngu, uctypes, bip39, random, version
+import ngu, uctypes, bip39, random, version, ure, chains
 from ucollections import OrderedDict
 from menu import MenuItem, MenuSystem
-from utils import xfp2str, parse_extended_key, swab32
+from utils import xfp2str, swab32
 from utils import deserialize_secret, problem_file_line, wipe_if_deltamode
 from uhashlib import sha256
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, OK, X
@@ -656,9 +656,17 @@ def seed_words_to_encoded_secret(words):
     return nv
 
 def xprv_to_encoded_secret(xprv):
-    node, chain, _ = parse_extended_key(xprv, private=True)
-    if node is None:
-        raise ValueError("Failed to parse extended private key.")
+    # read an xprv/tprv/etc and return BIP-32 node and what chain it's on.
+    # - can handle any garbage line
+    # - returns (node, chain)
+    # - people are using SLIP132 so we need this
+    ln = xprv.strip()
+    pat = ure.compile('.prv[A-Za-z0-9]+')
+    found = pat.search(ln)
+    assert found, "not extended privkey"
+    # serialize, and note version code
+    node, chain, addr_fmt, is_private = chains.slip32_deserialize(found.group(0))
+    assert node, "wrong extended privkey"
     nv = SecretStash.encode(xprv=node)
     node.blank()
     return nv, chain  # need to know chain

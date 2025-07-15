@@ -5,7 +5,7 @@
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson, version
 from public_constants import AF_P2WSH, AF_P2WSH_P2SH
 from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, extract_cosigner, problem_file_line, get_filesize
+from utils import xfp2str, problem_file_line, get_filesize
 from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_show_story, ux_dramatic_pause, ux_enter_number, ux_enter_bip32_index
 from public_constants import MAX_SIGNERS
@@ -146,8 +146,8 @@ async def ms_coordinator_file(af_str, my_xfp, slot_b=None):
                                 # try looking for BIP-380 key expression
                                 fp.seek(0)
                                 for line in fp.readlines():
-                                    vals = extract_cosigner(line, af_str)
-                                    if vals:
+                                    if len(line) > 112 and ("pub" in line):
+                                        vals = line.strip()
                                         break
 
                         if isinstance(vals, dict):
@@ -293,6 +293,7 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
 
     desc_obj = Descriptor(miniscript=Sortedmulti(Number(M), *keys),
                           addr_fmt=addr_fmt)
+    # no need to validate here - as all the keys are already validated
     msc = MiniScriptWallet.from_descriptor_obj(name, desc_obj)
 
     if num_mine:

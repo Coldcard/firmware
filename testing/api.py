@@ -11,6 +11,7 @@ from ckcc.protocol import CCProtocolPacker
 def find_bitcoind():
     # search for the binary we need
     # - should be in the path really
+    return "/home/scg/Downloads/bitcoin-29.0/bin/bitcoind"
     easy = shutil.which('bitcoind')
     if easy:
         return easy

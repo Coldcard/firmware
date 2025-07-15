@@ -183,18 +183,12 @@ be needed for different systems.
 
             yield ('\n\n')
 
-    from multisig import MultisigWallet
-    if MultisigWallet.exists():
-        yield '\n# Your Multisig Wallets\n\n'
+    from wallet import MiniScriptWallet
+    if MiniScriptWallet.exists():
+        yield '\n# Your Miniscript Wallets\n\n'
 
-        for ms in MultisigWallet.get_all():
-            fp = StringIO()
-
-            ms.render_export(fp)
-            print("\n---\n", file=fp)
-
-            yield fp.getvalue()
-            del fp
+        for msc in MiniScriptWallet.get_all():
+            yield msc.to_string() + "\n---\n"
 
 
 async def make_summary_file(fname_pattern='public.txt'):
@@ -420,27 +414,24 @@ def generate_generic_export(account_num=0):
             xfp = xfp2str(swab32(node.my_fp()))
             xp = chain.serialize_public(node, AF_CLASSIC)
             zp = chain.serialize_public(node, fmt) if fmt not in (AF_CLASSIC, AF_P2TR) else None
-            if is_ms:
-                # TODO
-                # desc = multisig_descriptor_template(xp, dd, master_xfp_str, fmt)
-                pass
-            else:
-                key = Key.from_cc_data(master_xfp, dd, xp)
-                desc_obj = Descriptor(key=key, addr_fmt=fmt)
-                desc = desc_obj.to_string()
-
-                OWNERSHIP.note_wallet_used(fmt, account_num)
+            key = Key.from_cc_data(master_xfp, dd, xp)
+            key_exp = key.to_string(external=False, internal=False)
 
             rv[name] = OrderedDict(name=atype,
                                    xfp=xfp,
                                    deriv=dd,
                                    xpub=xp,
-                                   desc=desc)
+                                   key_exp=key_exp)
 
             if zp and zp != xp:
                 rv[name]['_pub'] = zp
 
             if not is_ms:
+                desc_obj = Descriptor(key=key, addr_fmt=fmt)
+                rv[name]['desc'] = desc_obj.to_string()
+
+                OWNERSHIP.note_wallet_used(fmt, account_num)
+
                 # bonus/check: first non-change address: 0/0
                 node.derive(0, False).derive(0, False)
                 rv[name]['first'] = chain.address(node, fmt)

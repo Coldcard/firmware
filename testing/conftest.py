@@ -1923,6 +1923,9 @@ def load_export_and_verify_signature(microsd_path, virtdisk_path, verify_detache
         if is_json:
             assert fname.endswith(".json")
 
+        if addr_fmt == AF_P2TR:
+            addr_fmt = AF_CLASSIC
+
         contents, address = verify_detached_signature_file([fname], sig_fn, way, addr_fmt)
 
         if is_json:

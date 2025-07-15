@@ -278,7 +278,7 @@ class Key:
 
     @classmethod
     def parse_key(cls, key_str):
-        assert key_str[1:4].lower() == b"pub", "only extended keys allowed"
+        assert key_str[1:4].lower() == b"pub", "only extended pubkeys allowed"
         # extended key
         # or xpub or tpub as we use descriptors (SLIP-132 NOT allowed)
         hint = key_str[0:1].lower()
@@ -289,10 +289,11 @@ class Key:
             chain_type = "XTN"
         node = ngu.hdnode.HDNode()
         node.deserialize(key_str)
-
         try:
-            assert node.privkey() is None
-        except: pass
+            assert node.privkey() is None, "no privkeys"
+        except ValueError:
+            # ValueError is thrown from libngu if key is public
+            pass
 
         return node, chain_type
 
@@ -302,32 +303,40 @@ class Key:
         # xfp is always available, even if key was serialized without origin info
         # upon parse root origin info is generated from key itself
         xfp = self.origin.cc_fp
+        is_mine = (xfp == my_xfp)
+
+        # raises ValueError on invalid pubkey (should be in libngu)
+        # invalid public key not allowed even with disable checks
+        ngu.secp256k1.pubkey(self.node.pubkey())
 
         if not disable_checks:
             depth = self.node.depth()
-            # TODO we now allow blinded keys that have depth X bud derivation len is 0
-            # print("depth", depth)
-            # print("origin der", self.origin.derivation)
-            # assert len(self.origin.derivation) == depth, "deriv len != xpub depth (xfp=%s)" % xfp2str(xfp)
+            # we now allow blinded keys that have depth X but derivation len is 0,
+            # where only fingerprint constitutes key origin
+            # only check if derivation length is greater than 0
+            if self.origin.derivation:
+                assert len(self.origin.derivation) == depth, \
+                    "deriv len != xpub depth (xfp=%s)" % xfp2str(xfp)
             if depth == 0:
+                # blinded keys allowed
+                # assert not self.node.parent_fp()
+                # assert self.node.child_number()[0] == 0
                 assert swab32(self.node.my_fp()) == xfp, "master xfp mismatch"
             elif depth == 1:
                 target = swab32(self.node.parent_fp())
                 assert xfp == target, 'xfp depth=1 wrong'
 
-        is_mine = (xfp == my_xfp)
-        if is_mine and not disable_checks:
-            # it's supposed to be my key, so I should be able to generate pubkey
-            # - might indicate collision on xfp value between co-signers,
-            #   and that's not supported
-            deriv = self.origin.str_derivation()
-            with stash.SensitiveValues() as sv:
-                chk_node = sv.derive_path(deriv)
-                assert self.node.pubkey() == chk_node.pubkey(), \
-                            "[%s/%s] wrong pubkey" % (xfp2str(xfp), deriv[2:])
+            if is_mine:
+                # it's supposed to be my key, so I should be able to generate pubkey
+                # - might indicate collision on xfp value between co-signers,
+                #   and that's not supported
+                deriv = self.origin.str_derivation()
+                with stash.SensitiveValues() as sv:
+                    chk_node = sv.derive_path(deriv)
+                    assert self.node.pubkey() == chk_node.pubkey(), \
+                                "[%s/%s] wrong pubkey" % (xfp2str(xfp), deriv[2:])
 
         return is_mine
-
 
     def derive(self, idx=None, change=False):
         if isinstance(idx, list):
@@ -381,6 +390,17 @@ class Key:
         ek = chains.slip32_deserialize(vals[af_str])
         return cls.from_cc_data(vals["xfp"], vals["%s_deriv" % af_str], ek)
 
+    @classmethod
+    def from_psbt_xpub(cls, pth, ek_bytes):
+        xfp, *path = ustruct.unpack_from('<%dI' % (len(pth)//4), pth, 0)
+        koi = KeyOriginInfo(a2b_hex(xfp2str(xfp)), path)
+        # TODO this should be done by C code, no need to base58 encode/decode
+        # byte-serialized key should be decodable
+        ek = ngu.codecs.b58_encode(ek_bytes)
+        node, chain_type = cls.parse_key(ek.encode())
+
+        return cls(node, koi, KeyDerivationInfo(), chain_type=chain_type)
+
     @property
     def is_provably_unspendable(self):
         if PROVABLY_UNSPENDABLE == self.node.pubkey():
@@ -405,10 +425,10 @@ class Key:
     def extended_public_key(self):
         return chains.current_chain().serialize_public(self.node)
 
-    def to_string(self, external=True, internal=True, subderiv=True):
+    def to_string(self, external=True, internal=True):
         key = self.prefix
         key += self.extended_public_key()
-        if self.derivation and subderiv:
+        if self.derivation and (external or internal):
             key += "/" + self.derivation.to_string(external, internal)
 
         return key
