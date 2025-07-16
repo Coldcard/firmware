@@ -284,7 +284,7 @@ def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_miniscrip
     settings_remove(BSMS_SETTINGS)  # clear bsms
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -442,7 +442,7 @@ def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_miniscript, go
         assert tokens == []
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -613,7 +613,7 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
 
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -820,7 +820,7 @@ def test_signer_round2(refuse, way, encryption_type, M_N, addr_fmt, clear_minisc
     desc_template, token = make_coordinator_round2(M, N, addr_fmt, encryption_type, way=way, add_checksum=with_checksum)
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -875,18 +875,17 @@ def test_signer_round2(refuse, way, encryption_type, M_N, addr_fmt, clear_minisc
 
     time.sleep(0.5)
     _, story = cap_story()
-    assert "Create new multisig wallet?" in story
+    assert "Create new miniscript wallet?" in story
     assert "bsms" in story  # part of the name
     policy = "Policy: %d of %d" % (M, N)
     assert policy in story
     assert addr_fmt.upper() in story
     ms_wal_name = story.split("\n\n")[1].split("\n")[-1].strip()
-    ms_wal_menu_item = "%d/%d: %s" % (M, N, ms_wal_name)
     if refuse:
         press_cancel()
         time.sleep(0.1)
         menu = cap_menu()
-        assert ms_wal_menu_item not in menu
+        assert ms_wal_name not in menu
         bsms_settings = settings_get(BSMS_SETTINGS)
         # signer round 2 NOT removed
         assert bsms_settings.get(BSMS_SIGNER_SETTINGS)
@@ -894,7 +893,7 @@ def test_signer_round2(refuse, way, encryption_type, M_N, addr_fmt, clear_minisc
         press_select()
         time.sleep(0.1)
         menu = cap_menu()
-        assert ms_wal_menu_item in menu
+        assert ms_wal_name in menu
         bsms_settings = settings_get(BSMS_SETTINGS)
         # signer round 2 removed
         assert not bsms_settings.get(BSMS_SIGNER_SETTINGS, None)
@@ -912,7 +911,7 @@ def test_invalid_token_signer_round1(token, way, pick_menu_item, cap_story, need
                                      press_select, is_q1):
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -993,7 +992,7 @@ def test_failure_coordinator_round2(encryption_type, make_coordinator_round1, ma
         make_signer_round1(token, "sd", purge_bsms=False, index=index, **kws)
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -1062,7 +1061,7 @@ def test_wrong_encryption_coordinator_round2(encryption_type, make_coordinator_r
         make_signer_round1(token, "sd", purge_bsms=False, index=index, wrong_encryption=True)
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -1155,7 +1154,7 @@ def test_failure_signer_round2(encryption_type, goto_home, press_select, pick_me
     failure_msg = failure_msg.format(token=token[:4])
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -1212,7 +1211,7 @@ def test_integration_signer(encryption_type, M_N, addr_fmt, clear_miniscript, mi
     # ROUND 1
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -1293,7 +1292,7 @@ def test_integration_signer(encryption_type, M_N, addr_fmt, clear_miniscript, mi
     time.sleep(0.1)
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -1312,17 +1311,16 @@ def test_integration_signer(encryption_type, M_N, addr_fmt, clear_miniscript, mi
     pick_menu_item(menu_item)
     time.sleep(0.1)
     title, story = cap_story()
-    assert "Create new multisig wallet?" in story
+    assert "Create new miniscript wallet?" in story
     assert "bsms" in story  # part of the name
     policy = "Policy: %d of %d" % (M, N)
     assert policy in story
     assert addr_fmt.upper() in story
     ms_wal_name = story.split("\n\n")[1].split("\n")[-1].strip()
-    ms_wal_menu_item = "%d/%d: %s" % (M, N, ms_wal_name)
     press_select()
     time.sleep(0.1)
     menu = cap_menu()
-    assert ms_wal_menu_item in menu
+    assert ms_wal_name in menu
     bsms_settings = settings_get(BSMS_SETTINGS)
     # signer round 2 removed
     assert not bsms_settings.get(BSMS_SIGNER_SETTINGS, None)
@@ -1342,7 +1340,7 @@ def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_miniscrip
     microsd_wipe()
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -1471,7 +1469,7 @@ def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_miniscrip
 
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -1548,7 +1546,7 @@ def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_miniscrip
         # still need to add our signer
         goto_home()
         pick_menu_item('Settings')
-        pick_menu_item('Multisig Wallets')
+        pick_menu_item('Miniscript')
         pick_menu_item('BSMS (BIP-129)')
         press_select()
         pick_menu_item('Signer')
@@ -1563,17 +1561,16 @@ def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_miniscrip
         pick_menu_item(fnames[0])
         time.sleep(0.1)
         title, story = cap_story()
-        assert "Create new multisig wallet?" in story
+        assert "Create new miniscript wallet?" in story
         assert "bsms" in story  # part of the name
         policy = "Policy: %d of %d" % (M, N)
         assert policy in story
         assert addr_fmt.upper() in story
         ms_wal_name = story.split("\n\n")[1].split("\n")[-1].strip()
-        ms_wal_menu_item = "%d/%d: %s" % (M, N, ms_wal_name)
         press_select()
         time.sleep(0.1)
         menu = cap_menu()
-        assert ms_wal_menu_item in menu
+        assert ms_wal_name in menu
         bsms_settings = settings_get(BSMS_SETTINGS)
         # signer round 2 removed
         assert not bsms_settings.get(BSMS_SIGNER_SETTINGS, None)
@@ -1638,7 +1635,7 @@ def test_auto_collection_coordinator_r2(encryption_type, M_N, goto_home, need_ke
         all_data.append(make_signer_round1(token, "sd", purge_bsms=False, index=index))
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story

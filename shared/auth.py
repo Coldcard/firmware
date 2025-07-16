@@ -1408,11 +1408,11 @@ class NewMiniscriptEnrollRequest(UserAuthorizedAction):
             if self.bsms_index is not None:
                 # bsms special case, get him back to multisig menu
                 from ux import the_ux, restore_menu
-                from multisig import MultisigMenu
+                from wallet import MiniscriptMenu
                 while 1:
                     top = the_ux.top_of_stack()
                     if not top: break
-                    if not isinstance(top, MultisigMenu):
+                    if not isinstance(top, MiniscriptMenu):
                         the_ux.pop()
                         continue
                     break

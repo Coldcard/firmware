@@ -123,13 +123,13 @@ invalid = [
 import glob
 from glob import settings
 from descriptor import Descriptor
-from miniscript import MiniScriptWallet
+from wallet import MiniScriptWallet
 
 settings.set('chain', "BTC")
 
 # valid vectors
 for policy, keys_info, desc in valid:
-    d = Descriptor.from_string(desc, validate=False)
+    d = Descriptor.from_string(desc)
     pol, ki = d.bip388_wallet_policy()
     assert pol == policy, "\n" + pol + "\n" + policy
     assert keys_info == keys_info

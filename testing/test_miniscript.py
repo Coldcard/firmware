@@ -185,7 +185,7 @@ def import_duplicate(import_miniscript, press_cancel, virtdisk_path, microsd_pat
             title, story = import_miniscript(new_fname, way, data=data)
             time.sleep(.2)
 
-        assert "duplicate of already saved wallet" in story
+        assert "Duplicate wallet" in story
         assert "OK to approve" not in story
         press_cancel()
 
@@ -2068,6 +2068,7 @@ def test_import_same_policy_same_keys_diff_order(taproot_ikspendable, minisc, us
     title, story = offer_minsc_import(desc1)
     assert "Create new miniscript wallet?" in story
     press_select()
+    time.sleep(.2)
     assert len(settings_get("miniscript", [])) == 2
 
 

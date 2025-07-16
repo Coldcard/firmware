@@ -235,7 +235,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         import_ms_wallet(15, 15)
         press_select()
         time.sleep(.1)
-        assert len(get_setting('multisig')) == 1
+        assert len(get_setting('miniscript')) == 1
 
     if not reuse_pw:
         # drop saved bkpw before we get to ephemeral settings
@@ -243,7 +243,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
 
     if st == "b39pass":
         xfp_pass = set_bip39_pw("coinkite", reset=False, seed_vault=seedvault)
-        assert not get_setting('multisig', None)
+        assert not get_setting('miniscript', None)
     elif st == "eph":
         eph_seed = generate_ephemeral_words(num_words=24, dice=False, from_main=True,
                                             seed_vault=seedvault)
@@ -252,7 +252,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
             import_ms_wallet(15, 15, dev_key=True, common="605'/0'/0'")
             press_select()
             time.sleep(.1)
-            assert len(get_setting('multisig')) == 1
+            assert len(get_setting('miniscript')) == 1
     else:
         # create ephemeral seed - add to seed vault if necessary
         # and restore master (just so we have something in setting.seeds)
@@ -269,7 +269,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         # multisig is only in main wallet
         # must not be copied from main to b39pass
         # must not be available after backup done
-        assert not get_setting('multisig', None)
+        assert not get_setting('miniscript', None)
 
     if notes:
         # verify large notes survived
@@ -321,7 +321,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
 
     # test verify on device (CRC check)
     if multisig:
-        avail_settings.append("multisig")
+        avail_settings.append("miniscript")
 
     restore_backup_cs(files[0], words, avail_settings=avail_settings,
                       pass_way=pass_way)

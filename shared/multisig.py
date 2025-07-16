@@ -142,22 +142,30 @@ async def ms_coordinator_file(af_str, my_xfp, slot_b=None):
                             try:
                                 # CC multisig XPUBs JSON expected
                                 vals = ujson.load(fp)
+                                print("vals", vals)
                             except:
                                 # try looking for BIP-380 key expression
                                 fp.seek(0)
                                 for line in fp.readlines():
+                                    print(line)
                                     if len(line) > 112 and ("pub" in line):
                                         vals = line.strip()
                                         break
 
-                        if isinstance(vals, dict):
-                            k = Key.from_cc_json(vals, af_str)
-                        else:
-                            k = Key.from_string(vals)
+                        print("here")
+                        try:
+                            if isinstance(vals, dict):
+                                k = Key.from_cc_json(vals, af_str)
+                            else:
+                                k = Key.from_string(vals)
+                        except Exception as e:
+                            sys.print_exception(e)
+                            raise
 
+                        print("here1")
                         num_mine += k.validate(my_xfp)
                         keys.append(k)
-
+                        print("here3")
                         num_files += 1
 
                     except CardMissingError:
@@ -215,6 +223,8 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
 
     # remove dups; easy to happen if you double-tap the export
     keys = list(set(keys))
+
+    print("keys", keys)
 
     if not keys or (len(keys) == 1 and num_mine):
         if is_qr:

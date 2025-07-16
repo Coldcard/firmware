@@ -166,12 +166,14 @@ def import_ms_wallet(dev, make_multisig, offer_minsc_import, press_select,
                 or 'Update existing multisig wallet' in story \
                 or 'new wallet is similar to' in story
 
+        story_name = None
         assert addr_fmt.upper() in story
         assert f'Policy: {M} of {N}\n' in story
         for ll in story.split("\n\n"):
             if ll.startswith("Wallet Name"):
                 story_name = ll.split("\n")[-1].strip()
 
+        assert story_name
         if name:
             assert name == story_name
 
@@ -181,7 +183,7 @@ def import_ms_wallet(dev, make_multisig, offer_minsc_import, press_select,
             # Test it worked.
             time.sleep(.1)      # required
             # below raises if miniscript wallet not enrolled
-            usb_miniscript_get(name)
+            usb_miniscript_get(story_name)
 
         return keys
 

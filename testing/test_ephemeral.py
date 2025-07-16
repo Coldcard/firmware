@@ -1314,7 +1314,7 @@ def test_add_current_active(reset_seed_words, settings_set, import_ephemeral_xpr
         curr_xfp = settings_get("xfp", None)
         assert curr_xfp is not None
         assert curr_xfp != 0
-        mss = settings_get("multisig")
+        mss = settings_get("miniscript")
         assert len(mss) == 1
         assert  mss[0][0] == ms_name
         assert len(settings_get("notes")) == 3
@@ -1349,9 +1349,9 @@ def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_se
         import_ms_wallet(15, 15, dev_key=True)
         press_select()
         time.sleep(.1)
-        assert len(get_setting('multisig')) == 1
+        assert len(get_setting('miniscript')) == 1
     else:
-        assert get_setting('multisig') is None
+        assert get_setting('miniscript') is None
 
     # ACTUAL BACKUP
     bk_pw = backup_system()
@@ -1391,12 +1391,12 @@ def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_se
                                      seed_vault=seedvault)
 
     # actual bug, multisig key copied with "setting." prefix -> therefore not visible in Multisig menu
-    assert get_setting("setting.multisig") is None
+    assert get_setting("setting.miniscript") is None
     # correct multisig was copied during loading backup as tmp seed
-    ms = get_setting('multisig')
+    ms = get_setting('miniscript')
     if multisig:
         assert len(ms) == 1
-        assert ms[0][1] == [15,15]
+        assert ms[0][-3] == [15,15]
     else:
         assert ms is None
 

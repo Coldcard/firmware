@@ -387,7 +387,9 @@ class Key:
             # new firmware, prefer key expression
             return cls.from_string(vals[key_exp])
 
-        ek = chains.slip32_deserialize(vals[af_str])
+        # TODO
+        node, _, _, _ = chains.slip32_deserialize(vals[af_str])
+        ek = chains.current_chain().serialize_public(node)
         return cls.from_cc_data(vals["xfp"], vals["%s_deriv" % af_str], ek)
 
     @classmethod

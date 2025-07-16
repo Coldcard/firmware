@@ -10,9 +10,10 @@ from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_s
 from chains import NLOCK_IS_TIME
 from uhashlib import sha256
 from uio import BytesIO
+from charcodes import KEY_ENTER
 from sffile import SizerFile
 from chains import taptweak, tapleaf_hash
-from wallet import MiniScriptWallet
+from wallet import MiniScriptWallet, TRUST_PSBT, TRUST_VERIFY
 from multisig import disassemble_multisig_mn
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160
@@ -561,12 +562,12 @@ class psbtOutputProxy(psbtProxy):
 
             else:
                 if active_miniscript:
-                    # TODO disable checks
-                    # if MultisigWallet.disable_checks:
-                    #     # Without validation, we have to assume all outputs
-                    #     # will be taken from us, and are not really change.
-                    #     self.is_change = False
-                    #     return af
+                    if MiniScriptWallet.disable_checks:
+                        # Without validation, we have to assume all outputs
+                        # will be taken from us, and are not really change.
+                        self.is_change = False
+                        return af
+
                     # scriptPubkey can be compared against script that we build - if exact match change
                     # if not - not change - no need for redeem/witness script
                     #
@@ -997,7 +998,8 @@ class psbtInputProxy(psbtProxy):
 
             xfp_paths.sort()
             if psbt.active_miniscript:
-                psbt.active_miniscript.matching_subpaths(xfp_paths), "wrong wallet"
+                if not psbt.active_miniscript.disable_checks:
+                    psbt.active_miniscript.matching_subpaths(xfp_paths), "wrong wallet"
             else:
                 # if we do have actual script at hand, guess M/N for better matching
                 # basic multisig matching
@@ -1011,8 +1013,9 @@ class psbtInputProxy(psbtProxy):
 
             try:
                 # contains PSBT merkle root verification (if taproot)
-                psbt.active_miniscript.validate_script_pubkey(utxo.scriptPubKey,
-                                                              xfp_paths, merkle_root)
+                if not psbt.active_miniscript.disable_checks:
+                    psbt.active_miniscript.validate_script_pubkey(utxo.scriptPubKey,
+                                                                  xfp_paths, merkle_root)
             except BaseException as e:
                 # sys.print_exception(e)
                 raise FatalPSBTIssue('Input #%d: %s\n\n' % (my_idx, e) + problem_file_line(e))
@@ -1408,9 +1411,18 @@ class psbtObject(psbtProxy):
         # Peek at the inputs to see if we can guess M/N value. Just takes
         # first one it finds.
         #
-        for i in self.inputs:
+        for idx, inp in self.input_iter():
+            i = self.inputs[idx]
             ks = i.witness_script or i.redeem_script
             if not ks: continue
+
+            # guess address format also - based on scripts provided by PSBT provider
+            if i.witness_script and not i.redeem_script:
+                af = AF_P2WSH
+            elif i.witness_script and i.redeem_script:
+                af = AF_P2WSH_P2SH
+            else:
+                af = AF_P2SH
 
             rs = i.get(ks)
             if rs[-1] != OP_CHECKMULTISIG: continue
@@ -1418,24 +1430,23 @@ class psbtObject(psbtProxy):
             M, N = disassemble_multisig_mn(rs)
             assert 1 <= M <= N <= MAX_SIGNERS
 
-            return (M, N)
+            return af, M, N
 
         # not multisig, probably
-        return None, None
-
+        return None, None, None
 
     async def handle_xpubs(self):
         # Lookup correct wallet based on xpubs in globals
         # - only happens if they volunteered this 'extra' data
         # - do not assume multisig
-        assert not self.active_multisig
+        assert not self.active_miniscript
 
         xfp_paths = []
         has_mine = 0
         for k,_ in self.xpubs:
             h = unpack_from('<%dI' % (len(k)//4), k, 0)
             assert len(h) >= 1
-            xfp_paths.append(h)
+            xfp_paths.append(list(h))  # TODO conversion to list (from tuple), maybe handle in find_match
 
             if h[0] == self.my_xfp:
                 has_mine += 1
@@ -1443,63 +1454,57 @@ class psbtObject(psbtProxy):
         if not has_mine:
             raise FatalPSBTIssue('My XFP not involved')
 
-        candidates = MultisigWallet.find_candidates(xfp_paths)
+        # don't want to guess M if not needed, but we need it
+        af, M, N = self.guess_M_of_N()
+        if not N:
+            # not multisig, but we can still verify:
+            # - miniscript cannot be imported from PSBT (we lack descriptor in PSBT)
+            # - XFP should be one of ours (checked above).
+            # - too slow to re-derive it here, so nothing more to validate at this point
+            return
 
-        if len(candidates) == 1:
+        assert N == len(self.xpubs)
+
+        # Validate good match here. The xpubs must be exactly right, but
+        # we're going to use our own values from setup time anyway and not trusting
+        # new values without user interaction.
+        # Check:
+        # - chain codes match what we have stored already
+        # - pubkey vs. path will be checked later
+        # - xfp+path already checked above when selecting wallet
+        # Any issue here is a fraud attempt in some way, not innocent.
+        wal = MiniScriptWallet.find_match(xfp_paths, af, M, N)
+
+        if wal:
             # exact match (by xfp+deriv set) .. normal case
-            self.active_multisig = candidates[0]
+            self.active_miniscript = wal
+            # now proper check should follow - matching actual master pubkeys
+            # but is it needed?, we just matched the wallet
+            # and are going to use our own data for verification anyway
+            if not self.active_miniscript.disable_checks:
+                self.active_miniscript.validate_psbt_xpubs(self.xpubs)
+
         else:
-            # don't want to guess M if not needed, but we need it
-            M, N = self.guess_M_of_N()
+            trust_mode = MiniScriptWallet.get_trust_policy()
+            # already checked for existing import and wasn't found, so fail
+            assert trust_mode != TRUST_VERIFY, "XPUBs in PSBT do not match any existing wallet"
 
-            if not N:
-                # not multisig, but we can still verify:
-                # - XFP should be one of ours (checked above).
-                # - too slow to re-derive it here, so nothing more to validate at this point
-                return
-
-            assert N == len(xfp_paths)
-
-            for c in candidates:
-                if c.M == M and c.N == N:
-                    self.active_multisig = c
-                    break
-            # if not active_multisig set in this loop
-            # appropriate candidate was not found
-            # --> continue to import from psbt prompt
-
-        del candidates
-
-        if not self.active_multisig:
             # Maybe create wallet, for today, forever, or fail, etc.
-            proposed, need_approval = MultisigWallet.import_from_psbt(M, N, self.xpubs)
-            if need_approval:
+            proposed = MiniScriptWallet.import_from_psbt(af, M, N, self.xpubs)
+            if trust_mode != TRUST_PSBT:
                 # do a complex UX sequence, which lets them save new wallet
                 from glob import hsm_active
                 if hsm_active:
                     raise FatalPSBTIssue("MS enroll not allowed in HSM mode")
 
                 ch = await proposed.confirm_import()
-                if ch != 'y':
+                if ch not in 'y'+KEY_ENTER:
                     raise FatalPSBTIssue("Refused to import new wallet")
 
-            self.active_multisig = proposed
-        else:
-            # Validate good match here. The xpubs must be exactly right, but
-            # we're going to use our own values from setup time anyway and not trusting
-            # new values without user interaction.
-            # Check:
-            # - chain codes match what we have stored already
-            # - pubkey vs. path will be checked later
-            # - xfp+path already checked above when selecting wallet
-            # Any issue here is a fraud attempt in some way, not innocent.
-            self.active_multisig.validate_psbt_xpubs(self.xpubs)
+            self.active_miniscript = proposed
 
-        if not self.active_multisig:
-            # not clear if an error... might be part-way to importing, and
-            # the data is optional anyway, etc. If they refuse to import, 
-            # we should not reach this point (ie. raise something to abort signing)
-            return
+        # must have wallet at this point
+        assert self.active_miniscript
 
     def ux_relative_timelocks(self, tb, bb):
         # visualize 10 largest timelock to user
@@ -1995,9 +2000,8 @@ class psbtObject(psbtProxy):
                 'Some input(s) provided were already completely signed by other parties: ' +
                         seq_to_str(self.presigned_inputs)))
 
-        # TODO
-        # if MultisigWallet.disable_checks:
-        #     self.warnings.append(('Danger', 'Some multisig checks are disabled.'))
+        if MiniScriptWallet.disable_checks:
+            self.warnings.append(('Danger', 'Some miniscript checks are disabled.'))
 
     def calculate_fee(self):
         # what miner's reward is included in txn?

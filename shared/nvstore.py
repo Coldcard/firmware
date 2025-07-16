@@ -32,8 +32,8 @@ from utils import call_later_ms
 #   batt_to = (when on battery only) idle timeout period
 #   _age = internal verison number for data (see below)
 #   tested = selftest has been completed successfully
-#   multisig = list of defined multisig wallets (complex)
-#   miniscript = list of defined miniscript wallets (complex)
+#   multisig = list of defined multisig wallets (complex) [before removal of MultisigWallet]
+#   miniscript = list of defined miniscript wallets, including multisig (complex)
 #   pms = trust/import/distrust xpubs found in PSBT files
 #   fee_limit = (int) percentage of tx value allowed as max fee
 #   axi = index of last selected address in explorer
@@ -79,7 +79,7 @@ from utils import call_later_ms
 #   terms_ok = customer has signed-off on the terms of sale
 
 # settings linked to seed
-# LINKED_SETTINGS = ["multisig","miniscript", "tp", "ovc", "xfp", "xpub", "words"]
+# LINKED_SETTINGS = ["miniscript", "tp", "ovc", "xfp", "xpub", "words"]
 # settings that does not make sense to copy to temporary secret
 # LINKED_SETTINGS += ["sd2fa", "usr", "axi", "hsmcmd"]
 # prelogin settings - do not need to be part of other saved settings

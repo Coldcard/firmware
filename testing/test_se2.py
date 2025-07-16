@@ -533,7 +533,7 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs, words12,
     import_ms_wallet(2, 2, dev_key=words12)
     press_select()
     time.sleep(.1)
-    assert len(get_setting('multisig')) == 1
+    assert len(get_setting('miniscript')) == 1
 
     # after Wipe Seed -> Wipe->Wallet choice, another level
     clear_all_tricks()
@@ -611,7 +611,7 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs, words12,
     xp = repl.eval("settings.get('xpub')")
     assert xp == wallet.hwif(as_private=False)
 
-    assert not get_setting('multisig')  # multisig is not copied
+    assert not get_setting('miniscript')  # multisig is not copied
 
     # re-login to recover normal seed
     reset_seed_words()

@@ -300,7 +300,7 @@ async def restore_tmp_from_dict_ll(vals):
         if not k[:8] == "setting.":
             continue
         key = k[8:]
-        if key in ["multisig", "miniscript"]:
+        if key == "miniscript":
             # whitelist
             settings.set(key, v)
 

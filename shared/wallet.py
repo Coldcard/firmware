@@ -45,7 +45,7 @@ class WalletABC:
     def render_address(self, change_idx, idx):
         # make one single address as text.
 
-        tmp = list(self.yield_addresses(idx, 1, change_idx=change_idx))
+        tmp = list(self.yield_addresses(idx, 1, change_idx))
 
         assert len(tmp) == 1
         assert tmp[0][0] == idx
@@ -543,10 +543,10 @@ class MiniScriptWallet(WalletABC):
                 # different M/N
                 continue
 
+            err = "Duplicate wallet. Wallet '%s' is the same." % rv.name
             if self.m_n:
                 # enrolling basic multisig wallet
                 if self.addr_fmt == rv.addr_fmt and sorted(self.keys_info) == sorted(rv.keys_info):
-                    err = "Duplicate wallet. Wallet '%s' is the same."
                     if self.bip67 != rv.bip67:
                         err += " BIP-67 clash."
                     err += "\n\n"
@@ -554,8 +554,7 @@ class MiniScriptWallet(WalletABC):
 
             else:
                 if self.desc_tmplt == rv.desc_tmplt and self.keys_info == rv.keys_info:
-                    raise AssertionError ("This wallet is a duplicate of already"
-                                          " saved wallet %s.\n\n" % rv.name)
+                    assert False, err
 
     async def confirm_import(self):
         nope, yes = (KEY_CANCEL, KEY_ENTER) if version.has_qwerty else ("x", "y")
@@ -583,9 +582,11 @@ class MiniScriptWallet(WalletABC):
 
         return ch
 
-    def yield_addresses(self, start_idx, count, change=False, scripts=False, change_idx=0):
+    def yield_addresses(self, start_idx, count, change_idx=0, scripts=False):
         ch = chains.current_chain()
-        dd = self.to_descriptor().derive(None, change=change)
+        # change_idx work as boolean here - you cannot specify random change_idx
+        # as it is defined by descriptor
+        dd = self.to_descriptor().derive(None, change=bool(change_idx))
         idx = start_idx
         while count:
             if idx > MAX_BIP32_IDX:
@@ -613,7 +614,7 @@ class MiniScriptWallet(WalletABC):
 
         addrs = []
 
-        for idx, addr, *_ in self.yield_addresses(start, n, change=bool(change), scripts=False):
+        for idx, addr, *_ in self.yield_addresses(start, n, change, scripts=False):
             msg += '.../%d =>\n' % idx  # just idx, if derivations or scripts needed - export csv
             addrs.append(addr)
             msg += show_single_address(addr) + '\n\n'
@@ -625,7 +626,7 @@ class MiniScriptWallet(WalletABC):
         yield '"' + '","'.join(
             ['Index', 'Payment Address']
         ) + '"\n'
-        for idx, addr, ders, script in self.yield_addresses(start, n, change=bool(change)):
+        for idx, addr, ders, script in self.yield_addresses(start, n, change):
             ln = '%d,"%s"' % (idx, addr)
             if ders:
                 ln += ',"%s","' % script

@@ -419,7 +419,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
         saver = None
 
     yield '"Index","Payment Address","Derivation"\n'
-    for (idx, addr, deriv) in main.yield_addresses(start, n, change_idx=change):
+    for (idx, addr, deriv) in main.yield_addresses(start, n, change):
         if saver:
             saver(addr)
 

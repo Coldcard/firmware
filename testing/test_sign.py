@@ -479,7 +479,7 @@ def test_sign_p2sh_p2wpkh(match_key, use_regtest, start_sign, end_sign, bitcoind
 @pytest.mark.bitcoind
 @pytest.mark.unfinalized
 def test_sign_p2sh_example(set_master_key, use_regtest, sim_execfile, start_sign, end_sign,
-                           decode_psbt_with_bitcoind, offer_ms_import, press_select, clear_miniscript,
+                           decode_psbt_with_bitcoind, offer_minsc_import, press_select, clear_miniscript,
                            sim_root_dir):
     # Use the private key given in BIP 174 and do similar signing
     # as the examples.
@@ -505,7 +505,7 @@ def test_sign_p2sh_example(set_master_key, use_regtest, sim_execfile, start_sign
     config += f'{xfp}: {n1}\n{xfp}: {n2}\n'
 
     clear_miniscript()
-    offer_ms_import(config)
+    offer_minsc_import(config)
     time.sleep(.1)
     press_select()
 
@@ -872,7 +872,7 @@ def test_sign_wutxo(start_sign, set_seed_words, end_sign, cap_story, sim_exec, s
         assert 'Network fee 0.00000500 XTN' in story
 
         # check we understood it right
-        ex = dict(  had_witness=False, num_inputs=1, num_outputs=1, sw_inputs=[None],
+        ex = dict(  had_witness=False, num_inputs=1, num_outputs=1, sw_inputs=[False],
                     miner_fee=500, warnings_expected=0,
                     lock_time=1442308, total_value_out=99500,
                     total_value_in=100000)
@@ -3160,7 +3160,7 @@ def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_stor
     end_sign(finalize=finalize)
 
 
-def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_ms_import,
+def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_minsc_import,
                         cap_story, try_sign, reset_seed_words, clear_miniscript):
     reset_seed_words()
     clear_miniscript()
@@ -3186,8 +3186,8 @@ def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_ms_imp
     press_select()
 
     time.sleep(.1)
-    _, story = offer_ms_import(desc)
-    assert "Create new multisig wallet?" in story \
+    _, story = offer_minsc_import(desc)
+    assert "Create new miniscript wallet?" in story \
                 or 'Update NAME only of existing multisig' in story
     time.sleep(.1)
     press_select()
