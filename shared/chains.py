@@ -104,36 +104,6 @@ class ChainsBase:
         return node
 
     @classmethod
-    def p2sh_address(cls, addr_fmt, witdeem_script):
-        # Multisig and general P2SH support
-        # - witdeem => witness script for segwit, or redeem script otherwise
-        # - redeem script can be generated from witness script if needed.
-        # - this function needs a witdeem script to be provided, not simple to make
-        # - more verification needed to prove it's change/included address (NOT HERE)
-        # - reference: <https://bitcoincore.org/en/segwit_wallet_dev/>
-        # - returns: str(address)
-
-        assert addr_fmt & AFC_SCRIPT, 'for p2sh only'
-        assert witdeem_script, "need witness/redeem script"
-
-        if addr_fmt & AFC_SEGWIT:
-            digest = ngu.hash.sha256s(witdeem_script)
-        else:
-            digest = hash160(witdeem_script)
-
-        if addr_fmt & AFC_BECH32:
-            # bech32 encoded segwit p2sh
-            addr = ngu.codecs.segwit_encode(cls.bech32_hrp, 0, digest)
-        elif addr_fmt == AF_P2WSH_P2SH:
-            # segwit p2wsh encoded as classic P2SH
-            addr = ngu.codecs.b58_encode(cls.b58_script + hash160(b'\x00\x20' + digest))
-        else:
-            # P2SH classic
-            addr = ngu.codecs.b58_encode(cls.b58_script + digest)
-
-        return addr
-
-    @classmethod
     def pubkey_to_address(cls, pubkey, addr_fmt):
         # - renders a pubkey to an address
         # - works only with single-key addresses
@@ -170,7 +140,7 @@ class ChainsBase:
             return node.addr_help(cls.b58_addr[0])
 
         if addr_fmt & AFC_SCRIPT:
-            # use p2sh_address() instead.
+            # use chain.render_address
             raise ValueError(hex(addr_fmt))
 
         # so must be P2PKH, fetch it.

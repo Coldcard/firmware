@@ -14,7 +14,6 @@ from charcodes import KEY_ENTER
 from sffile import SizerFile
 from chains import taptweak, tapleaf_hash
 from wallet import MiniScriptWallet, TRUST_PSBT, TRUST_VERIFY
-from multisig import disassemble_multisig_mn
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160
 from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, COutPoint
@@ -103,6 +102,17 @@ def _skip_n_objs(fd, n, cls):
                 fd.seek(p, 1)
 
     return rv
+
+def disassemble_multisig_mn(redeem_script):
+    # pull out just M and N from script. Simple, faster, no memory.
+
+    if redeem_script[-1] != OP_CHECKMULTISIG:
+        return None, None
+
+    M = redeem_script[0] - 80
+    N = redeem_script[-2] - 80
+
+    return M, N
 
 def calc_txid(fd, poslen, body_poslen=None):
     # Given the (pos,len) of a transaction in a file, return the txid for that txn.

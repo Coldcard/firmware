@@ -9,45 +9,9 @@ from utils import xfp2str, problem_file_line, get_filesize
 from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_show_story, ux_dramatic_pause, ux_enter_number, ux_enter_bip32_index
 from public_constants import MAX_SIGNERS
-from opcodes import OP_CHECKMULTISIG
 from glob import settings
 from charcodes import KEY_QR
 from desc_utils import Key, KeyOriginInfo
-
-
-def disassemble_multisig_mn(redeem_script):
-    # pull out just M and N from script. Simple, faster, no memory.
-
-    if redeem_script[-1] != OP_CHECKMULTISIG:
-        return None, None
-
-    M = redeem_script[0] - 80
-    N = redeem_script[-2] - 80
-
-    return M, N
-
-def make_redeem_script(M, nodes, subkey_idx, bip67=True):
-    # take a list of BIP-32 nodes, and derive Nth subkey (subkey_idx) and make
-    # a standard M-of-N redeem script for that. Applies BIP-67 sorting by default.
-    N = len(nodes)
-    assert 1 <= M <= N <= MAX_SIGNERS
-
-    pubkeys = []
-    for n in nodes:
-        copy = n.copy()
-        copy.derive(subkey_idx, False)
-        # 0x21 = 33 = len(pubkey) = OP_PUSHDATA(33)
-        pubkeys.append(b'\x21' + copy.pubkey())
-        del copy
-
-    if bip67:
-        pubkeys.sort()
-
-    # serialize redeem script
-    pubkeys.insert(0, bytes([80 + M]))
-    pubkeys.append(bytes([80 + N, OP_CHECKMULTISIG]))
-
-    return b''.join(pubkeys)
 
 
 async def ms_coordinator_qr(af_str, my_xfp):
@@ -142,30 +106,25 @@ async def ms_coordinator_file(af_str, my_xfp, slot_b=None):
                             try:
                                 # CC multisig XPUBs JSON expected
                                 vals = ujson.load(fp)
-                                print("vals", vals)
                             except:
                                 # try looking for BIP-380 key expression
                                 fp.seek(0)
                                 for line in fp.readlines():
-                                    print(line)
                                     if len(line) > 112 and ("pub" in line):
                                         vals = line.strip()
                                         break
 
-                        print("here")
                         try:
                             if isinstance(vals, dict):
                                 k = Key.from_cc_json(vals, af_str)
                             else:
                                 k = Key.from_string(vals)
                         except Exception as e:
-                            sys.print_exception(e)
+                            # sys.print_exception(e)
                             raise
 
-                        print("here1")
                         num_mine += k.validate(my_xfp)
                         keys.append(k)
-                        print("here3")
                         num_files += 1
 
                     except CardMissingError:
@@ -223,8 +182,6 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
 
     # remove dups; easy to happen if you double-tap the export
     keys = list(set(keys))
-
-    print("keys", keys)
 
     if not keys or (len(keys) == 1 and num_mine):
         if is_qr:

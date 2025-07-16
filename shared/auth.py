@@ -1266,34 +1266,6 @@ class ShowPKHAddress(ShowAddressBase):
                                               sp=self.subpath)
 
 
-class ShowP2SHAddress(ShowAddressBase):
-
-    def setup(self, ms, addr_fmt, xfp_paths, witdeem_script):
-
-        self.witdeem_script = witdeem_script
-        self.addr_fmt = addr_fmt
-        self.ms = ms
-
-        # calculate all the pubkeys involved.
-        self.subpath_help = ms.validate_script(witdeem_script, xfp_paths=xfp_paths)
-
-        self.address = chains.current_chain().p2sh_address(addr_fmt, witdeem_script)
-
-    def get_msg(self):
-        return '''\
-{addr}
-
-Wallet:
-
-  {name}
-  {M} of {N}
-
-Paths:
-
-{sp}'''.format(addr=show_single_address(self.address), name=self.ms.name,
-               M=self.ms.M, N=self.ms.N, sp='\n\n'.join(self.subpath_help))
-
-
 class ShowMiniscriptAddress(ShowAddressBase):
 
     def setup(self, msc, change, idx):
@@ -1302,7 +1274,7 @@ class ShowMiniscriptAddress(ShowAddressBase):
         self.idx = idx
 
         d = self.msc.to_descriptor().derive(None, change=change).derive(idx)
-        self.address = chains.current_chain().render_address(d.script_pubkey())
+        self.address = self.msc.chain.render_address(d.script_pubkey())
         self.addr_fmt = self.msc.addr_fmt
 
     def get_msg(self):
@@ -1421,7 +1393,8 @@ class NewMiniscriptEnrollRequest(UserAuthorizedAction):
                 self.pop_menu()
 
 
-def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_index=None):
+def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False,
+                      bsms_index=None, desc_obj=None):
     # Offer to import (enroll) a new multisig/miniscript wallet. Allow reject by user.
     from glob import dis
     from wallet import MiniScriptWallet
@@ -1432,30 +1405,35 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_
 
     bip388 = False
     try:
-        if sf_len:
-            with SFFile(TXN_INPUT_OFFSET, length=sf_len) as fd:
-                config = fd.read(sf_len).decode()
+        if desc_obj:
+            # caller is sending us already validated descriptor object
+            assert name
+            msc = MiniScriptWallet.from_descriptor_obj(name, desc_obj)
+        else:
+            if sf_len:
+                with SFFile(TXN_INPUT_OFFSET, length=sf_len) as fd:
+                    config = fd.read(sf_len).decode()
 
-        try:
-            j_conf = ujson.loads(config)
-            if "desc_template" in j_conf and "keys_info" in j_conf:
-                assert "name" in j_conf
-                config = j_conf
-                bip388 = miniscript = True
-            else:
-                assert "desc" in j_conf, "'desc' key required"
-                config = j_conf["desc"]
-                assert config, "'desc' empty"
+            try:
+                j_conf = ujson.loads(config)
+                if "desc_template" in j_conf and "keys_info" in j_conf:
+                    assert "name" in j_conf
+                    config = j_conf
+                    bip388 = True
+                else:
+                    assert "desc" in j_conf, "'desc' key required"
+                    config = j_conf["desc"]
+                    assert config, "'desc' empty"
 
-            if "name" in j_conf:
-                # name from json has preference over filenames and desc checksum
-                name = j_conf["name"]
-                assert 2 <= len(name) <= 40, "'name' length"
-        except ValueError: pass
+                if "name" in j_conf:
+                    # name from json has preference over filenames and desc checksum
+                    name = j_conf["name"]
+                    assert 2 <= len(name) <= 40, "'name' length"
+            except ValueError: pass
 
-        # this call will raise on parsing errors, so let them rise up
-        # and be shown on screen/over usb
-        msc = MiniScriptWallet.from_file(config, name=name, bip388=bip388)
+            # this call will raise on parsing errors, so let them rise up
+            # and be shown on screen/over usb
+            msc = MiniScriptWallet.from_file(config, name=name, bip388=bip388)
 
         UserAuthorizedAction.active_request = NewMiniscriptEnrollRequest(msc, bsms_index=bsms_index)
 

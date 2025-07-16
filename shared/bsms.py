@@ -499,7 +499,6 @@ async def bsms_coordinator_round2(menu, label, item):
     import version as version_mod
     from glob import NFC, dis
     from actions import file_picker
-    from multisig import make_redeem_script
 
     bsms_settings_index = item.arg
     chain = chains.current_chain()
@@ -699,23 +698,23 @@ async def bsms_coordinator_round2(menu, label, item):
         dis.progress_bar_show(i_div_N / 1)
 
     dis.fullscreen("Generating...")
-    miniscript = Sortedmulti(Number(M), *keys)
-    desc_obj = Descriptor(miniscript=miniscript, addr_fmt=addr_fmt)
-    desc = desc_obj.to_string(checksum=False)
-    desc = desc.replace("<0;1>/*", "**")
-    if not is_encrypted:
-        # append checksum for unencrypted BSMS
-        desc = append_checksum(desc)
-    for i, ko in enumerate(keys):
-        ko.node.derive(0, False)  # external is always first our coordinating "0/*,1/*"
-        dis.progress_bar_show(i / N)
+    try:
+        dis.busy_bar(True)
+        miniscript = Sortedmulti(Number(M), *keys)
+        desc_obj = Descriptor(miniscript=miniscript, addr_fmt=addr_fmt)
+        desc = desc_obj.to_string(checksum=False)
+        desc = desc.replace("<0;1>/*", "**")
+        if not is_encrypted:
+            # append checksum for unencrypted BSMS
+            desc = append_checksum(desc)
+        # external address at index 0 -> 0/0
+        derived_desc = desc_obj.derive(0).derive(0)
+        addr = chain.render_address(derived_desc.script_pubkey())
+        # ==
+        r2_data = coordinator_data_round2(desc, addr)
 
-    # TODO this can be done with .script_pubkey
-    script = make_redeem_script(M, [k.node for k in keys], 0)  # first address
-    addr = chain.p2sh_address(addr_fmt, script)
-    # ==
-    r2_data = coordinator_data_round2(desc, addr)
-    dis.progress_bar_show(1)
+    finally:
+        dis.busy_bar(False)
 
     force_vdisk = False
     title = "BSMS descriptor template file(s)"
@@ -965,12 +964,8 @@ async def bsms_signer_round2(menu, label, item):
     from glob import NFC, dis, settings
     from actions import file_picker
     from auth import maybe_enroll_xpub
-    from multisig import make_redeem_script
 
     chain = chains.current_chain()
-
-    # or xpub or tpub as we use descriptors (no SLIP132 allowed)
-    ext_key_prefix = "%spub" % chain.slip132[AF_CLASSIC].hint
     force_vdisk = False
 
     # choose correct values based on label (index in signer bsms settings)
@@ -1018,76 +1013,50 @@ async def bsms_signer_round2(menu, label, item):
                     assert desc_template_data, decrypt_fail_msg
 
     dis.fullscreen("Validating...")
-    assert desc_template_data.startswith(BSMS_VERSION), \
-        "Incompatible BSMS version. Need %s got %s" % (BSMS_VERSION, desc_template_data[:9])
-
-    dis.progress_bar_show(0.05)
-    version, desc_template, pth_restrictions, addr = desc_template_data.split("\n")
-    assert pth_restrictions == ALLOWED_PATH_RESTRICTIONS, \
-        "Only '%s' allowed as path restrictions. Got %s" % (
-                            ALLOWED_PATH_RESTRICTIONS, pth_restrictions)
-
-    # if checksum is provided we better verify it
-    # remove checksum as we need to replace /**
-    desc_template, csum = Descriptor.checksum_check(desc_template)
-    desc = desc_template.replace("/**", "/0/*")
-
-    dis.progress_bar_show(0.1)
-    desc = append_checksum(desc)
-
-    ms_name = "bsms_" + desc[-4:]
-
-    desc_obj = Descriptor.from_string(desc)
-    desc_obj.validate()
-    assert desc_obj.is_sortedmulti, "sortedmulti required"
-
-    dis.progress_bar_show(0.2)
-
-    my_xfp = settings.get('xfp')
-    my_keys = []
-    nodes = []
-    progress_counter = 0.2  # last displayed progress
-    # (desired value after loop - last displayed progress) / N
-    progress_chunk = (0.5 - progress_counter) / len(desc_obj.keys)
-    for key in desc_obj.keys:
-        if key.origin.cc_fp == my_xfp:
-            my_keys.append(key)
-        nodes.append(key.node)
-        progress_counter += progress_chunk
-        dis.progress_bar_show(progress_counter)
-
-    num_my_keys = len(my_keys)
-    assert num_my_keys <= 1, "Multiple %s keys in descriptor (%d)" % (xfp2str(my_xfp), num_my_keys)
-    assert num_my_keys == 1, "My key %s missing in descriptor." % xfp2str(my_xfp)
-
-    with stash.SensitiveValues() as sv:
-        node = sv.derive_path(my_keys[0].origin.str_derivation())
-        ext_key = chain.serialize_public(node)
-        assert ext_key == my_keys[0].extended_public_key(), "My key %s missing in descriptor." % ext_key
-
-    dis.progress_bar_show(0.55)
-
-    # check address is correct
-    progress_counter = 0.55  # last displayed progress
-    # (desired value after loop - last displayed progress) / N
-    M, N = desc_obj.miniscript.m_n()
-    progress_chunk = (0.9 - progress_counter) / N
-    for node in nodes:
-        node.derive(0, False)  # external is always first in our allowed path restrictions
-        progress_counter += progress_chunk
-        dis.progress_bar_show(progress_counter)
-
-    script = make_redeem_script(M, nodes, 0)  # first address
-    dis.progress_bar_show(0.95)
-    calc_addr = chain.p2sh_address(desc_obj.addr_fmt, script)
-
-    assert calc_addr == addr, "Address mismatch! Calculated %s, got %s" % (calc_addr, addr)
-
-    dis.progress_bar_show(1)
     try:
-        maybe_enroll_xpub(config=desc, name=ms_name, bsms_index=bsms_settings_index)
-        # bsms_settings_signer_delete(bsms_settings_index) --> moved to auth.py to only be done if actually approved
-    except Exception as e:
-        await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
+        dis.busy_bar(True)
+        assert desc_template_data.startswith(BSMS_VERSION), \
+            "Incompatible BSMS version. Need %s got %s" % (BSMS_VERSION, desc_template_data[:9])
+
+        version, desc_template, pth_restrictions, addr = desc_template_data.split("\n")
+        assert pth_restrictions == ALLOWED_PATH_RESTRICTIONS, \
+            "Only '%s' allowed as path restrictions. Got %s" % (
+                                ALLOWED_PATH_RESTRICTIONS, pth_restrictions)
+
+        # if checksum is provided we better verify it before descriptor modification /**
+        # remove checksum as we need to replace /**
+        desc_template, csum = Descriptor.checksum_check(desc_template)
+        desc = desc_template.replace("/**", "/<0;1>/*")
+
+        desc_obj = Descriptor.from_string(desc)
+        desc_obj.validate()
+        assert desc_obj.is_sortedmulti, "sortedmulti required"
+
+        my_xfp = settings.get('xfp')
+        my_keys = 0
+
+        for key in desc_obj.keys:
+            if key.origin.cc_fp == my_xfp:
+                my_keys += 1
+
+        assert my_keys <= 1, "Multiple %s keys in descriptor (%d)" % (xfp2str(my_xfp), my_keys)
+
+        # check address is correct
+        calc_addr = chain.render_address(desc_obj.derive(0).derive(0).script_pubkey())
+        assert calc_addr == addr, "Address mismatch! Calculated %s, got %s" % (calc_addr, addr)
+
+        # name consists last 4 characters of the address at /0/0
+        ms_name = "bsms_" + addr[-4:]
+
+        try:
+            # at this point we have properly validated descriptor
+            maybe_enroll_xpub(desc_obj=desc_obj, name=ms_name, bsms_index=bsms_settings_index)
+            # bsms_settings_signer_delete(bsms_settings_index)
+            # moved to auth.py to only be done if actually approved
+        except Exception as e:
+            await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
+
+    finally:
+        dis.busy_bar(False)
 
 # EOF
