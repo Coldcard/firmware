@@ -7,7 +7,7 @@
 import chains, stash, version
 from ux import ux_show_story, the_ux, ux_enter_bip32_index
 from ux import export_prompt_builder, import_export_prompt_decode
-from menu import MenuSystem, MenuItem
+from menu import MenuSystem, MenuItem, ToggleMenuItem
 from public_constants import AFC_BECH32, AFC_BECH32M, AF_P2WPKH, AF_P2TR, AF_CLASSIC
 from wallet import MiniScriptWallet
 from uasyncio import sleep_ms
@@ -199,8 +199,14 @@ class AddressListMenu(MenuSystem):
             items.append(MenuItem("Custom Path", menu=self.make_custom))
 
             # if they have miniscript wallets, add those next
-            for msc in MiniScriptWallet.iter_wallets():
-                items.append(MenuItem(msc.name, f=self.pick_miniscript, arg=msc))
+            if MiniScriptWallet.exists():
+                items.append(ToggleMenuItem('MS Scripts/Derivs', 'aemscsv',
+                                            ['Default Off', 'Enable'], story=(
+                    "Enable this option to add script(s) and derivations to the CSV export"
+                    " of Miniscript wallets. Default is to only export addresses.")))
+
+                for msc in MiniScriptWallet.iter_wallets():
+                    items.append(MenuItem(msc.name, f=self.pick_miniscript, arg=msc))
         else:
             items.append(MenuItem("Account: %d" % self.account_num, f=self.change_account))
 

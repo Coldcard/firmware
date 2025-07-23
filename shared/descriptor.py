@@ -18,6 +18,7 @@ class Tapscript:
     def __init__(self, tree):
         self.tree = tree   # miniscript or (tapscript, tapscript)
         self._merkle_root = None
+        self._processed_tree = None
 
     def iter_leaves(self):
         if isinstance(self.tree, Miniscript):
@@ -29,8 +30,7 @@ class Tapscript:
     @property
     def merkle_root(self):
         if not self._merkle_root:
-            _, mr = self.process_tree()
-            self._merkle_root = mr
+            self._processed_tree, self._merkle_root = self.process_tree()
         return self._merkle_root
 
     def derive(self, idx, key_map, change=False):
@@ -60,6 +60,14 @@ class Tapscript:
         h = ngu.hash.sha256t(TAP_BRANCH_H, left_h + right_h, True)
         return left + right, h
 
+    # UNUSED - using above proces tree cached result to dump scripts to CSV
+    # def script_tree(self):
+    #     if isinstance(self.tree, Miniscript):
+    #         return b2a_hex(chains.tapscript_serialize(self.tree.compile())).decode()
+    #
+    #     l, r = self.tree
+    #     return "{" + l.script_tree() + "," +r.script_tree() + "}"
+
     @classmethod
     def read_from(cls, s):
         c = s.read(1)
@@ -81,13 +89,6 @@ class Tapscript:
         s.seek(-1, 1)
         ms = Miniscript.read_from(s, taproot=True)
         return cls(ms)
-
-    def script_tree(self):
-        if isinstance(self.tree, Miniscript):
-            return b2a_hex(chains.tapscript_serialize(self.tree.compile())).decode()
-
-        l, r = self.tree
-        return "{" + l.script_tree() + "," +r.script_tree() + "}"
 
     def to_string(self, external=True, internal=True):
         if isinstance(self.tree, Miniscript):

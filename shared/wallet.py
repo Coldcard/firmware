@@ -136,7 +136,6 @@ class MasterSingleSigWallet(WalletABC):
         return self._path + '/%d/%d' % (change_idx, idx)
 
     def to_descriptor(self):
-        from glob import settings
         from descriptor import Descriptor, Key
         xfp = settings.get('xfp')
         xpub = settings.get('xpub')
@@ -597,10 +596,15 @@ class MiniScriptWallet(WalletABC):
             addr = ch.render_address(d.script_pubkey(compiled_scr=scr))
             ders = script = None
             if scripts:
-                # maybe key.origin.to_string() ??
-                ders = ["[%s]" % str(k.origin) for k in d.keys]
+                ders = ""
+                for k in d.keys:
+                    ders += "[%s]; " % str(k.origin)
+
                 if d.tapscript:
-                    script = d.tapscript.script_tree()
+                    # DFS ordered list of scripts
+                    script = ""
+                    for leaf_ver, scr, _ in d.tapscript._processed_tree:
+                        script += b2a_hex(chains.tapscript_serialize(scr, leaf_ver)).decode() + "; "
                 else:
                     script = b2a_hex(ser_string(scr)).decode()
 
@@ -614,7 +618,7 @@ class MiniScriptWallet(WalletABC):
 
         addrs = []
 
-        for idx, addr, *_ in self.yield_addresses(start, n, change, scripts=False):
+        for idx, addr, *_ in self.yield_addresses(start, n, change):
             msg += '.../%d =>\n' % idx  # just idx, if derivations or scripts needed - export csv
             addrs.append(addr)
             msg += show_single_address(addr) + '\n\n'
@@ -623,15 +627,17 @@ class MiniScriptWallet(WalletABC):
         return msg, addrs
 
     def generate_address_csv(self, start, n, change):
-        yield '"' + '","'.join(
-            ['Index', 'Payment Address']
-        ) + '"\n'
-        for idx, addr, ders, script in self.yield_addresses(start, n, change):
+        scripts = settings.get("aemscsv", False)
+        header = ['Index', 'Payment Address']
+        if scripts:
+            header += ['Script', 'Derivations']
+
+        yield '"' + '","'.join(header) + '"\n'
+        for idx, addr, ders, script in self.yield_addresses(start, n, change, scripts=scripts):
             ln = '%d,"%s"' % (idx, addr)
-            if ders:
-                ln += ',"%s","' % script
-                ln += '","'.join(ders)
-                ln += '"'
+            if scripts:
+                ln += ',"%s"' % script
+                ln += ',"%s"' % ders
             ln += '\n'
             yield ln
 
