@@ -1037,7 +1037,9 @@ class psbtInputProxy(psbtProxy):
 
         self.required_key = which_key
 
-        if self.is_segwit and addr_type != 'p2tr':
+        if self.required_key and self.is_segwit and addr_type != 'p2tr':
+            # scriptCode is only needed when we actually sign
+            # if no required key, just skip
             if ('pkh' in addr_type):
                 # This comment from <https://bitcoincore.org/en/segwit_wallet_dev/>:
                 #
