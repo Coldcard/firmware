@@ -845,6 +845,47 @@ def test_zeus_descriptor_export(addr_fmt, acct_num, goto_home, need_keypress, pi
     assert xpub_target in xpub
 
 
+@pytest.mark.parametrize("chain", ["BTC", "XTN"])
+def test_bullbitcoin_descriptor_export(goto_home, need_keypress, pick_menu_item,
+                                       cap_story, cap_menu, nfc_read_text, settings_get, chain,
+                                       press_select, skip_if_useless_way,
+                                       settings_set, press_cancel, cap_screen_qr,
+                                       expect_acctnum_captured):
+
+    settings_set('chain', chain)
+    chain_num = 1 if chain == "XTN" else 0
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Export Wallet")
+    pick_menu_item("Bull Bitcoin")
+
+    time.sleep(.1)
+    expect_acctnum_captured(0)
+
+    contents = cap_screen_qr().decode('ascii')
+    descriptor = contents.strip()
+
+    press_cancel()
+    time.sleep(.1)
+    assert "Bull Bitcoin" in cap_menu()  # back to menu
+
+    assert descriptor.startswith("wpkh(")
+    desc_obj = Descriptor.parse(descriptor)
+    assert desc_obj.serialize(int_ext=True) == descriptor
+    assert desc_obj.addr_fmt == AF_P2WPKH
+    assert len(desc_obj.keys) == 1
+    xfp, derive, xpub = desc_obj.keys[0]
+    assert xfp == settings_get("xfp")
+    assert derive == f"m/84h/{chain_num}h/0h"
+    seed = Mnemonic.to_seed(simulator_fixed_words)
+    node = BIP32Node.from_master_secret(
+        seed, netcode="BTC" if chain == "BTC" else "XTN"
+    ).subkey_for_path(derive)
+    xpub_target = node.hwif()
+    assert xpub_target in xpub
+
+
 @pytest.mark.parametrize("chain", ["BTC", "XTN", "XRT"])
 @pytest.mark.parametrize("account", ["Postmix", "Premix"])
 def test_samourai_vs_generic(chain, account, settings_set, pick_menu_item, goto_home,

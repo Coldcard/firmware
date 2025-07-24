@@ -1131,19 +1131,21 @@ def ss_descriptor_export_story(addition="", background="", acct=True):
 
 async def ss_descriptor_skeleton(_0, _1, item):
     # Export of descriptor data (wallet)
-    int_ext, addition, f_pattern = None, "", "descriptor.txt"
+    addition, f_pattern = "", "descriptor.txt"
+    int_ext = direct_way = None
     allowed_af = chains.SINGLESIG_AF
     if item.arg:
-        int_ext, allowed_af, ll, f_pattern = item.arg
+        int_ext, allowed_af, ll, f_pattern, direct_way = item.arg
         addition = " for " + ll
 
-    ch = await ux_show_story(ss_descriptor_export_story(addition), escape='1')
-
     account_num = 0
-    if ch == '1':
-        account_num = await ux_enter_bip32_index('Account Number:', unlimited=True) or 0
-    elif ch != 'y':
-        return
+    if not direct_way:
+        ch = await ux_show_story(ss_descriptor_export_story(addition), escape='1')
+
+        if ch == '1':
+            account_num = await ux_enter_bip32_index('Account Number:', unlimited=True) or 0
+        elif ch != 'y':
+            return
 
     if int_ext is None:
         ch = await ux_show_story(
@@ -1154,13 +1156,12 @@ async def ss_descriptor_skeleton(_0, _1, item):
         int_ext = False if ch == "1" else True
 
     if len(allowed_af) == 1:
-        await make_descriptor_wallet_export(allowed_af[0], account_num,
-                                            int_ext=int_ext,
-                                            fname_pattern=f_pattern)
+        await make_descriptor_wallet_export(allowed_af[0], account_num, int_ext=int_ext,
+                                            fname_pattern=f_pattern, direct_way=direct_way)
     else:
         rv = [
             MenuItem(chains.addr_fmt_label(af), f=descriptor_skeleton_step2,
-                     arg=(af, account_num, int_ext, f_pattern))
+                     arg=(af, account_num, int_ext, f_pattern, direct_way))
             for af in allowed_af
         ]
         the_ux.push(MenuSystem(rv))
@@ -1194,9 +1195,9 @@ async def samourai_account_descriptor(name, account_num):
 
 async def descriptor_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
-    addr_fmt, account_num, int_ext, f_pattern = item.arg
+    addr_fmt, account_num, int_ext, f_pattern, dw = item.arg
     await make_descriptor_wallet_export(addr_fmt, account_num, int_ext=int_ext,
-                                        fname_pattern=f_pattern)
+                                        fname_pattern=f_pattern, direct_way=dw)
 
 
 async def bitcoin_core_skeleton(*A):
