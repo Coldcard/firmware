@@ -34,11 +34,13 @@ async def export_by_qr(body, label, type_code, force_bbqr=False):
 
 
 async def export_contents(title, contents, fname_pattern, derive=None, addr_fmt=None,
-                          is_json=False, force_bbqr=False, force_prompt=False):
+                          is_json=False, force_bbqr=False, force_prompt=False, direct_way=None):
     # export text and json files while offering NFC, QR & Vdisk
     # produces signed export in case of SD/Vdisk (signed with key at deriv and addr_fmt)
     # checks if suitable to offer QR export on Mk4
     # argument contents can support function that generates content
+    # argument direct way can be KEY_{NFC,QR}, any other truth value is SD/Vdisk,
+    # if None ask for way via UX story
     from glob import dis, NFC, VD
     from files import CardSlot, CardMissingError, needs_microsd
     from qrs import MAX_V11_CHAR_LIMIT
@@ -53,49 +55,53 @@ async def export_contents(title, contents, fname_pattern, derive=None, addr_fmt=
 
     sig = not (derive is None and addr_fmt is None)
 
+    ch = direct_way  # set it to direct way only once, outside the loop
     while True:
-        ch = await import_export_prompt("%s file" % title,
-                                        force_prompt=force_prompt, no_qr=no_qr)
+        if direct_way is None:
+            ch = await import_export_prompt("%s file" % title,
+                                            force_prompt=force_prompt, no_qr=no_qr)
         if ch == KEY_CANCEL:
             break
         elif ch == KEY_QR:
             await export_by_qr(contents, title, "J" if is_json else "U", force_bbqr=force_bbqr)
-            continue
         elif ch == KEY_NFC:
             if is_json:
                 await NFC.share_json(contents)
             else:
                 await NFC.share_text(contents)
-            continue
+        else:
+            # SD/VDisk
+            # choose a filename
+            try:
+                dis.fullscreen("Saving...")
+                with CardSlot(**ch) as card:
+                    fname, nice = card.pick_filename(fname_pattern)
 
-        # choose a filename
-        try:
-            dis.fullscreen("Saving...")
-            with CardSlot(**ch) as card:
-                fname, nice = card.pick_filename(fname_pattern)
+                    # do actual write
+                    with open(fname, 'wt' if is_json else 'wb') as fd:
+                        fd.write(contents)
 
-                # do actual write
-                with open(fname, 'wt' if is_json else 'wb') as fd:
-                    fd.write(contents)
+                    if sig:
+                        h = ngu.hash.sha256s(contents.encode())
+                        sig_nice = write_sig_file([(h, fname)], derive, addr_fmt)
 
+                msg = '%s file written:\n\n%s' % (title, nice)
                 if sig:
-                    h = ngu.hash.sha256s(contents.encode())
-                    sig_nice = write_sig_file([(h, fname)], derive, addr_fmt)
+                    msg += "\n\n%s signature file written:\n\n%s" % (title, sig_nice)
 
-            msg = '%s file written:\n\n%s' % (title, nice)
-            if sig:
-                msg += "\n\n%s signature file written:\n\n%s" % (title, sig_nice)
+                await ux_show_story(msg)
 
-            await ux_show_story(msg)
-
-        except CardMissingError:
-            await needs_microsd()
-        except Exception as e:
-            await ux_show_story('Failed to write!\n\n\n' + str(e))
+            except CardMissingError:
+                await needs_microsd()
+            except Exception as e:
+                await ux_show_story('Failed to write!\n\n\n' + str(e))
 
         # both exceptions & success gets here
         if no_qr and (NFC is None) and (VD is None) and not force_prompt:
             # user has no other ways enabled, we already exported to SD - done
+            return
+
+        if direct_way:
             return
 
 def generate_public_contents():
@@ -457,7 +463,7 @@ def generate_electrum_wallet(addr_type, account_num):
 
 
 async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int_ext=True,
-                                        fname_pattern="descriptor.txt"):
+                                        fname_pattern="descriptor.txt", direct_way=None):
     from descriptor import Descriptor
     from glob import dis
 
@@ -494,7 +500,7 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
 
     dis.progress_bar_show(1)
     await export_contents("Descriptor", body, fname_pattern, derive + "/0/0",
-                          addr_type, force_prompt=True)
+                          addr_type, force_prompt=True, direct_way=direct_way)
 
 # EOF
 
