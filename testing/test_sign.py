@@ -3647,3 +3647,73 @@ def test_invalid_output_taproot_psbt(fake_txn, start_sign, cap_story, dev):
     assert 'Invalid PSBT' in story
     # error messages are disabled to save some space - problem file line is still included
     # assert "PSBT_IN_TAP_BIP32_DERIVATION xonly-pubkey length != 32" in story
+
+@pytest.mark.parametrize("multi", [False, True])
+@pytest.mark.parametrize("ss_af", ["p2wpkh", "p2tr", "p2pkh", "p2sh-p2wpkh"])
+@pytest.mark.parametrize("ms_af", ["p2wsh", "p2sh-p2wsh"])  # p2tr
+def test_single_multi_psbt(multi, ss_af, ms_af, dev, fake_txn, fake_ms_txn, import_ms_wallet,
+                           start_sign, end_sign, cap_story, clear_miniscript, use_testnet):
+    clear_miniscript()
+    use_testnet()
+    psbt = fake_txn(1, [[ss_af, int(5E6)], [ss_af, int(1E8 - 5E6), True]],
+                    fee=0, addr_fmt=ss_af)
+
+    wal_name = "msw"
+    keys = import_ms_wallet(2, 3, ms_af, name=wal_name, accept=True)
+    ms_psbt = fake_ms_txn(1, 2, 2, keys, outstyles=[ms_af], change_outputs=[0], inp_addr_fmt=ms_af)
+
+    ssp = BasicPSBT().parse(psbt)
+    msp = BasicPSBT().parse(ms_psbt)
+
+    # change to PSBT v2 to not need handle txn
+    sspv2 = BasicPSBT().parse(ssp.to_v2())
+    mspv2 = BasicPSBT().parse(msp.to_v2())
+
+    combined = BasicPSBT()
+    combined.version = 2
+    combined.txn_version = 2
+
+    combined.input_count = sspv2.input_count + mspv2.input_count
+    combined.output_count = sspv2.output_count + mspv2.output_count
+    combined.fallback_locktime = 0
+    if multi:
+        cha = render_address(mspv2.outputs[0].script)
+        combined.inputs = mspv2.inputs + sspv2.inputs
+        combined.outputs = sspv2.outputs + mspv2.outputs
+    else:
+        cha = render_address(sspv2.outputs[1].script)
+        combined.inputs = sspv2.inputs + mspv2.inputs
+        combined.outputs = mspv2.outputs + sspv2.outputs
+
+    for psbt in [combined.to_v2(), combined.to_v0()]:
+
+        start_sign(psbt)
+
+        time.sleep(.1)
+        _, story = cap_story()
+
+        change_story = story.split("\n\n")[7 if multi else 6]
+        assert "Change back:" in change_story
+        split_chstory = change_story.split("\n")
+        assert len(split_chstory) == 4  # just one address
+        got = addr_from_display_format(split_chstory[-1])
+        assert cha == got, f"{cha} target\n{got} got"
+
+        if multi:
+            assert f"Wallet: {wal_name}" in story
+        else:
+            assert wal_name not in story
+
+        assert "(1 warning below)" in story
+        assert 'Limited Signing' in story
+        assert ("We are not signing these inputs, because we either don't "
+                "know the key or inputs belong to different wallet: 1") in story
+
+        res = end_sign()
+        r = BasicPSBT().parse(res)
+        # check only desired signatures were added
+        if ss_af == "p2tr" and not multi:
+            assert r.inputs[0].taproot_key_sig
+        else:
+            assert r.inputs[0].part_sigs
+        assert not r.inputs[1].part_sigs

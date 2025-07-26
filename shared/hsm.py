@@ -796,7 +796,7 @@ class HSMPolicy:
 
         return match_deriv_path(self.share_xpubs, subpath)
 
-    def approve_address_share(self, subpath=None, is_p2sh=False, miniscript=False):
+    def approve_address_share(self, subpath=None, miniscript=False):
         # Are we allowing "show address" requests over USB?
 
         if not self.share_addrs:
@@ -804,9 +804,6 @@ class HSMPolicy:
 
         if miniscript:
             return ('msas' in self.share_addrs)
-
-        if is_p2sh:
-            return ('p2sh' in self.share_addrs)
 
         return match_deriv_path(self.share_addrs, subpath)
 

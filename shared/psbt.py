@@ -524,14 +524,20 @@ class psbtOutputProxy(psbtProxy):
             # - scripts that we do not understand
             return af
 
-        if self.subpaths and len(self.subpaths) == 1 and not active_miniscript:  # miniscript can have one key only
+        if self.subpaths and len(self.subpaths) == 1:
+            # miniscript can have one key only too - handled later in this function
+            # at this point we are certain if we are signing with wallet or singlesig
             # p2pk, p2pkh, p2wpkh cases
             expect_pubkey, = self.subpaths.keys()
         elif self.taproot_subpaths and len(self.taproot_subpaths) == 1:
             expect_pubkey, = self.taproot_subpaths.keys()
         else:
-            # p2wsh/p2sh cases need full set of pubkeys, and therefore redeem script
+            # p2wsh/p2sh/p2tr cases need full set of pubkeys - miniscript
             expect_pubkey = None
+
+        if active_miniscript and (af not in ["p2tr", "p2sh"]):
+            self.is_change = False
+            return af
 
         if af == 'p2pk':
             # output is public key (not a hash, much less common)
@@ -547,7 +553,6 @@ class psbtOutputProxy(psbtProxy):
         pkh = addr_or_pubkey
 
         if af == 'p2sh':
-
             # Can be both, or either one depending on address type
             redeem_script = self.get(self.redeem_script) if self.redeem_script else None
 
@@ -564,6 +569,10 @@ class psbtOutputProxy(psbtProxy):
                         txo.scriptPubKey == target_spk:
                     # it's actually segwit p2wpkh inside p2sh
                     pkh = redeem_script[2:22]
+                    if active_miniscript:
+                        self.is_change = False
+                        return af
+
                     expect_pkh = hash160(expect_pubkey)
                 else:
                     # unknown or wrong script
@@ -572,7 +581,7 @@ class psbtOutputProxy(psbtProxy):
 
             else:
                 if active_miniscript:
-                    if MiniScriptWallet.disable_checks:
+                    if MiniScriptWallet.disable_checks or parent.active_singlesig:
                         # Without validation, we have to assume all outputs
                         # will be taken from us, and are not really change.
                         self.is_change = False
@@ -588,6 +597,7 @@ class psbtOutputProxy(psbtProxy):
                         self.is_change = True
                         return af
                     except Exception as e:
+                        sys.print_exception(e)
                         raise FraudulentChangeOutput(out_idx, "Change output scriptPubkey: %s" % e)
 
                 else:
@@ -612,9 +622,13 @@ class psbtOutputProxy(psbtProxy):
                         self.is_change = True
                         return af
                     except Exception as e:
+
                         raise FraudulentChangeOutput(out_idx, "Change output scriptPubkey: %s" % e)
                 expect_pkh = None
             else:
+                if active_miniscript:
+                    self.is_change = False
+                    return af
                 expect_pkh = taptweak(expect_pubkey)
         else:
             # we don't know how to "solve" this type of input
@@ -864,15 +878,16 @@ class psbtInputProxy(psbtProxy):
         # - which pubkey needed
         # - scriptSig value
         # - also validates redeem_script when present
-        merkle_root = None
+        self.required_key = merkle_root = None
         self.amount = utxo.nValue
 
         if (not self.subpaths and not self.taproot_subpaths) or self.fully_signed:
             # without xfp+path we will not be able to sign this input
             # - okay if fully signed
             # - okay if payjoin or other multi-signer (not multisig) txn
-            self.required_key = None
+
             return
+
 
         self.is_miniscript = False
         self.is_p2sh = False
@@ -880,7 +895,6 @@ class psbtInputProxy(psbtProxy):
 
         addr_type, addr_or_pubkey, self.is_segwit = utxo.get_address()
         if addr_type == "op_return":
-            self.required_key = None
             return
 
         if addr_type is None:
@@ -998,7 +1012,28 @@ class psbtInputProxy(psbtProxy):
                 # pubkey provided is just wrong vs. UTXO
                 raise FatalPSBTIssue('Input #%d: pubkey wrong' % my_idx)
 
+        # if we have active miniscript at this point - without matching it (below)
+        # we used "Sign PSBT" path from specific miniscript wallet menu
+        # do not sign single signature inputs
+        if psbt.active_miniscript and not self.is_miniscript:
+            if DEBUG:
+                print("skip input #%d type=%s miniscript wallet chosen '%s'" % (
+                    my_idx, addr_type, psbt.active_miniscript.name))
+                return  # required key is None
+
+        if not self.is_miniscript and which_key:
+            # we will attempt signing with single signature wallet
+            psbt.active_singlesig = True
+
         if self.is_miniscript:
+            # if we already considered single signature inputs for signing
+            # do not even consider to sign with miniscript wallet(s)
+            if psbt.active_singlesig:
+                if DEBUG:
+                    print("skip miniscript input #%d type=%s attempting to sign single sig" % (
+                        my_idx, addr_type))
+                return  # required key is None
+
             try:
                 xfp_paths = [item[1:]
                              for item in self.taproot_subpaths.values()
@@ -1037,7 +1072,7 @@ class psbtInputProxy(psbtProxy):
 
         self.required_key = which_key
 
-        if self.required_key and self.is_segwit and addr_type != 'p2tr':
+        if self.required_key and self.is_segwit and (addr_type != 'p2tr'):
             # scriptCode is only needed when we actually sign
             # if no required key, just skip
             if ('pkh' in addr_type):
@@ -1235,6 +1270,8 @@ class psbtObject(psbtProxy):
         # this points to a Miniscript wallet, during operation
         # - we are only supporting a single miniscript wallet during signing
         self.active_miniscript = None
+        # - if we plan to sign signle signature inputs
+        self.active_singlesig = None
 
         self.warnings = []
         # not a warning just more info about tx
@@ -2003,8 +2040,8 @@ class psbtObject(psbtProxy):
             # This is seen when you re-sign same signed file by accident (multisig)
             # - case of len(no_keys)==num_inputs is handled by consider_keys
             self.warnings.append(('Limited Signing',
-                'We are not signing these inputs, because we do not know the key: ' +
-                        seq_to_str(no_keys)))
+                "We are not signing these inputs, because we either don't know the key"
+                " or inputs belong to different wallet: " + seq_to_str(no_keys)))
 
         if self.presigned_inputs:
             # this isn't really even an issue for some complex usage cases

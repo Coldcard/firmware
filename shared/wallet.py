@@ -956,7 +956,7 @@ async def miniscript_wallet_export(menu, label, item):
     kwargs = item.arg[1]
     await msc.export_wallet_file(**kwargs)
 
-async def make_miniscript_wallet_descriptor_menu(menu, label, item):
+async def miniscript_wallet_descriptors(menu, label, item):
     # descriptor menu
     msc = item.arg
     if not msc:
@@ -969,6 +969,10 @@ async def make_miniscript_wallet_descriptor_menu(menu, label, item):
     ]
     return rv
 
+async def miniscript_sign_psbt(a, b, item):
+    from actions import _ready2sign
+    await _ready2sign(probe=False, miniscript_wallet=item.arg)
+
 async def make_miniscript_wallet_menu(menu, label, item):
     # details, actions on single multisig wallet
     msc = MiniScriptWallet.get_by_idx(item.arg)
@@ -977,13 +981,14 @@ async def make_miniscript_wallet_menu(menu, label, item):
     rv = [
         MenuItem('"%s"' % msc.name, f=miniscript_wallet_detail, arg=msc),
         MenuItem('View Details', f=miniscript_wallet_detail, arg=msc),
-        MenuItem('Descriptors', menu=make_miniscript_wallet_descriptor_menu, arg=msc),
+        MenuItem('Descriptors', menu=miniscript_wallet_descriptors, arg=msc),
+        MenuItem('Sign PSBT', f=miniscript_sign_psbt, arg=msc),
         MenuItem('Rename', f=miniscript_wallet_rename, arg=(item.arg, msc)),
         MenuItem('Delete', f=miniscript_wallet_delete, arg=msc),
     ]
     if msc.m_n and msc.bip67:
         # basic multisig but only sortedmulti
-        rv.append(MenuItem('Electrum Wallet', f=ms_wallet_electrum_export, arg=msc))
+        rv.append(MenuItem('Electrum Wallet', f=multisig_electrum_export, arg=msc))
 
     return rv
 
@@ -1101,7 +1106,7 @@ exists, otherwise 'Verify'.''')
     start_chooser(psbt_xpubs_policy_chooser)
 
 
-async def ms_wallet_electrum_export(menu, label, item):
+async def multisig_electrum_export(menu, label, item):
     # create a JSON file that Electrum can use. Challenges:
     # - file contains derivation paths for each co-signer to use
     # - electrum is using BIP-43 with purpose=48 (purpose48_derivation) to make paths like:

@@ -898,7 +898,7 @@ class QRScannerInteraction:
         return await self.scan_general(prompt, addr_taster, line2=line2, enter_quits=True)
 
 
-    async def scan_anything(self, expect_secret=False, tmp=False):
+    async def scan_anything(self, expect_secret=False, tmp=False, miniscript_wallet=None):
         # start a QR scan, and act on what we find, whatever it may be.
         from ux import ux_show_story
         problem = None
@@ -940,7 +940,7 @@ class QRScannerInteraction:
 
         if what == 'psbt':
             decoder, psbt_len, got = vals
-            await qr_psbt_sign(decoder, psbt_len, got)
+            await qr_psbt_sign(decoder, psbt_len, got, miniscript_wallet)
 
         elif what == 'txn':
             bin_txn, = vals
@@ -991,7 +991,7 @@ class QRScannerInteraction:
             await ux_show_story(what, title='Unhandled')
 
 
-async def qr_psbt_sign(decoder, psbt_len, raw):
+async def qr_psbt_sign(decoder, psbt_len, raw, miniscript_wallet=None):
     # Got a PSBT coming in from QR scanner. Sign it.
     # - similar to auth.sign_psbt_file()
     from auth import UserAuthorizedAction, ApproveTransaction
@@ -1025,8 +1025,8 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
 
     UserAuthorizedAction.cleanup()
     UserAuthorizedAction.active_request = ApproveTransaction(
-        psbt_len, input_method="qr",
-        output_encoder=output_encoder
+        psbt_len, input_method="qr", output_encoder=output_encoder,
+        miniscript_wallet=miniscript_wallet,
     )
     the_ux.push(UserAuthorizedAction.active_request)
 

@@ -519,7 +519,7 @@ class NFCHandler:
         await self.wipe(False)
         return rv
 
-    async def start_psbt_rx(self):
+    async def start_psbt_rx(self, miniscript_wallet=None):
         from auth import psbt_encoding_taster, TXN_INPUT_OFFSET
         from auth import UserAuthorizedAction, ApproveTransaction
         from ux import the_ux
@@ -567,7 +567,7 @@ class NFCHandler:
         UserAuthorizedAction.cleanup()
         UserAuthorizedAction.active_request = ApproveTransaction(
             psbt_len, psbt_sha=psbt_sha, input_method="nfc",
-            output_encoder=output_encoder
+            output_encoder=output_encoder, miniscript_wallet=miniscript_wallet,
         )
         # kill any menu stack, and put our thing at the top
         the_ux.push(UserAuthorizedAction.active_request)

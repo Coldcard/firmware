@@ -267,7 +267,7 @@ async def try_push_tx(data, txid, txn_sha=None):
 
 class ApproveTransaction(UserAuthorizedAction):
     def __init__(self, psbt_len, flags=None, psbt_sha=None, input_method=None,
-                 output_encoder=None, filename=None):
+                 output_encoder=None, filename=None, miniscript_wallet=None):
         super().__init__()
         self.psbt_len = psbt_len
 
@@ -286,6 +286,7 @@ class ApproveTransaction(UserAuthorizedAction):
         self.filename = filename
         self.result = None      # will be (len, sha256) of the resulting PSBT
         self.chain = chains.current_chain()
+        self.miniscript_wallet = miniscript_wallet
 
     def render_output(self, o):
         # Pretty-print a transactions output. 
@@ -350,6 +351,7 @@ class ApproveTransaction(UserAuthorizedAction):
             return await self.failure(msg, exc)
 
         dis.fullscreen("Validating...")
+        self.psbt.active_miniscript = self.miniscript_wallet
 
         # Do some analysis/ validation
         try:
@@ -378,7 +380,7 @@ class ApproveTransaction(UserAuthorizedAction):
             #print('FatalPSBTIssue: ' + exc.args[0])
             return await self.failure(exc.args[0])
         except BaseException as exc:
-            # sys.print_exception(exc)
+            sys.print_exception(exc)
             del self.psbt
             gc.collect()
 
@@ -414,6 +416,10 @@ class ApproveTransaction(UserAuthorizedAction):
                 msg.write('(1 warning below)\n\n')
             elif wl >= 2:
                 msg.write('(%d warnings below)\n\n' % wl)
+
+            if self.psbt.active_miniscript:
+                # show name of the multisig/miniscript wallet that we signed with
+                msg.write("Wallet: " + self.psbt.active_miniscript.name + "\n\n")
 
             if self.psbt.consolidation_tx:
                 # consolidating txn that doesn't change balance of account.
@@ -1029,7 +1035,8 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
     return msg
 
 
-async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, just_read=False, ux_abort=False):
+async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, just_read=False, ux_abort=False,
+                         miniscript_wallet=None):
     # sign a PSBT file found on a MicroSD card
     # - or from VirtualDisk (mk4)
     # - to re-use reading/decoding logic, pass just_read
@@ -1087,6 +1094,7 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, just_read=Fal
     UserAuthorizedAction.active_request = ApproveTransaction(
         psbt_len, input_method="vdisk" if force_vdisk else "sd",
         filename=filename, output_encoder=output_encoder,
+        miniscript_wallet=miniscript_wallet,
     )
     if ux_abort:
         # needed for auto vdisk mode

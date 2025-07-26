@@ -1858,20 +1858,22 @@ async def batch_sign(_1, _2, item):
         import sys
         await ux_show_story("FAILURE: batch sign failed\n\n" + problem_file_line(e))
 
-
-async def ready2sign(*a):
-    # Top menu choice of top menu! Signing!
-    # - check if any signable in SD card, if so do it
+async def _ready2sign(intro="", probe=True, miniscript_wallet=None):
+    # - if probe=True -> check if any signable in SD card (A slot on Q), if so do it
+    # - if probe=False -> offer all enabled import options via UX
     # - if no card, check virtual disk for PSBT
-    # - if still nothing, then talk about USB connection
     from pincodes import pa
     from glob import NFC
 
     opt = {}
+    choices = []
+    sb_only = False
 
-    # just check if we have candidates, no UI
-    choices = await file_picker(suffix='psbt', min_size=50, ux=False,
-                                max_size=MAX_TXN_LEN, taster=is_psbt)
+    if probe:
+        # just check if we have candidates, no UI
+        sb_only = True
+        choices = await file_picker(suffix='psbt', min_size=50, ux=False,
+                                    max_size=MAX_TXN_LEN, taster=is_psbt)
 
     if pa.tmp_value:
         title = '[%s]' % xfp2str(settings.get('xfp'))
@@ -1879,21 +1881,13 @@ async def ready2sign(*a):
         title = None
 
     if not choices:
-        msg = '''Coldcard is ready to sign spending transactions!
-
-Put the proposed transaction onto MicroSD card \
-in PSBT format (Partially Signed Bitcoin Transaction) \
-or upload a transaction to be signed \
-from your desktop wallet software or command line tools.'''
-
-        footnotes = ("You will always be prompted to confirm the details "
-                     "before any signature is performed.")
-
         # if we have only one SD card inserted, at this point, we know no PSBTs on them
         # as above file_picker already checked
         # if we have both inserted, A was already checked - so only care about B
-        picked = await import_export_prompt("PSBT", is_import=True, intro=msg,
-                                            footnotes=footnotes, slot_b_only=True,
+        footnotes = ("You will always be prompted to confirm the details "
+                     "before any signature is performed.")
+        picked = await import_export_prompt("PSBT", is_import=True, intro=intro,
+                                            footnotes=footnotes, slot_b_only=sb_only,
                                             title=title)
         if isinstance(picked, dict):
             opt = picked  # reset options to what was chosen by user
@@ -1906,9 +1900,9 @@ from your desktop wallet software or command line tools.'''
                 return
         else:
             if NFC and picked == KEY_NFC:
-                await NFC.start_psbt_rx()
+                await NFC.start_psbt_rx(miniscript_wallet)
             if picked == KEY_QR:
-                await _scan_any_qr()
+                await _scan_any_qr(miniscript_wallet=miniscript_wallet)
 
             return
 
@@ -1924,8 +1918,21 @@ from your desktop wallet software or command line tools.'''
 
     # start the process
     from auth import sign_psbt_file
-
+    opt["miniscript_wallet"] = miniscript_wallet
     await sign_psbt_file(input_psbt, **opt)
+
+
+async def ready2sign(*a):
+    # Top menu choice of top menu! Signing!
+    # - check if any signable in SD card, if so do it
+    # - if no card, check virtual disk for PSBT
+
+    await _ready2sign('''Coldcard is ready to sign spending transactions!
+
+Put the proposed transaction onto MicroSD card \
+in PSBT format (Partially Signed Bitcoin Transaction) \
+or upload a transaction to be signed \
+from your desktop wallet software or command line tools.''')
 
 
 async def sign_message_on_sd(*a):
@@ -2308,10 +2315,11 @@ async def scan_any_qr(menu, label, item):
     expect_secret, tmp = item.arg
     await _scan_any_qr(expect_secret, tmp)
 
-async def _scan_any_qr(expect_secret=False, tmp=False):
+async def _scan_any_qr(expect_secret=False, tmp=False, miniscript_wallet=None):
     from ux_q1 import QRScannerInteraction
     x = QRScannerInteraction()
-    await x.scan_anything(expect_secret=expect_secret, tmp=tmp)
+    await x.scan_anything(expect_secret=expect_secret, tmp=tmp,
+                          miniscript_wallet=miniscript_wallet)
 
 
 PUSHTX_SUPPLIERS = [
