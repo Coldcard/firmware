@@ -524,7 +524,7 @@ class psbtOutputProxy(psbtProxy):
             # - scripts that we do not understand
             return af
 
-        if self.subpaths and len(self.subpaths) == 1:
+        if self.subpaths and (len(self.subpaths) == 1) and not active_miniscript:
             # miniscript can have one key only too - handled later in this function
             # at this point we are certain if we are signing with wallet or singlesig
             # p2pk, p2pkh, p2wpkh cases
