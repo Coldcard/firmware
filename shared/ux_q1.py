@@ -537,13 +537,14 @@ def ux_render_words(words, leading_blanks=0):
     num_words = len(words)
     if num_words == 12:
         for y in range(6):
+            # no need to use NOWRAP here, will always fit (2 word columns)
             rv.append('%2d: %-8s   %2d: %s' % (y+1, words[y], y+7, words[y+6]))
     else:
         lines = 6 if num_words == 18 else 8
         for y in range(lines):
-            rv.append('%d:%-8s %2d:%-8s %2d:%s' % (y+1, words[y], 
-                    y+lines+1, words[y+lines], 
-                    y+(lines*2)+1, words[y+(lines*2)]))
+            rv.append(OUT_CTRL_NOWRAP+'%d:%-8s %2d:%-8s %2d:%s' % (
+                y+1, words[y], y+lines+1, words[y+lines],
+                y+(lines*2)+1, words[y+(lines*2)]))
 
     return '\n'.join(rv)
     

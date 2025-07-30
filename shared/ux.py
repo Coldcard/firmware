@@ -7,8 +7,8 @@ from queues import QueueEmpty
 import utime, gc, version
 from utils import word_wrap
 from version import has_qwerty, num_sd_slots, has_qr
-from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME, KEY_NFC, KEY_QR,
-            KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ENTER, KEY_CANCEL, OUT_CTRL_TITLE)
+from charcodes import (KEY_UP, KEY_DOWN, KEY_HOME, KEY_NFC, KEY_QR, KEY_END, KEY_PAGE_UP,
+                       KEY_PAGE_DOWN, KEY_ENTER, KEY_CANCEL, OUT_CTRL_TITLE)
 
 from exceptions import AbortInteraction
 

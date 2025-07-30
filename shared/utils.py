@@ -6,7 +6,7 @@ import gc, sys, ustruct, ngu, chains, ure, uos, uio, time, bip39, version, uasyn
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
-from charcodes import OUT_CTRL_ADDRESS
+from charcodes import OUT_CTRL_ADDRESS, OUT_CTRL_NOWRAP
 from uhashlib import sha256
 from public_constants import MAX_PATH_DEPTH, AF_CLASSIC
 
@@ -469,6 +469,11 @@ def call_later_ms(delay, cb, *args, **kws):
 def word_wrap(ln, w):
     # Generate the lines needed to wrap one line into X "width"-long lines.
     #  - tests in testing/test_unit.py
+    if ln and (ln[0] == OUT_CTRL_NOWRAP):
+        # no need to wrap this - as requested by caller
+        yield ln[1:]
+        return
+
     while True:
         # ln_len considers DOUBLE_WIDTH chars
         ln_len = 0
