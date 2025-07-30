@@ -495,7 +495,7 @@ class psbtOutputProxy(psbtProxy):
             for k, v in self.unknown.items():
                 wr(k[0], v, k[1:])
 
-    def validate(self, out_idx, txo, my_xfp, active_miniscript, parent):
+    def validate(self, out_idx, txo, my_xfp, parent):
         # Do things make sense for this output?
     
         # NOTE: We might think it's a change output just because the PSBT
@@ -512,7 +512,7 @@ class psbtOutputProxy(psbtProxy):
         num_ours = self.parse_subpaths(my_xfp, parent.warnings)
 
         # - must match expected address for this output, coming from unsigned txn
-        af, addr_or_pubkey, is_segwit = txo.get_address()
+        af, addr_or_pubkey = txo.get_address()
 
         if (num_ours == 0) or (af in ["op_return", None]):
             # num_ours == 0
@@ -524,118 +524,90 @@ class psbtOutputProxy(psbtProxy):
             # - scripts that we do not understand
             return af
 
-        if self.subpaths and (len(self.subpaths) == 1) and not active_miniscript:
-            # miniscript can have one key only too - handled later in this function
-            # at this point we are certain if we are signing with wallet or singlesig
-            # p2pk, p2pkh, p2wpkh cases
-            expect_pubkey, = self.subpaths.keys()
-        elif self.taproot_subpaths and len(self.taproot_subpaths) == 1:
-            expect_pubkey, = self.taproot_subpaths.keys()
-        else:
-            # p2wsh/p2sh/p2tr cases need full set of pubkeys - miniscript
-            expect_pubkey = None
-
-        if active_miniscript and (af not in ["p2tr", "p2sh"]):
-            self.is_change = False
+        msc = parent.active_miniscript
+        if msc and MiniScriptWallet.disable_checks:
+            # Without validation, we have to assume all outputs
+            # will be taken from us, and are not really change.
             return af
+
+        # certain short-cuts
+        if msc and (af in ["p2pkh", "p2wpkh", "p2pk"]):
+            # signing with miniscript wallet - single sig outputs def not change
+            return af
+        elif parent.active_singlesig and (af == "p2wsh"):
+            # we are signing single sig inputs - p2wsh is def not a change
+            return af
+
+        def fraud(idx, af, err=""):
+            raise FraudulentChangeOutput(idx, "%s change output is fraudulent\n\n%s" % (af, err))
 
         if af == 'p2pk':
-            # output is public key (not a hash, much less common)
+            # output is compressed public key (not a hash, much less common)
+            # uncompressed public keys not supported!
             assert len(addr_or_pubkey) == 33
+            assert len(self.subpaths) == 1
+            target, = self.subpaths.keys()
 
-            if addr_or_pubkey != expect_pubkey:
-                raise FraudulentChangeOutput(out_idx, "P2PK change output is fraudulent")
-
-            self.is_change = True
-            return af
-
-        # Figure out what the hashed addr should be
-        pkh = addr_or_pubkey
-
-        if af == 'p2sh':
-            # Can be both, or either one depending on address type
-            redeem_script = self.get(self.redeem_script) if self.redeem_script else None
-
-            if expect_pubkey:
-                # num_ours == 1 and len(subpaths) == 1, single sig, we only allow p2sh-p2wpkh
-                if not redeem_script:
-                    # Perhaps an omission, so let's not call fraud on it
-                    # But definitely required, else we don't know what script we're sending to.
-                    raise FatalPSBTIssue("Missing redeem script for output #%d" % out_idx)
-
-                target_spk = bytes([0xa9, 0x14]) + hash160(redeem_script) + bytes([0x87])
-                if not is_segwit and len(redeem_script) == 22 and \
-                        redeem_script[0] == 0 and redeem_script[1] == 20 and \
-                        txo.scriptPubKey == target_spk:
-                    # it's actually segwit p2wpkh inside p2sh
-                    pkh = redeem_script[2:22]
-                    if active_miniscript:
-                        self.is_change = False
-                        return af
-
-                    expect_pkh = hash160(expect_pubkey)
-                else:
-                    # unknown or wrong script
-                    # p2sh-p2pkh also fall into this category
-                    expect_pkh = None
-
-            else:
-                if active_miniscript:
-                    if MiniScriptWallet.disable_checks or parent.active_singlesig:
-                        # Without validation, we have to assume all outputs
-                        # will be taken from us, and are not really change.
-                        self.is_change = False
-                        return af
-
-                    # scriptPubkey can be compared against script that we build - if exact match change
-                    # if not - not change - no need for redeem/witness script
-                    #
-                    # for instance liana & core do not provide witness/redeem
-                    try:
-                        active_miniscript.validate_script_pubkey(txo.scriptPubKey,
-                                                                 list(self.subpaths.values()))
-                        self.is_change = True
-                        return af
-                    except Exception as e:
-                        sys.print_exception(e)
-                        raise FraudulentChangeOutput(out_idx, "Change output scriptPubkey: %s" % e)
-
-                else:
-                    # it cannot be change if it doesn't precisely match our miniscript setup
-                    # - might be a output for another wallet that isn't us
-                    # - not fraud, just an output with more details than we need.
-                    self.is_change = False
-                    return af
-
-        elif af == 'p2pkh':
+        elif 'pkh' in af:
+            # P2PKH & P2WPKH (public key has, whether witness v0 or legacy)
             # input is hash160 of a single public key
             assert len(addr_or_pubkey) == 20
-            expect_pkh = hash160(expect_pubkey)
-        elif af == "p2tr":
-            if expect_pubkey is None and len(self.taproot_subpaths) > 1:
-                if active_miniscript:
-                    try:
-                        active_miniscript.validate_script_pubkey(
-                            b"\x51\x20" + pkh,
-                            [v[1:] for v in self.taproot_subpaths.values() if len(v[1:]) > 1]
-                        )
+            assert len(self.subpaths) == 1
+            target, = self.subpaths.keys()
+            target = hash160(target)
+
+        elif "sh" in af:  # both p2sh & p2wsh covered here
+            if msc:
+                # scriptPubkey can be compared against script that we build
+                # if exact match change if not - not change
+                # no need for redeem/witness script
+                # for instance liana & core do not provide witness/redeem
+                try:
+                    xfp_paths = list(self.subpaths.values())
+                    # if subpaths do not match, it is not desired wallet - so no change
+                    # but also not a fraud
+                    if msc.matching_subpaths(xfp_paths):
+                        msc.validate_script_pubkey(txo.scriptPubKey, xfp_paths)
                         self.is_change = True
-                        return af
-                    except Exception as e:
+                except AssertionError as e:
+                    # sys.print_exception(e)
+                    fraud(out_idx, af, e)
+                return af
 
-                        raise FraudulentChangeOutput(out_idx, "Change output scriptPubkey: %s" % e)
-                expect_pkh = None
+            # we do not have active miniscript - must be single sig otherwise, not a change
+            if len(self.subpaths) == 1 and (af == "p2sh"):
+                expect_pubkey, = self.subpaths.keys()
+                target = hash160(bytes([0, 20]) + hash160(expect_pubkey))
+                af = "p2sh-p2wpkh"
+                if txo.scriptPubKey != (b'\xa9\x14' + target + b'\x87'):
+                    fraud(out_idx, af, "spk mismatch")
+                # it's actually segwit p2wpkh inside p2sh
             else:
-                if active_miniscript:
-                    self.is_change = False
-                    return af
-                expect_pkh = taptweak(expect_pubkey)
-        else:
-            # we don't know how to "solve" this type of input
-            return af
+                # done, not a change, subpaths > 1 or p2wsh (and not active miniscript)
+                return af
 
-        if pkh != expect_pkh:
-            raise FraudulentChangeOutput(out_idx, "Change output is fraudulent")
+        elif af == "p2tr":
+            if msc:
+                try:
+                    xfp_paths = [v[1:] for v in self.taproot_subpaths.values() if len(v[1:]) > 1]
+                    if msc.matching_subpaths(xfp_paths):
+                        msc.validate_script_pubkey(txo.scriptPubKey, xfp_paths)
+                        self.is_change = True
+                except AssertionError as e:
+                    fraud(out_idx, af, e)
+                return af
+
+            if len(self.taproot_subpaths) == 1:
+                expect_pubkey, = self.taproot_subpaths.keys()
+                target = taptweak(expect_pubkey)
+            else:
+                # done, not a change, subpaths > 1 (and not active miniscript)
+                return af
+
+        # only basic single signature, non-miniscript scripts get here
+        assert parent.active_singlesig
+        if addr_or_pubkey != target:
+            fraud(out_idx, af)
 
         # We will check pubkey value at the last second, during signing.
         self.is_change = True
@@ -656,12 +628,13 @@ class psbtInputProxy(psbtProxy):
                PSBT_IN_TAP_INTERNAL_KEY, PSBT_IN_TAP_MERKLE_ROOT}
 
     blank_flds = (
-        'unknown', 'utxo', 'witness_utxo', 'sighash', 'redeem_script', 'witness_script',
-        'fully_signed', 'is_segwit', 'is_p2sh', 'num_our_keys',
+        'unknown', 'witness_utxo', 'sighash', 'redeem_script', 'witness_script',
+        'fully_signed', 'af', 'num_our_keys', 'is_miniscript', "subpaths",
         'required_key', 'scriptSig', 'amount', 'scriptCode', 'previous_txid',
-        'prevout_idx', 'sequence', 'req_time_locktime', 'req_height_locktime', 'taproot_key_sig',
-        'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts', "subpaths",
-        "taproot_subpaths", "taproot_internal_key", "is_miniscript",
+        'prevout_idx', 'sequence', 'req_time_locktime', 'req_height_locktime',
+        'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts',
+        'taproot_subpaths', 'taproot_internal_key', 'taproot_key_sig', 'utxo',
+        'is_segwit',
     )
 
     def __init__(self, fd, idx):
@@ -682,8 +655,7 @@ class psbtInputProxy(psbtProxy):
         #self.fully_signed = False
 
         # we can't really learn this until we take apart the UTXO's scriptPubKey
-        #self.is_segwit = None
-        #self.is_p2sh = False
+        #self.af = None  # string representation of address format aka. script type
 
         #self.required_key = None    # which of our keys will be used to sign input
         #self.scriptSig = None
@@ -706,8 +678,6 @@ class psbtInputProxy(psbtProxy):
         self.parse(fd)
 
     def parse_taproot_script_sigs(self):
-        # not needed at this point as we do not support tapscript
-        # parsing this field without actual tapscript support is just a waste of memory
         parsed_taproot_script_sigs = {}
         for key in self.taproot_script_sigs:
             assert len(key) == 64  # "PSBT_IN_TAP_SCRIPT_SIG key length != 64"
@@ -717,8 +687,6 @@ class psbtInputProxy(psbtProxy):
         self.taproot_script_sigs = parsed_taproot_script_sigs
 
     def parse_taproot_scripts(self):
-        # not needed at this point as we do not support tapscript
-        # parsing this field without actual tapscript support is just a waste of memory
         parsed_taproot_scripts = {}
         for key in self.taproot_scripts:
             assert len(key) > 32  # "PSBT_IN_TAP_LEAF_SCRIPT control block is too short"
@@ -878,55 +846,92 @@ class psbtInputProxy(psbtProxy):
         # - which pubkey needed
         # - scriptSig value
         # - also validates redeem_script when present
-        self.required_key = merkle_root = None
+        merkle_root = None
         self.amount = utxo.nValue
+
+        ss_script_code = lambda x: b'\x19\x76\xa9\x14' + x + b'\x88\xac'
 
         if (not self.subpaths and not self.taproot_subpaths) or self.fully_signed:
             # without xfp+path we will not be able to sign this input
             # - okay if fully signed
             # - okay if payjoin or other multi-signer (not multisig) txn
-
             return
 
-
-        self.is_miniscript = False
-        self.is_p2sh = False
-        which_key = None
-
-        addr_type, addr_or_pubkey, self.is_segwit = utxo.get_address()
-        if addr_type == "op_return":
+        self.af, addr_or_pubkey = utxo.get_address()
+        if self.af == "op_return":
             return
 
-        if addr_type is None:
+        if self.af is None:
             # If this is reached, we do not understand the output well
             # enough to allow the user to authorize the spend, so fail hard.
             raise FatalPSBTIssue('Unhandled scriptPubKey: ' + b2a_hex(addr_or_pubkey).decode())
 
-        if addr_type == 'p2sh':
-            # miniscript input
-            self.is_p2sh = True
-            if self.is_segwit:
-                # we know this just from scriptPubKey --> utxo.get_address()
-                addr_type = "p2wsh"
+        if psbt.active_miniscript or psbt.active_singlesig:
+            # we have already set one of these - sow we can use some short-cuts
+            if psbt.active_miniscript and (self.af in ["p2pkh", "p2wpkh", "p2pk"]):
+                # signing with miniscript wallet - ignore single sig utxos
+                return
+            elif psbt.active_singlesig and (self.af == "p2wsh"):
+                # we are signing single sig inputs - ignore p2wsh utxos
+                return
 
+        which_key = None
+        if self.af == 'p2pk':
+            # input is single compressed public key (less common)
+            # uncompressed public keys not supported!
+            assert len(addr_or_pubkey) == 33
+
+            if addr_or_pubkey in self.subpaths:
+                which_key = addr_or_pubkey
+            else:
+                # pubkey provided is just wrong vs. UTXO
+                raise FatalPSBTIssue('Input #%d: pubkey wrong' % my_idx)
+
+            self.scriptSig = utxo.scriptPubKey
+
+        elif "pkh" in self.af:
+            # P2PKH & P2WPKH
+            # input is hash160 of a single public key
+
+            for pubkey in self.subpaths:
+                if hash160(pubkey) == addr_or_pubkey:
+                    which_key = pubkey
+                    break
+            else:
+                # none of the pubkeys provided hashes to that address
+                raise FatalPSBTIssue('Input #%d: pubkey vs. address wrong' % my_idx)
+
+            if self.af == "p2wpkh":
+                # P2WPKH only
+                self.scriptCode = ss_script_code(addr_or_pubkey)
+            else:
+                # P2PKH only
+                self.scriptSig = utxo.scriptPubKey
+
+        elif "sh" in self.af:
             # we must have the redeem script already (else fail)
             ks = self.witness_script or self.redeem_script
             if not ks:
                 raise FatalPSBTIssue("Missing redeem/witness script for input #%d" % my_idx)
 
             redeem_script = self.get(ks)
-            self.scriptSig = redeem_script
+            native_v0 = (self.af == "p2wsh")
+            if not native_v0:
+                self.scriptSig = redeem_script
 
-            # new cheat: psbt creator probably telling us exactly what key
-            # to use, by providing exactly one. This is ideal for p2sh wrapped p2pkh
-            if len(self.subpaths) == 1:
+            if not native_v0 and (len(redeem_script) == 22) and \
+                    redeem_script[0] == 0 and redeem_script[1] == 20 and \
+                    len(self.subpaths) == 1:
+                # it's actually segwit p2wpkh inside p2sh
+                self.af = 'p2sh-p2wpkh'
+                self.scriptCode = ss_script_code(redeem_script[2:22])
                 which_key, = self.subpaths.keys()
+
             else:
                 # Assume we'll be signing with any key we know
                 # - but if partial sig already in place, ignore that one
-                if not which_key:
-                    which_key = set()
-
+                self.is_miniscript = True
+                which_key = set()
                 for pubkey, path in self.subpaths.items():
                     if self.part_sigs and (pubkey in self.part_sigs):
                         # pubkey has already signed, so ignore
@@ -936,37 +941,22 @@ class psbtInputProxy(psbtProxy):
                         # slight chance of dup xfps, so handle
                         which_key.add(pubkey)
 
-            if not self.is_segwit and \
-                    len(redeem_script) == 22 and \
-                    redeem_script[0] == 0 and redeem_script[1] == 20:
-                # it's actually segwit p2pkh inside p2sh
-                addr_type = 'p2sh-p2wpkh'
-                addr = redeem_script[2:22]
-                self.is_segwit = True
-            else:
-                # multiple keys involved
-                self.is_miniscript = True
+                if self.witness_script and (not native_v0) and (self.redeem_script[1] == 34):
+                    # bugfix
+                    self.af = 'p2sh-p2wsh'
+                    self.scriptSig = self.get(self.redeem_script)
+                    assert (self.scriptSig[0] == 0) and (self.scriptSig[1] == 32), "malformed nested segwit redeem"
 
-            if self.witness_script and (not self.is_segwit) and self.is_miniscript:
-                # bugfix
-                addr_type = 'p2sh-p2wsh'
-                self.is_segwit = True
+                if "wsh" in self.af:
+                    # for both P2WSH & P2SH-P2WSH
+                    if not self.witness_script:
+                        raise FatalPSBTIssue('Need witness script for input #%d' % my_idx)
 
-        elif addr_type == 'p2pkh':
-            # input is hash160 of a single public key
-            self.scriptSig = utxo.scriptPubKey
-            addr = addr_or_pubkey
+                    # "scriptCode is witnessScript preceeded by a
+                    #  compactSize integer for the size of witnessScript"
+                    self.scriptCode = ser_string(self.get(self.witness_script))
 
-            for pubkey in self.subpaths:
-                if hash160(pubkey) == addr:
-                    which_key = pubkey
-                    break
-            else:
-                # none of the pubkeys provided hashes to that address
-                raise FatalPSBTIssue('Input #%d: pubkey vs. address wrong' % my_idx)
-
-        elif addr_type == 'p2tr':
-            pubkey = addr_or_pubkey
+        elif self.af == 'p2tr':
             merkle_root = None if self.taproot_merkle_root is None else self.get(self.taproot_merkle_root)
             if len(self.taproot_subpaths) == 1:
                 # keyspend without a script path
@@ -974,10 +964,10 @@ class psbtInputProxy(psbtProxy):
                 xonly_pubkey, lhs_path = list(self.taproot_subpaths.items())[0]
                 lhs, path = lhs_path[0], lhs_path[1:]  # meh - should be a tuple
                 assert not lhs, "LeafHashes have to be empty for internal key"
-                if path[0] == my_xfp:
-                    output_key = taptweak(xonly_pubkey)
-                    if output_key == pubkey:
-                        which_key = xonly_pubkey
+                assert path[0] == my_xfp
+                output_key = taptweak(xonly_pubkey)
+                assert output_key == addr_or_pubkey
+                which_key = xonly_pubkey
             else:
                 # tapscript (is always miniscript wallet)
                 self.is_miniscript = True
@@ -988,7 +978,7 @@ class psbtInputProxy(psbtProxy):
                         assert merkle_root is not None, "Merkle root not defined"
                         if not lhs:
                             output_key = taptweak(xonly_pubkey, merkle_root)
-                            if output_key == pubkey:
+                            if output_key == addr_or_pubkey:
                                 which_key = xonly_pubkey
                                 # if we find a possibility to spend keypath (internal_key) - we do keypath
                                 # even though script path is available
@@ -998,40 +988,13 @@ class psbtInputProxy(psbtProxy):
                             output_pubkey = taptweak(internal_key, merkle_root)
                             if not which_key:
                                 which_key = set()
-                            if pubkey == output_pubkey:
+                            if addr_or_pubkey == output_pubkey:
                                 which_key.add(xonly_pubkey)
 
-        elif addr_type == 'p2pk':
-            # input is single public key (less common)
-            self.scriptSig = utxo.scriptPubKey
-            assert len(addr_or_pubkey) == 33
-
-            if addr_or_pubkey in self.subpaths:
-                which_key = addr_or_pubkey
-            else:
-                # pubkey provided is just wrong vs. UTXO
-                raise FatalPSBTIssue('Input #%d: pubkey wrong' % my_idx)
-
-        # if we have active miniscript at this point - without matching it (below)
-        # we used "Sign PSBT" path from specific miniscript wallet menu
-        # do not sign single signature inputs
-        if psbt.active_miniscript and not self.is_miniscript:
-            if DEBUG:
-                print("skip input #%d type=%s miniscript wallet chosen '%s'" % (
-                    my_idx, addr_type, psbt.active_miniscript.name))
-                return  # required key is None
-
-        if not self.is_miniscript and which_key:
-            # we will attempt signing with single signature wallet
-            psbt.active_singlesig = True
-
         if self.is_miniscript:
-            # if we already considered single signature inputs for signing
-            # do not even consider to sign with miniscript wallet(s)
             if psbt.active_singlesig:
-                if DEBUG:
-                    print("skip miniscript input #%d type=%s attempting to sign single sig" % (
-                        my_idx, addr_type))
+                # if we already considered single signature inputs for signing
+                # do not even consider to sign with miniscript wallet(s)
                 return  # required key is None
 
             try:
@@ -1041,59 +1004,44 @@ class psbtInputProxy(psbtProxy):
             except AttributeError:
                 xfp_paths = list(self.subpaths.values())
 
-            xfp_paths.sort()
             if psbt.active_miniscript:
-                if not psbt.active_miniscript.disable_checks:
-                    psbt.active_miniscript.matching_subpaths(xfp_paths), "wrong wallet"
+                if not MiniScriptWallet.disable_checks:
+                    if not psbt.active_miniscript.matching_subpaths(xfp_paths):
+                        # not input from currently selected wallet
+                        return
             else:
                 # if we do have actual script at hand, guess M/N for better matching
                 # basic multisig matching
                 M, N = disassemble_multisig_mn(self.scriptSig) if self.scriptSig else (None, None)
                 af = {"p2wsh": AF_P2WSH, "p2sh-p2wsh": AF_P2WSH_P2SH,
-                      "p2sh": AF_P2SH, "p2tr": AF_P2TR}[addr_type]
+                      "p2sh": AF_P2SH, "p2tr": AF_P2TR}[self.af]
                 wal = MiniScriptWallet.find_match(xfp_paths, af, M, N)
                 if not wal:
-                    raise FatalPSBTIssue('Unknown miniscript wallet')
+                    # not an input from wallet that we have enrolled
+                    return
+
                 psbt.active_miniscript = wal
 
             try:
                 # contains PSBT merkle root verification (if taproot)
-                if not psbt.active_miniscript.disable_checks:
+                if not MiniScriptWallet.disable_checks:
                     psbt.active_miniscript.validate_script_pubkey(utxo.scriptPubKey,
                                                                   xfp_paths, merkle_root)
             except BaseException as e:
                 # sys.print_exception(e)
                 raise FatalPSBTIssue('Input #%d: %s\n\n' % (my_idx, e) + problem_file_line(e))
 
-        if not which_key and DEBUG:
-            print("no key: input #%d: type=%s segwit=%d a_or_pk=%s scriptPubKey=%s" % (
-                    my_idx, addr_type, self.is_segwit or 0,
-                    b2a_hex(addr_or_pubkey), b2a_hex(utxo.scriptPubKey)))
+        else:
+            # single signature utxo
+            if psbt.active_miniscript:
+                # complex wallet is active - so this is not for us to sign
+                return
 
-        self.required_key = which_key
+            psbt.active_singlesig = True
 
-        if self.required_key and self.is_segwit and (addr_type != 'p2tr'):
-            # scriptCode is only needed when we actually sign
-            # if no required key, just skip
-            if ('pkh' in addr_type):
-                # This comment from <https://bitcoincore.org/en/segwit_wallet_dev/>:
-                #
-                #   Please note that for a P2SH-P2WPKH, the scriptCode is always 26
-                #   bytes including the leading size byte, as 0x1976a914{20-byte keyhash}88ac,
-                #   NOT the redeemScript nor scriptPubKey
-                #
-                # Also need this scriptCode for native segwit p2pkh
-                #
-                assert not self.is_miniscript
-                self.scriptCode = b'\x19\x76\xa9\x14' + addr + b'\x88\xac'
-            elif not self.scriptCode:
-                # Segwit P2SH. We need the witness script to be provided.
-                if not self.witness_script:
-                    raise FatalPSBTIssue('Need witness script for input #%d' % my_idx)
-
-                # "scriptCode is witnessScript preceeded by a
-                #  compactSize integer for the size of witnessScript"
-                self.scriptCode = ser_string(self.get(self.witness_script))
+        if which_key:
+            self.required_key = which_key
+            self.is_segwit = ("w" in self.af) or (self.af == "p2tr")
 
         # Could probably free self.subpaths and self.redeem_script now, but only if we didn't
         # need to re-serialize as a PSBT.
@@ -1751,7 +1699,7 @@ class psbtObject(psbtProxy):
         for idx, txo in self.output_iter():
             output = self.outputs[idx]
             # perform output validation
-            af = output.validate(idx, txo, self.my_xfp, self.active_miniscript, self)
+            af = output.validate(idx, txo, self.my_xfp, self)
             assert txo.nValue >= 0, "negative output value: o%d" % idx
             total_out += txo.nValue
 
@@ -2290,7 +2238,7 @@ class psbtObject(psbtProxy):
                 tr_sh = []
                 inp.handle_none_sighash()
                 to_sign = []
-                if isinstance(inp.required_key, set) and inp.is_miniscript:
+                if isinstance(inp.required_key, set):
                     # need to consider a set of possible keys, since xfp may not be unique
                     for which_key in inp.required_key:
                         # get node required
@@ -2861,20 +2809,11 @@ class psbtObject(psbtProxy):
                 assert ssig, 'No signature on input #%d' % in_idx
 
             if inp.is_segwit:
-                if inp.is_miniscript:
-                    if inp.redeem_script:
-                        # p2sh-p2wsh
-                        txi.scriptSig = ser_string(self.get(inp.redeem_script))
-
-                elif inp.is_p2sh:
-                    # singlesig (p2sh) segwit still requires the script here.
-                    txi.scriptSig = ser_string(inp.scriptSig)
-                else:
-                    # major win for segwit (p2pkh): no redeem script bloat anymore
-                    txi.scriptSig = b''
-
+                # p2sh-p2wsh & p2sh-p2wpkh still need redeem here (redeem is witness scriptPubKey)
+                # inp.scriptSig was correctly populated in determine_my_signing_key
+                # for p2wpkh & p2wsh inp.scriptSig is None (no redeem script bloat anymore)
+                txi.scriptSig = ser_string(inp.scriptSig) if inp.scriptSig else b""
                 # Actual signature will be in witness data area
-
             else:
                 # insert the new signature(s), assuming fully signed txn.
                 if inp.is_miniscript:
@@ -2883,7 +2822,8 @@ class psbtObject(psbtProxy):
                     ss = b"\x00"
                     for sig in sigs:
                         ss += ser_push_data(sig)
-                    ss += ser_push_data(self.get(inp.redeem_script))
+
+                    ss += ser_push_data(inp.scriptSig)  # scriptSig contains actual redeem script
                     txi.scriptSig = ss
                 else:
                     pubkey, der_sig = ssig
@@ -2908,7 +2848,7 @@ class psbtObject(psbtProxy):
             for in_idx, wit in self.input_witness_iter():
                 inp = self.inputs[in_idx]
 
-                if inp.is_segwit and (inp.part_sigs or inp.taproot_key_sig):  # TODO
+                if inp.is_segwit:
                     # put in new sig: wit is a CTxInWitness
                     assert not wit.scriptWitness.stack, 'replacing non-empty?'
                     if inp.taproot_key_sig:

@@ -359,32 +359,32 @@ class CTxOut(object):
         return r
 
     def get_address(self):
-        # Detect type of output from scriptPubKey, and return 3-tuple:
-        #    (addr_type_code, addr, is_segwit)
+        # Detect type of output from scriptPubKey, and return 2-tuple:
+        #    (addr_type_code, pubkey/pubkeyhash/scripthash)
         # 'addr' is byte string, either 20 or 32 long
         if self.is_p2tr():
-            return 'p2tr', self.scriptPubKey[2:2+32], True
+            return 'p2tr', self.scriptPubKey[2:2+32]
 
         if self.is_p2wpkh():
-            return 'p2pkh', self.scriptPubKey[2:2+20], True
+            return 'p2wpkh', self.scriptPubKey[2:2+20]
 
         if self.is_p2wsh():
-            return 'p2sh', self.scriptPubKey[2:2+32], True
+            return 'p2wsh', self.scriptPubKey[2:2+32]
 
         if self.is_p2pkh():
-            return 'p2pkh', self.scriptPubKey[3:3+20], False
+            return 'p2pkh', self.scriptPubKey[3:3+20]
 
         if self.is_p2sh():
-            return 'p2sh', self.scriptPubKey[2:2+20], False
+            return 'p2sh', self.scriptPubKey[2:2+20]
 
         if self.is_p2pk():
             # rare, pay to full pubkey
-            return 'p2pk', self.scriptPubKey[2:2+33], False
+            return 'p2pk', self.scriptPubKey[2:2+33]
 
         if self.scriptPubKey[0] == OP_RETURN:
-            return 'op_return', self.scriptPubKey, False
+            return 'op_return', self.scriptPubKey
 
-        return None, self.scriptPubKey, None
+        return None, self.scriptPubKey
 
     def is_p2tr(self):
         return len(self.scriptPubKey) == 34 and \

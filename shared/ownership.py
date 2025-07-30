@@ -211,8 +211,6 @@ class OwnershipCache:
         from wallet import MiniScriptWallet
         from glob import dis
 
-        print("addr", addr)
-
         ch = chains.current_chain()
 
         addr_fmt = ch.possible_address_fmt(addr)
@@ -259,9 +257,6 @@ class OwnershipCache:
 
         # "quick" check first, before doing any generations
 
-        print()
-        print(possibles)
-        print()
         count = 0
         phase2 = []
         for change_idx in (0, 1):

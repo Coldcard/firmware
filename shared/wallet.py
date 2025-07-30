@@ -333,13 +333,14 @@ class MiniScriptWallet(WalletABC):
                     to_derive = tuple(y[prefix_len:])
                     res.add(to_derive)
 
-        assert res
+        err = "derivation indexes"
+        assert res, err
         if len(res) == 1:
             branch, idx = list(res)[0]
         else:
             branch = [i[0] for i in res]
             indexes = set([i[1] for i in res])
-            assert len(indexes) == 1
+            assert len(indexes) == 1, err
             idx = list(indexes)[0]
 
         return branch, idx
@@ -357,9 +358,14 @@ class MiniScriptWallet(WalletABC):
     def validate_script_pubkey(self, script_pubkey, xfp_paths, merkle_root=None):
         derived_desc = self.derive_desc(xfp_paths)
         derived_spk = derived_desc.script_pubkey()
-        assert derived_spk == script_pubkey, "spk mismatch\n%s\n%s" % (b2a_hex(derived_spk), b2a_hex(script_pubkey))
+        assert derived_spk == script_pubkey, "spk mismatch\n\ncalc:\n%s\n\npsbt:\n%s" % (
+            b2a_hex(derived_spk).decode(), b2a_hex(script_pubkey).decode()
+        )
         if merkle_root:
-            assert derived_desc.tapscript.merkle_root == merkle_root, "psbt merkle root"
+            calc = derived_desc.tapscript.merkle_root
+            assert calc == merkle_root, "merkle root mismatch\n\ncalc:\n%s\n\npsbt:\n%s" % (
+                b2a_hex(calc).decode(), b2a_hex(merkle_root).decode()
+            )
         return derived_desc
 
     def detail(self):

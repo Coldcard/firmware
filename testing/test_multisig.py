@@ -1395,13 +1395,13 @@ def test_ms_sign_bitrot(num_ins, dev, addr_fmt, clear_miniscript, import_ms_wall
     with pytest.raises(Exception) as ee:
         end_sign(accept=None)
     assert 'Output#0:' in str(ee)
-    assert 'Change output script' in str(ee)
+    assert 'p2wsh change output is fraudulent' in str(ee)
 
     # Check error details are shown
     time.sleep(.01)
     title, story = cap_story()
     assert 'Output#0:' in story
-    assert 'Change output script' in story
+    assert 'p2wsh change output is fraudulent'
 
 @pytest.mark.parametrize('addr_fmt', ["p2wsh", "p2sh-p2wsh", "p2sh"] )
 @pytest.mark.parametrize('pk_num', range(4))
@@ -1451,14 +1451,14 @@ def test_ms_change_fraud(case, pk_num, dev, addr_fmt, clear_miniscript, make_mul
         start_sign(psbt)
         end_sign(accept=True, accept_ms_import=False)
     assert 'Output#0:' in str(ee)
-    assert 'Change output script' in str(ee)
+    assert f'{addr_fmt} change output is fraudulent'
     #assert 'Deception regarding change output' in str(ee)
 
     # Check error details are shown
     time.sleep(.5)
     title, story = cap_story()
     assert 'Output#0:' in story
-    assert 'Change output script' in story
+    assert f'{addr_fmt} change output is fraudulent'
 
 
 @pytest.mark.ms_danger

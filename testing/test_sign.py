@@ -686,7 +686,7 @@ def test_change_fraud_addr(start_sign, end_sign, use_regtest, check_against_bitc
     start_sign(mod_psbt)
     with pytest.raises(CCProtoError) as ee:
         signed = end_sign(True)
-    assert 'Change output is fraud' in str(ee)
+    assert 'p2pkh change output is fraud' in str(ee)
 
 
 @pytest.mark.parametrize('case', ['p2sh-p2wpkh', 'p2wpkh', 'p2sh', 'p2sh-p2pkh'])
@@ -759,7 +759,7 @@ def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, use_re
     _, story = cap_story()
 
     if case in ["p2sh", "p2sh-p2pkh"]:
-        assert "Output#1: Change output is fraudulent" == story
+        assert f"Output#1: p2sh-p2wpkh change output is fraudulent" in story
         return
 
     check_against_bitcoind(B2A(b4.txn), Decimal('0.00000294'), change_outs=[1,],
@@ -813,7 +813,7 @@ def test_wrong_p2sh_p2wpkh(bitcoind, start_sign, end_sign, bitcoind_d_sim_watch,
     try:
         fin = end_sign(True)
     except Exception as e:
-        assert "Change output is fraudulent" in e.args[0]
+        assert "p2sh-p2wpkh change output is fraudulent" in e.args[0]
         # this is the correct ending
         return
 
@@ -1423,7 +1423,8 @@ def test_payjoin_signing(num_ins, num_outs, fake_txn, try_sign, start_sign, end_
 
     assert 'warning below' in story
     assert 'Limited Signing' in story
-    assert 'because we do not know the key' in story
+    assert "don't know the key" in story
+    assert "different wallet" in story
     assert ': %s' % (num_ins-1) in story
 
     txn = end_sign(True, finalize=False)
@@ -1753,7 +1754,8 @@ def test_foreign_utxo_missing(addr_fmt, num_not_ours, dev, fake_txn, start_sign,
     _, story = cap_story()
     no = ", ".join(str(i) for i in list(range(num_not_ours)))
     assert "warnings" in story
-    assert f"Limited Signing: We are not signing these inputs, because we do not know the key: {no}" in story
+    assert f"Limited Signing:" in story
+    assert f": {no}" in story
     assert f"Unable to calculate fee: Some input(s) haven't provided UTXO(s): {no}" in story
     signed = end_sign(accept=True)
     assert signed != psbt
