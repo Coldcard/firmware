@@ -106,7 +106,7 @@ def _skip_n_objs(fd, n, cls):
 def disassemble_multisig_mn(redeem_script):
     # pull out just M and N from script. Simple, faster, no memory.
 
-    if redeem_script[-1] != OP_CHECKMULTISIG:
+    if not redeem_script or (redeem_script[-1] != OP_CHECKMULTISIG):
         return None, None
 
     M = redeem_script[0] - 80
@@ -846,7 +846,7 @@ class psbtInputProxy(psbtProxy):
         # - which pubkey needed
         # - scriptSig value
         # - also validates redeem_script when present
-        merkle_root = None
+        merkle_root = redeem_script = None
         self.amount = utxo.nValue
 
         ss_script_code = lambda x: b'\x19\x76\xa9\x14' + x + b'\x88\xac'
@@ -1012,7 +1012,8 @@ class psbtInputProxy(psbtProxy):
             else:
                 # if we do have actual script at hand, guess M/N for better matching
                 # basic multisig matching
-                M, N = disassemble_multisig_mn(self.scriptSig) if self.scriptSig else (None, None)
+                # scriptSig may be empty or None at this point
+                M, N = disassemble_multisig_mn(redeem_script)
                 af = {"p2wsh": AF_P2WSH, "p2sh-p2wsh": AF_P2WSH_P2SH,
                       "p2sh": AF_P2SH, "p2tr": AF_P2TR}[self.af]
                 wal = MiniScriptWallet.find_match(xfp_paths, af, M, N)

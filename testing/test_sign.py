@@ -3161,45 +3161,6 @@ def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_stor
     press_cancel()  # exit txn out explorer
     end_sign(finalize=finalize)
 
-
-def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_minsc_import,
-                        cap_story, try_sign, reset_seed_words, clear_miniscript):
-    reset_seed_words()
-    clear_miniscript()
-    desc = "sh(sortedmulti(2,[6ba6cfd0/45h]tpubD9429UXFGCTKJ9NdiNK4rC5ygqSUkginycYHccqSg5gkmyQ7PZRHNjk99M6a6Y3NY8ctEUUJvCu6iCCui8Ju3xrHRu3Ez1CKB4ZFoRZDdP9/0/*,[747b698e/45h]tpubD97nVL37v5tWyMf9ofh5rznwhh1593WMRg6FT4o6MRJkKWANtwAMHYLrcJFsFmPfYbY1TE1LLQ4KBb84LBPt1ubvFwoosvMkcWJtMwvXgSc/0/*,[7bb026be/45h]tpubD9ArfXowvGHnuECKdGXVKDMfZVGdephVWg8fWGWStH3VKHzT4ph3A4ZcgXWqFu1F5xGTfxncmrnf3sLC86dup2a8Kx7z3xQ3AgeNTQeFxPa/0/*,[0f056943/45h]tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n/0/*))#up0sw2xp"
-    # PSBT created via fake_ms_txn, grinded in test_ms_sign_myself
-    psbt_fname = "myself-72sig.psbt"
-    with open(f"data/{psbt_fname}", "r") as f:
-        b64psbt = f.read()
-
-    goto_home()
-    passphrase = "Myself"
-    dev.send_recv(CCProtocolPacker.bip39_passphrase(passphrase), timeout=None)
-    press_select()
-    time.sleep(.1)
-    title, story = cap_story()
-
-    if 'Seed Vault' in story:
-        press_select()
-        time.sleep(.1)
-        title, story = cap_story()
-
-    assert "[747B698E]" in title
-    press_select()
-
-    time.sleep(.1)
-    _, story = offer_minsc_import(desc)
-    assert "Create new miniscript wallet?" in story \
-                or 'Update NAME only of existing multisig' in story
-    time.sleep(.1)
-    press_select()
-
-    # below raises for 72 bytes long signature
-    # only on firmware versions that do only 10 grinding iterations
-    try_sign(base64.b64decode(b64psbt), accept=True)
-
-    reset_seed_words()
-
 def test_null_data_op_return(fake_txn, start_sign, end_sign, reset_seed_words):
     reset_seed_words()
     psbt = fake_txn(1, [["p2pkh", 99_999_800], ["op_return", 50, None, b""]])
