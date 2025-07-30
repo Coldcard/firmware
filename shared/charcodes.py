@@ -111,5 +111,6 @@ if has_qwerty:
 # characters on the output side of things, not input.
 OUT_CTRL_TITLE = '\x01'     # must be first char in line: be a title line
 OUT_CTRL_ADDRESS = '\x02'   # must be first char in line: it's a payment address
+OUT_CTRL_NOWRAP = '\x03'   # must be first char in line: do not word wrap this line
 
 # EOF

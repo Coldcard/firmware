@@ -21,4 +21,6 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 1.3.?Q - 2025-06
 
+- Bugfix: Correct line positioning when 24 seed words displayed.
+
 

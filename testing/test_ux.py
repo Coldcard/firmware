@@ -1027,6 +1027,153 @@ def test_qr_share_files(fname, pick_menu_item, goto_home, is_q1, cap_menu, cap_s
     assert res == qr.decode()
     os.remove(f'{sim_root_dir}/MicroSD/' + fname)
 
+@pytest.mark.parametrize("word,cs_word", [
+    # all words with length 8 + their longest possible checksum word
+    # ("abstract", "banner"),
+    # ("accident", "remain"),
+    # ("acoustic", "decrease"),
+    # ("announce", "involve"),
+    # ("artefact", "awkward"),
+    # ("attitude", "outdoor"),
+    # ("bachelor", "message"),
+    # ("broccoli", "explain"),
+    # ("business", "antenna"),
+    # ("category", "inquiry"),
+    # ("champion", "almost"),
+    # ("cinnamon", "episode"),
+    # ("congress", "mistake"),
+    # ("consider", "industry"),
+    # ("convince", "leopard"),
+    # ("cupboard", "original"),
+    # ("daughter", "mountain"),
+    # ("december", "receive"),
+    # ("decorate", "entire"),
+    # ("decrease", "mushroom"),
+    # ("describe", "buffalo"),
+    # ("dinosaur", "cushion"),
+    # ("disagree", "benefit"),
+    # ("discover", "attract"),
+    # ("disorder", "mountain"),
+    # ("distance", "accident"),
+    # ("document", "dilemma"),
+    # ("electric", "witness"),
+    # ("elephant", "cupboard"),
+    # ("elevator", "present"),
+    # ("envelope", "original"),
+    # ("evidence", "awkward"),
+    # ("exchange", "ensure"),
+    # ("exercise", "eternal"),
+    # ("favorite", "umbrella"),
+    # ("february", "airport"),
+    # ("festival", "cancel"),
+    # ("frequent", "garbage"),
+    # ("hedgehog", "employ"),
+    # ("hospital", "announce"),
+    # ("identify", "destroy"),
+    # ("increase", "better"),
+    # ("indicate", "arrest"),
+    # ("industry", "property"),
+    # ("innocent", "champion"),
+    # ("interest", "exhaust"),
+    # ("kangaroo", "present"),
+    # ("language", "endorse"),
+    # ("marriage", "immense"),
+    # ("material", "balcony"),
+    # ("mechanic", "bitter"),
+    # ("midnight", "unhappy"),
+    # ("mosquito", "mechanic"),
+    # ("mountain", "vehicle"),
+    # ("multiply", "advance"),
+    # ("mushroom", "leopard"),
+    # ("negative", "response"),
+    # ("ordinary", "address"),
+    # ("original", "account"),
+    # ("physical", "correct"),
+    # ("position", "concert"),
+    # ("possible", "canyon"),
+    # ("practice", "thought"),
+    # ("priority", "cabbage"),
+    # ("property", "puzzle"),
+    # ("purchase", "blanket"),
+    # ("question", "country"),
+    # ("remember", "buffalo"),
+    # ("resemble", "prevent"),
+    # ("resource", "elevator"),
+    # ("response", "cattle"),
+    # ("scissors", "mystery"),
+    # ("scorpion", "achieve"),
+    # ("security", "question"),
+    # ("sentence", "erosion"),
+    # ("shoulder", "kangaroo"),
+    # ("solution", "elephant"),
+    # ("squirrel", "chapter"),
+    # ("strategy", "chimney"),
+    # ("struggle", "volcano"),
+    # ("surprise", "approve"),
+    # ("surround", "pioneer"),
+    # ("together", "increase"),
+    # ("tomorrow", "bracket"),
+    # ("tortoise", "blanket"),
+    # ("transfer", "priority"),
+    ("umbrella", "convince"),
+    # ("universe", "hamster"),
+])
+def test_q1_24_8char_words(set_seed_words, is_q1, goto_home, pick_menu_item, press_select,
+                           cap_story, cap_screen, word, cs_word):
+    # /issues/965
+    # vectors calculated with `coldcard-mpy`:
+    #
+    #  w8 = [w for w in bip39.wordlist_en if len(w) >= 8]
+    #  for w in w8:
+    #      wl = ([w]*23)
+    #      ds = list(bip39.a2b_words_guess(wl))
+    #      print(w, max(ds, key=len))
+    if not is_q1:
+        raise pytest.skip("only Q")
+
+    goto_home()
+    # longest words in wordlist_en have 8 chars
+    words = ([word] * 23) + [cs_word]
+    set_seed_words(" ".join(words))
+
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Danger Zone")
+    pick_menu_item("Seed Functions")
+    pick_menu_item('View Seed Words')
+    time.sleep(.01)
+    press_select()  # skip warning
+    time.sleep(0.01)
+
+    title, body = cap_story()
+    assert '24' in title
+    scr = cap_screen().split("\n")
+    assert "Seed words (24)" in scr[0]
+    assert scr[1] == ""
+    # 8 rows
+    assert len(scr[2:]) == 8
+
+    x = 1
+    y = 9
+    z = 17
+    for row in scr[2:]:
+        # each row contains 3 colons (aka 3 words)
+        srow = [r for r in row.split(" ") if r]  # filter empty strings
+        assert len(srow) == 3  # three columns
+
+        # 8 words for each column
+        (tx, w0), (ty, w1), (tz, w2) = [pr.split(":") for pr in srow]
+        assert x == int(tx) and y == int(ty) and z == int(tz)
+        x += 1
+        y += 1
+        z += 1
+
+        if int(tz) == 24:
+            # last line with checksum word
+            assert w2 == cs_word
+            assert w0 == w1 == word
+        else:
+            assert w0 == w1 == w2 == word
+
 
 @pytest.mark.onetime
 def test_dump_menutree(sim_execfile):
