@@ -470,7 +470,7 @@ def word_wrap(ln, w):
     # Generate the lines needed to wrap one line into X "width"-long lines.
     #  - tests in testing/test_unit.py
     if ln and (ln[0] == OUT_CTRL_NOWRAP):
-        # no need to wrap this - as requested by caller
+        # no need to wrap this line - as requested by caller
         yield ln[1:]
         return
 
