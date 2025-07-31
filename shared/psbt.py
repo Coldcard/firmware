@@ -634,7 +634,7 @@ class psbtInputProxy(psbtProxy):
         'prevout_idx', 'sequence', 'req_time_locktime', 'req_height_locktime',
         'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts',
         'taproot_subpaths', 'taproot_internal_key', 'taproot_key_sig', 'utxo',
-        'is_segwit',
+        'is_segwit', 'taproot_spk',
     )
 
     def __init__(self, fd, idx):
@@ -661,6 +661,7 @@ class psbtInputProxy(psbtProxy):
         #self.scriptSig = None
         #self.amount = None
         #self.scriptCode = None      # only expected for segwit inputs
+        #self.taproot_spk = None     # only on taproot inputs - utxo scriptPubKey
 
         # self.taproot_subpaths = {}                # will be empty if non-taproot
         # self.taproot_internal_key = None          # will be empty if non-taproot
@@ -957,6 +958,7 @@ class psbtInputProxy(psbtProxy):
                     self.scriptCode = ser_string(self.get(self.witness_script))
 
         elif self.af == 'p2tr':
+            self.taproot_spk = utxo.scriptPubKey
             merkle_root = None if self.taproot_merkle_root is None else self.get(self.taproot_merkle_root)
             if len(self.taproot_subpaths) == 1:
                 # keyspend without a script path
@@ -1012,7 +1014,6 @@ class psbtInputProxy(psbtProxy):
             else:
                 # if we do have actual script at hand, guess M/N for better matching
                 # basic multisig matching
-                # scriptSig may be empty or None at this point
                 M, N = disassemble_multisig_mn(redeem_script)
                 af = {"p2wsh": AF_P2WSH, "p2sh-p2wsh": AF_P2WSH_P2SH,
                       "p2sh": AF_P2SH, "p2tr": AF_P2TR}[self.af]
@@ -2511,10 +2512,8 @@ class psbtObject(psbtProxy):
                 hashPrevouts.update(txi.prevout.serialize())
                 hashSequence.update(pack("<I", txi.nSequence))
                 inp = self.inputs[in_idx]
-                # assert inp.witness_utxo
-                utxo = inp.get_utxo(0)
-                hashValues.update(pack("<q", utxo.nValue))
-                hashScriptPubKeys.update(ser_string(utxo.scriptPubKey))
+                hashValues.update(pack("<q", inp.amount))
+                hashScriptPubKeys.update(ser_string(inp.taproot_spk))
 
             self.hashPrevouts = hashPrevouts.digest()
             self.hashSequence = hashSequence.digest()
@@ -2566,9 +2565,8 @@ class psbtObject(psbtProxy):
                 if input_index == in_idx:
                     inp = self.inputs[in_idx]
                     msg += txi.prevout.serialize()
-                    utxo = inp.get_utxo(0)
-                    msg += pack("<q", utxo.nValue)
-                    msg += ser_string(utxo.scriptPubKey)
+                    msg += pack("<q", inp.amount)
+                    msg += ser_string(inp.taproot_spk)
                     msg += pack("<I", txi.nSequence)
                     break
             else:
