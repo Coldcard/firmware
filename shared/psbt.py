@@ -630,11 +630,10 @@ class psbtInputProxy(psbtProxy):
     blank_flds = (
         'unknown', 'witness_utxo', 'sighash', 'redeem_script', 'witness_script',
         'fully_signed', 'af', 'num_our_keys', 'is_miniscript', "subpaths",
-        'required_key', 'scriptSig', 'amount', 'scriptCode', 'previous_txid',
+        'required_key', 'amount', 'previous_txid', 'is_segwit', 'spk',
         'prevout_idx', 'sequence', 'req_time_locktime', 'req_height_locktime',
         'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts',
         'taproot_subpaths', 'taproot_internal_key', 'taproot_key_sig', 'utxo',
-        'is_segwit', 'taproot_spk',
     )
 
     def __init__(self, fd, idx):
@@ -658,10 +657,8 @@ class psbtInputProxy(psbtProxy):
         #self.af = None  # string representation of address format aka. script type
 
         #self.required_key = None    # which of our keys will be used to sign input
-        #self.scriptSig = None
         #self.amount = None
-        #self.scriptCode = None      # only expected for segwit inputs
-        #self.taproot_spk = None     # only on taproot inputs - utxo scriptPubKey
+        #self.spk = None             # scriptPubKey for input utxo
 
         # self.taproot_subpaths = {}                # will be empty if non-taproot
         # self.taproot_internal_key = None          # will be empty if non-taproot
@@ -845,12 +842,9 @@ class psbtInputProxy(psbtProxy):
         # See what it takes to sign this particular input
         # - type of script
         # - which pubkey needed
-        # - scriptSig value
         # - also validates redeem_script when present
         merkle_root = redeem_script = None
         self.amount = utxo.nValue
-
-        ss_script_code = lambda x: b'\x19\x76\xa9\x14' + x + b'\x88\xac'
 
         if (not self.subpaths and not self.taproot_subpaths) or self.fully_signed:
             # without xfp+path we will not be able to sign this input
@@ -859,6 +853,8 @@ class psbtInputProxy(psbtProxy):
             return
 
         self.af, addr_or_pubkey = utxo.get_address()
+        # save scriptPubKey of utxo for later use
+        self.spk = utxo.scriptPubKey
         if self.af == "op_return":
             return
 
@@ -888,8 +884,6 @@ class psbtInputProxy(psbtProxy):
                 # pubkey provided is just wrong vs. UTXO
                 raise FatalPSBTIssue('Input #%d: pubkey wrong' % my_idx)
 
-            self.scriptSig = utxo.scriptPubKey
-
         elif "pkh" in self.af:
             # P2PKH & P2WPKH
             # input is hash160 of a single public key
@@ -902,13 +896,6 @@ class psbtInputProxy(psbtProxy):
                 # none of the pubkeys provided hashes to that address
                 raise FatalPSBTIssue('Input #%d: pubkey vs. address wrong' % my_idx)
 
-            if self.af == "p2wpkh":
-                # P2WPKH only
-                self.scriptCode = ss_script_code(addr_or_pubkey)
-            else:
-                # P2PKH only
-                self.scriptSig = utxo.scriptPubKey
-
         elif "sh" in self.af:
             # we must have the redeem script already (else fail)
             ks = self.witness_script or self.redeem_script
@@ -917,15 +904,12 @@ class psbtInputProxy(psbtProxy):
 
             redeem_script = self.get(ks)
             native_v0 = (self.af == "p2wsh")
-            if not native_v0:
-                self.scriptSig = redeem_script
 
             if not native_v0 and (len(redeem_script) == 22) and \
                     redeem_script[0] == 0 and redeem_script[1] == 20 and \
                     len(self.subpaths) == 1:
                 # it's actually segwit p2wpkh inside p2sh
                 self.af = 'p2sh-p2wpkh'
-                self.scriptCode = ss_script_code(redeem_script[2:22])
                 which_key, = self.subpaths.keys()
 
             else:
@@ -945,20 +929,14 @@ class psbtInputProxy(psbtProxy):
                 if self.witness_script and (not native_v0) and (self.redeem_script[1] == 34):
                     # bugfix
                     self.af = 'p2sh-p2wsh'
-                    self.scriptSig = self.get(self.redeem_script)
-                    assert (self.scriptSig[0] == 0) and (self.scriptSig[1] == 32), "malformed nested segwit redeem"
+                    assert self.redeem_script[1] == 34
 
                 if "wsh" in self.af:
                     # for both P2WSH & P2SH-P2WSH
                     if not self.witness_script:
                         raise FatalPSBTIssue('Need witness script for input #%d' % my_idx)
 
-                    # "scriptCode is witnessScript preceeded by a
-                    #  compactSize integer for the size of witnessScript"
-                    self.scriptCode = ser_string(self.get(self.witness_script))
-
         elif self.af == 'p2tr':
-            self.taproot_spk = utxo.scriptPubKey
             merkle_root = None if self.taproot_merkle_root is None else self.get(self.taproot_merkle_root)
             if len(self.taproot_subpaths) == 1:
                 # keyspend without a script path
@@ -966,10 +944,9 @@ class psbtInputProxy(psbtProxy):
                 xonly_pubkey, lhs_path = list(self.taproot_subpaths.items())[0]
                 lhs, path = lhs_path[0], lhs_path[1:]  # meh - should be a tuple
                 assert not lhs, "LeafHashes have to be empty for internal key"
-                assert path[0] == my_xfp
-                output_key = taptweak(xonly_pubkey)
-                assert output_key == addr_or_pubkey
-                which_key = xonly_pubkey
+                if path[0] == my_xfp:
+                    assert taptweak(xonly_pubkey) == addr_or_pubkey
+                    which_key = xonly_pubkey
             else:
                 # tapscript (is always miniscript wallet)
                 self.is_miniscript = True
@@ -1047,6 +1024,28 @@ class psbtInputProxy(psbtProxy):
 
         # Could probably free self.subpaths and self.redeem_script now, but only if we didn't
         # need to re-serialize as a PSBT.
+
+    def segwit_v0_scriptCode(self):
+        # only v0 segwit
+        # only needed for sighash
+        assert self.is_segwit and self.af != "p2tr"
+        if self.af == "p2wpkh":
+            return b'\x19\x76\xa9\x14' + self.spk[2:2+20] + b'\x88\xac'
+        elif self.af == "p2sh-p2wpkh":
+            return b'\x19\x76\xa9\x14' + self.get(self.redeem_script)[2:22] + b'\x88\xac'
+        else:
+            assert self.af in ["p2wsh", "p2sh-p2wsh"]
+            # "scriptCode is witnessScript preceeded by a
+            #  compactSize integer for the size of witnessScript"
+            return ser_string(self.get(self.witness_script))
+
+    def get_scriptSig(self):
+        if self.af in ["p2pk", "p2pkh"]:
+            return self.spk
+        elif "sh" in self.af and self.af != "p2wsh":
+            return self.get(self.redeem_script)
+        else:
+            return b""
 
     def store(self, kt, key, val):
         # Capture what we are interested in.
@@ -2235,7 +2234,6 @@ class psbtObject(psbtProxy):
                     # but in other cases, no more signatures are possible
                     continue
 
-                txi.scriptSig = inp.scriptSig
                 schnorrsig = False
                 tr_sh = []
                 inp.handle_none_sighash()
@@ -2330,11 +2328,14 @@ class psbtObject(psbtProxy):
                 else:
                     if not inp.is_segwit:
                         # Hash by serializing/blanking various subparts of the transaction
+                        txi.scriptSig = inp.get_scriptSig()
                         digest = self.make_txn_sighash(in_idx, txi, inp.sighash)
                     else:
                         # Hash the inputs and such in totally new ways, based on BIP-143
                         if not inp.taproot_subpaths:
-                            digest = self.make_txn_segwit_sighash(in_idx, txi, inp.amount, inp.scriptCode, inp.sighash)
+                            digest = self.make_txn_segwit_sighash(in_idx, txi, inp.amount,
+                                                                  inp.segwit_v0_scriptCode(),
+                                                                  inp.sighash)
                         elif tr_sh:
                             pass  # later()
                         else:
@@ -2513,7 +2514,7 @@ class psbtObject(psbtProxy):
                 hashSequence.update(pack("<I", txi.nSequence))
                 inp = self.inputs[in_idx]
                 hashValues.update(pack("<q", inp.amount))
-                hashScriptPubKeys.update(ser_string(inp.taproot_spk))
+                hashScriptPubKeys.update(ser_string(inp.spk))
 
             self.hashPrevouts = hashPrevouts.digest()
             self.hashSequence = hashSequence.digest()
@@ -2566,7 +2567,7 @@ class psbtObject(psbtProxy):
                     inp = self.inputs[in_idx]
                     msg += txi.prevout.serialize()
                     msg += pack("<q", inp.amount)
-                    msg += ser_string(inp.taproot_spk)
+                    msg += ser_string(inp.spk)
                     msg += pack("<I", txi.nSequence)
                     break
             else:
@@ -2809,9 +2810,8 @@ class psbtObject(psbtProxy):
 
             if inp.is_segwit:
                 # p2sh-p2wsh & p2sh-p2wpkh still need redeem here (redeem is witness scriptPubKey)
-                # inp.scriptSig was correctly populated in determine_my_signing_key
                 # for p2wpkh & p2wsh inp.scriptSig is None (no redeem script bloat anymore)
-                txi.scriptSig = ser_string(inp.scriptSig) if inp.scriptSig else b""
+                txi.scriptSig = ser_string(inp.get_scriptSig())
                 # Actual signature will be in witness data area
             else:
                 # insert the new signature(s), assuming fully signed txn.
@@ -2822,7 +2822,7 @@ class psbtObject(psbtProxy):
                     for sig in sigs:
                         ss += ser_push_data(sig)
 
-                    ss += ser_push_data(inp.scriptSig)  # scriptSig contains actual redeem script
+                    ss += ser_push_data(self.get(inp.redeem_script))
                     txi.scriptSig = ss
                 else:
                     pubkey, der_sig = ssig

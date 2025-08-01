@@ -538,6 +538,7 @@ class ApproveTransaction(UserAuthorizedAction):
             msg = "Transaction is too complex"
             return await self.failure(msg)
         except BaseException as exc:
+            # sys.print_exception(exc)
             return await self.failure("Signing failed late", exc)
 
         try:
