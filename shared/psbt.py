@@ -2810,8 +2810,11 @@ class psbtObject(psbtProxy):
 
             if inp.is_segwit:
                 # p2sh-p2wsh & p2sh-p2wpkh still need redeem here (redeem is witness scriptPubKey)
-                # for p2wpkh & p2wsh inp.scriptSig is None (no redeem script bloat anymore)
-                txi.scriptSig = ser_string(inp.get_scriptSig())
+                txi.scriptSig = inp.get_scriptSig()
+                # for p2wpkh & p2wsh inp.scriptSig is b'' (no redeem script bloat anymore) - do not ser_string
+                if txi.scriptSig:
+                    txi.scriptSig = ser_string(inp.get_scriptSig())
+
                 # Actual signature will be in witness data area
             else:
                 # insert the new signature(s), assuming fully signed txn.
