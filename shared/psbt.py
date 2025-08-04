@@ -2,17 +2,16 @@
 #
 # psbt.py - understand PSBT file format: verify and generate them
 #
-import stash, gc, history, sys, ngu, ckcc, chains
+import stash, gc, history, sys, ngu, ckcc
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, B2A, keypath_to_str, validate_derivation_path_length, problem_file_line
 from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str
-from chains import NLOCK_IS_TIME
 from uhashlib import sha256
 from uio import BytesIO
 from charcodes import KEY_ENTER
 from sffile import SizerFile
-from chains import taptweak, tapleaf_hash
+from chains import taptweak, tapleaf_hash, NLOCK_IS_TIME
 from wallet import MiniScriptWallet, TRUST_PSBT, TRUST_VERIFY
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160
@@ -372,11 +371,8 @@ class psbtProxy:
             # already been here once
             return self.num_our_keys
 
-        num_our = self.parse_non_taproot_subpaths(my_xfp, warnings)
-        num_our_taproot = self.parse_taproot_subpaths(my_xfp, warnings)
-
-        self.num_our_keys = num_our + num_our_taproot
-        return self.num_our_keys
+        return (self.parse_non_taproot_subpaths(my_xfp, warnings)
+                + self.parse_taproot_subpaths(my_xfp, warnings))
 
 
 # Track details of each output of PSBT
@@ -629,11 +625,11 @@ class psbtInputProxy(psbtProxy):
 
     blank_flds = (
         'unknown', 'witness_utxo', 'sighash', 'redeem_script', 'witness_script',
-        'fully_signed', 'af', 'num_our_keys', 'is_miniscript', "subpaths",
-        'required_key', 'amount', 'previous_txid', 'is_segwit', 'spk',
+        'fully_signed', 'af', 'num_our_keys', 'is_miniscript', "subpaths", 'utxo',
+        'required_key', 'amount', 'previous_txid', 'is_segwit', 'part_sigs', 'spk',
         'prevout_idx', 'sequence', 'req_time_locktime', 'req_height_locktime',
         'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts',
-        'taproot_subpaths', 'taproot_internal_key', 'taproot_key_sig', 'utxo',
+        'taproot_subpaths', 'taproot_internal_key', 'taproot_key_sig',
     )
 
     def __init__(self, fd, idx):
@@ -641,7 +637,7 @@ class psbtInputProxy(psbtProxy):
 
         #self.utxo = None
         #self.witness_utxo = None
-        self.part_sigs = {}
+        #self.part_sigs = {}
         #self.sighash = None
         # self.subpaths = {}          # will be empty if taproot
         #self.redeem_script = None
@@ -744,7 +740,7 @@ class psbtInputProxy(psbtProxy):
         # require path for each addr, check some are ours
 
         # rework the pubkey => subpath mapping
-        self.parse_subpaths(my_xfp, parent.warnings)
+        self.num_our_keys = self.parse_subpaths(my_xfp, parent.warnings)
 
         if self.part_sigs:
             # How complete is the set of signatures so far?
@@ -752,17 +748,16 @@ class psbtInputProxy(psbtProxy):
             # - seems harmless if they fool us into thinking already signed; we do nothing
             # - could also look at pubkey needed vs. sig provided
             # - could consider structure of MofN in p2sh cases
-            self.fully_signed = (len(self.part_sigs) >= len(self.subpaths))
-        else:
-            # No signatures at all yet for this input (typical non miniscript)
-            self.fully_signed = False
+            if len(self.part_sigs) >= len(self.subpaths):
+                self.fully_signed = True
 
         if self.taproot_key_sig:
-            assert self.taproot_key_sig[1] in (64, 65)  # "PSBT_IN_TAP_KEY_SIG length != 64 or 65"
+            # "PSBT_IN_TAP_KEY_SIG length != 64 or 65"
+            assert self.taproot_key_sig[1] in (64, 65)
             if self.taproot_key_sig[1] == 65:
-                taproot_sig = self.get(self.taproot_key_sig)
                 if self.sighash:
-                    assert taproot_sig[64] == self.sighash  # "PSBT_IN_SIGHASH_TYPE != PSBT_IN_TAP_KEY_SIG[64]"
+                    # "PSBT_IN_SIGHASH_TYPE != PSBT_IN_TAP_KEY_SIG[64]"
+                    assert self.get(self.taproot_key_sig)[-1] == self.sighash
             self.fully_signed = True
 
         if self.utxo:
@@ -1055,6 +1050,10 @@ class psbtInputProxy(psbtProxy):
         elif kt == PSBT_IN_WITNESS_UTXO:
             self.witness_utxo = val
         elif kt == PSBT_IN_PARTIAL_SIG:
+            # taproot inputs do not have part sigs
+            # only populate the attribute if present
+            if not self.part_sigs:
+                self.part_sigs = {}
             self.part_sigs[key[1:]] = self.get(val)
         elif kt == PSBT_IN_BIP32_DERIVATION:
             if self.subpaths is None:
@@ -1169,7 +1168,6 @@ class psbtInputProxy(psbtProxy):
                 wr(k[0], v, k[1:])
 
 
-
 class psbtObject(psbtProxy):
     "Just? parse and store"
     short_values = { PSBT_GLOBAL_TX_MODIFIABLE }
@@ -1200,7 +1198,6 @@ class psbtObject(psbtProxy):
         self._lock_time = None
         self.total_value_out = None
         self.total_value_in = None
-        self.presigned_inputs = set()
         # will be tru if number of change outputs equals to total number of outputs
         self.consolidation_tx = False
         # number of change outputs
@@ -1926,20 +1923,21 @@ class psbtObject(psbtProxy):
         # Important: parse incoming UTXO to build total input value
         foreign = []
         total_in = 0
+        presigned_inputs = set()
 
         for i, txi in self.input_iter():
             inp = self.inputs[i]
             if inp.fully_signed:
-                self.presigned_inputs.add(i)
+                presigned_inputs.add(i)
 
             if not inp.has_utxo():
                 if inp.num_our_keys and not inp.fully_signed:
                     # we cannot proceed if the input is ours and there is no UTXO
                     raise FatalPSBTIssue('Missing own UTXO(s). Cannot determine value being signed')
-                else:
-                    # input clearly not ours
-                    foreign.append(i)
-                    continue
+
+                # input clearly not ours
+                foreign.append(i)
+                continue
 
             # pull out just the CTXOut object (expensive)
             utxo = inp.get_utxo(txi.prevout.n)
@@ -1972,7 +1970,7 @@ class psbtObject(psbtProxy):
                 ("Unable to calculate fee", "Some input(s) haven't provided UTXO(s): " + seq_to_str(foreign))
             )
 
-        if len(self.presigned_inputs) == self.num_inputs:
+        if len(presigned_inputs) == self.num_inputs:
             # Maybe wrong f cases? Maybe they want to add their
             # own signature, even tho N of M is satisfied?!
             raise FatalPSBTIssue('Transaction looks completely signed already?')
@@ -1992,11 +1990,11 @@ class psbtObject(psbtProxy):
                 "We are not signing these inputs, because we either don't know the key"
                 " or inputs belong to different wallet: " + seq_to_str(no_keys)))
 
-        if self.presigned_inputs:
+        if presigned_inputs:
             # this isn't really even an issue for some complex usage cases
             self.warnings.append(('Partly Signed Already',
                 'Some input(s) provided were already completely signed by other parties: ' +
-                        seq_to_str(self.presigned_inputs)))
+                        seq_to_str(presigned_inputs)))
 
         if MiniScriptWallet.disable_checks:
             self.warnings.append(('Danger', 'Some miniscript checks are disabled.'))
@@ -2391,6 +2389,7 @@ class psbtObject(psbtProxy):
                             inp.taproot_key_sig = sig
                     else:
                         der_sig = self.ecdsa_grind_sign(sk, digest, inp.sighash)
+                        inp.part_sigs = inp.part_sigs or {}
                         inp.part_sigs[pk] = der_sig
 
                     # private key no longer required
@@ -2401,7 +2400,7 @@ class psbtObject(psbtProxy):
                     if self.is_v2:
                         self.set_modifiable_flag(inp)
 
-                # drop sighash if default (SIGHASH_ALL)
+                # drop sighash from PSBT field if default (SIGHASH_ALL)
                 if inp.sighash == SIGHASH_ALL:
                     inp.sighash = None
 
@@ -2693,18 +2692,20 @@ class psbtObject(psbtProxy):
         # Are all the inputs (now) signed?
 
         # some might have been given as signed
-        signed = len(self.presigned_inputs)
+        signed = 0
 
         # plus we added some signatures
         for i, inp in enumerate(self.inputs):
-            if i in self.presigned_inputs: continue
+            if inp.fully_signed:
+                signed += 1
+            elif inp.taproot_key_sig:
+                signed += 1
             elif inp.is_miniscript and self.active_miniscript:
                 if self.miniscript_input_complete(inp):
                     signed += 1
             elif inp.part_sigs and len(inp.part_sigs) == len(inp.subpaths):
                 signed += 1
-            elif inp.taproot_key_sig:
-                signed += 1
+
 
         return signed == self.num_inputs
 
