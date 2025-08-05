@@ -2180,6 +2180,7 @@ class psbtObject(psbtProxy):
 
                     good = 0
                     if oup.subpaths:
+                        lp = len(oup.subpaths)
                         for pubkey, subpath in oup.subpaths.items():
                             # for multisig, will be N paths, and exactly one will
                             # be our key. For single-signer, should always be my XFP
@@ -2189,6 +2190,7 @@ class psbtObject(psbtProxy):
                                     good += 1
 
                     if oup.taproot_subpaths:
+                        lp = len(oup.taproot_subpaths)
                         for xonly_pk, val in oup.taproot_subpaths.items():
                             leaf_hashes, subpath = val[0], val[1:]
                             if subpath[0] == self.my_xfp:
@@ -2200,7 +2202,7 @@ class psbtObject(psbtProxy):
                               "Deception regarding change output. "
                               "BIP-32 path doesn't match actual address.")
 
-                    if len(sps) == 1:
+                    if lp == 1:
                         # only single sig
                         OWNERSHIP.note_subpath_used(subpath)
 
