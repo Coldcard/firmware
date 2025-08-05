@@ -19,6 +19,7 @@ from ubinascii import hexlify as b2a_hex
 import ustruct as struct
 import ngu
 from opcodes import *
+from public_constants import AF_P2WPKH, AF_P2TR, AF_P2SH, AF_P2WSH, AF_CLASSIC
 
 # single-shot hash functions
 sha256 = ngu.hash.sha256s
@@ -363,19 +364,19 @@ class CTxOut(object):
         #    (addr_type_code, pubkey/pubkeyhash/scripthash)
         # 'addr' is byte string, either 20 or 32 long
         if self.is_p2tr():
-            return 'p2tr', self.scriptPubKey[2:2+32]
+            return AF_P2TR, self.scriptPubKey[2:2+32]
 
         if self.is_p2wpkh():
-            return 'p2wpkh', self.scriptPubKey[2:2+20]
+            return AF_P2WPKH, self.scriptPubKey[2:2+20]
 
         if self.is_p2wsh():
-            return 'p2wsh', self.scriptPubKey[2:2+32]
+            return AF_P2WSH, self.scriptPubKey[2:2+32]
 
         if self.is_p2pkh():
-            return 'p2pkh', self.scriptPubKey[3:3+20]
+            return AF_CLASSIC, self.scriptPubKey[3:3+20]
 
         if self.is_p2sh():
-            return 'p2sh', self.scriptPubKey[2:2+20]
+            return AF_P2SH, self.scriptPubKey[2:2+20]
 
         if self.is_p2pk():
             # rare, pay to full pubkey

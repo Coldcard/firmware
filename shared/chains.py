@@ -7,7 +7,7 @@ from uhashlib import sha256
 from ubinascii import hexlify as b2a_hex
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2TR
 from public_constants import AF_P2SH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH
-from public_constants import AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32, AFC_SCRIPT
+from public_constants import AFC_PUBKEY, AFC_BECH32, AFC_SCRIPT
 from public_constants import TAPROOT_LEAF_TAPSCRIPT, TAPROOT_LEAF_MASK
 from serializations import hash160, ser_compact_size, disassemble, ser_string
 from ucollections import namedtuple
