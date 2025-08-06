@@ -1188,7 +1188,7 @@ def test_storage_locker(package, count, start_hsm, dev):
 def test_usb_cmds_block(quick_start_hsm, dev):
     # check these commands return errors (test whitelist)
     block_list = [
-        'rebo', 'dfu_', 'enrl', 'enok',
+        'rebo', 'dfu_', 'enrl', 'enok', 'rest',
         'back', 'pass', 'bagi', 'hsms', 'nwur', 'rmur', 'pwok', 'bkok',
     ]
 
@@ -1196,8 +1196,8 @@ def test_usb_cmds_block(quick_start_hsm, dev):
 
     for cmd in block_list:
         with pytest.raises(CCProtoError) as ee:
-            got = dev.send_recv(cmd)
-        assert 'HSM' in str(ee)
+            dev.send_recv(cmd)
+        assert 'Not allowed in HSM mode' in str(ee)
 
 def test_unit_local_conf(sim_exec, enter_local_code, quick_start_hsm):
     # just testing our fixture really

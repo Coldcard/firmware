@@ -22,6 +22,7 @@ Spending policies for "Single Signers" adds new spending policy options:
 - Enhancement: Show QR codes of output addresses in transaction output explorer. Explorer is
   now offered for transactions of all sizes, not just complex ones.
 - Enhancement: Added file rename, when listing contents of SD card.
+- Enhancement: Added ability to restore Coldcard backup via USB (TODO version of updated ckcc)
 - Bugfix: If all change outputs have `nValue=0`, they were not shown in UX.
 - Bugfix: Disallow negative input/output amounts in PSBT.
 - Bugfix: Fix filesystem initialization after Wife LFS or Destroy Seed.

@@ -93,10 +93,7 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
         # st -> seed type
         # ct -> cleartext backup
         if reuse_pw:
-            if isinstance(reuse_pw, list):
-                assert len(reuse_pw) == 12
-            else:
-                assert reuse_pw is True  # default
+            if reuse_pw is True:
                 reuse_pw = ['zoo' for _ in range(12)]
 
             settings_set('bkpw', ' '.join(reuse_pw))
@@ -129,15 +126,19 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
 
             need_keypress("6")
             time.sleep(.1)
-            _, story = cap_story()
-            assert "Are you SURE ?!?" in story
+            title, story = cap_story()
+            assert "Are you SURE ?!?" in (title if is_q1 else story)
             assert "**NOT** be encrypted" in story
             press_select()
             return  # nothing more to be done
 
         if reuse_pw:
-            assert (' 1: %s' % reuse_pw[0]) in body
-            assert ('12: %s' % reuse_pw[-1]) in body
+            if len(reuse_pw) == 1:
+                reuse_pw = reuse_pw[0]
+                assert f"{reuse_pw[0]}...{reuse_pw[-1]}" in body
+            else:
+                assert (' 1: %s' % reuse_pw[0]) in body
+                assert ('12: %s' % reuse_pw[-1]) in body
             press_select()
             words = ['zoo'] * 12
         else:
@@ -640,5 +641,80 @@ def test_bkpw_override(reset_seed_words, override_bkpw, goto_home, pick_menu_ite
 
     for pw, fn in zip(test_cases, fnames):
         restore_backup_cs(fn, pw, custom_bkpw=True)
+
+
+@pytest.mark.parametrize('btype', ["classic", "custom_bkpw", "plaintext"])
+@pytest.mark.parametrize('force_tmp', [True, False])
+def test_restore_usb_backup(backup_system, set_seed_words, cap_story, verify_ephemeral_secret_ui,
+                            settings_slots, reset_seed_words, word_menu_entry, confirm_tmp_seed,
+                            dev, microsd_path, press_select, btype, enter_text, force_tmp,
+                            unit_test, restore_main_seed, cap_menu):
+
+    from test_ephemeral import SEEDVAULT_TEST_DATA
+    xfp_str, encoded_str, mnemonic = SEEDVAULT_TEST_DATA[2]
+    set_seed_words(mnemonic)
+    bkpw = 34*"Z"
+    plaintext = (btype == "plaintext")
+    password = False
+
+    # ACTUAL BACKUP
+    if plaintext:
+        bk_pw = backup_system(ct=True)
+    elif btype == "custom_bkpw":
+        # encrypted but with custom pwd
+        password = True
+        bk_pw = backup_system(reuse_pw=[bkpw])
+    else:
+        # classic word-based encrypted backup
+        bk_pw = backup_system()
+
+    time.sleep(.1)
+    title, story = cap_story()
+    fname = story.split("\n\n")[1]
+
+    # remove all saved slots, one of them will be the one where we just created backup
+    # slot where backup was created needs to be removed - otherwise we will load back to it
+    # and see multisig wallet there without the need for backup to actually copy it
+    for s in settings_slots():
+        try:
+            os.remove(s)
+        except: pass
+
+    # clear seed
+    unit_test('devtest/clear_seed.py')
+
+    from ckcc_protocol.protocol import CCProtocolPacker
+    with open(microsd_path(fname), "rb") as f:
+        file_len, sha = dev.upload_file(f.read())
+
+    dev.send_recv(CCProtocolPacker.restore_backup(file_len, sha, password, plaintext, force_tmp),
+                  timeout=None)
+    time.sleep(.2)
+    _, story = cap_story()
+    assert f"Restore uploaded backup as a {'temporary' if force_tmp else 'master'} seed" in story
+    press_select()
+
+    time.sleep(.1)
+    if btype == "classic":
+        word_menu_entry(bk_pw, has_checksum=False)
+    elif password:
+        enter_text(bkpw)
+
+    time.sleep(.2)
+    mnemonic = mnemonic.split(" ")
+
+    if force_tmp:
+        confirm_tmp_seed(seedvault=False)
+        verify_ephemeral_secret_ui(mnemonic=mnemonic, xpub=None, seed_vault=False)
+        restore_main_seed()
+        time.sleep(.1)
+        assert "New Seed Words" in cap_menu()
+    else:
+        _, story = cap_story()
+        assert "configured for best security practices" in story
+        press_select()
+        time.sleep(.1)
+        _, story = cap_story()
+        assert "now reboot" in story
 
 # EOF

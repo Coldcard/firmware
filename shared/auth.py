@@ -11,7 +11,7 @@ from uhashlib import sha256
 from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, SUPPORTED_ADDR_FORMATS, AF_P2TR
 from public_constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
-from ux import ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
+from ux import ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys, ux_confirm
 from ux import show_qr_code, OK, X, abort_and_push, AbortInteraction
 from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A, show_single_address
@@ -1142,6 +1142,51 @@ class RemoteBackup(UserAuthorizedAction):
             self.done()
 
 
+class RemoteRestoreBackup(UserAuthorizedAction):
+    def __init__(self, file_len, bitflag):
+        super().__init__()
+        self.file_len = file_len
+        self.custom_pwd = bitflag & 1
+        self.plaintext = bitflag & 2
+        self.force_tmp = bitflag & 4
+
+    def to_words(self):
+        # conversion to "words" argument of "restore_complete" function
+        if self.plaintext:
+            return None
+        elif self.custom_pwd:
+            return False
+        return True
+
+    def to_tmp(self):
+        # conversion to "temporary" argument of "restore_complete" function
+        from pincodes import pa
+        if pa.is_secret_blank() and not self.force_tmp:
+            # no master secret & not forcing tmp
+            # will load backup as master seed
+            return False, "master"
+
+        # has master secret --> load backup as tmp
+        # secret is blank but user forcing tmp
+        return True, "temporary"
+
+    async def interact(self):
+        try:
+            # requires confirm from user
+            tmp, noun = self.to_tmp()
+            if await ux_confirm("Restore uploaded backup as a %s seed?" % noun):
+                from backups import restore_complete
+                await restore_complete(self.file_len, tmp, self.to_words())
+            else:
+                self.refused = True
+
+        except BaseException as exc:
+            self.failed = "Error during backup restore."
+            # sys.print_exception(exc)
+        finally:
+            self.done()
+
+
 def start_remote_backup():
     # tell the local user the secret words, and then save to SPI flash
     # USB caller has to come back and download encrypted contents.
@@ -1149,6 +1194,12 @@ def start_remote_backup():
     UserAuthorizedAction.cleanup()
     UserAuthorizedAction.active_request = RemoteBackup()
 
+    # kill any menu stack, and put our thing at the top
+    abort_and_goto(UserAuthorizedAction.active_request)
+
+def start_remote_restore_backup(file_len, bitflag):
+    UserAuthorizedAction.cleanup()
+    UserAuthorizedAction.active_request = RemoteRestoreBackup(file_len, bitflag)
     # kill any menu stack, and put our thing at the top
     abort_and_goto(UserAuthorizedAction.active_request)
 
