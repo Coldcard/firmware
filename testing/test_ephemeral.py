@@ -1409,6 +1409,66 @@ def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_se
     else:
         restore_main_seed(False)
 
+@pytest.mark.parametrize('btype', ["classic", "custom_bkpw", "plaintext"])
+def test_temporary_from_backup_usb(backup_system, set_seed_words, cap_story, verify_ephemeral_secret_ui,
+                                   settings_slots, reset_seed_words, word_menu_entry, confirm_tmp_seed,
+                                   dev, microsd_path, press_select, btype,
+                                   enter_text):
+
+    xfp_str, encoded_str, mnemonic = SEEDVAULT_TEST_DATA[0]
+    set_seed_words(mnemonic)
+    bkpw = 32*"X"
+    plaintext = (btype == "plaintext")
+    password = False
+
+    # ACTUAL BACKUP
+    if plaintext:
+        bk_pw = backup_system(ct=True)
+    elif btype == "custom_bkpw":
+        # encrypted but with custom pwd
+        password = True
+        bk_pw = backup_system(reuse_pw=[bkpw])
+    else:
+        # classic word-based encrypted backup
+        bk_pw = backup_system()
+
+    time.sleep(.1)
+    title, story = cap_story()
+    fname = story.split("\n\n")[1]
+
+    # remove all saved slots, one of them will be the one where we just created backup
+    # slot where backup was created needs to be removed - otherwise we will load back to it
+    # and see multisig wallet there without the need for backup to actually copy it
+    for s in settings_slots():
+        try:
+            os.remove(s)
+        except: pass
+
+    # restore fixed simulator
+    reset_seed_words()
+
+    from ckcc_protocol.protocol import CCProtocolPacker
+    with open(microsd_path(fname), "rb") as f:
+        file_len, sha = dev.upload_file(f.read())
+
+    dev.send_recv(CCProtocolPacker.restore_backup(file_len, sha, password, plaintext), timeout=None)
+    time.sleep(.2)
+    _, story = cap_story()
+    assert "Restore uploaded backup as a temporary seed" in story
+    press_select()
+
+    time.sleep(.1)
+    if btype == "classic":
+        word_menu_entry(bk_pw, has_checksum=False)
+    elif password:
+        enter_text(bkpw)
+
+    time.sleep(.1)
+    confirm_tmp_seed(seedvault=False)
+    time.sleep(.1)
+    mnemonic = mnemonic.split(" ")
+    verify_ephemeral_secret_ui(mnemonic=mnemonic, xpub=None, seed_vault=False)
+
 
 def test_tmp_upgrade_disabled(reset_seed_words, pick_menu_item, cap_story,
                               cap_menu, goto_home, unit_test,

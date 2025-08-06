@@ -4,8 +4,7 @@
 #
 # Unattended signing of transactions and messages, subject to a set of rules.
 #
-import stash, ustruct, chains, sys, gc, uio, ujson, uos, utime, ckcc, ngu, version
-from sffile import SFFile
+import ustruct, chains, sys, gc, uio, ujson, uos, utime, ckcc, ngu
 from utils import problem_file_line, cleanup_deriv_path, match_deriv_path
 from utils import cleanup_payment_address
 from pincodes import AE_LONG_SECRET_LEN

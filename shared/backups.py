@@ -6,9 +6,10 @@ import compat7z, stash, ckcc, chains, gc, sys, bip39, uos, ngu
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from utils import deserialize_secret
+from sffile import SFFile
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, OK, X, ux_input_text
 import version, ujson
-from uio import StringIO
+from uio import StringIO, BytesIO
 import seed
 from glob import settings
 from pincodes import pa
@@ -457,8 +458,6 @@ async def write_complete_backup(pwd, fname_pattern, write_sflash=False,
 
     if write_sflash:
         # for use over USB and unit testing: commit file into PSRAM
-        from sffile import SFFile
-
         with SFFile(0, max_size=MAX_BACKUP_FILE_SIZE, message='Saving...') as fd:
             if zz:
                 fd.write(hdr)
@@ -588,62 +587,86 @@ async def restore_complete(fname_or_fd, temporary=False, words=True):
 
         await done(pwd)
 
+
+def check_and_decrypt(fd, password):
+    try:
+        compat7z.check_file_headers(fd)
+    except Exception as e:
+        raise RuntimeError('Unable to read backup file.'
+                           ' Has it been touched?\n\nError: '+str(e))
+
+    from glob import dis
+    dis.fullscreen("Decrypting...")
+    try:
+        zz = compat7z.Builder()
+        fname, contents = zz.read_file(fd, password, MAX_BACKUP_FILE_SIZE,
+                                       progress_fcn=dis.progress_bar_show)
+
+        # simple quick sanity checks
+        assert fname.endswith('.txt')  # was == 'ckcc-backup.txt'
+        assert contents[0:1] == b'#' and contents[-1:] == b'\n'
+        return contents
+
+    except Exception as e:
+        # assume everything here is "password wrong" errors
+        raise RuntimeError('Unable to decrypt backup file. Incorrect password?'
+                           '\n\nTried:\n\n' + password)
+
+
 async def restore_complete_doit(fname_or_fd, words, file_cleanup=None, temporary=False):
     # Open file, read it, maybe decrypt it; return string if any error
     # - some errors will be shown, None return in that case
     # - no return if successful (due to reboot)
-    from glob import dis
     from files import CardSlot, CardMissingError, needs_microsd
 
     # build password
     password = ' '.join(words)
     prob = None
 
-    try:
-        with CardSlot(readonly=True) as card:
-            # filename already picked, taste it and maybe consider using its data.
-            try:
-                fd = open(fname_or_fd, 'rb') if isinstance(fname_or_fd, str) else fname_or_fd
-            except:
-                return 'Unable to open backup file.\n\n' + str(fname_or_fd)
+    if isinstance(fname_or_fd, int):
+        # USB restore - backup is already in PSRAM, fname of fd is length
+        # TXN_INPUT_OFFSET = 0
+        with SFFile(0, length=fname_or_fd) as fd:
+            if not words:
+                contents = fd.read(fname_or_fd)
+            else:
+                # read full size, then decrypt
+                fd = BytesIO(fd.read(fname_or_fd))
+                try:
+                    contents = check_and_decrypt(fd, password)
+                except RuntimeError as e:
+                    return str(e)
+    else:
+        try:
+            with CardSlot(readonly=True) as card:
+                # filename already picked, taste it and maybe consider using its data.
+                try:
+                    fd = open(fname_or_fd, 'rb')
+                except:
+                    return 'Unable to open backup file.\n\n' + str(fname_or_fd)
 
-            try:
-                if not words:
-                    contents = fd.read()
-                else:
-                    try:
-                        compat7z.check_file_headers(fd)
-                    except Exception as e:
-                        return 'Unable to read backup file. Has it been touched?\n\nError: ' \
-                                            + str(e)
+                try:
+                    if words:
+                        contents = check_and_decrypt(fd, password)
+                    else:
+                        contents = fd.read()
 
-                    dis.fullscreen("Decrypting...")
-                    try:
-                        zz = compat7z.Builder()
-                        fname, contents = zz.read_file(fd, password, MAX_BACKUP_FILE_SIZE,
-                                                progress_fcn=dis.progress_bar_show)
-
-                        # simple quick sanity checks
-                        assert fname.endswith('.txt')       # was == 'ckcc-backup.txt'
-                        assert contents[0:1] == b'#' and contents[-1:] == b'\n'
-
-                    except Exception as e:
-                        # assume everything here is "password wrong" errors
-                        #print("pw wrong?  %s" % e)
-
-                        return ('Unable to decrypt backup file. Incorrect password?'
-                                                '\n\nTried:\n\n' + password)
-            finally:
-                fd.close()
+                except RuntimeError as e:
+                    return str(e)
+                finally:
+                    fd.close()
 
                 if file_cleanup:
                     file_cleanup(fname_or_fd)
 
-    except CardMissingError:
-        await needs_microsd()
-        return
+        except CardMissingError:
+            await needs_microsd()
+            return
 
-    vals = text_bk_parser(contents)
+    try:
+        vals = text_bk_parser(contents)
+    except:
+        return "Invalid backup file."
 
     # this leads to reboot if it works, else errors shown, etc.
     if temporary:

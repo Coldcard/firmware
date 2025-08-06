@@ -564,7 +564,6 @@ class USBHandler:
                 # STILL waiting on user
                 return None
 
-
             if cmd == 'pwok':
                 # return new root xpub
                 xpub = req.result
@@ -598,6 +597,15 @@ class USBHandler:
             # start backup: asks user, takes long time.
             from auth import start_remote_backup
             return start_remote_backup()
+
+        if cmd == 'rest':
+            # restore backup from what is already uploaded in PSRAM
+            file_len, file_sha, bf = unpack_from('<I32sB', args)
+            if file_sha != self.file_checksum.digest():
+                return b'err_Checksum'
+
+            from auth import start_remote_restore_backup
+            return start_remote_restore_backup(file_len, bf)
 
         if cmd == 'blkc':
             # report which blockchain we are configured for
