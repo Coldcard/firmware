@@ -3,7 +3,6 @@
 # pincodes.py - manage PIN code (which map to wallet seeds)
 #
 import ustruct, ckcc, version, chains, stash
-# from ubinascii import hexlify as b2a_hex
 from callgate import enter_dfu
 from bip39 import wordlist_en
 
@@ -127,6 +126,9 @@ class PinAttempt:
         self.private_state = 0          # opaque data, but preserve
         self.cached_main_pin = bytearray(32)
 
+        # If set, a spending policy is in effect, and so even tho we know the master
+        # seed, we are not going to let them see it, nor sign things we dont like, etc.
+        self.hobbled_mode = False
 
         assert MAX_PIN_LEN == 32        # update FMT otherwise
         assert ustruct.calcsize(PIN_ATTEMPT_FMT_V1) == PIN_ATTEMPT_SIZE_V1
@@ -339,10 +341,6 @@ class PinAttempt:
 
         return self.state_flags
 
-    def delay(self):
-        # obsolete since Mk3, but called from login.py
-        self.roundtrip(1)
-
     def login(self):
         # test we have the PIN code right, and unlock access if so.
         chk = self.roundtrip(2)
@@ -532,6 +530,7 @@ class PinAttempt:
         # (mk4 only) are we operating w/ a slightly wrong PIN code?
         from trick_pins import TC_DELTA_MODE
         return bool(self.delay_required & TC_DELTA_MODE)
+
 
     def get_tc_values(self):
         # Mk4 only

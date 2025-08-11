@@ -486,7 +486,6 @@ def test_tmp_on_xprv_master(generate_ephemeral_words, cap_menu, go_to_passphrase
     time.sleep(.1)
     title, story = cap_story()
 
-
     assert parent_fp in title  # no choice story
     assert "current active temporary seed" in story
     press_select()

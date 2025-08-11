@@ -1726,6 +1726,7 @@ ae_read_config_byte(int offset)
 	uint8_t tmp[4];
 
     ae_read_config_word(offset, tmp);
+    // BUG: didnt check for failure, in which case we will return un-inited values
 
 	return tmp[offset % 4];
 }

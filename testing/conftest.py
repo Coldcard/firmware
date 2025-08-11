@@ -1836,6 +1836,16 @@ def nfc_block4rf(sim_eval):
     return doit
 
 @pytest.fixture
+def nfc_is_enabled(sim_eval):
+    # NFC is disabled by default in real product, and simulator w/o args
+    # - but some tests don't need to fail if it's off
+    # - or maybe your test can use some other method when it's off
+    # - use this to see if disabled at present and choose the right path
+    def doit():
+        return eval(sim_eval('bool(glob.NFC)'))
+    return doit
+
+@pytest.fixture
 def load_shared_mod():
     # load indicated file.py as a module
     # from <https://stackoverflow.com/questions/67631/how-to-import-a-module-given-the-full-path>
@@ -2658,11 +2668,33 @@ def build_test_seed_vault():
         return sv
     return doit
 
+@pytest.fixture
+def get_deltamode(sim_exec):
+    # get current "deltamode" status: T or F
+    def doit():
+        return eval(sim_exec('RV.write(repr(pa.is_deltamode()))'))
+    return doit
+
+@pytest.fixture
+def set_deltamode(sim_exec):
+    # control current "deltamode" status: T or F
+    def doit(val):
+        # TC_DELTA_MODE   = const(0x0400)
+        if val:
+            sim_exec('pa.delay_required |= 0x400')
+        else:
+            sim_exec('pa.delay_required &= ~0x400')
+        
+    yield doit
+
+    doit(False)
+
 
 # useful fixtures
 from test_backup import backup_system
 from test_bbqr import readback_bbqr, render_bbqr, readback_bbqr_ll, try_sign_bbqr, split_scan_bbqr
 from test_bip39pw import set_bip39_pw
+from test_ccc import get_last_violation
 from test_drv_entro import derive_bip85_secret, activate_bip85_ephemeral
 from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto_eph_seed_menu
 from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed, confirm_tmp_seed

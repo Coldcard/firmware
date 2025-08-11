@@ -319,7 +319,7 @@ Press (6) to prove you read to the end of this message.''', title='WARNING', esc
         if ch == '6': break
 
     # do the actual picking
-    pin = await lll.get_new_pin(title)
+    pin = await lll.get_new_pin()
     del lll
 
     if pin is None: return
@@ -573,8 +573,11 @@ async def clear_seed(*a):
     # This is super dangerous for the customer's money.
     import seed
 
-    if await any_active_duress_ux():
-        return await ux_aborted()
+    # in hobble mode, they cannot reach duress wallets and/or maybe we don't
+    # want to reveal them? So don't block them based on that.
+    if not pa.hobbled_mode:
+        if await any_active_duress_ux():
+            return await ux_aborted()
 
     if not await ux_confirm('Wipe seed words and reset wallet. '
                             'All funds will be lost. '
@@ -587,7 +590,7 @@ async def clear_seed(*a):
     if not await ux_confirm('''Are you REALLY sure though???\n\n\
 This action will certainly cause you to lose all funds associated with this wallet, \
 unless you have a backup of the seed words and know how to import them into a \
-new wallet.''', confirm_key='4'):
+new wallet.''', 'AGAIN...', confirm_key='4'):
         return await ux_aborted()
 
     # clear all trick PINs from SE2
@@ -800,26 +803,37 @@ async def start_login_sequence():
 
     # If that didn't work, or no skip defined, force
     # them to login successfully.
-
+    sp_unlock = False
     try:
+        from trick_pins import tp
+
         # Get a PIN and try to use it to login
         # - does warnings about attempt usage counts
         await block_until_login()
 
+        sp_unlock = tp.was_sp_unlock()
+        if sp_unlock:
+            # Trying to unlock spending policy: ask for main PIN next.
+            await ux_show_story("Spending Policy Unlock: Please provide Main PIN next.")
+            pa.reset()
+            await block_until_login()
+
+            # we don't really know if that was the Main PIN (could easily be the bypass
+            # PIN again) and if it's a duress wallet, that's cool...
+
         # Do we need to do countdown delay? (real or otherwise)
-        # Q/Mk4 approach:
-        # - wiping has already occured if that was picked
+        # - wiping has already occured if that was selected by trick details
         # - delay is variable, stored in tc_arg
-        from trick_pins import tp
         delay = tp.was_countdown_pin()
 
-        # Maybe they do know the right PIN, but do a delay anyway, because they wanted that
+        # Maybe they do know the right PIN, but always do a delay anyway, because they wanted that
         if not delay:
             delay = settings.get('lgto', 0)
 
         if delay:
             # kill some time, with countdown, and get "the" PIN again for real login
             pa.reset()
+
             await ux_login_countdown(delay * (60 if not version.is_devmode else 1))
 
             # keep it simple for Mk4+: just challenge again for any PIN
@@ -847,14 +861,32 @@ async def start_login_sequence():
     # handle upgrades/downgrade issues
     try:
         await version_migration()
-    except:
-        pass
+    except: pass
 
     # Maybe insist on the "right" microSD being already installed?
     try:
         from pwsave import MicroSD2FA
         MicroSD2FA.enforce_policy()
-    except: pass  # robustness: keep going!
+    except: pass
+
+    # apply the hobbling for the spending policy, if appropriate
+    try:
+        from ccc import sssp_spending_policy, sssp_word_challenge
+
+        if sp_unlock and sssp_spending_policy('words'):
+            # challenge them also for first and last seed word! (will reboot on fail)
+            await sssp_word_challenge()
+            dis.fullscreen("Startup...")
+
+        if sp_unlock:
+            # Disable spending policy going forward; user has to re-enable.
+            pa.hobbled_mode = False
+            sssp_spending_policy('en', change=False)
+        else:
+            # normal entry mode, but might have policy enabled, if so enable it now.
+            pa.hobbled_mode = sssp_spending_policy('en')
+
+    except: pass
 
     # implement idle timeout now that we are logged-in
     IMPT.start_task('idle', idle_logout())
@@ -950,7 +982,7 @@ async def restore_main_secret(*a):
     goto_top_menu()
 
 def make_top_menu():
-    from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu
+    from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu, HobbledTopMenu
     from glob import hsm_active, settings
     from pincodes import pa
 
@@ -966,7 +998,9 @@ def make_top_menu():
         assert pa.is_successful(), "nonblank but wrong pin"
 
         if pa.has_secrets():
-            _cls = NormalSystem[:]
+            # let them do a few things, but not all the things, when "hobbled"
+            _cls = HobbledTopMenu[:] if pa.hobbled_mode else NormalSystem[:]
+
             if pa.tmp_value or settings.get("hmx", False):
                 active_xfp = settings.get("xfp", 0)
                 sl, sr = ("[", "]") if pa.tmp_value else ("<", ">")
@@ -2023,7 +2057,7 @@ Write it down.'''
     while 1:
         lll.reset()
         lll.subtitle = "New " + title
-        pin = await lll.get_new_pin(title)
+        pin = await lll.get_new_pin()
 
         if pin is None:
             return await ux_aborted()

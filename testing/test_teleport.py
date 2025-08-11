@@ -15,6 +15,7 @@ from constants import *
 from test_ephemeral import SEEDVAULT_TEST_DATA
 from test_backup import make_big_notes
 from ckcc.protocol import CCProtocolPacker
+from test_hobble import set_hobble
 
 # All tests in this file are exclusively meant for Q
 #
@@ -135,7 +136,7 @@ def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr,
             if 'Teleport Password' in scr: break
             time.sleep(.2)
         else:
-            assert False, "Teleport Password not in screen"
+            raise RuntimeError("Teleport Password not in screen")
 
         if expect_xfp:
             assert xfp2str(expect_xfp) in scr
@@ -419,26 +420,32 @@ def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_ite
     press_cancel()
 
 @pytest.mark.unfinalized
-@pytest.mark.parametrize('M', [2, 4])
-def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, dev, clear_miniscript, settings_set,
-                          fake_ms_txn, try_sign, bitcoind, cap_story, need_keypress,
+@pytest.mark.parametrize('num_ins', [ 15 ])
+@pytest.mark.parametrize('M', [4])
+@pytest.mark.parametrize('segwit', [True])
+@pytest.mark.parametrize('incl_xpubs', [ False ])
+@pytest.mark.parametrize('hobbled', [ False, True ])
+def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, dev, clear_miniscript,
+                          fake_ms_txn, try_sign, incl_xpubs, bitcoind, cap_story, need_keypress,
                           cap_menu, pick_menu_item, grab_payload, rx_complete, press_select,
-                          ndef_parse_txn_psbt, press_nfc, nfc_read, settings_get,
-                          txid_from_export_prompt, sim_root_dir):
+                          ndef_parse_txn_psbt, press_nfc, nfc_read, settings_get, settings_set,
+                          txid_from_export_prompt, sim_root_dir,
+                          set_hobble, hobbled, readback_bbqr, nfc_is_enabled):
 
     # IMPORTANT: won't work if you start simulator with --ms flag. Use no args
     num_outs = 4
     af = "p2wsh"
 
+    set_hobble(hobbled)
     clear_miniscript()
     use_regtest()
 
     # create a wallet, with 3 bip39 pw's
-    keys, select_wallet = make_myself_wallet(M, do_import=True, addr_fmt=af)
+    keys, select_wallet = make_myself_wallet(M, do_import=(not incl_xpubs), addr_fmt=af)
     N = len(keys)
     assert M<=N
 
-    psbt = fake_ms_txn(15, num_outs, M, keys, inp_addr_fmt=af,
+    psbt = fake_ms_txn(15, num_outs, M, keys, inp_addr_fmt=af, incl_xpubs=incl_xpubs,
                        outstyles=["p2sh-p2wsh", af, af, af],
                        change_outputs=list(range(1,num_outs)))
 
@@ -448,7 +455,7 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, dev, clear_miniscr
     cur_wallet = 0
     my_xfp = select_wallet(cur_wallet)
 
-    _, updated = try_sign(psbt, accept_ms_import=False, exit_export_loop=False)
+    _, updated = try_sign(psbt, accept_ms_import=incl_xpubs, exit_export_loop=False)
     with open(f'{sim_root_dir}/debug/myself-after-1.psbt', 'wb') as f:
         f.write(updated)
     assert updated != psbt
@@ -498,6 +505,9 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, dev, clear_miniscr
         time.sleep(.1)
         title, story = cap_story()
         assert title == 'Sent by Teleport'
+        s, aux = ("", "is") if num_sigs_needed == 1 else ("s", "are")
+        msg = "%d more signature%s %s still required." % (num_sigs_needed, s, aux)
+        assert msg in story
 
         # switch personalities, and try to read that QR
         new_xfp = select_wallet(idx)
@@ -524,12 +534,19 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, dev, clear_miniscr
     txid = txid_from_export_prompt()
     press_select()  # exit QR
     
-    # share signed txn via low-level NFC
-    press_nfc()
-    time.sleep(.1)
-    contents = nfc_read()
+    if nfc_is_enabled():
+        # share signed txn via low-level NFC
+        press_nfc()
+        time.sleep(.1)
+        contents = nfc_read()
 
-    got_psbt, got_txn, _ = ndef_parse_txn_psbt(contents, txid, expect_finalized=True)
+        got_psbt, got_txn, _ = ndef_parse_txn_psbt(contents, txid, expect_finalized=True)
+    else:
+        # NFC disabled. use other means .. bbqr
+        need_keypress(KEY_QR)
+        tcode, contents = readback_bbqr()
+        got_txn = (tcode == 'T')
+        got_psbt = (tcode == 'P')
 
     assert not got_psbt
     assert got_txn
@@ -914,5 +931,27 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
         title, body = cap_story()
 
         assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
+
+def test_hobble_limited(set_hobble, scan_a_qr, cap_menu, cap_screen, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select, settings_get, settings_set, restore_backup_unpacked, main_do_over, set_encoded_secret, reset_seed_words, make_big_notes):
+    # verify: in hobbled mode, KT is blocked for everything except multisig cases
+
+    set_hobble(True)
+
+    from bbqr import split_qrs
+
+    _, parts = split_qrs(b's'*33, 'R')
+    rx_complete(parts[0], '12345678', expect_fail=True)
+    time.sleep(.1)
+    last = cap_screen().split('\n')[-1]
+    assert last == 'KT Blocked'
+
+    _, parts = split_qrs(b's'*33, 'S')
+    rx_complete(parts[0], 'abcdefgh', expect_fail=True)
+    time.sleep(.1)
+    last = cap_screen().split('\n')[-1]
+    assert last == 'KT Blocked'
+
+
+
 
 # EOF

@@ -15,30 +15,34 @@ class SecondSecureElement:
         self.wallet = None
         self.load()
 
-        if not self.state:
-            # reconstruct based on user-space understanding of SE2 content
-            # - can't work with duress wallet cases here (no data)
-            # - mostly here so sim_settings works w/ non-empty defaults
-            print("SIM SE2: found no state, trying to reconstruct")
-            from glob import settings
-            from trick_pins import TC_FAKE_OUT, TC_WORD_WALLET, TC_XPRV_WALLET
-            from trick_pins import TC_DELTA_MODE, make_slot, TRICK_SLOT_LAYOUT
+    def reconstruct(self, tp):
+        # reconstruct based on user-space understanding of SE2 content
+        # - can't work with duress wallet cases here (no data)
+        # - mostly here so sim_settings works w/ non-empty defaults
+        print("SIM SE2: found no state, trying to reconstruct")
+        from glob import settings
+        from trick_pins import TC_FAKE_OUT, TC_WORD_WALLET, TC_XPRV_WALLET
+        from trick_pins import TC_DELTA_MODE, make_slot, TRICK_SLOT_LAYOUT
 
-            for pin, (slot_num, tc_flags, tc_arg) in settings.get('tp', {}).items():
-                if (tc_flags & (TC_DELTA_MODE | TC_WORD_WALLET | TC_XPRV_WALLET)):
-                    print("cant do duress cases")
-                    continue
-                #assert not (tc_flags & (TC_DELTA_MODE | TC_WORD_WALLET | TC_XPRV_WALLET)), \
-                                    #'unhandled simulated case: 0x%x' % tc_flags
+        print(" .. tp = %r" % tp)
+        if not tp: return
 
-                b, s = make_slot()
-                s.pin_len = len(pin)
-                s.pin[:s.pin_len] = pin.encode()
-                s.tc_flags = tc_flags
-                s.tc_arg = tc_arg
-                s.slot_num = slot_num
+        for pin, (slot_num, tc_flags, tc_arg) in tp.items():
+            if (tc_flags & (TC_DELTA_MODE | TC_WORD_WALLET | TC_XPRV_WALLET)):
+                print("cant do duress cases")
+                continue
+            #assert not (tc_flags & (TC_DELTA_MODE | TC_WORD_WALLET | TC_XPRV_WALLET)), \
+                                #'unhandled simulated case: 0x%x' % tc_flags
 
-                self.state[slot_num] = bytes(b)
+            b, s = make_slot()
+            s.pin_len = len(pin)
+            s.pin[:s.pin_len] = pin.encode()
+            s.tc_flags = tc_flags
+            s.tc_arg = tc_arg
+            s.slot_num = slot_num
+
+            self.state[slot_num] = bytes(b)
+            print("slot[%d] <= flags=0x%x arg=0x%x" % (slot_num, tc_flags, tc_arg))
 
     # Storage: base64 encoded binary for all the slot numbers in a dict
 
@@ -64,16 +68,18 @@ class SecondSecureElement:
         # merging default values as they contain useful nfc,vidsk info
         dv = obj.default_values()
         obj.current.update(dv)
-        s = obj.get('_se2', None)
-        if not s:
-            print("no SE2 data")
-            return
+        s = obj.get('_se2', None) or []
 
         for record in s:
             b = a2b_base64(record)
             slot = uctypes.struct(uctypes.addressof(b), TRICK_SLOT_LAYOUT)
             self.state[slot.slot_num] = b
             print("SE2 slot %d is populated" % slot.slot_num)
+        else:
+            print("no SE2 data")
+
+        if not self.state:
+            self.reconstruct(obj.get('tp'))
 
     def callgate(self, buf_io, arg2):
         # ckcc.callgate(22, ...)
@@ -149,11 +155,12 @@ class SecondSecureElement:
         # similar to stm32/mk4-bootloader/se2.c se2_test_trick_pin(safety_mode=False)
         xs = self.get_by_pin(pin.encode(), num_fails)
         if not xs: 
+            self.wallet = None      # bugfix: normal login after trick login (SP unlock case)
             return None
 
-        print("PIN %s is a TRICK!" % pin)
         tc_flags = xs.tc_flags
         tc_arg = xs.tc_arg
+        print("PIN %s is a TRICK! flags=0x%x arg=%d" % (pin, tc_flags, tc_arg))
 
         from trick_pins import TC_WIPE, TC_BRICK, TC_REBOOT, TC_FAKE_OUT 
         from trick_pins import TC_WORD_WALLET, TC_XPRV_WALLET, TC_DELTA_MODE

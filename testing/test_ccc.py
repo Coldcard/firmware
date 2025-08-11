@@ -21,21 +21,18 @@ from psbt import BasicPSBT
 # pubkey for production server. 
 SERVER_PUBKEY = '0231301ec4acec08c1c7d0181f4ffb8be70d693acccc86cccb8f00bf2e00fcabfd'
 
-def py_ckcc_hashfp(output, x, y, data=None):
-    try:
-        m = hashlib.sha256()
-        m.update(x.contents.raw)
-        m.update(y.contents.raw)
-        output.contents.raw = m.digest()
-        return 1
-    except:
-        return 0
+@pytest.fixture
+def goto_ccc_menu(goto_home, pick_menu_item, is_mark4):
+    def doit():
+        goto_home()
+        pick_menu_item("Advanced/Tools")
+        pick_menu_item("Spending Policy")
+        pick_menu_item("Co-Sign Multi." if is_mark4 else "Co-Sign Multisig (CCC)")
 
-
-ckcc_hashfp = ECDH_HASHFP_CLS(py_ckcc_hashfp)
-
+    return doit
 
 def make_session_key(his_pubkey=None):
+
     # - second call: given the pubkey of far side, calculate the shared pt on curve
     # - creates session key based on that
     while True:
@@ -50,6 +47,19 @@ def make_session_key(his_pubkey=None):
     his_pubkey = ec_pubkey_parse(bytes.fromhex(SERVER_PUBKEY))
 
     # do the D-H thing
+
+    def _py_ckcc_hashfp(output, x, y, data=None):
+        try:
+            m = hashlib.sha256()
+            m.update(x.contents.raw)
+            m.update(y.contents.raw)
+            output.contents.raw = m.digest()
+            return 1
+        except:
+            return 0
+
+    ckcc_hashfp = ECDH_HASHFP_CLS(_py_ckcc_hashfp)
+
     shared_key = ecdh(my_seckey, his_pubkey, hashfp=ckcc_hashfp)
 
     return shared_key, ec_pubkey_serialize(my_pubkey)
@@ -168,24 +178,22 @@ def test_2fa_links(shared_secret, label_len, q_mode, roundtrip_2fa, sim_exec, re
     assert ans == f'CCC-AUTH:{nonce}'.upper() if q_mode else nonce
 
 @pytest.fixture
-def get_last_violation(sim_exec):
+def get_last_violation(settings_get):
     def doit():
-        return sim_exec('from ccc import CCCFeature; RV.write(CCCFeature.last_fail_reason)')
+        return settings_get('lfr')
     return doit
 
 _skip_quiz = False
 
 @pytest.fixture
-def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz, is_q1,
+def setup_ccc(goto_ccc_menu, pick_menu_item, cap_story, press_select, pass_word_quiz, is_q1,
               seed_story_to_words, cap_menu, OK, word_menu_entry, press_cancel, press_delete,
               enter_number, scan_a_qr, cap_screen, settings_get, need_keypress, microsd_path,
               master_settings_get):
 
     def doit(c_words=None, mag=None, vel=None, whitelist=None, w2fa=None, first_time=True):
         if first_time:
-            goto_home()
-            pick_menu_item("Advanced/Tools")
-            pick_menu_item("Coldcard Co-Signing")
+            goto_ccc_menu()
             time.sleep(.1)
             title, story = cap_story()
             assert title == ("Coldcard Co-Signing" if is_q1 else "CC Co-Sign")
@@ -242,7 +250,7 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
 
         m = cap_menu()
 
-        assert m[0] == f"CCC [{xfp}]"
+        assert f"[{xfp}]" in m[0]
         assert "Spending Policy" in m
         assert "Export CCC XPUBs" in m
         assert "Multisig Wallets" in m
@@ -274,6 +282,7 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
             assert f"{mag} {'BTC' if int(mag) < 1000 else 'SATS'}" in story
             press_select()
 
+            time.sleep(.1)
             assert settings_get("ccc")["pol"]["mag"] == mag
 
         if vel:
@@ -362,12 +371,10 @@ def setup_ccc(goto_home, pick_menu_item, cap_story, press_select, pass_word_quiz
     return doit
 
 @pytest.fixture
-def enter_enabled_ccc(goto_home, pick_menu_item, cap_story, press_select, is_q1,
+def enter_enabled_ccc(goto_ccc_menu, pick_menu_item, cap_story, press_select, is_q1,
                       word_menu_entry, cap_menu):
     def doit(c_words, seed_vault=False):
-        goto_home()
-        pick_menu_item("Advanced/Tools")
-        pick_menu_item("Coldcard Co-Signing")
+        goto_ccc_menu()
         time.sleep(.1)
         title, story = cap_story()
         if seed_vault:
@@ -578,13 +585,19 @@ def policy_sign(start_sign, end_sign, cap_story, get_last_violation):
         time.sleep(.1)
         title, story = cap_story()
         assert 'OK TO SEND?' == title
-        if violation:
+        if violation and num_warn:
+            # assume CCC cases
             assert ("(%d warning%s below)"% (num_warn, "s" if num_warn > 1 else "")) in story
             assert "CCC: Violates spending policy. Won't sign." in story
             assert get_last_violation().startswith(violation)
             if warn_list:
                 for w in warn_list:
                     assert w in story
+        elif violation and num_warn == 0:
+            # assume SSSP cases
+            assert 'warning' not in story
+            assert "Spending Policy violation." in story
+            assert ccc_disabled
         else:
             assert "warning" not in story
 
@@ -1172,8 +1185,8 @@ def test_remove_ccc(settings_set, setup_ccc, ccc_ms_setup, settings_get, policy_
 
 @pytest.mark.parametrize("has_candidates", [True, False])
 def test_c_key_from_seed_vault(has_candidates, setup_ccc, build_test_seed_vault, settings_set,
-                               goto_home, pick_menu_item, press_select, need_keypress, cap_menu,
-                               cap_story, press_cancel, enter_enabled_ccc):
+                               goto_ccc_menu, pick_menu_item, press_select, need_keypress, cap_menu,
+                               cap_story, press_cancel, enter_enabled_ccc, goto_home):
     goto_home()
     settings_set("ccc", None)
     settings_set("miniscript", [])
@@ -1186,9 +1199,7 @@ def test_c_key_from_seed_vault(has_candidates, setup_ccc, build_test_seed_vault,
 
     settings_set("seeds", sv)
 
-    goto_home()
-    pick_menu_item("Advanced/Tools")
-    pick_menu_item("Coldcard Co-Signing")
+    goto_ccc_menu()
     press_select()
 
     time.sleep(.1)

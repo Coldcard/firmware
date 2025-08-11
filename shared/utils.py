@@ -436,6 +436,8 @@ def clean_shutdown(style=0):
     # wipe SPI flash and shutdown (wiping main memory)
     # - mk4: SPI flash not used, but NFC may hold data (PSRAM cleared by bootrom)
     # - bootrom wipes every byte of SRAM, so no need to repeat here
+    # - style=2 => reboot and try login again
+    # - default is logout and (if applicable) power down.
     import callgate
 
     # save if anything pending

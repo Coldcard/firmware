@@ -221,10 +221,14 @@ def restore_main_seed(goto_home, pick_menu_item, cap_story, cap_menu,
 
 @pytest.fixture
 def confirm_tmp_seed(need_keypress, cap_story, press_select):
-    def doit(seedvault=False, expect_xfp=None):
+    def doit(seedvault=False, expect_xfp=None, check_sv_not_offered=False):
         
         time.sleep(0.3)
         title, story = cap_story()
+
+        if check_sv_not_offered:
+            assert "to store temporary seed into Seed Vault" not in story
+
         if "Press (1) to store temporary seed into Seed Vault" in story:
             if seedvault:
                 need_keypress("1")  # store it
@@ -332,7 +336,7 @@ def verify_ephemeral_secret_ui(cap_story, cap_menu, dev, fake_txn, goto_home,
 
             assert "Seed In Use" in m
             pick_menu_item("Seed In Use")  # noop
-        else:
+        elif seed_vault is False:
             # Seed Vault disabled
             m = cap_menu()
             assert "Seed Vault" not in m
@@ -1541,26 +1545,30 @@ def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_m
     pick_menu_item("Always Show")
     time.sleep(.3)
     m = cap_menu()
-    assert m[1] == "Ready To Sign"
     assert m[0] == "<" + xfp2str(settings_get("xfp")) + ">"
+    assert m[1] == "Ready To Sign"
+
     goto_eph_seed_menu()
     pick_menu_item("Generate Words")
     pick_menu_item(f"12 Words")
     time.sleep(0.1)
-    need_keypress("6")  # skip words
+    need_keypress("6")  # skip quiz
     press_select()
+
     time.sleep(.1)
     _, story = cap_story()
     if "Press (1) to store temporary seed" in story:
         # seed vault enabled
         press_select()  # do not save
     press_select()  # new tmp seed
+
     time.sleep(.2)
     m = cap_menu()
     assert m[1] == "Ready To Sign"
     assert m[0] == "[" + xfp2str(settings_get("xfp")) + "]"
     pick_menu_item("Restore Master")
     press_select()
+
     time.sleep(.3)
     m = cap_menu()
     assert m[1] == "Ready To Sign"
@@ -1568,11 +1576,13 @@ def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_m
     # disable now
     pick_menu_item("Settings")
     pick_menu_item("Home Menu XFP")
+
     time.sleep(.1)
     _, story = cap_story()
     if "Forces display of XFP" in story:
         press_select()
     pick_menu_item("Only Tmp")
+
     time.sleep(.3)
     m = cap_menu()
     assert m[0] == "Ready To Sign"

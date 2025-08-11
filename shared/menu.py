@@ -119,7 +119,7 @@ class ShortcutItem(MenuItem):
         super().__init__('SHORTCUT', shortcut=key, **kws)
 
 class NonDefaultMenuItem(MenuItem):
-    # Show a checkmark if setting is defined and not the default ... so know know it's set
+    # Show a checkmark if setting is defined and not the default
     def __init__(self, label, nvkey, prelogin=False, default_value=None, **kws):
         super().__init__(label, **kws)
         self.nvkey = nvkey
@@ -305,10 +305,6 @@ class MenuSystem:
             fcn = getattr(self.items[real_idx], 'is_chosen', None)
             if fcn and fcn():
                 checked = True
-
-            if not has_qwerty and checked and (len(msg) > 14):
-                # on mk4 every label longer than 14 will overlap with checkmark
-                checked = False
 
             if self.multi_selected is not None and (real_idx in self.multi_selected):
                 # ignore length constraint above, we need to visually show that

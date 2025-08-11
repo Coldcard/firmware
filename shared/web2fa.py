@@ -95,7 +95,7 @@ async def perform_web2fa(label, shared_secret):
     return False
     
 
-async def web2fa_enroll(label, ss=None):
+async def web2fa_enroll(ss=None):
     #
     # Enroll: Pick a secret and test they have loaded it into their phone.
     #
@@ -115,22 +115,21 @@ async def web2fa_enroll(label, ss=None):
     #  - can't fit any metadata, like username or our serial # in there
     # - better on Q1 where no limitations for this size of QR
 
-    qr = 'otpauth://totp/{nm}?secret={ss}'.format(ss=ss, 
-                nm=url_quote(label if has_qr else label[0:4]))
+    nm = 'COLDCARD' if has_qr else 'CC'     # must be url-safe
+    qr = 'otpauth://totp/{nm}?secret={ss}'.format(ss=ss, nm=nm)
 
     while 1:
         # show QR for enroll
         await show_qr_code(qr, is_alnum=False, msg="Import into 2FA Mobile App",
                            force_msg=True)
 
-        # important: force them to prove they store it correctly
-        ok = await perform_web2fa('Enroll: ' + label, ss)
+        # important: force them to prove they stored it correctly
+        ok = await perform_web2fa('Enroll: COLDCARD', ss)
         if ok: break
 
         ch = await ux_show_story("That isn't correct. Please re-import and/or "
                                  "try again or %s to give up." % X)
         if ch == 'x':
-            # mk4 only?
             return None
 
     return ss

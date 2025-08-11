@@ -270,7 +270,7 @@ suffix break point is correct.\n\n'''
         return await self.interact()
             
 
-    async def get_new_pin(self, title, story=None):
+    async def get_new_pin(self, title=None, story=None):
         # Do UX flow to get new (or change) PIN. Always does the double-entry thing
         self.is_setting = True
 

@@ -101,6 +101,7 @@ def render_backup_contents(bypass_tmp=False):
         if k == 'words': continue       # words length is recalculated from secret
         if k == 'ccc': continue         # not supported, security issue
         if k == 'ktrx': continue        # not useful after the fact
+        if k == 'lfr': continue         # temporary error msg value
         if k == 'seedvault' and not v: continue
         if k == 'seeds' and not v: continue
         ADD('setting.' + k, v)

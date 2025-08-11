@@ -272,17 +272,18 @@ class Display:
         if is_sel:
             self.dis.fill_rect(0, y, Display.WIDTH, h-1, 1)
             self.icon(2, y, 'wedge', invert=1)
-            self.text(x, y, msg, invert=1)
+            nx = self.text(x, y, msg, invert=1)
         else:
-            self.text(x, y, msg)
+            nx = self.text(x, y, msg)
 
         # LATER: removed because caused confusion w/ underscore
         #if msg[0] == ' ' and space_indicators:
             # see also graphics/mono/space.txt
             #self.icon(x-2, y+9, 'space', invert=is_sel)
 
-        if is_checked:
-            self.icon(108, y, 'selected', invert=is_sel)
+        if is_checked and nx <= 113:
+            # omit checkmark if it doesn't fit
+            self.icon(113, y, 'selected', invert=is_sel)
 
     def menu_show(self, *a):
         self.show()
