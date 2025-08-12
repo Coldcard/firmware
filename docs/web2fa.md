@@ -62,7 +62,7 @@ but we may find other uses for it.
 - multiplies that private key by server's known public key
 - apply sha256(resulting coordinate) => the session key
 - apply AES-256-CTR over URL contents (ascii text)
-- prepend 33 bytes of pubkey, and base64url encode all of it
+- prepend 33 bytes of pubkey, and then base64url encode all of it
 - full url is: `https://coldcard.com/2fa?{base64 encoded binary}`
 
 ## Trust Issues
