@@ -30,6 +30,7 @@
     Tapsigner Backup
     Seed XOR
   Migrate Coldcard
+  Key Teleport (start)
   Help
   Advanced/Tools
     View Identity
