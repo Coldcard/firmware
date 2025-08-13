@@ -606,7 +606,7 @@ class HSMPolicy:
             fd.write('- XPUB values will be shared, if path matches: m OR %s.\n' 
                                 % plist(self.share_xpubs))
         if self.share_addrs:
-            fd.write('- Address values values will be shared, if path matches: %s.\n' 
+            fd.write('- Address values will be shared, if path matches: %s.\n'
                                 % plist(self.share_addrs))
         if self.priv_over_ux:
             fd.write('- Status responses optimized for privacy.\n')

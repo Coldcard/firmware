@@ -170,10 +170,10 @@ def hsm_reset(dev, sim_exec):
     (DICT(msg_paths=["any"]), "(any path)"),
 
     # data sharing
-    (DICT(share_addrs=["m/1'/2p/3H"]), ['Address values values will be shared', "m/1h/2h/3h"]),
-    (DICT(share_addrs=["m/1", "m/2"]), ['Address values values will be shared', "m/1 OR m/2"]),
-    (DICT(share_addrs=["any"]), ['Address values values will be shared', "(any path)"]),
-    (DICT(share_addrs=["p2sh", "any"]), ['Address values values will be shared', "(any P2SH)", "(any path"]),
+    (DICT(share_addrs=["m/1'/2p/3H"]), ['Address values will be shared', "m/1h/2h/3h"]),
+    (DICT(share_addrs=["m/1", "m/2"]), ['Address values will be shared', "m/1 OR m/2"]),
+    (DICT(share_addrs=["any"]), ['Address values will be shared', "(any path)"]),
+    (DICT(share_addrs=["p2sh", "any"]), ['Address values will be shared', "(any P2SH)", "(any path"]),
 
     (DICT(share_xpubs=["m/1'/2p/3H"]), ['XPUB values will be shared', "m/1h/2h/3h"]),
     (DICT(share_xpubs=["m/1", "m/2"]), ['XPUB values will be shared', "m/1 OR m/2"]),
