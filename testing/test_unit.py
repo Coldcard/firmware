@@ -137,10 +137,6 @@ def test_slip132(unit_test):
     # slip132 ?pub stuff
     unit_test('devtest/unit_slip132.py')
 
-def test_multisig(unit_test):
-    # scripts/multisig unit tests
-    unit_test('devtest/unit_multisig.py')
-
 def test_decoding(unit_test):
     # utils.py Hex/Base64 streaming decoders
     unit_test('devtest/unit_decoding.py')

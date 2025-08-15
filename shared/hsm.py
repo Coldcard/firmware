@@ -349,7 +349,7 @@ class ApprovalRule:
                 # we are verifying the whole consensus-encoded txout
                 txo_bytes = CTxOut(txo.nValue, txo.scriptPubKey).serialize()
                 digest = chain.hash_message(txo_bytes)
-                addr_fmt, pubkey = chains.verify_recover_pubkey(o.attestation, digest)
+                addr_fmt, pubkey = chains.verify_recover_pubkey(psbt.get(o.attestation), digest)
                 # we have extracted a valid pubkey from the sig, but is it
                 # a whitelisted pubkey or something else?
                 ver_addr = chain.pubkey_to_address(pubkey, addr_fmt)
@@ -372,11 +372,11 @@ class ApprovalRule:
 
         # check the self-transfer percentage
         if self.min_pct_self_transfer:
-            own_in_value = sum([i.amount for i in psbt.inputs if i.num_our_keys])
+            own_in_value = sum([i.amount for i in psbt.inputs if i.sp_idxs])
             own_out_value = 0
             for idx, txo in psbt.output_iter():
                 o = psbt.outputs[idx]
-                if o.num_our_keys:
+                if o.sp_idxs:
                     own_out_value += txo.nValue
             percentage = (float(own_out_value) / own_in_value) * 100.0
             assert percentage >= self.min_pct_self_transfer, 'does not meet self transfer threshold, expected: %.2f, actual: %.2f' % (self.min_pct_self_transfer, percentage)
@@ -387,8 +387,8 @@ class ApprovalRule:
             assert len(psbt.inputs) == len(psbt.outputs), 'unequal number of inputs and outputs'
 
         if "EQ_NUM_OWN_INS_OUTS" in self.patterns:
-            own_ins = sum([1 for i in psbt.inputs if i.num_our_keys])
-            own_outs = sum([1 for o in psbt.outputs if o.num_our_keys])
+            own_ins = sum([1 for i in psbt.inputs if i.sp_idxs])
+            own_outs = sum([1 for o in psbt.outputs if o.sp_idxs])
             assert own_ins == own_outs, 'unequal number of own inputs and outputs'
 
         if "EQ_OUT_AMOUNTS" in self.patterns:
@@ -488,7 +488,7 @@ class HSMPolicy:
         # a list of paths we can accept for signing
         self.msg_paths = pop_deriv_list(j, 'msg_paths', ['any'])
         self.share_xpubs = pop_deriv_list(j, 'share_xpubs', ['any'])
-        self.share_addrs = pop_deriv_list(j, 'share_addrs', ['p2sh', 'any', 'msas'])
+        self.share_addrs = pop_deriv_list(j, 'share_addrs', ['any', 'msas'])
 
         # free text shown at top
         self.notes = pop_string(j, 'notes', 1, 80)
@@ -573,7 +573,7 @@ class HSMPolicy:
             fd.write('\n')
 
         def plist(pl):
-            remap = {'any': '(any path)', 'p2sh': '(any P2SH)' }
+            remap = {'any': '(any path)', 'msas': '(any miniscript)' }
             return ' OR '.join(remap.get(i, i) for i in pl)
 
         fd.write('\nMessage signing:\n')
@@ -603,7 +603,7 @@ class HSMPolicy:
             fd.write('- XPUB values will be shared, if path matches: m OR %s.\n' 
                                 % plist(self.share_xpubs))
         if self.share_addrs:
-            fd.write('- Address values values will be shared, if path matches: %s.\n' 
+            fd.write('- Address values will be shared, if path matches: %s.\n'
                                 % plist(self.share_addrs))
         if self.priv_over_ux:
             fd.write('- Status responses optimized for privacy.\n')

@@ -53,7 +53,7 @@ HSM_WHITELIST = frozenset({
     'blkc', 'hsts',             # report status values
     'stok', 'smok',             # completion check: sign txn or msg
     'xpub', 'msck',             # quick status checks
-    'p2sh', 'show', 'msas',     # limited by HSM policy
+    'show', 'msas',             # limited by HSM policy
     'user',                     # auth HSM user, other user cmds not allowed
     'gslr',                     # read storage locker; hsm mode only, limited usage
 })

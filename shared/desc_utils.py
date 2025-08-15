@@ -393,8 +393,8 @@ class Key:
         return cls.from_cc_data(vals["xfp"], vals["%s_deriv" % af_str], ek)
 
     @classmethod
-    def from_psbt_xpub(cls, pth, ek_bytes):
-        xfp, *path = ustruct.unpack_from('<%dI' % (len(pth)//4), pth, 0)
+    def from_psbt_xpub(cls, ek_bytes, xfp_path):
+        xfp, *path = xfp_path
         koi = KeyOriginInfo(a2b_hex(xfp2str(xfp)), path)
         # TODO this should be done by C code, no need to base58 encode/decode
         # byte-serialized key should be decodable

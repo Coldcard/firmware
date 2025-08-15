@@ -510,8 +510,8 @@ class MiniScriptWallet(WalletABC):
         has_mine = 0
 
         keys = []
-        for k, v in xpubs_list:
-            k = Key.from_psbt_xpub(k, v)
+        for ek, xfp_pth in xpubs_list:
+            k = Key.from_psbt_xpub(ek, xfp_pth)
             has_mine += k.validate(my_xfp, cls.disable_checks)
             keys.append(k)
 
@@ -526,8 +526,8 @@ class MiniScriptWallet(WalletABC):
 
     def validate_psbt_xpubs(self, psbt_xpubs):
         keys = set()
-        for k, v in psbt_xpubs:
-            key = Key.from_psbt_xpub(k, v)
+        for ek, xfp_pth in psbt_xpubs:
+            key = Key.from_psbt_xpub(ek, xfp_pth)
             key.validate(settings.get('xfp', 0), self.disable_checks)
             keys.add(key)
 

@@ -1693,6 +1693,7 @@ def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home
         time.sleep(0.1)
         title, story = cap_story()
     assert title == "OK TO SEND?"
+    assert "warning" not in story
     assert "1 input" in story
     assert "20 outputs" in story
     assert "Consolidating" in story
@@ -1755,6 +1756,7 @@ def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home
     time.sleep(.1)
     title, story = cap_story()
     assert title == "OK TO SEND?"
+    assert "warning" not in story
     assert "Consolidating" not in story
     assert "20 inputs" in story
     assert "2 outputs" in story

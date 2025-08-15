@@ -617,7 +617,7 @@ def test_teleport_big_ms(make_myself_wallet, clear_miniscript, fake_ms_txn, try_
 
 
 @pytest.mark.manual
-def test_teleport_real_ms(dev, fake_ms_txn):
+def test_teleport_real_ms(dev, fake_ms_txn, sim_root_dir):
     #
     # Do a 2-of-2 w/ USB-attached REAL Q and simulator
     # - build ms wallet beforehand, both devices (QR); default air-gap settings
@@ -648,11 +648,12 @@ def test_teleport_real_ms(dev, fake_ms_txn):
         # match the default paths created by CC in airgapped MS wallet creation.
         return str_to_path(deriv)
 
-    psbt = fake_ms_txn(3, 2, M, keys, fee=10000, outvals=None, inp_addr_fmt="p2sh",
+    psbt = fake_ms_txn(3, 2, M, keys, fee=10000, outvals=None, inp_addr_fmt="p2wsh",
              outstyles=['p2pkh'], change_outputs=[],
              hack_change_out=False, input_amount=1E8, path_mapper=p2wsh_mapper)
 
-    open('debug/teleport_real_ms.psbt', 'wb').write(psbt)
+    with open(f'{sim_root_dir}/debug/teleport_real_ms.psbt', 'wb') as f:
+        f.write(psbt)
 
     ll, sha = dev.upload_file(psbt)
     dev.send_recv(CCProtocolPacker.sign_transaction(ll, sha))

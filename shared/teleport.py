@@ -754,8 +754,6 @@ async def kt_send_file_psbt(*a):
         psbt.consider_inputs()
         dis.progress_sofar(3, 4)
 
-        psbt.consider_keys()
-
     except Exception as exc:
         # not going to do full reporting here, use our other code for that!
         await ux_show_story("Cannot validate PSBT?\n\n"+str(exc), "PSBT Load Failed")

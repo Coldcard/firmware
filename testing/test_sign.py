@@ -1468,7 +1468,7 @@ def test_wrong_xfp(fake_txn, try_sign, addr_fmt):
         orig, result = try_sign(psbt, accept=True)
 
     assert 'None of the keys' in str(ee)
-    assert 'found 12345678' in str(ee)
+    assert 'need 0F056943' in str(ee)
 
 @pytest.mark.parametrize('addr_fmt', ["p2wpkh", "p2tr"])
 def test_wrong_xfp_multi(fake_txn, try_sign, addr_fmt, sim_root_dir):
@@ -1502,8 +1502,7 @@ def test_wrong_xfp_multi(fake_txn, try_sign, addr_fmt, sim_root_dir):
         pass
     else:
         assert 'None of the keys' in str(ee)
-        # WEAK: device keeps them in order, but that's chance/impl defined...
-        assert 'found '+', '.join(sorted(wrongs)) in str(ee)
+        assert "need 0F056943" in str(ee)
 
 
 @pytest.mark.parametrize('out_style', ADDR_STYLES_SINGLE)
@@ -1731,7 +1730,7 @@ def test_zero_xfp(dev, start_sign, end_sign, fake_txn, cap_story):
     assert 'Zero XFP' in story
 
     # and then signing should work.
-    signed = end_sign(True, finalize=True)
+    end_sign(True, finalize=True)
 
 
 @pytest.mark.parametrize("addr_fmt", ["p2pkh", "p2wpkh"])
@@ -3349,8 +3348,8 @@ def test_finalize_with_foreign_inputs(bitcoind, bitcoind_d_sim_watch, start_sign
 # EOF
 
 @pytest.mark.bitcoind
-def test_taproot_keyspend(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign, microsd_path, cap_story, goto_home,
-                          press_select, pick_menu_item, bitcoind):
+def test_taproot_keyspend(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign, microsd_path,
+                          cap_story, goto_home, press_select, pick_menu_item, bitcoind, sim_root_dir):
     use_regtest()
     sim = bitcoind_d_sim_watch
     sim.keypoolrefill(10)
@@ -3361,7 +3360,8 @@ def test_taproot_keyspend(use_regtest, bitcoind_d_sim_watch, start_sign, end_sig
     psbt_resp = sim.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 20})
     psbt = psbt_resp.get("psbt")
     psbt_fname = "tr.psbt"
-    open('debug/last.psbt', 'w').write(psbt)
+    with open(f'{sim_root_dir}/debug/last.psbt', 'w')as f:
+        f.write(psbt)
     with open(microsd_path(psbt_fname), "w") as f:
         f.write(psbt)
     goto_home()
@@ -3391,7 +3391,8 @@ def test_taproot_keyspend(use_regtest, bitcoind_d_sim_watch, start_sign, end_sig
     signed_psbt_fname = split_story[1]
     with open(microsd_path(signed_psbt_fname), "r") as f:
         signed_psbt = f.read().strip()
-    open('debug/last.psbt', 'w').write(psbt)
+    with open(f'{sim_root_dir}/debug/last.psbt', 'w') as f:
+        f.write(psbt)
     signed_txn_fname = split_story[3]
     with open(microsd_path(signed_txn_fname), "r") as f:
         signed_txn = f.read().strip()
@@ -3422,7 +3423,8 @@ def test_taproot_keyspend(use_regtest, bitcoind_d_sim_watch, start_sign, end_sig
                                            0, {'subtractFeeFromOutputs': [0], "fee_rate": 20})
     psbt = psbt_resp.get("psbt")
     psbt_fname = "tr-all.psbt"
-    open('debug/last.psbt', 'w').write(psbt)
+    with open(f'{sim_root_dir}/debug/last.psbt', 'w') as f:
+        f.write(psbt)
     with open(microsd_path(psbt_fname), "w") as f:
         f.write(psbt)
     goto_home()
@@ -3448,7 +3450,8 @@ def test_taproot_keyspend(use_regtest, bitcoind_d_sim_watch, start_sign, end_sig
     signed_psbt_fname = split_story[1]
     with open(microsd_path(signed_psbt_fname), "r") as f:
         signed_psbt = f.read().strip()
-    open('debug/last.psbt', 'w').write(psbt)
+    with open(f'{sim_root_dir}/debug/last.psbt', 'w') as f:
+        f.write(psbt)
     signed_txn_fname = split_story[3]
     with open(microsd_path(signed_txn_fname), "r") as f:
         signed_txn = f.read().strip()
@@ -3497,7 +3500,8 @@ def test_taproot_keyspend(use_regtest, bitcoind_d_sim_watch, start_sign, end_sig
     signed_psbt_fname = split_story[1]
     with open(microsd_path(signed_psbt_fname), "r") as f:
         signed_psbt = f.read().strip()
-    open('debug/last.psbt', 'w').write(psbt)
+    with open(f'{sim_root_dir}/debug/last.psbt', 'w') as f:
+        f.write(psbt)
     signed_txn_fname = split_story[3]
     with open(microsd_path(signed_txn_fname), "r") as f:
         signed_txn = f.read().strip()

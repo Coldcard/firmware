@@ -71,7 +71,7 @@ def compute_policy_hash(policy):
             if type_ == Deriv:
                 rv = []
                 for orig in value or []:
-                    rv.append(orig if orig in ["any", "p2sh"] else orig.replace('p', "h").replace("'", 'h'))
+                    rv.append(orig if orig in ["any", "msas"] else orig.replace('p', "h").replace("'", 'h'))
             elif type_ == WhitelistOpts:
                 rv = OrderedDict()
                 rv["mode"] =  value.get("mode", "BASIC")
@@ -170,10 +170,10 @@ def hsm_reset(dev, sim_exec):
     (DICT(msg_paths=["any"]), "(any path)"),
 
     # data sharing
-    (DICT(share_addrs=["m/1'/2p/3H"]), ['Address values values will be shared', "m/1h/2h/3h"]),
-    (DICT(share_addrs=["m/1", "m/2"]), ['Address values values will be shared', "m/1 OR m/2"]),
-    (DICT(share_addrs=["any"]), ['Address values values will be shared', "(any path)"]),
-    (DICT(share_addrs=["p2sh", "any"]), ['Address values values will be shared', "(any P2SH)", "(any path"]),
+    (DICT(share_addrs=["m/1'/2p/3H"]), ['Address values will be shared', "m/1h/2h/3h"]),
+    (DICT(share_addrs=["m/1", "m/2"]), ['Address values will be shared', "m/1 OR m/2"]),
+    (DICT(share_addrs=["any"]), ['Address values will be shared', "(any path)"]),
+    (DICT(share_addrs=["msas", "any"]), ['Address values will be shared', "(any miniscript)", "(any path"]),
 
     (DICT(share_xpubs=["m/1'/2p/3H"]), ['XPUB values will be shared', "m/1h/2h/3h"]),
     (DICT(share_xpubs=["m/1", "m/2"]), ['XPUB values will be shared', "m/1 OR m/2"]),
@@ -564,7 +564,7 @@ def test_named_wallets(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_statu
     policy = DICT(rules=[dict(wallet=wname)])
 
     stat = start_hsm(policy)
-    assert 'Any amount from multisig wallet' in stat.summary
+    assert 'Any amount from miniscript wallet' in stat.summary
     assert wname in stat.summary
     assert 'wallets' not in stat
 
@@ -581,7 +581,7 @@ def test_named_wallets(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_statu
 
     # check ms txn not accepted when rule spec's a single signer
     tweak_rule(0, dict(wallet='1'))
-    attempt_psbt(psbt, 'wrong multisig wallet')
+    attempt_psbt(psbt, 'wrong miniscript wallet')
 
 @pytest.mark.bitcoind
 def test_named_wallets_miniscript(dev, start_hsm, tweak_rule, make_myself_wallet,
@@ -612,7 +612,7 @@ def test_named_wallets_miniscript(dev, start_hsm, tweak_rule, make_myself_wallet
         pick_menu_item(name)
         pick_menu_item("Descriptors")
         pick_menu_item("Bitcoin Core")
-        text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
+        text = load_export("sd", label="Bitcoin Core miniscript", is_json=False)
         text = text.replace("importdescriptors ", "").strip()
         # remove junk
         r1 = text.find("[")
@@ -1239,37 +1239,6 @@ def test_show_addr(dev, quick_start_hsm, change_hsm):
         path = path.replace('*', '73')
         addr = doit(path, addr_fmt)
 
-def test_show_p2sh_addr(dev, hsm_reset, start_hsm, change_hsm, make_myself_wallet, addr_vs_path):
-    # MULTISIG addrs
-    from test_multisig import HARD, make_redeem
-    M = 4
-    pm = lambda i: [HARD(45), i, 0,0]
-
-    # can't amke ms wallets inside HSM mode
-    hsm_reset()
-    keys, _ = make_myself_wallet(M)       # slow AF
-
-    permit = ['p2sh', 'm/73']
-    start_hsm(DICT(share_addrs=permit))
-
-
-    scr, pubkeys, xfp_paths = make_redeem(M, keys, path_mapper=pm)
-    assert len(scr) <= 520, "script too long for standard!"
-
-    got_addr = dev.send_recv(CCProtocolPacker.show_p2sh_address(
-                                    M, xfp_paths, scr, addr_fmt=AF_P2WSH))
-    addr_vs_path(got_addr, addr_fmt=AF_P2WSH, script=scr)
-
-    # turn it off; p2sh must be explicitly allowed
-    for allow in ['m', 'any']:
-        change_hsm(DICT(share_addrs=[allow]))
-        dev.send_recv(CCProtocolPacker.show_address('m', AF_CLASSIC))
-
-        with pytest.raises(CCProtoError) as ee:
-            got_addr = dev.send_recv(CCProtocolPacker.show_p2sh_address(
-                                    M, xfp_paths, scr, addr_fmt=AF_P2WSH))
-        assert 'Not allowed in HSM mode' in str(ee)
-
 def test_show_miniscript_addr(dev, offer_minsc_import, start_hsm,
                               change_hsm, need_keypress, clear_miniscript):
     clear_miniscript()
@@ -1282,7 +1251,7 @@ def test_show_miniscript_addr(dev, offer_minsc_import, start_hsm,
     need_keypress("y")
     time.sleep(.2)
 
-    policy = DICT(share_addrs=["any", "p2sh"], rules=[dict(wallet=name)])
+    policy = DICT(share_addrs=["any"], rules=[dict(wallet=name)])
     start_hsm(policy)
 
     with pytest.raises(CCProtoError) as ee:
@@ -1290,7 +1259,7 @@ def test_show_miniscript_addr(dev, offer_minsc_import, start_hsm,
     assert "Not allowed in HSM mode" in ee.value.args[0]
 
     # change policy to allow miniscript address show
-    policy = DICT(share_addrs=["any", "p2sh", "msas"], rules=[dict(wallet=name)])
+    policy = DICT(share_addrs=["any", "msas"], rules=[dict(wallet=name)])
     change_hsm(policy)
     addr = dev.send_recv(CCProtocolPacker.miniscript_address(name, False, 0))
     assert addr[2:4] == "1q"
@@ -1574,7 +1543,7 @@ def worst_case_policy():
 
     addrs = [render_address(b'\x00\x14' + prandom(20)) for i in range(5)]
 
-    p = DICT(period=30, share_xpubs=paths, share_addrs=paths+['p2sh'], msg_paths=paths,
+    p = DICT(period=30, share_xpubs=paths, share_addrs=paths+['msas'], msg_paths=paths,
                 warnings_ok=False, must_log=True)
     p.rules = [dict(
                         local_conf=True, 

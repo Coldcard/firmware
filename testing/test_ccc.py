@@ -14,7 +14,7 @@ from pysecp256k1 import ec_seckey_verify, ec_pubkey_parse, ec_pubkey_serialize, 
 from mnemonic import Mnemonic
 from bip32 import BIP32Node
 from constants import AF_P2WSH
-from charcodes import KEY_QR
+from charcodes import KEY_QR, KEY_DELETE
 from bbqr import split_qrs
 from psbt import BasicPSBT
 
@@ -1026,7 +1026,8 @@ def test_ccc_xpub_export(chain, c_num_words, acct, settings_set, load_export, se
 def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
                                    bitcoind_create_watch_only_wallet, cap_story, bitcoind,
                                    policy_sign, settings_get, cap_menu, pick_menu_item,
-                                   press_select, load_export, offer_minsc_import, goto_home):
+                                   press_select, load_export, offer_minsc_import, goto_home,
+                                   need_keypress, is_q1, enter_text):
     # - 'build 2-of-N' path
     goto_home()
     settings_set("ccc", None)
@@ -1090,7 +1091,8 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
     assert mi not in m
 
     # export one of the wallets
-    w_mn, w_name = ami.rsplit(" ", 1)
+    w_mn, w_name = ami.split(":", 1)
+    w_name = w_name.strip()
     new_name = "new"
     pick_menu_item(ami)  # just another ms wallet
     pick_menu_item("Descriptors")
@@ -1100,17 +1102,21 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
     # try importing duplicate does not work
     _, story = offer_minsc_import(ms_conf)
     assert "Duplicate wallet" in story
+    press_select()  # not importable - dupe
 
     # try rename
-    ms_conf = ms_conf.replace(w_name, new_name)
-    _, story = offer_minsc_import(ms_conf)
-    assert "Update NAME only of existing multisig wallet?" in story
-    press_select()
-    time.sleep(.1)
+    pick_menu_item("Settings")
+    pick_menu_item("Miniscript")
+    pick_menu_item(w_name)
+    pick_menu_item("Rename")
+    for i in range(len(w_name)):
+        need_keypress(KEY_DELETE if is_q1 else "x")
 
+    enter_text(new_name)
+    time.sleep(.1)
     enter_enabled_ccc(words)
     m = cap_menu()
-    assert f"{w_mn} {new_name}" in m
+    assert f"{w_mn}: {new_name}" in m
 
 
 def test_remove_ccc(settings_set, setup_ccc, ccc_ms_setup, settings_get, policy_sign,
