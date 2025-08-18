@@ -119,7 +119,7 @@ class ShortcutItem(MenuItem):
         super().__init__('SHORTCUT', shortcut=key, **kws)
 
 class NonDefaultMenuItem(MenuItem):
-    # Show a checkmark if setting is defined and not the default ... so know know it's set
+    # Show a checkmark if setting is defined and not the default
     def __init__(self, label, nvkey, prelogin=False, default_value=None, **kws):
         super().__init__(label, **kws)
         self.nvkey = nvkey

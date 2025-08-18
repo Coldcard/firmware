@@ -307,10 +307,16 @@ async def kt_accept_values(dtype, raw):
     - `b` - complete system backup file (text, internal format)
     '''
     from flow import has_se_secrets, goto_top_menu
+    from pincodes import pa
 
     enc = None
     origin = 'Teleported'
     label = None
+
+    if pa.hobbled_mode and dtype != 'p':
+        await ux_show_story('Only PSBT for multisig accepted in this mode.', title='FAILED')
+        return
+    
 
     if dtype == 's':
         # words / bip 32 master / xprv, etc
@@ -475,6 +481,12 @@ def decode_step2(session_key, noid_key, body):
 async def kt_incoming(type_code, payload):
     # incoming BBQr was scanned (via main menu, etc)
 
+    from pincodes import pa
+    if pa.hobbled_mode and type_code != 'E':
+        # only PSBT rx is supported in hobbled mode
+        # TODO: fail silently? good enough?
+        return
+
     if type_code == 'R': 
         # they want to send to this guy
         return await kt_start_send(payload)
@@ -494,6 +506,10 @@ async def kt_incoming(type_code, payload):
 class SecretPickerMenu(MenuSystem):
     def __init__(self, rx_pubkey):
         self.rx_pubkey = rx_pubkey
+
+        # this menu should be unreachable in hobbled mode.
+        from pincodes import pa
+        assert not pa.hobbled_mode
 
         from flow import word_based_seed, is_tmp, has_se_secrets
         has_notes = bool(NoteContentBase.count())

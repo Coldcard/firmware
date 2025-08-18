@@ -21,6 +21,14 @@ from utils import problem_file_line, url_unquote, wipe_if_deltamode
 ONE_LINE = CHARS_W-2
 
 async def make_notes_menu(*a):
+    if pa.hobbled_mode:
+        # Read only version of menu system
+        # - used when spending policy in effect
+        # - must have some notes already, or unreachable
+        assert NoteContent.count()
+        rv = NotesMenu(NotesMenu.construct_readonly())
+        rv.readonly = True
+        return rv
 
     if not settings.get('secnap', False):
         # Explain feature, and then enable if interested. Drop them into menu.
@@ -105,6 +113,8 @@ async def get_a_password(old_value, min_len=0, max_len=128):
 
 class NotesMenu(MenuSystem):
 
+    readonly = False
+
     @classmethod
     def construct(cls):
         # Dynamic menu with user-defined names of notes shown
@@ -121,7 +131,8 @@ class NotesMenu(MenuSystem):
 
             rv = []
             for note in NoteContent.get_all():
-                rv.append(MenuItem('%d: %s' % (note.idx+1, note.title), menu=note.make_menu))
+                rv.append(MenuItem('%d: %s' % (note.idx+1, note.title),
+                                        menu=lambda *_: note.make_menu()))
 
             rv.extend(news)
 
@@ -131,6 +142,18 @@ class NotesMenu(MenuSystem):
                 rv.append(MenuItem('Sort By Title', f=cls.sort_titles))
 
         rv.append(MenuItem('Import', f=import_from_other))
+
+        return rv
+
+    @classmethod
+    def construct_readonly(cls):
+        # When only allowed to view, no export/add new/delete.
+        wipe_if_deltamode()
+
+        rv = []
+        for note in NoteContent.get_all():
+            rv.append(MenuItem('%d: %s' % (note.idx+1, note.title),
+                                    menu=lambda *_: note.make_menu(readonly=True)))
 
         return rv
 
@@ -344,24 +367,31 @@ class PasswordContent(NoteContentBase):
     flds = ['title', 'user', 'password', 'site', 'misc' ]
     type_label = 'password'
 
-    async def make_menu(self, *a):
+    async def make_menu(self, readonly=False):
         rv = [MenuItem('"%s"' % self.title, f=self.view)]
         if self.user:
             rv.append(MenuItem('↳ %s' % self.user, f=self.view))
         if self.site:
             rv.append(MenuItem('↳ %s' % self.site, f=self.view))
         #if self.misc: rv.append(MenuItem('↳ (notes)', f=self.view))
-        return rv + [
+        rv += [
             MenuItem('View Password', f=self.view_pw),
             MenuItem('Send Password', f=self.send_pw, predicate=lambda: settings.get('du', True)),
-            MenuItem('Export', f=self.export),
-            MenuItem('Edit Metadata', f=self.edit),
-            MenuItem('Delete', f=self.delete),
-            MenuItem('Change Password', f=self.change_pw),
+        ]
+        if not readonly: 
+            rv += [
+                MenuItem('Export', f=self.export),
+                MenuItem('Edit Metadata', f=self.edit),
+                MenuItem('Delete', f=self.delete),
+                MenuItem('Change Password', f=self.change_pw),
+            ]
+        rv += [
             self.sign_misc_menu_item(),
             ShortcutItem(KEY_QR, f=self.view_qr_menu, arg=self.type_label),
             ShortcutItem(KEY_NFC, f=self.share_nfc, arg=self.type_label),
         ]
+
+        return rv
 
     async def view(self, *a):
         pl = len(self.password)
@@ -476,18 +506,24 @@ class NoteContent(NoteContentBase):
     flds = ['title', 'misc']
     type_label = 'note'
 
-    async def make_menu(self, *a):
+    async def make_menu(self, readonly=False):
         # Details and actions for this Note
-        return [
+        rv = [
             MenuItem('"%s"' % self.title, f=self.view),
             MenuItem('View Note', f=self.view),
-            MenuItem('Edit', f=self.edit),
-            MenuItem('Delete', f=self.delete),
-            MenuItem('Export', f=self.export),
+        ]
+        if not readonly:
+            rv += [
+                MenuItem('Edit', f=self.edit),
+                MenuItem('Delete', f=self.delete),
+                MenuItem('Export', f=self.export),
+            ]
+        rv += [
             self.sign_misc_menu_item(),
             ShortcutItem(KEY_QR, f=self.view_qr_menu, arg="misc"),
             ShortcutItem(KEY_NFC, f=self.share_nfc, arg='misc'),
         ]
+        return rv
 
     async def view(self, *a):
         ch = await ux_show_story(self.misc, title=self.title, escape=KEY_QR,
