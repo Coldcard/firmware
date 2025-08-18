@@ -19,7 +19,7 @@ from countdowns import countdown_chooser
 from paper import make_paper_wallet
 from trick_pins import TrickPinMenu
 from tapsigner import import_tapsigner_backup_file
-from ccc import toggle_ccc_feature
+from ccc import toggle_ccc_feature, sssp_spending_policy, toggle_sssp_feature
 
 # useful shortcut keys
 from charcodes import KEY_QR, KEY_NFC
@@ -99,6 +99,15 @@ def word_based_seed():
 def hsm_available():
     # contains hsm feature + can it be used (needs se2 secret and no tmp active)
     return version.supports_hsm and has_real_secret()
+
+def qr_and_ms():
+    # has QR scanner, and at least one MS wallet
+    if not version.has_qr: return False
+    return bool(settings.get('multisig', False))
+
+def is_hobble_testdrive():
+    from pincodes import pa
+    return (pa.hobbled_mode == 2)
 
 async def goto_home(*a):
     goto_top_menu()
@@ -376,9 +385,9 @@ AdvancedNormalMenu = [
                    story=("Enable HSM? Enables all user management commands, and other HSM-only USB commands. "
                           "By default these commands are disabled."),
                    predicate=hsm_available),
-    NonDefaultMenuItem('Coldcard Co-Signing', 'ccc', f=toggle_ccc_feature, predicate=is_not_tmp),
-    MenuItem('User Management', menu=make_users_menu,
-             predicate=hsm_available),
+    NonDefaultMenuItem('Spending Policy', 'sssp', f=toggle_sssp_feature, predicate=has_real_secret, shortcut='p'),
+    NonDefaultMenuItem('Spending Policy: Co-Signing', 'ccc', f=toggle_ccc_feature, predicate=is_not_tmp),   # XXX mk4 width
+    MenuItem('User Management', menu=make_users_menu, predicate=hsm_available),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu, shortcut=KEY_NFC),
     MenuItem("Danger Zone", menu=DangerZoneMenu, shortcut='z'),
 ]
@@ -459,4 +468,72 @@ FactoryMenu = [
     MenuItem('Ship W/O Bag', f=ship_wo_bag),
     MenuItem("Debug Functions", menu=DebugFunctionsMenu, shortcut='f'),
     MenuItem("Perform Selftest", f=start_selftest, shortcut='s'),
+]
+
+# Special menus for hobbled mode where we have a (single signer) spending policy in effect.
+# - no access to secrets, backups, firmware up/downgrades.
+# - secure notes, but readonly; can be disabled completely.
+# - key teleport, but only for PSBT & multisig purposes.
+# - can only be enabled after we have secrets, so no need for has_secrets tests here
+#
+
+# Slightly limited file menu when hobbled.
+# - no backup/restore
+HobbledFileMgmtMenu = [
+    #         xxxxxxxxxxxxxxxx
+    MenuItem('Sign Text File', f=sign_message_on_sd),
+    MenuItem('Batch Sign PSBT', f=batch_sign),
+    MenuItem('List Files', f=list_files),
+    MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu),        #dup elsewhere
+    MenuItem('Verify Sig File', f=verify_sig_file),
+    MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file, shortcut=KEY_NFC),
+    MenuItem('BBQr File Share', predicate=version.has_qr, f=qr_share_file, arg=True),
+    MenuItem('QR File Share', predicate=version.has_qr, f=qr_share_file, shortcut=KEY_QR),
+    MenuItem('Format SD Card', f=wipe_sd_card),
+    MenuItem('Format RAM Disk', predicate=vdisk_enabled, f=wipe_vdisk),
+]
+
+# NFC tools when hobbled: not much different.
+HobbledNFCToolsMenu = [
+    MenuItem('Sign PSBT', f=nfc_sign_psbt),
+    MenuItem('Show Address', f=nfc_show_address),
+    MenuItem('Sign Message', f=nfc_sign_msg),
+    MenuItem('Verify Sig File', f=nfc_sign_verify),
+    MenuItem('Verify Address', f=nfc_address_verify),
+    MenuItem('File Share', f=nfc_share_file),
+    MenuItem('Push Transaction', f=nfc_pushtx_file,
+                                        predicate=lambda: settings.get("ptxurl", False)),
+]
+
+# Very limited advanced menu when hobbled.
+HobbledAdvancedMenu = [
+    #         xxxxxxxxxxxxxxxx
+    MenuItem("File Management", menu=HobbledFileMgmtMenu),
+    MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu, shortcut='x'),  # also inside FileMgmt
+    MenuItem('Teleport Multisig PSBT', predicate=qr_and_ms, f=kt_send_file_psbt),
+    MenuItem("View Identity", f=view_ident),
+    MenuItem('Paper Wallets', f=make_paper_wallet),
+    MenuItem('NFC Tools', predicate=nfc_enabled, menu=HobbledNFCToolsMenu, shortcut=KEY_NFC),
+    MenuItem("Destroy Seed", f=clear_seed),
+]
+
+# Main menu when a spending policy (hobbled) is in effect.
+HobbledTopMenu = [
+    #         xxxxxxxxxxxxxxxx
+    MenuItem('Ready To Sign', f=ready2sign, shortcut='r'),
+    MenuItem('Passphrase', menu=start_b39_pw, 
+        predicate=lambda: word_based_seed and sssp_spending_policy('okeys'), shortcut='p'),
+    MenuItem('Scan Any QR Code', predicate=version.has_qr,
+         shortcut=KEY_QR, f=scan_any_qr, arg=(False, True)),
+    MenuItem("Address Explorer", menu=address_explore, shortcut='x'),
+    MenuItem('Secure Notes & Passwords', menu=make_notes_menu, shortcut='n',
+                 predicate=lambda: settings.get("secnap", False) and sssp_spending_policy('notes')),
+    MenuItem('Type Passwords', f=password_entry, shortcut='t',
+             predicate=lambda: settings.get("emu", False)),
+    MenuItem('Seed Vault', menu=make_seed_vault_menu, shortcut='v',
+             predicate=lambda: settings.master_get('seedvault') and sssp_spending_policy('okeys')),
+    MenuItem('Advanced/Tools', menu=HobbledAdvancedMenu, shortcut='t'),
+    MenuItem('Secure Logout', f=logout_now, predicate=not version.has_battery),
+    MenuItem('EXIT TEST DRIVE', f=toggle_sssp_feature, predicate=is_hobble_testdrive),
+    ShortcutItem(KEY_NFC, predicate=nfc_enabled, menu=HobbledNFCToolsMenu),
 ]

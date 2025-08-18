@@ -2,6 +2,13 @@
 #
 # ccc.py - ColdCard Co-sign feature. Be a leg in a 2-of-3 that is signed based on a policy.
 #
+# Rebranding/single-signer addtions:
+#
+# - "CCC" will now be branded as "Spending Policy (Co-Sign)" was "ColdCard Cosigning"
+# - single singer policies will be called "Spending Policy"
+# - internally: CCC is the multisig stuff, vs SSSP: Single Signer Spending Policy
+# - "hobbled" refers to less-than full control over Coldcard, even though you have main PIN
+#
 import gc, chains, version, ngu, web2fa, bip39, re
 from chains import NLOCK_IS_TIME
 from utils import swab32, xfp2str, truncate_address, deserialize_secret, show_single_address
@@ -885,5 +892,289 @@ async def key_c_challenge(words):
     # got to config menu
     m = CCCConfigMenu()
     the_ux.push(m)
+
+def sssp_spending_policy(key, default=False, change=None):
+    # This function can be used to check if feature(s) are enabled in
+    # the single-signer policy settings. Might be used while hobbled.
+    # keys:
+    #   'en' = feature enabled; hobble on next boot
+    #   'notes' = allow access to knows
+    #   'words' = add first/last seed words to challenge to unlock
+    #   'okeys' = allow BIP-39 and/or seed vault
+
+    v = settings.get('sssp', dict())
+
+    if key in { 'en', 'notes', 'words', 'okeys' }:
+        # booleans: present or removed from dict
+        if change is not None:
+            if change:
+                v[key] = True
+            else:
+                v.pop(key, None)
+
+            settings.put('sssp', v)
+            settings.save()
+
+        return (key in v) or default
+
+    raise KeyError(key)
+
+    return default
+
+async def toggle_sssp_feature(*a):
+    from pincodes import pa
+    from actions import goto_top_menu
+
+    if pa.hobbled_mode == 2:
+        # allow exit from test-drive mode, directly into editing settings
+        pa.hobbled_mode = False
+        goto_top_menu()
+    elif settings.get('sssp'):
+        # normal entry into menu system, after the first time
+        assert not pa.hobbled_mode
+    else:
+        en = await sssp_enable()
+        if not en: return
+
+    m = SSSPConfigMenu()
+    the_ux.push(m)
+
+async def sssp_enable():
+    # enabling the feature
+    # - collect and setup a new trick pin
+    # - set sssp settings w/ something non-empty but still disabled.
+    # - return T if they completed enabling process
+
+    from login import LoginUX
+    from trick_pins import tp
+    from pincodes import pa
+
+    # enable the feature -- not simple!
+    # - pick new (trick pin) that lets you back here.
+    # - collect a policy setup, maybe 2FA enrol too
+    # - lock that down
+    ch = await ux_show_story('''\
+You can define a "spending policy" which stops you from signing \
+transactions unless conditions are met.
+Spending policies can restrict: magnitude (BTC out), \
+velocity (blocks between txn), address whitelisting, \
+and/or require confirmation by 2FA phone app.
+
+When active, your COLDCARD \
+is locked into a special mode that restricts seed access, backups, settings and other features.
+
+First step is to define a new PIN code that is used when you want to bypass or \
+disable this feature.
+''',
+        title="Spending Policy")
+
+    if ch != 'y': 
+        # just a tourist
+        return
+
+
+    # re-use existing PIN if there for some reason
+    new_pin = tp.has_sp_unlock()
+
+    if not new_pin:
+        # all existing PINS
+        have = set(tp.all_tricks())
+        have.add(pa.pin.decode())
+
+        while 1:
+            lll = LoginUX()
+            lll.is_setting = True
+            lll.subtitle = "Spending Policy" + (" Unlock" if version.has_qwerty else '')
+
+            new_pin = await lll.get_new_pin()
+            if new_pin is None:
+                return
+
+            if (new_pin not in have):
+                tp.define_unlock_pin(new_pin)
+                break
+
+            await ux_show_story("That PIN (%s) is already in use. All PIN codes must be unique."
+                                            % new_pin)
+
+    # all features disabled to to start
+    settings.set('sssp', dict(en=False, pol={}))
+    settings.save()
+
+    # continue into config menu
+    return True
+
+async def sssp_word_challenge(*a):
+    # Ask for first/last seed word and verify. Return if correct answers given.
+    # Reboots on failure.
+    from stash import SensitiveValues
+
+    with SensitiveValues() as sv:
+        if sv.mode == 'words':
+            words = bip39.b2a_words(sv.raw).split(' ')
+            want_words = words[:1] + words[-1:]
+            assert len(want_words) == 2
+        else:
+            # they are using XPRV or something, skip test entirely
+            return
+
+    got_words = None
+    for retry in range(2):
+        if version.has_qwerty:
+            # see special rendering code for this case in ux_q1.py:ux_draw_words(num_words=2)
+            from ux_q1 import seed_word_entry
+            got_words = await seed_word_entry('First and Last Seed Words', 2, has_checksum=False)
+        else:
+            from seed import WordNestMenu
+
+            # TODO: fix bugs here on Mk4. really not working. XXX 
+
+            got_words = None
+            async def check_challenge_cb(words):
+                WordNestMenu.pop_all()
+                got_words = words
+
+            m = WordNestMenu(num_words=2, has_checksum=False, done_cb=check_challenge_cb)
+            the_ux.push(m)
+            await m.interact()
+
+        if got_words == want_words:
+            # success - done
+            return
+
+        await ux_show_story("Sorry, those words are incorrect.")
+
+    # they failed; log them out ... they can just try login again
+    from actions import login_now
+    login_now()
+
+    # NOT-REACHED
+
+class SSSPCheckedMenuItem(MenuItem):
+    # Show a checkmark if **top level** security setting is defined and not the default
+    # - only works inside SSSPPolicyMenu?
+    # - similar to menu.py:ToggleMenuItem
+
+    def __init__(self, label, polkey, story, **kws):
+        super().__init__(label, **kws)
+        self.polkey = polkey
+        self.story = story
+
+    def is_chosen(self):
+        # should we show a check in menu? check the current SSSP settings
+        return sssp_spending_policy(self.polkey)
+
+    async def activate(self, menu, idx):
+        # do simple toggle on request
+        was = sssp_spending_policy(self.polkey)
+
+        msg = self.story + "\n\n%s?" % ('Disable' if was else 'Enable')
+
+        ch = await ux_show_story(msg)
+        if ch == 'x': return
+
+        sssp_spending_policy(self.polkey, change=(not was))
+
+
+class SSSPConfigMenu(MenuSystem):
+    def __init__(self):
+        items = self.construct()
+        super().__init__(items)
+
+    def update_contents(self):
+        tmp = self.construct()
+        self.replace_items(tmp)
+
+    def construct(self):
+        from multisig import MultisigWallet, make_ms_wallet_menu
+
+        my_xfp = CCCFeature.get_xfp()
+        items = [
+            #         xxxxxxxxxxxxxxxx
+            MenuItem('Spending Policy'),        # just a title?
+            MenuItem('Set Policy...'), #, menu=CCCPolicyMenu.be_a_submenu),
+            SSSPCheckedMenuItem('Word Check', 'notes', 'Allow (read-only) access to secure notes and passwords? Otherwise, they are inaccessible.'),
+            SSSPCheckedMenuItem('Allow Notes', 'words', 'To change Spending Policy, addition to special PIN, you must provide the first and last seed words.'),
+            SSSPCheckedMenuItem('Related Keys', 'okeys', 'Allow access to BIP-39 passphrase wallets based on master seed, or Seed Vault (if any). Spending Policy applies too all.'),
+            #MenuItem('Test Word Challenge', f=sssp_word_challenge),     # XXX test only?
+        ]
+
+        if CCCFeature.last_fail_reason:
+            #         xxxxxxxxxxxxxxxx
+            items.insert(1, MenuItem('Last Violation', f=self.debug_last_fail))
+
+        items.append(MenuItem('Remove Policy', f=self.remove_sssp))
+        items.append(MenuItem('Test Drive', f=self.test_drive))
+        items.append(MenuItem('ACTIVATE', f=self.activate_feature))
+
+        return items
+
+    async def activate_feature(self, *a):
+        # Policy is being set in stone now; confirm and switch to hobble mode, etc.
+        from trick_pins import tp
+
+        bypass_pin = tp.has_sp_unlock()
+
+        if not bypass_pin:
+            msg = "You have no Spending Policy bypass PIN defined, so changes to this COLDCARD cannot be made past this point. Only option will be to destroy seed and reload everything."
+        else:
+            msg = "To return to normal unlimited spending mode, you will need to enter the special pin (%s), then the Main PIN" % bypass_pin
+            if sssp_spending_policy('words'):
+                msg += ', followed by the first and last seed words'
+            msg += '.'
+
+        if not await ux_confirm(msg, 'CONTINUE?'):
+            return
+
+        # set it for next login
+        sssp_spending_policy('en', change=True)
+
+        # make it real ... could reboot here instead, but no need.
+        from pincodes import pa
+        from actions import goto_top_menu
+
+        pa.hobbled_mode = True
+        goto_top_menu()
+
+    async def test_drive(self, *a):
+        # allow test drive of feature
+        if not await ux_confirm("See what COLDCARD operation will look like with Spending Policy enabled.", 'CONTINUE?'):
+            return
+
+        from pincodes import pa
+        from actions import goto_top_menu
+
+        pa.hobbled_mode = 2      # Truthy value to indicate they can escape easily
+        goto_top_menu()
+
+    async def debug_last_fail(self, *a):
+        # debug for customers: why did we reject that last txn?
+        pol = CCCFeature.get_policy()
+        bh = pol.get('block_h', None)
+        msg = ''
+        if bh:
+            msg += "CCC height:\n\n%s\n\n" % bh
+
+        msg += 'The most recent policy check failed because of:\n\n%s\n\nPress (4) to clear.' \
+                    % CCCFeature.last_fail_reason
+        ch = await ux_show_story(msg, escape='4')
+
+        if ch == '4':
+            CCCFeature.last_fail_reason = ''
+            self.update_contents()
+
+    async def remove_sssp(self, *a):
+        # disable and remove feature
+        if not await ux_confirm('Bypass PIN will be removed, and all spending policy settings forgotten.'):
+            return
+
+        settings.remove_key('sssp')
+        settings.save()
+
+        from trick_pins import tp
+        tp.delete_sp_unlock_pins()
+
+        the_ux.pop()
+
 
 # EOF

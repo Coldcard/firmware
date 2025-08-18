@@ -879,6 +879,8 @@ class SeedVaultMenu(MenuSystem):
         ch = await ux_show_story(title="[" + rec.xfp + "]", msg=msg, escape=esc)
         if ch == "x": return
 
+        assert not pa.hobbled_mode
+
         dis.fullscreen("Saving...")
 
         wipe_slot = not current_active and (ch != "1")
@@ -889,6 +891,7 @@ class SeedVaultMenu(MenuSystem):
             xs.load()
             xs.blank()
             del xs
+
 
         # CAUTION: will get shadow copy if in tmp seed mode already
         seeds = settings.master_get("seeds", [])
@@ -926,6 +929,8 @@ class SeedVaultMenu(MenuSystem):
         from glob import dis
         from ux import ux_input_text
 
+        assert not pa.hobbled_mode
+
         idx, old = item.arg
         new_label = await ux_input_text(old.label, confirm_exit=False, max_len=40)
 
@@ -955,6 +960,8 @@ class SeedVaultMenu(MenuSystem):
     @staticmethod
     async def _add_current_tmp(*a):
         from pincodes import pa
+
+        assert not pa.hobbled_mode
 
         assert pa.tmp_value
         main_xfp = settings.master_get("xfp", 0)
@@ -997,6 +1004,7 @@ class SeedVaultMenu(MenuSystem):
         seeds = list(seed_vault_iter())
 
         if not seeds:
+            assert not pa.hobbled_mode
             rv.append(MenuItem('(none saved yet)'))
             if pa.tmp_value:
                 rv.append(add_current_tmp)
@@ -1016,8 +1024,8 @@ class SeedVaultMenu(MenuSystem):
                 submenu = [
                     MenuItem(rec.label, f=cls._detail, arg=(rec, encoded)),
                     MenuItem('Use This Seed', f=cls._set, arg=encoded),
-                    MenuItem('Rename', f=cls._rename, arg=(i, rec)),
-                    MenuItem('Delete', f=cls._remove, arg=(i, rec, encoded)),
+                    MenuItem('Rename', f=cls._rename, arg=(i, rec), predicate=not pa.hobbled_mode),
+                    MenuItem('Delete', f=cls._remove, arg=(i, rec, encoded), predicate=not pa.hobbled_mode),
                 ]
                 if is_active:
                     submenu[1] = MenuItem("Seed In Use")
@@ -1035,7 +1043,7 @@ class SeedVaultMenu(MenuSystem):
                 rv.append(item)
 
             if pa.tmp_value:
-                if seeds and (not tmp_in_sv):
+                if seeds and (not tmp_in_sv) and not pa.hobbled_mode:
                     # give em chance to store current active
                     rv.append(add_current_tmp)
 
@@ -1137,6 +1145,8 @@ class EphemeralSeedMenu(MenuSystem):
 
 
 async def make_ephemeral_seed_menu(*a):
+    assert not pa.hobbled_mode
+
     if (not pa.tmp_value) and (not settings.master_get("seedvault", False)):
         # force a warning on them, unless they are already doing it.
         if not await ux_confirm(

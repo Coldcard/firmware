@@ -553,6 +553,16 @@ def ux_draw_words(y, num_words, words):
     # Draw seed words on single screen (hard) and return x/y position of start of each
     from glob import dis
 
+    if num_words == 2:
+        # simple version for first & last words, used only during login to spending policy
+        X = 14
+        Y = y+1
+        dis.text(X-7, Y, 'FIRST: %s' % words[0])
+        dis.text(X-4, Y+1, '⋯')
+        dis.text(X-6, Y+2, 'LAST: %s' % words[-1])
+
+        return [ (X, Y), (X, Y+2) ]
+
     if num_words == 12:
         cols = 2
         xpos = [2, 18]
@@ -902,6 +912,8 @@ class QRScannerInteraction:
     async def scan_anything(self, expect_secret=False, tmp=False):
         # start a QR scan, and act on what we find, whatever it may be.
         from ux import ux_show_story
+        from pincodes import pa
+
         problem = None
         while 1:
             prompt = 'Scan any QR code, or CANCEL' if not expect_secret else \
@@ -922,6 +934,21 @@ class QRScannerInteraction:
                 # import sys; sys.print_exception(exc)
                 problem = "Unable to decode QR"
                 continue
+
+        if pa.hobbled_mode:
+            # block most imports in hobbled mode.
+            # - specific checks in place for teleport (PSBT is okay)
+            from ccc import sssp_spending_policy
+            whitelist = {'psbt', 'addr', 'vmsg', 'text', 'xpub', 'teleport' }
+
+            sv_ok = sssp_spending_policy('okeys')
+            if sv_ok:
+                # seed vault, and tmp seeds are okay with user, even in hobble mode
+                whitelist.update({'xprv', 'words'})
+
+            if what not in whitelist:
+                await ux_show_story("Blocked when Spending Policy is in force", title='Sorry')
+                return
 
         if what == 'xprv':
             from actions import import_extended_key_as_secret
@@ -1104,6 +1131,7 @@ async def ux_visualize_bip21(proto, addr, args):
         await OWNERSHIP.search_ux(addr)
 
 async def ux_visualize_wif(wif_str, kp, compressed, testnet):
+    # TODO: remove until we support signing w/ WIF keys IMHO
     from ux import ux_show_story
     msg = wif_str + "\n\n"
     msg += "chain: %s\n\n" % ("XTN" if testnet else "BTC")
