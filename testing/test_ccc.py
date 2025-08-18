@@ -21,21 +21,8 @@ from psbt import BasicPSBT
 # pubkey for production server. 
 SERVER_PUBKEY = '0231301ec4acec08c1c7d0181f4ffb8be70d693acccc86cccb8f00bf2e00fcabfd'
 
-def py_ckcc_hashfp(output, x, y, data=None):
-    try:
-        m = hashlib.sha256()
-        m.update(x.contents.raw)
-        m.update(y.contents.raw)
-        output.contents.raw = m.digest()
-        return 1
-    except:
-        return 0
-
-
-ckcc_hashfp = ECDH_HASHFP_CLS(py_ckcc_hashfp)
-
-
 def make_session_key(his_pubkey=None):
+
     # - second call: given the pubkey of far side, calculate the shared pt on curve
     # - creates session key based on that
     while True:
@@ -50,6 +37,19 @@ def make_session_key(his_pubkey=None):
     his_pubkey = ec_pubkey_parse(bytes.fromhex(SERVER_PUBKEY))
 
     # do the D-H thing
+
+    def _py_ckcc_hashfp(output, x, y, data=None):
+        try:
+            m = hashlib.sha256()
+            m.update(x.contents.raw)
+            m.update(y.contents.raw)
+            output.contents.raw = m.digest()
+            return 1
+        except:
+            return 0
+
+    ckcc_hashfp = ECDH_HASHFP_CLS(_py_ckcc_hashfp)
+
     shared_key = ecdh(my_seckey, his_pubkey, hashfp=ckcc_hashfp)
 
     return shared_key, ec_pubkey_serialize(my_pubkey)
@@ -578,13 +578,19 @@ def policy_sign(start_sign, end_sign, cap_story, get_last_violation):
         time.sleep(.1)
         title, story = cap_story()
         assert 'OK TO SEND?' == title
-        if violation:
+        if violation and num_warn:
+            # assume CCC cases
             assert ("(%d warning%s below)"% (num_warn, "s" if num_warn > 1 else "")) in story
             assert "CCC: Violates spending policy. Won't sign." in story
             assert get_last_violation().startswith(violation)
             if warn_list:
                 for w in warn_list:
                     assert w in story
+        elif violation and num_warn == 0:
+            # assume SSSP cases
+            assert 'warning' not in story
+            assert "Spending Policy violation." in story
+            assert ccc_disabled
         else:
             assert "warning" not in story
 
