@@ -19,7 +19,7 @@ from countdowns import countdown_chooser
 from paper import make_paper_wallet
 from trick_pins import TrickPinMenu
 from tapsigner import import_tapsigner_backup_file
-from ccc import toggle_ccc_feature, sssp_spending_policy, toggle_sssp_feature
+from ccc import toggle_ccc_feature, sssp_spending_policy, sssp_feature_menu
 
 # useful shortcut keys
 from charcodes import KEY_QR, KEY_NFC
@@ -367,6 +367,19 @@ NFCToolsMenu = [
     MenuItem('Push Transaction', f=nfc_pushtx_file, predicate=lambda: settings.get("ptxurl", False)),
 ]
 
+
+SpendingPolicySubMenu = [
+    NonDefaultMenuItem('Single-Signer', 'sssp', f=sssp_feature_menu, predicate=has_real_secret),
+    NonDefaultMenuItem('Co-Sign Multi.' if not version.has_qwerty else 'Co-Sign Multisig (CCC)',
+                'ccc', f=toggle_ccc_feature, predicate=is_not_tmp),
+    ToggleMenuItem('HSM Mode', 'hsmcmd', ['Default Off', 'Enable'],
+       story=("Enable HSM? Enables all user management commands, and other HSM-only USB commands. "
+              "By default these commands are disabled."),
+               predicate=hsm_available),
+    MenuItem('User Management', menu=make_users_menu,
+                predicate=lambda: hsm_available() and settings.get('hsmcmd', False)),
+]
+
 AdvancedNormalMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Backup", menu=BackupStuffMenu),
@@ -380,14 +393,8 @@ AdvancedNormalMenu = [
     MenuItem("View Identity", f=view_ident),
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
     MenuItem("Key Teleport (start)", f=kt_start_rx, predicate=version.has_qr),
+    MenuItem("Spending Policy", menu=SpendingPolicySubMenu, shortcut='s'),
     MenuItem('Paper Wallets', f=make_paper_wallet),
-    ToggleMenuItem('Enable HSM', 'hsmcmd', ['Default Off', 'Enable'],
-                   story=("Enable HSM? Enables all user management commands, and other HSM-only USB commands. "
-                          "By default these commands are disabled."),
-                   predicate=hsm_available),
-    NonDefaultMenuItem('Spending Policy', 'sssp', f=toggle_sssp_feature, predicate=has_real_secret, shortcut='p'),
-    NonDefaultMenuItem('Spending Policy: Co-Signing', 'ccc', f=toggle_ccc_feature, predicate=is_not_tmp),   # XXX mk4 width
-    MenuItem('User Management', menu=make_users_menu, predicate=hsm_available),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu, shortcut=KEY_NFC),
     MenuItem("Danger Zone", menu=DangerZoneMenu, shortcut='z'),
 ]
@@ -534,6 +541,6 @@ HobbledTopMenu = [
              predicate=lambda: settings.master_get('seedvault') and sssp_spending_policy('okeys')),
     MenuItem('Advanced/Tools', menu=HobbledAdvancedMenu, shortcut='t'),
     MenuItem('Secure Logout', f=logout_now, predicate=not version.has_battery),
-    MenuItem('EXIT TEST DRIVE', f=toggle_sssp_feature, predicate=is_hobble_testdrive),
+    MenuItem('EXIT TEST DRIVE', f=sssp_feature_menu, predicate=is_hobble_testdrive),
     ShortcutItem(KEY_NFC, predicate=nfc_enabled, menu=HobbledNFCToolsMenu),
 ]

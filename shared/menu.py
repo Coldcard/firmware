@@ -306,10 +306,6 @@ class MenuSystem:
             if fcn and fcn():
                 checked = True
 
-            if not has_qwerty and checked and (len(msg) > 14):
-                # on mk4 every label longer than 14 will overlap with checkmark
-                checked = False
-
             if self.multi_selected is not None and (real_idx in self.multi_selected):
                 # ignore length constraint above, we need to visually show that
                 # smthg is selected - in any case

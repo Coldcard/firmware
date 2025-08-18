@@ -11,6 +11,12 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: If all change outputs have `nValue=0` they're not shown in UX.
 - Bugfix: Disallow negative input/output amounts in PSBT.
 
+# Spending Policy Feature
+- "Enable HSM" and "User Management" have moved into Advanced > Spending Policy
+- old "CCC" feature has been renamed and moved into that menu
+- new feature: Spending policies for "Single Signer" added:
+    - power new stuff
+
 # Mk4 Specific Changes
 
 ## 5.4.? - 2025-08-xx
