@@ -40,7 +40,7 @@ def test_sign1(dev, finalize):
 
     #assert 'None of the keys' in str(ee)
     #assert 'require subpaths' in str(ee)
-    assert 'PSBT does not contain any key path information' in str(ee)
+    assert 'PSBT inputs do not contain any key path information' in str(ee)
 
 
 @pytest.mark.parametrize('fn', [
@@ -87,7 +87,7 @@ def test_psbt_parse_good(try_sign, fn, accept):
     assert ('Missing UTXO' in msg) \
                 or ('None of the keys' in msg) \
                 or ('completely signed already' in msg) \
-                or ('PSBT does not contain any key path information' in msg) \
+                or ('PSBT inputs do not contain any key path information' in msg) \
                 or ('require subpaths' in msg), msg
 
 
@@ -1445,7 +1445,7 @@ def test_fully_unsigned(fake_txn, try_sign, addr_fmt):
     with pytest.raises(CCProtoError) as ee:
         orig, result = try_sign(psbt, accept=True)
 
-    assert 'does not contain any key path information' in str(ee)
+    assert 'PSBT inputs do not contain any key path information' in str(ee)
 
 @pytest.mark.parametrize('addr_fmt', ["p2wpkh", "p2tr"])
 def test_wrong_xfp(fake_txn, try_sign, addr_fmt):
@@ -1656,7 +1656,7 @@ def test_missing_keypaths(dev, try_sign, fake_txn):
         orig, result = try_sign(mod_psbt, accept=False)
 
     msg = ee.value.args[0]
-    assert ('does not contain any key path information' in msg)
+    assert ('PSBT inputs do not contain any key path information' in msg)
 
 def test_wrong_pubkey(dev, try_sign, fake_txn):
     # psbt input gives a pubkey+subkey path, but that pubkey doesn't map to utxo pubkey

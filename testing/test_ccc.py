@@ -1027,7 +1027,7 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
                                    bitcoind_create_watch_only_wallet, cap_story, bitcoind,
                                    policy_sign, settings_get, cap_menu, pick_menu_item,
                                    press_select, load_export, offer_minsc_import, goto_home,
-                                   need_keypress, is_q1, enter_text):
+                                   need_keypress, is_q1, enter_text, enter_complex):
     # - 'build 2-of-N' path
     goto_home()
     settings_set("ccc", None)
@@ -1093,7 +1093,7 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
     # export one of the wallets
     w_mn, w_name = ami.split(":", 1)
     w_name = w_name.strip()
-    new_name = "new"
+    new_name = "AAAA"
     pick_menu_item(ami)  # just another ms wallet
     pick_menu_item("Descriptors")
     pick_menu_item("Export")
@@ -1109,10 +1109,20 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
     pick_menu_item("Miniscript")
     pick_menu_item(w_name)
     pick_menu_item("Rename")
-    for i in range(len(w_name)):
+    for i in range(len(w_name) if is_q1 else len(w_name)-1):
         need_keypress(KEY_DELETE if is_q1 else "x")
 
-    enter_text(new_name)
+    if not is_q1:
+        # below should yield AAAA
+        need_keypress("1")
+        for _ in range(3):
+            need_keypress("9")  # next char
+            need_keypress("1")  # letters
+
+        press_select()
+    else:
+        enter_text(new_name)
+
     time.sleep(.1)
     enter_enabled_ccc(words)
     m = cap_menu()

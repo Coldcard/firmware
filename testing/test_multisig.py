@@ -761,7 +761,7 @@ def test_import_dup_safe(N, clear_miniscript, make_multisig, offer_minsc_import,
     press_select()
     has_name(orig_name)
 
-    new_name = "xxx-new"
+    new_name = "AAAA"
     title, story = offer_minsc_import(make_named(new_name))
     assert 'Duplicate wallet' in story
     assert f"'{orig_name}' is the same"
@@ -774,12 +774,20 @@ def test_import_dup_safe(N, clear_miniscript, make_multisig, offer_minsc_import,
 
     # just simple rename
     pick_menu_item(orig_name)
-    pick_menu_item('Rename')
-    for i in range(len(orig_name)):
+    pick_menu_item("Rename")
+    for i in range(len(orig_name) if is_q1 else len(orig_name) - 1):
         need_keypress(KEY_DELETE if is_q1 else "x")
 
+    if not is_q1:
+        # below should yield AAAA
+        need_keypress("1")
+        for _ in range(3):
+            need_keypress("9")  # next char
+            need_keypress("1")  # letters
 
-    enter_text(new_name)
+        press_select()
+    else:
+        enter_text(new_name)
 
     press_select()
     has_name(new_name)

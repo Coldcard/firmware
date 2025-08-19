@@ -358,8 +358,12 @@ class ApproveTransaction(UserAuthorizedAction):
             await self.psbt.validate()  # might do UX: accept multisig import
 
             ccc_c_xfp = CCCFeature.get_xfp()  # can be None
-            self.psbt.consider_inputs(cosign_xfp=ccc_c_xfp)
-            self.psbt.consider_outputs(cosign_xfp=ccc_c_xfp)
+            args = self.psbt.consider_inputs(cosign_xfp=ccc_c_xfp)
+            self.psbt.consider_outputs(*args, cosign_xfp=ccc_c_xfp)
+            del args  # not needed anymore
+            # we can properly assess sighash only after we know
+            # which outputs are change
+            self.psbt.consider_dangerous_sighash()
 
         except FraudulentChangeOutput as exc:
             # sys.print_exception(exc)
@@ -921,7 +925,7 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
 
     del_after = settings.get('del', 0)
 
-    def _chunk_write(file_d, ofs, chunk=1024):
+    def _chunk_write(file_d, ofs, chunk=2048):
         written = 0
         while written < data_len:
             if (written + chunk) > data_len:
