@@ -68,6 +68,7 @@ from utils import call_later_ms
 #   ccc = (complex) If present, CCC feature is enabled and key details stored here.
 #   ktrx = (privkey) Key teleport Rx has been started, this will be our keypair
 #   sssp = (complex) If present, spending-policy (single signer) feature are defined
+#   lfr = (string) If present, the reason why Spending Policy blocked last transaction
 
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
