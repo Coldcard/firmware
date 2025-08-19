@@ -50,4 +50,6 @@ When hobbled...
 
 - update menu tree w/ hobble mode view
 
+- verify that psbt can be "signed" when SP enabled and delta-mode pin is active. seed not wiped.
+
 '''
