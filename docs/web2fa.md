@@ -18,8 +18,11 @@ for the COLDCARD Q, it is a QR code to be scanned.
 The HSM feature uses HOTP tokens, which do not require a backend,
 but are not as robust as time-based tokens.
 
-For now, Web2FA is only being used as part of CCC spending policy (opt-in),
-but we may find other uses for it.
+Web2FA is available to be enabled as part of a Spending Policy,
+both in Multisig and Single Signer modes. When enabled, you will be
+prompted complete 2FA authentication after viewing the details of
+the transaction to be signed. You will not be able to sign without
+the correct code.
 
 ## How It Works
 
