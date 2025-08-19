@@ -24,20 +24,42 @@ from exceptions import SpendPolicyViolation
 # limit to number of addresses in list
 MAX_WHITELIST = const(25)
 
+class LastFailReason:
+    # We don't show the user the reason for policy fail (by design, so attacker
+    # cannot maximize their take against the policy), but during setup/experiments
+    # we offer to show the reason in the menu. Includes both SS and MS cases.
+    # - now holding this in a setting so they can power-cycle and bypass to view
+    
+    @classmethod
+    def record(cls, msg):
+        settings.put('lfr', msg)
+
+    @classmethod
+    def get(cls):
+        return settings.get('lfr', None)
+
+    @classmethod
+    def clear(cls):
+        settings.remove_key('lfr')
+
 class SpendingPolicy(dict):
     # Details of what is allowed or not. Same for single vs. multisig signing.
     # - a dict() but with write-thru to setting value
 
-    # We don't show the user the reason for policy fail (by design, so attacker
-    # cannot maximize their take against the policy), but during setup/experiments
-    # we offer to show the reason in the menu. Includes both SS and MS cases.
-    last_fail_reason = ''
-
-    def __init__(self, nvkey, pol_dict):
+    def __init__(self, nvkey, pol_dict=None):
         # deserialize and construct
         #assert nvkey in { 'ccc', 'sssp' }
         self.nvkey = nvkey
-        super().__init__(pol_dict)
+        super().__init__()
+
+        if pol_dict is not None:
+            self.clear()
+            self.update(pol_dict.items())
+        else:
+            v = dict(settings.get(self.nvkey, {})).get('pol', None)
+            if v is not None:
+                self.update(v.items())      # mpy bugfix, when called with SpendingPolicy
+            
 
     def _update_policy(self):
         # serialize the spending policy, save it
@@ -59,6 +81,7 @@ class SpendingPolicy(dict):
         # not safe to sign any txn w/ warnings: might be complaining about
         # massive miner fees, or weird OP_RETURN stuff
         if psbt.warnings:
+            print("WARN: %r" % psbt.warnings)
             raise SpendPolicyViolation("has warnings")
 
         # Magnitude: size limits for output side (non change)
@@ -119,12 +142,14 @@ class SpendingPolicy(dict):
 
         ok = await web2fa.perform_web2fa(msg, self.get('web2fa'))
         if not ok:
-            SpendingPolicy.last_fail_reason = '2FA Fail'
+            LastFailReason.record('2FA Fail')
             raise SpendPolicyViolation
 
     def update_last_signed(self, psbt):
         # Call after successfully signing a PSBT ... notes the height involved.
         # - might add other things besides height here someday
+        LastFailReason.clear()
+
         old_h = self.get('block_h', 1)
 
         if old_h < psbt.lock_time < NLOCK_IS_TIME:
@@ -160,13 +185,13 @@ class SSSPFeature:
     @classmethod
     def get_policy(cls):
         # de-serialize just the spending policy
-        return SpendingPolicy('sssp', settings.get('sssp', dict(pol={})).get('pol'))
+        return SpendingPolicy('sssp')
 
     @classmethod
     def can_allow(cls, psbt):
         # We are looking at a PSBT: should we let user sign it, or block?
         # - return (block_signing, needs_2fa_step)
-        if not cls.is_enabled:
+        if not cls.is_enabled():
             exists = bool(settings.get('sssp', False))
             if exists:
                 # this will not block CCC co-signing, because that test is already
@@ -179,7 +204,7 @@ class SSSPFeature:
             pol = cls.get_policy()
             needs_2fa = pol.meets_policy(psbt)
         except SpendPolicyViolation as e:
-            SpendingPolicy.last_fail_reason = str(e)
+            LastFailReason.record(str(e))
             # caller will show msg
             return True, False
 
@@ -265,7 +290,7 @@ class CCCFeature:
     @classmethod
     def get_policy(cls):
         # de-serialize just the spending policy
-        return SpendingPolicy('ccc', settings.get('ccc', dict(pol={})).get('pol'))
+        return SpendingPolicy('ccc')
 
     @classmethod
     def remove_ccc(cls):
@@ -279,7 +304,7 @@ class CCCFeature:
         # We are looking at a PSBT: can we sign it, and would we?
         # - if we **could** but will not, due to policy, add warning msg
         # - return (we could sign, needs 2fa step)
-        if not cls.is_enabled:
+        if not cls.is_enabled():
             return False, False
 
         ms = psbt.active_multisig
@@ -300,7 +325,7 @@ class CCCFeature:
             pol = cls.get_policy()
             needs_2fa = pol.meets_policy(psbt)
         except SpendPolicyViolation as e:
-            SpendingPolicy.last_fail_reason = str(e)
+            LastFailReason.record(str(e))
             psbt.warnings.append(('CCC', "Violates spending policy. Won't sign."))
             return False, False
 
@@ -310,7 +335,7 @@ class CCCFeature:
     def sign_psbt(cls, psbt):
         # do the math
         psbt.sign_it(cls.get_encoded_secret(), cls.get_xfp())
-        SpendingPolicy.last_fail_reason = ""
+        LastFailReason.clear()
 
         pol = cls.get_policy()
         pol.update_last_signed(psbt)
@@ -347,7 +372,7 @@ class CCCConfigMenu(MenuSystem):
             MenuItem(('[%s] Co-Signing' if version.has_qwerty else '[%s]')
                             % xfp2str(my_xfp), f=self.show_ident),
             MenuItem('Spending Policy', 
-                menu=lambda *a: SpendingPolicyMenu.be_a_submenu(SSSPFeature.get_policy())),
+                menu=lambda *a: SpendingPolicyMenu.be_a_submenu(CCCFeature.get_policy())),
             MenuItem('Export CCC XPUBs', f=self.export_xpub_c),
             MenuItem('Multisig Wallets'),
         ]
@@ -362,7 +387,7 @@ class CCCConfigMenu(MenuSystem):
 
         items.append(MenuItem('↳ Build 2-of-N', f=self.build_2ofN, arg=count))
 
-        if SpendingPolicy.last_fail_reason:
+        if LastFailReason.get():
             #         xxxxxxxxxxxxxxxx
             items.insert(1, MenuItem('Last Violation', f=self.debug_last_fail))
 
@@ -379,12 +404,13 @@ class CCCConfigMenu(MenuSystem):
         if bh:
             msg += "CCC height:\n\n%s\n\n" % bh
 
+        lfr = LastFailReason.get()
         msg += 'The most recent policy check failed because of:\n\n%s\n\nPress (4) to clear.' \
-                    % SpendingPolicy.last_fail_reason
+                    % lfr
         ch = await ux_show_story(msg, escape='4')
 
         if ch == '4':
-            SpendingPolicy.last_fail_reason = ''
+            LastFailReason.clear()
             self.update_contents()
 
     async def remove_ccc(self, *a):
@@ -1185,7 +1211,7 @@ class SSSPConfigMenu(MenuSystem):
             #MenuItem('Test Word Challenge', f=sssp_word_challenge),     # XXX test only?
         ]
 
-        if SpendingPolicy.last_fail_reason:
+        if LastFailReason.get():
             #                         xxxxxxxxxxxxxxxx
             items.insert(1, MenuItem('Last Violation', f=self.debug_last_fail))
 
@@ -1241,12 +1267,13 @@ class SSSPConfigMenu(MenuSystem):
         if bh:
             msg += "Last height:\n\n%s\n\n" % bh
 
+        lfr = LastFailReason.get()
         msg += 'The most recent policy check failed because of:\n\n%s\n\nPress (4) to clear.' \
-                    % SpendingPolicy.last_fail_reason
+                    % lfr
         ch = await ux_show_story(msg, escape='4')
 
         if ch == '4':
-            SpendingPolicy.last_fail_reason = ''
+            LastFailReason.clear()
             self.update_contents()
 
     async def remove_sssp(self, *a):
