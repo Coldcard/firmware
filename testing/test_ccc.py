@@ -1167,7 +1167,7 @@ def test_remove_ccc(settings_set, setup_ccc, ccc_ms_setup, settings_get, policy_
 @pytest.mark.parametrize("has_candidates", [True, False])
 def test_c_key_from_seed_vault(has_candidates, setup_ccc, build_test_seed_vault, settings_set,
                                goto_ccc_menu, pick_menu_item, press_select, need_keypress, cap_menu,
-                               cap_story, press_cancel, enter_enabled_ccc):
+                               cap_story, press_cancel, enter_enabled_ccc, goto_home):
     goto_home()
     settings_set("ccc", None)
     settings_set("multisig", [])
