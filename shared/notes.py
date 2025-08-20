@@ -21,6 +21,8 @@ from utils import problem_file_line, url_unquote, wipe_if_deltamode
 ONE_LINE = CHARS_W-2
 
 async def make_notes_menu(*a):
+    from pincodes import pa
+
     if pa.hobbled_mode:
         # Read only version of menu system
         # - used when spending policy in effect

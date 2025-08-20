@@ -491,7 +491,7 @@ HobbledFileMgmtMenu = [
     MenuItem('Sign Text File', f=sign_message_on_sd),
     MenuItem('Batch Sign PSBT', f=batch_sign),
     MenuItem('List Files', f=list_files),
-    MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu),        #dup elsewhere
+    MenuItem('Export Wallet', menu=WalletExportMenu),        # dup under Adv/Tools
     MenuItem('Verify Sig File', f=verify_sig_file),
     MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file, shortcut=KEY_NFC),
     MenuItem('BBQr File Share', predicate=version.has_qr, f=qr_share_file, arg=True),
@@ -516,7 +516,7 @@ HobbledNFCToolsMenu = [
 HobbledAdvancedMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("File Management", menu=HobbledFileMgmtMenu),
-    MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu, shortcut='x'),  # also inside FileMgmt
+    MenuItem('Export Wallet', menu=WalletExportMenu, shortcut='x'),  # also inside FileMgmt
     MenuItem('Teleport Multisig PSBT', predicate=qr_and_ms, f=kt_send_file_psbt),
     MenuItem("View Identity", f=view_ident),
     MenuItem('Paper Wallets', f=make_paper_wallet),

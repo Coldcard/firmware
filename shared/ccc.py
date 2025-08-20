@@ -81,7 +81,6 @@ class SpendingPolicy(dict):
         # not safe to sign any txn w/ warnings: might be complaining about
         # massive miner fees, or weird OP_RETURN stuff
         if psbt.warnings:
-            print("WARN: %r" % psbt.warnings)
             raise SpendPolicyViolation("has warnings")
 
         # Magnitude: size limits for output side (non change)
