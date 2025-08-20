@@ -1029,7 +1029,6 @@ def sssp_spending_policy(key, default=False, change=None):
 
     raise KeyError(key)
 
-    return default
 
 async def sssp_feature_menu(*a):
     # Show the top menu for SSSP feature, or enable access first time.
