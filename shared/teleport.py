@@ -484,7 +484,7 @@ async def kt_incoming(type_code, payload):
     from pincodes import pa
     if pa.hobbled_mode and type_code != 'E':
         # only PSBT rx is supported in hobbled mode
-        # TODO: fail silently? good enough?
+        # fail silently, this is second check, see decoders.py
         return
 
     if type_code == 'R': 
