@@ -2632,6 +2632,7 @@ def build_test_seed_vault():
 from test_backup import backup_system
 from test_bbqr import readback_bbqr, render_bbqr, readback_bbqr_ll, try_sign_bbqr, split_scan_bbqr
 from test_bip39pw import set_bip39_pw
+from test_ccc import get_last_violation
 from test_drv_entro import derive_bip85_secret, activate_bip85_ephemeral
 from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto_eph_seed_menu
 from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed, confirm_tmp_seed
