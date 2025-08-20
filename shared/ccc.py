@@ -1205,8 +1205,8 @@ class SSSPConfigMenu(MenuSystem):
             #         xxxxxxxxxxxxxxxx
             MenuItem('Edit Policy...', 
                 menu=lambda *a: SpendingPolicyMenu.be_a_submenu(SSSPFeature.get_policy())),
-            SSSPCheckedMenuItem('Word Check', 'notes', 'Allow (read-only) access to secure notes and passwords? Otherwise, they are inaccessible.'),
-            SSSPCheckedMenuItem('Allow Notes', 'words', 'To change Spending Policy, in addition to special PIN, you must provide the first and last seed words.'),
+            SSSPCheckedMenuItem('Word Check', 'words', 'To change Spending Policy, in addition to special PIN, you must provide the first and last seed words.'),
+            SSSPCheckedMenuItem('Allow Notes', 'notes', 'Allow (read-only) access to secure notes and passwords? Otherwise, they are inaccessible.'),
             SSSPCheckedMenuItem('Related Keys', 'okeys', 'Allow access to BIP-39 passphrase wallets based on master seed, or Seed Vault (if any). Same spending Policy applies to all.'),
             #MenuItem('Test Word Challenge', f=sssp_word_challenge),     # XXX test only?
         ]
