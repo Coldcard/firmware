@@ -1828,6 +1828,16 @@ def nfc_block4rf(sim_eval):
     return doit
 
 @pytest.fixture
+def nfc_is_enabled(sim_eval):
+    # NFC is disabled by default in real product, and simulator w/o args
+    # - but some tests don't need to fail if it's off
+    # - or maybe your test can use some other method when it's off
+    # - use this to see if disabled at present and choose the right path
+    def doit():
+        return eval(sim_eval('bool(glob.NFC)'))
+    return doit
+
+@pytest.fixture
 def load_shared_mod():
     # load indicated file.py as a module
     # from <https://stackoverflow.com/questions/67631/how-to-import-a-module-given-the-full-path>
