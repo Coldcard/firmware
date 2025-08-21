@@ -24,7 +24,7 @@ def goto_sssp_menu(goto_home, pick_menu_item, is_mark4):
 def setup_sssp(goto_sssp_menu, pick_menu_item, cap_story, press_select, pass_word_quiz, is_q1,
                 seed_story_to_words, cap_menu, OK, word_menu_entry, press_cancel, press_delete,
                 enter_number, scan_a_qr, cap_screen, settings_get, need_keypress, microsd_path,
-                master_settings_get, enter_pin):
+                master_settings_get, enter_pin, settings_remove, sim_exec):
 
     def doit(pin=None, mag=None, vel=None, whitelist=None, w2fa=None, has_violation=None,
              word_check=None, notes_and_pws=None, rel_keys=None):
@@ -226,7 +226,13 @@ def setup_sssp(goto_sssp_menu, pick_menu_item, cap_story, press_select, pass_wor
                 if "okeys" in pol:
                     assert not pol["okeys"]
 
-    return doit
+    yield doit
+
+    # cleanup code -- all users of this fixture will get this code
+
+    settings_remove("sssp")
+    sim_exec('from pincodes import pa;pa.hobbled_mode = False; from actions import goto_top_menu; goto_top_menu()')
+    
 
 
 @pytest.fixture
@@ -279,7 +285,7 @@ def remove_settings_slots(settings_slots):
 @pytest.mark.parametrize("mag_ok", [True, False])
 @pytest.mark.parametrize("mag", [1000000, 2])
 def test_magnitude(mag_ok, mag, setup_sssp, bitcoind, settings_set, pick_menu_item,
-                   bitcoind_d_sim_watch, policy_sign, press_select, sim_exec, settings_remove,
+                   bitcoind_d_sim_watch, policy_sign, press_select,
                    reset_seed_words, settings_path, remove_settings_slots):
 
     wo = bitcoind_d_sim_watch
@@ -314,15 +320,11 @@ def test_magnitude(mag_ok, mag, setup_sssp, bitcoind, settings_set, pick_menu_it
 
     policy_sign(wo, psbt, violation=None if mag_ok else "magnitude")
 
-    # I could use test drive here
-    settings_remove("sssp")
-    sim_exec('from pincodes import pa;pa.hobbled_mode = False; from actions import goto_top_menu; goto_top_menu()')
-
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("whitelist_ok", [True, False])
 def test_whitelist(whitelist_ok, setup_sssp, bitcoind, settings_set, policy_sign,
-                   bitcoind_d_sim_watch, settings_remove, sim_exec):
+                   bitcoind_d_sim_watch):
 
     wo = bitcoind_d_sim_watch
 
@@ -352,15 +354,11 @@ def test_whitelist(whitelist_ok, setup_sssp, bitcoind, settings_set, policy_sign
     psbt = psbt_resp.get("psbt")
     policy_sign(wo, psbt, violation=None if whitelist_ok else "whitelist")
 
-    # I could use test drive here
-    settings_remove("sssp")
-    sim_exec('from pincodes import pa;pa.hobbled_mode = False; from actions import goto_top_menu; goto_top_menu()')
-
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("velocity_mi", ['6 blocks (hour)', '48 blocks (8h)'])
-def test_velocity(velocity_mi, setup_sssp, bitcoind, settings_set, settings_remove,
-                      policy_sign, settings_get, bitcoind_d_sim_watch, sim_exec):
+def test_velocity(velocity_mi, setup_sssp, bitcoind, settings_set,
+                      policy_sign, settings_get, bitcoind_d_sim_watch):
 
     wo = bitcoind_d_sim_watch
     wo.keypoolrefill(20)
@@ -438,14 +436,10 @@ def test_velocity(velocity_mi, setup_sssp, bitcoind, settings_set, settings_remo
         violation="nLockTime not height"
     )
 
-    # I could use test drive here
-    settings_remove("sssp")
-    sim_exec('from pincodes import pa;pa.hobbled_mode = False; from actions import goto_top_menu; goto_top_menu()')
-
 
 @pytest.mark.bitcoind
-def test_warnings(setup_sssp, bitcoind, settings_set, policy_sign, sim_exec,
-                      bitcoind_d_sim_watch, settings_get, settings_remove):
+def test_warnings(setup_sssp, bitcoind, settings_set, policy_sign,
+                      bitcoind_d_sim_watch, settings_get):
 
     wo = bitcoind_d_sim_watch
     wo.keypoolrefill(20)
@@ -502,33 +496,34 @@ def test_warnings(setup_sssp, bitcoind, settings_set, policy_sign, sim_exec,
     # num_warn=2, warn_list=["sighash NONE"]
     policy_sign(wo, po.as_b64_str(), violation="has warnings")
 
-    # I could use test drive here
-    settings_remove("sssp")
-    sim_exec('from pincodes import pa;pa.hobbled_mode = False; from actions import goto_top_menu; goto_top_menu()')
-
 
 def test_remove_sssp(setup_sssp, pick_menu_item, press_select, cap_story, cap_menu, settings_get):
     setup_sssp("11-11", mag=10000000, vel='6 blocks (hour)')
+
     # check test drive
     pick_menu_item("Test Drive")
     time.sleep(.1)
     _, story = cap_story()
     assert "COLDCARD operation will look like with Spending Policy" in story
     press_select()
+
     time.sleep(.1)
     m = cap_menu()
     assert "EXIT TEST DRIVE" in m
     assert "Settings" not in m
+
     pick_menu_item("EXIT TEST DRIVE")
     time.sleep(.1)
     m = cap_menu()
     assert "Edit Policy..." in m  # back in policy settings
+
     pick_menu_item("Remove Policy")
     time.sleep(.1)
     _, story = cap_story()
     assert "Bypass PIN will be removed" in story
     assert "spending policy settings forgotten" in story
     press_select()
+
     assert not settings_get("sssp")
     tps = settings_get("tp")
     if tps:
