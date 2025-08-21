@@ -1083,15 +1083,12 @@ disable this feature.
         # just a tourist
         return
 
-
     # re-use existing PIN if there for some reason
     new_pin = tp.has_sp_unlock()
 
     if not new_pin:
-        # all existing PINS
-        have = set(tp.all_tricks())
-        have.add(pa.pin.decode())
-
+        have = tp.all_tricks()
+        main_pin = pa.pin.decode()
         while 1:
             lll = LoginUX()
             lll.is_setting = True
@@ -1101,14 +1098,17 @@ disable this feature.
             if new_pin is None:
                 return
 
-            if (new_pin not in have):
-                tp.define_unlock_pin(new_pin)
-                break
+            # weak check - does not spot hidden trick pins
+            if (new_pin != main_pin) and (new_pin not in have):
+                # verify uniqueness with SE2
+                b, slot = tp.get_by_pin(new_pin)
+                if slot is None:
+                    tp.define_unlock_pin(new_pin)
+                    break
 
-            await ux_show_story("That PIN (%s) is already in use. All PIN codes must be unique."
-                                            % new_pin)
+            await tp.err_unique_pin(new_pin)
 
-    # all features disabled to to start
+    # all features disabled to start
     settings.set('sssp', dict(en=False, pol={}))
     settings.save()
 

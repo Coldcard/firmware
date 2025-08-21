@@ -524,10 +524,14 @@ def test_remove_sssp(setup_sssp, pick_menu_item, press_select, cap_story, cap_me
     assert "spending policy settings forgotten" in story
     press_select()
 
+    time.sleep(.1)
     assert not settings_get("sssp")
+
     tps = settings_get("tp")
     if tps:
         assert "11-11" not in tps
+
+    assert not settings_get("sssp")
 
 
 def test_use_main_pin_as_unlock(setup_sssp, cap_story):
@@ -535,6 +539,28 @@ def test_use_main_pin_as_unlock(setup_sssp, cap_story):
     # simulator PIN
     with pytest.raises(Exception):
         setup_sssp("12-12")
+
+    _, story = cap_story()
+    assert "already in use" in story
+    assert "PIN codes must be unique" in story
+
+
+@pytest.mark.parametrize("hide", [True, False])
+def test_use_trick_pin_as_unlock(hide, setup_sssp, cap_story, new_trick_pin, pick_menu_item,
+                                 press_select, clear_all_tricks):
+    clear_all_tricks()
+    pin = "11-11"
+    new_trick_pin(pin, 'Wipe Seed', 'Wipe the seed and maybe do more')
+    pick_menu_item('Wipe & Reboot')
+    press_select()
+    press_select()
+    if hide:
+        pick_menu_item(f"↳{pin}")
+        pick_menu_item("Hide Trick")
+        press_select()  # confirm
+
+    with pytest.raises(Exception):
+        setup_sssp(pin)
 
     _, story = cap_story()
     assert "already in use" in story
