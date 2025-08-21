@@ -407,6 +407,12 @@ class TrickPinMgmt:
                 b, slot = tp.update_slot(pin.encode(), new=True,
                                      tc_flags=flags, tc_arg=arg, secret=new_secret)
             except: pass
+
+    @staticmethod
+    async def err_unique_pin(pin):
+        # standardized error UX
+        return await ux_show_story(
+            "That PIN (%s) is already in use. All PIN codes must be unique." % pin)
             
 
 tp = TrickPinMgmt()
@@ -552,8 +558,7 @@ class TrickPinMenu(MenuSystem):
             have.remove(existing_pin)
 
         if (new_pin == self.current_pin) or (new_pin in have):
-            await ux_show_story("That PIN (%s) is already in use. All PIN codes must be unique." % new_pin)
-            return
+            return await tp.err_unique_pin(new_pin)
 
         # check if we "forgot" this pin, and read it back if we did.
         # - important this is after the above checks so we don't reveal any trick pin used
