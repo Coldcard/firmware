@@ -150,22 +150,48 @@ class WordNestMenu(MenuSystem):
     done_cb = None
 
     def __init__(self, num_words=None, has_checksum=True, done_cb=commit_new_words,
-                        items=None, is_commit=False):
+                 items=None, is_commit=False, menu_cbf=None, prefix=""):
 
         if num_words is not None:
             WordNestMenu.target_words = num_words
             WordNestMenu.has_checksum = has_checksum
             WordNestMenu.words = []
-            assert done_cb
             WordNestMenu.done_cb = done_cb
             is_commit = True
 
         if not items:
-            items = [MenuItem(i, menu=self.next_menu) for i in letter_choices()]
+            ch = letter_choices(prefix)
+            if menu_cbf:
+                items = [MenuItem(i, f=menu_cbf) for i in ch]
+            else:
+                items = [MenuItem(i, menu=self.next_menu)  for i in ch]
 
         self.is_commit = is_commit
 
         super(WordNestMenu, self).__init__(items)
+
+    @classmethod
+    async def menu_done_cbf(cls, a, b, c):
+        if c.label[-1] == '-':
+            lc = c.label[0:-1]
+        else:
+            lc = ""
+            cls.words.append(c.label)
+            if len(cls.words) >= 2:
+                from glob import numpad
+                numpad.abort_ux()
+                return
+
+        m = cls(prefix=lc, menu_cbf=cls.menu_done_cbf)
+        the_ux.push(m)
+        await m.interact()
+
+    @classmethod
+    async def login_sequence_word_check(cls):
+        m = cls(num_words=2, menu_cbf=WordNestMenu.menu_done_cbf)
+        the_ux.push(m)
+        await the_ux.interact()
+        return cls.words
 
     @staticmethod
     async def next_menu(self, idx, choice):
