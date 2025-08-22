@@ -171,26 +171,30 @@ class WordNestMenu(MenuSystem):
         super(WordNestMenu, self).__init__(items)
 
     @classmethod
-    async def menu_done_cbf(cls, a, b, c):
-        if c.label[-1] == '-':
-            lc = c.label[0:-1]
-        else:
-            lc = ""
-            cls.words.append(c.label)
-            if len(cls.words) >= 2:
-                from glob import numpad
-                numpad.abort_ux()
-                return
+    async def get_n_words(cls, nwords):
+        # Just block until N words are provided. May only work before menus start?
+        from glob import numpad
 
-        m = cls(prefix=lc, menu_cbf=cls.menu_done_cbf)
-        the_ux.push(m)
-        await m.interact()
+        async def menu_done_cbf(menu, b, c):
+            # duplicates some of the logic of next_menu
+            if c.label[-1] == '-':
+                lc = c.label[0:-1]
+            else:
+                lc = ""
+                cls.words.append(c.label)
+                if len(cls.words) >= nwords:
+                    numpad.abort_ux()
+                    return
 
-    @classmethod
-    async def login_sequence_word_check(cls):
-        m = cls(num_words=2, menu_cbf=WordNestMenu.menu_done_cbf)
+            m = cls(prefix=lc, menu_cbf=menu_done_cbf)
+            the_ux.push(m)
+            await m.interact()
+
+        m = cls(num_words=nwords, menu_cbf=menu_done_cbf, has_checksum=False)
+
         the_ux.push(m)
         await the_ux.interact()
+
         return cls.words
 
     @staticmethod

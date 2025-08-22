@@ -880,6 +880,7 @@ async def start_login_sequence():
         if sp_unlock and sssp_spending_policy('words'):
             # challenge them also for first and last seed word! (will reboot on fail)
             await sssp_word_challenge()
+            dis.fullscreen("Startup...")
 
         if sp_unlock:
             # Disable spending policy going forward; user has to re-enable.

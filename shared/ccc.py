@@ -1129,7 +1129,6 @@ async def sssp_word_challenge(*a):
         want_words = words[:1] + words[-1:]
         assert len(want_words) == 2
 
-    got_words = []
     for retry in range(2):
         if version.has_qwerty:
             # see special rendering code for this case in ux_q1.py:ux_draw_words(num_words=2)
@@ -1137,18 +1136,17 @@ async def sssp_word_challenge(*a):
             got_words = await seed_word_entry('First and Last Seed Words', 2, has_checksum=False)
         else:
             from seed import WordNestMenu
-            got_words = await WordNestMenu.login_sequence_word_check()
+            got_words = await WordNestMenu.get_n_words(2)
 
         if got_words == want_words:
             # success - done
             return
 
         await ux_show_story("Sorry, those words are incorrect.")
-        got_words = []
 
     # they failed; log them out ... they can just try login again
     from actions import login_now
-    login_now()
+    await login_now()
 
     # NOT-REACHED
 
