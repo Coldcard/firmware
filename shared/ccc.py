@@ -1121,15 +1121,15 @@ async def sssp_word_challenge(*a):
     from stash import SensitiveValues
 
     with SensitiveValues() as sv:
-        if sv.mode == 'words':
-            words = bip39.b2a_words(sv.raw).split(' ')
-            want_words = words[:1] + words[-1:]
-            assert len(want_words) == 2
-        else:
+        if sv.mode != 'words':
             # they are using XPRV or something, skip test entirely
             return
 
-    got_words = None
+        words = bip39.b2a_words(sv.raw).split(' ')
+        want_words = words[:1] + words[-1:]
+        assert len(want_words) == 2
+
+    got_words = []
     for retry in range(2):
         if version.has_qwerty:
             # see special rendering code for this case in ux_q1.py:ux_draw_words(num_words=2)
@@ -1137,23 +1137,14 @@ async def sssp_word_challenge(*a):
             got_words = await seed_word_entry('First and Last Seed Words', 2, has_checksum=False)
         else:
             from seed import WordNestMenu
-
-            # TODO: fix bugs here on Mk4. really not working. XXX 
-
-            got_words = None
-            async def check_challenge_cb(words):
-                WordNestMenu.pop_all()
-                got_words = words
-
-            m = WordNestMenu(num_words=2, has_checksum=False, done_cb=check_challenge_cb)
-            the_ux.push(m)
-            await m.interact()
+            got_words = await WordNestMenu.login_sequence_word_check()
 
         if got_words == want_words:
             # success - done
             return
 
         await ux_show_story("Sorry, those words are incorrect.")
+        got_words = []
 
     # they failed; log them out ... they can just try login again
     from actions import login_now
