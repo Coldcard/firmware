@@ -40,9 +40,10 @@ def goto_notes(cap_story, cap_menu, press_select, goto_home, pick_menu_item):
     return doit
 
 @pytest.fixture
-def need_some_notes(settings_get, settings_set):
+def need_some_notes(is_q1, settings_get, settings_set):
     # create a note or use what's there, provide as obj
     def doit(title='Title Here', body='Body'):
+        assert is_q1
         notes = settings_get('notes', [])
         if not notes:
             settings_set('notes', [dict(misc=body, title=title)])

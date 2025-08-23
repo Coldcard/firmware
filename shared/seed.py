@@ -150,22 +150,52 @@ class WordNestMenu(MenuSystem):
     done_cb = None
 
     def __init__(self, num_words=None, has_checksum=True, done_cb=commit_new_words,
-                        items=None, is_commit=False):
+                 items=None, is_commit=False, menu_cbf=None, prefix=""):
 
         if num_words is not None:
             WordNestMenu.target_words = num_words
             WordNestMenu.has_checksum = has_checksum
             WordNestMenu.words = []
-            assert done_cb
             WordNestMenu.done_cb = done_cb
             is_commit = True
 
         if not items:
-            items = [MenuItem(i, menu=self.next_menu) for i in letter_choices()]
+            ch = letter_choices(prefix)
+            if menu_cbf:
+                items = [MenuItem(i, f=menu_cbf) for i in ch]
+            else:
+                items = [MenuItem(i, menu=self.next_menu)  for i in ch]
 
         self.is_commit = is_commit
 
         super(WordNestMenu, self).__init__(items)
+
+    @classmethod
+    async def get_n_words(cls, nwords):
+        # Just block until N words are provided. May only work before menus start?
+        from glob import numpad
+
+        async def menu_done_cbf(menu, b, c):
+            # duplicates some of the logic of next_menu
+            if c.label[-1] == '-':
+                lc = c.label[0:-1]
+            else:
+                lc = ""
+                cls.words.append(c.label)
+                if len(cls.words) >= nwords:
+                    numpad.abort_ux()
+                    return
+
+            m = cls(prefix=lc, menu_cbf=menu_done_cbf)
+            the_ux.push(m)
+            await m.interact()
+
+        m = cls(num_words=nwords, menu_cbf=menu_done_cbf, has_checksum=False)
+
+        the_ux.push(m)
+        await the_ux.interact()
+
+        return cls.words
 
     @staticmethod
     async def next_menu(self, idx, choice):
@@ -879,6 +909,8 @@ class SeedVaultMenu(MenuSystem):
         ch = await ux_show_story(title="[" + rec.xfp + "]", msg=msg, escape=esc)
         if ch == "x": return
 
+        assert not pa.hobbled_mode
+
         dis.fullscreen("Saving...")
 
         wipe_slot = not current_active and (ch != "1")
@@ -889,6 +921,7 @@ class SeedVaultMenu(MenuSystem):
             xs.load()
             xs.blank()
             del xs
+
 
         # CAUTION: will get shadow copy if in tmp seed mode already
         seeds = settings.master_get("seeds", [])
@@ -926,6 +959,8 @@ class SeedVaultMenu(MenuSystem):
         from glob import dis
         from ux import ux_input_text
 
+        assert not pa.hobbled_mode
+
         idx, old = item.arg
         new_label = await ux_input_text(old.label, confirm_exit=False, max_len=40)
 
@@ -955,6 +990,8 @@ class SeedVaultMenu(MenuSystem):
     @staticmethod
     async def _add_current_tmp(*a):
         from pincodes import pa
+
+        assert not pa.hobbled_mode
 
         assert pa.tmp_value
         main_xfp = settings.master_get("xfp", 0)
@@ -997,6 +1034,7 @@ class SeedVaultMenu(MenuSystem):
         seeds = list(seed_vault_iter())
 
         if not seeds:
+            assert not pa.hobbled_mode
             rv.append(MenuItem('(none saved yet)'))
             if pa.tmp_value:
                 rv.append(add_current_tmp)
@@ -1016,8 +1054,8 @@ class SeedVaultMenu(MenuSystem):
                 submenu = [
                     MenuItem(rec.label, f=cls._detail, arg=(rec, encoded)),
                     MenuItem('Use This Seed', f=cls._set, arg=encoded),
-                    MenuItem('Rename', f=cls._rename, arg=(i, rec)),
-                    MenuItem('Delete', f=cls._remove, arg=(i, rec, encoded)),
+                    MenuItem('Rename', f=cls._rename, arg=(i, rec), predicate=not pa.hobbled_mode),
+                    MenuItem('Delete', f=cls._remove, arg=(i, rec, encoded), predicate=not pa.hobbled_mode),
                 ]
                 if is_active:
                     submenu[1] = MenuItem("Seed In Use")
@@ -1035,7 +1073,7 @@ class SeedVaultMenu(MenuSystem):
                 rv.append(item)
 
             if pa.tmp_value:
-                if seeds and (not tmp_in_sv):
+                if seeds and (not tmp_in_sv) and not pa.hobbled_mode:
                     # give em chance to store current active
                     rv.append(add_current_tmp)
 
@@ -1137,6 +1175,8 @@ class EphemeralSeedMenu(MenuSystem):
 
 
 async def make_ephemeral_seed_menu(*a):
+    assert not pa.hobbled_mode
+
     if (not pa.tmp_value) and (not settings.master_get("seedvault", False)):
         # force a warning on them, unless they are already doing it.
         if not await ux_confirm(

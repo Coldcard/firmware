@@ -141,7 +141,7 @@ if '--secret' in sys.argv:
 
 
 if '-g' in sys.argv:
-    # do login
+    # do login.. but does not work if _skip_pin got saved into settings already
     sim_defaults.pop('_skip_pin', 0)
 
 if '--nick' in sys.argv:

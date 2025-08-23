@@ -301,8 +301,10 @@ def new_trick_pin(goto_trick_menu, pick_menu_item, cap_menu, press_select,
         time.sleep(.1)
         m = cap_menu()
         assert m[0] == f'[{new_pin}]'
-        assert set(m[1:]) == {'Duress Wallet', 'Just Reboot', 'Wipe Seed', \
-                                'Delta Mode', 'Look Blank', 'Brick Self', 'Login Countdown'}
+        assert set(m[1:]) == {'Duress Wallet', 'Just Reboot', 'Wipe Seed', 'Delta Mode',
+                              'Look Blank', 'Policy Unlock',
+                              'Policy Unlock & Wipe' if is_q1 else 'P.U. & Wipe',
+                              'Brick Self', 'Login Countdown'}
 
         pick_menu_item(op_mode)
         

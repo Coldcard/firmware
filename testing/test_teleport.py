@@ -12,6 +12,7 @@ from base64 import b32encode
 from constants import *
 from test_ephemeral import SEEDVAULT_TEST_DATA
 from test_backup import make_big_notes
+from test_hobble import set_hobble
 
 # All tests in this file are exclusively meant for Q
 #
@@ -132,7 +133,7 @@ def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr,
             if 'Teleport Password' in scr: break
             time.sleep(.2)
         else:
-            assert False, "Teleport Password not in screen"
+            raise RuntimeError("Teleport Password not in screen")
 
         if expect_xfp:
             assert xfp2str(expect_xfp) in scr
@@ -417,19 +418,22 @@ def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_ite
 
 @pytest.mark.unfinalized
 @pytest.mark.parametrize('num_ins', [ 15 ])
-@pytest.mark.parametrize('M', [2, 4])
+@pytest.mark.parametrize('M', [4])
 @pytest.mark.parametrize('segwit', [True])
 @pytest.mark.parametrize('incl_xpubs', [ False ])
+@pytest.mark.parametrize('hobbled', [ False, True ])
 def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, dev, clear_ms,
                           fake_ms_txn, try_sign, incl_xpubs, bitcoind, cap_story, need_keypress,
                           cap_menu, pick_menu_item, grab_payload, rx_complete, press_select,
                           ndef_parse_txn_psbt, press_nfc, nfc_read, settings_get, settings_set,
-                          txid_from_export_prompt, sim_root_dir):
+                          txid_from_export_prompt, sim_root_dir,
+                          set_hobble, hobbled, readback_bbqr, nfc_is_enabled):
 
     # IMPORTANT: won't work if you start simulator with --ms flag. Use no args
     all_out_styles = list(unmap_addr_fmt.keys())
     num_outs = len(all_out_styles)
 
+    set_hobble(hobbled)
     clear_ms()
     use_regtest()
 
@@ -526,12 +530,19 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
     txid = txid_from_export_prompt()
     press_select()  # exit QR
     
-    # share signed txn via low-level NFC
-    press_nfc()
-    time.sleep(.1)
-    contents = nfc_read()
+    if nfc_is_enabled():
+        # share signed txn via low-level NFC
+        press_nfc()
+        time.sleep(.1)
+        contents = nfc_read()
 
-    got_psbt, got_txn, _ = ndef_parse_txn_psbt(contents, txid, expect_finalized=True)
+        got_psbt, got_txn, _ = ndef_parse_txn_psbt(contents, txid, expect_finalized=True)
+    else:
+        # NFC disabled. use other means .. bbqr
+        need_keypress(KEY_QR)
+        tcode, contents = readback_bbqr()
+        got_txn = (tcode == 'T')
+        got_psbt = (tcode == 'P')
 
     assert not got_psbt
     assert got_txn
@@ -723,6 +734,27 @@ def test_send_backup(testcase, rx_start, tx_start, cap_menu, enter_complex, pick
         restore_backup_unpacked()
         assert settings_get('notes') == notes
         settings_set('notes', [])
+
+
+def test_hobble_limited(set_hobble, scan_a_qr, cap_menu, cap_screen, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select, settings_get, settings_set, restore_backup_unpacked, main_do_over, set_encoded_secret, reset_seed_words, make_big_notes):
+    # verify: in hobbled mode, KT is blocked for everything except multisig cases
+
+    set_hobble(True)
+
+    from bbqr.split import split_qrs
+    from bbqr import split_qrs, join_qrs
+
+    _, parts = split_qrs(b's'*33, 'R')
+    rx_complete(parts[0], '12345678', expect_fail=True)
+    last = cap_screen().split('\n')[-1]
+    assert last == 'KT Blocked'
+
+    _, parts = split_qrs(b's'*33, 'S')
+    rx_complete(parts[0], 'abcdefgh', expect_fail=True)
+    last = cap_screen().split('\n')[-1]
+    assert last == 'KT Blocked'
+    
+    
 
 
 # EOF

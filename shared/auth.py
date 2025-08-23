@@ -327,7 +327,7 @@ class ApproveTransaction(UserAuthorizedAction):
     async def interact(self):
         # Prompt user w/ details and get approval
         from glob import dis, hsm_active
-        from ccc import CCCFeature
+        from ccc import CCCFeature, SSSPFeature
 
         # step 1: parse PSBT from PSRAM into in-memory objects.
 
@@ -387,7 +387,13 @@ class ApproveTransaction(UserAuthorizedAction):
 
         # early test for spending policy; not an error if violates policy
         # - might add warnings
-        could_ccc_sign, needs_2fa = CCCFeature.could_sign(self.psbt)
+        could_ccc_sign, ccc_needs_2fa = CCCFeature.could_cosign(self.psbt)
+
+        # test for allowing any signature when in single-signer mode
+        # - but CCC will override it.
+        should_block, ss_needs_2fa = SSSPFeature.can_allow(self.psbt)
+        if should_block and not could_ccc_sign:
+            return await self.failure('Spending Policy violation.')
 
         # step 2: figure out what we are approving, so we can get sign-off
         # - outputs, amounts
@@ -500,7 +506,7 @@ class ApproveTransaction(UserAuthorizedAction):
             self.done()
             return
 
-        if needs_2fa and could_ccc_sign:
+        if ccc_needs_2fa and could_ccc_sign:
             # They still need to pass web2fa challenge (but it meets other specs ok)
             try:
                 await CCCFeature.web2fa_challenge()
@@ -510,6 +516,13 @@ class ApproveTransaction(UserAuthorizedAction):
                 if ch2 != 'y':
                     return await self.failure("2FA Failed")
 
+        elif ss_needs_2fa:
+            # Need 2FA for single-sig case .. refuse to sign if it fails.
+            try:
+                await SSSPFeature.web2fa_challenge()
+            except:
+                return await self.failure("2FA Failed")
+
         # do the actual signing.
         try:
             dis.fullscreen('Wait...')
@@ -517,9 +530,13 @@ class ApproveTransaction(UserAuthorizedAction):
             self.psbt.sign_it()
 
             if could_ccc_sign:
-                dis.fullscreen('CCC Sign...')
+                # this is where the CCC co-signing happens.
+                dis.fullscreen('Co-Signing...')
                 gc.collect()
                 CCCFeature.sign_psbt(self.psbt)
+            else:
+                # maybe capture new min-height for velocity limit
+                SSSPFeature.update_last_signed(self.psbt)
 
         except FraudulentChangeOutput as exc:
             return await self.failure(exc.args[0], title='Change Fraud')
@@ -530,8 +547,9 @@ class ApproveTransaction(UserAuthorizedAction):
             return await self.failure("Signing failed late", exc)
 
         try:
-            await done_signing(self.psbt, self, self.input_method, self.filename, self.output_encoder,
-                               slot_b=True if ch == "b" else False, finalize=self.do_finalize)
+            await done_signing(self.psbt, self, self.input_method,
+                                self.filename, self.output_encoder,
+                                slot_b=(ch == "b"), finalize=self.do_finalize)
             self.done()
         except AbortInteraction:
             # user might have sent new sign cmd, while we still at export prompt

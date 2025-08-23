@@ -52,7 +52,7 @@ class UnknownAddressExplained(ValueError):
     pass
 
 # We're not going to co-sign using CCC feature
-class CCCPolicyViolationError(RuntimeError):
+class SpendPolicyViolation(RuntimeError):
     pass
 
 # EOF

@@ -139,6 +139,11 @@ def decode_qr_result(got, expect_secret=False, expect_text=False, expect_bbqr=Fa
 
         elif ty in 'RSE':
             # key-teleport related
+
+            from pincodes import pa
+            if pa.hobbled_mode and ty != 'E':
+                raise QRDecodeExplained("KT Blocked")
+
             if ty == 'R' and len(got) != 33:
                 raise QRDecodeExplained("Truncated KT RX")
 
