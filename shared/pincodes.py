@@ -134,13 +134,6 @@ class PinAttempt:
         assert ustruct.calcsize(PIN_ATTEMPT_FMT_V1) == PIN_ATTEMPT_SIZE_V1
         assert ustruct.calcsize(PIN_ATTEMPT_FMT_V2_ADDITIONS) == PIN_ATTEMPT_SIZE - PIN_ATTEMPT_SIZE_V1
 
-        # check for bricked system early
-        import callgate
-        if callgate.get_is_bricked():
-            # die right away if it's not going to work
-            print("SE bricked")
-            callgate.enter_dfu(3)
-
     def __repr__(self):
         return '<PinAttempt: fails/left=%d/%d tc_flag/arg=0x%x/0x%x>' % (
                         self.num_fails, self.attempts_left,
