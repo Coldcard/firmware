@@ -925,9 +925,11 @@ class psbtInputProxy(psbtProxy):
                             assert i in self.sp_idxs
 
         if self.is_miniscript:
+            if not self.sp_idxs: return
             if psbt.active_singlesig:
                 # if we already considered single signature inputs for signing
                 # do not even consider to sign with miniscript wallet(s)
+                # maybe we removed
                 self.sp_idxs = None
                 return  # required key is None
 
