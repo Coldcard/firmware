@@ -864,12 +864,13 @@ class psbtInputProxy(psbtProxy):
                 done_keys = set()
                 if self.part_sigs:
                     done_keys = {self.get(k) for k,_ in self.part_sigs}
+
                 for i, (pubkey, path) in enumerate(parsed_subpaths.items()):
                     if pubkey in done_keys:
-                        # pubkey has already signed, so ignore
-                        continue
+                        # pubkey has already signed, so - do not sign again
+                        self.sp_idxs.remove(i)
 
-                    if path[0] == my_xfp:
+                    elif path[0] == my_xfp:
                         # slight chance of dup xfps, so handle
                         assert i in self.sp_idxs
 
@@ -1851,10 +1852,10 @@ class psbtObject(psbtProxy):
                 # - could also look at pubkey needed vs. sig provided
                 # - could consider structure of MofN in p2sh cases
                 if len(inp.part_sigs) >= len(inp.subpaths):
-                    self.fully_signed = True
+                    inp.fully_signed = True
 
             if inp.taproot_key_sig:
-                self.fully_signed = True
+                inp.fully_signed = True
 
             if inp.utxo:
                 # Important: they might be trying to trick us with an un-related
@@ -1981,8 +1982,8 @@ class psbtObject(psbtProxy):
             # This is seen when you re-sign same signed file by accident (multisig)
             # - case of len(no_keys)==num_inputs is handled by consider_inputs
             self.warnings.append(('Limited Signing',
-                "We are not signing these inputs, because we either don't know the key"
-                " or inputs belong to different wallet: " + seq_to_str(no_keys)))
+                "We are not signing these inputs, because we either don't know the key,"
+                " inputs belong to different wallet, or we have already signed: " + seq_to_str(no_keys)))
 
         if presigned_inputs:
             # this isn't really even an issue for some complex usage cases
