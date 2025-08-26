@@ -157,6 +157,12 @@ with the others on a SEEDPLATE.
     - right to A, down to B ... take that number, and go to that column
     - down to C, that is answer: a &oplus; b &oplus; c
 
+## Open Standard
+Seed XOR is an open standard. Other software and hardware wallets are encouraged to
+implement support. No license or permission is required, including usage of the term
+"Seed XOR" when referring to implementations of this feature. Such implementations
+should match the process described in this documentation and be fully interoperable.
+
 ---
 
 # 24 Words XOR Seed Example Using 3 Parts
