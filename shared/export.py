@@ -448,14 +448,14 @@ def generate_generic_export(account_num=0):
 def generate_electrum_wallet(addr_type, account_num):
     # Generate line-by-line JSON details about wallet.
     #
-    # Much reverse enginerring of Electrum here. It's a complex
+    # Much reverse engineering of Electrum here. It's a complex
     # legacy file format.
 
     chain = chains.current_chain()
 
     xfp = settings.get('xfp')
 
-    # Must get the derivation path, and the SLIP32 version bytes right!
+    # Must get the derivation path, and the SLIP132 version bytes right!
     mode = chains.af_to_bip44_purpose(addr_type)
 
     OWNERSHIP.note_wallet_used(addr_type, account_num)

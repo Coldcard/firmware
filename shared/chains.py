@@ -24,8 +24,6 @@ Slip132Version = namedtuple('Slip132Version', ('pub', 'priv', 'hint'))
 # See also:
 # - <https://github.com/satoshilabs/slips/blob/master/slip-0132.md>
 #   - defines ypub/zpub/Xprc variants
-# - <https://github.com/satoshilabs/slips/blob/master/slip-0032.md>
-#   - nice bech32 encoded scheme for going forward
 # - <https://lists.linuxfoundation.org/pipermail/bitcoin-dev/2017-September/014907.html>
 #   - mailing list post proposed ypub, etc.
 #   - from <https://github.com/Bit-Wasp/bitcoin-php/issues/576>
@@ -394,7 +392,7 @@ def current_key_chain():
 # Overbuilt: will only be testnet and mainchain.
 AllChains = [BitcoinMain, BitcoinTestnet, BitcoinRegtest]
 
-def slip32_deserialize(xp):
+def slip132_deserialize(xp):
     # .. and classify chain and addr-type, as implied by prefix
     node = ngu.hdnode.HDNode()
     version = node.deserialize(xp)
