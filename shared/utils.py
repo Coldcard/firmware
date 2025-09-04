@@ -544,7 +544,7 @@ def parse_extended_key(ln, private=False):
     found = pat.search(ln)
     # serialize, and note version code
     try:
-        node, chain, addr_fmt, is_private = chains.slip32_deserialize(found.group(0))
+        node, chain, addr_fmt, is_private = chains.slip132_deserialize(found.group(0))
     except:
         pass
 

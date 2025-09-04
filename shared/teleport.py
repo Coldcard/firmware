@@ -321,7 +321,7 @@ async def kt_accept_values(dtype, raw):
         # it's an XPRV, but in binary.. some extra data we throw away here; sigh
         # XXX no way to send this .. but was thinking of address explorer
         txt = ngu.codecs.b58_encode(raw)
-        node, ch, _, _ = chains.slip32_deserialize(txt)
+        node, ch, _, _ = chains.slip132_deserialize(txt)
         assert ch.name == chains.current_chain().name, 'wrong chain'
         enc = SecretStash.encode(xprv=node)
 
