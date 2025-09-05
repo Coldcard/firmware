@@ -3,7 +3,7 @@
 # pincodes.py - manage PIN code (which map to wallet seeds)
 #
 import ustruct, ckcc, version, chains, stash
-from callgate import enter_dfu
+from callgate import enter_dfu, get_is_bricked
 from bip39 import wordlist_en
 
 # See ../stm32/bootloader/pins.h for source of these constants.
@@ -529,6 +529,20 @@ class PinAttempt:
         # Mk4 only
         # return (tc_flags, tc_arg)
         return self.delay_required, self.delay_achieved
+
+    @staticmethod
+    async def enforce_brick():
+        # check for bricked system early
+        if get_is_bricked():
+            try:
+                # regardless of settings.calc forever calculator after brickage
+                # for Q models fom version 5.X.X
+                if version.has_qwerty:
+                    from calc import login_repl
+                    await login_repl(allow_login=False)
+            finally:
+                # die right away if it's not going to work
+                enter_dfu(3)
         
 
 # singleton

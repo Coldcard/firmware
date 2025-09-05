@@ -81,27 +81,17 @@ glob.settings = settings
 
 async def more_setup():
     # Boot up code; splash screen is being shown
-
     try:
         from files import CardSlot
         CardSlot.setup()
 
-        # check for bricked system early
-        import callgate
-        if callgate.get_is_bricked():
-            print("SE bricked")
-            try:
-                # regardless of settings.calc forever calculator after brickage
-                if version.has_qwerty:
-                    from calc import login_repl
-                    await login_repl(allow_login=False)
-            finally:
-                # die right away if it's not going to work
-                callgate.enter_dfu(3)
-
         # This "pa" object holds some state shared w/ bootloader about the PIN
         try:
             from pincodes import pa
+            # check for bricked system early
+            # bricked CC not going past this point
+            pa.enforce_brick()
+
             pa.setup(b'')       # just to see where we stand.
             is_blank = pa.is_blank()
         except RuntimeError as e:

@@ -64,31 +64,29 @@ Example Commands:
             elif ln in ('help', 'cls', 'rand'):
                 # no need for () for these commands
                 ans = state[ln]()
-            elif allow_login:
-                # without this flag, PIN codes ignored
-                if re_pin.match(ln) and (len(ln) <= 13):
-                    # try login
-                    m = re_pin.match(ln)
-                    ln = m.group(1)+ '-' + m.group(2)
-                    print(ln)
-                    from pincodes import pa
-                    try:
-                        pa.setup(ln)
-                        ok = pa.login()
-                        if ok: return
-                    except RuntimeError as exc:
-                        # I'm a brick and other stuff can happen here
-                        # - especially AUTH_FAIL when pin is just wrong.
-                        if exc.args[0] == 'AUTH_FAIL':
-                            pa.attempts_left -= 1
-                            ans = '%-7d          # %d tries remain' % (eval(ln), pa.attempts_left)
-                        else:
-                            ans = 'Error: ' + repr(exc.args)
+            elif allow_login and re_pin.match(ln) and (len(ln) <= 13):
+                # try login
+                m = re_pin.match(ln)
+                ln = m.group(1)+ '-' + m.group(2)
+                print(ln)
+                from pincodes import pa
+                try:
+                    pa.setup(ln)
+                    ok = pa.login()
+                    if ok: return
+                except RuntimeError as exc:
+                    # I'm a brick and other stuff can happen here
+                    # - especially AUTH_FAIL when pin is just wrong.
+                    if exc.args[0] == 'AUTH_FAIL':
+                        pa.attempts_left -= 1
+                        ans = '%-7d          # %d tries remain' % (eval(ln), pa.attempts_left)
+                    else:
+                        ans = 'Error: ' + repr(exc.args)
 
-                elif re_prefix.match(ln) and len(ln) <= 7:
-                    # show words
-                    from pincodes import pa
-                    ans = pa.prefix_words(ln[:-1].encode())
+            elif allow_login and re_prefix.match(ln) and (len(ln) <= 7):
+                # show words
+                from pincodes import pa
+                ans = pa.prefix_words(ln[:-1].encode())
             else:
                 if any((b in ln) for b in blacklist):
                     ans = None
