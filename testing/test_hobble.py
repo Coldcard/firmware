@@ -22,7 +22,7 @@ When hobbled...
 * notes hidden if the exist but access disabled in policy
 * verify no settings menu
 
-- temp seeds are read only: no create, no rename, etc.
+- temp seeds are read-only: no create, no rename, etc.
 - seed vault can be accessed tho
 
 - login sequence

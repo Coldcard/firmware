@@ -312,7 +312,7 @@ class TrickPinMgmt:
         # remove all bypass pins, they are done w/ feature
         for k, (sn,flags,arg) in self.tp.items():
             if (flags & TC_FW_DEFINED) and (arg == TCA_SP_UNLOCK):
-                self.clear_slots(range(sn, sn+1))
+                self.clear_slots([sn])
                 self.forget_pin(k)
 
 
@@ -716,7 +716,7 @@ hiding this item.''')
             return
 
         if (flags == TC_FW_DEFINED) and (arg == TCA_SP_UNLOCK):
-            msg = "It will still be possible to change or disable the spending policy if this PIN if known."
+            msg = "It will still be possible to change or disable the spending policy if this PIN is known."
         elif pin == WRONG_PIN_CODE:
             msg = "This will hide what happens with wrong PINs from the menus but it will still be in effect."
         else:
