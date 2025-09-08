@@ -648,7 +648,7 @@ class MiniScriptWallet(WalletABC):
             yield ln
 
     def to_string(self, checksum=True):
-        # policy filling - not posible to specify internal/external always multipath export
+        # policy filling - not possible to specify internal/external always multipath export
         # only supported from bitcoin-core 29.0
         if self.desc_tmplt and self.keys_info:
             desc = bip388_wallet_policy_to_descriptor(self.desc_tmplt, self.keys_info)

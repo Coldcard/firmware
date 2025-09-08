@@ -2,10 +2,10 @@
 #
 # usb.py - USB related things
 #
-import ckcc, pyb, callgate, sys, ux, ngu, stash, aes256ctr
+import ckcc, pyb, callgate, sys, ux, ngu, stash, aes256ctr, ujson
 from uasyncio import sleep_ms, core
 from uhashlib import sha256
-from public_constants import MAX_MSG_LEN, MAX_BLK_LEN, AFC_SCRIPT
+from public_constants import MAX_MSG_LEN, MAX_BLK_LEN
 from public_constants import STXN_FLAGS_MASK
 from ustruct import pack, unpack_from
 from ckcc import watchpoint, is_simulator
@@ -116,6 +116,16 @@ def is_vcp_active():
     cur = pyb.usb_mode()
 
     return cur and ('VCP' in cur) and en
+
+
+def get_miniscript_by_name(name_bytes):
+    from wallet import MiniScriptWallet
+
+    for w in MiniScriptWallet.iter_wallets():
+        if w.name == str(name_bytes, 'ascii'):
+            return True, w
+    else:
+        return False, b'err_Miniscript wallet not found'
 
 class USBHandler:
     def __init__(self):
@@ -481,20 +491,15 @@ class USBHandler:
             assert self.encrypted_req, 'must encrypt'
             from wallet import MiniScriptWallet
             wallets = [w.name for w in MiniScriptWallet.iter_wallets()]
-            import ujson
             return b'asci' + ujson.dumps(wallets)
 
         if cmd == "msdl":
             # delete miniscript wallet by its name (unique id)
             assert self.encrypted_req, 'must encrypt'
-            from wallet import MiniScriptWallet
-
-            assert len(args) < 40, "len args"
-            for w in MiniScriptWallet.iter_wallets():
-                if w.name == str(args, 'ascii'):
-                    break
-            else:
-                return b'err_Miniscript wallet not found'
+            assert len(args) <= 20, "name len"
+            ok, w = get_miniscript_by_name(args)
+            if not ok:
+                return w
 
             from auth import maybe_delete_miniscript
             maybe_delete_miniscript(w)
@@ -503,15 +508,13 @@ class USBHandler:
         if cmd == "msgt":
             # takes name and returns descriptor + name json
             assert self.encrypted_req, 'must encrypt'
-            from wallet import MiniScriptWallet
+            assert len(args) <= 20, "name len"
+            ok, w = get_miniscript_by_name(args)
+            if not ok:
+                return w
 
-            assert len(args) < 40, "len args"
-            for w in MiniScriptWallet.iter_wallets():
-                if w.name == str(args, 'ascii'):
-                    import ujson
-                    # MiniscriptWallet.to_string only fills policy
-                    return b'asci' + ujson.dumps({"name": w.name, "desc": w.to_string()})
-            return b'err_Miniscript wallet not found'
+            # MiniscriptWallet.to_string only fills policy
+            return b'asci' + ujson.dumps({"name": w.name, "desc": w.to_string()})
 
         if cmd == "msas":
             # get miniscript address based on int/ext index
@@ -519,24 +522,19 @@ class USBHandler:
             if hsm_active and not hsm_active.approve_address_share(miniscript=True):
                 raise HSMDenied
 
-            from wallet import MiniScriptWallet
-
             change, idx, = unpack_from('<II', args)
             assert change in (0, 1), "change not bool"
             assert 0 <= idx < (2 ** 31), "child idx"
 
             name = args[8:]
+            assert len(name) <= 20, "name len"
 
-            msc = None
-            for w in MiniScriptWallet.iter_wallets():
-                if w.name == str(name, 'ascii'):
-                    msc = w
-                    break
-            else:
-                return b'err_Miniscript wallet not found'
+            ok, w = get_miniscript_by_name(name)
+            if not ok:
+                return w
 
             from auth import start_show_miniscript_address
-            return b'asci' + start_show_miniscript_address(msc, change, idx)
+            return b'asci' + start_show_miniscript_address(w, change, idx)
 
         if cmd == 'stxn':
             # sign transaction
@@ -546,8 +544,21 @@ class USBHandler:
 
             assert 50 < txn_len <= MAX_TXN_LEN, "badlen"
 
+            # optional miniscript wallet name
+            try:
+                name = str(args[40:], 'ascii')
+                assert len(name) <= 20, "name len"
+            except:
+                name = None
+
+            w = None
+            if name:
+                ok, w = get_miniscript_by_name(name)
+                if not ok:
+                    return w
+
             from auth import sign_transaction
-            sign_transaction(txn_len, (flags & STXN_FLAGS_MASK), txn_sha)
+            sign_transaction(txn_len, (flags & STXN_FLAGS_MASK), txn_sha, miniscript_wallet=w)
             return None
 
         if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok':
@@ -638,7 +649,6 @@ class USBHandler:
             if cmd == 'hsts':
                 # can always query HSM mode
                 from hsm import hsm_status_report
-                import ujson
                 return b'asci' + ujson.dumps(hsm_status_report())
 
             if cmd == 'gslr':

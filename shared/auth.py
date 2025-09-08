@@ -732,11 +732,13 @@ class ApproveTransaction(UserAuthorizedAction):
                 msg.write('%s %s\n\n' % self.chain.render_value(total_change - visible_change_sum))
 
 
-def sign_transaction(psbt_len, flags=0x0, psbt_sha=None):
+def sign_transaction(psbt_len, flags=0x0, psbt_sha=None, miniscript_wallet=None):
     # transaction (binary) loaded into PSRAM already, checksum checked
+    # optional miniscript_wallet arg, choose particular enrolled wallet by name to sign
     UserAuthorizedAction.check_busy(ApproveTransaction)
     UserAuthorizedAction.active_request = ApproveTransaction(
         psbt_len, flags, psbt_sha=psbt_sha, input_method="usb",
+        miniscript_wallet=miniscript_wallet,
     )
 
     # kill any menu stack, and put our thing at the top
