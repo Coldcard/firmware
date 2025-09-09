@@ -18,10 +18,6 @@ from test_notes import need_some_notes
 
 When hobbled...
 
-* check adv menu is minimal
-* notes hidden if the exist but access disabled in policy
-* verify no settings menu
-
 - temp seeds are read-only: no create, no rename, etc.
 - seed vault can be accessed tho
 
@@ -43,8 +39,8 @@ When hobbled...
 
 '''
 
-# NOTE:
-# - these are unit tests of the effect of the hobble mode, not how it is enabled/disabled
+# NOTE: these are unit tests of the effects of hobble mode, not how it is enabled/disabled:
+#
 # - test_teleport.py::test_teleport_ms_sign
 #    - verifies: MS psbt KT should still work in hobbled mode
 # - test_teleport.py::test_hobble_limited
@@ -198,5 +194,76 @@ def test_kt_limits(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set, 
 
     assert 'Teleport Multisig PSBT' not in cap_menu()
     # converse already tested in test_menu_contents
+
+@pytest.mark.parametrize('sv_empty', [ True, False] )
+def test_h_seedvault(sv_empty, set_hobble, pick_menu_item, cap_menu, settings_set, is_q1, sim_exec, settings_remove, restore_main_seed, settings_get, press_cancel, press_select, cap_story):
+    '''
+        - seed vault can be accessed, when enabled
+        - temp seeds are read-only: no create, no rename, etc.
+        - SV menu item is offered iff SV enabled; can be empty or not.
+    '''
+
+    settings_set('seedvault', True)
+    if sv_empty:
+        settings_set('seeds', [])
+    else:
+        settings_set('seeds', [])
+        xfp, enc = SEEDVAULT_TEST_DATA[0][0:2]
+        settings_set("seeds", [(xfp, '80'+enc, f"Menu Label", "meta")])
+
+    set_hobble(True, {'okeys'})
+
+    assert cap_menu()[0] == 'Ready To Sign', 'restart simulator now'
+    pick_menu_item('Seed Vault')
+
+    m = cap_menu()
+    if sv_empty:
+        assert m == ['(none saved yet)']
+    else:
+        assert m == [' 1: Menu Label']
+
+        pick_menu_item(m[0])
+        m = cap_menu()
+        assert m == ['Menu Label', 'Use This Seed']
+
+        pick_menu_item(m[0])
+        title, story = cap_story()
+        assert 'Origin:\nmeta' in story
+        press_cancel()
+            
+        pick_menu_item('Use This Seed')
+        title, story = cap_story()
+        assert 'temporary master key is in effect' in story
+        press_select()
+
+        # arrive back in main menu, w/ tmp seed in effect
+        # - but we are still hobbled.
+        # - XFP shown
+        # - Restore master should be offered.
+        m = cap_menu()
+        assert m[0] == f'[{xfp}]'
+        assert 'Seed Vault' not in m        # because we are in a tmp key, they need to go master
+        assert m[-1] == 'Restore Master'
+
+        pick_menu_item("Advanced/Tools")
+        m = cap_menu()
+        assert 'Destroy Seed' in m          # indicates hobble mode active
+        press_cancel()
+
+        pick_menu_item("Restore Master")
+        title, story = cap_story()
+        assert 'main wallet' in story
+        press_select()
+        
+
+    # clear keys from sv, should not be offered in menu, even if okeys set.
+    settings_remove('seedvault')
+    set_hobble(True, {'okey'})
+
+    m = cap_menu()
+    assert 'Seed Vault' not in m
+
+# BIP-39 passphrases
+
 
 # EOF
