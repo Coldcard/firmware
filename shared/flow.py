@@ -519,6 +519,8 @@ HobbledAdvancedMenu = [
     MenuItem('Export Wallet', menu=WalletExportMenu, shortcut='x'),  # also inside FileMgmt
     MenuItem('Teleport Multisig PSBT', predicate=qr_and_ms, f=kt_send_file_psbt),
     MenuItem("View Identity", f=view_ident),
+    MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu,
+                                    predicate=lambda: sssp_spending_policy('okeys')),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=HobbledNFCToolsMenu, shortcut=KEY_NFC),
     MenuItem("Destroy Seed", f=clear_seed),

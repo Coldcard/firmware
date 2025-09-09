@@ -493,6 +493,10 @@ async def add_seed_to_vault(encoded, origin=None, label=None):
     if in_seed_vault(encoded):
         return
 
+    # stay "read only" in hobbled mode
+    if pa.hobbled_mode:
+        return
+
     main_xfp = settings.master_get("xfp", 0)
 
     # parse encoded
@@ -531,7 +535,7 @@ async def add_seed_to_vault(encoded, origin=None, label=None):
 async def set_ephemeral_seed(encoded, chain=None, summarize_ux=True, bip39pw='',
                              is_restore=False, origin=None, label=None):
     # Capture tmp seed into vault, if so enabled, and regardless apply it as new tmp.
-    if not is_restore:
+    if not is_restore and not pa.hobbled_mode:
         await add_seed_to_vault(encoded, origin=origin, label=label)
         dis.fullscreen("Wait...")
 
@@ -1034,11 +1038,11 @@ class SeedVaultMenu(MenuSystem):
         seeds = list(seed_vault_iter())
 
         if not seeds:
-            assert not pa.hobbled_mode
             rv.append(MenuItem('(none saved yet)'))
-            if pa.tmp_value:
-                rv.append(add_current_tmp)
-            rv.append(MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu))
+            if not pa.hobbled_mode:
+                if pa.tmp_value:
+                    rv.append(add_current_tmp)
+                rv.append(MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu))
         else:
             wipe_if_deltamode()
 
@@ -1162,7 +1166,7 @@ class EphemeralSeedMenu(MenuSystem):
         ]
 
         rv = [
-            MenuItem("Generate Words", menu=gen_ephemeral_menu),
+            MenuItem("Generate Words", menu=gen_ephemeral_menu, predicate=not pa.hobbled_mode),
             MenuItem('Import from QR Scan', predicate=version.has_qr,
                      shortcut=KEY_QR, f=scan_any_qr, arg=(True, True)),
             MenuItem("Import Words", menu=import_ephemeral_menu),
@@ -1175,7 +1179,6 @@ class EphemeralSeedMenu(MenuSystem):
 
 
 async def make_ephemeral_seed_menu(*a):
-    assert not pa.hobbled_mode
 
     if (not pa.tmp_value) and (not settings.master_get("seedvault", False)):
         # force a warning on them, unless they are already doing it.

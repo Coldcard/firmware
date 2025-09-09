@@ -991,14 +991,13 @@ def make_top_menu():
     elif pa.is_blank():
         # let them play a little before picking a PIN first time
         m = MenuSystem(VirginSystem, should_cont=lambda: pa.is_blank())
-    elif pa.hobbled_mode:
-        # let them do a few things, but not all the things.
-        m = MenuSystem(HobbledTopMenu)
     else:
         assert pa.is_successful(), "nonblank but wrong pin"
 
         if pa.has_secrets():
-            _cls = NormalSystem[:]
+            # let them do a few things, but not all the things, when "hobbled"
+            _cls = HobbledTopMenu[:] if pa.hobbled_mode else NormalSystem[:]
+
             if pa.tmp_value or settings.get("hmx", False):
                 active_xfp = settings.get("xfp", 0)
                 sl, sr = ("[", "]") if pa.tmp_value else ("<", ">")
