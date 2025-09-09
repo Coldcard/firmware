@@ -29,11 +29,16 @@ if '--sflash' not in sys.argv:
 
     if '--eff' in sys.argv:
         # ignore files ondisk from previous runs, and also dont write any
-        nvstore.SettingsObject.load = lambda *a:None
-        nvstore.SettingsObject.save = lambda *a:None
-        # limitation: pre-login values arent stored even during operation
+        # - but do track settings during this run
+        NVSTORE_FAKE = {bytes(32): dict(sim_defaults)}      # prelogin values
 
-        #glob.settings.current = dict(sim_defaults)
+        def _monkey_load(self, *a):
+            self.current = dict(NVSTORE_FAKE.get(self.nvram_key, {}))
+        def _monkey_save(self, *a):
+            NVSTORE_FAKE[self.nvram_key] = dict(self.current)
+
+        nvstore.SettingsObject.load = _monkey_load
+        nvstore.SettingsObject.save = _monkey_save
 
 if '--early-usb' in sys.argv:
     from usb import enable_usb
