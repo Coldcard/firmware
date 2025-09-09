@@ -35,7 +35,7 @@ for typical transactions before enabling the Spending Policy.
 
 # Setup Spending Policy
 
-Visit `Advanced / Tool > Spending Policy" menu and choose
+Visit `Advanced / Tool > Spending Policy` menu and choose
 "Single-Signer". First some background information is shown,
 then you are prompted to define the "Bypass PIN". This PIN code
 is only used when you need to disable the spending policy, but is 
@@ -68,8 +68,9 @@ using this setting. In either case they are strictly readonly.
 
 ### Related Keys
 
-BIP-39 passphrase entry, Seed Vault usage can be blocked with
-this setting. Even when enabled, the Seed Vault is always readonly.
+BIP-39 passphrase entry, Seed Vault usage will be blocked unless this
+setting is enabled. Even when enabled, the Seed Vault is always readonly
+and cannot be changed.
 
 # Other Menu Items
 
@@ -195,3 +196,15 @@ They could attempt unlimited spending, but transactions signed will
 not be valid. If they try to view the seed words or generally export
 private key material, they will hit many of the "wipe seed if delta
 mode" cases.
+
+## Forgotten Bypass PIN Code
+
+If you've enabled a spending policy and still remember the main PIN,
+but cannot disable the feature because you've forgotten the Bypass
+PIN, your only option is to use `Advanced > Destroy Seed`. After
+some confirmations, this erases the master seed, all settings, seed
+vault items, secure notes, and trick pins. It's basically a factory
+reset except for the main PIN code which is unchanged. Once you've
+done that, you can enter your seed words from backup (or restore a
+backup file) and continue to use the COLDCARD again.
+
