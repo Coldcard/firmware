@@ -221,10 +221,14 @@ def restore_main_seed(goto_home, pick_menu_item, cap_story, cap_menu,
 
 @pytest.fixture
 def confirm_tmp_seed(need_keypress, cap_story, press_select):
-    def doit(seedvault=False, expect_xfp=None):
+    def doit(seedvault=False, expect_xfp=None, check_sv_not_offered=False):
         
         time.sleep(0.3)
         title, story = cap_story()
+
+        if check_sv_not_offered:
+            assert "to store temporary seed into Seed Vault" not in story
+
         if "Press (1) to store temporary seed into Seed Vault" in story:
             if seedvault:
                 need_keypress("1")  # store it

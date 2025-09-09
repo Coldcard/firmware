@@ -11,15 +11,12 @@ from bbqr import join_qrs
 from charcodes import KEY_QR, KEY_NFC
 from base64 import b32encode
 from constants import *
-from test_ephemeral import SEEDVAULT_TEST_DATA
-from test_notes import need_some_notes
+from test_ephemeral import SEEDVAULT_TEST_DATA, WORDLISTS
+from test_ephemeral import confirm_tmp_seed, verify_ephemeral_secret_ui 
+from test_ux import word_menu_entry
 
-'''TODO
-
-When hobbled...
-
-- temp seeds are read-only: no create, no rename, etc.
-- seed vault can be accessed tho
+'''
+TODO -- When hobbled...
 
 - login sequence
     1) system has lgto value: should get bypass pin, main pin, delay, then main pin again
@@ -128,6 +125,9 @@ def test_menu_contents(set_hobble, pick_menu_item, cap_menu, en_okeys, en_notes,
     if en_nfc:
         adv_expect.add('NFC Tools')
 
+    if en_okeys:
+        adv_expect.add('Temporary Seed')
+
     m = cap_menu()
     assert set(m) == adv_expect, "Adv menu wrong"
 
@@ -209,7 +209,7 @@ def test_h_seedvault(sv_empty, set_hobble, pick_menu_item, cap_menu, settings_se
     else:
         settings_set('seeds', [])
         xfp, enc = SEEDVAULT_TEST_DATA[0][0:2]
-        settings_set("seeds", [(xfp, '80'+enc, f"Menu Label", "meta")])
+        settings_set("seeds", [(xfp, '80'+enc, f"Menu Label", "meta-source")])
 
     set_hobble(True, {'okeys'})
 
@@ -228,7 +228,7 @@ def test_h_seedvault(sv_empty, set_hobble, pick_menu_item, cap_menu, settings_se
 
         pick_menu_item(m[0])
         title, story = cap_story()
-        assert 'Origin:\nmeta' in story
+        assert 'Origin:\nmeta-source' in story
         press_cancel()
             
         pick_menu_item('Use This Seed')
@@ -263,7 +263,97 @@ def test_h_seedvault(sv_empty, set_hobble, pick_menu_item, cap_menu, settings_se
     m = cap_menu()
     assert 'Seed Vault' not in m
 
-# BIP-39 passphrases
+@pytest.mark.parametrize('mode', [ 'words', 'qr', 'xprv', 'tapsigner', 'coldcard' ])
+def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, is_q1, sim_exec, settings_remove, restore_main_seed, settings_get, press_cancel, press_select, cap_story, word_menu_entry, confirm_tmp_seed, verify_ephemeral_secret_ui, scan_a_qr, tapsigner_encrypted_backup, need_keypress, enter_hex, open_microsd):
+    '''
+    - can import and use a key for signing
+    - NOT offered chance to save into seedvault
+    '''
+    if not is_q1 and mode == 'qr': return
 
+    settings_set('seedvault', True)
+    settings_set('seeds', [])
+
+    set_hobble(True, {'okeys'})
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item('Temporary Seed')
+
+    m = cap_menu()
+    assert 'Generate Words' not in m
+    assert all(i.startswith("Import ") or i.endswith(' Backup') for i in m), m
+
+    words, expect_xfp = WORDLISTS[12]
+
+    if mode == 'words':
+        # just quick tests here, not in-depth
+        # - from test_ephemeral_seed_import_words()
+        pick_menu_item("Import Words")
+        pick_menu_item(f"12 Words")
+        time.sleep(0.1)
+        word_menu_entry(words.split())
+    elif mode == 'qr':
+        pick_menu_item("Import from QR Scan")
+        val = ' '.join(words.split()).upper()
+        scan_a_qr(val)
+        time.sleep(0.1)
+    elif mode == 'tapsigner':
+        # like test_ephemeral_seed_import_tapsigner()
+        fname, backup_key_hex, node = tapsigner_encrypted_backup('sd', testnet=True)
+        expect_xfp = node.fingerprint().hex().upper()
+        pick_menu_item("Tapsigner Backup")
+        time.sleep(0.1)
+        need_keypress('1')
+        time.sleep(0.1)
+        pick_menu_item(fname)
+
+        time.sleep(0.1)
+        _, story = cap_story()
+        assert "your TAPSIGNER" in story
+
+        press_select()  # yes I have backup key
+        enter_hex(backup_key_hex)
+
+    elif mode == 'coldcard':
+        # like test_temporary_from_backup()
+        # - but skip making new bk file
+        fn = 'data/tip-index-famous-embark-tobacco-rice-attitude-interest-mask-random-amazing-initial.7z'
+        pw = fn[5:-3].split('-')
+
+        contents = open(fn, 'rb').read()
+        with open_microsd('example.7z', 'wb') as fd:
+            fd.write(contents)
+
+        pick_menu_item("Coldcard Backup")
+        time.sleep(0.1)
+        need_keypress('1')
+        time.sleep(0.1)
+        pick_menu_item('example.7z')
+        
+        word_menu_entry(pw, has_checksum=False)
+
+        title, story = cap_story()
+        assert title == 'FAILED'
+        assert 'successfully tested recovery' in story
+
+        press_select()
+
+        return
+    elif mode == 'xprv':
+        # meh todo ... XPRV case from file
+        pick_menu_item("Import XPRV")
+        press_cancel()
+        return 
+    else:
+        raise pytest.fail(f'{mode} not done')
+
+    confirm_tmp_seed(seedvault=False, check_sv_not_offered=True)
+
+    verify_ephemeral_secret_ui(expected_xfp=expect_xfp, mnemonic=None, seed_vault=False)
+
+    pick_menu_item("Restore Master")
+    press_select()
+
+# TODO: BIP-39 passphrases and temp seeds
+# TODO: test usb commands are blocked
 
 # EOF
