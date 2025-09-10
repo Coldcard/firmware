@@ -12,26 +12,6 @@ from test_ephemeral import SEEDVAULT_TEST_DATA, WORDLISTS
 from test_ephemeral import confirm_tmp_seed, verify_ephemeral_secret_ui 
 from test_ux import word_menu_entry
 
-'''
-TODO -- When hobbled...
-
-- login sequence
-    1) system has lgto value: should get bypass pin, main pin, delay, then main pin again
-    2) using a trick PIN with delay, after bypass pin should delay
-    3) bypass pin + duress wallet PIN => should work => but not a useful trick combo
-   
-- word entry during login
-    - q1 vs mk4 style
-    - wrong values given, etc
-
-- verify whitelist of QR types is correct when in hobbled mode
-    - no private key material, no teleport starting, unless "okeys" is set
-
-- TODO: update menu tree w/ hobble mode view
-
-- verify that PSBT can be "signed" when SP enabled and delta-mode pin is active. seed not wiped.
-
-'''
 
 # NOTE: these are unit tests of the effects of hobble mode, not how it is enabled/disabled:
 #
@@ -386,6 +366,46 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
     pick_menu_item("Restore Master")
     press_select()
 
-# TODO: test usb commands are blocked
 
+@pytest.mark.parametrize('en_okeys', [ True, False])
+def test_h_usbcmds(en_okeys, set_hobble, dev):
+    # test various usb commands are blocked during hobble
+
+    from ckcc_protocol.protocol import CCProtoError
+
+    set_hobble(True, {'okeys'} if en_okeys else {})
+
+    block_list = [
+        'back', 'enrl', 'bagi', 'hsms', 'user', 'nwur', 'rmur', 
+    ]
+
+    if not en_okeys:
+        block_list.insert(0, 'pass')
+
+    for cmd in block_list:
+        with pytest.raises(CCProtoError) as ee:
+            got = dev.send_recv(cmd)
+        assert 'Spending policy in effect' in str(ee)
+
+# TODO: verify that PSBT can be "signed" when SP enabled and delta-mode pin is active. seed not wiped.
+
+
+# TODO verify whitelist of QR types is correct when in hobbled mode
+# - no private key material, no teleport starting, unless "okeys" is set
+
+
+# TODO Special Login Sequence
+
+'''
+- login sequence
+    1) system has lgto value: should get bypass pin, main pin, delay, then main pin again
+    2) using a trick PIN with delay, after bypass pin should delay
+    3) bypass pin + duress wallet PIN => should work => but not a useful trick combo
+   
+- word entry during login
+    - q1 vs mk4 style
+    - wrong values given, etc
+
+'''
+    
 # EOF

@@ -11,7 +11,8 @@ from ustruct import pack, unpack_from
 from ckcc import watchpoint, is_simulator
 from utils import problem_file_line, call_later_ms
 from version import supports_hsm, is_devmode, MAX_TXN_LEN, MAX_UPLOAD_LEN
-from exceptions import FramingError, CCBusyError, HSMDenied, HSMCMDDisabled
+from exceptions import FramingError, CCBusyError, HSMDenied, HSMCMDDisabled, SpendPolicyViolation
+from pincodes import pa
 
 # Unofficial, unpermissioned... numbers
 COINKITE_VID = 0xd13e
@@ -61,6 +62,21 @@ HSM_WHITELIST = frozenset({
 # HSM related commands that are not allowed if 'hsmcmd' is disabled.
 HSM_DISABLE_CMDS = frozenset({
     "user",
+    "rmur",
+    "nwur",
+    "gslr",
+    "hsts",
+    "hsms",
+})
+
+# spending policy active: blacklist some commands
+# - 'pass' may be allowed if 'okeys' is enabled
+HOBBLED_CMDS = frozenset({
+    'enrl',             # no new multisigs during policy enforcement
+    'back',             # no backups
+    'bagi', 'dfu_',     # just in case
+
+    "user",             # same as HSM_DISABLE_CMDS
     "rmur",
     "nwur",
     "gslr",
@@ -217,6 +233,8 @@ class USBHandler:
                 except CCBusyError:
                     # auth UX is doing something else
                     resp = b'busy'
+                except SpendPolicyViolation:
+                    resp = b'err_Spending policy in effect'
                 except HSMDenied:
                     resp = b'err_Not allowed in HSM mode'
                 except HSMCMDDisabled:
@@ -345,7 +363,7 @@ class USBHandler:
         except:
             raise FramingError('decode')
 
-        if cmd[0].isupper() and is_devmode:
+        if is_devmode and cmd[0].isupper():
             # special hacky commands to support testing w/ the simulator
             try:
                 from usb_test_commands import do_usb_command
@@ -358,7 +376,18 @@ class USBHandler:
             if cmd not in HSM_WHITELIST:
                 raise HSMDenied
 
-        if not settings.get('hsmcmd', False):
+        if pa.hobbled_mode:
+            # block some commands when we are hobbled.
+            if cmd in HOBBLED_CMDS:
+                raise SpendPolicyViolation
+
+            if cmd in {'pwok', 'pass'}:
+                from ccc import sssp_spending_policy
+                if not sssp_spending_policy('okeys'):
+                    raise SpendPolicyViolation
+            
+        elif not settings.get('hsmcmd', False):
+            # block these HSM-related command if not using feature
             if cmd in HSM_DISABLE_CMDS:
                 raise HSMCMDDisabled
 
@@ -741,7 +770,6 @@ class USBHandler:
         from glob import dis, hsm_active
         from utils import check_firmware_hdr
         from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_HEADER_MAGIC
-        from pincodes import pa
 
         # maintain a running SHA256 over what's received
         if offset == 0:
@@ -754,8 +782,8 @@ class USBHandler:
         assert offset % 256 == 0, 'alignment'
         assert offset+len(data) <= total_size <= MAX_UPLOAD_LEN, 'long'
 
-        if hsm_active:
-            # additional restrictions in HSM mode
+        if hsm_active or pa.hobbled_mode:
+            # additional restriction in HSM mode or hobbled: must be PSBT
             assert offset+len(data) <= total_size <= MAX_TXN_LEN, 'psbt'
             if offset == 0:
                 assert data[0:5] == b'psbt\xff', 'psbt'
@@ -834,7 +862,6 @@ class USBHandler:
     def handle_bag_number(self, bag_num):
         import version, callgate
         from glob import dis, settings
-        from pincodes import pa
 
         if bag_num and version.is_factory_mode and not version.has_qr:
             # check state first
