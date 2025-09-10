@@ -365,6 +365,7 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
         expect_xfp = node.fingerprint().hex().upper()
 
         enter_complex(passphrase, apply=True)
+        time.sleep(.2)
         title, story = cap_story()
         assert title[1:-1] == expect_xfp
         assert "Above is the master key fingerprint of the new wallet" in story
