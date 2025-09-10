@@ -1487,6 +1487,8 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
         f.write(b64encode(psbt).decode())
     for idx in range(M):
         select_wallet(idx)
+        if incl_xpubs:
+            clear_ms()
         _, updated = try_sign(psbt, accept_ms_import=incl_xpubs)
         with open(f'{sim_root_dir}/debug/myself-after.psbt', 'w') as f:
             f.write(b64encode(updated).decode())

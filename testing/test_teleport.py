@@ -741,16 +741,17 @@ def test_hobble_limited(set_hobble, scan_a_qr, cap_menu, cap_screen, pick_menu_i
 
     set_hobble(True)
 
-    from bbqr.split import split_qrs
-    from bbqr import split_qrs, join_qrs
+    from bbqr import split_qrs
 
     _, parts = split_qrs(b's'*33, 'R')
     rx_complete(parts[0], '12345678', expect_fail=True)
+    time.sleep(.1)
     last = cap_screen().split('\n')[-1]
     assert last == 'KT Blocked'
 
     _, parts = split_qrs(b's'*33, 'S')
     rx_complete(parts[0], 'abcdefgh', expect_fail=True)
+    time.sleep(.1)
     last = cap_screen().split('\n')[-1]
     assert last == 'KT Blocked'
     
