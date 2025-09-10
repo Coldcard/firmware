@@ -5,12 +5,9 @@
 # - spending policy menu and txn checks should not be in this file, instead expand
 #    test_ccc.py or create test_sssp.py
 #
-import pytest, time, re, pdb
-from helpers import prandom, xfp2str, str2xfp, str_to_path
-from bbqr import join_qrs
-from charcodes import KEY_QR, KEY_NFC
-from base64 import b32encode
-from constants import *
+import pytest, time, os, pdb
+from bip32 import BIP32Node
+from constants import simulator_fixed_words
 from test_ephemeral import SEEDVAULT_TEST_DATA, WORDLISTS
 from test_ephemeral import confirm_tmp_seed, verify_ephemeral_secret_ui 
 from test_ux import word_menu_entry
@@ -263,8 +260,11 @@ def test_h_seedvault(sv_empty, set_hobble, pick_menu_item, cap_menu, settings_se
     m = cap_menu()
     assert 'Seed Vault' not in m
 
-@pytest.mark.parametrize('mode', [ 'words', 'qr', 'xprv', 'tapsigner', 'coldcard' ])
-def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, is_q1, sim_exec, settings_remove, restore_main_seed, settings_get, press_cancel, press_select, cap_story, word_menu_entry, confirm_tmp_seed, verify_ephemeral_secret_ui, scan_a_qr, tapsigner_encrypted_backup, need_keypress, enter_hex, open_microsd):
+@pytest.mark.parametrize('mode', [ 'words', 'qr', 'xprv', 'tapsigner', 'coldcard', 'b39pass'])
+def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, is_q1,
+                     press_select, cap_story, word_menu_entry, confirm_tmp_seed, enter_complex,
+                     verify_ephemeral_secret_ui, scan_a_qr, tapsigner_encrypted_backup,
+                     need_keypress, enter_hex, open_microsd, microsd_path, go_to_passphrase):
     '''
     - can import and use a key for signing
     - NOT offered chance to save into seedvault
@@ -275,12 +275,14 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
     settings_set('seeds', [])
 
     set_hobble(True, {'okeys'})
-    pick_menu_item("Advanced/Tools")
-    pick_menu_item('Temporary Seed')
 
-    m = cap_menu()
-    assert 'Generate Words' not in m
-    assert all(i.startswith("Import ") or i.endswith(' Backup') for i in m), m
+    if mode != "b39pass":
+        pick_menu_item("Advanced/Tools")
+        pick_menu_item('Temporary Seed')
+
+        m = cap_menu()
+        assert 'Generate Words' not in m
+        assert all(i.startswith("Import ") or i.endswith(' Backup') for i in m), m
 
     words, expect_xfp = WORDLISTS[12]
 
@@ -295,7 +297,7 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
         pick_menu_item("Import from QR Scan")
         val = ' '.join(words.split()).upper()
         scan_a_qr(val)
-        time.sleep(0.1)
+        time.sleep(0.2)
     elif mode == 'tapsigner':
         # like test_ephemeral_seed_import_tapsigner()
         fname, backup_key_hex, node = tapsigner_encrypted_backup('sd', testnet=True)
@@ -339,21 +341,50 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
 
         return
     elif mode == 'xprv':
-        # meh todo ... XPRV case from file
+        fname = "ek.txt"
+        node = BIP32Node.from_master_secret(os.urandom(32), netcode="XTN")
+        expect_xfp = node.fingerprint().hex().upper()
+        ek = node.hwif(as_private=True)
+        with open(microsd_path(fname), "w") as f:
+            f.write(ek)
+
         pick_menu_item("Import XPRV")
-        press_cancel()
-        return 
+        time.sleep(0.1)
+        _, story = cap_story()
+        if "Press (1) to import extended private key" in story:
+            need_keypress("1")
+
+        time.sleep(0.1)
+        pick_menu_item(fname)
+    elif mode == "b39pass":
+        from mnemonic import Mnemonic
+        go_to_passphrase()
+        passphrase = "sssp"
+        seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=passphrase)
+        node = BIP32Node.from_master_secret(seed, netcode="XTN")
+        expect_xfp = node.fingerprint().hex().upper()
+
+        enter_complex(passphrase, apply=True)
+        title, story = cap_story()
+        assert title[1:-1] == expect_xfp
+        assert "Above is the master key fingerprint of the new wallet" in story
+        press_select()
+        time.sleep(.1)
+        title, story = cap_story()
+        assert "store temporary seed into Seed Vault" not in story
+        time.sleep(.1)
     else:
         raise pytest.fail(f'{mode} not done')
 
-    confirm_tmp_seed(seedvault=False, check_sv_not_offered=True)
+    if mode != "b39pass":
+        # different UX for passphrase - verified above
+        confirm_tmp_seed(seedvault=False, check_sv_not_offered=True)
 
     verify_ephemeral_secret_ui(expected_xfp=expect_xfp, mnemonic=None, seed_vault=False)
 
     pick_menu_item("Restore Master")
     press_select()
 
-# TODO: BIP-39 passphrases and temp seeds
 # TODO: test usb commands are blocked
 
 # EOF
