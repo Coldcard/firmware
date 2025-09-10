@@ -33,8 +33,7 @@ if '--sflash' not in sys.argv:
         NVSTORE_FAKE = {bytes(32): dict(sim_defaults)}      # prelogin values
 
         def _monkey_load(self, *a):
-            self.current = dict(NVSTORE_FAKE.get(self.nvram_key, {}))
-            self.current = self.current or sim_defaults
+            self.current = dict(NVSTORE_FAKE.get(self.nvram_key, False) or sim_defaults)
         def _monkey_save(self, *a):
             NVSTORE_FAKE[self.nvram_key] = dict(self.current)
 

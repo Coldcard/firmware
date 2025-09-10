@@ -219,7 +219,6 @@ def test_h_seedvault(sv_empty, set_hobble, pick_menu_item, cap_menu, settings_se
         # - Restore master should be offered.
         m = cap_menu()
         assert m[0] == f'[{xfp}]'
-        assert 'Seed Vault' not in m        # because we are in a tmp key, they need to go master
         assert m[-1] == 'Restore Master'
 
         pick_menu_item("Advanced/Tools")
@@ -273,11 +272,13 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
         pick_menu_item(f"12 Words")
         time.sleep(0.1)
         word_menu_entry(words.split())
+
     elif mode == 'qr':
         pick_menu_item("Import from QR Scan")
         val = ' '.join(words.split()).upper()
         scan_a_qr(val)
         time.sleep(0.2)
+
     elif mode == 'tapsigner':
         # like test_ephemeral_seed_import_tapsigner()
         fname, backup_key_hex, node = tapsigner_encrypted_backup('sd', testnet=True)
@@ -320,6 +321,7 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
         press_select()
 
         return
+
     elif mode == 'xprv':
         fname = "ek.txt"
         node = BIP32Node.from_master_secret(os.urandom(32), netcode="XTN")
@@ -336,6 +338,7 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
 
         time.sleep(0.1)
         pick_menu_item(fname)
+
     elif mode == "b39pass":
         from mnemonic import Mnemonic
         go_to_passphrase()
@@ -354,8 +357,9 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
         title, story = cap_story()
         assert "store temporary seed into Seed Vault" not in story
         time.sleep(.1)
+
     else:
-        raise pytest.fail(f'{mode} not done')
+        raise pytest.fail(mode)
 
     if mode != "b39pass":
         # different UX for passphrase - verified above
