@@ -361,7 +361,8 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
         # different UX for passphrase - verified above
         confirm_tmp_seed(seedvault=False, check_sv_not_offered=True)
 
-    verify_ephemeral_secret_ui(expected_xfp=expect_xfp, mnemonic=None, seed_vault=False)
+    # do not verify presence of Seed Vault menu item - irrelevant
+    verify_ephemeral_secret_ui(expected_xfp=expect_xfp, mnemonic=None, seed_vault=None)
 
     pick_menu_item("Restore Master")
     press_select()

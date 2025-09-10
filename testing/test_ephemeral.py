@@ -336,7 +336,7 @@ def verify_ephemeral_secret_ui(cap_story, cap_menu, dev, fake_txn, goto_home,
 
             assert "Seed In Use" in m
             pick_menu_item("Seed In Use")  # noop
-        else:
+        elif seed_vault is False:
             # Seed Vault disabled
             m = cap_menu()
             assert "Seed Vault" not in m

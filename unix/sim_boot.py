@@ -34,6 +34,7 @@ if '--sflash' not in sys.argv:
 
         def _monkey_load(self, *a):
             self.current = dict(NVSTORE_FAKE.get(self.nvram_key, {}))
+            self.current = self.current or sim_defaults
         def _monkey_save(self, *a):
             NVSTORE_FAKE[self.nvram_key] = dict(self.current)
 
