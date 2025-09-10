@@ -19,9 +19,9 @@ class CCBusyError(RuntimeError):
 # HSM is blocking your action
 class HSMDenied(RuntimeError):
     pass
-
 class HSMCMDDisabled(RuntimeError):
     pass
+
 
 # PSBT / transaction related
 class FatalPSBTIssue(RuntimeError):
@@ -51,7 +51,7 @@ class QRDecodeExplained(ValueError):
 class UnknownAddressExplained(ValueError):
     pass
 
-# We're not going to co-sign using CCC feature
+# We're not going to co-sign using spending policy features
 class SpendPolicyViolation(RuntimeError):
     pass
 
