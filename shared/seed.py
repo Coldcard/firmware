@@ -41,7 +41,7 @@ _PREFIX_MARKER = const(1<<26)
 VaultEntry = namedtuple('VaultEntry', 'xfp encoded label origin')
 
 def not_hobbled_mode():
-    from pincodes import pa
+    # used as menu predicate and similar
     return not pa.hobbled_mode
 
 def seed_vault_iter():
