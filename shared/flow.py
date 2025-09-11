@@ -105,14 +105,16 @@ def qr_and_ms():
     if not version.has_qr: return False
     return bool(settings.get('multisig', False))
 
+def has_pushtx_url():
+    # they want to use PushTX feature
+    return bool(settings.get("ptxurl", False))
+
+# Spending Policy (Hobbled mode) predicates.
+#
 def is_hobble_testdrive():
     from pincodes import pa
     return (pa.hobbled_mode == 2)
 
-def has_pushtx_url():
-    return bool(settings.get("ptxurl", False))
-
-# SSSP
 def sssp_related_keys():
     return sssp_spending_policy('okeys')
 
