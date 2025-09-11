@@ -133,8 +133,7 @@ class NotesMenu(MenuSystem):
 
             rv = []
             for note in NoteContent.get_all():
-                rv.append(MenuItem('%d: %s' % (note.idx+1, note.title),
-                                        menu=lambda *_: note.make_menu()))
+                rv.append(MenuItem('%d: %s' % (note.idx+1, note.title), menu=note.make_menu))
 
             rv.extend(news)
 
@@ -155,7 +154,7 @@ class NotesMenu(MenuSystem):
         rv = []
         for note in NoteContent.get_all():
             rv.append(MenuItem('%d: %s' % (note.idx+1, note.title),
-                                    menu=lambda *_: note.make_menu(readonly=True)))
+                               menu=note.make_menu, arg=True))  # readonly=True
 
         return rv
 
@@ -230,8 +229,8 @@ class NotesMenu(MenuSystem):
     async def drill_to(cls, menu, item):
         # make it so looks like we drilled down into the new note
         menu.goto_idx(item.idx)
-        m = MenuSystem(await item.make_menu())
-        the_ux.push(m)
+        m = await item._make_menu()
+        the_ux.push(MenuSystem(m))
 
 
 class NoteContentBase:
@@ -327,7 +326,8 @@ class NoteContentBase:
 
         if not is_new:
             # change our own menu contents
-            menu.replace_items(await self.make_menu())
+            mi = await self._make_menu()
+            menu.replace_items(mi)
 
             # update parent
             parent = the_ux.parent_of(menu)
@@ -369,18 +369,18 @@ class PasswordContent(NoteContentBase):
     flds = ['title', 'user', 'password', 'site', 'misc' ]
     type_label = 'password'
 
-    async def make_menu(self, readonly=False):
+    async def _make_menu(self, readonly=False):
         rv = [MenuItem('"%s"' % self.title, f=self.view)]
         if self.user:
             rv.append(MenuItem('↳ %s' % self.user, f=self.view))
         if self.site:
             rv.append(MenuItem('↳ %s' % self.site, f=self.view))
-        #if self.misc: rv.append(MenuItem('↳ (notes)', f=self.view))
+        # if self.misc: rv.append(MenuItem('↳ (notes)', f=self.view))
         rv += [
             MenuItem('View Password', f=self.view_pw),
             MenuItem('Send Password', f=self.send_pw, predicate=lambda: settings.get('du', True)),
         ]
-        if not readonly: 
+        if not readonly:
             rv += [
                 MenuItem('Export', f=self.export),
                 MenuItem('Edit Metadata', f=self.edit),
@@ -394,6 +394,10 @@ class PasswordContent(NoteContentBase):
         ]
 
         return rv
+
+    async def make_menu(self, a, b, item):
+        items = await self._make_menu(readonly=item.arg)
+        return MenuSystem(items)
 
     async def view(self, *a):
         pl = len(self.password)
@@ -508,7 +512,7 @@ class NoteContent(NoteContentBase):
     flds = ['title', 'misc']
     type_label = 'note'
 
-    async def make_menu(self, readonly=False):
+    async def _make_menu(self, readonly=False):
         # Details and actions for this Note
         rv = [
             MenuItem('"%s"' % self.title, f=self.view),
@@ -526,6 +530,10 @@ class NoteContent(NoteContentBase):
             ShortcutItem(KEY_NFC, f=self.share_nfc, arg='misc'),
         ]
         return rv
+
+    async def make_menu(self, a, b, item):
+        items = await self._make_menu(readonly=item.arg)
+        return MenuSystem(items)
 
     async def view(self, *a):
         ch = await ux_show_story(self.misc, title=self.title, escape=KEY_QR,

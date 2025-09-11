@@ -109,6 +109,22 @@ def is_hobble_testdrive():
     from pincodes import pa
     return (pa.hobbled_mode == 2)
 
+def has_pushtx_url():
+    return bool(settings.get("ptxurl", False))
+
+# SSSP
+def sssp_related_keys():
+    return sssp_spending_policy('okeys')
+
+def sssp_allow_passphrase():
+    return word_based_seed() and sssp_related_keys()
+
+def sssp_allow_notes():
+    return settings.get("secnap", False) and sssp_spending_policy('notes')
+
+def sssp_allow_vault():
+    return settings.master_get('seedvault') and sssp_related_keys()
+
 async def goto_home(*a):
     goto_top_menu()
 
@@ -364,7 +380,7 @@ NFCToolsMenu = [
     MenuItem('Verify Address', f=nfc_address_verify),
     MenuItem('File Share', f=nfc_share_file),
     MenuItem('Import Multisig', f=import_multisig_nfc),
-    MenuItem('Push Transaction', f=nfc_pushtx_file, predicate=lambda: settings.get("ptxurl", False)),
+    MenuItem('Push Transaction', f=nfc_pushtx_file, predicate=has_pushtx_url),
 ]
 
 
@@ -508,8 +524,7 @@ HobbledNFCToolsMenu = [
     MenuItem('Verify Sig File', f=nfc_sign_verify),
     MenuItem('Verify Address', f=nfc_address_verify),
     MenuItem('File Share', f=nfc_share_file),
-    MenuItem('Push Transaction', f=nfc_pushtx_file,
-                                        predicate=lambda: settings.get("ptxurl", False)),
+    MenuItem('Push Transaction', f=nfc_pushtx_file, predicate=has_pushtx_url),
 ]
 
 # Very limited advanced menu when hobbled.
@@ -519,8 +534,7 @@ HobbledAdvancedMenu = [
     MenuItem('Export Wallet', menu=WalletExportMenu, shortcut='x'),  # also inside FileMgmt
     MenuItem('Teleport Multisig PSBT', predicate=qr_and_ms, f=kt_send_file_psbt),
     MenuItem("View Identity", f=view_ident),
-    MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu,
-                                    predicate=lambda: sssp_spending_policy('okeys')),
+    MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu, predicate=sssp_related_keys),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=HobbledNFCToolsMenu, shortcut=KEY_NFC),
     MenuItem("Destroy Seed", f=clear_seed),
@@ -530,17 +544,16 @@ HobbledAdvancedMenu = [
 HobbledTopMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Ready To Sign', f=ready2sign, shortcut='r'),
-    MenuItem('Passphrase', menu=start_b39_pw, 
-        predicate=lambda: word_based_seed and sssp_spending_policy('okeys'), shortcut='p'),
-    MenuItem('Scan Any QR Code', predicate=version.has_qr,
-         shortcut=KEY_QR, f=scan_any_qr, arg=(False, True)),
+    MenuItem('Passphrase', menu=start_b39_pw, predicate=sssp_allow_passphrase, shortcut='p'),
+    MenuItem('Scan Any QR Code', predicate=version.has_qr, f=scan_any_qr, arg=(False, True),
+             shortcut=KEY_QR),
     MenuItem("Address Explorer", menu=address_explore, shortcut='x'),
-    MenuItem('Secure Notes & Passwords', menu=make_notes_menu, shortcut='n',
-                 predicate=lambda: settings.get("secnap", False) and sssp_spending_policy('notes')),
+    MenuItem('Secure Notes & Passwords', menu=make_notes_menu, predicate=sssp_allow_notes,
+             shortcut='n'),
     MenuItem('Type Passwords', f=password_entry, shortcut='t',
              predicate=lambda: settings.get("emu", False)),
-    MenuItem('Seed Vault', menu=make_seed_vault_menu, shortcut='v',
-             predicate=lambda: settings.master_get('seedvault') and sssp_spending_policy('okeys')),
+    MenuItem('Seed Vault', menu=make_seed_vault_menu, predicate=sssp_allow_vault,
+             shortcut='v'),
     MenuItem('Advanced/Tools', menu=HobbledAdvancedMenu, shortcut='t'),
     MenuItem('Secure Logout', f=logout_now, predicate=not version.has_battery),
     MenuItem('EXIT TEST DRIVE', f=sssp_feature_menu, predicate=is_hobble_testdrive),

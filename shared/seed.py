@@ -40,6 +40,10 @@ _PREFIX_MARKER = const(1<<26)
 # - 'encoded' is hex, and has is trimmed of right side zeros
 VaultEntry = namedtuple('VaultEntry', 'xfp encoded label origin')
 
+def not_hobbled_mode():
+    from pincodes import pa
+    return not pa.hobbled_mode
+
 def seed_vault_iter():
     # iterate over all seeds in the vault; returns VaultEntry instances.
     # raw vault entries are list type when json.loaded from flash
@@ -535,7 +539,7 @@ async def add_seed_to_vault(encoded, origin=None, label=None):
 async def set_ephemeral_seed(encoded, chain=None, summarize_ux=True, bip39pw='',
                              is_restore=False, origin=None, label=None):
     # Capture tmp seed into vault, if so enabled, and regardless apply it as new tmp.
-    if not is_restore and not pa.hobbled_mode:
+    if not is_restore and not_hobbled_mode():
         await add_seed_to_vault(encoded, origin=origin, label=label)
         dis.fullscreen("Wait...")
 
@@ -913,7 +917,7 @@ class SeedVaultMenu(MenuSystem):
         ch = await ux_show_story(title="[" + rec.xfp + "]", msg=msg, escape=esc)
         if ch == "x": return
 
-        assert not pa.hobbled_mode
+        assert not_hobbled_mode()
 
         dis.fullscreen("Saving...")
 
@@ -963,7 +967,7 @@ class SeedVaultMenu(MenuSystem):
         from glob import dis
         from ux import ux_input_text
 
-        assert not pa.hobbled_mode
+        assert not_hobbled_mode()
 
         idx, old = item.arg
         new_label = await ux_input_text(old.label, confirm_exit=False, max_len=40)
@@ -995,7 +999,7 @@ class SeedVaultMenu(MenuSystem):
     async def _add_current_tmp(*a):
         from pincodes import pa
 
-        assert not pa.hobbled_mode
+        assert not_hobbled_mode()
 
         assert pa.tmp_value
         main_xfp = settings.master_get("xfp", 0)
@@ -1039,7 +1043,7 @@ class SeedVaultMenu(MenuSystem):
 
         if not seeds:
             rv.append(MenuItem('(none saved yet)'))
-            if not pa.hobbled_mode:
+            if not_hobbled_mode():
                 if pa.tmp_value:
                     rv.append(add_current_tmp)
                 rv.append(MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu))
@@ -1058,8 +1062,10 @@ class SeedVaultMenu(MenuSystem):
                 submenu = [
                     MenuItem(rec.label, f=cls._detail, arg=(rec, encoded)),
                     MenuItem('Use This Seed', f=cls._set, arg=encoded),
-                    MenuItem('Rename', f=cls._rename, arg=(i, rec), predicate=not pa.hobbled_mode),
-                    MenuItem('Delete', f=cls._remove, arg=(i, rec, encoded), predicate=not pa.hobbled_mode),
+                    MenuItem('Rename', f=cls._rename, arg=(i, rec),
+                             predicate=not_hobbled_mode),
+                    MenuItem('Delete', f=cls._remove, arg=(i, rec, encoded),
+                             predicate=not_hobbled_mode),
                 ]
                 if is_active:
                     submenu[1] = MenuItem("Seed In Use")
@@ -1077,7 +1083,7 @@ class SeedVaultMenu(MenuSystem):
                 rv.append(item)
 
             if pa.tmp_value:
-                if seeds and (not tmp_in_sv) and not pa.hobbled_mode:
+                if seeds and (not tmp_in_sv) and not_hobbled_mode():
                     # give em chance to store current active
                     rv.append(add_current_tmp)
 
@@ -1166,7 +1172,7 @@ class EphemeralSeedMenu(MenuSystem):
         ]
 
         rv = [
-            MenuItem("Generate Words", menu=gen_ephemeral_menu, predicate=not pa.hobbled_mode),
+            MenuItem("Generate Words", menu=gen_ephemeral_menu, predicate=not_hobbled_mode),
             MenuItem('Import from QR Scan', predicate=version.has_qr,
                      shortcut=KEY_QR, f=scan_any_qr, arg=(True, True)),
             MenuItem("Import Words", menu=import_ephemeral_menu),
