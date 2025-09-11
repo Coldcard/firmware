@@ -566,4 +566,56 @@ def test_use_trick_pin_as_unlock(hide, setup_sssp, cap_story, new_trick_pin, pic
     assert "already in use" in story
     assert "PIN codes must be unique" in story
 
+
+
+@pytest.mark.parametrize("active_policy", [False, True])
+def test_deltamode_signature(active_policy, setup_sssp, bitcoind, settings_set,
+                        start_sign, end_sign,
+                        set_deltamode, bitcoind_d_sim_watch, settings_get):
+
+    # verify that "deltamode" trick pins will work in SSSP mode
+    # - and that resulting signature is bad
+    # - device should **not** wipe itself
+
+    dest = "bcrt1qlk39jrclgnawa42tvhu2n7se987qm96qg8v76e"
+    wo = bitcoind_d_sim_watch
+    wo.keypoolrefill(20)
+
+    settings_set("chain", "XRT")
+
+    if active_policy:
+        setup_sssp("11-11", mag=100)
+
+    bitcoind.supply_wallet.sendtoaddress(address=wo.getnewaddress(), amount=2)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    # create funded PSBT, first tx
+    # - within active policy.
+    init_block_height = bitcoind.supply_wallet.getblockchaininfo()["blocks"]  # block height
+    psbt_resp = wo.walletcreatefundedpsbt([], [{dest: 0.06}],
+                                          init_block_height, {"fee_rate":2, "replaceable": False})
+    psbt = psbt_resp.get("psbt")
+
+    po = BasicPSBT().parse(base64.b64decode(psbt))
+    assert po.parsed_txn.nLockTime == init_block_height
+
+    start_sign(base64.b64decode(psbt), finalize=True)
+    signed = end_sign(accept=True, finalize=True)
+
+    set_deltamode(True)
+
+    start_sign(base64.b64decode(psbt), finalize=True)
+    signed2 = end_sign(accept=True, finalize=True)
+
+    # check wrong signature happened
+    assert signed != signed2
+    probs = wo.testmempoolaccept([signed2.hex()])[0]
+    assert 'Signature must be zero' in probs['reject-reason'], probs
+    assert not probs['allowed']
+
+    # check right signature
+    no_probs = wo.testmempoolaccept([signed.hex()])[0]
+    assert no_probs['allowed']
+
+    
 # EOF

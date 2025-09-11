@@ -2627,6 +2627,27 @@ def build_test_seed_vault():
         return sv
     return doit
 
+@pytest.fixture
+def get_deltamode(sim_exec):
+    # get current "deltamode" status: T or F
+    def doit():
+        return eval(sim_exec('RV.write(repr(pa.is_deltamode()))'))
+    return doit
+
+@pytest.fixture
+def set_deltamode(sim_exec):
+    # control current "deltamode" status: T or F
+    def doit(val):
+        # TC_DELTA_MODE   = const(0x0400)
+        if val:
+            sim_exec('pa.delay_required |= 0x400')
+        else:
+            sim_exec('pa.delay_required &= ~0x400')
+        
+    yield doit
+
+    doit(False)
+
 
 # useful fixtures
 from test_backup import backup_system

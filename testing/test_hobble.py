@@ -17,6 +17,7 @@ from test_ux import word_menu_entry
 #
 # - test_teleport.py::test_teleport_ms_sign
 #    - verifies: MS psbt KT should still work in hobbled mode
+#
 # - test_teleport.py::test_hobble_limited
 #    - verifies: scan a KT and have it rejected if not PSBT type: so R and E types
 
@@ -391,8 +392,6 @@ def test_h_usbcmds(en_okeys, set_hobble, dev):
         with pytest.raises(CCProtoError) as ee:
             got = dev.send_recv(cmd)
         assert 'Spending policy in effect' in str(ee)
-
-# TODO: verify that PSBT can be "signed" when SP enabled and delta-mode pin is active. seed not wiped.
 
 
 # TODO verify whitelist of QR types is correct when in hobbled mode
