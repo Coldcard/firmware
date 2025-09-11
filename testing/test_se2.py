@@ -916,6 +916,14 @@ def build_duress_wallets(request, seed_vault=False):
     return 4
 
 
+def test_deltamode_toggle(get_deltamode, set_deltamode):
+    # check test fixture works.
+    assert get_deltamode() == False
+    set_deltamode(True)
+    assert get_deltamode() == True
+    set_deltamode(False)
+    assert get_deltamode() == False
+
 
 # TODO
 # - make trick and do login, check arrives right state?
