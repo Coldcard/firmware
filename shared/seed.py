@@ -1156,6 +1156,7 @@ class EphemeralSeedMenu(MenuSystem):
         from actions import nfc_recv_ephemeral, import_xprv
         from actions import restore_backup, scan_any_qr
         from tapsigner import import_tapsigner_backup_file
+        from xor_seed import xor_restore_start
         from charcodes import KEY_QR
 
         import_ephemeral_menu = [
@@ -1179,6 +1180,7 @@ class EphemeralSeedMenu(MenuSystem):
             MenuItem("Import XPRV", f=import_xprv, arg=True),  # ephemeral=True
             MenuItem("Tapsigner Backup", f=import_tapsigner_backup_file, arg=True), # ephemeral=True
             MenuItem("Coldcard Backup", f=restore_backup, arg=True),  # tmp=True
+            MenuItem("Restore Seed XOR", f=xor_restore_start),
         ]
 
         return rv
