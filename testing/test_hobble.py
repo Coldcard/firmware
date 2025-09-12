@@ -5,21 +5,24 @@
 # - spending policy menu and txn checks should not be in this file, instead expand
 #    test_ccc.py or create test_sssp.py
 #
-import pytest, time, os, pdb
-from bip32 import BIP32Node
-from constants import simulator_fixed_words
-from test_ephemeral import SEEDVAULT_TEST_DATA, WORDLISTS
-from test_ephemeral import confirm_tmp_seed, verify_ephemeral_secret_ui 
-from test_ux import word_menu_entry
-
-
-# NOTE: these are unit tests of the effects of hobble mode, not how it is enabled/disabled:
+# Additional tests, elsewhere:
 #
 # - test_teleport.py::test_teleport_ms_sign
 #    - verifies: MS psbt KT should still work in hobbled mode
 #
 # - test_teleport.py::test_hobble_limited
 #    - verifies: scan a KT and have it rejected if not PSBT type: so R and E types
+#
+# - login_settings_tests.py for login/bypass UX
+#
+#
+import pytest, time, os, pdb
+from bip32 import BIP32Node
+from constants import simulator_fixed_words, simulator_fixed_xprv
+from test_ephemeral import SEEDVAULT_TEST_DATA, WORDLISTS
+from test_ephemeral import confirm_tmp_seed, verify_ephemeral_secret_ui 
+from test_ux import word_menu_entry
+from charcodes import KEY_QR
 
 @pytest.fixture
 def set_hobble(sim_exec, settings_set, settings_remove, goto_home):
@@ -381,9 +384,7 @@ def test_h_usbcmds(en_okeys, set_hobble, dev):
 
     set_hobble(True, {'okeys'} if en_okeys else {})
 
-    block_list = [
-        'back', 'enrl', 'bagi', 'hsms', 'user', 'nwur', 'rmur', 
-    ]
+    block_list = [ 'back', 'enrl', 'bagi', 'hsms', 'user', 'nwur', 'rmur' ]
 
     if not en_okeys:
         block_list.insert(0, 'pass')
@@ -394,22 +395,47 @@ def test_h_usbcmds(en_okeys, set_hobble, dev):
         assert 'Spending policy in effect' in str(ee)
 
 
-# TODO verify whitelist of QR types is correct when in hobbled mode
-# - no private key material, no teleport starting, unless "okeys" is set
+@pytest.mark.parametrize('en_okeys', [ True, False])
+def test_h_qrscan(en_okeys, set_hobble, scan_a_qr, need_keypress, press_cancel, cap_screen, only_q1, cap_story, press_select, pick_menu_item):
+    # verify whitelist of QR types is correct when in hobbled mode
+    # - no private key material, unless "okeys" is set
+    # - no teleport starting, except multisig co-signing
+    #
+    set_hobble(True, {'okeys'} if en_okeys else {})
 
+    words, _ = WORDLISTS[12]
+    keys = [ 
+        ' '.join(w[0:4] for w in words.split()),
+        simulator_fixed_xprv]
 
-# TODO Special Login Sequence
+    for ss in keys:
+        need_keypress(KEY_QR)
+        scan_a_qr(ss)
+        time.sleep(0.5)
 
-'''
-- login sequence
-    1) system has lgto value: should get bypass pin, main pin, delay, then main pin again
-    2) using a trick PIN with delay, after bypass pin should delay
-    3) bypass pin + duress wallet PIN => should work => but not a useful trick combo
-   
-- word entry during login
-    - q1 vs mk4 style
-    - wrong values given, etc
+        title, story = cap_story()
+        if en_okeys:
+            assert 'New temporary master key is in effect' in story
+            press_select()
 
-'''
-    
+            pick_menu_item("Restore Master")
+            press_select()
+        else:
+            assert 'Blocked when Spending Policy is in force.' in story
+            press_select()
+
+    for dt in 'RSE':
+        need_keypress(KEY_QR)
+        tt = f'B$H{dt}0100'+('A'*80)
+        scan_a_qr(tt)
+        time.sleep(0.5)
+
+        if dt == 'E':
+            title, story = cap_story()
+            assert 'Incoming PSBT requires multisig wallet' in story
+            press_cancel()
+        else:
+            scr = cap_screen()      # stays in scanning mode
+            assert 'KT Blocked' in scr
+        
 # EOF
