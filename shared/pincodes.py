@@ -341,10 +341,6 @@ class PinAttempt:
 
         return self.state_flags
 
-    def delay(self):
-        # obsolete since Mk3, but called from login.py
-        self.roundtrip(1)
-
     def login(self):
         # test we have the PIN code right, and unlock access if so.
         chk = self.roundtrip(2)

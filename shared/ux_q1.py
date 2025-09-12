@@ -947,7 +947,7 @@ class QRScannerInteraction:
                 whitelist.update({'xprv', 'words'})
 
             if what not in whitelist:
-                await ux_show_story("Blocked when Spending Policy is in force", title='Sorry')
+                await ux_show_story("Blocked when Spending Policy is in force.", title='Sorry')
                 return
 
         if what == 'xprv':
