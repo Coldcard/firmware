@@ -814,16 +814,12 @@ async def start_login_sequence():
         sp_unlock = tp.was_sp_unlock()
         if sp_unlock:
             # Trying to unlock spending policy: ask for main PIN next.
-            while 1:
-                await ux_show_story("Spending Policy Unlock: Please provide Main PIN next.")
-        
-                pa.reset()
-                await block_until_login()
+            await ux_show_story("Spending Policy Unlock: Please provide Main PIN next.")
+            pa.reset()
+            await block_until_login()
 
-                # we don't really know if that was the Main PIN (could easily be the bypass
-                # PIN again) and if it's a duress wallet, that's cool... so just be
-                # sure we got some secret material to work/play with
-                if pa.has_secrets(): break
+            # we don't really know if that was the Main PIN (could easily be the bypass
+            # PIN again) and if it's a duress wallet, that's cool...
 
         # Do we need to do countdown delay? (real or otherwise)
         # - wiping has already occured if that was selected by trick details
