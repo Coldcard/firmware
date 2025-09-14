@@ -44,6 +44,10 @@ def _press_select(device, is_Q, timeout=None):
     btn = KEY_ENTER if is_Q else "y"
     _need_keypress(device, btn, timeout=timeout)
 
+def _press_cancel(device, is_Q, timeout=None):
+    btn = KEY_CANCEL if is_Q else "x"
+    _need_keypress(device, btn, timeout=timeout)
+
 def _dev_hw_label(device):
     # gets a short string that labels product: mk4 / q1, etc
     v = device.send_recv(CCProtocolPacker.version()).split()

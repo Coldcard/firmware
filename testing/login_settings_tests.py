@@ -10,7 +10,7 @@
 #
 import pytest, time, pdb
 from core_fixtures import _pick_menu_item, _cap_menu, _cap_story, _cap_screen
-from core_fixtures import _need_keypress, _enter_complex, _press_select
+from core_fixtures import _need_keypress, _enter_complex, _press_select, _press_cancel
 from ckcc_protocol.client import ColdcardDevice
 from run_sim_tests import ColdcardSimulator, clean_sim_data
 
@@ -530,5 +530,293 @@ def test_calc_login(request):
     assert "Ready To Sign" in m
     sim.stop()
 
+@pytest.mark.parametrize("word_check", [True, False])
+@pytest.mark.parametrize("randomize", [True, False])
+def test_sssp_bypass_pin(request, word_check, randomize):
+    main_pin = "22-22"
+    bypass_pin = "111-111"
+    is_Q = request.config.getoption('--Q')
+    clean_sim_data()  # remove all from previous
+    sim = ColdcardSimulator(args=["--q1"] if is_Q else [])
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+
+    if randomize:
+        _pick_menu_item(device, is_Q, "Settings")
+        _pick_menu_item(device, is_Q, "Login Settings")
+        _set_scramble_pin_entry(device, is_Q)
+        time.sleep(1)
+
+        for _ in range(2):
+            _press_cancel(device, is_Q)
+
+        time.sleep(.1)
+
+    _pick_menu_item(device, is_Q, "Advanced/Tools")
+    _pick_menu_item(device, is_Q, "Spending Policy")
+    _pick_menu_item(device, is_Q, "Single-Signer")
+    _press_select(device, is_Q)  # confirm story
+    # now create bypass PIN
+    # 1st entry
+    _login(device, is_Q, bypass_pin)
+    # 2nd confirmation entry
+    _login(device, is_Q, bypass_pin)
+
+    if word_check:
+        _pick_menu_item(device, is_Q, "Word Check")
+        title, story = _cap_story(device)
+        assert "Enable?" in story
+        assert "must provide the first and last seed words" in story
+        _press_select(device, is_Q)
+
+    time.sleep(2)  # needed here to actually save to settings
+    sim.stop()
+
+    sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", main_pin, "--early-usb"])
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+
+    # first login, but with main PIN, ends up in SSSP
+    _login(device, is_Q, main_pin, scrambled=randomize)
+    time.sleep(.1)
+    menu = _cap_menu(device)
+    assert "Settings" not in menu
+
+    sim.stop()
+
+    sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", main_pin, "--early-usb"])
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+
+    # now bypass PIN, normal operation
+    time.sleep(.1)
+    _login(device, is_Q, bypass_pin, scrambled=randomize)
+    time.sleep(.1)
+    title, story = _cap_story(device)
+    assert "Spending Policy Unlock" in story
+    _press_select(device, is_Q)
+    time.sleep(.1)
+    _login(device, is_Q, main_pin, scrambled=randomize)
+    time.sleep(.1)
+
+    if word_check:
+        # first do incorrect words
+        if is_Q:
+            assert "First and Last Seed Word" in _cap_screen(device)
+            # just because of auto-fil feature
+            _enter_complex(device, is_Q, "wif")
+            _enter_complex(device, is_Q, "kic")
+        else:
+            # this is not a text input field - but word nest menu
+            # wife -> 3xUP, 3xDOWN, DOWN
+            for _ in range(3):
+                _need_keypress(device, "5")
+            _press_select(device, is_Q)
+            time.sleep(.1)
+
+            for _ in range(3):
+                _need_keypress(device, "8")
+            _press_select(device, is_Q)
+            time.sleep(.1)
+
+            _need_keypress(device, "8")
+            _press_select(device, is_Q)
+
+            time.sleep(.1)
+            # abandon -> 3xOK
+            for _ in range(3):
+                _press_select(device, is_Q)
+
+        time.sleep(.1)
+        title, story = _cap_story(device)
+        assert "Sorry, those words are incorrect" in story
+        _press_select(device, is_Q)
+        time.sleep(.1)
+        # now insert correct words
+        if is_Q:
+            # just because of auto-fil feature
+            _enter_complex(device, is_Q, "wif")
+            _enter_complex(device, is_Q, "clar")
+        else:
+            # wife -> 3xUP, 3xDOWN, DOWN
+            for _ in range(3):
+                _need_keypress(device, "5")
+            _press_select(device, is_Q)
+            time.sleep(.1)
+
+            for _ in range(3):
+                _need_keypress(device, "8")
+            _press_select(device, is_Q)
+            time.sleep(.1)
+
+            _need_keypress(device, "8")
+            _press_select(device, is_Q)
+
+            # clarify 2xDOWN, 4xDOWN, 2xDOWN
+            for _ in range(2):
+                _need_keypress(device, "8")
+            _press_select(device, is_Q)
+            time.sleep(.1)
+
+            for _ in range(4):
+                _need_keypress(device, "8")
+            _press_select(device, is_Q)
+            time.sleep(.1)
+
+            for _ in range(2):
+                _need_keypress(device, "8")
+            _press_select(device, is_Q)
+            time.sleep(.1)
+
+    menu = _cap_menu(device)
+    assert "Settings" in menu  # not in SSSP
+
+    sim.stop()
+
+
+def test_sssp_login_countdown(request):
+    bypass_pin = "236-156"
+    is_Q = request.config.getoption('--Q')
+    clean_sim_data()  # remove all from previous
+    sim = ColdcardSimulator(args=["--q1"] if is_Q else [])
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+
+    _pick_menu_item(device, is_Q, "Settings")
+    _pick_menu_item(device, is_Q, "Login Settings")
+    _set_login_countdown(device, is_Q, " 5 minutes")
+
+    time.sleep(.2)
+    for _ in range(2):  # go back
+        _press_cancel(device, is_Q)
+
+    time.sleep(.1)
+    _pick_menu_item(device, is_Q, "Advanced/Tools")
+    _pick_menu_item(device, is_Q, "Spending Policy")
+    _pick_menu_item(device, is_Q, "Single-Signer")
+    _press_select(device, is_Q)  # confirm story
+    # now create bypass PIN
+    # 1st entry
+    time.sleep(.1)
+    _login(device, is_Q, bypass_pin)
+    # 2nd confirmation entry
+    _login(device, is_Q, bypass_pin)
+
+    time.sleep(2)
+    sim.stop()  # power off
+
+    sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"])
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+    secs = 5
+
+    _login(device, is_Q, bypass_pin)
+    time.sleep(.1)
+    title, story = _cap_story(device)
+    assert "Spending Policy Unlock" in story
+    _press_select(device, is_Q)
+    time.sleep(.1)
+    _login(device, is_Q, "22-22")
+
+    time.sleep(.15)
+    scr = " ".join(_cap_screen(device).split("\n"))
+    assert "Login countdown in effect" in scr
+    assert "Must wait:" in scr
+    assert f"{secs}s" in scr
+    time.sleep(secs + 1)
+    _login(device, is_Q, "22-22")
+    time.sleep(3)
+    m = _cap_menu(device)
+    assert "Ready To Sign" in m
+    sim.stop()
+
+
+def test_sssp_trick_pins(request):
+    # only testing countdown TP
+    ct_pin = "89-89"
+    bypass_pin = "15-16"
+    is_Q = request.config.getoption('--Q')
+    clean_sim_data()  # remove all from previous
+    sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"])
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+    _login(device, is_Q, "22-22")
+
+    _pick_menu_item(device, is_Q, "Settings")
+    _pick_menu_item(device, is_Q, "Login Settings")
+    _pick_menu_item(device, is_Q, "Trick PINs")
+
+    # now countdown TP
+    _pick_menu_item(device, is_Q, "Add New Trick")
+    time.sleep(.1)
+
+    for ch in ct_pin[:2]:
+        _need_keypress(device, ch)
+        time.sleep(.1)
+    _press_select(device, is_Q)
+
+    if not is_Q:
+        # anti-phishing words
+        _press_select(device, is_Q)
+
+    for ch in ct_pin[-2:]:
+        _need_keypress(device, ch)
+        time.sleep(.1)
+    _press_select(device, is_Q)
+
+    _pick_menu_item(device, is_Q, "Login Countdown")
+    _press_select(device, is_Q)
+    time.sleep(.1)
+
+    _pick_menu_item(device, is_Q, "Just Countdown")
+    for _ in range(2):
+        _press_select(device, is_Q)
+        time.sleep(.1)
+
+    # adjust countdown to lowest possible value
+    _pick_menu_item(device, is_Q, f'↳{ct_pin}')
+    _pick_menu_item(device, is_Q, '↳Countdown')
+    _need_keypress(device, "4")
+    _pick_menu_item(device, is_Q, " 5 minutes")
+
+    for _ in range(10):
+        _press_cancel(device, is_Q)
+
+    time.sleep(.1)
+    _pick_menu_item(device, is_Q, "Advanced/Tools")
+    _pick_menu_item(device, is_Q, "Spending Policy")
+    _pick_menu_item(device, is_Q, "Single-Signer")
+    _press_select(device, is_Q)  # confirm story
+    # now create bypass PIN
+    # 1st entry
+    time.sleep(.1)
+    _login(device, is_Q, bypass_pin)
+    # 2nd confirmation entry
+    _login(device, is_Q, bypass_pin)
+
+    time.sleep(2)
+    sim.stop()
+
+    sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"])
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+
+    _login(device, is_Q, bypass_pin)
+    time.sleep(.1)
+    title, story = _cap_story(device)
+    assert "Spending Policy Unlock" in story
+    _press_select(device, is_Q)
+    time.sleep(.1)
+    # try to log in with countdown TP instead of main
+    # send you directly into countdown
+    _login(device, is_Q, ct_pin)
+    time.sleep(.15)
+    scr = " ".join(_cap_screen(device).split("\n"))
+    assert "Login countdown in effect" in scr
+    assert "Must wait:" in scr
+    assert "5s" in scr
+    time.sleep(6)
+
+    sim.stop()
 
 # EOF
