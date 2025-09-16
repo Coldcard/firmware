@@ -10,6 +10,7 @@ This lists the new changes that have not yet been published in a normal release.
   now offered for transactions of all sizes.
 - Bugfix: If all change outputs have `nValue=0` they're not shown in UX.
 - Bugfix: Disallow negative input/output amounts in PSBT.
+- Bugfix: Fix filesystem initialization after Wife LFS or Destroy Seed
 
 # Mk4 Specific Changes
 

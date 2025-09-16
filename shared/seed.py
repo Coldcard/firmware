@@ -737,7 +737,7 @@ async def remember_ephemeral_seed():
     # address cache, settings from tmp seeds / seedvault seeds
     # rebuild fs as we want to save current tmp settings immediately
     from files import wipe_flash_filesystem
-    wipe_flash_filesystem(True)
+    wipe_flash_filesystem()
 
     dis.draw_status(bip39=0, tmp=0)
     dis.fullscreen('Saving...')
