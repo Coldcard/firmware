@@ -26,16 +26,17 @@ When a Spending Policy is in effect, there are limitations
 in effect:
 
 - Firmware updates are blocked.
-- There is no way to backup the COLDCARD
+- There is no way to backup the COLDCARD.
 - Seed vault and Secure Notes are read-only (and can also be hidden).
 - Settings menu is inaccessible.
+- BIP-39 passphrases may be blocked (optional).
 
 We recommend getting the COLDCARD fully configured and setup
 for typical transactions before enabling the Spending Policy.
 
 # Setup Spending Policy
 
-Visit `Advanced / Tool > Spending Policy` menu and choose
+Visit `Advanced / Tools > Spending Policy` menu and choose
 "Single-Signer". First some background information is shown,
 then you are prompted to define the "Bypass PIN". This PIN code
 is only used when you need to disable the spending policy, but is 
@@ -137,21 +138,18 @@ holding a copy of the seed words.
 
 ## Passphrase Considerations
 
-If you are using a BIP-39 passphrase for everything, you should
+If you are using the same BIP-39 passphrase for everything, you should
 probably do a "Lock Down Seed" (Advanced/Tools > Danger Zone > Seed
 Functions) first. This takes your master seed and BIP-39 passphrase
 and cooks them together into an XPRV which then is stored as your
-master secret. (It is not a seed phrase anymore.) This process
+master secret. (Replacing the master seed phrase.) This process
 cannot be reversed, so other funds you may have on the same seed
 words are protected. Once you are operating in XPRV mode, you can
-define a spending policy and know that it is restricted to only
+define a spending policy, and know that it is restricted to only
 that wallet.
 
-You could, alternatively, can also block access to other related
-keys, which removes the "Passphrase" entry option from the main
-menu, but that protection doesn't seem as strong. When operating in
-XPRV mode, the "Passphrase" menu item is not shown because
-BIP-39 passwords cannot be applied to XPRV secrets.
+When operating in XPRV mode, the "Passphrase" menu item is not shown
+because BIP-39 passwords cannot be applied to XPRV secrets.
 
 ## Trick PIN Thoughts
 
@@ -207,4 +205,5 @@ vault items, secure notes, and trick pins. It's basically a factory
 reset except for the main PIN code which is unchanged. Once you've
 done that, you can enter your seed words from backup (or restore a
 backup file) and continue to use the COLDCARD again.
+
 
