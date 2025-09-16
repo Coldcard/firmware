@@ -51,7 +51,7 @@ class QRDecodeExplained(ValueError):
 class UnknownAddressExplained(ValueError):
     pass
 
-# We're not going to co-sign using spending policy features
+# We're not going to (co-)sign using spending policy features
 class SpendPolicyViolation(RuntimeError):
     pass
 

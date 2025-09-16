@@ -123,7 +123,7 @@ async def web2fa_enroll(ss=None):
         await show_qr_code(qr, is_alnum=False, msg="Import into 2FA Mobile App",
                            force_msg=True)
 
-        # important: force them to prove they store it correctly
+        # important: force them to prove they stored it correctly
         ok = await perform_web2fa('Enroll: COLDCARD', ss)
         if ok: break
 
