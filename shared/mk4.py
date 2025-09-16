@@ -11,7 +11,8 @@ def make_flash_fs():
     os.VfsLfs2.mkfs(fl)
 
     os.mount(fl, '/flash')
-    os.mkdir('/flash/settings')
+    os.chdir('/flash')
+    os.mkdir('settings')
 
 def make_psram_fs():
     # Filesystem is wiped and rebuilt on each boot before this point, but
