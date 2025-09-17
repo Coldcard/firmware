@@ -11,6 +11,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: If all change outputs have `nValue=0` they were not shown in UX.
 - Bugfix: Disallow negative input/output amounts in PSBT.
 - Bugfix: Fix filesystem initialization after Wife LFS or Destroy Seed.
+- Bugfix: Fix MicroSD selftest
 
 ## Spending Policy Feature
 
