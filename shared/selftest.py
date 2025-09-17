@@ -364,7 +364,7 @@ async def test_microsd():
 
         with CardSlot(slot_b=slot_num) as card:
 
-            _, fn = card.pick_filename('test-delme.txt')
+            fn, _ = card.pick_filename('test-delme.txt')
 
             with open(fn, 'wt') as fd:
                 fd.write("Hello")
