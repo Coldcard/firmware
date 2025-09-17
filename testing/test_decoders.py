@@ -57,12 +57,13 @@ def test_detector_bin(fname, expect, encoding, try_decode):
     
 
 @pytest.mark.parametrize('url', [
-'bitcoin:mtHSVByP9EYZmB26jASDdPVm19gvpecb5R',
-'bitcoin:mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?label=Luke-Jr',
-'bitcoin:mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?amount=20.3&label=Luke-Jr',
-'bitcoin:mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?amount=50&label=Luke-Jr&message=Donation%20for%20project%20xyz',
-'bitcoin:mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?req-somethingyoudontunderstand=50&req-somethingelseyoudontget=999',
-'bitcoin:mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?somethingyoudontunderstand=50&somethingelseyoudontget=999',
+'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R',
+'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?label=Luke-Jr',
+'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?amount=20.3&label=Luke-Jr',
+'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?amount=50&label=Luke-Jr&message=Donation%20for%20project%20xyz',
+'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?req-somethingyoudontunderstand=50&req-somethingelseyoudontget=999',
+'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?somethingyoudontunderstand=50&somethingelseyoudontget=999',
+'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?label=total%20due:%20500',
 ])
 @pytest.mark.parametrize('bip21', range(2))
 @pytest.mark.parametrize('addr_fmt', range(2))
@@ -70,8 +71,9 @@ def test_detector_url(url, bip21, addr_fmt, try_decode):
     a1, a2 = ('mtHSVByP9EYZmB26jASDdPVm19gvpecb5R',
                             'BCRT1QUPYD58NDSH7LUT0ET0VTRQ432JVU9JTDX8FGYV')
 
-    if not bip21:
-        _, url = url.split(':', 1)
+    if bip21:
+        url = 'bitcoin:' + url
+
     if addr_fmt:
         url = url.replace(a1, a2)
         expect_addr = a2.lower()
