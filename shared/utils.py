@@ -645,7 +645,7 @@ def decode_bip21_text(got):
     proto, args, addr = None, None, None
 
     # remove URL protocol: if present
-    if ':' in got:
+    if ':' in got[0:16]:
         proto, got = got.split(':', 1)
 
     # looks like BIP-21 payment URL
