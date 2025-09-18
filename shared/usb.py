@@ -233,7 +233,7 @@ class USBHandler:
                 except CCBusyError:
                     # auth UX is doing something else
                     resp = b'busy'
-                except SpendPolicyViolation:
+                except SpendPolicyViolation as e:
                     resp = b'err_Spending policy in effect'
                 except HSMDenied:
                     resp = b'err_Not allowed in HSM mode'
@@ -256,6 +256,7 @@ class USBHandler:
                     raise exc
                 except Exception as exc:
                     # catch bugs and fuzzing too
+                    # sys.print_exception(exc)
                     if is_simulator() or is_devmode:
                         print("USB request caused this: ", end='')
                         # sys.print_exception(exc)

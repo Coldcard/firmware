@@ -289,6 +289,10 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, press_select,
             # render as a file for import
             config = f"name: {name}\npolicy: {M} / {N}\n\n"
 
+            if addr_fmt is None:
+                # default now is segwit v0
+                addr_fmt = "p2wsh"
+
             if addr_fmt:
                 if isinstance(addr_fmt, int):
                     addr_fmt = addr_fmt_names[addr_fmt]
@@ -1240,7 +1244,7 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, press_select, clear_m
             config = f"name: Myself-{M}\npolicy: {M} / 4\n\n"
 
             if addr_fmt:
-                config += f'format: {addr_fmt.upper()}\n'
+                config += f'format: {addr_fmt.upper()}\n'  # default is sh
 
             config += '\n'.join('%s: %s' % (xfp2str(xfp), sk.hwif()) for xfp, _, sk in keys)
             #print(config)
@@ -1279,7 +1283,8 @@ def fake_ms_txn(pytestconfig):
     def doit(num_ins, num_outs, M, keys, fee=10000, outvals=None, segwit_in=False,
              outstyles=['p2pkh'], change_outputs=[], incl_xpubs=False, hack_psbt=None,
              hack_change_out=False, input_amount=1E8, psbt_v2=None, bip67=True,
-             violate_script_key_order=False, path_mapper=None):
+             violate_script_key_order=False, path_mapper=None, inp_af=AF_P2WSH,
+             force_outstyle=None):
 
         psbt = BasicPSBT()
         if psbt_v2 is None:
@@ -1315,14 +1320,28 @@ def fake_ms_txn(pytestconfig):
             # - each input is 1BTC
 
             # addr where the fake money will be stored.
-            addr, scriptPubKey, script, details = make_ms_address(M, keys, idx=i, bip67=bip67,
-                      violate_script_key_order=violate_script_key_order, path_mapper=path_mapper)
+            addr, scriptPubKey, script, details = make_ms_address(
+                M, keys, idx=i, bip67=bip67, addr_fmt=inp_af,
+                violate_script_key_order=violate_script_key_order,
+                path_mapper=path_mapper
+            )
 
             # lots of supporting details needed for p2sh inputs
-            if segwit_in:
-                psbt.inputs[i].witness_script = script
+            if inp_af:
+                if inp_af == AF_P2WSH:
+                    psbt.inputs[i].witness_script = script
+                elif inp_af == AF_P2SH:
+                    psbt.inputs[i].redeem_script = script
+                else:
+                    assert inp_af == AF_P2WSH_P2SH
+                    psbt.inputs[i].witness_script = script
+                    psbt.inputs[i].redeem_script = b'\0\x20' + sha256(script).digest()
+
             else:
-                psbt.inputs[i].redeem_script = script
+                if segwit_in:
+                    psbt.inputs[i].witness_script = script
+                else:
+                    psbt.inputs[i].redeem_script = script
 
             for pubkey, xfp_path in details:
                 psbt.inputs[i].bip32_paths[pubkey] = b''.join(pack('<I', j) for j in xfp_path)
@@ -1363,6 +1382,12 @@ def fake_ms_txn(pytestconfig):
                 style = outstyles[i % len(outstyles)]
 
             if i in change_outputs:
+                # overwrite style, change can only be of THE style
+                if force_outstyle:
+                    style = force_outstyle
+                else:
+                    style = addr_fmt_names[inp_af]
+
                 make_redeem_args = dict()
                 if hack_change_out:
                     make_redeem_args = hack_change_out(i)
@@ -1378,7 +1403,7 @@ def fake_ms_txn(pytestconfig):
 
                 if 'w' in style:
                     psbt.outputs[i].witness_script = scr
-                    if style.endswith('p2sh'):
+                    if 'p2sh' in style:
                         psbt.outputs[i].redeem_script = b'\0\x20' + sha256(scr).digest()
                 elif style.endswith('sh'):
                     psbt.outputs[i].redeem_script = scr
@@ -1446,7 +1471,7 @@ def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, impor
     keys = import_ms_wallet(M, N, name='cli-test', accept=True, addr_fmt=addr_fmt,
                             do_import=do_import, descriptor=descriptor, bip67=bip67)
 
-    psbt = fake_ms_txn(num_ins, num_outs, M, keys, incl_xpubs=incl_xpubs,
+    psbt = fake_ms_txn(num_ins, num_outs, M, keys, incl_xpubs=incl_xpubs, inp_af=addr_fmt,
                        outstyles=ADDR_STYLES_MS, change_outputs=[1] if has_change else [],
                        bip67=bip67)
 
@@ -1480,8 +1505,9 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
     N = len(keys)
     assert M<=N
 
-    psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs, 
-                        outstyles=all_out_styles, change_outputs=list(range(1,num_outs)))
+    psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs,
+                       outstyles=all_out_styles, change_outputs=list(range(1,num_outs)),
+                       inp_af=AF_P2SH)
 
     with open(f'{sim_root_dir}/debug/myself-before.psbt', 'w') as f:
         f.write(b64encode(psbt).decode())
@@ -1935,25 +1961,22 @@ def test_ms_sign_bitrot(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_
     assert story.strip() in str(ee)
     assert len(story.split(':')[-1].strip()), story
 
-@pytest.mark.parametrize('addr_fmt', [AF_P2WSH, AF_P2SH] )
-@pytest.mark.parametrize('num_ins', [ 1])
+@pytest.mark.parametrize('addr_fmt', [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH] )
+@pytest.mark.parametrize('num_ins', [1])
 @pytest.mark.parametrize('incl_xpubs', [ True])
-@pytest.mark.parametrize('out_style', ['p2wsh'])
-@pytest.mark.parametrize('pk_num', range(4)) 
+@pytest.mark.parametrize('pk_num', range(4))
 @pytest.mark.parametrize('case', ['pubkey', 'path'])
-def test_ms_change_fraud(case, pk_num, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, make_multisig,
-                         addr_vs_path, fake_ms_txn, start_sign, end_sign, out_style, cap_story,
-                         sim_root_dir):
+def test_ms_change_fraud(case, pk_num, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet,
+                         addr_vs_path, fake_ms_txn, start_sign, end_sign, cap_story, sim_root_dir):
     
     M = 1
     N = 3
     num_outs = 2
 
     clear_ms()
-    keys = make_multisig(M, N)
+    keys = import_ms_wallet(M, N, addr_fmt=addr_fmt, accept=True)
 
-
-    # given 
+    # given
     def tweak(case, pk_num, data):
         # added from make_redeem() as tweak_pubkeys option
         #(pk, xfp, path))
@@ -1973,26 +1996,29 @@ def test_ms_change_fraud(case, pk_num, num_ins, dev, addr_fmt, clear_ms, incl_xp
             assert False, case
         data[pk_num] = (pk, xfp, path)
 
-    psbt = fake_ms_txn(num_ins, num_outs, M, keys, incl_xpubs=True,
-                outstyles=[out_style], change_outputs=[0],
+    psbt = fake_ms_txn(num_ins, num_outs, M, keys,
+                change_outputs=[0], inp_af=addr_fmt,
                 hack_change_out=lambda idx: dict(tweak_pubkeys=
                         lambda data: tweak(case, pk_num, data)))
 
     with open(f'{sim_root_dir}/debug/last.psbt', 'wb') as f:
         f.write(psbt)
 
-    with pytest.raises(Exception) as ee:
-        start_sign(psbt)
-        signed = end_sign(accept=True, accept_ms_import=False)
-    assert 'Output#0:' in str(ee)
-    assert 'P2WSH or P2SH change output script' in str(ee)
-    #assert 'Deception regarding change output' in str(ee)
+    start_sign(psbt)
 
     # Check error details are shown
     time.sleep(.5)
     title, story = cap_story()
-    assert story.strip() in str(ee.value.args[0])
+
     assert len(story.split(':')[-1].strip()), story
+
+    with pytest.raises(Exception) as ee:
+        end_sign(accept=True, accept_ms_import=False)
+    assert 'Output#0:' in str(ee)
+    assert 'P2WSH or P2SH change output script' in str(ee)
+    #assert 'Deception regarding change output' in str(ee)
+
+    assert story.strip() in str(ee.value.args[0])
 
 
 @pytest.mark.parametrize('repeat', range(2) )
@@ -3333,7 +3359,7 @@ def test_bare_cc_ms_qr_import(N, make_multisig, scan_a_qr, clear_ms, goto_home,
     [("p2wsh", 1000000, 0)] * 99,
     [("p2sh", 1000000, 1)] * 33,
     [("p2wsh-p2sh", 1000000, 1)] * 18 + [("p2wsh", 50000000, 0)] * 12,
-    [("p2sh", 1000000, 1), ("p2wsh-p2sh", 50000000, 0), ("p2wsh", 800000, 1)] * 14,
+    [("p2sh", 1000000, 0), ("p2wsh-p2sh", 50000000, 0), ("p2wsh", 800000, 1)] * 14,
 ])
 def test_txout_explorer(data, clear_ms, import_ms_wallet, fake_ms_txn,
                         start_sign, txout_explorer, desc, pytestconfig):
@@ -3343,24 +3369,28 @@ def test_txout_explorer(data, clear_ms, import_ms_wallet, fake_ms_txn,
     descriptor, bip67 = False, True
     if desc == "multi":
         descriptor, bip67 = True, False
-    keys = import_ms_wallet(2, 3, name='ms-test', accept=True,
-                            descriptor=descriptor, bip67=bip67)
 
     outstyles = []
     outvals = []
     change_outputs = []
+    the_style = "p2wsh"
     for i in range(len(data)):
         os, ov, is_change = data[i]
         outstyles.append(os)
         outvals.append(ov)
         if is_change:
+            # only one style will always be the change
+            the_style = os
             change_outputs.append(i)
+
+    keys = import_ms_wallet(2, 3, name='ms-test', accept=True,
+                            descriptor=descriptor, bip67=bip67, addr_fmt=the_style)
 
     inp_amount = sum(outvals) + 100000  # 100k sat fee
     psbt = fake_ms_txn(1, len(data), M, keys, outstyles=outstyles,
                        outvals=outvals, change_outputs=change_outputs,
-                       input_amount=inp_amount, psbt_v2=pytestconfig.getoption('psbt2'),
-                       bip67=bip67)
+                       inp_af=unmap_addr_fmt[the_style], bip67=bip67,
+                       input_amount=inp_amount, psbt_v2=pytestconfig.getoption('psbt2'))
     start_sign(psbt)
     txout_explorer(data)
 
@@ -3786,5 +3816,200 @@ def test_multisig_nfc_qr_finalization(way, clear_ms, make_multisig, import_ms_wa
         is_fin = (ft == "T")
 
     assert is_fin
+
+
+def test_input_script_type(clear_ms, import_ms_wallet, start_sign, end_sign, cap_story,
+                           press_cancel, settings_set, fake_ms_txn):
+
+    def sign_check(psbt):
+        # start sign MUST raise scriptPubKey mismatch on inputs or change outputs
+        # it does not in current master
+        start_sign(psbt)
+        _, story = cap_story()
+        try:
+            end_sign()
+            assert False, story
+        except Exception as e:
+            assert e.args[0] == 'Coldcard Error: Unknown multisig wallet'
+            return
+
+    clear_ms()
+    M, N = 2, 3
+    wname = "bugg"
+    # import wallet with script type p2wsh
+    keys = import_ms_wallet(M, N, addr_fmt="p2wsh", name=wname, accept=True, descriptor=True)
+
+    # create txn with p2sh inputs
+    # we shouldn't even recognize these input as ours
+    psbt = fake_ms_txn(2, 2, M, keys, inp_af=AF_P2SH,
+                       change_outputs=[0,1])
+    sign_check(psbt)
+
+    # create txn with p2sh-p2wsh
+    # we shouldn't even recognize these input as ours
+    psbt = fake_ms_txn(2, 2, M, keys,
+                       change_outputs=[0,1], inp_af=AF_P2WSH_P2SH)
+
+    sign_check(psbt)
+
+    # ============================
+
+    clear_ms()
+    # import wallet with script type p2sh-p2wsh
+    keys = import_ms_wallet(M, N, addr_fmt="p2sh-p2wsh", name=wname, accept=True, descriptor=True)
+
+    # create txn with p2wsh inputs
+    # we shouldn't even recognize these input as ours
+    psbt = fake_ms_txn(2, 2, M, keys,
+                       change_outputs=[0,1], inp_af=AF_P2WSH)
+
+    sign_check(psbt)
+
+    # create txn with p2sh inputs
+    # we shouldn't even recognize these input as ours
+    psbt = fake_ms_txn(2, 2, M, keys,
+                       change_outputs=[0,1], inp_af=AF_P2SH)
+
+    sign_check(psbt)
+
+    # ============================
+
+    clear_ms()
+    # import wallet with script type p2sh
+    keys = import_ms_wallet(M, N, addr_fmt="p2sh", name=wname, accept=True, descriptor=True)
+
+    # create txn with p2wsh inputs
+    # we shouldn't even recognize these input as ours
+    psbt = fake_ms_txn(2, 2, M, keys,
+                       change_outputs=[0,1], inp_af=AF_P2WSH)
+
+    sign_check(psbt)
+
+    # create txn with p2sh-p2wsh inputs
+    # we shouldn't even recognize these input as ours
+    psbt = fake_ms_txn(2, 2, M, keys,
+                       change_outputs=[0,1], inp_af=AF_P2WSH_P2SH)
+
+    sign_check(psbt)
+
+
+def test_change_output_script_type(clear_ms, import_ms_wallet, start_sign, end_sign, cap_story,
+                                   press_cancel, settings_set, fake_ms_txn):
+
+    def sign_check(psbt):
+        # start sign MUST raise scriptPubKey mismatch on inputs or change outputs
+        # it does not in current master
+        start_sign(psbt)
+        _, story = cap_story()
+        assert "Change back" not in story
+        assert "Consolidating" not in story
+        assert "Sending" in story
+        end_sign()  # must work
+
+    clear_ms()
+    M, N = 2, 3
+    wname = "bugg"
+    # import wallet with script type p2wsh
+    keys = import_ms_wallet(M, N, addr_fmt="p2wsh", name=wname, accept=True, descriptor=True)
+
+    # inputs correct, change outputs wrong address format
+    psbt = fake_ms_txn(2, 2, M, keys, force_outstyle="p2sh", inp_af=AF_P2WSH,
+                       change_outputs=[0,1])
+    sign_check(psbt)
+
+    psbt = fake_ms_txn(2, 2, M, keys, force_outstyle="p2sh-p2wsh",
+                       change_outputs=[0,1], inp_af=AF_P2WSH)
+
+    sign_check(psbt)
+
+    # ============================
+
+    clear_ms()
+    # import wallet with script type p2sh-p2wsh
+    keys = import_ms_wallet(M, N, addr_fmt="p2sh-p2wsh", name=wname, accept=True, descriptor=True)
+
+    # inputs correct, change outputs wrong address format
+    psbt = fake_ms_txn(2, 2, M, keys, force_outstyle="p2wsh",
+                       change_outputs=[0,1], inp_af=AF_P2WSH_P2SH)
+
+    sign_check(psbt)
+
+    psbt = fake_ms_txn(2, 2, M, keys, force_outstyle="p2sh",
+                       change_outputs=[0,1], inp_af=AF_P2WSH_P2SH)
+
+    sign_check(psbt)
+
+    # ============================
+
+    clear_ms()
+    M, N = 2, 3
+    wname = "bugg"
+    # import wallet with script type p2sh
+    keys = import_ms_wallet(M, N, addr_fmt="p2sh", name=wname, accept=True, descriptor=True)
+
+    # inputs correct, change outputs wrong address format
+    psbt = fake_ms_txn(2, 2, M, keys, force_outstyle="p2wsh",
+                       change_outputs=[0,1], inp_af=AF_P2SH)
+
+    sign_check(psbt)
+
+    psbt = fake_ms_txn(2, 2, M, keys, force_outstyle="p2sh-p2wsh",
+                       change_outputs=[0,1], inp_af=AF_P2SH, segwit_in=True)
+
+    sign_check(psbt)
+
+
+def test_sh_vs_wrapped_segwit_psbt(clear_ms, import_ms_wallet, start_sign, end_sign, cap_story,
+                                   press_cancel, settings_set, fake_ms_txn):
+
+    clear_ms()
+    M, N = 2, 3
+    wname = "spk_check_sh_shwsh"
+    # import wallet with script type p2sh
+    keys = import_ms_wallet(M, N, addr_fmt="p2sh", name=wname, accept=True, descriptor=True)
+
+    def hack(psbt_in):
+        for inp in psbt_in.inputs:
+            # switch scripts so it looks like bare p2sh instead wrapped segwit script hash
+            # it even has our keys, and script is correct
+            inp.redeem_script = inp.witness_script
+            inp.witness_script = None
+
+    # PSBT has p2sh-p2wsh inputs & outputs
+    # but PSBT creator made a mistake and filled redeem/witness like in p2sh (see hack)
+    psbt = fake_ms_txn(2, 2, M, keys, inp_af=AF_P2WSH_P2SH, hack_psbt=hack)
+
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "OK TO SEND?" not in title
+    assert "spk mismatch" in story
+
+
+def test_wrapped_segwit_vs_sh_psbt(clear_ms, import_ms_wallet, start_sign, end_sign, cap_story,
+                                   press_cancel, settings_set, fake_ms_txn):
+
+    clear_ms()
+    M, N = 2, 3
+    wname = "spk_check_shwsh_sh"
+    # import wallet with script type p2sh-p2wsh
+    keys = import_ms_wallet(M, N, addr_fmt="p2sh-p2wsh", name=wname, accept=True, descriptor=True)
+
+    def hack(psbt_in):
+        for inp in psbt_in.inputs:
+            # switch scripts so it looks like bare p2sh instead wrapped segwit script hash
+            # it even has our keys, and script is correct
+            inp.witness_script = inp.redeem_script
+            inp.redeem_script = b"\x00\x20" + sha256(inp.witness_script).digest()
+
+    # PSBT has p2sh inputs & outputs
+    # but PSBT creator made a mistake and filled redeem/witness like in p2sh (see hack)
+    psbt = fake_ms_txn(2, 2, M, keys, inp_af=AF_P2SH, hack_psbt=hack)
+
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "OK TO SEND?" not in title
+    assert "spk mismatch" in story
 
 # EOF

@@ -327,11 +327,12 @@ class MultisigWallet(WalletABC):
 
         return True
 
-    def assert_matching(self, M, N, xfp_paths):
+    def assert_matching(self, M, N, xfp_paths, addr_fmt):
         # compare in-memory wallet with details recovered from PSBT
         # - xfp_paths must be sorted already
         assert (self.M, self.N) == (M, N), "M/N mismatch"
         assert len(xfp_paths) == N, "XFP count"
+        assert self.addr_fmt == addr_fmt, "addr fmt"
         if self.disable_checks: return
         assert self.matching_subpaths(xfp_paths), "wrong XFP/derivs"
 
