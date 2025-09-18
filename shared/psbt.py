@@ -20,7 +20,7 @@ from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, COutPoint
 from serializations import ser_sig_der, uint256_from_str, ser_push_data
 from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_ANYONECANPAY
 from serializations import ALL_SIGHASH_FLAGS, SIGHASH_DEFAULT
-from opcodes import OP_CHECKMULTISIG
+from opcodes import OP_CHECKMULTISIG, OP_RETURN
 from glob import settings
 from precomp_tag_hash import TAP_TWEAK_H, TAP_SIGHASH_H
 
@@ -39,7 +39,7 @@ from public_constants import (
     PSBT_IN_OUTPUT_INDEX, PSBT_IN_SEQUENCE, PSBT_IN_REQUIRED_TIME_LOCKTIME,
     PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, MAX_SIGNERS,
     AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH,
-    AFC_SEGWIT,
+    AFC_SEGWIT, AF_BARE_PK
 )
 
 psbt_tmp256 = bytearray(256)
@@ -510,7 +510,7 @@ class psbtOutputProxy(psbtProxy):
         # - must match expected address for this output, coming from unsigned txn
         af, addr_or_pubkey = txo.get_address()
 
-        if (not self.sp_idxs) or (af in ["op_return", None]):
+        if (not self.sp_idxs) or (af in [OP_RETURN, None]):
             # num_ours == 0
             # - not considered fraud because other signers looking at PSBT may have them
             # - user will see them as normal outputs, which they are from our PoV.
@@ -539,7 +539,7 @@ class psbtOutputProxy(psbtProxy):
                 af = AF_TO_STR_AF[af]
             raise FraudulentChangeOutput(idx, "%s change output is fraudulent\n\n%s" % (af, err))
 
-        if af == 'p2pk':
+        if af == AF_BARE_PK:
             # output is compressed public key (not a hash, much less common)
             # uncompressed public keys not supported!
             assert len(addr_or_pubkey) == 33
@@ -796,7 +796,7 @@ class psbtInputProxy(psbtProxy):
         # - also validates redeem_script when present
         merkle_root = redeem_script = None
 
-        if self.af == "op_return":
+        if self.af == OP_RETURN:
             return
 
         if self.af is None:
@@ -815,7 +815,7 @@ class psbtInputProxy(psbtProxy):
                 self.sp_idxs = None
                 return
 
-        if self.af == 'p2pk':
+        if self.af == AF_BARE_PK:
             # input is single compressed public key (less common)
             # uncompressed public keys not supported!
             assert len(addr_or_pubkey) == 33
@@ -1698,7 +1698,7 @@ class psbtObject(psbtProxy):
             assert txo.nValue >= 0, "negative output value: o%d" % idx
             total_out += txo.nValue
 
-            if (txo.nValue == 0) and (af != "op_return"):
+            if (txo.nValue == 0) and (af != OP_RETURN):
                 # OP_RETURN outputs have nValue=0 standard
                 zero_val_outs += 1
 
@@ -1748,7 +1748,7 @@ class psbtObject(psbtProxy):
                                 )
                             self.warnings.append(('Troublesome Change Outs', msg))
 
-            if af == "op_return":
+            if af == OP_RETURN:
                 num_op_return += 1
                 if len(txo.scriptPubKey) > 83:
                     num_op_return_size += 1

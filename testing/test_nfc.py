@@ -11,7 +11,8 @@ from struct import pack, unpack
 import ndef
 from hashlib import sha256
 from txn import *
-from charcodes import KEY_NFC, KEY_QR
+from constants import unmap_addr_fmt
+from charcodes import KEY_NFC
 
     
 @pytest.mark.parametrize('case', range(6))

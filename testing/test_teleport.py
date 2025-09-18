@@ -429,7 +429,7 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
                           fake_ms_txn, try_sign, incl_xpubs, bitcoind, cap_story, need_keypress,
                           cap_menu, pick_menu_item, grab_payload, rx_complete, press_select,
                           ndef_parse_txn_psbt, press_nfc, nfc_read, settings_get, settings_set,
-                          txid_from_export_prompt, sim_root_dir,
+                          txid_from_export_prompt, sim_root_dir, goto_home,
                           set_hobble, hobbled, readback_bbqr, nfc_is_enabled):
 
     # IMPORTANT: won't work if you start simulator with --ms flag. Use no args
@@ -444,6 +444,10 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
     keys, select_wallet = make_myself_wallet(M, do_import=(not incl_xpubs), addr_fmt=af)
     N = len(keys)
     assert M<=N
+
+    if hobbled:
+        set_hobble(True, {'okeys'})
+        goto_home()
 
     psbt = fake_ms_txn(15, num_outs, M, keys, inp_addr_fmt=af, incl_xpubs=incl_xpubs,
                        outstyles=["p2sh-p2wsh", af, af, af],

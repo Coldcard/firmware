@@ -102,28 +102,50 @@ class ChainsBase:
         return node
 
     @classmethod
+    def script_pubkey(cls, addr_fmt, pubkey=None, script=None):
+        digest = None
+        if addr_fmt & AFC_SCRIPT:
+            assert script, "need witness/redeem script"
+
+            if addr_fmt in [AF_P2WSH, AF_P2WSH_P2SH]:
+                digest = ngu.hash.sha256s(script)
+                # bech32 encoded segwit p2sh
+                spk = b'\x00\x20' + digest
+                if addr_fmt == AF_P2WSH_P2SH:
+                    # segwit p2wsh encoded as classic P2SH
+                    digest = hash160(spk)
+                    spk = b'\xA9\x14' + digest + b'\x87'
+
+            else:
+                assert addr_fmt == AF_P2SH
+                digest = hash160(script)
+                spk = b'\xA9\x14' + digest + b'\x87'
+
+        else:
+            assert pubkey
+            keyhash = ngu.hash.hash160(pubkey)
+            if addr_fmt == AF_P2TR:
+                assert len(pubkey) == 32  # internal
+                spk = b'\x51\x20' + taptweak(pubkey)
+            elif addr_fmt == AF_CLASSIC:
+                spk = b'\x76\xA9\x14' + keyhash + b'\x88\xAC'
+            elif addr_fmt == AF_P2WPKH_P2SH:
+                redeem_script = b'\x00\x14' + keyhash
+                spk = b'\xA9\x14' + ngu.hash.hash160(redeem_script) + b'\x87'
+            elif addr_fmt == AF_P2WPKH:
+                spk = b'\x00\x14' + keyhash
+            else:
+                raise ValueError('bad address template: %s' % addr_fmt)
+
+        return spk, digest
+
+    @classmethod
     def pubkey_to_address(cls, pubkey, addr_fmt):
         # - renders a pubkey to an address
         # - works only with single-key addresses
         assert not addr_fmt & AFC_SCRIPT
-
-        if addr_fmt == AF_P2TR:
-            assert len(pubkey) == 32  # internal
-            script = b'\x51\x20' + taptweak(pubkey)
-        else:
-            keyhash = ngu.hash.hash160(pubkey)
-            if addr_fmt == AF_CLASSIC:
-                script =  b'\x76\xA9\x14' + keyhash + b'\x88\xAC'
-            elif addr_fmt == AF_P2WPKH_P2SH:
-                redeem_script = b'\x00\x14' + keyhash
-                scripthash = ngu.hash.hash160(redeem_script)
-                script = b'\xA9\x14' + scripthash + b'\x87'
-            elif addr_fmt == AF_P2WPKH:
-                script = b'\x00\x14' + keyhash
-            else:
-                raise ValueError('bad address template: %s' % addr_fmt)
-
-        return cls.render_address(script)
+        spk, _ = cls.script_pubkey(addr_fmt, pubkey=pubkey)
+        return cls.render_address(spk)
 
     @classmethod
     def address(cls, node, addr_fmt):
