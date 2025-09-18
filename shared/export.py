@@ -92,10 +92,10 @@ async def export_contents(title, contents, fname_pattern, derive=None, addr_fmt=
 
                 await ux_show_story(msg)
 
-        except CardMissingError:
-            await needs_microsd()
-        except Exception as e:
-            await ux_show_story('Failed to write!\n\n' + str(e))
+            except CardMissingError:
+                await needs_microsd()
+            except Exception as e:
+                await ux_show_story('Failed to write!\n\n' + str(e))
 
         # both exceptions & success gets here
         if no_qr and (NFC is None) and (VD is None) and not force_prompt:
