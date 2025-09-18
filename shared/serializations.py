@@ -19,6 +19,7 @@ from ubinascii import hexlify as b2a_hex
 import ustruct as struct
 import ngu
 from opcodes import *
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2SH, AF_P2WSH, AF_P2TR, AF_BARE_PK
 
 # single-shot hash functions
 sha256 = ngu.hash.sha256s
@@ -355,26 +356,30 @@ class CTxOut(object):
         #    (addr_type_code, addr, is_segwit)
         # 'addr' is byte string, either 20 or 32 long
         if self.is_p2tr():
-            return 'p2tr', self.scriptPubKey[2:2+32], True
+            return AF_P2TR, self.scriptPubKey[2:2+32], True
 
         if self.is_p2wpkh():
-            return 'p2pkh', self.scriptPubKey[2:2+20], True
+            return AF_P2WPKH, self.scriptPubKey[2:2+20], True
 
         if self.is_p2wsh():
-            return 'p2sh', self.scriptPubKey[2:2+32], True
+            return AF_P2WSH, self.scriptPubKey[2:2+32], True
 
         if self.is_p2pkh():
-            return 'p2pkh', self.scriptPubKey[3:3+20], False
+            return AF_CLASSIC, self.scriptPubKey[3:3+20], False
 
         if self.is_p2sh():
-            return 'p2sh', self.scriptPubKey[2:2+20], False
+            # can be:
+            #  * bare P2SH
+            #  * P2SH-P2WPKH
+            #  * P2SH-P2WSH
+            return AF_P2SH, self.scriptPubKey[2:2+20], False
 
         if self.is_p2pk():
             # rare, pay to full pubkey
-            return 'p2pk', self.scriptPubKey[2:2+33], False
+            return AF_BARE_PK, self.scriptPubKey[2:2+33], False
 
         if self.scriptPubKey[0] == OP_RETURN:
-            return 'op_return', self.scriptPubKey, False
+            return OP_RETURN, self.scriptPubKey, False
 
         return None, self.scriptPubKey, None
 

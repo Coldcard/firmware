@@ -419,14 +419,14 @@ def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_ite
 @pytest.mark.unfinalized
 @pytest.mark.parametrize('num_ins', [ 15 ])
 @pytest.mark.parametrize('M', [4])
-@pytest.mark.parametrize('segwit', [True])
+@pytest.mark.parametrize('hobbled', [True, False])
 @pytest.mark.parametrize('incl_xpubs', [ False ])
-def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, dev, clear_ms,
+def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, num_ins, dev, clear_ms, hobbled,
                           fake_ms_txn, try_sign, incl_xpubs, bitcoind, cap_story, need_keypress,
                           cap_menu, pick_menu_item, grab_payload, rx_complete, press_select,
                           ndef_parse_txn_psbt, press_nfc, nfc_read, settings_get, settings_set,
-                          txid_from_export_prompt, sim_root_dir,
-                          set_hobble, readback_bbqr, nfc_is_enabled):
+                          txid_from_export_prompt, sim_root_dir, set_hobble, readback_bbqr,
+                          nfc_is_enabled, goto_home):
 
     # IMPORTANT: won't work if you start simulator with --ms flag. Use no args
     all_out_styles = list(unmap_addr_fmt.keys())
@@ -436,11 +436,15 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
     use_regtest()
 
     # create a wallet, with 3 bip39 pw's
-    keys, select_wallet = make_myself_wallet(M, do_import=(not incl_xpubs))
+    keys, select_wallet = make_myself_wallet(M, addr_fmt="p2wsh", do_import=(not incl_xpubs))
     N = len(keys)
     assert M<=N
 
-    psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs, 
+    if hobbled:
+        set_hobble(True, {'okeys'})
+        goto_home()
+
+    psbt = fake_ms_txn(num_ins, num_outs, M, keys, inp_af=AF_P2WSH, incl_xpubs=incl_xpubs,
                         outstyles=all_out_styles, change_outputs=list(range(1,num_outs)))
 
     with open(f'{sim_root_dir}/debug/myself-before.psbt', 'wb') as f:

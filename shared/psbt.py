@@ -2,7 +2,7 @@
 #
 # psbt.py - understand PSBT file format: verify and generate them
 #
-import stash, gc, history, sys, ngu, ckcc
+import stash, gc, history, sys, ngu, ckcc, chains
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, B2A, keypath_to_str
@@ -18,7 +18,7 @@ from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, COutPoint
 from serializations import ser_sig_der, uint256_from_str, ser_push_data
 from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_ANYONECANPAY
 from serializations import ALL_SIGHASH_FLAGS
-from opcodes import OP_CHECKMULTISIG
+from opcodes import OP_CHECKMULTISIG, OP_RETURN
 from glob import settings
 
 from public_constants import (
@@ -30,7 +30,8 @@ from public_constants import (
     PSBT_GLOBAL_TX_MODIFIABLE, PSBT_GLOBAL_OUTPUT_COUNT, PSBT_GLOBAL_INPUT_COUNT,
     PSBT_GLOBAL_FALLBACK_LOCKTIME, PSBT_GLOBAL_TX_VERSION, PSBT_IN_PREVIOUS_TXID,
     PSBT_IN_OUTPUT_INDEX, PSBT_IN_SEQUENCE, PSBT_IN_REQUIRED_TIME_LOCKTIME,
-    PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, MAX_PATH_DEPTH, MAX_SIGNERS
+    PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, MAX_PATH_DEPTH, MAX_SIGNERS,
+    AF_P2WSH_P2SH, AF_P2TR, AF_P2WSH, AF_P2SH, AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2WPKH, AF_BARE_PK
 )
 
 # PSBT proprietary keytype
@@ -403,7 +404,7 @@ class psbtOutputProxy(psbtProxy):
         # - must match expected address for this output, coming from unsigned txn
         af, addr_or_pubkey, is_segwit = txo.get_address()
 
-        if (num_ours == 0) or (af in ["p2tr", "op_return", None]):
+        if (num_ours == 0) or (af in [AF_P2TR, OP_RETURN, None]):
             # num_ours == 0
             # - not considered fraud because other signers looking at PSBT may have them
             # - user will see them as normal outputs, which they are from our PoV.
@@ -422,7 +423,7 @@ class psbtOutputProxy(psbtProxy):
             # p2wsh/p2sh cases need full set of pubkeys, and therefore redeem script
             expect_pubkey = None
 
-        if af == 'p2pk':
+        if af == AF_BARE_PK:
             # output is public key (not a hash, much less common)
             assert len(addr_or_pubkey) == 33
 
@@ -435,7 +436,7 @@ class psbtOutputProxy(psbtProxy):
         # Figure out what the hashed addr should be
         pkh = addr_or_pubkey
 
-        if af == 'p2sh':
+        if af in [AF_P2SH, AF_P2WSH]:
             # P2SH or Multisig output
 
             # Can be both, or either one depending on address type
@@ -449,7 +450,8 @@ class psbtOutputProxy(psbtProxy):
                     # But definitely required, else we don't know what script we're sending to.
                     raise FatalPSBTIssue("Missing redeem script for output #%d" % out_idx)
 
-                target_spk = bytes([0xa9, 0x14]) + hash160(redeem_script) + bytes([0x87])
+                target_spk, _ = chains.current_chain().script_pubkey(AF_P2WPKH_P2SH,
+                                                                     pubkey=expect_pubkey)
                 if not is_segwit and len(redeem_script) == 22 and \
                         redeem_script[0] == 0 and redeem_script[1] == 20 and \
                         txo.scriptPubKey == target_spk:
@@ -485,6 +487,17 @@ class psbtOutputProxy(psbtProxy):
                 if MultisigWallet.disable_checks:
                     # Without validation, we have to assume all outputs
                     # will be taken from us, and are not really change.
+                    self.is_change = False
+                    return af
+
+                if (af == AF_P2SH) and (redeem_script and witness_script) and \
+                        (len(redeem_script) == 34) and \
+                        (redeem_script[0]) == 0 and (redeem_script[1] == 32):
+                    # can also check if redeem script hashes to hash160 and compare with scriptPubKey
+                    af = AF_P2WSH_P2SH
+
+                # no need to proceed to script verification if address format does not match
+                if af != active_multisig.addr_fmt:
                     self.is_change = False
                     return af
 
@@ -526,7 +539,7 @@ class psbtOutputProxy(psbtProxy):
                     # old BIP-16 style; looks like payment addr
                     expect_pkh = hash160(redeem_script)
 
-        elif af == 'p2pkh':
+        elif af in [AF_CLASSIC, AF_P2WPKH]:
             # input is hash160 of a single public key
             assert len(addr_or_pubkey) == 20
             expect_pkh = hash160(expect_pubkey)
@@ -744,10 +757,10 @@ class psbtInputProxy(psbtProxy):
         which_key = None
 
         addr_type, addr_or_pubkey, addr_is_segwit = utxo.get_address()
-        if addr_type == "op_return":
+        if addr_type == OP_RETURN:
             self.required_key = None
             return
-        if addr_type == "p2tr":
+        if addr_type == AF_P2TR:
             raise FatalPSBTIssue("Install EDGE firmware to spend taproot.")
         if addr_type is None:
             # If this is reached, we do not understand the output well
@@ -757,7 +770,7 @@ class psbtInputProxy(psbtProxy):
         if addr_is_segwit and not self.is_segwit:
             self.is_segwit = True
 
-        if addr_type == 'p2sh':
+        if addr_type in [AF_P2SH, AF_P2WSH]:
             # multisig input
             self.is_p2sh = True
 
@@ -793,7 +806,7 @@ class psbtInputProxy(psbtProxy):
                     len(redeem_script) == 22 and \
                     redeem_script[0] == 0 and redeem_script[1] == 20:
                 # it's actually segwit p2pkh inside p2sh
-                addr_type = 'p2sh-p2wpkh'
+                addr_type = AF_P2WPKH_P2SH
                 addr = redeem_script[2:22]
                 self.is_segwit = True
             else:
@@ -802,10 +815,10 @@ class psbtInputProxy(psbtProxy):
 
             if self.witness_script and not self.is_segwit and self.is_multisig:
                 # bugfix
-                addr_type = 'p2sh-p2wsh'
+                addr_type = AF_P2WSH_P2SH
                 self.is_segwit = True
 
-        elif addr_type == 'p2pkh':
+        elif addr_type in [AF_CLASSIC, AF_P2WPKH]:
             # input is hash160 of a single public key
             self.scriptSig = utxo.scriptPubKey
             addr = addr_or_pubkey
@@ -818,7 +831,7 @@ class psbtInputProxy(psbtProxy):
                 # none of the pubkeys provided hashes to that address
                 raise FatalPSBTIssue('Input #%d: pubkey vs. address wrong' % my_idx)
 
-        elif addr_type == 'p2pk':
+        elif addr_type == AF_BARE_PK:
             # input is single public key (less common)
             self.scriptSig = utxo.scriptPubKey
             assert len(addr_or_pubkey) == 33
@@ -844,33 +857,36 @@ class psbtInputProxy(psbtProxy):
             xfp_paths = list(self.subpaths.values())
             xfp_paths.sort()
 
+            # only search wallets with correct script type (aka address format)
             if not psbt.active_multisig:
                 # search for multisig wallet
-                wal = MultisigWallet.find_match(M, N, xfp_paths)
+                wal = MultisigWallet.find_match(M, N, xfp_paths, [addr_type])
                 if not wal:
                     raise FatalPSBTIssue('Unknown multisig wallet')
 
                 psbt.active_multisig = wal
             else:
                 # check consistent w/ already selected wallet
-                psbt.active_multisig.assert_matching(M, N, xfp_paths)
+                psbt.active_multisig.assert_matching(M, N, xfp_paths, addr_type)
 
             # validate redeem script, by disassembling it and checking all pubkeys
             try:
                 psbt.active_multisig.validate_script(redeem_script, subpaths=self.subpaths)
+                target_spk, _ = chains.current_chain().script_pubkey(addr_type, script=redeem_script)
+                assert target_spk == utxo.scriptPubKey, "spk mismatch"
             except BaseException as exc:
                 # sys.print_exception(exc)
                 raise FatalPSBTIssue('Input #%d: %s' % (my_idx, exc))
 
         if not which_key and DEBUG:
             print("no key: input #%d: type=%s segwit=%d a_or_pk=%s scriptPubKey=%s" % (
-                    my_idx, addr_type, self.is_segwit or 0,
+                    my_idx, chains.addr_fmt_str(addr_type), self.is_segwit or 0,
                     b2a_hex(addr_or_pubkey), b2a_hex(utxo.scriptPubKey)))
 
         self.required_key = which_key
 
         if self.is_segwit:
-            if ('pkh' in addr_type):
+            if addr_type in [AF_P2WPKH, AF_P2WPKH_P2SH]:
                 # This comment from <https://bitcoincore.org/en/segwit_wallet_dev/>:
                 #
                 #   Please note that for a P2SH-P2WPKH, the scriptCode is always 26
@@ -1504,7 +1520,7 @@ class psbtObject(psbtProxy):
             assert txo.nValue >= 0, "negative output value: o%d" % idx
             total_out += txo.nValue
 
-            if (txo.nValue == 0) and (af != "op_return"):
+            if (txo.nValue == 0) and (af != OP_RETURN):
                 # OP_RETURN outputs have nValue=0 standard
                 zero_val_outs += 1
 
@@ -1512,7 +1528,7 @@ class psbtObject(psbtProxy):
                 self.num_change_outputs += 1
                 total_change += txo.nValue
 
-            if af == "op_return":
+            if af == OP_RETURN:
                 num_op_return += 1
                 if len(txo.scriptPubKey) > 83:
                     num_op_return_size += 1

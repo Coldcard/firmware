@@ -11,7 +11,8 @@ from struct import pack, unpack
 import ndef
 from hashlib import sha256
 from txn import *
-from charcodes import KEY_NFC, KEY_QR
+from constants import unmap_addr_fmt
+from charcodes import KEY_NFC
 
     
 @pytest.mark.parametrize('case', range(6))
@@ -479,10 +480,10 @@ def test_nfc_pushtx(num_outs, chain, enable_nfc, settings_set, settings_remove,
         goto_home()
         # create 1 of 3 multiig wallet - no need for another signers to make tx final
         M, N = 1, 3
-        keys = import_ms_wallet(M, N, random.choice(["p2wsh", "p2sh-p2wsh", "p2sh"]),
-                                name="ms_pushtx", accept=True, way=way, netcode=chain,
+        af = random.choice(["p2wsh", "p2sh-p2wsh", "p2sh"])
+        keys = import_ms_wallet(M, N, af, name="ms_pushtx", accept=True, way=way, netcode=chain,
                                 force_unsort_ms=random.getrandbits(1))
-        psbt = fake_ms_txn(2, num_outs, M, keys)
+        psbt = fake_ms_txn(2, num_outs, M, keys, inp_af=unmap_addr_fmt[af])
     else:
         psbt = fake_txn(2, num_outs)
 

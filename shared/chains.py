@@ -81,6 +81,41 @@ class ChainsBase:
         return node
 
     @classmethod
+    def script_pubkey(cls, addr_fmt, pubkey=None, script=None):
+        digest = None
+        if addr_fmt & AFC_SCRIPT:
+            assert script, "need witness/redeem script"
+
+            if addr_fmt in [AF_P2WSH, AF_P2WSH_P2SH]:
+                digest = ngu.hash.sha256s(script)
+                # bech32 encoded segwit p2sh
+                spk = b'\x00\x20' + digest
+                if addr_fmt == AF_P2WSH_P2SH:
+                    # segwit p2wsh encoded as classic P2SH
+                    digest = hash160(spk)
+                    spk = b'\xA9\x14' + digest + b'\x87'
+
+            else:
+                assert addr_fmt == AF_P2SH
+                digest = hash160(script)
+                spk = b'\xA9\x14' + digest + b'\x87'
+
+        else:
+            assert pubkey
+            keyhash = ngu.hash.hash160(pubkey)
+            if addr_fmt == AF_CLASSIC:
+                spk = b'\x76\xA9\x14' + keyhash + b'\x88\xAC'
+            elif addr_fmt == AF_P2WPKH_P2SH:
+                redeem_script = b'\x00\x14' + keyhash
+                spk = b'\xA9\x14' + ngu.hash.hash160(redeem_script) + b'\x87'
+            elif addr_fmt == AF_P2WPKH:
+                spk = b'\x00\x14' + keyhash
+            else:
+                raise ValueError('bad address template: %s' % addr_fmt)
+
+        return spk, digest
+
+    @classmethod
     def p2sh_address(cls, addr_fmt, witdeem_script):
         # Multisig and general P2SH support
         # - witdeem => witness script for segwit, or redeem script otherwise
@@ -91,21 +126,14 @@ class ChainsBase:
         # - returns: str(address)
 
         assert addr_fmt & AFC_SCRIPT, 'for p2sh only'
-        assert witdeem_script, "need witness/redeem script"
+        _, digest = cls.script_pubkey(addr_fmt, script=witdeem_script)
 
-        if addr_fmt & AFC_SEGWIT:
-            digest = ngu.hash.sha256s(witdeem_script)
-        else:
-            digest = hash160(witdeem_script)
-
-        if addr_fmt & AFC_BECH32:
+        if addr_fmt == AF_P2WSH:
             # bech32 encoded segwit p2sh
             addr = ngu.codecs.segwit_encode(cls.bech32_hrp, 0, digest)
-        elif addr_fmt == AF_P2WSH_P2SH:
-            # segwit p2wsh encoded as classic P2SH
-            addr = ngu.codecs.b58_encode(cls.b58_script + hash160(b'\x00\x20' + digest))
         else:
-            # P2SH classic
+            # segwit p2wsh encoded as classic P2SH
+            # and P2SH classic
             addr = ngu.codecs.b58_encode(cls.b58_script + digest)
 
         return addr
@@ -115,20 +143,8 @@ class ChainsBase:
         # - renders a pubkey to an address
         # - works only with single-key addresses
         assert not addr_fmt & AFC_SCRIPT
-
-        keyhash = ngu.hash.hash160(pubkey)
-        if addr_fmt == AF_CLASSIC:
-            script =  b'\x76\xA9\x14' + keyhash + b'\x88\xAC'
-        elif addr_fmt == AF_P2WPKH_P2SH:
-            redeem_script = b'\x00\x14' + keyhash
-            scripthash = ngu.hash.hash160(redeem_script)
-            script = b'\xA9\x14' + scripthash + b'\x87'
-        elif addr_fmt == AF_P2WPKH:
-            script = b'\x00\x14' + keyhash
-        else:
-            raise ValueError('bad address template: %s' % addr_fmt)
-
-        return cls.render_address(script)
+        spk, _ = cls.script_pubkey(addr_fmt, pubkey=pubkey)
+        return cls.render_address(spk)
 
     @classmethod
     def address(cls, node, addr_fmt):
@@ -457,6 +473,15 @@ def addr_fmt_label(addr_fmt):
     return {AF_CLASSIC: "Classic P2PKH",
             AF_P2WPKH_P2SH: "P2SH-Segwit",
             AF_P2WPKH: "Segwit P2WPKH"}[addr_fmt]
+
+
+def addr_fmt_str(addr_fmt):
+    return {AF_CLASSIC: "p2pkh",
+            AF_P2SH: "p2sh",
+            AF_P2WPKH: "p2wpkh",
+            AF_P2WSH: "p2wsh",
+            AF_P2WPKH_P2SH: "p2sh-p2wpkh",
+            AF_P2WSH_P2SH: "p2sh-p2wsh"}[addr_fmt]
 
 def verify_recover_pubkey(sig, digest):
     # verifies a message digest against a signature and recovers
