@@ -606,7 +606,8 @@ def test_named_wallet_search_fail(load_shared_mod, goto_home, pick_menu_item, nf
 
 @pytest.mark.parametrize('valid', [True, False])
 @pytest.mark.parametrize('method', ["qr", "nfc"])
-def test_named_wallet_search(valid, method, clear_ms, import_ms_wallet, is_q1,
+@pytest.mark.parametrize('wname', ["msnm", "Longer Wallet Name"])
+def test_named_wallet_search(wname, valid, method, clear_ms, import_ms_wallet, is_q1,
                              load_shared_mod, goto_home, pick_menu_item, scan_a_qr,
                              cap_story, need_keypress, nfc_write, use_testnet,
                              wipe_cache, settings_set):
@@ -627,7 +628,7 @@ def test_named_wallet_search(valid, method, clear_ms, import_ms_wallet, is_q1,
         idx = 5
         if i == 2:
             idx = 763
-        name = f'msnw{i}'
+        name = f'{wname}{i}'
         keys = import_ms_wallet(M+i, N+i, AF_P2WSH, name=name, accept=True)
         # last address
         addr, scriptPubKey, script, details = make_ms_address(
@@ -638,14 +639,14 @@ def test_named_wallet_search(valid, method, clear_ms, import_ms_wallet, is_q1,
 
     if valid:
         # msnw2 -> last added wallet
-        addr, *_ = ms_data["msnw2"]
+        addr, *_ = ms_data[f"{wname}{i}"]
     else:
         # will fail, even tho address is present in different wallet
         # with wallet=<wal> only specified wallet is searched
-        addr, *_ = ms_data["msnw0"]
+        addr, *_ = ms_data[f"{wname}0"]
 
     # will only search specified wallet
-    addr = f"{addr}?wallet=msnw2"
+    addr = f"{addr}?wallet={wname}{i}".replace(' ', '%20')
 
     if method == 'qr':
         goto_home()
@@ -686,7 +687,7 @@ def test_named_wallet_search(valid, method, clear_ms, import_ms_wallet, is_q1,
         assert 'Found in wallet' in story
         assert 'Derivation path' in story
 
-        assert "msnw2" in story
+        assert f"{wname}" in story
 
     else:
         assert title == 'Unknown Address'
