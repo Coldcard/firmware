@@ -107,13 +107,14 @@ class NFCHandler:
         from glob import dis
         here = bytes(256)
         end = 8196
-        for pos in range(0, end, 256) :
+        for pos in range(0, end, 256):
             self.i2c.writeto_mem(I2C_ADDR_USER, pos, here, addrsize=16)
-            if pos == 256 and not full_wipe: break
+            if (pos == 256) and not full_wipe: break
 
             # 6ms per 16 byte row, worst case, so ~100ms here per iter! 3.2seconds total
             if full_wipe:
                 dis.progress_bar_show(pos / end)
+
             await self.wait_ready()
 
     # system config area (flash cells, but affect operation): table 12
@@ -230,6 +231,7 @@ class NFCHandler:
             if done:
                 # do not wipe if we are not done
                 await self.wipe(kws.get("is_secret", False))
+                break
 
     async def share_signed_txn(self, txid, file_offset, txn_len, txn_sha):
         # we just signed something, share it over NFC
