@@ -1876,12 +1876,15 @@ def test_op_return_signing(op_return_data, dev, fake_txn, bitcoind_d_sim_watch, 
     assert "Multiple OP_RETURN outputs:" not in story  # always just one - core restriction
 
     try:
-        assert len(op_return_data) <= 200
-        expect = op_return_data.decode("ascii")
+        assert len(op_return_data) <= 160
+        try:
+            expect = op_return_data.decode("ascii")
+        except:
+            # not ascii
+            expect = op_return_data.hex()
     except:
         expect = binascii.hexlify(op_return_data).decode()
-        if len(op_return_data) > 200:
-            expect = expect[:200] + "\n ⋯\n" + expect[-200:]
+        expect = expect[:160] + "\n ⋯\n" + expect[-160:]
 
     assert expect in story
     tx = end_sign(accept=True, finalize=True).hex()

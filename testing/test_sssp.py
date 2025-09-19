@@ -610,7 +610,11 @@ def test_deltamode_signature(active_policy, setup_sssp, bitcoind, settings_set,
     # check wrong signature happened
     assert signed != signed2
     probs = wo.testmempoolaccept([signed2.hex()])[0]
-    assert 'Signature must be zero' in probs['reject-reason'], probs
+    try:
+        # old bitcoind
+        assert 'Signature must be zero' in probs['reject-reason'], probs
+    except AssertionError:
+        assert 'mandatory-script-verify-flag-failed' in probs['reject-reason'], probs
     assert not probs['allowed']
 
     # check right signature

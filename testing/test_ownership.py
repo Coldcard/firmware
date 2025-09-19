@@ -606,7 +606,7 @@ def test_20_more_build_after_match(sim_exec, import_ms_wallet, clear_ms, wipe_ca
 
 
 def test_named_wallet_search_fail(load_shared_mod, goto_home, pick_menu_item, nfc_write,
-                                  cap_story):
+                                  cap_story, sim_root_dir):
     addr = fake_address(AF_P2WSH, True)
     addr = f"{addr}?wallet=unknown"
     cc_ndef = load_shared_mod('cc_ndef', '../shared/ndef.py')
@@ -619,7 +619,8 @@ def test_named_wallet_search_fail(load_shared_mod, goto_home, pick_menu_item, nf
     pick_menu_item('Advanced/Tools')
     pick_menu_item('NFC Tools')
     pick_menu_item('Verify Address')
-    open('debug/nfc-addr.ndef', 'wb').write(ccfile)
+    with open(f'{sim_root_dir}/debug/nfc-addr.ndef', 'wb') as f:
+        f.write(ccfile)
     nfc_write(ccfile)
 
     time.sleep(1)
@@ -634,7 +635,7 @@ def test_named_wallet_search_fail(load_shared_mod, goto_home, pick_menu_item, nf
 def test_named_wallet_search(wname, valid, method, clear_ms, import_ms_wallet, is_q1,
                              load_shared_mod, goto_home, pick_menu_item, scan_a_qr,
                              cap_story, need_keypress, nfc_write, use_testnet,
-                             wipe_cache, settings_set):
+                             wipe_cache, settings_set, sim_root_dir):
 
     from test_multisig import make_ms_address, HARD
 
@@ -695,7 +696,8 @@ def test_named_wallet_search(wname, valid, method, clear_ms, import_ms_wallet, i
         pick_menu_item('Advanced/Tools')
         pick_menu_item('NFC Tools')
         pick_menu_item('Verify Address')
-        open('debug/nfc-addr.ndef', 'wb').write(ccfile)
+        with open(f'{sim_root_dir}/debug/nfc-addr.ndef', 'wb') as f:
+            f.write(ccfile)
         nfc_write(ccfile)
         # press_select()
 
