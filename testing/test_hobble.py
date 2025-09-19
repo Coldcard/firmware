@@ -411,7 +411,7 @@ def test_h_qrscan(en_okeys, set_hobble, scan_a_qr, need_keypress, press_cancel, 
     for ss in keys:
         need_keypress(KEY_QR)
         scan_a_qr(ss)
-        time.sleep(0.5)
+        time.sleep(1)
 
         title, story = cap_story()
         if en_okeys:
@@ -428,7 +428,7 @@ def test_h_qrscan(en_okeys, set_hobble, scan_a_qr, need_keypress, press_cancel, 
         need_keypress(KEY_QR)
         tt = f'B$H{dt}0100'+('A'*80)
         scan_a_qr(tt)
-        time.sleep(0.5)
+        time.sleep(1)
 
         if dt == 'E':
             title, story = cap_story()

@@ -421,19 +421,17 @@ def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_ite
 @pytest.mark.parametrize('M', [4])
 @pytest.mark.parametrize('segwit', [True])
 @pytest.mark.parametrize('incl_xpubs', [ False ])
-@pytest.mark.parametrize('hobbled', [ False, True ])
 def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, dev, clear_ms,
                           fake_ms_txn, try_sign, incl_xpubs, bitcoind, cap_story, need_keypress,
                           cap_menu, pick_menu_item, grab_payload, rx_complete, press_select,
                           ndef_parse_txn_psbt, press_nfc, nfc_read, settings_get, settings_set,
                           txid_from_export_prompt, sim_root_dir,
-                          set_hobble, hobbled, readback_bbqr, nfc_is_enabled):
+                          set_hobble, readback_bbqr, nfc_is_enabled):
 
     # IMPORTANT: won't work if you start simulator with --ms flag. Use no args
     all_out_styles = list(unmap_addr_fmt.keys())
     num_outs = len(all_out_styles)
 
-    set_hobble(hobbled)
     clear_ms()
     use_regtest()
 

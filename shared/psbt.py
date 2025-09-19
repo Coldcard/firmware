@@ -13,12 +13,12 @@ from uio import BytesIO
 from sffile import SizerFile
 from multisig import MultisigWallet, disassemble_multisig_mn
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
-from serializations import ser_compact_size, deser_compact_size, hash160, hash256
-from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, ser_uint256, COutPoint
+from serializations import ser_compact_size, deser_compact_size, hash160
+from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, COutPoint
 from serializations import ser_sig_der, uint256_from_str, ser_push_data
 from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_ANYONECANPAY
 from serializations import ALL_SIGHASH_FLAGS
-from opcodes import OP_CHECKMULTISIG, OP_RETURN
+from opcodes import OP_CHECKMULTISIG
 from glob import settings
 
 from public_constants import (
