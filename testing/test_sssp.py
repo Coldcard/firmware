@@ -5,8 +5,9 @@
 # run simulator without --eff
 #
 #
-import pytest, time, base64, os
+import pytest, time, base64, random
 from psbt import BasicPSBT
+from ckcc.protocol import CCProtocolPacker
 
 
 @pytest.fixture
@@ -215,7 +216,7 @@ def setup_sssp(goto_sssp_menu, pick_menu_item, cap_story, press_select, pass_wor
             time.sleep(.1)
             title, story = cap_story()
             assert "Allow access to BIP-39 passphrase wallets" in story
-            assert "or Seed Vault (if any)" in story
+            assert "and Seed Vault (read-only)" in story
             if rel_keys:
                 assert "Enable?" in story
                 press_select()  # confirm action
@@ -273,20 +274,12 @@ def policy_sign(start_sign, end_sign, cap_story, get_last_violation):
     return doit
 
 
-@pytest.fixture
-def remove_settings_slots(settings_slots):
-    for s in settings_slots():
-        try:
-            os.remove(s)
-        except: pass
-
-
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("mag_ok", [True, False])
 @pytest.mark.parametrize("mag", [1000000, 2])
 def test_magnitude(mag_ok, mag, setup_sssp, bitcoind, settings_set, pick_menu_item,
                    bitcoind_d_sim_watch, policy_sign, press_select,
-                   reset_seed_words, settings_path, remove_settings_slots):
+                   reset_seed_words, settings_path):
 
     wo = bitcoind_d_sim_watch
 
@@ -324,7 +317,7 @@ def test_magnitude(mag_ok, mag, setup_sssp, bitcoind, settings_set, pick_menu_it
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("whitelist_ok", [True, False])
 def test_whitelist(whitelist_ok, setup_sssp, bitcoind, settings_set, policy_sign,
-                   bitcoind_d_sim_watch):
+                   bitcoind_d_sim_watch, pick_menu_item, press_select):
 
     wo = bitcoind_d_sim_watch
 
@@ -343,6 +336,8 @@ def test_whitelist(whitelist_ok, setup_sssp, bitcoind, settings_set, policy_sign
         send_to = bitcoind.supply_wallet.getnewaddress()
 
     setup_sssp("11-11", whitelist=whitelist)
+    pick_menu_item("ACTIVATE")
+    press_select()
 
     multi_addr = wo.getnewaddress()
     bitcoind.supply_wallet.sendtoaddress(address=multi_addr, amount=5.0)
@@ -357,8 +352,8 @@ def test_whitelist(whitelist_ok, setup_sssp, bitcoind, settings_set, policy_sign
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("velocity_mi", ['6 blocks (hour)', '48 blocks (8h)'])
-def test_velocity(velocity_mi, setup_sssp, bitcoind, settings_set,
-                      policy_sign, settings_get, bitcoind_d_sim_watch):
+def test_velocity(velocity_mi, setup_sssp, bitcoind, settings_set, pick_menu_item,
+                      policy_sign, settings_get, bitcoind_d_sim_watch, press_select):
 
     wo = bitcoind_d_sim_watch
     wo.keypoolrefill(20)
@@ -367,6 +362,8 @@ def test_velocity(velocity_mi, setup_sssp, bitcoind, settings_set,
     blocks = int(velocity_mi.split()[0])
 
     setup_sssp("11-11", vel=velocity_mi)
+    pick_menu_item("ACTIVATE")
+    press_select()
 
     assert "block_h" not in settings_get("sssp")["pol"]
 
@@ -438,8 +435,9 @@ def test_velocity(velocity_mi, setup_sssp, bitcoind, settings_set,
 
 
 @pytest.mark.bitcoind
-def test_warnings(setup_sssp, bitcoind, settings_set, policy_sign,
-                      bitcoind_d_sim_watch, settings_get):
+@pytest.mark.parametrize("active", [True, False])
+def test_warnings(setup_sssp, bitcoind, settings_set, policy_sign, pick_menu_item,
+                  bitcoind_d_sim_watch, settings_get, press_select, active):
 
     wo = bitcoind_d_sim_watch
     wo.keypoolrefill(20)
@@ -451,6 +449,13 @@ def test_warnings(setup_sssp, bitcoind, settings_set, policy_sign,
                  "mjR14oKxYzRg9RAZdpu3hrw8zXfFgGzLKm"]
 
     setup_sssp("11-11", mag=10000000, vel='6 blocks (hour)', whitelist=whitelist)
+    if active:
+        pick_menu_item("ACTIVATE")
+        press_select()
+    else:
+        # demonstration that policy is in effect from configuration
+        # user does not need to activate (or test-drive) and policy in effect already
+        pass
 
     bitcoind.supply_wallet.sendtoaddress(address=wo.getnewaddress(), amount=2)
     bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
@@ -570,8 +575,8 @@ def test_use_trick_pin_as_unlock(hide, setup_sssp, cap_story, new_trick_pin, pic
 
 @pytest.mark.parametrize("active_policy", [False, True])
 def test_deltamode_signature(active_policy, setup_sssp, bitcoind, settings_set,
-                        start_sign, end_sign,
-                        set_deltamode, bitcoind_d_sim_watch, settings_get):
+                             start_sign, end_sign, pick_menu_item, press_select,
+                             set_deltamode, bitcoind_d_sim_watch, settings_get):
 
     # verify that "deltamode" trick pins will work in SSSP mode
     # - and that resulting signature is bad
@@ -584,7 +589,9 @@ def test_deltamode_signature(active_policy, setup_sssp, bitcoind, settings_set,
     settings_set("chain", "XRT")
 
     if active_policy:
-        setup_sssp("11-11", mag=100)
+        setup_sssp(f"{random.randint(0,99)}-11", mag=100)
+        pick_menu_item("ACTIVATE")
+        press_select()
 
     bitcoind.supply_wallet.sendtoaddress(address=wo.getnewaddress(), amount=2)
     bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
@@ -621,5 +628,76 @@ def test_deltamode_signature(active_policy, setup_sssp, bitcoind, settings_set,
     no_probs = wo.testmempoolaccept([signed.hex()])[0]
     assert no_probs['allowed']
 
+
+@pytest.mark.bitcoind
+def test_sssp_enforce_tmp_seed(setup_sssp, bitcoind, settings_set, settings_get, press_select,
+                               pick_menu_item, cap_menu, go_to_passphrase, enter_complex,
+                               need_keypress, word_menu_entry, fake_txn, start_sign, dev,
+                               cap_story):
+    tmp_words = "style car win bomb plug raccoon predict warm wrap flush usual seminar"
+    blocks = 6  # ~1 hour
+    settings_set("chain", "XRT")
+    setup_sssp("11-11", mag=2, vel='6 blocks (hour)', rel_keys=True)
+    assert "block_h" not in settings_get("sssp")["pol"]
+    pick_menu_item("ACTIVATE")
+    press_select()
+    time.sleep(.1)
+    m = cap_menu()
+    # check we are in hobbled mode & okeys is respected
+    assert "Passphrase" in m
+    assert "Settings" not in m
+
+    # import word-based seed as tmp and check that sssp is enforced
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Temporary Seed")
+    need_keypress("4")
+    pick_menu_item("Import Words")
+    pick_menu_item("12 Words")
+    word_menu_entry(tmp_words.split())
+    press_select()
+    time.sleep(.1)
+    m = cap_menu()
+    assert "Passphrase" in m  # word based + okeys
+    assert "Settings" not in m
+
+    xpub = dev.send_recv(CCProtocolPacker.get_xpub("m"), timeout=None)
+    psbt = fake_txn(2,2, input_amount=200000000, master_xpub=xpub)
+    start_sign(psbt)
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "Spending Policy violation" in story
+    press_select()
+
+    # recurse deeper, to passphrase wallet, on top of word-based tmp seed
+    go_to_passphrase()
+    enter_complex("AAA", apply=True)
+
+    press_select()
+    m = cap_menu()
+    assert "Passphrase" not in m  # xprv based
+    assert "Settings" not in m  # still in hobbled
+
+    xpub = dev.send_recv(CCProtocolPacker.get_xpub("m"), timeout=None)
+    psbt = fake_txn(2, 2, input_amount=200000000, master_xpub=xpub)
+    start_sign(psbt)
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "Spending Policy violation" in story
+    press_select()
+    time.sleep(.1)
+
+    pick_menu_item("Restore Master")
+    press_select()
+
+    time.sleep(.1)
+    m = cap_menu()
+    assert "Passphrase" in m
+    assert "Settings" not in m  # still in hobbled
+    psbt = fake_txn(2, 2, input_amount=200000000)
+    start_sign(psbt)
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "Spending Policy violation" in story
+    press_select()
     
 # EOF

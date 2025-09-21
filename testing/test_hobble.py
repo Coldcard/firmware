@@ -53,7 +53,9 @@ goto_top_menu()
 @pytest.mark.parametrize('en_notes', [ True, False] )
 @pytest.mark.parametrize('en_nfc', [ True, False] )
 @pytest.mark.parametrize('en_multisig', [ True, False] )
-def test_menu_contents(set_hobble, pick_menu_item, cap_menu, en_okeys, en_notes, settings_set, need_some_notes, is_q1, is_mark4, en_nfc, sim_exec, en_multisig, vdisk_disabled):
+def test_menu_contents(set_hobble, pick_menu_item, cap_menu, en_okeys, en_notes, settings_set,
+                       need_some_notes, is_q1, is_mark4, en_nfc, sim_exec, en_multisig,
+                       vdisk_disabled):
 
     # just enough to pass/fail the menu predicates!
     settings_set('seedvault', True)
@@ -135,7 +137,8 @@ def test_menu_contents(set_hobble, pick_menu_item, cap_menu, en_okeys, en_notes,
     assert set(m) == fm_expect, "File Mgmt menu wrong"
 
 
-def test_h_notes(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set, need_some_notes, is_q1, sim_exec, settings_remove):
+def test_h_notes(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set, need_some_notes,
+                 is_q1, sim_exec, settings_remove):
     '''
         * load a secure note/pw; check readonly once hobbled
             * cannot export
@@ -164,7 +167,8 @@ def test_h_notes(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set, ne
     m = cap_menu()
     assert 'Secure Notes & Passwords' not in m
 
-def test_kt_limits(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set, need_some_notes, is_q1, sim_exec, settings_remove):
+def test_kt_limits(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set, need_some_notes,
+                   is_q1, sim_exec, settings_remove):
     ''' 
         - key teleport
             * check KT only offered if MS wallet setup
@@ -177,7 +181,9 @@ def test_kt_limits(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set, 
     # converse already tested in test_menu_contents
 
 @pytest.mark.parametrize('sv_empty', [ True, False] )
-def test_h_seedvault(sv_empty, set_hobble, pick_menu_item, cap_menu, settings_set, is_q1, sim_exec, settings_remove, restore_main_seed, settings_get, press_cancel, press_select, cap_story):
+def test_h_seedvault(sv_empty, set_hobble, pick_menu_item, cap_menu, settings_set, is_q1, sim_exec,
+                     settings_remove, restore_main_seed, settings_get, press_cancel, press_select,
+                     cap_story):
     '''
         - seed vault can be accessed, when enabled
         - temp seeds are read-only: no create, no rename, etc.
@@ -224,10 +230,12 @@ def test_h_seedvault(sv_empty, set_hobble, pick_menu_item, cap_menu, settings_se
         m = cap_menu()
         assert m[0] == f'[{xfp}]'
         assert m[-1] == 'Restore Master'
+        assert "Settings" not in m  # in hobbled mode
 
         pick_menu_item("Advanced/Tools")
         m = cap_menu()
-        assert 'Destroy Seed' in m          # indicates hobble mode active
+        # we are in tmp seed session, restore master if you want to destroy seed
+        assert 'Destroy Seed' not in m
         press_cancel()
 
         pick_menu_item("Restore Master")
@@ -323,7 +331,6 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
         assert 'successfully tested recovery' in story
 
         press_select()
-
         return
 
     elif mode == 'xprv':
@@ -372,6 +379,12 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
     # do not verify presence of Seed Vault menu item - irrelevant
     verify_ephemeral_secret_ui(expected_xfp=expect_xfp, mnemonic=None, seed_vault=None)
 
+    time.sleep(.1)
+    m = cap_menu()
+    if mode in ["words", "qr"]:
+        # verify okeys is respected in tmp seed
+        assert "Passphrase" in m
+
     pick_menu_item("Restore Master")
     press_select()
 
@@ -396,7 +409,8 @@ def test_h_usbcmds(en_okeys, set_hobble, dev):
 
 
 @pytest.mark.parametrize('en_okeys', [ True, False])
-def test_h_qrscan(en_okeys, set_hobble, scan_a_qr, need_keypress, press_cancel, cap_screen, only_q1, cap_story, press_select, pick_menu_item):
+def test_h_qrscan(en_okeys, set_hobble, scan_a_qr, need_keypress, press_cancel, cap_screen, only_q1,
+                  cap_story, press_select, pick_menu_item):
     # verify whitelist of QR types is correct when in hobbled mode
     # - no private key material, unless "okeys" is set
     # - no teleport starting, except multisig co-signing

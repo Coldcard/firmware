@@ -92,7 +92,9 @@ KEEP_IF_BLANK_SETTINGS = ["wa", "sighshchk", "emu", "rz", "b39skip",
                           "axskip", "del", "pms", "idle_to", "batt_to",
                           "bright"]
 
-SEEDVAULT_FIELDS = ['seeds', 'seedvault', 'xfp', 'words', "bkpw"]
+# key value pairs saved directly to master seed settings
+# held in RAM for tmp seed sessions
+MASTER_FIELDS = ['seeds', 'seedvault', 'xfp', 'words', "bkpw", "sssp"]
 
 NUM_SLOTS = const(100)
 SLOTS = range(NUM_SLOTS)
@@ -286,7 +288,7 @@ class SettingsObject:
 
         SettingsObject.master_nvram_key = self.nvram_key
 
-        for fn in SEEDVAULT_FIELDS:
+        for fn in MASTER_FIELDS:
             curr = self.current.get(fn, None)
             if curr is not None:
                 SettingsObject.master_sv_data[fn] = curr
@@ -302,7 +304,7 @@ class SettingsObject:
         SettingsObject.master_sv_data.clear()
         SettingsObject.master_nvram_key = None
 
-    def master_set(self, key, value):
+    def master_set(self, key, value, master_only=False):
         # Set a value, and it must be saved under the master seed's 
         # Concern is we may be changing a setting from a tmp seed mode
         # - always does a save
@@ -313,6 +315,7 @@ class SettingsObject:
             self.set(key, value)
             self.save()
         else:
+            assert not master_only
             # harder, slower: have to load, change and write
             master = SettingsObject(nvram_key=SettingsObject.master_nvram_key)
             master.load()
@@ -321,7 +324,7 @@ class SettingsObject:
             del master
 
             # track our copies
-            if key in SEEDVAULT_FIELDS:
+            if key in MASTER_FIELDS:
                 SettingsObject.master_sv_data[key] = value
 
     def master_get(self, kn, default=None):
@@ -333,7 +336,7 @@ class SettingsObject:
             return self.get(kn, default)
 
         # LIMITATION: only supporting a few values we know we will need
-        assert kn in SEEDVAULT_FIELDS
+        assert kn in MASTER_FIELDS
         res = SettingsObject.master_sv_data.get(kn, default)
         if res is None:
             return default

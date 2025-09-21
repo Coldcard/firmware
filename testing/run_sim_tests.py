@@ -372,7 +372,8 @@ def main():
             sim_args = ["--eject"] + DEFAULT_SIMULATOR_ARGS + ["--set", "vidsk=1"]
         if test_module == "test_bip39pw.py":
             sim_args = []
-        if test_module in ["test_unit.py", "test_se2.py", "test_backup.py", "test_teleport.py"]:
+        if test_module in ["test_unit.py", "test_se2.py", "test_backup.py", "test_teleport.py",
+                           "test_hobble.py", "test_sssp.py"]:
             # test_nvram_mk4 needs to run without --eff
             # se2 duress wallet activated as ephemeral seed requires proper `settings.load`
             sim_args = ["--set", "nfc=1"]
