@@ -539,7 +539,7 @@ HobbledAdvancedMenu = [
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu, predicate=sssp_related_keys),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=HobbledNFCToolsMenu, shortcut=KEY_NFC),
-    MenuItem("Destroy Seed", f=clear_seed),
+    MenuItem("Destroy Seed", f=clear_seed, predicate=has_real_secret),
 ]
 
 # Main menu when a spending policy (hobbled) is in effect.

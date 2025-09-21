@@ -56,16 +56,16 @@ class SpendingPolicy(dict):
             self.clear()
             self.update(pol_dict.items())
         else:
-            v = dict(settings.get(self.nvkey, {})).get('pol', None)
+            v = dict(settings.master_get(self.nvkey, {})).get('pol', None)
             if v is not None:
                 self.update(v.items())      # mpy bugfix, when called with SpendingPolicy
             
 
     def _update_policy(self):
         # serialize the spending policy, save it
-        v = dict(settings.get(self.nvkey, {}))
+        v = dict(settings.master_get(self.nvkey, {}))
         v['pol'] = self.copy()
-        settings.set(self.nvkey, v)
+        settings.master_set(self.nvkey, v, master_only=True)
 
     def update_policy_key(self, **kws):
         # update a few elements of the spending policy
@@ -156,7 +156,6 @@ class SpendingPolicy(dict):
             # - attacker might have changed to testnet, but there is no
             #   reason to ever lower block height. strictly ascending
             self.update_policy_key(block_h=psbt.lock_time)
-            settings.save()
 
 class SSSPFeature:
     # Using setting value "sssp"
@@ -191,7 +190,7 @@ class SSSPFeature:
         # We are looking at a PSBT: should we let user sign it, or block?
         # - return (block_signing, needs_2fa_step)
         if not cls.is_enabled():
-            exists = bool(settings.get('sssp', False))
+            exists = bool(settings.master_get('sssp', False))
             if exists:
                 # this will not block CCC co-signing, because that test is already
                 # done before this call.
@@ -1012,7 +1011,7 @@ def sssp_spending_policy(key, default=False, change=None):
     #   'words' = add first/last seed words to challenge to unlock
     #   'okeys' = allow BIP-39 and/or seed vault
 
-    v = settings.get('sssp', dict())
+    v = settings.master_get('sssp', dict())
 
     if key in { 'en', 'notes', 'words', 'okeys' }:
         # booleans: present or removed from dict
@@ -1022,8 +1021,8 @@ def sssp_spending_policy(key, default=False, change=None):
             else:
                 v.pop(key, None)
 
-            settings.put('sssp', v)
-            settings.save()
+            # not allowed to modify this while in tmp seed
+            settings.master_set('sssp', v, master_only=True)
 
         return (key in v) or default
 
@@ -1039,7 +1038,7 @@ async def sssp_feature_menu(*a):
         # allow exit from test-drive mode, directly into editing settings
         pa.hobbled_mode = False
         goto_top_menu()
-    elif settings.get('sssp'):
+    elif settings.master_get('sssp'):
         # normal entry into menu system, after the first time
         assert not pa.hobbled_mode
     else:
@@ -1109,8 +1108,7 @@ disable this feature.
             await tp.err_unique_pin(new_pin)
 
     # all features disabled to start
-    settings.set('sssp', dict(en=False, pol={}))
-    settings.save()
+    settings.master_set('sssp', dict(en=False, pol={}), master_only=True)
 
     # continue into config menu
     return True
