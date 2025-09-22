@@ -647,8 +647,8 @@ def test_bkpw_override(reset_seed_words, override_bkpw, goto_home, pick_menu_ite
 @pytest.mark.parametrize('force_tmp', [True, False])
 def test_restore_usb_backup(backup_system, set_seed_words, cap_story, verify_ephemeral_secret_ui,
                             settings_slots, reset_seed_words, word_menu_entry, confirm_tmp_seed,
-                            dev, microsd_path, press_select, btype, enter_text, force_tmp,
-                            unit_test, restore_main_seed, cap_menu):
+                            dev, microsd_path, press_select, btype, force_tmp,
+                            unit_test, restore_main_seed, cap_menu, is_q1, enter_complex):
 
     from test_ephemeral import SEEDVAULT_TEST_DATA
     xfp_str, encoded_str, mnemonic = SEEDVAULT_TEST_DATA[2]
@@ -698,7 +698,7 @@ def test_restore_usb_backup(backup_system, set_seed_words, cap_story, verify_eph
     if btype == "classic":
         word_menu_entry(bk_pw, has_checksum=False)
     elif password:
-        enter_text(bkpw)
+        enter_complex(bkpw, apply=False, b39pass=False)
 
     time.sleep(.2)
     mnemonic = mnemonic.split(" ")

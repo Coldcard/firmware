@@ -554,7 +554,7 @@ async def verify_backup_file(fname):
     await ux_show_story("Backup file CRC checks out okay.\n\nPlease note this is only a check against accidental truncation and similar. Targeted modifications can still pass this test.")
 
 
-async def restore_complete(fname_or_fd, temporary=False, words=True):
+async def restore_complete(fname_or_fd, temporary=False, words=True, usb=False):
     from ux import the_ux
 
     async def done(words):
@@ -573,10 +573,15 @@ async def restore_complete(fname_or_fd, temporary=False, words=True):
             from ux_q1 import seed_word_entry
             return await seed_word_entry('Enter Password:', num_pw_words,
                                          done_cb=done, has_checksum=False)
-        # give them a menu to pick from, and start picking
-        m = seed.WordNestMenu(num_words=num_pw_words, has_checksum=False, done_cb=done)
 
-        the_ux.push(m)
+        # give them a menu to pick from, and start picking
+        if usb:
+            # we're not originating from a menu
+            words = await seed.WordNestMenu.get_n_words(12)
+            await done(words)
+        else:
+            m = seed.WordNestMenu(num_words=num_pw_words, has_checksum=False, done_cb=done)
+            the_ux.push(m)
 
     else:
         pwd = []  # cleartext if words=None

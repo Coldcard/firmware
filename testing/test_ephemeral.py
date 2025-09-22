@@ -1412,8 +1412,7 @@ def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_se
 @pytest.mark.parametrize('btype', ["classic", "custom_bkpw", "plaintext"])
 def test_temporary_from_backup_usb(backup_system, set_seed_words, cap_story, verify_ephemeral_secret_ui,
                                    settings_slots, reset_seed_words, word_menu_entry, confirm_tmp_seed,
-                                   dev, microsd_path, press_select, btype,
-                                   enter_text):
+                                   dev, microsd_path, press_select, btype, enter_complex):
 
     xfp_str, encoded_str, mnemonic = SEEDVAULT_TEST_DATA[0]
     set_seed_words(mnemonic)
@@ -1461,7 +1460,7 @@ def test_temporary_from_backup_usb(backup_system, set_seed_words, cap_story, ver
     if btype == "classic":
         word_menu_entry(bk_pw, has_checksum=False)
     elif password:
-        enter_text(bkpw)
+        enter_complex(bkpw, apply=False, b39pass=False)
 
     time.sleep(.1)
     confirm_tmp_seed(seedvault=False)

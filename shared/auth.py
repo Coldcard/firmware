@@ -1183,7 +1183,7 @@ class RemoteRestoreBackup(UserAuthorizedAction):
             tmp, noun = self.to_tmp()
             if await ux_confirm("Restore uploaded backup as a %s seed?" % noun):
                 from backups import restore_complete
-                await restore_complete(self.file_len, tmp, self.to_words())
+                await restore_complete(self.file_len, tmp, self.to_words(), usb=True)
             else:
                 self.refused = True
 
