@@ -273,7 +273,8 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
 
         m = cap_menu()
         assert 'Generate Words' not in m
-        assert all(i.startswith("Import ") or i.endswith(' Backup') for i in m), m
+        assert all((i.startswith("Import ") or i.endswith(' Backup') or i == 'Restore Seed XOR')
+                                    for i in m), m
 
     words, expect_xfp = WORDLISTS[12]
 
@@ -451,5 +452,29 @@ def test_h_qrscan(en_okeys, set_hobble, scan_a_qr, need_keypress, press_cancel, 
         else:
             scr = cap_screen()      # stays in scanning mode
             assert 'KT Blocked' in scr
+
+def test_h_seedxor(set_hobble, need_keypress, press_cancel, cap_screen, only_q1,
+                  cap_story, press_select, pick_menu_item, settings_set):
+    # can start import via seed XOR, but cannot include master seed phrase
+    # as part of it.
+
+    settings_set('seedvault', True)
+    settings_set('seeds', [])
+    set_hobble(True, {'okeys'})
+
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item('Temporary Seed')
+    pick_menu_item('Restore Seed XOR')
+
+    title, story = cap_story()
+    assert 'A/B/C' in story
+    press_select()              # select 24 words
+
+    title, story = cap_story()
+    assert 'Since you have' in story
+    assert "include this Coldcard's seed" not in story      # WEAK: fragile if UX changes
+
+    press_cancel()
+
         
 # EOF
