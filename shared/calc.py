@@ -85,7 +85,6 @@ Example Commands:
 
             elif re_prefix.match(ln) and (len(ln) <= 7):
                 # show words
-                from pincodes import pa
                 ans = pa.prefix_words(ln[:-1].encode())
             else:
                 if any((b in ln) for b in blacklist):
