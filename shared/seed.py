@@ -154,7 +154,7 @@ class WordNestMenu(MenuSystem):
     done_cb = None
 
     def __init__(self, num_words=None, has_checksum=True, done_cb=commit_new_words,
-                 items=None, is_commit=False, menu_cbf=None, prefix=""):
+                 items=None, is_commit=False, menu_cbf=None, prefix="", words=None):
 
         if num_words is not None:
             WordNestMenu.target_words = num_words
@@ -162,6 +162,9 @@ class WordNestMenu(MenuSystem):
             WordNestMenu.words = []
             WordNestMenu.done_cb = done_cb
             is_commit = True
+
+        if words:
+            WordNestMenu.words = words
 
         if not items:
             ch = letter_choices(prefix)
@@ -175,7 +178,15 @@ class WordNestMenu(MenuSystem):
         super(WordNestMenu, self).__init__(items)
 
     @classmethod
-    async def get_n_words(cls, nwords):
+    async def get_n_words(cls, num_words):
+        rv = []
+        for _ in range(num_words):
+            rv = await cls.get_word(rv, num_words)
+
+        return rv
+
+    @classmethod
+    async def get_word(cls, words=None, target_words=None):
         # Just block until N words are provided. May only work before menus start?
         from glob import numpad
 
@@ -184,17 +195,15 @@ class WordNestMenu(MenuSystem):
             if c.label[-1] == '-':
                 lc = c.label[0:-1]
             else:
-                lc = ""
                 cls.words.append(c.label)
-                if len(cls.words) >= nwords:
-                    numpad.abort_ux()
-                    return
+                numpad.abort_ux()
+                return
 
             m = cls(prefix=lc, menu_cbf=menu_done_cbf)
             the_ux.push(m)
-            await m.interact()
+            await the_ux.interact()
 
-        m = cls(num_words=nwords, menu_cbf=menu_done_cbf, has_checksum=False)
+        m = cls(num_words=target_words, menu_cbf=menu_done_cbf, has_checksum=False, words=words)
 
         the_ux.push(m)
         await the_ux.interact()
