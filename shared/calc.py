@@ -8,8 +8,9 @@ import utime, ngu, re
 from utils import B2A, word_wrap
 from ux_q1 import ux_input_text
 
-async def login_repl(allow_login=True):
+async def login_repl():
     from glob import dis
+    from pincodes import pa
 
     NUM_LINES = 7       # 10 - title - 2 for prompt
 
@@ -64,12 +65,11 @@ Example Commands:
             elif ln in ('help', 'cls', 'rand'):
                 # no need for () for these commands
                 ans = state[ln]()
-            elif allow_login and re_pin.match(ln) and (len(ln) <= 13):
+            elif pa.attempts_left and re_pin.match(ln) and (len(ln) <= 13):
                 # try login
                 m = re_pin.match(ln)
                 ln = m.group(1)+ '-' + m.group(2)
-                print(ln)
-                from pincodes import pa
+
                 try:
                     pa.setup(ln)
                     ok = pa.login()
@@ -83,7 +83,7 @@ Example Commands:
                     else:
                         ans = 'Error: ' + repr(exc.args)
 
-            elif allow_login and re_prefix.match(ln) and (len(ln) <= 7):
+            elif re_prefix.match(ln) and (len(ln) <= 7):
                 # show words
                 from pincodes import pa
                 ans = pa.prefix_words(ln[:-1].encode())
