@@ -120,13 +120,15 @@ Quiz Passed!\n
 You have confirmed the details of the new split.''')
 
 # list of seed phrases
-# stores encoded secret bytes (not word lists)
+# - stores encoded secret bytes (not word lists)
 import_xor_parts = []
 
 async def xor_all_done(data):
     # So we have another part, might be done or not.
     global import_xor_parts
+
     chk_words = None
+
     if data is None:
         # special case, needs something already in import_xor_parts
         target_words = len_to_numwords(len(import_xor_parts[0]))
@@ -144,7 +146,7 @@ async def xor_all_done(data):
     if num_parts >= 2:
         chk_words = bip39.b2a_words(seed).split(' ')
         chk_word = chk_words[-1]
-        msg += "If you stop now, the %dth word of the XOR-combined seed phrase\nwill be:\n\n" % target_words
+        msg += "If you stop now, the %dth word of the XOR-combined seed phrase will be:\n\n" % target_words
         msg += "%d: %s\n\n" % (target_words, chk_word)
 
     if all((not x) for x in seed):
@@ -236,12 +238,12 @@ async def xor_restore_start(*a):
     # shown on import menu when no seed of any kind yet
     # - or operational system
     ch = await ux_show_story('''\
-To import a seed split using XOR, you must import all the parts.
-It does not matter the order (A/B/C or C/A/B) and the Coldcard
-cannot determine when you have all the parts. You may stop at
-any time and you will have a valid wallet. Combined seed parts
-have to be equal length. No way to combine seed parts of different 
-length. Press %s for 24 words XOR, press (1) for 12 words XOR, 
+To import a seed split using XOR, you must import all the parts. \
+It does not matter the order (A/B/C or C/A/B) and the Coldcard \
+cannot determine when you have all the parts. You may stop at \
+any time and you will have a valid wallet. Combined seed parts \
+have to be equal length.\n
+Press %s for 24 words XOR, press (1) for 12 words XOR, \
 or press (2) for 18 words XOR.''' % OK, escape="12")
     if ch == 'x': return
 
@@ -250,8 +252,6 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
         desired_num_words = 12
     elif ch == "2":
         desired_num_words = 18
-
-    curr_num_words = settings.get('words', desired_num_words)
 
     global import_xor_parts
     import_xor_parts.clear()
@@ -264,15 +264,20 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
         msg = ("Since you have a seed already on this Coldcard, the reconstructed XOR seed will be "
                "temporary and not saved. Wipe the seed first if you want to commit the new value "
                "into the secure element.")
-        if curr_num_words == desired_num_words:
+
+        curr_num_words = settings.get('words', desired_num_words)
+        if (curr_num_words == desired_num_words) and not pa.hobbled_mode:
             escape += "1"
-            msg += ("\nPress (1) to include this Coldcard's seed words into the XOR seed set, "
+            msg += ("\n\nPress (1) to include this Coldcard's seed words into the XOR seed set, "
                     "or %s to continue without." % OK)
 
         ch = await ux_show_story(msg, escape=escape)
 
-        if ch == 'x': return
+        if ch == 'x':
+            return
+
         if ch == '1':
+            assert not pa.hobbled_mode
             dis.fullscreen("Wait...")
             with SensitiveValues(enforce_delta=True) as sv:
                 if sv.mode == 'words':
