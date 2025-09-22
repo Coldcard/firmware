@@ -453,8 +453,8 @@ def test_h_qrscan(en_okeys, set_hobble, scan_a_qr, need_keypress, press_cancel, 
             scr = cap_screen()      # stays in scanning mode
             assert 'KT Blocked' in scr
 
-def test_h_seedxor(set_hobble, need_keypress, press_cancel, cap_screen, only_q1,
-                  cap_story, press_select, pick_menu_item, settings_set):
+def test_h_seedxor(set_hobble, need_keypress, press_cancel, cap_screen,
+                   cap_story, press_select, pick_menu_item, settings_set):
     # can start import via seed XOR, but cannot include master seed phrase
     # as part of it.
 
@@ -469,6 +469,7 @@ def test_h_seedxor(set_hobble, need_keypress, press_cancel, cap_screen, only_q1,
     title, story = cap_story()
     assert 'A/B/C' in story
     press_select()              # select 24 words
+    time.sleep(0.1)
 
     title, story = cap_story()
     assert 'Since you have' in story
