@@ -181,13 +181,21 @@ class LoginUX:
     async def we_are_ewaste(self, num_fails):
         msg = '''After %d failed PIN attempts this Coldcard is locked forever. \
 By design, there is no way to reset or recover the secure element, and its contents \
-are now forever inaccessible.
+are now forever inaccessible.\n\n''' % num_fails
 
-Restore your seed words onto a new Coldcard.''' % num_fails
+        if has_qwerty:
+            msg += 'Calculator mode starts now.'
+        else:
+            msg += 'Restore your seed words onto a new Coldcard.'
 
         while 1:
             ch = await ux_show_story(msg, title='I Am Brick!', escape='6')
             if ch == '6': break
+
+            if has_qwerty:
+                from calc import login_repl
+                await login_repl()
+
 
     async def confirm_attempt(self, attempts_left, value):
 

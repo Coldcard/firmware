@@ -53,7 +53,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--deriv` => go to the Derive Entropy menu inside settings, also loads XPRV from BIP
 - `--secret 01abababab...` => directly set contents of SE secret, see SecretStash.encode()
 - `--eject` => pretend no (simulated) SD Card is inserted
-- `--eff` => (mk4) wipe setttings at startup, use simulator defaults
+- `--eff` => wipe setttings at startup, use simulator defaults, save nothing.
 - `--seq 1234yx34` => after start, enter those keypresses to get you to some submenu
 - `--seq 2ENTER` => (Q) press 2 then ENTER, does QR at startup
 - `--bootup-movie` => begin a movie on startup, to capture boot sequence
@@ -61,6 +61,8 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--battery` => (Q) assume the USB cable is NOT connected (ie. on battery power)
 - `--early-usb` => start simulated USB interface even before user is login (useful for login testing)
 - `--segregate` => scroll down to `Running simulators in parallel` section
+- `--bricked` => simulate a system w/ bricked SE1: no more pin tries, etc.
+- `--fails N` => simulate N wrong PIN attempts before login, where (1 <= N <= 13)
 
 See `variant/sim_settings.py` for the details of settings-related options.
 

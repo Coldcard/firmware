@@ -98,6 +98,9 @@ def gate(method, buf_io, arg2):
 
     if method == 5:
         # are we a brick? No.
+        if '--bricked' in sys.argv:
+            # if SE1 has pairing secret rotated; wont be able to do much
+            return 1
         return 0
 
     if method == 6:

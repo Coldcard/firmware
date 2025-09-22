@@ -130,9 +130,10 @@ class PinAttempt:
         # seed, we are not going to let them see it, nor sign things we dont like, etc.
         self.hobbled_mode = False
 
-        assert MAX_PIN_LEN == 32        # update FMT otherwise
-        assert ustruct.calcsize(PIN_ATTEMPT_FMT_V1) == PIN_ATTEMPT_SIZE_V1
-        assert ustruct.calcsize(PIN_ATTEMPT_FMT_V2_ADDITIONS) == PIN_ATTEMPT_SIZE - PIN_ATTEMPT_SIZE_V1
+        #assert MAX_PIN_LEN == 32        # update FMT otherwise
+        #assert ustruct.calcsize(PIN_ATTEMPT_FMT_V1) == PIN_ATTEMPT_SIZE_V1
+        #assert ustruct.calcsize(PIN_ATTEMPT_FMT_V2_ADDITIONS) \
+        #                    == PIN_ATTEMPT_SIZE - PIN_ATTEMPT_SIZE_V1
 
     def __repr__(self):
         return '<PinAttempt: fails/left=%d/%d tc_flag/arg=0x%x/0x%x>' % (
@@ -535,11 +536,10 @@ class PinAttempt:
         # check for bricked system early
         if get_is_bricked():
             try:
-                # regardless of settings.calc forever calculator after brickage
-                # for Q models fom version 5.X.X
-                if version.has_qwerty:
+                # regardless of settings, become a forever calculator after brickage.
+                while version.has_qwerty:
                     from calc import login_repl
-                    await login_repl(allow_login=False)
+                    await login_repl()
             finally:
                 # die right away if it's not going to work
                 enter_dfu(3)

@@ -144,6 +144,13 @@ if '-g' in sys.argv:
     # do login.. but does not work if _skip_pin got saved into settings already
     sim_defaults.pop('_skip_pin', 0)
 
+if '--fails' in sys.argv:
+    # fast-forward as if N PIN failures have already happened.
+    count = int(sys.argv[sys.argv.index('--fails') + 1])
+    import ckcc
+    ckcc.SE_STATE.force_fails(count)
+    sim_defaults.pop('_skip_pin', 0)
+
 if '--nick' in sys.argv:
     nick = sys.argv[sys.argv.index('--nick') + 1]
     sim_defaults['nick'] = nick

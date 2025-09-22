@@ -90,7 +90,7 @@ async def more_setup():
             from pincodes import pa
             # check for bricked system early
             # bricked CC not going past this point
-            pa.enforce_brick()
+            await pa.enforce_brick()
 
             pa.setup(b'')       # just to see where we stand.
             is_blank = pa.is_blank()
