@@ -463,19 +463,22 @@ def parse_addr_fmt_str(addr_fmt):
 
 
 def af_to_bip44_purpose(addr_fmt):
-    # single signature only
+    # Address format to BIP-44 "purpose" number
+    # - single signature only
     return {AF_CLASSIC: 44,
             AF_P2WPKH_P2SH: 49,
             AF_P2WPKH: 84}[addr_fmt]
 
 
 def addr_fmt_label(addr_fmt):
+    # Text used in menus
     return {AF_CLASSIC: "Classic P2PKH",
             AF_P2WPKH_P2SH: "P2SH-Segwit",
             AF_P2WPKH: "Segwit P2WPKH"}[addr_fmt]
 
 
 def addr_fmt_str(addr_fmt):
+    # Short string codes used for address format (industry standard)
     return {AF_CLASSIC: "p2pkh",
             AF_P2SH: "p2sh",
             AF_P2WPKH: "p2wpkh",
