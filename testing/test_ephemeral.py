@@ -1253,7 +1253,7 @@ def test_xfp_collision(reset_seed_words, settings_set, import_ephemeral_xprv,
 @pytest.mark.parametrize("refuse", [False, True])
 def test_add_current_active(reset_seed_words, settings_set, import_ephemeral_xprv,
                             goto_home, pick_menu_item, cap_story, cap_menu,
-                            press_cancel, verify_ephemeral_secret_ui,
+                            press_cancel, verify_ephemeral_secret_ui, is_q1,
                             seed_vault_enable, refuse, press_select, set_bip39_pw,
                             need_some_notes, need_some_passwords, import_ms_wallet,
                             restore_main_seed, settings_get, clear_miniscript):
@@ -1273,8 +1273,9 @@ def test_add_current_active(reset_seed_words, settings_set, import_ephemeral_xpr
         restore_main_seed(seed_vault=True)
 
         # add secure notes and passwords
-        need_some_notes()
-        need_some_passwords()
+        if is_q1:
+            need_some_notes()
+            need_some_passwords()
 
         # save multisig wallet to master settings
         ms_name = "aaa"
@@ -1321,7 +1322,8 @@ def test_add_current_active(reset_seed_words, settings_set, import_ephemeral_xpr
         mss = settings_get("miniscript")
         assert len(mss) == 1
         assert  mss[0][0] == ms_name
-        assert len(settings_get("notes")) == 3
+        if is_q1:
+            assert len(settings_get("notes")) == 3
         sv = settings_get("seeds")
         assert len(sv) == 2
         assert sv[0][0] == xfp2str(sv_pass_xfp)  # added passphrase wallet

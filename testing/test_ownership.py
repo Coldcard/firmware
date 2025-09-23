@@ -359,6 +359,8 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
         assert 'Derivation path' in story
     if af == "Segwit P2WPKH":
         assert " P2WPKH " in story
+    elif af == "Classic P2PKH":
+        assert " P2PKH " in story
     else:
         assert af in story
 
