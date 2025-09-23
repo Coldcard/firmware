@@ -1256,18 +1256,18 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, press_select, clear_m
             time.sleep(.1)
             press_select()
 
-        def select_wallet(idx):
+        def select_wallet(idx, no_import=False):
             # select to specific pw
             print(f"--- switch to another leg of MS: {idx} ---")
             xfp = set_bip39_pw(passwords[idx])
-            if do_import:
+            if do_import and not no_import:
                 offer_ms_import(config)
                 time.sleep(.1)
                 press_select()
             assert xfp == keys[idx][0]
             return xfp
 
-        return (keys, select_wallet)
+        return keys, select_wallet
 
     yield doit
 
