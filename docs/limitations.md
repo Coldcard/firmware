@@ -220,5 +220,5 @@ We will summarize transaction outputs as "change" back into same wallet, however
     - PSBT creator must put in `nLockTime` block heights (most already do to avoid fee sniping)
 - maximum of 25 whitelisted addresses can be stored
 - Web2FA: any number of mobile devices can be enrolled, but all will have the same shared secret
-- any warning from the PSBT, such as huge fees, will be blocked by policy.
+- any warning from the PSBT, such as huge fees, will cause the transaction to be rejected
 
