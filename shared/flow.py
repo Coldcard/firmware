@@ -411,7 +411,7 @@ AdvancedNormalMenu = [
     MenuItem("View Identity", f=view_ident),
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
     MenuItem("Key Teleport (start)", f=kt_start_rx, predicate=version.has_qr),
-    MenuItem("Spending Policy", menu=SpendingPolicySubMenu, shortcut='s'),
+    MenuItem("Spending Policy", menu=SpendingPolicySubMenu,shortcut='s',predicate=has_real_secret),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu, shortcut=KEY_NFC),
     MenuItem("Danger Zone", menu=DangerZoneMenu, shortcut='z'),
