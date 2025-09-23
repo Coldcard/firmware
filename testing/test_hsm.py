@@ -545,7 +545,7 @@ def test_simple_limit(dev, amount, over, start_hsm, fake_txn, attempt_psbt, twea
         tweak_rule(0, dict(max_amount=int(amount+over)))
         attempt_psbt(psbt)
 
-def test_named_wallets(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_status,
+def test_named_wallets(dev, start_hsm, tweak_rule, hsm_status, import_ms_wallet,
                        attempt_psbt, fake_txn, fake_ms_txn, amount=5E6, incl_xpubs=False):
     wname = 'Myself-4'
     M = 4
@@ -553,12 +553,11 @@ def test_named_wallets(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_statu
     stat = hsm_status()
     assert not stat.active
 
-    for retry in range(3):
-        keys, _ = make_myself_wallet(4)       # slow AF
+    keys = import_ms_wallet(M,M, name=wname, accept=True)
+    time.sleep(.2)
 
-        stat = hsm_status()
-        if wname in stat.wallets:
-            break
+    stat = hsm_status()
+    assert wname in stat.wallets
 
     # policy: only allow multisig w/ that name
     policy = DICT(rules=[dict(wallet=wname)])
@@ -1560,7 +1559,8 @@ def test_hsm_commands_disabled(dev, goto_home, pick_menu_item, hsm_reset, start_
     # disable HSM related commands (now enabled because module scope fixture 'enable_hsm_commands')
     goto_home()
     pick_menu_item("Advanced/Tools")
-    pick_menu_item("Enable HSM")
+    pick_menu_item("Spending Policy")
+    pick_menu_item("HSM Mode")
     pick_menu_item("Default Off")
     goto_home()
     try:
