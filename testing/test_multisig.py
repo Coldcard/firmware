@@ -899,18 +899,18 @@ def make_myself_wallet(dev, set_bip39_pw, offer_minsc_import, press_select, clea
             time.sleep(.1)
             press_select()
 
-        def select_wallet(idx):
+        def select_wallet(idx, no_import=False):
             # select to specific pw
             print(f"--- switch to another leg of MS: {idx} ---")
             xfp = set_bip39_pw(passwords[idx])
-            if do_import:
+            if do_import and not no_import:
                 offer_minsc_import(config)
                 time.sleep(.1)
                 press_select()
             assert xfp == keys[idx][0]
             return xfp
 
-        return (keys, select_wallet)
+        return keys, select_wallet
 
     yield doit
 
@@ -1435,7 +1435,7 @@ def test_ms_change_fraud(case, pk_num, dev, addr_fmt, clear_miniscript, make_mul
     keys = make_multisig(M, N)
 
 
-    # given 
+    # given
     def tweak(case, pk_num, data):
         # added from make_redeem() as tweak_pubkeys option
         #(pk, xfp, path))

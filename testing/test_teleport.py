@@ -422,15 +422,13 @@ def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_ite
 @pytest.mark.unfinalized
 @pytest.mark.parametrize('num_ins', [ 15 ])
 @pytest.mark.parametrize('M', [4])
-@pytest.mark.parametrize('segwit', [True])
-@pytest.mark.parametrize('incl_xpubs', [ False ])
-@pytest.mark.parametrize('hobbled', [ False, True ])
-def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, dev, clear_miniscript,
-                          fake_ms_txn, try_sign, incl_xpubs, bitcoind, cap_story, need_keypress,
+@pytest.mark.parametrize('hobbled', [True, False])
+def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, num_ins, dev, clear_miniscript, hobbled,
+                          fake_ms_txn, try_sign, bitcoind, cap_story, need_keypress,
                           cap_menu, pick_menu_item, grab_payload, rx_complete, press_select,
                           ndef_parse_txn_psbt, press_nfc, nfc_read, settings_get, settings_set,
-                          txid_from_export_prompt, sim_root_dir, goto_home,
-                          set_hobble, hobbled, readback_bbqr, nfc_is_enabled):
+                          txid_from_export_prompt, sim_root_dir, set_hobble, readback_bbqr,
+                          nfc_is_enabled, goto_home, restore_main_seed):
 
     # IMPORTANT: won't work if you start simulator with --ms flag. Use no args
     num_outs = 4
@@ -441,11 +439,18 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
     use_regtest()
 
     # create a wallet, with 3 bip39 pw's
-    keys, select_wallet = make_myself_wallet(M, do_import=(not incl_xpubs), addr_fmt=af)
+    keys, select_wallet = make_myself_wallet(M, do_import=True, addr_fmt=af)
     N = len(keys)
     assert M<=N
 
     if hobbled:
+        # we need to import before hobbled mode is enabled
+        for i in range(3):  # 4th is simulator (ignore)
+            select_wallet(i)
+
+        restore_main_seed(preserve_settings=True)
+        time.sleep(.1)
+
         set_hobble(True, {'okeys'})
         goto_home()
 
@@ -457,9 +462,9 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
         f.write(psbt)
 
     cur_wallet = 0
-    my_xfp = select_wallet(cur_wallet)
+    my_xfp = select_wallet(cur_wallet, no_import=hobbled)
 
-    _, updated = try_sign(psbt, accept_ms_import=incl_xpubs, exit_export_loop=False)
+    _, updated = try_sign(psbt, accept_ms_import=False, exit_export_loop=False)
     with open(f'{sim_root_dir}/debug/myself-after-1.psbt', 'wb') as f:
         f.write(updated)
     assert updated != psbt
@@ -514,7 +519,7 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, segwit, num_ins, d
         assert msg in story
 
         # switch personalities, and try to read that QR
-        new_xfp = select_wallet(idx)
+        new_xfp = select_wallet(idx, no_import=hobbled)
         assert new_xfp == next_xfp
         my_xfp = next_xfp
         assert settings_get('xfp') == my_xfp
