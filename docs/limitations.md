@@ -14,11 +14,12 @@
 # PIN Codes
 
 - 2-2 through 6-6 in size, numeric digits only
-- pin code 999999-999999 is reserved (means 'clear pin')
+- pin code 999999-999999 was reserved (meaning 'clear pin'), but now available again
 
 # Backup Files
 
 - we don't know what day it is, so meta data on files will not have correct date/time
+- release date of the firmware version that made the file is used instead of true date
 - encrypted files produced cannot be changed, and we don't support other tools making them
 
 # Micro SD
@@ -78,6 +79,7 @@
 - multisig wallet `name` can only contain printable ASCII characters `range(32, 127)`
 
 ### BIP-67
+
 - importing multisig from PSBT can ONLY create `sortedmulti(...)` multisig according to BIP-67, DO NOT use with `multi(...)`
 - creating airgapped multisig using COLDCARD as coordinator always produces `sortedmulti(...)` multisig according to BIP-67
 - COLDCARD import/export [format](https://coldcard.com/docs/multisig/#configuration-text-file-for-multisig) only supports `sortedmulti(...)` multisig according to BIP-67. To import multisig wallet with `multi(...)` use descriptor import [format](https://github.com/bitcoin/bips/blob/master/bip-0383.mediawiki)
@@ -139,6 +141,10 @@ We will summarize transaction outputs as "change" back into same wallet, however
 
 - key derivatation paths must be 12 or less in depth (`MAX_PATH_DEPTH`)
 
+# Pay-to-Pubkey
+
+- although we have some code for "pay to pubkey" (P2PK not P2PKH), it is untested
+  and unused since this style of payment address is obsolete and largely unused today
 
 # NFC Feature
 
@@ -203,9 +209,9 @@ We will summarize transaction outputs as "change" back into same wallet, however
 - if you have an XFP collision between multiple wallets in SeedVault (ie. two wallets
   with same descriptors, but different seeds) you will get false negatives
 
-# CCC Feature (ColdCard Cosigning)
+# Spending Policy
 
-- only 12 or 24 word seeds (not XPRV) are accepted for "key C"
+- (Cosign mode) only 12 or 24 word seeds (not XPRV) are accepted for "key C"
 - velocity limit:
     - based on a max magnitude per txn, and a required minimum block height
       gap, based on previous `nLockTime` value in last-signed PSBT.
@@ -214,5 +220,5 @@ We will summarize transaction outputs as "change" back into same wallet, however
     - PSBT creator must put in `nLockTime` block heights (most already do to avoid fee sniping)
 - maximum of 25 whitelisted addresses can be stored
 - Web2FA: any number of mobile devices can be enrolled, but all will have the same shared secret
-- any warning from the PSBT, such as huge fees, will prevent CCC cosign.
+- any warning from the PSBT, such as huge fees, will be blocked by policy.
 
