@@ -496,7 +496,8 @@ def parse_addr_fmt_str(addr_fmt):
 
 
 def af_to_bip44_purpose(addr_fmt):
-    # single signature only
+    # Address format to BIP-44 "purpose" number
+    # - single signature only
     return {AF_CLASSIC: 44,
             AF_P2WPKH_P2SH: 49,
             AF_P2WPKH: 84,
