@@ -303,6 +303,7 @@ class TrickPinMgmt:
         # if spending policy defined, this PIN allows adjustment
         # - not TRICK bypass choices, like ones that wipe
         # - could be multiple, but only first returned.
+        self.reload()
         for k, (sn,flags,arg) in self.tp.items():
             if (flags == TC_FW_DEFINED) and (arg == TCA_SP_UNLOCK):
                 return k
