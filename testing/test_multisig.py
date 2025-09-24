@@ -1393,6 +1393,8 @@ def fake_ms_txn(pytestconfig):
                     make_redeem_args = hack_change_out(i)
                 if violate_script_key_order:
                     make_redeem_args["violate_script_key_order"] = True
+                if path_mapper:
+                    make_redeem_args["path_mapper"] = path_mapper
 
                 addr, scriptPubKey, scr, details = \
                     make_ms_address(M, keys, idx=i, addr_fmt=unmap_addr_fmt[style],
@@ -1461,19 +1463,37 @@ def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, impor
 
     clear_ms()
 
+    if addr_fmt == AF_P2SH:
+        dd = "m/45h"
+    elif addr_fmt == AF_P2WSH:
+        dd = "m/48h/1h/0h/2h"
+    else:
+        dd = "m/48h/1h/0h/1h"
+
+    def path_mapper(idx):
+        kk = str_to_path(dd)
+        return kk + [0,0]
+
     if incl_xpubs != "no-import":
         do_import = True
+        incl_xpubs = None
     else:
         do_import = False
+
+        def incl_xpubs(idx, xfp, m, sk):
+            kk = str_to_path(dd)
+            bp = pack('<%dI' % (dd.count("/")+1), xfp, *kk)
+            return sk.node.serialize_public(), bp
+
         if not bip67:
             raise pytest.skip("cannot import unsorted multisig from PSBT")
 
-    keys = import_ms_wallet(M, N, name='cli-test', accept=True, addr_fmt=addr_fmt,
+    keys = import_ms_wallet(M, N, name='cli-test', accept=True, addr_fmt=addr_fmt, common=dd,
                             do_import=do_import, descriptor=descriptor, bip67=bip67)
 
     psbt = fake_ms_txn(num_ins, num_outs, M, keys, incl_xpubs=incl_xpubs, inp_af=addr_fmt,
                        outstyles=ADDR_STYLES_MS, change_outputs=[1] if has_change else [],
-                       bip67=bip67)
+                       bip67=bip67, path_mapper=path_mapper)
 
     with open(f'{sim_root_dir}/debug/last.psbt', 'wb') as f:
         f.write(psbt)
