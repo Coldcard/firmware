@@ -309,6 +309,8 @@ class OwnershipCache:
     def search(cls, addr, args=None):
         from glob import dis
 
+        dis.fullscreen("Wait...")
+
         matches = OWNERSHIP.filter(addr, args)
 
         # build cache files for both external & internal chain
