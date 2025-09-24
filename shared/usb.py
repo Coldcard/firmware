@@ -589,6 +589,7 @@ class USBHandler:
             assert settings.get("words", True), 'no seed'
             assert len(args) < 400, 'too long'
             pw = str(args, 'utf8')
+            assert len(pw), 'too short'
             assert len(pw) < 100, 'too long'
 
             return start_bip39_passphrase(pw)
