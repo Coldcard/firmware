@@ -162,6 +162,10 @@ class SSSPFeature:
 
     @classmethod
     def is_enabled(cls):
+        from pincodes import pa
+        if pa.hobbled_mode == 2:
+            # test drive enabled
+            return True
         return sssp_spending_policy('en')
 
     @classmethod
@@ -215,7 +219,7 @@ class SSSPFeature:
         # - and we have approved other elements of the spending policy.
         # - could show MS wallet name, or txn details but will not because that is
         #   an info leak to Coinkite... and we just don't want to know.
-        await cls.get_policy().perform_web2fa('Approve Transaction')
+        await cls.get_policy().web2fa_challenge('Approve Transaction')
 
 
 class CCCFeature:
