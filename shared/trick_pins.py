@@ -311,6 +311,7 @@ class TrickPinMgmt:
 
     def delete_sp_unlock_pins(self):
         # remove all bypass pins, they are done w/ feature
+        self.reload()
         for k, (sn,flags,arg) in self.tp.items():
             if (flags & TC_FW_DEFINED) and (arg == TCA_SP_UNLOCK):
                 self.clear_slots([sn])
