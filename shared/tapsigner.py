@@ -67,7 +67,7 @@ async def import_tapsigner_backup_file(_1, _2, item):
                     continue
             break
     else:
-        fn = await file_picker(suffix="aes", min_size=100, max_size=160, **choice)
+        fn = await file_picker(suffix=".aes", min_size=100, max_size=160, **choice)
         if not fn: return
         origin += (" (%s)" % fn)
         try:

@@ -1155,6 +1155,47 @@ def test_q1_24_8char_words(set_seed_words, is_q1, goto_home, pick_menu_item, pre
             assert w0 == w1 == w2 == word
 
 
+def test_file_picker_suffixes(pick_menu_item, goto_home, cap_story, microsd_wipe, press_select,
+                              microsd_path):
+    # make sure no .txt, .7z & .pdf files are not on the SD card
+    microsd_wipe()
+    # create files that must not be recognized, because they're missing the dot
+    for fn in ["backup7z", "backuptxt", "template:pdf"]:
+        with open(microsd_path(fn), "w") as f:
+            f.write("dummy")
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Danger Zone")
+    pick_menu_item("I Am Developer.")
+    pick_menu_item("Restore Bkup")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "No suitable files found" in story
+    assert "The filename must end in: *.7z,*.txt" in story
+    press_select()
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Paper Wallets")
+    press_select()
+    pick_menu_item("Don't make PDF")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "No suitable files found" in story
+    assert "The filename must end in: *.pdf" in story
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("File Management")
+    pick_menu_item("Sign Text File")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "No suitable files found" in story
+    assert "The filename must end in: *.txt,*.json" in story
+    microsd_wipe()
+
+
 @pytest.mark.onetime
 def test_dump_menutree(sim_execfile):
     # saves to ../unix/work/menudump.txt
