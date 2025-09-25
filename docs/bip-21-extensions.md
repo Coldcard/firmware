@@ -1,11 +1,15 @@
-## `wallet` Ownership address check
+## Multisig Ownership address check: "wallet"
 
-Address ownership allows to specify particular multisig wallet in which to search, allowing to skip
-useless searches in irrelevant wallets. `wallet` query parameter is provided via [BIP-21](https://github.com/bitcoin/bips/blob/master/bip-0021.mediawiki)
+If the name of the multisig wallet related to an address is provided, address search
+can be greatly accelerated. Just provide `wallet=name` parameter in a standard
+[BIP-21](https://github.com/bitcoin/bips/blob/master/bip-0021.mediawiki) URL
+shown in QR code or NFC record. If omitted, search will continue across 
+all multisig wallets known by COLDCARD.
 
-#### Examples: 
+### Examples
+
 ```
-tb1q4d67p7stxml3kdudrgkg5mgaxsrgzcqzjrrj4gg62nxtvnsnvqjsxjkej0?wallet=my_wal
+tb1q4d67p7stxml3kdudrgkg5mgaxsrgzcqzjrrj4gg62nxtvnsnvqjsxjkej0?wallet=goldmine
 
-'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?label=coldcard_purchase&amount=50&wallet=multi_wsh',
+bitcoin:mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?label=coldcard_purchase&amount=50&wallet=Haystack%20Four
 ```
