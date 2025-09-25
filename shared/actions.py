@@ -1397,7 +1397,7 @@ async def import_xprv(_1, _2, item):
     else:
         # only get here if NFC was not chosen
         # pick a likely-looking file.
-        fn = await file_picker(suffix='txt', min_size=50, max_size=2000, taster=contains_xprv,
+        fn = await file_picker(suffix='.txt', min_size=50, max_size=2000, taster=contains_xprv,
                                none_msg="Must contain " + label + ".", **choice)
 
         if not fn: return
@@ -1728,6 +1728,8 @@ async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
     # - escape: allow these chars to skip picking process
     # - slot_b: None=>pick slot w/ card in it, or A if both.
     # - allow_batch: adds an "all of the above" choice: ("menu label", menu_handler)
+    # suffix argument MUST contain the dot (.), if list of suffixes - all MUST contain the dot
+
 
     if choices is None:
         choices = []
@@ -1744,6 +1746,8 @@ async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
                         if suffix:
                             if not isinstance(suffix, list):
                                 suffix = [suffix]
+
+                            assert all(s[0] == "." for s in suffix)
                             if not any([fn.lower().endswith(s) for s in suffix]):
                                 continue
 
@@ -1793,7 +1797,7 @@ async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
         if none_msg:
             msg += none_msg
         if suffix:
-            msg += '\n\nThe filename must end in %r. ' % suffix
+            msg += '\n\nThe filename must end in: %s' % ",".join(["*" + s for s in suffix])
 
         msg += '\n\nMaybe insert (another) SD card and try again?'
 
@@ -1873,7 +1877,7 @@ async def _batch_sign(choices=None):
             return
         assert isinstance(picked, dict)
 
-        choices = await file_picker(suffix='psbt', min_size=50, ux=False,
+        choices = await file_picker(suffix='.psbt', min_size=50, ux=False,
                                     max_size=MAX_TXN_LEN, taster=is_psbt, **picked)
 
     if not choices:
@@ -1911,7 +1915,7 @@ async def ready2sign(*a):
     opt = {}
 
     # just check if we have candidates, no UI
-    choices = await file_picker(suffix='psbt', min_size=50, ux=False,
+    choices = await file_picker(suffix='.psbt', min_size=50, ux=False,
                                 max_size=MAX_TXN_LEN, taster=is_psbt)
 
     if pa.tmp_value:
@@ -1938,7 +1942,7 @@ from your desktop wallet software or command line tools.'''
                                             title=title)
         if isinstance(picked, dict):
             opt = picked  # reset options to what was chosen by user
-            choices = await file_picker(suffix='psbt', min_size=50, ux=False,
+            choices = await file_picker(suffix='.psbt', min_size=50, ux=False,
                                         max_size=MAX_TXN_LEN, taster=is_psbt,
                                         **opt)
             if not choices:
@@ -1980,7 +1984,7 @@ async def sign_message_on_sd(*a):
             # min 1 line max 3 lines
             return 1 <= len(lines) <= 3
 
-    fn = await file_picker(suffix=['txt', "json"], min_size=2, max_size=500, taster=is_signable,
+    fn = await file_picker(suffix=['.txt', ".json"], min_size=2, max_size=500, taster=is_signable,
                            none_msg=('Must be txt file with one msg line, optionally '
                                      'followed by a subkey derivation path on a second line '
                                      'and/or address format on third line. JSON msg signing '

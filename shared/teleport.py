@@ -734,7 +734,7 @@ async def kt_send_file_psbt(*a):
     picked = await import_export_prompt("PSBT", is_import=True, no_nfc=True, no_qr=True)
     if picked == KEY_CANCEL:
         return
-    choices = await file_picker(suffix='psbt', min_size=50, ux=False,
+    choices = await file_picker(suffix='.psbt', min_size=50, ux=False,
                                   max_size=MAX_TXN_LEN, taster=is_psbt, **picked)
     if not choices:
         # error msg already shown

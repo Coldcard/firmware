@@ -587,7 +587,7 @@ class SPAddrWhitelist(MenuSystem):
         pat = re.compile(r'[^A-Za-z0-9]')
 
         # pick a likely-looking file: just looking at size and extension
-        fn = await file_picker(suffix=['csv', 'txt'],
+        fn = await file_picker(suffix=['.csv', '.txt'],
                                 min_size=20, max_size=20000,
                                 none_msg="Must contain payment addresses", **choice)
 
