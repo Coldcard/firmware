@@ -125,10 +125,10 @@ class SpendingPolicy(dict):
                         raise SpendPolicyViolation("whitelist: " + addr)
 
         # Web 2FA
-        # - slow, requires UX, and they might not acheive it...
+        # - slow, requires UX, and they might not achieve it...
         # - wait until about to do signature
         if pol.get('web2fa', False):
-            psbt.warnings.append(('CCC', 'Web 2FA required.'))
+            psbt.warnings.append((pol.nvkey.upper(), 'Web 2FA required.'))
             return True
 
     async def web2fa_challenge(self, msg):
