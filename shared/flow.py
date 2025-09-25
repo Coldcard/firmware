@@ -553,7 +553,7 @@ HobbledTopMenu = [
     MenuItem('Secure Notes & Passwords', menu=make_notes_menu, predicate=sssp_allow_notes,
              shortcut='n'),
     MenuItem('Type Passwords', f=password_entry, shortcut='t',
-             predicate=lambda: settings.get("emu", False)),
+             predicate=lambda: settings.get("emu", False) and sssp_related_keys()),
     MenuItem('Seed Vault', menu=make_seed_vault_menu, predicate=sssp_allow_vault,
              shortcut='v'),
     MenuItem('Advanced/Tools', menu=HobbledAdvancedMenu, shortcut='t'),
