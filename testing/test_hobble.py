@@ -138,7 +138,7 @@ def test_menu_contents(set_hobble, pick_menu_item, cap_menu, en_okeys, en_notes,
 
 
 def test_h_notes(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set, need_some_notes,
-                 is_q1, sim_exec, settings_remove):
+                 sim_exec, settings_remove):
     '''
         * load a secure note/pw; check readonly once hobbled
             * cannot export
@@ -168,7 +168,7 @@ def test_h_notes(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set, ne
     assert 'Secure Notes & Passwords' not in m
 
 def test_kt_limits(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set, need_some_notes,
-                   is_q1, sim_exec, settings_remove):
+                   sim_exec, settings_remove):
     ''' 
         - key teleport
             * check KT only offered if MS wallet setup
@@ -181,7 +181,7 @@ def test_kt_limits(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set, 
     # converse already tested in test_menu_contents
 
 @pytest.mark.parametrize('sv_empty', [ True, False] )
-def test_h_seedvault(sv_empty, set_hobble, pick_menu_item, cap_menu, settings_set, is_q1, sim_exec,
+def test_h_seedvault(sv_empty, set_hobble, pick_menu_item, cap_menu, settings_set, sim_exec,
                      settings_remove, restore_main_seed, settings_get, press_cancel, press_select,
                      cap_story):
     '''

@@ -64,7 +64,7 @@ def setup_sssp(goto_sssp_menu, pick_menu_item, cap_story, press_select, pass_wor
                 assert "last Violation" not in m
 
         assert "Word Check" in m
-        assert "Allow Notes" in m
+        assert ("Allow Notes" in m) or not is_q1
         assert "Related Keys" in m
         assert "Remove Policy" in m
         assert "Test Drive" in m
@@ -189,6 +189,7 @@ def setup_sssp(goto_sssp_menu, pick_menu_item, cap_story, press_select, pass_wor
             if word_check:
                 assert "Enable?" in story
                 press_select()  # confirm action
+                time.sleep(.1)
                 assert settings_get("sssp")["words"]
             else:
                 assert "Disable?" in story
@@ -197,6 +198,7 @@ def setup_sssp(goto_sssp_menu, pick_menu_item, cap_story, press_select, pass_wor
                     assert not pol["words"]
 
         if notes_and_pws is not None:
+            assert is_q1
             pick_menu_item("Allow Notes")
             time.sleep(.1)
             title, story = cap_story()
@@ -699,5 +701,12 @@ def test_sssp_enforce_tmp_seed(setup_sssp, bitcoind, settings_set, settings_get,
     _, story = cap_story()
     assert "Spending Policy violation" in story
     press_select()
+
+def test_sssp_notes_enable(only_q1, setup_sssp):
+    # just test menu item works
+    setup_sssp("11-11", mag=2, vel='6 blocks (hour)', notes_and_pws=True)
     
+def test_sssp_word_check(setup_sssp):
+    # just test menu item works
+    setup_sssp("11-11", mag=2, vel='6 blocks (hour)', word_check=True)
 # EOF
