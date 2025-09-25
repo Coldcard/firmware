@@ -1,5 +1,20 @@
 *See ChangeLog.md for more recent changes, these are historic versions*
 
+
+## 1.3.3Q - 2025-05-14
+
+- Enhancement: Text word-wrap done more carefully so never cuts off any text, and yet
+  doesn't waste space.
+- Bugfix: `Add current tmp` option, which could be shown in `Seed Vault` menu under
+  specific circumstances, would corrupt master settings if selected.
+- Bugfix: PUSHDATA2 in bitcoin script caused yikes.
+- Bugfix: Warning for unknown scripts was not shown at the top of the signing story.
+
+- Bugfix: Do not allow to teleport PSBTs from SD card when CC has no secrets.
+- Bugfix: Calculator login mode: added "rand()" command, removed support
+  for variables/assignments.
+
+
 ## 1.3.2Q - 2025-04-16
 
 - Feature: Key Teleport -- Easily and securely move seed phrases, secure notes/passwords,
