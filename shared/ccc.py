@@ -61,18 +61,19 @@ class SpendingPolicy(dict):
                 self.update(v.items())      # mpy bugfix, when called with SpendingPolicy
             
 
-    def _update_policy(self):
+    def _save_policy(self):
         # serialize the spending policy, save it
         v = dict(settings.master_get(self.nvkey, {}))
         v['pol'] = self.copy()
         settings.master_set(self.nvkey, v, master_only=True)
 
-    def update_policy_key(self, **kws):
-        # update a few elements of the spending policy
-        # - all settings "saved" as they are changed.
-        # - return updated policy
+    def update_policy_key(self, _quiet=False, **kws):
+        # Update a few elements of the spending policy
+        # - all changes are saved immediately (which is a little slow/visible)
+        if not _quiet:
+            dis.fullscreen("Saving...")
         self.update(kws)
-        self._update_policy()
+        self._save_policy()
 
     def meets_policy(self, psbt):
         # Does policy allow signing this? Else raise why. Return T if web2fa required.
@@ -155,18 +156,16 @@ class SpendingPolicy(dict):
             # always update last block height, even if velocity isn't enabled yet
             # - attacker might have changed to testnet, but there is no
             #   reason to ever lower block height. strictly ascending
-            self.update_policy_key(block_h=psbt.lock_time)
+            self.update_policy_key(_quiet=True, block_h=psbt.lock_time)
 
 class SSSPFeature:
     # Using setting value "sssp"
 
     @classmethod
     def is_enabled(cls):
+        # can be test drive, or is feature enabled?
         from pincodes import pa
-        if pa.hobbled_mode == 2:
-            # test drive enabled
-            return True
-        return sssp_spending_policy('en')
+        return (pa.hobbled_mode == 2) or sssp_spending_policy('en')
 
     @classmethod
     def update_last_signed(cls, psbt):
@@ -774,7 +773,6 @@ class SpendingPolicyMenu(MenuSystem):
         # offer some useful values from a menu
         vel = self.policy.get('vel', 0)        # in blocks
 
-        # reminder: dont forget the poor Mk4 users
         #        xxxxxxxxxxxxxxxx
         ch = [  'Unlimited',
                 '6 blocks (hour)',
@@ -1006,7 +1004,7 @@ async def key_c_challenge(words):
     m = CCCConfigMenu()
     the_ux.push(m)
 
-def sssp_spending_policy(key, default=False, change=None):
+def sssp_spending_policy(key, default=False, set_value=None):
     # This function can be used to check if feature(s) are enabled in
     # the single-signer policy settings. Might be used while hobbled.
     # keys:
@@ -1019,13 +1017,12 @@ def sssp_spending_policy(key, default=False, change=None):
 
     if key in { 'en', 'notes', 'words', 'okeys' }:
         # booleans: present or removed from dict
-        if change is not None:
-            if change:
+        if set_value is not None:
+            if set_value:
                 v[key] = True
             else:
                 v.pop(key, None)
 
-            # not allowed to modify this while in tmp seed
             settings.master_set('sssp', v, master_only=True)
 
         return (key in v) or default
@@ -1101,9 +1098,11 @@ disable this feature.
             if new_pin is None:
                 return
 
-            # weak check - does not spot hidden trick pins
+            dis.fullscreen("Saving...")
+
+            # quick checks - does not spot hidden trick pins
             if (new_pin != main_pin) and (new_pin not in have):
-                # verify uniqueness with SE2
+                # verify uniqueness within SE2
                 b, slot = tp.get_by_pin(new_pin)
                 if slot is None:
                     tp.define_unlock_pin(new_pin)
@@ -1175,7 +1174,9 @@ class SSSPCheckedMenuItem(MenuItem):
         ch = await ux_show_story(msg)
         if ch == 'x': return
 
-        sssp_spending_policy(self.polkey, change=(not was))
+        # this can be slow, so show something
+        dis.fullscreen("Saving...")
+        sssp_spending_policy(self.polkey, set_value=(not was))
 
 
 class SSSPConfigMenu(MenuSystem):
@@ -1228,7 +1229,8 @@ class SSSPConfigMenu(MenuSystem):
             return
 
         # set it for next login
-        sssp_spending_policy('en', change=True)
+        dis.fullscreen("Saving...")
+        sssp_spending_policy('en', set_value=True)
 
         # make it real ... could reboot here instead, but no need.
         from pincodes import pa
