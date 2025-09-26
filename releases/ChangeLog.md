@@ -37,7 +37,7 @@ Spending policies for "Single Signers" adds new spending policy options:
 
 # Mk4 Specific Changes
 
-## 5.4.4 - 2025-09-25
+## 5.4.4 - 2025-09-26
 
 - Bugfix: Part of extended keys (xpubs) were not always visible.
 - Change: Mk4 default menu wrap-around lowered from 16 to 10 items.
@@ -45,7 +45,7 @@ Spending policies for "Single Signers" adds new spending policy options:
 
 # Q Specific Changes
 
-## 1.3.4Q - 2025-09-25
+## 1.3.4Q - 2025-09-26
 
 - Enhancement: Enters "forever calculator" mode when Q would otherwise be electronic waste
   (ie. after 13 PIN failures). Always enabled, regardless of "login calculator" setting.
