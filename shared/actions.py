@@ -523,7 +523,6 @@ async def new_from_dice(menu, label, item):
 
 async def any_active_duress_ux():
     from trick_pins import tp
-    tp.reload()
     # if TPs are hidden this msg will not be shown
     if any(tp.get_duress_pins()):
         await ux_show_story('You have one or more duress wallets defined '

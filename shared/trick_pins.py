@@ -12,6 +12,8 @@ from menu import MenuSystem, MenuItem
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_enter_number, the_ux
 from stash import SecretStash
 from drv_entro import bip85_derive
+from glob import settings
+
 
 # see from mk4-bootloader/se2.h
 NUM_TRICKS      = const(14)
@@ -98,22 +100,6 @@ class TrickPinMgmt:
 
     def __init__(self):
         assert uctypes.sizeof(TRICK_SLOT_LAYOUT) == 128
-        self.reload()
-
-    def reload(self):
-        # we track known PINS as a dictionary:
-        #   pin (in ascii) => (slot_num, tc_flags, arg)
-        from glob import settings
-        self.tp = settings.get('tp', {})
-
-    def save_record(self):
-        # commit changes back to settings
-        from glob import settings
-        if self.tp:
-            settings.set('tp', self.tp)
-        else:
-            settings.remove_key('tp')
-        settings.save()
 
     def roundtrip(self, method_num, slot_buf=None):
         from pincodes import pa
@@ -133,26 +119,36 @@ class TrickPinMgmt:
 
         return rc
 
+    def get_all(self):
+        return settings.get("tp", {})
+
+    def commit(self, trick_pins):
+        settings.set("tp", trick_pins)
+        settings.save()
+
     def clear_all(self):
         # get rid of them all
         self.roundtrip(0)
-        self.tp = {}
-        self.save_record()
+        settings.remove_key('tp')
+        settings.save()
 
     def forget_pin(self, pin):
         # forget about settings for a PIN
-        self.tp.pop(pin, None)
-        self.save_record()
+        t_pins = self.get_all()
+        t_pins.pop(pin, None)
+        self.commit(t_pins)
 
     def restore_pin(self, new_pin):
         # remember/restore PIN that we "forgot", return T if worked
-        b, slot = tp.get_by_pin(new_pin)
+        b, slot = self.get_by_pin(new_pin)
         if slot is None: return False
 
         record = (slot.slot_num, slot.tc_flags, 
                         0xffff if slot.tc_flags & TC_DELTA_MODE else slot.tc_arg)
-        self.tp[new_pin] = record
-        self.save_record()
+
+        t_pins = self.get_all()
+        t_pins[new_pin] = record
+        self.commit(t_pins)
 
         return True
 
@@ -231,11 +227,12 @@ class TrickPinMgmt:
 
             slot.slot_num = sn
 
+        t_pins = self.get_all()
         if new_pin is not None:
             slot.pin_len = len(new_pin)
             slot.pin[0:slot.pin_len] = new_pin
             if new_pin != pin:
-                self.tp.pop(pin.decode(), None)
+                t_pins.pop(pin.decode(), None)
             pin = new_pin
 
         if tc_flags is not None:
@@ -269,14 +266,14 @@ class TrickPinMgmt:
         assert rc == 0
 
         # record key details.
-        self.tp[pin.decode()] = record
-        self.save_record()
+        t_pins[pin.decode()] = record
+        self.commit(t_pins)
 
         return b, slot
 
     def all_tricks(self):
         # put them in order, with "wrong" last
-        return sorted(self.tp.keys(), key=lambda i: i if (i != WRONG_PIN_CODE) else 'Z')
+        return sorted(self.get_all().keys(), key=lambda i: i if (i != WRONG_PIN_CODE) else 'Z')
 
     def define_unlock_pin(self, new_pin):
         # user is setting the bypass PIN for first time.
@@ -303,16 +300,14 @@ class TrickPinMgmt:
         # if spending policy defined, this PIN allows adjustment
         # - not TRICK bypass choices, like ones that wipe
         # - could be multiple, but only first returned.
-        self.reload()
-        for k, (sn,flags,arg) in self.tp.items():
+        for k, (sn,flags,arg) in self.get_all().items():
             if (flags == TC_FW_DEFINED) and (arg == TCA_SP_UNLOCK):
                 return k
         return None
 
     def delete_sp_unlock_pins(self):
         # remove all bypass pins, they are done w/ feature
-        self.reload()
-        for k, (sn,flags,arg) in self.tp.items():
+        for k, (sn,flags,arg) in self.get_all().items():
             if (flags & TC_FW_DEFINED) and (arg == TCA_SP_UNLOCK):
                 self.clear_slots([sn])
                 self.forget_pin(k)
@@ -320,13 +315,13 @@ class TrickPinMgmt:
 
     def get_deltamode_pins(self):
         # iterate over all delta-mode PIN's defined.
-        for k, (sn,flags,args) in self.tp.items():
+        for k, (sn,flags,args) in self.get_all().items():
             if flags & TC_DELTA_MODE:
                 yield k
 
     def get_duress_pins(self):
         # iterate over all duress wallets
-        for k, (sn,flags,args) in self.tp.items():
+        for k, (sn,flags,args) in self.get_all().items():
             if flags & (TC_WORD_WALLET | TC_XPRV_WALLET):
                 yield k
 
@@ -337,7 +332,7 @@ class TrickPinMgmt:
         #   as checking only self.tp is not sufficient for hidden TPs or after fast wipe
         # - return error msg or None
         assert isinstance(pin, str)
-        b, slot = tp.get_by_pin(pin)
+        b, slot = self.get_by_pin(pin)
         if slot is not None:
             return 'That PIN is already in use as a Trick PIN.'
 
@@ -356,8 +351,9 @@ class TrickPinMgmt:
     def backup_duress_wallets(self, sv):
         # for backup file, yield (label, path, pairs-of-data)
         done = set()
+        t_pins = self.get_all()
         for pin in self.get_duress_pins():
-            sn, flags, arg = self.tp[pin]
+            sn, flags, arg = t_pins[pin]
 
             if (flags, arg) in done:
                 continue
@@ -367,7 +363,7 @@ class TrickPinMgmt:
                 label = "Duress: BIP-85 Derived wallet"
                 nwords = 12 if ((arg // 1000) == 2) else 24
                 path = "BIP85(words=%d, index=%d)" % (nwords, arg)
-                b, slot = tp.get_by_pin(pin)
+                b, slot = self.get_by_pin(pin)
                 words = bip39.b2a_words(slot.xdata[0:(32 if nwords==24 else 16)])
 
                 d = [ ('duress_%d_words' % arg, words) ]
@@ -406,8 +402,8 @@ class TrickPinMgmt:
                 # might need to construct a BIP-85 or XPRV secret to match
                 path, new_secret = construct_duress_secret(flags, arg)
 
-                b, slot = tp.update_slot(pin.encode(), new=True,
-                                     tc_flags=flags, tc_arg=arg, secret=new_secret)
+                self.update_slot(pin.encode(), new=True, tc_flags=flags,
+                                 tc_arg=arg, secret=new_secret)
             except: pass
 
     @staticmethod
@@ -443,7 +439,6 @@ class TrickPinMenu(MenuSystem):
         if bool(pa.tmp_value):
             return [MenuItem('Not Available')]
 
-        tp.reload()
         tricks = tp.all_tricks()
 
         if self.current_pin in tricks:
@@ -840,7 +835,7 @@ so you may perform transactions with it.''')
 
         # "arg" can be out-of-date, if they edited timer value after parent was
         # rendered, where arg was captured into item.arg ... so don't use it.
-        cd_val = tp.tp[pin][2]
+        cd_val = tp.get_all()[pin][2]
 
         msg = 'Shows login countdown (%s)' % lgto_map.get(cd_val, '???').strip()
         if flags & TC_WIPE:
@@ -856,14 +851,13 @@ so you may perform transactions with it.''')
 
         def adjust_countdown_chooser():
             # 'disabled' choice not appropriate for this case
-            ch = lgto_ch[1:]
             va = lgto_va[1:]
 
             def set_it(idx, text):
                 new_val = va[idx]
                 # save it
                 try:
-                    b, slot = tp.update_slot(pin.encode(), tc_flags=flags, tc_arg=new_val)
+                    tp.update_slot(pin.encode(), tc_flags=flags, tc_arg=new_val)
                 except: pass
 
             return va.index(cd_val), lgto_ch[1:], set_it
@@ -915,7 +909,8 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
         # drill down into a sub-menu per existing PIN
         # - data display only, no editing; just clear and redo
         pin = item.arg
-        slot_num, flags, arg = tp.tp[pin] if (pin in tp.tp) else (-1, 0, 0)
+        t_pins = tp.get_all()
+        slot_num, flags, arg = t_pins[pin] if (pin in t_pins) else (-1, 0, 0)
 
         rv = []
 
