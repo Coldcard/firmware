@@ -1172,7 +1172,7 @@ def test_file_picker_suffixes(pick_menu_item, goto_home, cap_story, microsd_wipe
     time.sleep(.1)
     _, story = cap_story()
     assert "No suitable files found" in story
-    assert "The filename must end in: *.7z,*.txt" in story
+    assert "The filename must end in: .7z OR .txt" in story
     press_select()
 
     goto_home()
@@ -1183,7 +1183,7 @@ def test_file_picker_suffixes(pick_menu_item, goto_home, cap_story, microsd_wipe
     time.sleep(.1)
     _, story = cap_story()
     assert "No suitable files found" in story
-    assert "The filename must end in: *.pdf" in story
+    assert "The filename must end in: .pdf" in story
 
     goto_home()
     pick_menu_item("Advanced/Tools")
@@ -1192,7 +1192,7 @@ def test_file_picker_suffixes(pick_menu_item, goto_home, cap_story, microsd_wipe
     time.sleep(.1)
     _, story = cap_story()
     assert "No suitable files found" in story
-    assert "The filename must end in: *.txt,*.json" in story
+    assert "The filename must end in: .txt OR .json" in story
     microsd_wipe()
 
 
