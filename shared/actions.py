@@ -881,7 +881,7 @@ async def start_login_sequence():
         if sp_unlock:
             # Disable spending policy going forward; user has to re-enable.
             pa.hobbled_mode = False
-            sssp_spending_policy('en', change=False)
+            sssp_spending_policy('en', set_value=False)
         else:
             # normal entry mode, but might have policy enabled, if so enable it now.
             pa.hobbled_mode = sssp_spending_policy('en')
