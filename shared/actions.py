@@ -1728,8 +1728,13 @@ async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
     # - escape: allow these chars to skip picking process
     # - slot_b: None=>pick slot w/ card in it, or A if both.
     # - allow_batch: adds an "all of the above" choice: ("menu label", menu_handler)
-    # suffix argument MUST contain the dot (.), if list of suffixes - all MUST contain the dot
+    # - suffix argument MUST contain the dot (.txt), if list of suffixes, all MUST
 
+    if suffix:
+        # actually make it a list of "suffixes"
+        if not isinstance(suffix, list):
+            suffix = [suffix]
+        assert all(s[0] == '.' for s in suffix)
 
     if choices is None:
         choices = []
@@ -1743,15 +1748,13 @@ async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
                             # ignore subdirs
                             continue
 
-                        if suffix:
-                            if not isinstance(suffix, list):
-                                suffix = [suffix]
+                        if fn[0] == '.':
+                            # unix-style hidden files
+                            continue
 
-                            assert all(s[0] == "." for s in suffix)
-                            if not any([fn.lower().endswith(s) for s in suffix]):
-                                continue
-
-                        if fn[0] == '.': continue
+                        if suffix and not any(fn.lower().endswith(s) for s in suffix):
+                            # wrong suffix, skip
+                            continue
 
                         full_fname = path + '/' + fn
 
@@ -1797,7 +1800,7 @@ async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
         if none_msg:
             msg += none_msg
         if suffix:
-            msg += '\n\nThe filename must end in: %s' % ",".join(["*" + s for s in suffix])
+            msg += '\n\nThe filename must end in: ' + ' OR '.join(suffix)
 
         msg += '\n\nMaybe insert (another) SD card and try again?'
 
