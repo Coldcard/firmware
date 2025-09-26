@@ -47,8 +47,8 @@ Spending policies for "Single Signers" adds new spending policy options:
 
 ## 1.3.4Q - 2025-09-25
 
-- Enhancement: Enter "forever calculator" mode when Q would otherwise be e-waste: after 13
-  PIN failures or when device is bricked.
+- Enhancement: Enters "forever calculator" mode when Q would otherwise be electronic waste
+  (ie. after 13 PIN failures). Always enabled, regardless of "login calculator" setting.
 - Bugfix: Correct line positioning when 24 seed words displayed.
 
 
