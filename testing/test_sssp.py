@@ -206,6 +206,7 @@ def setup_sssp(goto_sssp_menu, pick_menu_item, cap_story, press_select, pass_wor
             if notes_and_pws:
                 assert "Enable?" in story
                 press_select()  # confirm action
+                time.sleep(.1)
                 assert settings_get("sssp")["notes"]
             else:
                 assert "Disable?" in story
@@ -222,6 +223,7 @@ def setup_sssp(goto_sssp_menu, pick_menu_item, cap_story, press_select, pass_wor
             if rel_keys:
                 assert "Enable?" in story
                 press_select()  # confirm action
+                time.sleep(.1)
                 assert settings_get("sssp")["okeys"]
             else:
                 assert "Disable?" in story
