@@ -2362,28 +2362,28 @@ class psbtObject(psbtProxy):
                     # track wallet usage
                     OWNERSHIP.note_subpath_used(int_pth)
 
+                # normal operation with valid sighash
+                if not inp.is_segwit:
+                    # Hash by serializing/blanking various subparts of the transaction
+                    txi.scriptSig = inp.get_scriptSig()
+                    digest = self.make_txn_sighash(in_idx, txi, inp.sighash)
+                else:
+                    # Hash the inputs and such in totally new ways, based on BIP-143
+                    if not inp.taproot_subpaths:
+                        digest = self.make_txn_segwit_sighash(in_idx, txi, inp.amount,
+                                                              inp.segwit_v0_scriptCode(),
+                                                              inp.sighash)
+                    elif not tr_sh:
+                        # taproot keyspend
+                        digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash)
+                    # else:
+                        # sighashes for tapscript spend are calculated later
+
                 if sv.deltamode:
                     # Current user is actually a thug with a slightly wrong PIN, so we
                     # do have access to the private keys and could sign txn, but we
                     # are going to silently corrupt our signatures.
-                    digest = bytes(range(32))
-                else:
-                    # normal operation with valid sighash
-                    if not inp.is_segwit:
-                        # Hash by serializing/blanking various subparts of the transaction
-                        txi.scriptSig = inp.get_scriptSig()
-                        digest = self.make_txn_sighash(in_idx, txi, inp.sighash)
-                    else:
-                        # Hash the inputs and such in totally new ways, based on BIP-143
-                        if not inp.taproot_subpaths:
-                            digest = self.make_txn_segwit_sighash(in_idx, txi, inp.amount,
-                                                                  inp.segwit_v0_scriptCode(),
-                                                                  inp.sighash)
-                        elif not tr_sh:
-                            # taproot keyspend
-                            digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash)
-                        # else:
-                            # sighashes for tapscript spend are calculated later
+                    digest = ngu.hash.sha256d(digest)
 
                 # we no longer need utxo_spk if:
                 # - none of the inputs that we're signing is P2TR
@@ -2413,6 +2413,10 @@ class psbtObject(psbtProxy):
                                 digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash,
                                                                        scriptpath=True,
                                                                        script=taproot_script, leaf_ver=leaf_ver)
+
+                                if sv.deltamode:
+                                    digest = ngu.hash.sha256d(digest)
+
                                 sig = ngu.secp256k1.sign_schnorr(sk, digest, ngu.random.bytes(32))
                                 # in the common case of SIGHASH_DEFAULT, encoded as '0x00', a space optimization MUST be made by
                                 # 'omitting' the sighash byte, resulting in a 64-byte signature with SIGHASH_DEFAULT assumed
