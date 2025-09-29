@@ -1284,7 +1284,7 @@ def fake_ms_txn(pytestconfig):
              outstyles=['p2pkh'], change_outputs=[], incl_xpubs=False, hack_psbt=None,
              hack_change_out=False, input_amount=1E8, psbt_v2=None, bip67=True,
              violate_script_key_order=False, path_mapper=None, inp_af=AF_P2WSH,
-             force_outstyle=None):
+             force_outstyle=None, lock_time=0):
 
         psbt = BasicPSBT()
         if psbt_v2 is None:
@@ -1301,6 +1301,7 @@ def fake_ms_txn(pytestconfig):
 
         txn = CTransaction()
         txn.nVersion = 2
+        txn.nLockTime = lock_time
 
         if incl_xpubs:
             # add global header with XPUB's
@@ -1370,7 +1371,12 @@ def fake_ms_txn(pytestconfig):
                 # TODO height timelock
                 # TODO time timelock
 
-            spendable = CTxIn(COutPoint(supply.sha256, 0), nSequence=0xffffffff)
+            if lock_time and not i:
+                seq = 0xfffffffd
+            else:
+                seq = 0xffffffff
+
+            spendable = CTxIn(COutPoint(supply.sha256, 0), nSequence=seq)
             txn.vin.append(spendable)
 
         for i in range(num_outs):
