@@ -24,12 +24,12 @@ Spending policies for "Single Signers" adds new spending policy options:
 - Enhancement: Added file rename, when listing contents of SD card.
 - Enhancement: Added ability to restore Coldcard backup via USB (needs latest of ckcc version)
 - Enhancement: Address ownership allows to specify particular multisig wallet in which to search,
-  if `wallet` query parameter is provided via trival extension to
+  if `wallet` query parameter is provided via trivial extension to
   [BIP-21](https://github.com/bitcoin/bips/blob/master/bip-0021.mediawiki).
   Example: `tb1q4d67p7stxml3kdudrgkg5mgaxsrgzcqzjrrj4gg62nxtvnsnvqjsxjkej0?wallet=Haystack`
 - Bugfix: If all change outputs have `nValue=0`, they were not shown in UX.
 - Bugfix: Disallow negative input/output amounts in PSBT.
-- Bugfix: Fix filesystem initialization after Wife LFS or Destroy Seed.
+- Bugfix: Fix filesystem initialization after Wipe LFS or Destroy Seed.
 - Bugfix: Fix MicroSD selftest code.
 - Bugfix: NFC loop exporting secrets would not work after first value exported.
 - Bugfix: Multisig address format handling.
