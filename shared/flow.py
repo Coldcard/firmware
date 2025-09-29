@@ -539,6 +539,7 @@ HobbledAdvancedMenu = [
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu, predicate=sssp_related_keys),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=HobbledNFCToolsMenu, shortcut=KEY_NFC),
+    MenuItem('Show %s Version' % ("Firmware" if version.has_qwerty else "FW"), f=show_version),
     MenuItem("Destroy Seed", f=clear_seed, predicate=has_real_secret),
 ]
 
