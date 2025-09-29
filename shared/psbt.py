@@ -2045,19 +2045,19 @@ class psbtObject(psbtProxy):
                     # track wallet usage
                     OWNERSHIP.note_subpath_used(inp.subpaths[which_key])
 
+                if not inp.is_segwit:
+                    # Hash by serializing/blanking various subparts of the transaction
+                    digest = self.make_txn_sighash(in_idx, txi, inp.sighash)
+                else:
+                    # Hash the inputs and such in totally new ways, based on BIP-143
+                    digest = self.make_txn_segwit_sighash(in_idx, txi,
+                                    inp.amount, inp.scriptCode, inp.sighash)
+
                 if sv.deltamode:
                     # Current user is actually a thug with a slightly wrong PIN, so we
                     # do have access to the private keys and could sign txn, but we
                     # are going to silently corrupt our signatures.
-                    digest = bytes(range(32))
-                else:
-                    if not inp.is_segwit:
-                        # Hash by serializing/blanking various subparts of the transaction
-                        digest = self.make_txn_sighash(in_idx, txi, inp.sighash)
-                    else:
-                        # Hash the inputs and such in totally new ways, based on BIP-143
-                        digest = self.make_txn_segwit_sighash(in_idx, txi,
-                                        inp.amount, inp.scriptCode, inp.sighash)
+                    digest = ngu.hash.sha256d(digest)
 
                 # The precious private key we need
                 pk = node.privkey()
