@@ -24,7 +24,7 @@ def fake_txn(dev, pytestconfig):
              invals=None, outvals=None, segwit_in=False, wrapped=False,
              outstyles=['p2pkh'],  psbt_hacker=None, change_outputs=[],
              capture_scripts=None, add_xpub=None, op_return=None, taproot_in=False,
-             psbt_v2=None, input_amount=1E8, unknown_out_script=None):
+             psbt_v2=None, input_amount=1E8, unknown_out_script=None, lock_time=0):
 
         psbt = BasicPSBT()
 
@@ -41,6 +41,7 @@ def fake_txn(dev, pytestconfig):
             psbt.output_count = num_outs
 
         txn = CTransaction()
+        txn.nLockTime = lock_time
         txn.nVersion = 2
         master_xpub = master_xpub or dev.master_xpub or simulator_fixed_tprv
         
@@ -105,7 +106,12 @@ def fake_txn(dev, pytestconfig):
                 # TODO height timelock
                 # TODO time timelock
 
-            spendable = CTxIn(COutPoint(supply.sha256, 0), nSequence=0xffffffff)
+            if lock_time and not i:
+                seq = 0xfffffffd
+            else:
+                seq = 0xffffffff
+
+            spendable = CTxIn(COutPoint(supply.sha256, 0), nSequence=seq)
             txn.vin.append(spendable)
 
         for i in range(num_outs):
