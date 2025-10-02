@@ -365,6 +365,7 @@ correctly- crafted transactions signed on Testnet could be broadcast on Mainnet.
     MenuItem('MCU Key Slots', f=show_mcu_keys_left),
     MenuItem('Bless Firmware', f=bless_flash),          # no need for this anymore?
     MenuItem("Wipe LFS", f=wipe_filesystem),    # kills other-seed settings, HSM stuff, addr cache
+    MenuItem("Nuke Device", f=nuke_device),
 ]
 
 BackupStuffMenu = [

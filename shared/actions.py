@@ -1539,6 +1539,20 @@ Does not affect MicroSD card, if any.''', confirm_key="4"):
     from files import wipe_flash_filesystem
     wipe_flash_filesystem()
 
+async def nuke_device(*a):
+    if not await ux_confirm("Wipe Seed & Brick device? This will wipe the seed, purge"
+                            "all related settings, and makes ewaste from this device."):
+        return
+
+    if not await ux_confirm("Brick device?\n\nBy design, there is no way to reset or recover"
+                            " the secure element, and its contents become forever inaccessible.",
+                            confirm_key="1"):
+        return
+
+    import callgate
+    callgate.fast_brick()
+    # NOT REACHED
+
 async def wipe_vdisk(*A):
     if not await ux_confirm('''\
 Erases and reformats shared RAM disk. This is a secure erase that blanks every byte.'''):
