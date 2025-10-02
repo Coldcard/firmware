@@ -815,12 +815,6 @@ def clear_seed():
     callgate.fast_wipe(True)
     # NOT REACHED
 
-    utime.sleep(1)
-
-    # security: need to reboot to really be sure to clear the secrets from main memory.
-    from machine import reset
-    reset()
-
 async def word_quiz(words, limited=None, title='Word %d is?'):
     # Perform a test, to check they wrote them down
     # Return X if they cancel early.
