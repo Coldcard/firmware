@@ -5,7 +5,7 @@
 import ngu
 from uhashlib import sha256
 from ubinascii import hexlify as b2a_hex
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2TR
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2TR, AF_BARE_PK
 from public_constants import AF_P2SH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH
 from public_constants import AFC_PUBKEY, AFC_BECH32, AFC_SCRIPT
 from public_constants import TAPROOT_LEAF_TAPSCRIPT, TAPROOT_LEAF_MASK
@@ -458,6 +458,7 @@ MS_STD_DERIVATIONS = {
 }
 
 AF_TO_STR_AF = {
+    AF_BARE_PK: "p2pk",
     AF_CLASSIC: "p2pkh",
     AF_P2TR: "p2tr",
     AF_P2WPKH: "p2wpkh",

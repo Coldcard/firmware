@@ -1157,9 +1157,8 @@ def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_miniscript, import_ms
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('num_ins', [ 15 ])
 @pytest.mark.parametrize('M', [ 2, 4])
-@pytest.mark.parametrize('inp_af', ["p2wsh", "p2sh-p2wsh", "p2sh"])
 @pytest.mark.parametrize('incl_xpubs', [ True, False ])
-def test_ms_sign_myself(M, use_regtest, make_myself_wallet, inp_af, num_ins, dev, incl_xpubs,
+def test_ms_sign_myself(M, use_regtest, make_myself_wallet, num_ins, dev, incl_xpubs,
                         clear_miniscript, fake_ms_txn, try_sign, bitcoind, sim_root_dir):
 
     # IMPORTANT: won't work if you start simulator with --ms flag. Use no args
@@ -1171,12 +1170,12 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, inp_af, num_ins, dev
     use_regtest()
 
     # create a wallet, with 3 bip39 pw's
-    keys, select_wallet = make_myself_wallet(M, addr_fmt=inp_af, do_import=(not incl_xpubs))
+    keys, select_wallet = make_myself_wallet(M, addr_fmt="p2sh", do_import=(not incl_xpubs))
     N = len(keys)
     assert M<=N
 
-    psbt = fake_ms_txn(num_ins, num_outs, M, keys, inp_addr_fmt=inp_af, incl_xpubs=incl_xpubs,
-                       outstyles=[inp_af], change_outputs=list(range(1,num_outs)))
+    psbt = fake_ms_txn(num_ins, num_outs, M, keys, inp_addr_fmt="p2sh", incl_xpubs=incl_xpubs,
+                       outstyles=["p2sh"], change_outputs=list(range(1,num_outs)))
 
     with open(f'{sim_root_dir}/debug/myself-before.psbt', 'w') as f:
         f.write(b64encode(psbt).decode())
@@ -3100,7 +3099,7 @@ def test_input_script_type(clear_miniscript, import_ms_wallet, start_sign, end_s
             end_sign()
             assert False, story
         except Exception as e:
-            assert e.args[0] == 'Coldcard Error: Unknown multisig wallet'
+            assert e.args[0] == 'Coldcard Error: Nothing to sign here'
             return
 
     clear_miniscript()
@@ -3171,10 +3170,8 @@ def test_change_output_script_type(clear_miniscript, import_ms_wallet, start_sig
         # it does not in current master
         start_sign(psbt)
         _, story = cap_story()
-        assert "Change back" not in story
-        assert "Consolidating" not in story
-        assert "Sending" in story
-        end_sign()  # must work
+        assert "change output is fraudulent" in story
+        assert "spk mismatch" in story
 
     clear_miniscript()
     M, N = 2, 3

@@ -527,17 +527,19 @@ class psbtOutputProxy(psbtProxy):
             return af
 
         # certain short-cuts
-        if msc and (af in [AF_CLASSIC, AF_P2WPKH, "p2pk"]):
-            # signing with miniscript wallet - single sig outputs def not change
-            return af
+        if msc:
+            if af in [AF_CLASSIC, AF_P2WPKH, AF_BARE_PK]:
+                # signing with miniscript wallet - single sig outputs definitely not change
+                return af
+
         elif parent.active_singlesig and (af == AF_P2WSH):
             # we are signing single sig inputs - p2wsh is def not a change
             return af
 
         def fraud(idx, af, err=""):
-            if isinstance(af, int):
-                af = AF_TO_STR_AF[af]
-            raise FraudulentChangeOutput(idx, "%s change output is fraudulent\n\n%s" % (af, err))
+            raise FraudulentChangeOutput(idx, "%s change output is fraudulent\n\n%s" % (
+                AF_TO_STR_AF[af], err
+            ))
 
         if af == AF_BARE_PK:
             # output is compressed public key (not a hash, much less common)
@@ -808,7 +810,7 @@ class psbtInputProxy(psbtProxy):
 
         if psbt.active_miniscript or psbt.active_singlesig:
             # we have already set one of these - sow we can use some short-cuts
-            if psbt.active_miniscript and (self.af in (AF_CLASSIC, AF_P2WPKH, "p2pk")):
+            if psbt.active_miniscript and (self.af in (AF_CLASSIC, AF_P2WPKH, AF_BARE_PK)):
                 # signing with miniscript wallet - ignore single sig utxos
                 self.sp_idxs = None
                 return
@@ -998,7 +1000,7 @@ class psbtInputProxy(psbtProxy):
             return ser_string(self.get(self.witness_script))
 
     def get_scriptSig(self):
-        if self.af in ["p2pk", AF_CLASSIC]:
+        if self.af in [AF_BARE_PK, AF_CLASSIC]:
             return self.utxo_spk
         elif self.af in (AF_P2SH, AF_P2WSH_P2SH, AF_P2WPKH_P2SH):
             return self.get(self.redeem_script)
@@ -1986,6 +1988,10 @@ class psbtObject(psbtProxy):
             for n,inp in enumerate(self.inputs)
             if (not inp.sp_idxs) and (not inp.fully_signed)
         )
+        if len(no_keys) == self.num_inputs:
+            # nothing to sign for us
+            raise FatalPSBTIssue("Nothing to sign here")
+
         if no_keys:
             # This is seen when you re-sign same signed file by accident (multisig)
             # - case of len(no_keys)==num_inputs is handled by consider_inputs
@@ -2394,7 +2400,7 @@ class psbtObject(psbtProxy):
                 # we no longer need utxo_spk if:
                 # - none of the inputs that we're signing is P2TR
                 # - this input is not P2PK or P2PKH, otherwise we need utxo_spk for scriptSig
-                if not self.my_tr_in and (inp.af not in ("p2pk", AF_CLASSIC)):
+                if not self.my_tr_in and (inp.af not in (AF_BARE_PK, AF_CLASSIC)):
                     try:
                         del inp.utxo_spk
                     except AttributeError: pass  # may not have UTXO

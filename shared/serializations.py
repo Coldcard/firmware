@@ -19,7 +19,7 @@ from ubinascii import hexlify as b2a_hex
 import ustruct as struct
 import ngu
 from opcodes import *
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2SH, AF_P2WSH, AF_P2TR, AF_BARE_PK, AF_P2TR
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2SH, AF_P2WSH, AF_BARE_PK, AF_P2TR
 
 # single-shot hash functions
 sha256 = ngu.hash.sha256s
@@ -243,7 +243,7 @@ def disassemble(script):
         raise ValueError("bad script")
         
 
-def ser_sig_der(r, s, sighash_type=1):
+def ser_sig_der(r, s, sighash_type=SIGHASH_ALL):
     # Take R and S values from a signature and encode into DER format.
     sig = b"\x30"
 
