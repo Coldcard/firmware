@@ -646,7 +646,7 @@ class MiniScriptWallet(WalletABC):
 
         return msg, addrs
 
-    def generate_address_csv(self, start, n, change):
+    def generate_address_csv(self, start, n, change, saver=None):
         scripts = settings.get("aemscsv", False)
         header = ['Index', 'Payment Address']
         if scripts:
@@ -654,6 +654,9 @@ class MiniScriptWallet(WalletABC):
 
         yield '"' + '","'.join(header) + '"\n'
         for idx, addr, ders, script in self.yield_addresses(start, n, change, scripts=scripts):
+            if saver:
+                saver(addr, idx)
+
             ln = '%d,"%s"' % (idx, addr)
             if scripts:
                 ln += ',"%s"' % script

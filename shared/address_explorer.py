@@ -405,7 +405,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
         # saver will be None if we don't think it worth saving these addresses
         saver = OWNERSHIP.saver(ms_wallet, change, start, n)
 
-        for line in ms_wallet.generate_address_csv(start, n, change):
+        for line in ms_wallet.generate_address_csv(start, n, change, saver=saver):
             yield line
 
         if saver:
