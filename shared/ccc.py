@@ -1189,8 +1189,6 @@ class SSSPConfigMenu(MenuSystem):
         self.replace_items(tmp)
 
     def construct(self):
-        from multisig import MultisigWallet, make_ms_wallet_menu
-
         items = [
             #         xxxxxxxxxxxxxxxx
             MenuItem('Edit Policy...', 
