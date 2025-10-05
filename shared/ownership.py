@@ -356,11 +356,14 @@ class OwnershipCache:
 
             sp = None
             msg = show_single_address(addr)
-            msg += '\n\nFound in wallet:\n  ' + wallet.name
+            msg += '\n\nFound in wallet:\n' + wallet.name
 
+            msg += '\nDerivation path:\n'
             if hasattr(wallet, "render_path"):
                 sp = wallet.render_path(*subpath)
-                msg += '\nDerivation path:\n  ' + sp
+            else:
+                sp = ".../%d/%d" % subpath
+            msg += sp
 
             if is_complex:
                 esc = ""

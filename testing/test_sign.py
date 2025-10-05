@@ -3704,7 +3704,8 @@ def test_single_multi_psbt(multi, ss_af, ms_af, dev, fake_txn, fake_ms_txn, impo
         assert "(1 warning below)" in story
         assert 'Limited Signing' in story
         assert ("We are not signing these inputs, because we either don't "
-                "know the key or inputs belong to different wallet: 1") in story
+                "know the key, inputs belong to different wallet,"
+                " or we have already signed: 1") in story
 
         res = end_sign()
         r = BasicPSBT().parse(res)

@@ -712,7 +712,7 @@ def xprv_to_encoded_secret(xprv):
     found = pat.search(ln)
     assert found, "not extended privkey"
     # serialize, and note version code
-    node, chain, addr_fmt, is_private = chains.slip32_deserialize(found.group(0))
+    node, chain, addr_fmt, is_private = chains.slip132_deserialize(found.group(0))
     assert node, "wrong extended privkey"
     nv = SecretStash.encode(xprv=node)
     node.blank()

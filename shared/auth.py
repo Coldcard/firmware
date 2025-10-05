@@ -383,7 +383,7 @@ class ApproveTransaction(UserAuthorizedAction):
             #print('FatalPSBTIssue: ' + exc.args[0])
             return await self.failure(exc.args[0])
         except BaseException as exc:
-            # sys.print_exception(exc)
+            sys.print_exception(exc)
             del self.psbt
             gc.collect()
 

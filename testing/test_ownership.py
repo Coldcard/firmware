@@ -80,9 +80,8 @@ def test_positive(addr_fmt, offset, subaccount, chain, from_empty, change_idx,
         coin_type = 1
         testnet = True
 
-    if from_empty:
-        wipe_cache()        # very different codepaths
-        settings_set('accts', [])
+    wipe_cache()        # very different codepaths
+    settings_set('accts', [])
 
     if addr_fmt in { AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH }:
         from test_multisig import make_ms_address, HARD
@@ -97,7 +96,6 @@ def test_positive(addr_fmt, offset, subaccount, chain, from_empty, change_idx,
             M, keys, addr_fmt=addr_fmt, testnet=int(testnet),
             is_change=change_idx, idx=offset
         )
-
         path = f'.../{change_idx}/{offset}'
     else:
 
@@ -364,11 +362,9 @@ def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explo
     else:
         assert af in story
 
-    settings_remove("msas")
-
 
 def test_ae_saver(wipe_cache, settings_set, goto_address_explorer, cap_story,
-                  pick_menu_item, need_keypress, sim_exec, clear_ms, is_q1,
+                  pick_menu_item, need_keypress, sim_exec, is_q1,
                   import_ms_wallet, press_select, goto_home, nfc_write,
                   load_shared_mod, load_export_and_verify_signature,
                   set_addr_exp_start_idx, use_testnet):
@@ -544,7 +540,8 @@ def test_regtest_addr_on_mainnet(goto_home, is_q1, pick_menu_item, scan_a_qr, nf
     assert "not valid on Bitcoin Mainnet" in story
 
 
-def test_20_more_build_after_match(sim_exec, import_ms_wallet, clear_ms, wipe_cache, settings_set):
+def test_20_more_build_after_match(sim_exec, import_ms_wallet, clear_miniscript, wipe_cache,
+                                   settings_set):
     from test_multisig import make_ms_address, HARD
 
     cmd = lambda a: (
@@ -555,7 +552,7 @@ def test_20_more_build_after_match(sim_exec, import_ms_wallet, clear_ms, wipe_ca
     # create multisig wallet
     M, N = 2, 3
     expect_name = 'test20more'
-    clear_ms()
+    clear_miniscript()
     keys = import_ms_wallet(M, N, name=expect_name, accept=True, addr_fmt="p2wsh")
 
     make_a = lambda index: make_ms_address(
@@ -634,7 +631,7 @@ def test_named_wallet_search_fail(load_shared_mod, goto_home, pick_menu_item, nf
 @pytest.mark.parametrize('valid', [True, False])
 @pytest.mark.parametrize('method', ["qr", "nfc"])
 @pytest.mark.parametrize('wname', ["msnm", "Longer Wallet Name"])
-def test_named_wallet_search(wname, valid, method, clear_ms, import_ms_wallet, is_q1,
+def test_named_wallet_search(wname, valid, method, clear_miniscript, import_ms_wallet, is_q1,
                              load_shared_mod, goto_home, pick_menu_item, scan_a_qr,
                              cap_story, need_keypress, nfc_write, use_testnet,
                              wipe_cache, settings_set, sim_root_dir):
@@ -648,7 +645,7 @@ def test_named_wallet_search(wname, valid, method, clear_ms, import_ms_wallet, i
     settings_set('accts', [])
     use_testnet()
     M, N = 2, 3
-    clear_ms()
+    clear_miniscript()
     ms_data = {}
     # all ms wallets have same address format, different M/N
     for i in range(3):
@@ -656,7 +653,7 @@ def test_named_wallet_search(wname, valid, method, clear_ms, import_ms_wallet, i
         if i == 2:
             idx = 763
         name = f'{wname}{i}'
-        keys = import_ms_wallet(M+i, N+i, AF_P2WSH, name=name, accept=True)
+        keys = import_ms_wallet(M+i, N+i, "p2wsh", name=name, accept=True)
         # last address
         addr, scriptPubKey, script, details = make_ms_address(
             M+i, keys, is_change=0, idx=idx, addr_fmt=AF_P2WSH,
@@ -714,7 +711,6 @@ def test_named_wallet_search(wname, valid, method, clear_ms, import_ms_wallet, i
         assert title == ('Verified Address' if is_q1 else "Verified!")
         assert 'Found in wallet' in story
         assert 'Derivation path' in story
-
         assert f"{wname}" in story
 
     else:

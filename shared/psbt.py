@@ -2,7 +2,7 @@
 #
 # psbt.py - understand PSBT file format: verify and generate them
 #
-import stash, gc, history, sys, ngu, ckcc, version
+import stash, gc, history, sys, ngu, ckcc, version, chains
 from ucollections import OrderedDict
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
@@ -575,11 +575,13 @@ class psbtOutputProxy(psbtProxy):
             # we do not have active miniscript - must be single sig otherwise, not a change
             if len(parsed_subpaths) == 1 and (af == AF_P2SH):
                 expect_pubkey, = parsed_subpaths.keys()
-                target = hash160(bytes([0, 20]) + hash160(expect_pubkey))
+                target_spk, _ = chains.current_chain().script_pubkey(AF_P2WPKH_P2SH,
+                                                                     pubkey=expect_pubkey)
                 af = AF_P2WPKH_P2SH
-                if txo.scriptPubKey != (b'\xa9\x14' + target + b'\x87'):
+                if txo.scriptPubKey != target_spk:
                     fraud(out_idx, af, "spk mismatch")
                 # it's actually segwit p2wpkh inside p2sh
+                target = target_spk[2:-1]
             else:
                 # done, not a change, subpaths > 1 or p2wsh (and not active miniscript)
                 return af
@@ -789,7 +791,7 @@ class psbtInputProxy(psbtProxy):
 
         return utxo
 
-    def determine_my_signing_key(self, my_idx, addr_or_pubkey, my_xfp, psbt, parsed_subpaths):
+    def determine_my_signing_key(self, my_idx, addr_or_pubkey, my_xfp, psbt, parsed_subpaths, utxo):
         # See what it takes to sign this particular input
         # - type of script
         # - which pubkey needed
@@ -851,10 +853,15 @@ class psbtInputProxy(psbtProxy):
 
             if not native_v0 and (len(redeem_script) == 22) and \
                     redeem_script[0] == 0 and redeem_script[1] == 20 and \
-                    len(self.subpaths) == 1:
-                # it's actually segwit p2wpkh inside p2sh
-                self.af = AF_P2WPKH_P2SH
-                assert 0 == self.sp_idxs[0]
+                    len(parsed_subpaths) == 1:
+
+                for i, pubkey in enumerate(parsed_subpaths):
+                    target_spk, _ = chains.current_chain().script_pubkey(AF_P2WPKH_P2SH,
+                                                                         pubkey=pubkey)
+                    if target_spk == utxo.scriptPubKey:
+                        # it's actually segwit p2wpkh inside p2sh
+                        self.af = AF_P2WPKH_P2SH
+                        assert i == self.sp_idxs[0]
 
             else:
                 # Assume we'll be signing with any key we know
@@ -868,7 +875,8 @@ class psbtInputProxy(psbtProxy):
                 for i, (pubkey, path) in enumerate(parsed_subpaths.items()):
                     if pubkey in done_keys:
                         # pubkey has already signed, so - do not sign again
-                        self.sp_idxs.remove(i)
+                        if i in self.sp_idxs:  # TODO why
+                            self.sp_idxs.remove(i)
 
                     elif path[0] == my_xfp:
                         # slight chance of dup xfps, so handle
@@ -1610,7 +1618,7 @@ class psbtObject(psbtProxy):
             if i.part_sigs:
                 for k, v in i.part_sigs:
                     assert k[1] == 33
-                    assert v[1] in (71,72,73)  # 73 -> high-s & high-r (maybe should disallow)
+                    assert 70 <= v[1] <= 73, "DER sig len" # 73 -> high-s & high-r (maybe should disallow)
 
             if i.taproot_script_sigs:
                 for k, v in i.taproot_script_sigs:
@@ -1910,8 +1918,6 @@ class psbtObject(psbtProxy):
             # needed for each input if we sign at least one P2TR input
             inp.utxo_spk = utxo.scriptPubKey
 
-            del utxo  # not needed anymore
-
             if inp.sp_idxs:
                 my_cnt += 1
             if inp.fully_signed:
@@ -1922,7 +1928,7 @@ class psbtObject(psbtProxy):
                 # - also validates redeem_script when present
                 # - also finds appropriate miniscript wallet to be used
                 inp.determine_my_signing_key(i, addr_or_pubkey, self.my_xfp, self,
-                                             parsed_subpaths)
+                                             parsed_subpaths, utxo)
 
                 # determine_my_signing_key may have removed sp_idxs
                 # meaning we're not going to sign this input - other wallet in use

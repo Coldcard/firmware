@@ -195,13 +195,19 @@ class MiniScriptWallet(WalletABC):
         return cls.iter_wallets()
 
     @classmethod
-    def iter_wallets(cls):
+    def iter_wallets(cls, name=None, addr_fmts=None):
         # - this is only place we should be searching this list, please!!
         lst = settings.get(cls.skey, [])
         for idx, rec in enumerate(lst):
             w = cls.deserialize(rec, idx)
-            if w.key_chain.ctype == chains.current_key_chain().ctype:
-                yield w
+            if w.key_chain.ctype != chains.current_key_chain().ctype:
+                continue
+            if name and name != w.name:
+                continue
+            if addr_fmts and w.addr_fmt not in addr_fmts:
+                continue
+
+            yield w
 
     @classmethod
     def get_by_idx(cls, nth):

@@ -447,7 +447,7 @@ def test_h_qrscan(en_okeys, set_hobble, scan_a_qr, need_keypress, press_cancel, 
 
         if dt == 'E':
             title, story = cap_story()
-            assert 'Incoming PSBT requires multisig wallet' in story
+            assert 'Incoming PSBT requires miniscript wallet' in story
             press_cancel()
         else:
             scr = cap_screen()      # stays in scanning mode
