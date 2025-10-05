@@ -354,16 +354,14 @@ class OwnershipCache:
             _, wallet, subpath = cls.search(addr, args)
             is_complex = isinstance(wallet, MiniScriptWallet)
 
-            sp = None
             msg = show_single_address(addr)
             msg += '\n\nFound in wallet:\n' + wallet.name
 
-            msg += '\nDerivation path:\n'
+            msg += '\n\nDerivation path:\n'
             if hasattr(wallet, "render_path"):
-                sp = wallet.render_path(*subpath)
+                msg += wallet.render_path(*subpath)
             else:
-                sp = ".../%d/%d" % subpath
-            msg += sp
+                msg += ".../%d/%d" % subpath
 
             if is_complex:
                 esc = ""
