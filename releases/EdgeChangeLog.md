@@ -13,24 +13,26 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
-- Bugfix: If all change outputs have `nValue=0` they're not shown in UX
-- Bugfix: Disallow negative input/output amounts in PSBT
-- Enhancement: Add warning for zero value outputs if not OP_RETURNs
-- Enhancement: Show QR codes of output addresses in Txn output explorer. Output explorer is offered for txns of all sizes.
+- New Feature: Add ability to import/export [BIP-388](https://github.com/bitcoin/bips/blob/master/bip-0388.mediawiki) Wallet Policies
+- New Feature: Sign with specific miniscript wallet. `Settings -> Miniscript -> <name> -> Sign PSBT`
+- New Feature: Miniscript wallet name can be specified for `sign` USB command
+- Change: Everything is miniscript now. To import multisig wallets go to `Settings -> Miniscript`
+- Enhancement: Slightly faster HW accelerated tagged hash
+- Enhancement: PSBT class optimizations. Ability to sign bigger txn.
+- Bugfix: Disjoint derivation in miniscript wallets
 
 # Mk4 Specific Changes
 
 ## 6.3.6X - 2025-XX-XX
 
-- Bugfix: Part of extended keys in stories were not always visible.
-- all updates from `5.4.3`
+- synced with master up to `5.4.4`
 
 
 # Q Specific Changes
 
 ## 6.3.6QX - 2025-XX-XX
 
-- all updates from version `1.3.3Q`
+- synced with master up to `1.3.4Q`
 
 
 # Release History

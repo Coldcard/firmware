@@ -1415,7 +1415,7 @@ def try_sign(start_sign, end_sign):
 @pytest.fixture
 def start_sign(dev):
 
-    def doit(filename, finalize=False, stxn_flags=0x0):
+    def doit(filename, finalize=False, stxn_flags=0x0, miniscript=None):
         if filename[0:5] == b'psbt\xff':
             ip = filename
             filename = 'memory'
@@ -1427,7 +1427,8 @@ def start_sign(dev):
 
         ll, sha = dev.upload_file(ip)
 
-        dev.send_recv(CCProtocolPacker.sign_transaction(ll, sha, finalize, flags=stxn_flags))
+        dev.send_recv(CCProtocolPacker.sign_transaction(ll, sha, finalize, flags=stxn_flags,
+                                                        miniscript_name=miniscript))
 
         return ip
 
