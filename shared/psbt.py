@@ -1620,7 +1620,9 @@ class psbtObject(psbtProxy):
             if i.part_sigs:
                 for k, v in i.part_sigs:
                     assert k[1] == 33
-                    assert 70 <= v[1] <= 73, "DER sig len" # 73 -> high-s & high-r (maybe should disallow)
+                    # 69 bytes - extreme case where both r & s are 31 bytes
+                    # 73 -> high-s & high-r
+                    assert 69 <= v[1] <= 73, "DER sig len"
 
             if i.taproot_script_sigs:
                 for k, v in i.taproot_script_sigs:
