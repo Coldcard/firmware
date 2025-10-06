@@ -262,8 +262,7 @@ def test_ux(valid, netcode, method,
     elif valid:
         assert title == ('Verified Address' if is_q1 else "Verified!")
         assert 'Found in wallet' in story
-        if not multisig:
-            assert 'Derivation path' in story
+        assert 'Derivation path' in story
 
         if is_q1:
             # check it can display as QR from here

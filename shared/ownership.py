@@ -359,8 +359,10 @@ class OwnershipCache:
 
             msg += '\n\nDerivation path:\n'
             if hasattr(wallet, "render_path"):
-                msg += wallet.render_path(*subpath)
+                sp = wallet.render_path(*subpath)
+                msg += sp
             else:
+                sp = None
                 msg += ".../%d/%d" % subpath
 
             if is_complex:
