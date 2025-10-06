@@ -53,7 +53,7 @@ HSM_WHITELIST = frozenset({
     'smsg',                     # limited by policy
     'blkc', 'hsts',             # report status values
     'stok', 'smok',             # completion check: sign txn or msg
-    'xpub', 'msck',             # quick status checks
+    'xpub',                     # quick status checks
     'show', 'msas',             # limited by HSM policy
     'user',                     # auth HSM user, other user cmds not allowed
     'gslr',                     # read storage locker; hsm mode only, limited usage
@@ -515,66 +515,56 @@ class USBHandler:
 
             return None
 
-        if cmd == "msls":
-            # list all registered miniscript wallet names
+        if cmd.startswith("ms"):
+            # miniscript related commands
             assert self.encrypted_req, 'must encrypt'
-            from wallet import MiniScriptWallet
-            wallets = [w.name for w in MiniScriptWallet.iter_wallets()]
-            return b'asci' + ujson.dumps(wallets)
 
-        if cmd == "msdl":
-            # delete miniscript wallet by its name (unique id)
-            assert self.encrypted_req, 'must encrypt'
+            if cmd == "msls":
+                # list all registered miniscript wallet names
+                from wallet import MiniScriptWallet
+                wallets = [w.name for w in MiniScriptWallet.iter_wallets()]
+                return b'asci' + ujson.dumps(wallets)
+
+            if cmd == "msas":
+                # get miniscript address based on int/ext index
+                if hsm_active and not hsm_active.approve_address_share(miniscript=True):
+                    raise HSMDenied
+
+                change, idx, = unpack_from('<II', args)
+                assert change in (0, 1), "change not bool"
+                assert 0 <= idx < (2 ** 31), "child idx"
+
+                name = args[8:]
+                assert len(name) <= 20, "name len"
+
+                ok, w = get_miniscript_by_name(name)
+                if not ok:
+                    return w
+
+                from auth import start_show_miniscript_address
+                return b'asci' + start_show_miniscript_address(w, change, idx)
+
+
             assert len(args) <= 20, "name len"
             ok, w = get_miniscript_by_name(args)
             if not ok:
                 return w
 
-            from auth import maybe_delete_miniscript
-            maybe_delete_miniscript(w)
-            return None
+            if cmd == "msdl":
+                # delete miniscript wallet by its name (unique id)
+                from auth import maybe_delete_miniscript
+                maybe_delete_miniscript(w)
+                return None
 
-        if cmd == "msgt":
-            # takes name and returns descriptor + name json
-            assert self.encrypted_req, 'must encrypt'
-            assert len(args) <= 20, "name len"
-            ok, w = get_miniscript_by_name(args)
-            if not ok:
-                return w
+            if cmd == "msgt":
+                # takes name and returns descriptor + name json
+                # MiniscriptWallet.to_string only fills policy
+                return b'asci' + ujson.dumps({"name": w.name, "desc": w.to_string()})
 
-            # MiniscriptWallet.to_string only fills policy
-            return b'asci' + ujson.dumps({"name": w.name, "desc": w.to_string()})
-
-        if cmd == "mspl":
-            # takes name and returns BIP-388 Wallet Policy
-            assert self.encrypted_req, 'must encrypt'
-            assert len(args) <= 20, "name len"
-            ok, w = get_miniscript_by_name(args)
-            if not ok:
-                return w
-
-            return b'asci' + ujson.dumps({"name": w.name, "desc_template": w.desc_tmplt,
-                                           "keys_info": w.keys_info})
-
-        if cmd == "msas":
-            # get miniscript address based on int/ext index
-            assert self.encrypted_req, 'must encrypt'
-            if hsm_active and not hsm_active.approve_address_share(miniscript=True):
-                raise HSMDenied
-
-            change, idx, = unpack_from('<II', args)
-            assert change in (0, 1), "change not bool"
-            assert 0 <= idx < (2 ** 31), "child idx"
-
-            name = args[8:]
-            assert len(name) <= 20, "name len"
-
-            ok, w = get_miniscript_by_name(name)
-            if not ok:
-                return w
-
-            from auth import start_show_miniscript_address
-            return b'asci' + start_show_miniscript_address(w, change, idx)
+            if cmd == "mspl":
+                # takes name and returns BIP-388 Wallet Policy
+                return b'asci' + ujson.dumps({"name": w.name, "desc_template": w.desc_tmplt,
+                                               "keys_info": w.keys_info})
 
         if cmd == 'stxn':
             # sign transaction
