@@ -2979,3 +2979,168 @@ def test_tapscript_disjoint_derivation(cap_story, offer_minsc_import, microsd_pa
     with pytest.raises(Exception) as e:
         offer_minsc_import(desc)
     assert "Non-disjoint multipath" in e.value.args[0]
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("way", ["usb", "nfc", "sd", "vdisk", "qr"])
+def test_same_key_set_miniscript(get_cc_key, bitcoin_core_signer, create_core_wallet, way,
+                                 offer_minsc_import, press_select, bitcoind, start_sign,
+                                 cap_story, end_sign, clear_miniscript, goto_home, scan_a_qr,
+                                 pick_menu_item, microsd_path, garbage_collector, press_cancel,
+                                 need_keypress, press_nfc, nfc_write_text, nfc_read,
+                                 readback_bbqr, virtdisk_path, skip_if_useless_way):
+    # same keys in miniscript, impossible to match correct wallet with auto-match
+    skip_if_useless_way(way)
+    goto_home()
+    clear_miniscript()
+
+    msc1 = "wsh(andor(pk(@D),after(1767225600),multi(2,@A,@B,@C)))"
+    msc2 = "wsh(or_d(pk(@D),and_v(v:multi(2,@A,@B,@C),older(1767225600))))"
+
+    ak = get_cc_key("m/48h/1h/0h/2h")
+    bs, bk = bitcoin_core_signer("bb")
+    cs, ck = bitcoin_core_signer("cc")
+    ds, dk = bitcoin_core_signer("dd")
+
+    bk = bk.replace("/0/*", "/<0;1>/*")
+    ck = ck.replace("/0/*", "/<0;1>/*")
+    dk = dk.replace("/0/*", "/<0;1>/*")
+
+    msc1 = msc1.replace("@A", ak)
+    msc1 = msc1.replace("@B", bk)
+    msc1 = msc1.replace("@C", ck)
+    msc1 = msc1.replace("@D", dk)
+
+    msc2 = msc2.replace("@A", ak)
+    msc2 = msc2.replace("@B", bk)
+    msc2 = msc2.replace("@C", ck)
+    msc2 = msc2.replace("@D", dk)
+
+    title, story = offer_minsc_import(json.dumps(dict(name="msc1", desc=msc1)))
+    assert "msc1" in story
+    assert "Create new miniscript wallet?" in story
+    press_select()
+
+    title, story = offer_minsc_import(json.dumps(dict(name="msc2", desc=msc2)))
+    assert "msc2" in story
+    assert "Create new miniscript wallet?" in story
+    press_select()
+
+    m1 = create_core_wallet("msc1", "bech32")
+    m2 = create_core_wallet("msc2", "bech32")
+
+    # now try to sign (via Ready To Sign) PSBT from msc2
+    # this will not work, as msc1 has same key set and was imported first
+    # so we match msc1
+    psbt = m2.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 1.0}],
+                                     0, {"fee_rate": 2})["psbt"]
+
+    if way == "usb":
+        # first try classic way without specifying wallet name
+        # will fail with scriptPubKey mismatch
+        start_sign(base64.b64decode(psbt))
+        time.sleep(.1)
+        title, story = cap_story()
+        assert "spk mismatch" in story
+
+        # now with name specified via USB
+        start_sign(base64.b64decode(psbt), miniscript="msc2")
+        time.sleep(.1)
+        title, story = cap_story()
+        assert title == "OK TO SEND?"
+        assert "msc2" in story
+        end_sign(accept=True)
+
+    else:
+        fname = "the_txn.psbt"
+        fpath = microsd_path(fname)
+        garbage_collector.append(fpath)
+        with open(fpath, "w") as f:
+            f.write(psbt)
+
+        goto_home()
+        # just try SD for normal matching without name
+        pick_menu_item("Ready To Sign")
+        title, story = cap_story()
+        if 'OK TO SEND' not in title:
+            pick_menu_item(fname)
+            time.sleep(0.1)
+            title, story = cap_story()
+
+        assert "spk mismatch" in story
+        press_select()  # exit
+
+        # now correct way via miniscript wallet
+        pick_menu_item("Settings")
+        pick_menu_item("Miniscript")
+        pick_menu_item("msc2")
+        pick_menu_item("Sign PSBT")
+        title, story = cap_story()
+        if way == "nfc":
+            if "import via NFC" not in story:
+                raise pytest.skip("NFC disabled")
+
+            press_nfc()
+            nfc_write_text(psbt)
+            time.sleep(1)
+            title, story = cap_story()
+            assert title == "OK TO SEND?"
+            assert "msc2" in story
+            press_select()  # confirm signing
+            time.sleep(0.1)
+            got = nfc_read()
+            time.sleep(1)
+            assert got
+            press_cancel()  # exit NFC loop
+
+        elif way == "qr":
+            if "scan QR code" not in story:
+                raise pytest.skip("Mk4 no QR")
+
+            need_keypress(KEY_QR)
+            # base64 PSBT as text
+            actual_vers, parts = split_qrs(psbt, 'U', max_version=20)
+            random.shuffle(parts)
+
+            for p in parts:
+                scan_a_qr(p)
+                time.sleep(1)  # just so we can watch
+
+            title, story = cap_story()
+            assert title == "OK TO SEND?"
+            assert "msc2" in story
+            press_select()  # confirm signing
+            time.sleep(.2)
+            file_type, rb = readback_bbqr()
+            assert file_type == 'P'
+            press_cancel()
+        else:
+            if way == "sd":
+                assert "Press (1)" in story
+                need_keypress("1")
+            else:
+                assert way == "vdisk"
+                if "import from Virtual Disk" not in story:
+                    raise pytest.skip("Virtual Disk disabled")
+
+                fpath = virtdisk_path(fname)
+                garbage_collector.append(fpath)
+                with open(fpath, "w") as f:
+                    f.write(psbt)
+
+                need_keypress("2")
+
+            title, story = cap_story()
+            if 'OK TO SEND' not in title:
+                pick_menu_item(fname)
+                time.sleep(0.1)
+                title, story = cap_story()
+
+            assert title == "OK TO SEND?"
+            assert "msc2" in story
+            press_select()  # confirm signing
+            time.sleep(0.1)
+            title, story = cap_story()
+            assert title == 'PSBT Signed'
+
+# EOF
