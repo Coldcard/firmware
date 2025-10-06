@@ -573,7 +573,7 @@ class MiniScriptWallet(WalletABC):
 
             else:
                 if self.desc_tmplt == rv.desc_tmplt and self.keys_info == rv.keys_info:
-                    assert False, err
+                    assert False, err + "\n\n"
 
     async def confirm_import(self):
         nope, yes = (KEY_CANCEL, KEY_ENTER) if version.has_qwerty else ("x", "y")
@@ -700,6 +700,7 @@ class MiniScriptWallet(WalletABC):
             res = "importdescriptors '%s'\n" % core_str
         elif bip388:
             # policy as JSON
+            msg = self.name
             name = "BIP-388 Wallet Policy"
             fname_pattern = 'b388-%s.json' % self.name
             res = ujson.dumps({"name": self.name,
@@ -714,7 +715,10 @@ class MiniScriptWallet(WalletABC):
         ch = await import_export_prompt("%s file" % name)
         if isinstance(ch, str):
             if ch in "3"+KEY_NFC:
-                await NFC.share_text(res)
+                if bip388:
+                    await NFC.share_json(res)
+                else:
+                    await NFC.share_text(res)
             elif ch == KEY_QR:
                 try:
                     from ux import show_qr_code

@@ -255,6 +255,15 @@ def usb_miniscript_get(dev):
 
 
 @pytest.fixture
+def usb_miniscript_policy(dev):
+    def doit(name):
+        dev.check_mitm()
+        resp = dev.send_recv(CCProtocolPacker.miniscript_policy(name))
+        return json.loads(resp)
+
+    return doit
+
+@pytest.fixture
 def usb_miniscript_delete(dev):
     def doit(name):
         dev.check_mitm()
@@ -3142,5 +3151,139 @@ def test_same_key_set_miniscript(get_cc_key, bitcoin_core_signer, create_core_wa
             time.sleep(0.1)
             title, story = cap_story()
             assert title == 'PSBT Signed'
+
+
+@pytest.mark.parametrize("desc", CHANGE_BASED_DESCS)
+@pytest.mark.parametrize("way", ["usb", "sd", "vdisk", "nfc", "qr"])
+def test_bip388_policies(desc, way, offer_minsc_import, press_select, pick_menu_item, goto_home,
+                         clear_miniscript, microsd_path, virtdisk_path, garbage_collector,
+                         need_keypress, cap_story, load_export, press_cancel, usb_miniscript_get,
+                         skip_if_useless_way, scan_a_qr, press_nfc, nfc_write_text,
+                         usb_miniscript_policy):
+
+    skip_if_useless_way(way)
+    clear_miniscript()
+    title, story = offer_minsc_import(json.dumps(dict(name="msc1", desc=desc)))
+    assert "msc1" in story
+    assert "Create new miniscript wallet?" in story
+    press_select()
+
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Miniscript")
+    pick_menu_item("msc1")
+    pick_menu_item("Descriptors")
+    pick_menu_item("BIP-388 Policy")
+
+    if way == "usb":
+        contents = usb_miniscript_policy("msc1")
+    else:
+        contents = load_export(way, "BIP-388 Wallet Policy", is_json=True)
+        press_cancel()
+        press_cancel()
+        if way != "nfc":
+            press_cancel()
+
+        pick_menu_item("Import")
+
+    # try import - must raise duplicate
+    new_name = "b388_reimport"
+    # change name - make it harder
+    contents["name"] = new_name
+    to_import = json.dumps(contents)
+
+    if way == "nfc":
+        press_nfc()
+        nfc_write_text(to_import)
+        time.sleep(1)
+        title, story = cap_story()
+        assert "Duplicate wallet. Wallet 'msc1' is the same." in story
+        assert "b388_reimport" in story
+        press_cancel()
+
+        clear_miniscript()
+        pick_menu_item("Import")
+        press_nfc()
+
+        nfc_write_text(to_import)
+        time.sleep(1)
+
+    elif way == "qr":
+        need_keypress(KEY_QR)
+        # base64 PSBT as text
+        actual_vers, parts = split_qrs(to_import, 'U', max_version=20)
+        random.shuffle(parts)
+
+        for p in parts:
+            scan_a_qr(p)
+            time.sleep(1)  # just so we can watch
+
+        title, story = cap_story()
+        assert "Duplicate wallet. Wallet 'msc1' is the same." in story
+        assert "b388_reimport" in story
+        press_cancel()
+
+        clear_miniscript()
+        pick_menu_item("Import")
+        need_keypress(KEY_QR)
+
+        for p in parts:
+            scan_a_qr(p)
+            time.sleep(1)  # just so we can watch
+
+    elif way == "usb":
+        goto_home()
+        title, story = offer_minsc_import(to_import)
+        assert "Duplicate wallet. Wallet 'msc1' is the same." in story
+        assert "b388_reimport" in story
+        press_cancel()
+
+        clear_miniscript()
+        offer_minsc_import(to_import)
+
+    else:
+        path_f = microsd_path if way == "sd" else virtdisk_path
+        fname = "b388_reimport.json"
+        fpath = path_f(fname)
+        garbage_collector.append(fpath)
+        with open(path_f(fname), "w") as f:
+            f.write(to_import)
+
+        if way == "sd":
+            assert "Press (1)" in story
+            need_keypress("1")
+        else:
+            assert way == "vdisk"
+            if "import from Virtual Disk" not in story:
+                raise pytest.skip("Virtual Disk disabled")
+
+            need_keypress("2")
+
+        # try to import duplicate
+        time.sleep(.1)
+        pick_menu_item(fname)
+        time.sleep(.1)
+        title, story = cap_story()
+        assert "Duplicate wallet. Wallet 'msc1' is the same." in story
+        assert "b388_reimport" in story
+
+        press_cancel()
+        # now clear imported miniscript and import
+        clear_miniscript()
+        pick_menu_item("Import")
+        need_keypress("1" if way == "sd" else "2")
+        time.sleep(.1)
+        pick_menu_item(fname)
+
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Duplicate wallet" not in story
+    assert "Create new miniscript wallet?" in story
+    assert "b388_reimport" in story
+    press_select()
+
+    # verify that the descriptor matches
+    assert usb_miniscript_get(new_name)["desc"].split("#")[0] == desc.split("#")[0].replace("'", 'h')
 
 # EOF

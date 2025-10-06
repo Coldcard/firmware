@@ -545,6 +545,17 @@ class USBHandler:
             # MiniscriptWallet.to_string only fills policy
             return b'asci' + ujson.dumps({"name": w.name, "desc": w.to_string()})
 
+        if cmd == "mspl":
+            # takes name and returns BIP-388 Wallet Policy
+            assert self.encrypted_req, 'must encrypt'
+            assert len(args) <= 20, "name len"
+            ok, w = get_miniscript_by_name(args)
+            if not ok:
+                return w
+
+            return b'asci' + ujson.dumps({"name": w.name, "desc_template": w.desc_tmplt,
+                                           "keys_info": w.keys_info})
+
         if cmd == "msas":
             # get miniscript address based on int/ext index
             assert self.encrypted_req, 'must encrypt'
