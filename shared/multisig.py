@@ -969,34 +969,7 @@ class MultisigWallet(WalletABC):
                 print('%s: %s' % (xfp2str(xfp), val), file=fp)
 
     @classmethod
-    def guess_addr_fmt(cls, npath):
-        # Assuming  the bips are being respected, what address format will be used,
-        # based on indicated numeric subkey path observed.
-        # - return None if unsure, no errors
-        #
-        #( "m/45h", 'p2sh', AF_P2SH), 
-        #( "m/48h/{coin}h/0h/1h", 'p2sh_p2wsh', AF_P2WSH_P2SH),
-        #( "m/48h/{coin}h/0h/2h", 'p2wsh', AF_P2WSH)
-
-        top = npath[0] & 0x7fffffff
-        if top == npath[0]:
-            # non-hardened top? rare/bad
-            return
-
-        if top == 45:
-            return AF_P2SH
-
-        if top == 48:
-            if len(npath) < 4: return
-
-            last = npath[3] & 0x7fffffff
-            if last == 1:
-                return AF_P2WSH_P2SH
-            if last == 2:
-                return AF_P2WSH
-
-    @classmethod
-    def import_from_psbt(cls, M, N, xpubs_list):
+    def import_from_psbt(cls, af, M, N, xpubs_list):
         # given the raw data from PSBT global header, offer the user
         # the details, and/or bypass that all and just trust the data.
         # - xpubs_list is a list of (xfp+path, binary BIP-32 xpub)
@@ -1025,14 +998,13 @@ class MultisigWallet(WalletABC):
                                                         expect_chain, my_xfp, xpubs)
             if is_mine:
                 has_mine += 1
-                addr_fmt = cls.guess_addr_fmt(path)
 
         assert has_mine == 1         # 'my key not included'
 
         name = 'PSBT-%d-of-%d' % (M, N)
         # this will always create sortedmulti multisig (BIP-67)
         # because BIP-174 came years after wide spread acceptance of BIP-67 policy
-        ms = cls(name, (M, N), xpubs, chain_type=expect_chain, addr_fmt=addr_fmt or AF_P2SH)
+        ms = cls(name, (M, N), xpubs, chain_type=expect_chain, addr_fmt=af)
 
         # may just keep in-memory version, no approval required, if we are
         # trusting PSBT's today, otherwise caller will need to handle UX w.r.t new wallet

@@ -4,6 +4,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk4 and Q
 
+- Enhancement: Address format guessing changed from PSBT_XPUBs derivation paths & now is based on witness/redeem script of first own PSBT input.
 - Bugfix: Exiting text input of Custom Backup Password causes yikes
 
 # Mk4 Specific Changes
