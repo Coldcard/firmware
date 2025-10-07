@@ -1228,6 +1228,8 @@ class psbtObject(psbtProxy):
         # first one it finds.
         #
         for i in self.inputs:
+            # definitely not our if no subpaths
+            if not i.subpaths: continue
             ks = i.witness_script or i.redeem_script
             if not ks: continue
 
@@ -1235,13 +1237,22 @@ class psbtObject(psbtProxy):
             if rs[-1] != OP_CHECKMULTISIG: continue
 
             M, N = disassemble_multisig_mn(rs)
+            # does not match PSBT_XPUBS length
+            if N != len(self.xpubs): continue
+
             assert 1 <= M <= N <= MAX_SIGNERS
 
-            return (M, N)
+            # guess address format also - based on scripts provided by PSBT provider
+            if i.witness_script and not i.redeem_script:
+                af = AF_P2WSH
+            elif i.witness_script and i.redeem_script:
+                af = AF_P2WSH_P2SH
+            else:
+                af = AF_P2SH
 
-        # not multisig, probably
-        return None, None
+            return af, M, N
 
+        return None, None, None
 
     async def handle_xpubs(self):
         # Lookup correct wallet based on xpubs in globals
@@ -1269,7 +1280,7 @@ class psbtObject(psbtProxy):
             self.active_multisig = candidates[0]
         else:
             # don't want to guess M if not needed, but we need it
-            M, N = self.guess_M_of_N()
+            af, M, N = self.guess_M_of_N()
 
             if not N:
                 # not multisig, but we can still verify:
@@ -1291,7 +1302,7 @@ class psbtObject(psbtProxy):
 
         if not self.active_multisig:
             # Maybe create wallet, for today, forever, or fail, etc.
-            proposed, need_approval = MultisigWallet.import_from_psbt(M, N, self.xpubs)
+            proposed, need_approval = MultisigWallet.import_from_psbt(af, M, N, self.xpubs)
             if need_approval:
                 # do a complex UX sequence, which lets them save new wallet
                 from glob import hsm_active
