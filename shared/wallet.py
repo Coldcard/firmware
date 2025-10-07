@@ -156,7 +156,7 @@ class MiniScriptWallet(WalletABC):
     # optional: user can short-circuit many checks (system wide, one power-cycle only)
     disable_checks = False
 
-    def __init__(self, name, desc_tmplt, keys_info, af, ik_u,
+    def __init__(self, name, desc_tmplt, keys_info, af, ik_u=None,
                  desc=None, m_n=None, bip67=None, chain_type=None):
 
         assert 1 <= len(name) <= 20, "name len"
@@ -167,7 +167,7 @@ class MiniScriptWallet(WalletABC):
         self.keys_info = keys_info
         self.desc = desc
         self.addr_fmt = af
-        # internal key unspendable
+        # internal key unspendable (taproot only)
         self.ik_u = ik_u
         # below are basic multisig meta
         # if m_n is not None, we are dealing with basic multisig
@@ -175,6 +175,35 @@ class MiniScriptWallet(WalletABC):
         self.bip67 = bip67
         # at this point all the keys are already validated
         self.chain_type = chain_type or chains.current_chain().ctype
+
+    def serialize(self):
+        opts = {"af": self.addr_fmt}
+        if self.ik_u is not None:
+            opts['ik_u'] = self.ik_u
+        if self.chain_type != "BTC":
+            opts['ct'] = self.chain_type
+        if self.m_n:
+            opts['m_n'] = self.m_n
+            opts['b67'] = self.bip67
+
+        return self.name, self.desc_tmplt, self.keys_info, opts
+
+    @classmethod
+    def deserialize(cls, c, idx=-1):
+        # after deserialization - we lack loaded descriptor object
+        # we do not need it for everything
+        name, desc_tmplt, keys_info, opts = c
+
+        af = opts.get("af")
+        ct = opts.get("ct", "BTC")
+        ik_u = opts.get("ik_u", False)
+        m_n = opts.get("m_n", None)
+        b67 = opts.get("b67", None)
+
+        rv = cls(name, desc_tmplt, keys_info, af, ik_u, m_n=m_n,
+                 bip67=b67, chain_type=ct)
+        rv.storage_idx = idx
+        return rv
 
     @property
     def chain(self):
@@ -266,20 +295,6 @@ class MiniScriptWallet(WalletABC):
             settings.save()  # actual write
         except IndexError: pass
         self.storage_idx = -1
-
-    def serialize(self):
-        return (self.name, self.desc_tmplt, self.keys_info, self.addr_fmt,
-                self.ik_u, self.m_n, self.bip67, self.chain_type)
-
-    @classmethod
-    def deserialize(cls, c, idx=-1):
-        # after deserialization - we lack loaded descriptor object
-        # we do not need it for everything
-        name, desc_tmplt, keys_info, af, ik_u, m_n, b67, ct = c
-        rv = cls(name, desc_tmplt, keys_info, af, ik_u, m_n=m_n,
-                 bip67=b67, chain_type=ct)
-        rv.storage_idx = idx
-        return rv
 
     @classmethod
     def get_trust_policy(cls):
@@ -433,7 +448,6 @@ class MiniScriptWallet(WalletABC):
 
             if self.name in glob.DESC_CACHE:
                 # loaded descriptor from cache
-                print("to_descriptor CACHE")
                 self.desc = glob.DESC_CACHE[self.name]
             else:
                 print("loading... policy --> descriptor !!!")
