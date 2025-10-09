@@ -18,7 +18,8 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 - New Feature: Internal descriptor cache speeding up sequential operation with miniscript wallets. 
   To take full advantage of the feature work with miniscript wallets sequentially. First, do all operations 
   needed with `wallet1` before changing to `wallet2`.
-- New Feature: Add ability to import/export [BIP-388](https://github.com/bitcoin/bips/blob/master/bip-0388.mediawiki) Wallet Policies
+- New Feature: Add ability to import/export [BIP-388](https://github.com/bitcoin/bips/blob/master/bip-0388.mediawiki) Wallet Policies.
+  BIP-388 policies are now also used as our wallets serialization format, which optimized our setting storage.
 - New Feature: Sign with specific miniscript wallet. `Settings -> Miniscript -> <name> -> Sign PSBT`
 - New Feature: Miniscript wallet name can be specified for `sign` USB command
 - Change: Everything is miniscript now. To import multisig wallets go to `Settings -> Miniscript`
