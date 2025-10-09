@@ -115,23 +115,6 @@ def parse_desc_str(string):
     return res
 
 
-def multisig_descriptor_template(xpub, path, xfp, addr_fmt):
-    key_exp = "[%s%s]%s/0/*" % (xfp.lower(), path.replace("m", ''), xpub)
-    if addr_fmt == AF_P2WSH_P2SH:
-        descriptor_template = "sh(wsh(sortedmulti(M,%s,...)))"
-    elif addr_fmt == AF_P2WSH:
-        descriptor_template = "wsh(sortedmulti(M,%s,...))"
-    elif addr_fmt == AF_P2SH:
-        descriptor_template = "sh(sortedmulti(M,%s,...))"
-    elif addr_fmt == AF_P2TR:
-        # provably unspendable BIP-0341
-        descriptor_template = "tr(" + PROVABLY_UNSPENDABLE + ",sortedmulti_a(M,%s,...))"
-    else:
-        return None
-    descriptor_template = descriptor_template % key_exp
-    return descriptor_template
-
-
 class Descriptor:
     __slots__ = (
         "keys",

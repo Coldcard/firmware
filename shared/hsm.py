@@ -221,7 +221,7 @@ class ApprovalRule:
 
         # if specified, 'wallet' must be an existing miniscript wallet's name
         if self.wallet and self.wallet != '1':
-            msc_names = [msc.name for msc in MiniScriptWallet.get_all()]
+            msc_names = [msc.name for msc in MiniScriptWallet.iter_wallets()]
             assert self.wallet in msc_names, "unknown wallet: " + self.wallet
 
         # patterns must be valid
@@ -977,7 +977,7 @@ def hsm_status_report():
             rv['approval_wait'] = True
 
         rv['users'] = Users.list()
-        rv['wallets'] = [msc.name for msc in MiniScriptWallet.get_all()]
+        rv['wallets'] = [msc.name for msc in MiniScriptWallet.iter_wallets()]
 
     rv['chain'] = settings.get('chain', 'BTC')
 

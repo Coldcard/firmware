@@ -644,7 +644,7 @@ async def kt_send_psbt(psbt, psbt_len):
     # all_xfps is set, no need to list one master xfp more than once - assuming CC can sign it all
     assert psbt.active_miniscript
     ms = psbt.active_miniscript
-    all_xfps = {x for x,*p in psbt.active_miniscript.to_descriptor().xfp_paths(skip_unspend_ik=True)}
+    all_xfps = {x for x,*p in ms.to_descriptor().xfp_paths(skip_unspend_ik=True)}
 
     need = [x for x in psbt.miniscript_xfps_needed() if x in all_xfps]
     # maybe it's not really a PSBT where we know the other signers? might be

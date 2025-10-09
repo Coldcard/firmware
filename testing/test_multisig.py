@@ -2511,7 +2511,7 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
     import_ms_wallet(2, 2, name=on_regtest, addr_fmt="p2wsh", accept=True, chain="XRT")
     res = settings_get("miniscript")
     assert len(res) == 1
-    assert res[0][-1] == "XRT"
+    assert res[0][-1]["ct"] == "XRT"
 
     goto_home()
     pick_menu_item("Settings")

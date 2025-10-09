@@ -1402,7 +1402,7 @@ def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_se
     ms = get_setting('miniscript')
     if multisig:
         assert len(ms) == 1
-        assert ms[0][-3] == [15,15]
+        assert ms[0][-1]["m_n"] == [15,15]
     else:
         assert ms is None
 

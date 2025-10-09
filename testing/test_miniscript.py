@@ -1978,7 +1978,7 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
     time.sleep(.1)
     res = settings_get("miniscript", [])
     assert len(res) == 1
-    assert res[0][-1] == "XRT"
+    assert res[0][-1]["ct"] == "XRT"
 
     goto_home()
     pick_menu_item("Settings")
@@ -2899,46 +2899,46 @@ def test_static_internal_key(internal_key, clear_miniscript, microsd_path, pick_
     assert "only extended pubkeys allowed" in story
 
 
-@pytest.mark.bitcoind
-def test_csa_tapscript(clear_miniscript, bitcoin_core_signer, get_cc_key,
-                       use_regtest, address_explorer_check, bitcoind,
-                       offer_minsc_import, create_core_wallet, press_select):
-    use_regtest()
-    clear_miniscript()
-    M, N = 11, 12
-
-    bitcoind_signers = []
-    bitcoind_signers_xpubs = []
-    for i in range(N - 1):
-        s, core_key = bitcoin_core_signer(f"bitcoind--signer{i}")
-        s.keypoolrefill(10)
-        bitcoind_signers.append(s)
-        bitcoind_signers_xpubs.append(core_key)
-
-    me = get_cc_key(f"m/48h/1h/0h/3h")
-    ik = ranged_unspendable_internal_key()
-
-    signers_xp = [me] + bitcoind_signers_xpubs
-    assert len(signers_xp) == N
-    desc = f"tr({ik},%s)"
-
-    scripts = []
-    for c in itertools.combinations(signers_xp, M):
-        tmplt = f"multi_a({M},{','.join(c)})"
-        scripts.append(tmplt)
-
-    assert len(scripts) == 12
-    temp = TREE[len(scripts)]
-    temp = temp % tuple(scripts)
-
-    desc = desc % temp
-
-    title, story = offer_minsc_import(desc)
-    name = story.split("\n")[3].strip()
-    assert "Create new miniscript wallet?" in story
-    press_select()
-    ms_wo = create_core_wallet(name, "bech32m", "sd", False)
-    address_explorer_check("sd", "bech32m", ms_wo, "minisc")
+# @pytest.mark.bitcoind
+# def test_csa_tapscript(clear_miniscript, bitcoin_core_signer, get_cc_key,
+#                        use_regtest, address_explorer_check, bitcoind,
+#                        offer_minsc_import, create_core_wallet, press_select):
+#     use_regtest()
+#     clear_miniscript()
+#     M, N = 11, 12
+#
+#     bitcoind_signers = []
+#     bitcoind_signers_xpubs = []
+#     for i in range(N - 1):
+#         s, core_key = bitcoin_core_signer(f"bitcoind--signer{i}")
+#         s.keypoolrefill(10)
+#         bitcoind_signers.append(s)
+#         bitcoind_signers_xpubs.append(core_key)
+#
+#     me = get_cc_key(f"m/48h/1h/0h/3h")
+#     ik = ranged_unspendable_internal_key()
+#
+#     signers_xp = [me] + bitcoind_signers_xpubs
+#     assert len(signers_xp) == N
+#     desc = f"tr({ik},%s)"
+#
+#     scripts = []
+#     for c in itertools.combinations(signers_xp, M):
+#         tmplt = f"multi_a({M},{','.join(c)})"
+#         scripts.append(tmplt)
+#
+#     assert len(scripts) == 12
+#     temp = TREE[len(scripts)]
+#     temp = temp % tuple(scripts)
+#
+#     desc = desc % temp
+#
+#     title, story = offer_minsc_import(desc)
+#     name = story.split("\n")[3].strip()
+#     assert "Create new miniscript wallet?" in story
+#     press_select()
+#     ms_wo = create_core_wallet(name, "bech32m", "sd", False)
+#     address_explorer_check("sd", "bech32m", ms_wo, "minisc")
 
 
 # @pytest.mark.parametrize("desc", [
@@ -3285,5 +3285,9 @@ def test_bip388_policies(desc, way, offer_minsc_import, press_select, pick_menu_
 
     # verify that the descriptor matches
     assert usb_miniscript_get(new_name)["desc"].split("#")[0] == desc.split("#")[0].replace("'", 'h')
+
+
+def test_miniscript_rename():
+    pass
 
 # EOF

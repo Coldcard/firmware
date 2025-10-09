@@ -219,11 +219,6 @@ class MiniScriptWallet(WalletABC):
         return bool(settings.get(cls.skey, []))
 
     @classmethod
-    def get_all(cls):
-        # return them all, as a generator
-        return cls.iter_wallets()
-
-    @classmethod
     def iter_wallets(cls, name=None, addr_fmts=None):
         # - this is only place we should be searching this list, please!!
         lst = settings.get(cls.skey, [])
@@ -237,18 +232,6 @@ class MiniScriptWallet(WalletABC):
                 continue
 
             yield w
-
-    @classmethod
-    def get_by_idx(cls, nth):
-        # instance from index number (used in menu)
-        lst = settings.get(cls.skey, [])
-        try:
-            obj = lst[nth]
-        except IndexError:
-            return None
-
-        x = cls.deserialize(obj, nth)
-        return x
 
     def commit(self):
         # data to save
@@ -374,10 +357,30 @@ class MiniScriptWallet(WalletABC):
 
         return branch, idx
 
-    def get_my_deriv(self, my_xfp):
-        # lowest public key from lexicographically sorted list is at index 0
-        mine = self.xpubs_from_xfp(my_xfp)
-        return mine[0].origin.str_derivation()
+    def get_my_deriv(self):
+        # returns derivation path of the first "our" key in keys info vector
+        # used for signed exports only
+        str_xfp = xfp2str(settings.get('xfp'))
+        for ek in self.keys_info:
+            orig_end = ek.find("]")
+            if orig_end == -1:
+                continue  # key without origin
+
+            orig = ek[1:orig_end]
+            fp_end = orig.find("/")
+            if fp_end == -1:
+                master_fp = orig
+                fp_end = len(orig)
+            else:
+                master_fp = orig[:fp_end]
+
+            if master_fp.upper() == str_xfp:
+                return "m" + orig[fp_end:]
+
+        # didn't find any origin info
+        # BUT we know that our key is included (verified on import)
+        # therefore our key root key
+        return "m"
 
     def derive_desc(self, xfp_paths):
         branch, idx = self.subderivation_indexes(xfp_paths)
@@ -752,12 +755,8 @@ class MiniScriptWallet(WalletABC):
                     fp.write(res)
 
                 if sign:
-                    # TODO need function to get my xpub from just policy (get_my_deriv)
-                    # as we have not loaded descriptor to this point
-                    # but now we're about to do it, just because of signed export
-
                     # sign with my key at the same path as first address of export
-                    derive = self.get_my_deriv(settings.get('xfp')) + "/0/0"
+                    derive = self.get_my_deriv() + "/0/0"
                     from msgsign import write_sig_file
                     h = ngu.hash.sha256s(res.encode())
                     sig_nice = write_sig_file([(h, fname)], derive, AF_CLASSIC)
@@ -869,7 +868,7 @@ class MiniScriptWallet(WalletABC):
                                           "derivation":key.origin.str_derivation()}
 
             # sign export with first p2pkh key
-            return ujson.dumps(rv), self.get_my_deriv(settings.get('xfp')) + "/0/0", AF_CLASSIC
+            return ujson.dumps(rv), self.get_my_deriv() + "/0/0", AF_CLASSIC
 
         fname = '%s-%s.%s' % ("el", self.name.replace(" ", "_"), "json")
         await export_contents('Electrum multisig wallet', doit,
@@ -1016,15 +1015,14 @@ async def miniscript_sign_psbt(a, b, item):
 
 async def make_miniscript_wallet_menu(menu, label, item):
     # details, actions on single multisig wallet
-    msc = MiniScriptWallet.get_by_idx(item.arg)
-    if not msc: return
+    idx, msc = item.arg
 
     rv = [
         MenuItem('"%s"' % msc.name, f=miniscript_wallet_detail, arg=msc),
         MenuItem('View Details', f=miniscript_wallet_detail, arg=msc),
         MenuItem('Descriptors', menu=miniscript_wallet_descriptors, arg=msc),
         MenuItem('Sign PSBT', f=miniscript_sign_psbt, arg=msc),
-        MenuItem('Rename', f=miniscript_wallet_rename, arg=(item.arg, msc)),
+        MenuItem('Rename', f=miniscript_wallet_rename, arg=(idx, msc)),
         MenuItem('Delete', f=miniscript_wallet_delete, arg=msc),
     ]
     if msc.m_n and msc.bip67:
@@ -1043,10 +1041,8 @@ class MiniscriptMenu(MenuSystem):
         from multisig import create_ms_step1
 
         rv = []
-        for msc in MiniScriptWallet.get_all():
-            rv.append(MenuItem('%s' % msc.name,
-                               menu=make_miniscript_wallet_menu,
-                               arg=msc.storage_idx))
+        for i, msc in enumerate(MiniScriptWallet.iter_wallets()):
+            rv.append(MenuItem('%s' % msc.name, menu=make_miniscript_wallet_menu, arg=(i,msc)))
 
         rv = rv or [MenuItem("(none setup yet)")]
 

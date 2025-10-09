@@ -194,7 +194,7 @@ be needed for different systems.
     if MiniScriptWallet.exists():
         yield '\n# Your Miniscript Wallets\n\n'
 
-        for msc in MiniScriptWallet.get_all():
+        for msc in MiniScriptWallet.iter_wallets():
             yield msc.to_string() + "\n---\n"
 
 
