@@ -7,7 +7,7 @@ import ngu, ujson, uio, chains, ure, version, stash
 from binascii import hexlify as b2a_hex
 from serializations import ser_string
 from desc_utils import bip388_wallet_policy_to_descriptor, append_checksum, bip388_validate_policy, Key
-from public_constants import AF_P2TR, AF_P2WSH, AF_CLASSIC, AF_P2SH
+from public_constants import AF_P2TR, AF_P2WSH, AF_CLASSIC, AF_P2SH, AF_P2WSH_P2SH
 from menu import MenuSystem, MenuItem, start_chooser
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, OK, X, ux_enter_bip32_index
 from files import CardSlot, CardMissingError, needs_microsd
@@ -192,7 +192,13 @@ class MiniScriptWallet(WalletABC):
     def deserialize(cls, c, idx=-1):
         # after deserialization - we lack loaded descriptor object
         # we do not need it for everything
-        name, desc_tmplt, keys_info, opts = c
+        needs_migration = False
+        if len(c) == 4:
+            name, desc_tmplt, keys_info, opts = c
+        else:
+            # needs migration
+            name, desc_tmplt, keys_info, opts = miniscript_640_migrate(c)
+            needs_migration = True
 
         af = opts.get("af")
         ct = opts.get("ct", "BTC")
@@ -203,7 +209,7 @@ class MiniScriptWallet(WalletABC):
         rv = cls(name, desc_tmplt, keys_info, af, ik_u, m_n=m_n,
                  bip67=b67, chain_type=ct)
         rv.storage_idx = idx
-        return rv
+        return rv, needs_migration
 
     @property
     def chain(self):
@@ -222,8 +228,17 @@ class MiniScriptWallet(WalletABC):
     def iter_wallets(cls, name=None, addr_fmts=None):
         # - this is only place we should be searching this list, please!!
         lst = settings.get(cls.skey, [])
-        for idx, rec in enumerate(lst):
-            w = cls.deserialize(rec, idx)
+        for idx in range(len(lst)):
+            w, migrate = cls.deserialize(lst[idx], idx)
+            if migrate:
+                if idx == 0:
+                    from glob import dis
+                    dis.fullscreen("Migrating...")
+
+                lst[idx] = w.serialize()
+                settings.set("miniscript", lst)
+                settings.save()
+
             if w.key_chain.ctype != chains.current_key_chain().ctype:
                 continue
             if name and name != w.name:
@@ -1073,6 +1088,18 @@ async def make_miniscript_menu(*a):
         await ux_show_story("You must have wallet seed before creating miniscript wallets.")
         return
 
+    ms = settings.get("multisig")
+    if ms:
+        # in version 6.4.0 EDGE
+        # MultisigWallet was removed & multisigs are now part of miniscript
+        # upon entry to Miniscript menu - multisig migration if performed
+        migrated = await multisig_640_migration(ms)
+        msc = settings.get("miniscript", [])
+        settings.set("miniscript", msc + migrated)
+        settings.remove_key("multisig")
+        settings.save()
+
+
     rv = MiniscriptMenu.construct()
     return MiniscriptMenu(rv)
 
@@ -1220,5 +1247,176 @@ P2TR:
     from export import export_contents
     await export_contents(label, lambda: render(acct), fname_pattern,
                           force_bbqr=True, is_json=True)
+
+## MIGRATION ===
+
+def miniscript_640_migrate(old_serialization):
+    from ubinascii import unhexlify as a2b_hex
+    from ucollections import OrderedDict
+    from desc_utils import PROVABLY_UNSPENDABLE
+
+    def remove_subderivation(str_key):
+        # find the end of origin derivation
+        orig_der_end = str_key.find(']')
+        if orig_der_end != -1:
+            orig_der = str_key[:orig_der_end + 1]
+            rest = str_key[orig_der_end + 1:]
+        else:
+            orig_der = ""
+            rest = str_key
+
+        rest_split = rest.split("/")
+        subder = "/%s" % "/".join(rest_split[1:])
+        return orig_der + rest_split[0], subder
+
+    # last 4 members are irrelevant
+    name, ct, af, key, keys, policy, _, _, _, _ = old_serialization
+
+    # standardize policy according to BIP-388
+    policy = policy.replace("/<0;1>/*", "/**")
+
+    # P2TR problem - policy here does not contain internal key (key)
+    # therefore numbering is wrong - needs to be x+1 to make place for internal key
+    # problem - keys can be duplicates with just subderivation different
+
+    # deduplicate keys to become origin keys
+    keys = list(OrderedDict([(remove_subderivation(k)[0], None) for k in keys]).keys())
+
+    if key:
+        # taproot internal key
+        # will always be @0
+        # need to check if this key is not already in policy somewhere
+        if "unspend(" in key:
+            # this is no longer supported - need to convert to xpub
+            end = key.find(")")
+            chain_code_str = key[8:end]
+            ik_u = True
+            ik_subder = key[end+1:]
+            n = ngu.hdnode.HDNode()
+            n.from_chaincode_pubkey(a2b_hex(chain_code_str), PROVABLY_UNSPENDABLE)
+            ik_key = chains.current_chain().serialize_public(n)
+        else:
+            ik_key, ik_subder = remove_subderivation(key)
+            ik_u = Key.from_string(ik_key).is_provably_unspendable
+
+        if ik_subder == "/<0;1>/*":
+            ik_subder = "/**"
+
+        # internal key can be used in script tree & can already be at its correct position
+        # i.e. first in the keys vector
+        ik_pos_incorrect = int(ik_key != keys[0])
+
+    keys_info = []
+    for i in range(len(keys) - 1, -1, -1):
+        ph = "@%d" % i
+        assert policy.find(ph) != -1
+
+        res_key = keys[i]
+
+        if af == AF_P2TR:
+            # to make space for internal key in policy we need to bump placeholder
+            if res_key == ik_key:
+                # this origin key is the same as internal key
+                # so it is @0
+                policy = policy.replace(ph, "@0")
+                continue  # no need to insert - will do later
+            else:
+                policy = policy.replace(ph, "@%d" % (i + ik_pos_incorrect))
+
+        keys_info.insert(0, res_key)
+
+    new_opts = {"af": af}
+    # policy in old version lacks script type
+    if af == AF_P2TR:
+        # handle internal key
+        keys_info.insert(0, ik_key)
+        desc_tmplt = "tr(@0%s,%s)" % (ik_subder, policy)
+        new_opts["ik_u"] = ik_u
+
+    elif af == AF_P2WSH:
+        desc_tmplt = "wsh(" + policy + ")"
+    elif af == AF_P2WSH_P2SH:
+        desc_tmplt = "sh(wsh(" + policy + "))"
+    else:
+        desc_tmplt = "sh(" + policy + ")"
+
+    if ct != "BTC":
+        new_opts['ct'] = ct
+
+    return name, desc_tmplt, keys_info, new_opts
+
+
+async def multisig_640_migration(multisig_wallets):
+    # all MultisigWallet needs to be converted to MiniscriptWallet
+    # this function just returns new list of migrated multisig wallets without
+    # changing any persisted settings data
+    from glob import dis
+    dis.fullscreen("Migrating...")
+    total = len(multisig_wallets)
+
+    migrated_multi = []
+    # first element is always name, whether migrated or not
+    taken_names = [tup[0] for tup in settings.get("miniscript", [])]
+    for i, ms in enumerate(multisig_wallets):
+        bip67 = 1  # default enabled, requires 5-element serialization to disable
+        if len(ms) == 5:
+            bip67 = ms[-1]
+            ms = ms[:-1]
+
+        name, m_of_n, xpubs, opts = ms
+        ct = opts.get('ch', 'BTC')
+        af = opts.get('ft', AF_P2SH)
+
+        if len(xpubs[0]) == 2:
+            common_prefix = opts.get('pp', None)
+            if not common_prefix:
+                common_prefix = 'm'
+            common_prefix = common_prefix.replace("'", "h")
+            xpubs = [(a, common_prefix, b) for a, b in xpubs]
+        else:
+            # new format decompression
+            if 'd' in opts:
+                derivs = [p.replace("'", "h") for p in opts.get('d')]
+                xpubs = [(a, derivs[b], c) for a, b, c in xpubs]
+
+        keys_info = []
+        for mfp, der, ek in xpubs:
+            xfp = xfp2str(mfp).lower()
+            if der == "m":
+                keys_info.append("[%s]%s" % (xfp, ek))
+            else:
+                keys_info.append("[%s/%s]%s" % (xfp, der.replace("m/", ""), ek))
+
+        ms_type = "sortedmulti" if bip67 else "multi"
+        if af == AF_P2WSH:
+            desc_tmplt = "wsh(" + ms_type + "(%s))"
+        elif af == AF_P2WSH_P2SH:
+            desc_tmplt = "sh(wsh(" + ms_type + "(%s)))"
+        else:
+            desc_tmplt = "sh(" + ms_type + "(%s))"
+
+        M, N = m_of_n
+        inner = "%d,%s" % (M, ",".join(["@%d/**" % i for i in range(M)]))
+        desc_tmplt = desc_tmplt % inner
+
+        new_opts = {
+            "af": af,
+            "m_n": (M, N),
+            "b67": bip67
+        }
+        if ct != "BTC":
+            new_opts['ct'] = ct
+
+        if name in taken_names:
+            # name collision with miniscript
+            name = name + "1"
+            if len(name) > 20:
+                # issue
+                name = name[:15] + "mig1"
+
+        migrated_multi.append((name, desc_tmplt, keys_info, new_opts))
+        dis.progress_sofar(i+1, total)
+
+    return migrated_multi
 
 # EOF
