@@ -410,8 +410,12 @@ class PinAttempt:
         # Main secret has changed: reset the settings+their key,
         # and capture xfp/xpub
         # if None is provided as raw_secret -> restore to main seed
+        import glob
         from glob import settings, dis
         stash.SensitiveValues.clear_cache()
+
+        # invalidate descriptor cache - upon new secret load
+        glob.DESC_CACHE = {}
 
         bypass_tmp = False
         stash.bip39_passphrase = bool(bip39pw)
