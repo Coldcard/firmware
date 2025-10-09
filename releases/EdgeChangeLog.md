@@ -13,6 +13,11 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
+- New Feature: Key Teleport
+- New Feature: Spending Policy for Miniscript Wallets
+- New Feature: Internal descriptor cache speeding up sequential operation with miniscript wallets. 
+  To take full advantage of the feature work with miniscript wallets sequentially. First, do all operations 
+  needed with `wallet1` before changing to `wallet2`.
 - New Feature: Add ability to import/export [BIP-388](https://github.com/bitcoin/bips/blob/master/bip-0388.mediawiki) Wallet Policies
 - New Feature: Sign with specific miniscript wallet. `Settings -> Miniscript -> <name> -> Sign PSBT`
 - New Feature: Miniscript wallet name can be specified for `sign` USB command
@@ -20,6 +25,8 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 - Enhancement: Slightly faster HW accelerated tagged hash
 - Enhancement: PSBT class optimizations. Ability to sign bigger txn.
 - Bugfix: Disjoint derivation in miniscript wallets
+- Change: Deprecation of legacy mulitsig import format. Ability to import/export in this format was removed.
+  Use descriptors or BIP-388 wallet  policies
 
 # Mk4 Specific Changes
 
