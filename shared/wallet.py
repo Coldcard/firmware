@@ -24,7 +24,7 @@ TRUST_OFFER = const(1)
 TRUST_PSBT = const(2)
 
 MAX_BIP32_IDX = (2 ** 31) - 1
-
+MAX_NAME_LEN = 20
 
 class WalletOutOfSpace(RuntimeError):
     pass
@@ -159,7 +159,7 @@ class MiniScriptWallet(WalletABC):
     def __init__(self, name, desc_tmplt, keys_info, af, ik_u=None,
                  desc=None, m_n=None, bip67=None, chain_type=None):
 
-        assert 1 <= len(name) <= 20, "name len"
+        assert 1 <= len(name) <= MAX_NAME_LEN, "name len"
 
         self.storage_idx = -1
         self.name = name
@@ -915,7 +915,7 @@ async def miniscript_wallet_rename(menu, label, item):
 
     idx, msc = item.arg
     new_name = await ux_input_text(msc.name, confirm_exit=False,
-                                   min_len=1, max_len=20)  # TODO should be a constant
+                                   min_len=1, max_len=MAX_NAME_LEN)
 
     if not new_name:
         return
@@ -1410,7 +1410,7 @@ async def multisig_640_migration(multisig_wallets):
         if name in taken_names:
             # name collision with miniscript
             name = name + "1"
-            if len(name) > 20:
+            if len(name) > MAX_NAME_LEN:
                 # issue
                 name = name[:15] + "mig1"
 

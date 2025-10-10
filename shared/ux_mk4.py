@@ -283,7 +283,7 @@ async def ux_input_text(pw, confirm_exit=True, hex_only=False, max_len=100, min_
         ch = await press.wait()
         if ch == 'y':
             if len(pw) < min_len:
-                ch = await ux_show_story('Need %d characters at least. Press OK '
+                ch = await ux_show_story('Need %d character(s) at least. Press OK '
                                          'to continue X to exit.' % min_len, escape="xy",
                                          strict_escape=True)
                 if ch == "x": return

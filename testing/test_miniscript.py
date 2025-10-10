@@ -6,7 +6,7 @@ import pytest, json, time, itertools, struct, random, os, base64
 from ckcc.protocol import CCProtocolPacker
 from constants import AF_P2TR
 from psbt import BasicPSBT
-from charcodes import KEY_QR, KEY_RIGHT, KEY_CANCEL
+from charcodes import KEY_QR, KEY_RIGHT, KEY_CANCEL, KEY_DELETE
 from bbqr import split_qrs
 from bip32 import BIP32Node
 
@@ -3289,7 +3289,58 @@ def test_bip388_policies(desc, way, offer_minsc_import, press_select, pick_menu_
     assert usb_miniscript_get(new_name)["desc"].split("#")[0] == desc.split("#")[0].replace("'", 'h')
 
 
-def test_miniscript_rename():
-    pass
+def test_miniscript_rename(offer_minsc_import, clear_miniscript, press_select, goto_home,
+                           pick_menu_item, enter_complex, cap_menu, cap_screen, is_q1,
+                           need_keypress, press_cancel):
+    clear_miniscript()
+    name = "old_name"
+    title, story = offer_minsc_import(json.dumps(dict(name=name, desc=CHANGE_BASED_DESCS[0])))
+    assert "old_name" in story
+    assert "Create new miniscript wallet?" in story
+    press_select()
+
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Miniscript")
+    pick_menu_item(name)
+    pick_menu_item("Rename")
+    if is_q1:
+        # old name is filled in input field
+        # same for Mk4, just not possible with cap_screen, or cap_story
+        time.sleep(.1)
+        scr = cap_screen()
+        assert name in scr
+
+    new_name = 25 * "0"
+    # first delete old one
+    for _ in range(len(name) - (0 if is_q1 else 1)):
+        need_keypress(KEY_DELETE if is_q1 else "x")
+
+    if is_q1:
+        # attempt to use empty string as a name
+        # on Mk4 it is not possible to not have at least one char
+        press_select()
+        time.sleep(.1)
+        scr = cap_screen()
+        assert "Need 1" in scr
+
+    # it is not possible to input more than 20 characters
+    enter_complex(new_name, apply=False, b39pass=False)
+
+    real_name = new_name[:20]
+
+    # specific wallet menu has changed
+    time.sleep(.1)
+    m = cap_menu()
+    assert name not in m
+    assert real_name == m[0]
+
+    # miniscript wallets menu has changed
+    press_cancel()  # one back
+
+    time.sleep(.1)
+    m = cap_menu()
+    assert name not in m
+    assert real_name == m[0]
 
 # EOF
