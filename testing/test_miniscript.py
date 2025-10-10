@@ -3343,4 +3343,19 @@ def test_miniscript_rename(offer_minsc_import, clear_miniscript, press_select, g
     assert name not in m
     assert real_name == m[0]
 
+
+def test_legacy_sh_miniscript(offer_minsc_import, press_select, create_core_wallet, clear_miniscript):
+    clear_miniscript()
+    desc = ("sh("
+            "or_d(pk([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*),"
+            "and_v("
+            "v:pkh([0f056943/84'/1'/9']tpubDC7jGaaSE66QBAcX8TUD3JKWari1zmGH4gNyKZcrfq6NwCofKujNF2kyeVXgKshotxw5Yib8UxLrmmCmWd8NVPVTAL8rGfMdc7TsAKqsy6y/<0;1>/*),"
+            "older(5))))")
+
+    name = "legacy_sh_msc"
+    with pytest.raises(Exception) as e:
+        offer_minsc_import(json.dumps(dict(name=name, desc=desc)))
+
+    assert "Miniscript in legacy P2SH not allowed" in str(e)
+
 # EOF

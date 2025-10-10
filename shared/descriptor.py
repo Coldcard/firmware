@@ -154,6 +154,11 @@ class Descriptor:
             int_nums.add(int)
             c += 1
 
+        if not self.tapscript and not self.is_basic_multisig:
+            # this is non-taproot Miniscript
+            # Miniscript expressions can only be used in wsh or tr.
+            assert self.addr_fmt != AF_P2SH, "Miniscript in legacy P2SH not allowed"
+
         assert ext_nums.isdisjoint(int_nums), "Non-disjoint multipath"
         assert c <= max_signers, "max signers"
 
