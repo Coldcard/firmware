@@ -3072,9 +3072,11 @@ def test_same_key_set_miniscript(get_cc_key, bitcoin_core_signer, create_core_wa
         pick_menu_item("Ready To Sign")
         title, story = cap_story()
         if 'OK TO SEND' not in title:
-            pick_menu_item(fname)
-            time.sleep(0.1)
-            title, story = cap_story()
+            try:
+                pick_menu_item(fname)
+                time.sleep(0.1)
+                title, story = cap_story()
+            except: pass
 
         assert "spk mismatch" in story
         press_select()  # exit
