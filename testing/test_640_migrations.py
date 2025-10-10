@@ -358,8 +358,8 @@ def test_multisig(settings_set, settings_get, try_sign, goto_home, pick_menu_ite
     for x in msc:
         assert len(x) == 4  # new format (name, policy, keys, opts)
 
-    for psbt in [psbt0, psbt1, psbt2, psbt3]:
-        try_sign(base64.b64decode(psbt))
+    for i, psbt in enumerate([ms_psbt0, ms_psbt1, ms_psbt2, ms_psbt3]):
+        try_sign(base64.b64decode(psbt), miniscript="ms%d" % i)
 
 
 def test_multisig_derivation_path_migration(start_sign, end_sign, settings_set, goto_home, clear_miniscript,

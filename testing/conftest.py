@@ -1405,8 +1405,8 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
 def try_sign(start_sign, end_sign):
 
     def doit(filename_or_data, accept=True, finalize=False, accept_ms_import=False,
-             exit_export_loop=True):
-        ip = start_sign(filename_or_data, finalize=finalize)
+             exit_export_loop=True, miniscript=None):
+        ip = start_sign(filename_or_data, finalize=finalize, miniscript=miniscript)
         return ip, end_sign(accept, finalize=finalize, accept_ms_import=accept_ms_import,
                             exit_export_loop=exit_export_loop)
 
