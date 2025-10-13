@@ -1893,7 +1893,7 @@ def test_op_return_signing(op_return_data, dev, fake_txn, bitcoind_d_sim_watch, 
     # tx = cc.finalizepsbt(base64.b64encode(signed).decode())["hex"]
     res = cc.testmempoolaccept([tx])[0]
 
-    if len(op_return_data) > 80:
+    if (bitcoind.version < 300000) and (len(op_return_data) > 80):
         # policy
         assert res["allowed"] is False
         assert res["reject-reason"] == "scriptpubkey"

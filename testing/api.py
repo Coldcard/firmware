@@ -34,6 +34,7 @@ class Bitcoind:
         self.userpass = None
         self.supply_wallet = None
         self.has_bdb = True
+        self.version = None
 
     def start(self):
 
@@ -52,7 +53,8 @@ class Bitcoind:
             [
                 self.bitcoind_path,
                 # needed for newest master
-                # TODO legacy wallet will be deprecated in 29
+                # legacy wallet was deprecated in v29
+                # and removed completely in v30
                 "-deprecatedrpc=create_bdb",
                 "-regtest",
                 f"-datadir={self.datadir}",
@@ -93,12 +95,14 @@ class Bitcoind:
                 pass
 
         assert self.rpc.getblockchaininfo()['chain'] == 'regtest'
-        assert self.rpc.getnetworkinfo()['version'] >= 220000, "we require >= 22.0 of Core"
+        self.version = self.rpc.getnetworkinfo()['version']
+        assert self.version >= 220000, "we require >= 22.0 of Core"
         # not descriptors so that we can do dumpwallet
         try:
             self.supply_wallet = self.create_wallet(wallet_name="supply", descriptors=False)
         except JSONRPCException as e:
-            assert "BDB wallet creation is deprecated" in str(e)
+            assert "BDB wallet creation is deprecated" in str(e) \
+                   or "no longer possible to create a legacy wallet" in str(e) # before v30.0 vs v30.0+
             self.has_bdb = False
             self.supply_wallet = self.create_wallet(wallet_name="supply", descriptors=True)
 
@@ -174,8 +178,9 @@ def match_key(bitcoind, set_master_key, reset_seed_words):
 
         os.unlink(fn)
     except JSONRPCException as e:
-        print(str(e))
-        assert "Only legacy wallets are supported by this command" in str(e)
+        assert "Only legacy wallets are supported by this command" in str(e) \
+               or "Method not found" in str(e)  # v30.0
+
         prv_descs = bitcoind.supply_wallet.listdescriptors(True)  # True --> show private
         prv = prv_descs["descriptors"][0]["desc"].replace("pkh(", "").split("/")[0]
 
