@@ -92,16 +92,6 @@ class ChainsBase:
         return node.serialize(cls.slip132[addr_fmt].pub, False)
 
     @classmethod
-    def deserialize_node(cls, text, addr_fmt):
-        # xpub/xprv to object
-        addr_fmt = AF_CLASSIC if addr_fmt == AF_P2SH else addr_fmt
-        node = ngu.hdnode.HDNode()
-        version = node.deserialize(text)
-        assert (version == cls.slip132[addr_fmt].pub) \
-                or (version == cls.slip132[addr_fmt].priv)
-        return node
-
-    @classmethod
     def script_pubkey(cls, addr_fmt, pubkey=None, script=None):
         digest = None
         if addr_fmt & AFC_SCRIPT:

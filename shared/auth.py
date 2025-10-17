@@ -383,7 +383,7 @@ class ApproveTransaction(UserAuthorizedAction):
             #print('FatalPSBTIssue: ' + exc.args[0])
             return await self.failure(exc.args[0])
         except BaseException as exc:
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
             del self.psbt
             gc.collect()
 
@@ -1460,7 +1460,7 @@ class NewMiniscriptEnrollRequest(UserAuthorizedAction):
             return await self.failure('No space left')
         except BaseException as exc:
             self.failed = "Exception"
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
         finally:
             UserAuthorizedAction.cleanup()  # because no results to store
             if self.bsms_index is not None:

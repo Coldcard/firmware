@@ -3279,4 +3279,45 @@ def test_wrapped_segwit_vs_sh_psbt(clear_miniscript, import_ms_wallet, start_sig
     assert "OK TO SEND?" not in title
     assert "spk mismatch" in story
 
+
+@pytest.mark.parametrize("pms", [0, 1, 2])
+def test_psbt_xpubs_slip132(pms, clear_miniscript, settings_set, start_sign, end_sign, cap_story,
+                            set_seed_words, press_select, offer_minsc_import):
+
+    set_seed_words("cannon budget unknown inhale select virtual absurd chapter inch firm inquiry valley")
+    clear_miniscript()
+    settings_set("pms", pms)
+    # got this PSBT directly form Casa (part of their test suite)
+    psbt = 'cHNidP8BAFMBAAAAAeB18EjWQ2J8kHcbWSOWLZ4XG9TROiK2EqIAn2a5pe+PAAAAAAD9////AS9EAgAAAAAAF6kURuQXuB5Udus5+DWGg/ZP1bK5/5mHAAAAAE8BAkKJ7wM+PJ4JAAAAAOIDwvV5ejMJ0rSyNey8cKbskf4kk73yRvCe8cUEiNhiA4E0IkUc+Xmx5ndEYFbZ9sHkOnOXJWeSjxIN6Go1AMfiEM3yQGYxAAAAAQAAAAAAAABPAQJCie8DR+pdIQAADTESbO7YkHNCwPnMVS6sXbxDRiMahe6Eil9h9RzUx1aiKQL+RIAGlCJ8PIu+x5O+oSdz9kSY/1vbnZxjm99fMRYWuRAS1W01MQAAAAEAAAAAAAAATwECQonvA+HsXFkAAAAAsdd6QnUkHTmhRlBNy/VQOWcZHfdPJSf4tX6LWUj1VWMCYWPVp4pXPi5mg/AC9ZP4sdbLtwyRwvalwzNO6KfrzaIQXbGC5jEAAAABAAAAAAAAAAABAPgBAAAAAAEB+Qe27L6aqLnQJ4sbxsWvQR6mhcNk0Y1DIbARPdJjSd4BAAAAFxYAFCU3KVhnuRLNeMk85jv3FgbOR9PH/f///wIrcgIAAAAAABepFJanKkFHtvWWwbHNOjPR6NP7RPfqhwoxrQUAAAAAF6kU5xbgzlw1qmkUVzLnuWp6lOPJpImHAkgwRQIhAMtF6v3RgUOxfTs9uGKAV6jjFb3TPlcZSrhRqgO8QlQ2AiANiNAi5rEGfAR0cAp8AadOOIlcQFH+X0Pf98Nz0KF5vQEhAqiLyMuk2fePxFgctRiB5QB/jwBA7q/zWtHgUbskc3rQAAAAAAEBICtyAgAAAAAAF6kUlqcqQUe29ZbBsc06M9Ho0/tE9+qHAQQiACDHvYHyHI3mL9BOaF+AgriPtki9tfeDyUhVBytva0dqmgEFaVIhAnJjmbStmsYp7bb8aAN/aN2hKiLk+6SzNpcjJftG5703IQKO3IofMd3egH0WqIpjS/M3iusXuFuAHA06s2eLBSCs+CECpbdrv+ihGqUyCBYU+K7QgpXuMD7sOt0zcltPV04PJz1TriIGAnJjmbStmsYp7bb8aAN/aN2hKiLk+6SzNpcjJftG5703GM3yQGYxAAAAAQAAAAAAAAAAAAAAAAAAACIGAo7cih8x3d6AfRaoimNL8zeK6xe4W4AcDTqzZ4sFIKz4GBLVbTUxAAAAAQAAAAAAAAAAAAAAAAAAACIGAqW3a7/ooRqlMggWFPiu0IKV7jA+7DrdM3JbT1dODyc9GF2xguYxAAAAAQAAAAAAAAAAAAAAAAAAAAAA'
+    bpsbt = base64.b64decode(psbt)
+    start_sign(bpsbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    if pms == 0:
+        # verify only
+        assert "Invalid PSBT" in story
+        assert "XPUBs in PSBT do not match any existing wallet"
+        press_select()
+        title, story = offer_minsc_import("sh(wsh(sortedmulti(2,[cdf24066/49/1/0]Upub5QWbdFzCKPujKUZWDF9mST5iE4VJpaqAqXiS85jYUEaSBtwbFcJwswU2DeWGC6rNBnoKs8rQC9oKGdNTSqKwseHDeaE68YAx2QbgcqX84z6/<0;1>/*,[12d56d35/49/1/0]Upub5QaiwZWYcoJwBw26hGguMiUgmKvqpnzrBR92uVEmmwdAtS5LnpBEUPPavjQgxdakT8MKb96FE2Pn61ogKFT3r6obPZiH8q9Y3NPCFRswq6F/<0;1>/*,[5db182e6/49/1/0]Upub5RiNwTn4EVpghGJx1CWjbt9jfL5d792JRyccZxgtWVhbPDwf1o6A4vK9AyTY4VgGBMvEgM3qHM3mhAKxCiF4idL3nMjdskZNP1hQXD8XPq3/<0;1>/*)))")
+        assert "Create new miniscript wallet" in story
+        assert "P2SH-P2WSH"
+        press_select()
+        start_sign(bpsbt)
+        time.sleep(.1)
+        title, story = cap_story()
+
+    elif pms == 1:
+        # offer import
+        assert "Create new miniscript wallet" in story
+        assert "P2SH-P2WSH"
+        press_select()
+        start_sign(bpsbt)
+        time.sleep(.1)
+        title, story = cap_story()
+
+    assert "Invalid PSBT" not in story
+    res = end_sign(bpsbt)
+    po = BasicPSBT().parse(res)
+    assert len(po.inputs[0].part_sigs) == 1
+
 # EOF

@@ -284,9 +284,12 @@ class Key:
         hint = key_str[0:1].lower()
         if hint == b"x":
             chain_type = "BTC"
-        else:
-            assert hint == b"t", "no slip"
+        elif hint == b"t":
             chain_type = "XTN"
+        else:
+            # slip (ignore any implied address format)
+            chain_type = "BTC" if hint in b"yz" else "XTN"
+
         node = ngu.hdnode.HDNode()
         node.deserialize(key_str)
         try:
