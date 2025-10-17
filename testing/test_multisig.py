@@ -3320,4 +3320,140 @@ def test_psbt_xpubs_slip132(pms, clear_miniscript, settings_set, start_sign, end
     po = BasicPSBT().parse(res)
     assert len(po.inputs[0].part_sigs) == 1
 
+
+@pytest.mark.parametrize("af", ["p2sh", "p2wsh", "p2sh-p2wsh"])
+def test_af_psbt_input_matching(af, clear_miniscript, fake_ms_txn, import_ms_wallet, goto_home,
+                                cap_story, start_sign, end_sign, settings_set):
+    M, N = 3, 5
+    clear_miniscript()
+    goto_home()
+
+    # all is matched properly even without pms_af as we're checking PSBT inputs
+    # assuming PSBT only has own wallets input - matching will always work
+    settings_set("pms", 2)  # Trust PSBT
+
+    # random path that does not match anything
+    path = "m/21/21/21"
+
+    def path_mapper(idx):
+        kk = str_to_path(path)
+        return kk + [0, 0]
+
+    def incl_xpubs(idx, xfp, m, sk):
+        kk = str_to_path(path)
+        bp = pack('<%dI' % (path.count("/") + 1), xfp, *kk)
+        return sk.node.serialize_public(), bp
+
+    keys = import_ms_wallet(M, N, name='psbt_af_match', accept=True, addr_fmt=af,
+                            common=path, do_import=False)[0]
+
+    psbt = fake_ms_txn(1, 2, M, keys, incl_xpubs=incl_xpubs, inp_addr_fmt=af,
+                       outstyles=ADDR_STYLES_MS, change_outputs=[0], path_mapper=path_mapper)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Invalid PSBT" not in story
+    res = end_sign(accept=True)
+    po = BasicPSBT().parse(res)
+    assert len(po.inputs[0].part_sigs) == 1
+
+
+def test_casa_case(clear_miniscript, settings_set, start_sign, end_sign, cap_story, set_seed_words):
+    clear_miniscript()
+    set_seed_words("cannon budget unknown inhale select virtual absurd chapter inch firm inquiry valley")
+    settings_set("pms", 2)  # Trust PSBT
+    # got this PSBT directly form Casa (part of their test suite)
+    psbt = 'cHNidP8BAFMBAAAAAeB18EjWQ2J8kHcbWSOWLZ4XG9TROiK2EqIAn2a5pe+PAAAAAAD9////AS9EAgAAAAAAF6kURuQXuB5Udus5+DWGg/ZP1bK5/5mHAAAAAE8BAkKJ7wM+PJ4JAAAAAOIDwvV5ejMJ0rSyNey8cKbskf4kk73yRvCe8cUEiNhiA4E0IkUc+Xmx5ndEYFbZ9sHkOnOXJWeSjxIN6Go1AMfiEM3yQGYxAAAAAQAAAAAAAABPAQJCie8DR+pdIQAADTESbO7YkHNCwPnMVS6sXbxDRiMahe6Eil9h9RzUx1aiKQL+RIAGlCJ8PIu+x5O+oSdz9kSY/1vbnZxjm99fMRYWuRAS1W01MQAAAAEAAAAAAAAATwECQonvA+HsXFkAAAAAsdd6QnUkHTmhRlBNy/VQOWcZHfdPJSf4tX6LWUj1VWMCYWPVp4pXPi5mg/AC9ZP4sdbLtwyRwvalwzNO6KfrzaIQXbGC5jEAAAABAAAAAAAAAAABAPgBAAAAAAEB+Qe27L6aqLnQJ4sbxsWvQR6mhcNk0Y1DIbARPdJjSd4BAAAAFxYAFCU3KVhnuRLNeMk85jv3FgbOR9PH/f///wIrcgIAAAAAABepFJanKkFHtvWWwbHNOjPR6NP7RPfqhwoxrQUAAAAAF6kU5xbgzlw1qmkUVzLnuWp6lOPJpImHAkgwRQIhAMtF6v3RgUOxfTs9uGKAV6jjFb3TPlcZSrhRqgO8QlQ2AiANiNAi5rEGfAR0cAp8AadOOIlcQFH+X0Pf98Nz0KF5vQEhAqiLyMuk2fePxFgctRiB5QB/jwBA7q/zWtHgUbskc3rQAAAAAAEBICtyAgAAAAAAF6kUlqcqQUe29ZbBsc06M9Ho0/tE9+qHAQQiACDHvYHyHI3mL9BOaF+AgriPtki9tfeDyUhVBytva0dqmgEFaVIhAnJjmbStmsYp7bb8aAN/aN2hKiLk+6SzNpcjJftG5703IQKO3IofMd3egH0WqIpjS/M3iusXuFuAHA06s2eLBSCs+CECpbdrv+ihGqUyCBYU+K7QgpXuMD7sOt0zcltPV04PJz1TriIGAnJjmbStmsYp7bb8aAN/aN2hKiLk+6SzNpcjJftG5703GM3yQGYxAAAAAQAAAAAAAAAAAAAAAAAAACIGAo7cih8x3d6AfRaoimNL8zeK6xe4W4AcDTqzZ4sFIKz4GBLVbTUxAAAAAQAAAAAAAAAAAAAAAAAAACIGAqW3a7/ooRqlMggWFPiu0IKV7jA+7DrdM3JbT1dODyc9GF2xguYxAAAAAQAAAAAAAAAAAAAAAAAAAAAA'
+    start_sign(base64.b64decode(psbt))
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Invalid PSBT" not in story
+    res = end_sign(psbt)
+    po = BasicPSBT().parse(res)
+    assert len(po.inputs[0].part_sigs) == 1
+
+
+@pytest.mark.parametrize("af", ["p2sh", "p2wsh", "p2sh-p2wsh"])
+@pytest.mark.parametrize("psbt_v2", [True, False])
+def test_af_matching_convoluted_case(af, psbt_v2, clear_miniscript, fake_ms_txn, import_ms_wallet,
+                                     goto_home, pick_menu_item, cap_story, press_select, start_sign,
+                                     end_sign, is_q1, settings_set):
+    # merge two multisig PSBTs, each with one input (two inputs after merge)
+    # first input is not ours, but has same M, N
+    # second is ours, but address format matching will be based on first
+    M, N = 3, 5
+    clear_miniscript()
+    goto_home()
+    settings_set("pms", 2)  # TRUST PSBT
+
+    # random path that does not match anything
+    path = "m/21/21/21"
+
+    def path_mapper(idx):
+        kk = str_to_path(path)
+        return kk + [0, 0]
+
+    def incl_xpubs(idx, xfp, m, sk):
+        kk = str_to_path(path)
+        bp = pack('<%dI' % (path.count("/") + 1), xfp, *kk)
+        return sk.node.serialize_public(), bp
+
+    keys0 = import_ms_wallet(M, N, name='00', accept=True, addr_fmt=af,
+                            common=path, do_import=False)[0]
+
+    psbt0 = fake_ms_txn(1, 2, M, keys0, incl_xpubs=incl_xpubs, inp_addr_fmt=af,
+                       outstyles=ADDR_STYLES_MS, change_outputs=[0], path_mapper=path_mapper)
+    # max confusion
+    af1 = {
+        "p2sh": "p2sh-p2wsh",
+        "p2wsh": "p2sh-p2wsh",
+        "p2sh-p2wsh": "p2sh"
+    }[af]
+
+    keys1 = import_ms_wallet(M, N+1, name='11', accept=True, addr_fmt=af1,
+                             common=path, do_import=False)[0]
+
+    # last key is ours - drop it - as if it has our key, we will fail
+    keys1 = keys1[:-1]
+
+    psbt1 = fake_ms_txn(1, 2, M, keys1, incl_xpubs=incl_xpubs, inp_addr_fmt=af1,
+                        outstyles=ADDR_STYLES_MS, change_outputs=[0], path_mapper=path_mapper)
+
+    # now combine above PSBT so that one that we wanna sign (and preserve XPUBS is only the second input)
+    # aka trick our matching algo to be wrong
+    p0 = BasicPSBT().parse(psbt0)
+    p1 = BasicPSBT().parse(psbt1)
+
+    # change to PSBT v2 to not need handle txn
+    p00 = BasicPSBT().parse(p0.to_v2())
+    p11 = BasicPSBT().parse(p1.to_v2())
+
+    combined = BasicPSBT()
+    combined.version = 2
+    combined.txn_version = 2
+
+    combined.xpubs = p0.xpubs
+
+    combined.input_count = p00.input_count + p11.input_count
+    combined.output_count = p00.output_count + p11.output_count
+    combined.fallback_locktime = 0
+
+    # put the one that we will not be signig first (i.e no matching PSBT_XPUBS)
+    combined.inputs = p11.inputs + p00.inputs
+    combined.outputs = p11.outputs + p00.outputs
+
+    # drop xfp paths for input 0 - otherwise failure - correct
+    combined.inputs[0].bip32_paths = {}
+
+    psbt = combined.to_v2() if psbt_v2 else combined.to_v0()
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "(1 warning below)" in story
+    assert "Limited Signing" in story
+    res = end_sign(accept=True)
+    po = BasicPSBT().parse(res)
+    assert len(po.inputs[0].part_sigs) == 0  # considered not ours
+    assert len(po.inputs[1].part_sigs) == 1  # signature added
+
 # EOF

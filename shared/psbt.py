@@ -348,7 +348,6 @@ class psbtProxy:
 
         return parsed_subpaths
 
-
     def parse_non_taproot_subpaths(self, my_xfp, warnings, cosign_xfp=None):
         parsed_subpaths = OrderedDict()
         my_sp_idxs = []
@@ -1383,6 +1382,24 @@ class psbtObject(psbtProxy):
             ks = i.witness_script or i.redeem_script
             if not ks: continue
 
+            rs = i.get(ks)
+            if rs[-1] != OP_CHECKMULTISIG: continue
+
+            if not i.subpaths: continue  # not ours
+
+            for _, val in i.subpaths:
+                if self.my_xfp == self.parse_xfp_path(val)[0]:
+                    break
+            else:
+                # does not contain our key (master xfp) in subpaths
+                continue
+
+            M, N = disassemble_multisig_mn(rs)
+            # does not match PSBT_XPUBS length
+            if N != len(self.xpubs): continue
+
+            assert 1 <= M <= N <= MAX_SIGNERS
+
             # guess address format also - based on scripts provided by PSBT provider
             if i.witness_script and not i.redeem_script:
                 af = AF_P2WSH
@@ -1390,12 +1407,6 @@ class psbtObject(psbtProxy):
                 af = AF_P2WSH_P2SH
             else:
                 af = AF_P2SH
-
-            rs = i.get(ks)
-            if rs[-1] != OP_CHECKMULTISIG: continue
-
-            M, N = disassemble_multisig_mn(rs)
-            assert 1 <= M <= N <= MAX_SIGNERS
 
             return af, M, N
 
