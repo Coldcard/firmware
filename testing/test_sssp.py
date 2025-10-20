@@ -5,7 +5,7 @@
 # run simulator without --eff
 #
 #
-import pytest, time, base64, random
+import pytest, time, base64, random, json
 from psbt import BasicPSBT
 from ckcc.protocol import CCProtocolPacker
 
@@ -264,7 +264,7 @@ def policy_sign(start_sign, end_sign, cap_story, get_last_violation):
         tx_hex = None
         if violation is None:
             assert not get_last_violation()
-            assert len(po.inputs[0].part_sigs) or po.inputs[0].taproot_key_sig
+            assert len(po.inputs[0].part_sigs) or po.inputs[0].taproot_key_sig or len(po.inputs[0].taproot_script_sigs)
             res = wallet.finalizepsbt(base64.b64encode(signed).decode())
             assert res["complete"]
             tx_hex = res["hex"]
@@ -711,4 +711,73 @@ def test_sssp_notes_enable(only_q1, setup_sssp):
 def test_sssp_word_check(setup_sssp):
     # just test menu item works
     setup_sssp("11-11", mag=2, vel='6 blocks (hour)', word_check=True)
+
+@pytest.mark.parametrize("af", ["bech32", "bech32m"])
+def test_miniscript_enforce(af, settings_set, clear_miniscript, goto_home, get_cc_key, bitcoind,
+                            offer_minsc_import, press_select, cap_menu, pick_menu_item, cap_story,
+                            start_sign, end_sign, create_core_wallet, policy_sign, setup_sssp):
+    sequence = 10
+    goto_home()
+    clear_miniscript()
+
+    settings_set("chain", "XRT")
+    policy = "and_v(v:pk(@0/<0;1>/*),older(10))"
+
+    if af == "bech32m":
+        tmplt = f"tr(tpubD6NzVbkrYhZ4XgXS51CV3bhoP5dJeQqPhEyhKPDXBgEs64VdSyAfku99gtDXQzY6HEXY5Dqdw8Qud1fYiyewDmYjKe9gGJeDx7x936ur4Ju/<0;1>/*,{policy})"
+    else:
+        tmplt = f"wsh({policy})"
+
+    cc_key = get_cc_key("m/666h/1h/0h").replace('/<0;1>/*', '')
+    desc = tmplt.replace("@0", cc_key)
+
+    wname = "single_k_mini"
+
+    _, story = offer_minsc_import(json.dumps(dict(name=wname, desc=desc)))
+    assert "Create new miniscript wallet?" in story
+    # do some checks on policy --> helper function to replace keys with letters
+    press_select()
+
+    wo = create_core_wallet(wname, af, "sd", True)
+
+    whitelisted_addr = bitcoind.supply_wallet.getnewaddress()
+    setup_sssp("11-11", mag=10000000, vel='6 blocks (hour)', whitelist=[whitelisted_addr])
+    pick_menu_item("ACTIVATE")
+    press_select()
+
+    unspent = wo.listunspent()
+    assert len(unspent) == 1
+
+    # mines 10 blocks to release script lock (not related to SSSP)
+    bitcoind.supply_wallet.generatetoaddress(sequence, bitcoind.supply_wallet.getnewaddress())
+
+    inp = {"txid": unspent[0]["txid"], "vout": unspent[0]["vout"], "sequence": sequence}
+    psbt_resp = wo.walletcreatefundedpsbt(
+        [inp],
+        [{bitcoind.supply_wallet.getnewaddress(): 5}],  # magnitude violation
+        wo.getblockchaininfo()["blocks"],
+        {"fee_rate": 3, "change_type": af},
+    )
+    psbt = psbt_resp.get("psbt")
+
+    policy_sign(wo, psbt, violation="magnitude")
+
+    psbt_resp = wo.walletcreatefundedpsbt(
+        [inp],
+        [{bitcoind.supply_wallet.getnewaddress(): 0.09}],  # whitelist violation
+        wo.getblockchaininfo()["blocks"],
+        {"fee_rate": 3, "change_type": af},
+    )
+    psbt = psbt_resp.get("psbt")
+    policy_sign(wo, psbt, violation="whitelist")
+
+    psbt_resp = wo.walletcreatefundedpsbt(
+        [inp],
+        [{whitelisted_addr: 0.09}],
+        wo.getblockchaininfo()["blocks"],
+        {"fee_rate": 3, "change_type": af},
+    )
+    psbt = psbt_resp.get("psbt")
+    policy_sign(wo, psbt)  # good - in accordance with policy
+
 # EOF
