@@ -7,6 +7,7 @@ from constants import simulator_fixed_words, simulator_fixed_tprv
 from charcodes import KEY_QR
 from bip32 import BIP32Node
 from mnemonic import Mnemonic
+from ckcc_protocol.protocol import CCProtocolPacker
 
 
 @pytest.fixture
@@ -683,7 +684,6 @@ def test_restore_usb_backup(backup_system, set_seed_words, cap_story, verify_eph
     # clear seed
     unit_test('devtest/clear_seed.py')
 
-    from ckcc_protocol.protocol import CCProtocolPacker
     with open(microsd_path(fname), "rb") as f:
         file_len, sha = dev.upload_file(f.read())
 
@@ -703,6 +703,13 @@ def test_restore_usb_backup(backup_system, set_seed_words, cap_story, verify_eph
     time.sleep(.2)
     mnemonic = mnemonic.split(" ")
 
+    title, story = cap_story()
+    assert f"[{xfp_str}]" == title
+    assert "Above is the master fingerprint of the seed stored in the backup." in story
+    assert f"load backup as {'temporary' if force_tmp else 'master'} seed" in story
+    press_select()
+    time.sleep(.1)
+
     if force_tmp:
         confirm_tmp_seed(seedvault=False)
         verify_ephemeral_secret_ui(mnemonic=mnemonic, xpub=None, seed_vault=False)
@@ -716,6 +723,66 @@ def test_restore_usb_backup(backup_system, set_seed_words, cap_story, verify_eph
         time.sleep(.1)
         _, story = cap_story()
         assert "now reboot" in story
+
+
+@pytest.mark.parametrize('way', ["sd", "usb"])
+@pytest.mark.parametrize('tmp', [True, False])
+def test_refuse_backup(way, tmp, set_seed_words, backup_system, cap_story, unit_test, microsd_path,
+                       dev, press_select, word_menu_entry, X, press_cancel, cap_menu, pick_menu_item,
+                       reset_seed_words, need_keypress, get_secrets, goto_home):
+
+    from test_ephemeral import SEEDVAULT_TEST_DATA
+    xfp_str, encoded_str, mnemonic = SEEDVAULT_TEST_DATA[0]
+    set_seed_words(mnemonic)
+    bk_pw = backup_system()
+
+    time.sleep(.1)
+    title, story = cap_story()
+    fname = story.split("\n\n")[1]
+    press_select()
+
+    if tmp:
+        reset_seed_words()
+        press_cancel()
+    else:
+        unit_test('devtest/clear_seed.py')
+
+    if way == "usb":
+        with open(microsd_path(fname), "rb") as f:
+            file_len, sha = dev.upload_file(f.read())
+
+        dev.send_recv(CCProtocolPacker.restore_backup(file_len, sha), timeout=None)
+        time.sleep(.2)
+        press_select()
+    else:
+        if tmp:
+            pick_menu_item("Advanced/Tools")
+            pick_menu_item("Temporary Seed")
+            need_keypress("4")
+            pick_menu_item("Coldcard Backup")
+        else:
+            pick_menu_item("Import Existing")
+            pick_menu_item("Restore Backup")
+
+        pick_menu_item(fname)
+
+    time.sleep(.2)
+    word_menu_entry(bk_pw, has_checksum=False)
+    time.sleep(.2)
+    title, story = cap_story()
+    assert f"[{xfp_str}]" == title
+    assert "Above is the master fingerprint of the seed stored in the backup." in story
+    assert f"load backup as {'temporary' if tmp else 'master'} seed" in story
+    assert f"Press {X} to abort" in story
+    press_cancel()  # refuse backup
+    time.sleep(.1)
+    if tmp:
+        cur_mnemonic = get_secrets()["mnemonic"]
+        assert mnemonic != cur_mnemonic  # nothing was loaded
+    else:
+        goto_home()
+        assert "New Seed Words" in cap_menu() # nothing was loaded
+
 
 @pytest.mark.parametrize('tmp', [True, False])
 def test_exit_dev_backup(tmp, unit_test, goto_home, pick_menu_item, need_keypress, src_root_dir,

@@ -5,7 +5,7 @@
 import compat7z, stash, ckcc, chains, gc, sys, bip39, uos, ngu
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
-from utils import deserialize_secret
+from utils import deserialize_secret, swab32, xfp2str
 from sffile import SFFile
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, OK, X, ux_input_text
 import version, ujson
@@ -123,7 +123,7 @@ def render_backup_contents(bypass_tmp=False):
 
     return rv.getvalue()
 
-def extract_raw_secret(chain, vals):
+def extract_raw_secret(vals):
     # step1: the private key
     # - prefer raw_secret over other values
     # - TODO: fail back to other values
@@ -138,10 +138,10 @@ def extract_raw_secret(chain, vals):
 
     # verify against xprv value (if we have it)
     if 'xprv' in vals:
-        check_xprv = chain.serialize_private(node)
+        check_xprv = chains.get_chain(vals.get('chain', 'BTC')).serialize_private(node)
         assert check_xprv == vals['xprv'], 'xprv mismatch'
 
-    return raw
+    return raw, node
 
 def extract_long_secret(vals):
     ls = None
@@ -154,7 +154,7 @@ def extract_long_secret(vals):
             pass
     return ls
 
-def restore_from_dict_ll(vals):
+def restore_from_dict_ll(vals, raw):
     # Restore from a dict of values. Already JSON decoded.
     # Need a Reboot on success, return string on failure
     # - low-level version, factored out for better testing
@@ -164,12 +164,6 @@ def restore_from_dict_ll(vals):
 
     #print("Restoring from: %r" % vals)
     chain = chains.get_chain(vals.get('chain', 'BTC'))
-
-    try:
-        raw = extract_raw_secret(chain, vals)
-    except Exception as e:
-        return ('Unable to decode raw_secret and '
-                'restore the seed value!\n\n\n'+str(e)), None
 
     dis.fullscreen("Saving...")
     dis.progress_bar_show(.1)
@@ -283,15 +277,10 @@ def text_bk_parser(contents):
 
     return vals
 
-async def restore_tmp_from_dict_ll(vals):
+async def restore_tmp_from_dict_ll(vals, raw):
     from glob import dis
 
     chain = chains.get_chain(vals.get('chain', 'BTC'))
-    try:
-        raw = extract_raw_secret(chain, vals)
-    except Exception as e:
-        return ('Unable to decode raw_secret and '
-                'restore the seed value!\n\n\n' + str(e))
 
     dis.fullscreen("Applying...")
     from seed import set_ephemeral_seed
@@ -308,11 +297,11 @@ async def restore_tmp_from_dict_ll(vals):
 
     goto_top_menu()
 
-async def restore_from_dict(vals):
+async def restore_from_dict(vals, raw):
     # Restore from a dict of values. Already JSON decoded (ie. dict object).
     # Need a Reboot on success, return string on failure
 
-    prob, need_ftux = restore_from_dict_ll(vals)
+    prob, need_ftux = restore_from_dict_ll(vals, raw)
     if prob: return prob
 
     if need_ftux:
@@ -564,7 +553,6 @@ async def restore_complete(fname_or_fd, temporary=False, words=True, usb=False):
 
         prob = await restore_complete_doit(fname_or_fd, words,
                                            temporary=temporary)
-
         if prob:
             await ux_show_story(prob, title='FAILED')
 
@@ -627,7 +615,8 @@ def check_and_decrypt(fd, password):
                            '\n\nTried:\n\n' + password)
 
 
-async def restore_complete_doit(fname_or_fd, words, file_cleanup=None, temporary=False):
+async def restore_complete_doit(fname_or_fd, words, file_cleanup=None, temporary=False,
+                                ux_confirm=True):
     # Open file, read it, maybe decrypt it; return string if any error
     # - some errors will be shown, None return in that case
     # - no return if successful (due to reboot)
@@ -682,11 +671,29 @@ async def restore_complete_doit(fname_or_fd, words, file_cleanup=None, temporary
     except:
         return "Invalid backup file."
 
+    try:
+        raw, node = extract_raw_secret(vals)
+    except Exception as e:
+        return ('Unable to decode raw_secret and '
+                'restore the seed value!\n\n\n'+str(e))
+
+    if ux_confirm:
+        # check master fingerprint from raw secret that is actually being loaded
+        # master extended public keys can be wrong & is unverified
+        xfp_str = xfp2str(swab32(node.my_fp()))
+        ch = await ux_show_story("Above is the master fingerprint of the seed stored in the backup."
+                                 " Press %s to continue, and load backup as %s seed. Press %s"
+                                 " to abort." % (OK, "temporary" if temporary else "master", X),
+                                 title="["+xfp_str+"]")
+        if ch != "y":
+            await ux_dramatic_pause('Aborted.', 2)
+            return
+
     # this leads to reboot if it works, else errors shown, etc.
     if temporary:
-        return await restore_tmp_from_dict_ll(vals)
+        return await restore_tmp_from_dict_ll(vals, raw)
     else:
-        return await restore_from_dict(vals)
+        return await restore_from_dict(vals, raw)
 
 async def clone_start(*a):
     # Begins cloning process, on target device.
@@ -769,8 +776,9 @@ back and press %s to complete clone process.''' % OK)
         uos.remove(fname)       # ccbk-start.json
 
     # this will reset in successful case, no return (but delme is called)
-    prob = await restore_complete_doit(incoming, words, file_cleanup=delme)
-
+    # no need to ask for UX confirmation during clone - as user can see what is loaded on source CC
+    prob = await restore_complete_doit(incoming, words, file_cleanup=delme,
+                                       ux_confirm=False)
     if prob:
         await ux_show_story(prob, title='FAILED')
 
