@@ -44,7 +44,8 @@ def main_do_over(unit_test, settings_get, settings_set):
     return doit
 
 @pytest.fixture
-def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_story, nfc_block4rf, cap_screen_qr, readback_bbqr):
+def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_story, nfc_block4rf,
+                 cap_screen_qr, readback_bbqr):
 
     # started the process; capture pw/code and QR contents, verify NFC works
     def doit(tt_code, allow_reuse=True, reset_pubkey=False):
@@ -110,7 +111,8 @@ def grab_payload(press_select, need_keypress, press_cancel, nfc_read_url,  cap_s
     return doit
 
 @pytest.fixture
-def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr, enter_complex, cap_screen, goto_home, split_scan_bbqr):
+def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr, enter_complex,
+                cap_screen, goto_home, split_scan_bbqr):
     # finish the teleport by doing QR and getting data
     def doit(data, pw, expect_fail=False, expect_xfp=None):
         goto_home()
@@ -145,7 +147,8 @@ def rx_complete(press_select, need_keypress, press_cancel, cap_story, scan_a_qr,
     return doit
 
 @pytest.fixture
-def tx_start(press_select, need_keypress, press_cancel, goto_home, pick_menu_item, cap_story, scan_a_qr, enter_complex, cap_screen):
+def tx_start(press_select, need_keypress, press_cancel, goto_home, pick_menu_item, cap_story,
+             scan_a_qr, enter_complex, cap_screen):
 
     # start the Tx process, capturing password and leaving you are picker menu
     def doit(rx_qr, rx_code, expect_fail=None, expect_wrong_code=False):
@@ -193,7 +196,8 @@ def test_rx_reuse(rx_start):
     code3, pk3 = rx_start(allow_reuse=True, reset_pubkey=True)
     assert code3 != code
 
-def test_tx_quick_note(rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select):
+def test_tx_quick_note(rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload,
+                       rx_complete, cap_story, press_cancel, press_select):
     # Send a quick-note
     code, rx_pubkey = rx_start()
     pw = tx_start(rx_pubkey, code)
@@ -238,7 +242,8 @@ def test_tx_quick_note(rx_start, tx_start, cap_menu, enter_complex, pick_menu_it
     
 
 @pytest.mark.parametrize('testcase', [ 'weak', 'strong'])
-def test_tx_master_send(testcase, rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select, main_do_over):
+def test_tx_master_send(testcase, rx_start, tx_start, cap_menu, enter_complex, pick_menu_item,
+                        grab_payload, rx_complete, cap_story, press_cancel, press_select, main_do_over):
     # Send master secret, but doesn't really work since same as what we have
     code, rx_pubkey = rx_start()
     pw = tx_start(rx_pubkey, code)
@@ -281,7 +286,9 @@ def test_tx_master_send(testcase, rx_start, tx_start, cap_menu, enter_complex, p
     press_cancel()
 
 @pytest.mark.parametrize('qty', [1, 3])
-def test_tx_notes(qty, rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select, need_some_passwords, need_some_notes, settings_set, settings_get):
+def test_tx_notes(qty, rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload,
+                  rx_complete, cap_story, press_cancel, press_select, need_some_passwords,
+                  need_some_notes, settings_set, settings_get):
     # Send notes.
     settings_set('notes', [])
     need_some_notes()
@@ -318,7 +325,9 @@ def test_tx_notes(qty, rx_start, tx_start, cap_menu, enter_complex, pick_menu_it
 
         
 @pytest.mark.parametrize('data', SEEDVAULT_TEST_DATA[0:2])
-def test_tx_seedvault(data, rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select, settings_set, settings_get, goto_home, need_keypress):
+def test_tx_seedvault(data, rx_start, tx_start, cap_menu, enter_complex, pick_menu_item,
+                      grab_payload, rx_complete, cap_story, press_cancel, press_select, settings_set,
+                      settings_get, goto_home, need_keypress):
     # Send seeds from vault
 
     xfp, entropy, mnemonic = data
@@ -374,13 +383,14 @@ def test_tx_seedvault(data, rx_start, tx_start, cap_menu, enter_complex, pick_me
     time.sleep(.1)
     assert settings_get('xfp', -1) == simulator_fixed_xfp
 
-def test_rx_truncated(rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, rx_complete, cap_story, press_cancel, press_select):
+def test_rx_truncated(rx_start, tx_start):
     # Truncate the RX Code
     code, rx_pubkey = rx_start()
-    pw = tx_start(rx_pubkey[:-3], code, expect_fail='Truncated KT RX')
+    tx_start(rx_pubkey[:-3], code, expect_fail='Truncated KT RX')
 
 
-def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select):
+def test_tx_wrong_pub(rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload,
+                      rx_complete, cap_story, press_cancel, press_select):
     # simulate wrong numeric code only -- sender doesn't know
     right_code, rx_pubkey = rx_start()
 
@@ -690,7 +700,10 @@ def test_teleport_real_ms(dev, fake_ms_txn):
     
 
 @pytest.mark.parametrize('testcase', [ 'weak', 'partial', 'strong'])
-def test_send_backup(testcase, rx_start, tx_start, cap_menu, enter_complex, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select, settings_get, settings_set, restore_backup_unpacked, main_do_over, set_encoded_secret, reset_seed_words, make_big_notes):
+def test_send_backup(testcase, rx_start, tx_start, cap_menu, enter_complex, pick_menu_item,
+                     grab_payload, rx_complete, cap_story, press_cancel, press_select, settings_get,
+                     settings_set, restore_backup_unpacked, main_do_over, set_encoded_secret,
+                     reset_seed_words, make_big_notes):
     # Send complete backup file.
     code, rx_pubkey = rx_start()
     pw = tx_start(rx_pubkey, code)
@@ -744,7 +757,10 @@ def test_send_backup(testcase, rx_start, tx_start, cap_menu, enter_complex, pick
         settings_set('notes', [])
 
 
-def test_hobble_limited(set_hobble, scan_a_qr, cap_menu, cap_screen, pick_menu_item, grab_payload, rx_complete, cap_story, press_cancel, press_select, settings_get, settings_set, restore_backup_unpacked, main_do_over, set_encoded_secret, reset_seed_words, make_big_notes):
+def test_hobble_limited(set_hobble, scan_a_qr, cap_menu, cap_screen, pick_menu_item, grab_payload,
+                        rx_complete, cap_story, press_cancel, press_select, settings_get,
+                        settings_set, restore_backup_unpacked, main_do_over, set_encoded_secret,
+                        reset_seed_words, make_big_notes):
     # verify: in hobbled mode, KT is blocked for everything except multisig cases
 
     set_hobble(True)
