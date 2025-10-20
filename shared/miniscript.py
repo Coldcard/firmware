@@ -268,33 +268,34 @@ class PkH(OneArg):
     def __len__(self):
         return self.len_args() + 3
 
-class Older(OneArg):
-    # <n> CHECKSEQUENCEVERIFY
-    NAME = "older"
+class After(OneArg):
+    # <n> CHECKLOCKTIMEVERIFY
+    NAME = "after"
     ARGCLS = Number
     TYPE = "B"
     PROPS = "z"
+
+    def inner_compile(self):
+        return self.carg + b"\xb1"
+
+    def verify(self):
+        super().verify()
+        assert 1 <= self.arg.num < 0x80000000, "%s out of range [1, 2147483647]" % self.NAME
+
+    def __len__(self):
+        return self.len_args() + 1
+
+class Older(After):
+    # <n> CHECKSEQUENCEVERIFY
+    NAME = "older"
 
     def inner_compile(self):
         return self.carg + b"\xb2"
 
     def verify(self):
         super().verify()
-        if (self.arg.num < 1) or (self.arg.num >= 0x80000000):
-            raise ValueError(
-                "%s should have an argument in range [1, 0x80000000)" % self.NAME
-            )
-
-    def __len__(self):
-        return self.len_args() + 1
-
-class After(Older):
-    # <n> CHECKLOCKTIMEVERIFY
-    NAME = "after"
-
-    def inner_compile(self):
-        return self.carg + b"\xb1"
-
+        # not consensus valid
+        assert self.arg.num < 0x10000, "%s out of range [1, 65535]" % self.NAME
 
 class Sha256(OneArg):
     # SIZE <32> EQUALVERIFY SHA256 <h> EQUAL

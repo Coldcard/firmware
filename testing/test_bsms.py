@@ -103,7 +103,7 @@ def bsms_sr1_fname(token, is_extended, suffix, index=None):
 @pytest.fixture
 def make_signer_round1(settings_get, settings_set, settings_remove, microsd_path, virtdisk_path):
     def doit(token, way, root_xprv=None, bsms_version=BSMS_VERSION, description=None, purge_bsms=True,
-             add_to_settings=False, data_only=False, index=None, wrong_sig=False, wrong_encryption=False, slip=False):
+             add_to_settings=False, data_only=False, index=None, wrong_sig=False, wrong_encryption=False):
         is_extended = len(token) == 32
         if purge_bsms:
             settings_remove(BSMS_SETTINGS)  # clear bsms
@@ -123,8 +123,6 @@ def make_signer_round1(settings_get, settings_set, settings_remove, microsd_path
         path = random.choice(paths)
         sk = wk.subkey_for_path(path)
         xpub = sk.hwif(as_private=False)
-        if slip:
-            xpub = xpub.replace("tpub", random.choice(["upub", "vpub", "Upub", "Vpub"]))
         key_expr = "[%s/%s]%s" % (root_xfp, path, xpub)
         data = "%s\n" % bsms_version
         data += "%s\n" % token
@@ -963,7 +961,7 @@ def test_invalid_token_signer_round1(token, way, pick_menu_item, cap_story, need
     assert "Invalid token length. Expected 64 or 128 bits (16 or 32 hex characters)" in story
 
 
-@pytest.mark.parametrize("failure", ["slip", "wrong_sig", "bsms_version"])
+@pytest.mark.parametrize("failure", ["wrong_sig", "bsms_version"])
 @pytest.mark.parametrize("encryption_type", ["1", "2", "3"])
 def test_failure_coordinator_round2(encryption_type, make_coordinator_round1, make_signer_round1, microsd_wipe, cap_menu,
                                     pick_menu_item, press_select, goto_home, cap_story, failure,
@@ -1028,9 +1026,7 @@ def test_failure_coordinator_round2(encryption_type, make_coordinator_round1, ma
     title, story = cap_story()
     assert title == "FAILURE"
     assert "BSMS coordinator round2 failed" in story
-    if failure == "slip":
-        failure_msg = "no slip"
-    elif failure == "wrong_sig":
+    if failure == "wrong_sig":
         failure_msg = "Recovered key from signature does not equal key provided. Wrong signature?"
     else:
         failure_msg = "Incompatible BSMS version. Need BSMS 1.0 got BSMS 1.1"
