@@ -348,10 +348,12 @@ async def kt_accept_values(dtype, raw):
 
     elif dtype == 'b':
         # full system backup, including master: text lines
-        from backups import text_bk_parser, restore_tmp_from_dict_ll, restore_from_dict
+        from backups import text_bk_parser, restore_tmp_from_dict_ll, restore_from_dict, extract_raw_secret
 
         vals = text_bk_parser(raw)
         assert vals         # empty?
+
+        raw_sec, _ = extract_raw_secret(vals)
 
         from flow import has_secrets
 
@@ -360,10 +362,10 @@ async def kt_accept_values(dtype, raw):
             # need to remove key before I get into tmp seed settings
             # so even if this errors out, new ktrx is needed
             settings.remove_key("ktrx")
-            prob = await restore_tmp_from_dict_ll(vals)
+            prob = await restore_tmp_from_dict_ll(vals, raw_sec)
         else:
             # we have no secret, so... reboot if it works, else errors shown, etc.
-            prob = await restore_from_dict(vals)
+            prob = await restore_from_dict(vals, raw_sec)
 
         if prob:
             await ux_show_story(prob, title='FAILED')

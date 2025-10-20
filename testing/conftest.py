@@ -2323,9 +2323,9 @@ def restore_backup_unpacked(unit_test, pick_menu_item, cap_story, cap_menu,
 @pytest.fixture
 def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu, press_select, word_menu_entry,
                       get_setting, is_q1, need_keypress, scan_a_qr, cap_screen, enter_complex,
-                      restore_backup_unpacked):
+                      restore_backup_unpacked, press_cancel):
     # restore backup with clear seed as first step
-    def doit(fn, passphrase, avail_settings=None, pass_way=None, custom_bkpw=False):
+    def doit(fn, passphrase, avail_settings=None, pass_way=None, custom_bkpw=False, refuse=False):
         unit_test('devtest/clear_seed.py')
 
         m = cap_menu()
@@ -2361,7 +2361,20 @@ def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu, press_sele
                 scr = cap_screen()
                 assert fn in scr  # backup fname shown at the top
                 assert "Enter Password for:" in scr
+
             word_menu_entry(passphrase, has_checksum=False)
+
+        time.sleep(.2)
+        title, story = cap_story()
+        assert len(title) == 10
+        assert title[0] == "["
+        assert title[-1] == "]"
+        assert "Above is the master fingerprint of the seed stored in the backup." in story
+        assert f"load backup as master seed" in story
+        if refuse:
+            press_cancel()
+        else:
+            press_select()
 
         restore_backup_unpacked(avail_settings=avail_settings)
 
