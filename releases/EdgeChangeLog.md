@@ -29,6 +29,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 - Change: Deprecation of legacy mulitsig import format. Ability to import/export in this format was removed.
   Old functionality - renaming by reimporting descriptor with different name was removed.
   Use descriptors or BIP-388 wallet policies
+- Change: Deprecated `p2sh` USB command. Use `miniscript` USB commands to handle multisig wallets. 
 - Bugfix: Disjoint derivation in miniscript wallets
 - Bugfix: Disallow P2SH legacy miniscript
 - Bugfix: Do not allow to import miniscript with `older(N > 65535)`
