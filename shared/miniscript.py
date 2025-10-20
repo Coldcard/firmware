@@ -295,6 +295,7 @@ class Older(After):
     def verify(self):
         super().verify()
         # not consensus valid
+        # https://github.com/bitcoin/bitcoin/pull/33135 older(65536) is equivalent to older(1)
         assert self.arg.num < 0x10000, "%s out of range [1, 65535]" % self.NAME
 
 class Sha256(OneArg):
