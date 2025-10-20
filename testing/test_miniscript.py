@@ -2473,17 +2473,21 @@ def test_expanding_multisig(tmplt, clear_miniscript, goto_home, pick_menu_item, 
         psbt = csigner0.walletprocesspsbt(psbt, True)["psbt"]
 
     # now CC
-    start_sign(base64.b64decode(psbt))
+    start_sign(base64.b64decode(psbt), finalize=have_internal)
     time.sleep(.1)
     title, story = cap_story()
     assert title == "OK TO SEND?"
     assert "Consolidating" not in story
-    final_psbt = end_sign(True)
+    final_psbt = end_sign(True, finalize=have_internal)
 
-    # client software finalization
-    res = wo.finalizepsbt(base64.b64encode(final_psbt).decode())
-    assert res["complete"]
-    tx_hex = res["hex"]
+    if have_internal:
+        tx_hex = final_psbt.hex()  # it is final tx actually
+    else:
+        # client software finalization
+        res = wo.finalizepsbt(base64.b64encode(final_psbt).decode())
+        assert res["complete"]
+        tx_hex = res["hex"]
+
     res = wo.testmempoolaccept([tx_hex])
     assert res[0]["allowed"]
     res = wo.sendrawtransaction(tx_hex)
@@ -2504,23 +2508,27 @@ def test_expanding_multisig(tmplt, clear_miniscript, goto_home, pick_menu_item, 
     psbt = psbt_resp.get("psbt")
 
     # now CC signing first
-    start_sign(base64.b64decode(psbt))
+    start_sign(base64.b64decode(psbt), finalize=have_internal)
     time.sleep(.1)
     title, story = cap_story()
     assert title == "OK TO SEND?"
     assert "Consolidating" in story
-    updated_psbt = end_sign(True)
-    updated_psbt = base64.b64encode(updated_psbt).decode()
+    updated_psbt = end_sign(True, finalize=have_internal)
 
     if not have_internal:
         # now cosigner (still on non-recovery path)
+        updated_psbt = base64.b64encode(updated_psbt).decode()
         final_psbt = csigner0.walletprocesspsbt(updated_psbt, True,
                                                 "DEFAULT"if "tr(" == tmplt[:3] else "ALL")["psbt"]
 
-    # client software finalization
-    res = wo.finalizepsbt(final_psbt)
-    assert res["complete"]
-    tx_hex = res["hex"]
+        # client software finalization
+        res = wo.finalizepsbt(final_psbt)
+        assert res["complete"]
+        tx_hex = res["hex"]
+    else:
+        # actually a final tx
+        tx_hex = updated_psbt.hex()
+
     res = wo.testmempoolaccept([tx_hex])
     assert res[0]["allowed"]
     res = wo.sendrawtransaction(tx_hex)

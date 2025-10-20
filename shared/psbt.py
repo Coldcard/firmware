@@ -876,7 +876,8 @@ class psbtInputProxy(psbtProxy):
                 for i, (pubkey, path) in enumerate(parsed_subpaths.items()):
                     if pubkey in done_keys:
                         # pubkey has already signed, so - do not sign again
-                        if i in self.sp_idxs:  # TODO why
+                        if i in self.sp_idxs:
+                            # remove from sp_idxs so we do not attempt to sign again
                             self.sp_idxs.remove(i)
 
                     elif path[0] == my_xfp:
