@@ -2906,9 +2906,11 @@ class psbtObject(psbtProxy):
                 if inp.part_sigs:
                     for k, _ in inp.part_sigs:
                         done_keys.add(self.get(k))
+
                 if inp.added_sigs:
                     for k, _ in inp.added_sigs:
-                        done_keys.add(k)
+                        done_keys.add(self.get(k))
+
                 for k, v in inp.subpaths:
                     if self.get(k) not in done_keys:
                         xfp = self.handle_zero_xfp(self.parse_xfp_path(v), self.my_xfp, None)[0]

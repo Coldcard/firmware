@@ -238,7 +238,8 @@ def fake_txn(dev, pytestconfig):
 
         rv = BytesIO()
         psbt.serialize(rv)
-        assert rv.tell() <= MAX_TXN_LEN, 'too fat'
+        pos = rv.tell()
+        assert pos <= MAX_TXN_LEN, 'too fat %d' % pos
 
         return rv.getvalue()
 

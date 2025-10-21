@@ -752,7 +752,8 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
                                   clear_miniscript, set_bip39_pw, press_select, pick_menu_item,
                                   need_keypress, offer_minsc_import, load_export, reset_seed_words,
                                   cap_story, cap_menu, grab_payload, sim_root_dir, rx_complete,
-                                  settings_set, try_sign, settings_get, press_cancel, keys):
+                                  settings_set, try_sign, settings_get, press_cancel, keys,
+                                  cap_screen):
 
     reset_seed_words()
     use_regtest()
@@ -884,6 +885,9 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
 
         unsigned = [ln[1:9] for ln in m if (my_xfp not in ln) and ('DONE' not in ln)]
         assert unsigned
+
+        # make sure we have checkmark after YOU because self has signed
+        assert "YOU \x14\x00" in cap_screen()
 
         # find another signer
         for idx, k in enumerate(signers):
