@@ -1197,6 +1197,9 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
     from ux import ux_wait_keydown
     import uqr
 
+    # put QR shenanigans at unused offset 1MB after TXN_OUTPUT_OFFSET
+    TMP_OFFSET = const(3 * 1024 * 1024)
+
     assert not PSRAM.is_at(data, 0)     # input data would be overwritten with our work
     assert type_code in TYPE_LABELS
 
@@ -1254,7 +1257,7 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
         else:
             _, _, raw = qr_data.packed()
 
-        PSRAM.write_at(qr_size * pkt, qr_size)[0:raw_qr_size] = raw
+        PSRAM.write_at(TMP_OFFSET + (qr_size * pkt), qr_size)[0:raw_qr_size] = raw
 
         del qr_data
 
@@ -1270,7 +1273,7 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
     ch = None
     while not ch:
         for pkt in range(num_parts):
-            buf = PSRAM.read_at(qr_size * pkt, raw_qr_size)
+            buf = PSRAM.read_at(TMP_OFFSET + (qr_size * pkt), raw_qr_size)
             dis.draw_qr_display( (scan_w, w, buf), msg, True, None, None, False, 
                                     partial_bar=((pkt, num_parts) if num_parts else None))
 
