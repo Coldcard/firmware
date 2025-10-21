@@ -25,6 +25,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 - New Feature: Rename Miniscript wallet via UX. `Settings -> Miniscript -> <wallet> -> Rename`.
 - Enhancement: Slightly faster HW accelerated tagged hash
 - Enhancement: PSBT class optimizations. Ability to sign bigger txn.
+- Enhancement: Signing TXN UI shows Miniscript wallet name.
 - Change: Everything is miniscript now. To import multisig wallets go to `Settings -> Miniscript`
 - Change: Deprecation of legacy mulitsig import format. Ability to import/export in this format was removed.
   Old functionality - renaming by reimporting descriptor with different name was removed.

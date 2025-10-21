@@ -56,6 +56,7 @@ ADDR_STYLES_MS = ['p2sh', 'p2wsh', 'p2wsh-p2sh']
 
 # SIGHASH
 SIGHASH_MAP = {
+    "DEFAULT": 0,
     "ALL": 1,
     "NONE": 2,
     "SINGLE": 3,
@@ -63,6 +64,8 @@ SIGHASH_MAP = {
     "NONE|ANYONECANPAY": 2 | 0x80,
     "SINGLE|ANYONECANPAY": 3 | 0x80,
 }
+
+SIGHASH_MAP_NON_TAPROOT = {k:v for k, v in SIGHASH_MAP.items() if k != "DEFAULT"}
 
 # (2**31) - 1 --> max unhardened, but we handle hardened via h elsewhere
 MAX_BIP32_IDX = 2147483647

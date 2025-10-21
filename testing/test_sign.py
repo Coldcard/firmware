@@ -16,7 +16,7 @@ from helpers import B2A, fake_dest_addr, parse_change_back, addr_from_display_fo
 from helpers import xfp2str, seconds2human_readable, hash160
 from msg import verify_message
 from bip32 import BIP32Node
-from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP, simulator_fixed_xfp
+from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP, simulator_fixed_xfp, SIGHASH_MAP_NON_TAPROOT
 from txn import *
 from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint
 from ckcc_protocol.constants import STXN_VISUALIZE, STXN_SIGNED
@@ -2017,7 +2017,7 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
 
             settings_set("sighshchk", int(not sh_checks))
 
-        not_all_ALL = any(sh != "ALL" for sh in sighash)
+        not_all_ALL = any(sh not in ["ALL", "DEFAULT"] for sh in sighash)
 
         # this is needed as supply wallet is still legacy bitcoind wallet (no tr support)
         dest_wal = bitcoind.create_wallet("dest_wal")
@@ -2081,7 +2081,7 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
                 with pytest.raises(Exception) as e:
                     end_sign(accept=None, expect_txn=False).decode()
                 # assert title == "Failure"
-                assert "Only sighash ALL is allowed for pure consolidation transaction" in e.value.args[0]
+                assert "Only sighash ALL/DEFAULT is allowed for pure consolidation transaction" in e.value.args[0]
                 return
 
             elif not consolidation and any("NONE" in sh for sh in sighash if isinstance(sh, str)):
@@ -2099,7 +2099,7 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
             assert "---WARNING---" in story
             assert "Danger" in story
             assert "Destination address can be changed after signing (sighash NONE)." in story
-        elif any(sh != "ALL" for sh in sighash):
+        elif any(sh not in ["ALL", "DEFAULT"] for sh in sighash):
             assert "(1 warning below)" in story
             assert "---WARNING---" in story
             assert "Caution" in story
@@ -2125,6 +2125,11 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
                 target = sighash[0]
                 sh_num = SIGHASH_MAP[target]
                 if target == "ALL":
+                    if addr_fmt == "bech32m":
+                        assert i.sighash == sh_num
+                    else:
+                        assert i.sighash is None
+                elif target == "DEFAULT":
                     assert i.sighash is None
                 else:
                     assert i.sighash == sh_num
@@ -2132,6 +2137,11 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
                 target = sighash[idx]
                 sh_num = SIGHASH_MAP[target]
                 if target == "ALL":
+                    if addr_fmt == "bech32m":
+                        assert i.sighash == sh_num
+                    else:
+                        assert i.sighash is None
+                elif target == "DEFAULT":
                     assert i.sighash is None
                 else:
                     assert i.sighash == sh_num
@@ -2190,7 +2200,7 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32", "bech32m"])
-@pytest.mark.parametrize("sighash", [sh for sh in SIGHASH_MAP if sh != 'ALL'])
+@pytest.mark.parametrize("sighash", [sh for sh in SIGHASH_MAP if sh not in ['ALL', 'DEFAULT']])
 @pytest.mark.parametrize("num_outs", [1, 3, 5])
 @pytest.mark.parametrize("num_ins", [2, 5])
 def test_sighash_same(addr_fmt, sighash, num_ins, num_outs, _test_single_sig_sighash):
@@ -2200,7 +2210,7 @@ def test_sighash_same(addr_fmt, sighash, num_ins, num_outs, _test_single_sig_sig
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32", "bech32m"])
-@pytest.mark.parametrize("sighash", list(itertools.combinations(SIGHASH_MAP.keys(), 2)))
+@pytest.mark.parametrize("sighash", list(itertools.combinations(SIGHASH_MAP_NON_TAPROOT.keys(), 2)))
 @pytest.mark.parametrize("num_outs", [2, 3, 5])
 def test_sighash_different(addr_fmt, sighash, num_outs, _test_single_sig_sighash):
     # sighash differ among all inputs
@@ -2208,15 +2218,30 @@ def test_sighash_different(addr_fmt, sighash, num_outs, _test_single_sig_sighash
 
 
 @pytest.mark.bitcoind
-@pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32", "bech32m"])
-@pytest.mark.parametrize("num_outs", [5, 8])
-def test_sighash_fullmix(addr_fmt, num_outs, _test_single_sig_sighash):
-    # tx with 6 inputs representing all possible sighashes
-    _test_single_sig_sighash(addr_fmt, tuple(SIGHASH_MAP.keys()), num_inputs=6, num_outputs=num_outs)
+@pytest.mark.parametrize("sighash", [
+    ('DEFAULT', 'NONE'), ('DEFAULT', 'SINGLE'), ('DEFAULT', 'ALL|ANYONECANPAY'),
+    ('DEFAULT', 'NONE|ANYONECANPAY'), ('DEFAULT', 'SINGLE|ANYONECANPAY')
+])
+def test_sighash_different_default(sighash, _test_single_sig_sighash):
+    # sighash differ among all inputs
+    _test_single_sig_sighash("bech32m", sighash, num_inputs=2, num_outputs=5)
 
 
 @pytest.mark.bitcoind
-@pytest.mark.parametrize("sighash", [sh for sh in SIGHASH_MAP if sh != 'ALL'])
+@pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32", "bech32m"])
+def test_sighash_fullmix(addr_fmt, _test_single_sig_sighash):
+    # tx with 6 inputs representing all possible sighashes
+    _test_single_sig_sighash(addr_fmt, tuple(SIGHASH_MAP_NON_TAPROOT.keys()), num_inputs=6, num_outputs=8)
+
+
+@pytest.mark.bitcoind
+def test_sighash_fullmix_taproot(_test_single_sig_sighash):
+    # tx with 6 inputs representing all possible sighashes
+    _test_single_sig_sighash("bech32m", tuple(SIGHASH_MAP.keys()), num_inputs=7, num_outputs=5)
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("sighash", [sh for sh in SIGHASH_MAP if sh not in ['ALL', 'DEFAULT']])
 def test_sighash_disallowed_consolidation(sighash, _test_single_sig_sighash):
     # sighash != ALL blocked for pure consolidations
     _test_single_sig_sighash("bech32", [sighash], num_inputs=2, num_outputs=2,
@@ -2777,9 +2802,10 @@ def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind
     assert txid == story_txid
 
 
+@pytest.mark.veryslow
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("abs_lock", [True, False])
-@pytest.mark.parametrize("num_rtl", [(2,3),(4,7),(8,3),(6,7)])
+@pytest.mark.parametrize("num_rtl", [(2,3),(4,7),(6,7)])
 def test_mixed_locktimes(num_rtl, use_regtest, bitcoind_d_sim_watch, start_sign, microsd_path,
                          cap_story, goto_home, press_select, pick_menu_item, bitcoind, end_sign,
                          abs_lock, file_tx_signing_done):

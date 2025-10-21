@@ -2473,6 +2473,10 @@ class psbtObject(psbtProxy):
                             sig = ngu.secp256k1.sign_schnorr(kpt, digest, ngu.random.bytes(32))
                             if inp.sighash != SIGHASH_DEFAULT:
                                 sig += bytes([inp.sighash])
+                            else:
+                                # drop sighash from PSBT field if default (SIGHASH_DEFAULT)
+                                inp.sighash = None
+
                             # in the common case of SIGHASH_DEFAULT, encoded as '0x00', a space optimization MUST be made by
                             # 'omitting' the sighash byte, resulting in a 64-byte signature with SIGHASH_DEFAULT assumed
                             inp.taproot_key_sig = sig
@@ -2484,6 +2488,10 @@ class psbtObject(psbtProxy):
                         inp.added_sigs = inp.added_sigs or []
                         inp.added_sigs.append((pk_coord, der_sig))
 
+                        # drop sighash from PSBT field if default (SIGHASH_ALL)
+                        if inp.sighash == SIGHASH_ALL:
+                            inp.sighash = None
+
                     # private key no longer required
                     stash.blank_object(sk)
                     stash.blank_object(node)
@@ -2493,10 +2501,6 @@ class psbtObject(psbtProxy):
                         self.set_modifiable_flag(inp)
 
                 del to_sign
-                # drop sighash from PSBT field if default (SIGHASH_ALL)
-                if inp.sighash == SIGHASH_ALL:
-                    inp.sighash = None
-
                 gc.collect()
 
         # done.
@@ -2594,7 +2598,7 @@ class psbtObject(psbtProxy):
         fd = self.fd
         old_pos = fd.tell()
 
-        out_type = SIGHASH_ALL if (hash_type == 0) else (hash_type & 3)
+        out_type = SIGHASH_ALL if (hash_type == SIGHASH_DEFAULT) else (hash_type & 3)
         in_type = hash_type & SIGHASH_ANYONECANPAY
 
         if not self.hashValues and in_type != SIGHASH_ANYONECANPAY:

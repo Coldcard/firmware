@@ -2152,7 +2152,7 @@ def test_finalization(m_n, script, desc, use_regtest, clear_miniscript, bitcoind
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("m_n", [(2,3), (3,5), (15,15)])
 @pytest.mark.parametrize("script", ["p2wsh", "p2sh-p2wsh", "p2sh"])
-@pytest.mark.parametrize("sighash", list(SIGHASH_MAP.keys()))
+@pytest.mark.parametrize("sighash", list(SIGHASH_MAP_NON_TAPROOT.keys()))
 @pytest.mark.parametrize('desc', ["multi", "sortedmulti"])
 def test_bitcoind_MofN_tutorial(m_n, script, clear_miniscript, goto_home, need_keypress, pick_menu_item,
                                 sighash, cap_menu, cap_story, microsd_path, use_regtest, bitcoind,
