@@ -929,9 +929,10 @@ async def miniscript_wallet_rename(menu, label, item):
     dis.fullscreen("Saving...")
 
     # save it
-    old = wallets[idx]
-    updated = (new_name,) + old[1:]
-    wallets[idx] = updated
+    wal = list(wallets[idx])
+    wal[0] = new_name
+    # it will become list after JSON encode/decode anyways
+    wallets[idx] = wal
     msc.name = new_name
     settings.set("miniscript", wallets)
 
