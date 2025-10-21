@@ -104,7 +104,7 @@ def hsm_available():
 def qr_and_ms():
     # has QR scanner, and at least one MS wallet
     if not version.has_qr: return False
-    return bool(settings.get('multisig', False))
+    return bool(settings.get('miniscript', False))
 
 def has_pushtx_url():
     # they want to use PushTX feature
@@ -248,7 +248,7 @@ FileMgmtMenu = [
     MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu),        #dup elsewhere
     MenuItem('Sign Text File', predicate=has_secrets, f=sign_message_on_sd),
     MenuItem('Batch Sign PSBT', predicate=has_secrets, f=batch_sign),
-    MenuItem('Teleport Multisig PSBT', predicate=qr_and_has_secrets, f=kt_send_file_psbt),
+    MenuItem('Teleport Miniscript PSBT', predicate=qr_and_has_secrets, f=kt_send_file_psbt),
     MenuItem('List Files', f=list_files),
     MenuItem('Verify Sig File', f=verify_sig_file),
     MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file, shortcut=KEY_NFC),
@@ -536,7 +536,7 @@ HobbledAdvancedMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("File Management", menu=HobbledFileMgmtMenu),
     MenuItem('Export Wallet', menu=WalletExportMenu, shortcut='x'),  # also inside FileMgmt
-    MenuItem('Teleport Multisig PSBT', predicate=qr_and_ms, f=kt_send_file_psbt),
+    MenuItem('Teleport Miniscript PSBT', predicate=qr_and_ms, f=kt_send_file_psbt),
     MenuItem("View Identity", f=view_ident),
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu, predicate=sssp_related_keys),
     MenuItem('Paper Wallets', f=make_paper_wallet),

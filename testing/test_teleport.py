@@ -581,7 +581,7 @@ def test_teleport_big_ms(make_myself_wallet, clear_miniscript, fake_ms_txn, try_
     goto_home()
     pick_menu_item('Advanced/Tools')
     pick_menu_item('File Management')
-    pick_menu_item('Teleport Multisig PSBT')
+    pick_menu_item('Teleport Miniscript PSBT')
 
     need_keypress('1')      # top slot
 

@@ -103,7 +103,7 @@ def test_menu_contents(set_hobble, pick_menu_item, cap_menu, en_okeys, en_notes,
                     'Destroy Seed' }
 
     if is_q1 and en_multisig:
-        adv_expect.add('Teleport Multisig PSBT')
+        adv_expect.add('Teleport Miniscript PSBT')
 
     if en_nfc:
         adv_expect.add('NFC Tools')
@@ -177,7 +177,7 @@ def test_kt_limits(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set, 
     set_hobble(True)
     pick_menu_item("Advanced/Tools")
 
-    assert 'Teleport Multisig PSBT' not in cap_menu()
+    assert 'Teleport Miniscript PSBT' not in cap_menu()
     # converse already tested in test_menu_contents
 
 @pytest.mark.parametrize('sv_empty', [ True, False] )
