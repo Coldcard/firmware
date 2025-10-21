@@ -233,6 +233,7 @@ def pick_noid_key():
 
 async def kt_decode_rx(is_psbt, payload):
     # we are getting data back from a sender, decode it.
+    dis.fullscreen("Wait...")
 
     prompt = 'Teleport Password (text)'
 

@@ -2867,6 +2867,8 @@ class psbtObject(psbtProxy):
         # provide the set of xfp's that still need to sign PSBT
         # - used to find which multisig-signer needs to go next
         rv = set()
+        done_keys = set()
+
         for inp in self.inputs:
             if inp.fully_signed:
                 continue
@@ -2876,10 +2878,14 @@ class psbtObject(psbtProxy):
                     # already signed
                     continue
 
-                done_keys = {}
                 # only get this once for each input
                 if inp.taproot_script_sigs:
-                    done_keys = {xo for xo, _ in inp.get_taproot_script_sigs()}
+                    for xo, _ in inp.get_taproot_script_sigs():
+                        done_keys.add(xo)
+
+                if inp.tr_added_sigs:
+                    for (xo, _) in inp.tr_added_sigs:
+                        done_keys.add(xo)
 
                 for i, (k, v) in enumerate(inp.taproot_subpaths):
                     xpk = self.get(k)
@@ -2897,9 +2903,12 @@ class psbtObject(psbtProxy):
                     rv.add(xfp)
 
             else:
-                done_keys = {}
                 if inp.part_sigs:
-                    done_keys = {self.get(k) for k, _ in inp.part_sigs}
+                    for k, _ in inp.part_sigs:
+                        done_keys.add(self.get(k))
+                if inp.added_sigs:
+                    for k, _ in inp.added_sigs:
+                        done_keys.add(k)
                 for k, v in inp.subpaths:
                     if self.get(k) not in done_keys:
                         xfp = self.handle_zero_xfp(self.parse_xfp_path(v), self.my_xfp, None)[0]

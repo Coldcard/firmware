@@ -912,6 +912,14 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
         title, story = cap_story()
         assert title == 'Sent by Teleport'
 
+        # try to enter the menu again & make sure "No more signers?" is not shown
+        need_keypress('t')
+        time.sleep(.1)
+        m = cap_menu()
+        assert len(m) == len(signers)
+        assert 'YOU' in [ln for ln in m if my_xfp in ln][0]
+        press_cancel()
+
         # switch personalities, and try to read that QR
         new_xfp = set_bip39_pw(str(idx) + str(idx))
         use_regtest()
