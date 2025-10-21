@@ -3012,7 +3012,7 @@ def test_same_key_set_miniscript(get_cc_key, bitcoin_core_signer, create_core_wa
     clear_miniscript()
 
     msc1 = "wsh(andor(pk(@D),after(1767225600),multi(2,@A,@B,@C)))"
-    msc2 = "wsh(or_d(pk(@D),and_v(v:multi(2,@A,@B,@C),older(1767225600))))"
+    msc2 = "wsh(or_d(pk(@D),and_v(v:multi(2,@A,@B,@C),older(65535))))"
 
     ak = get_cc_key("m/48h/1h/0h/2h")
     bs, bk = bitcoin_core_signer("bb")
