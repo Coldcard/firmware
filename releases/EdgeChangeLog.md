@@ -19,7 +19,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
   To take full advantage of the feature work with miniscript wallets sequentially. First, do all operations 
   needed with `wallet1` before changing to `wallet2`.
 - New Feature: Add ability to import/export [BIP-388](https://github.com/bitcoin/bips/blob/master/bip-0388.mediawiki) Wallet Policies.
-  BIP-388 policies are now also used as our wallet serialization format, which optimized our setting storage.
+  BIP-388 policies are now also used as our wallet serialization format, which optimized setting storage.
 - New Feature: Sign with specific miniscript wallet. `Settings -> Miniscript -> <name> -> Sign PSBT`
 - New Feature: Miniscript wallet name can be specified for `sign` USB command
 - New Feature: Rename Miniscript wallet via UX. `Settings -> Miniscript -> <wallet> -> Rename`.

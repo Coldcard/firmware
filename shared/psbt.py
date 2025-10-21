@@ -1711,7 +1711,8 @@ class psbtObject(psbtProxy):
             if path_len > 2:
                 validate_inp_pths = True
 
-        dis.fullscreen("Validating Outputs..." if version.has_qwerty else "Outputs...")
+        dis.fullscreen("Validating...", line2="Outputs")
+
         for idx, txo in self.output_iter():
             dis.progress_sofar(idx, self.num_outputs)
             output = self.outputs[idx]
@@ -1837,6 +1838,7 @@ class psbtObject(psbtProxy):
             )
 
         self.consolidation_tx = (self.num_change_outputs == self.num_outputs)
+        dis.progress_bar_show(1)
 
         if DEBUG:
             print("PSBT change outputs: %d out of %d" % (
@@ -1865,9 +1867,10 @@ class psbtObject(psbtProxy):
         hard_pattern = set()
         prefix_p = set()
         idx_max = 0
-
         my_cnt = 0
-        dis.fullscreen("Validating Inputs..."if version.has_qwerty else "Inputs...")
+
+        dis.fullscreen("Validating...", line2="Inputs")
+
         for i, txi in self.input_iter():
             dis.progress_sofar(i, self.num_inputs)
             inp = self.inputs[i]
@@ -2050,6 +2053,8 @@ class psbtObject(psbtProxy):
         if DEBUG:
             print("PSBT inputs: %d inputs contain our key, %d fully-signed" % (
                 my_cnt, len(presigned_inputs)))
+
+        dis.progress_bar_show(1)
 
         # useful info from all our parsed paths - will be validated against change outputs
         return length_p, hard_pattern, prefix_p, idx_max
