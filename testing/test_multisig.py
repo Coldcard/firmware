@@ -1257,7 +1257,7 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
     if is_q1:
         time.sleep(.1)
         title, story = cap_story()
-        assert "scan multisg XPUBs from QR codes" in story
+        assert "scan multisig XPUBs from QR codes" in story
         if way == "qr":
             need_keypress(KEY_QR)
         else:

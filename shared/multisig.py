@@ -285,7 +285,7 @@ async def create_ms_step1(*a, for_ccc=None):
 
     if version.has_qr:
         # They have a scanner, could do QR codes...
-        ch = await ux_show_story("Press " + KEY_QR + " to scan multisg XPUBs from "
+        ch = await ux_show_story("Press " + KEY_QR + " to scan multisig XPUBs from "
                                                      "QR codes (BBQr) or ENTER to use SD card(s).",
                                  title="QR or SD Card?")
 
