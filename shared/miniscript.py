@@ -976,6 +976,11 @@ class T(Wrapper):
     def __len__(self):
         return len(self.arg) + 1
 
+    def verify(self):
+        super().verify()
+        if self.arg.type != "V":
+            raise ValueError("t: X must be of type V")
+
     @property
     def properties(self):
         # z=zXzY; o=zXoY or zYoX; n=nX or zXnY; u=uY
