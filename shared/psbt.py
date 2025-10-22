@@ -2305,6 +2305,11 @@ class psbtObject(psbtProxy):
                     continue
 
                 inp.handle_none_sighash()
+                # decide if it is appropriate to drop sighash from PSBT
+                if inp.taproot_subpaths:
+                    drop_sighash = (inp.sighash == SIGHASH_DEFAULT)
+                else:
+                    drop_sighash = (inp.sighash == SIGHASH_DEFAULT)
 
                 schnorrsig = False
                 tr_sh = []
@@ -2481,14 +2486,11 @@ class psbtObject(psbtProxy):
 
                             del kpt
 
-                        drop_sighash = (inp.sighash == SIGHASH_DEFAULT)
                         del kp
                     else:
                         der_sig = self.ecdsa_grind_sign(sk, digest, inp.sighash)
                         inp.added_sigs = inp.added_sigs or []
                         inp.added_sigs.append((pk_coord, der_sig))
-
-                        drop_sighash = (inp.sighash == SIGHASH_ALL)
 
                     # private key no longer required
                     stash.blank_object(sk)
@@ -2498,11 +2500,11 @@ class psbtObject(psbtProxy):
                     if self.is_v2:
                         self.set_modifiable_flag(inp)
 
-                    if drop_sighash:
-                        # only drop after modifiable is set, in case of PSBTv2
-                        # SIGHASH_DEFAULT if taproot
-                        # SIGHASH_ALL if non-taproot
-                        inp.sighash = None
+                if drop_sighash:
+                    # only drop after modifiable is set, in case of PSBTv2
+                    # SIGHASH_DEFAULT if taproot
+                    # SIGHASH_ALL if non-taproot
+                    inp.sighash = None
 
                 del to_sign
                 gc.collect()
