@@ -878,7 +878,8 @@ def test_multiple_signings(dev, quick_start_hsm, is_simulator,
     quick_start_hsm(policy)
 
     for count in range(400):
-        psbt = fake_txn(2, 2, dev.master_xpub, change_outputs=[0])
+        psbt = fake_txn(2, [["p2wpkh", None, True],["p2sh-p2wpkh", None]],
+                        dev.master_xpub, addr_fmt="p2wpkh")
         auth_user.psbt_hash = sha256(psbt).digest()
         auth_user("pw")
         attempt_psbt(psbt)

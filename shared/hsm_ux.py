@@ -297,7 +297,7 @@ class hsmUxInteraction:
 
 
     # replacements for display.py:Display functions
-    def hack_fullscreen(self, msg, percent=None):
+    def hack_fullscreen(self, msg, percent=None, **kwargs):
         self.draw_busy(msg, percent)
     def hack_progress_bar(self, percent):
         self.draw_busy(None, percent)
