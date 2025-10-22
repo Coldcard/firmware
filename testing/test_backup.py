@@ -717,4 +717,31 @@ def test_restore_usb_backup(backup_system, set_seed_words, cap_story, verify_eph
         _, story = cap_story()
         assert "now reboot" in story
 
+@pytest.mark.parametrize('tmp', [True, False])
+def test_exit_dev_backup(tmp, unit_test, goto_home, pick_menu_item, need_keypress, src_root_dir,
+                         microsd_path, press_cancel, cap_menu, cap_story):
+    fname = 'backup.7z'
+    fn = microsd_path(fname)
+    shutil.copy(f'{src_root_dir}/docs/backup.7z', fn)
+
+    if not tmp:
+        unit_test('devtest/clear_seed.py')
+
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    if tmp:
+        pick_menu_item("Danger Zone")
+    pick_menu_item('I Am Developer.')
+    pick_menu_item('Restore Bkup')
+
+    time.sleep(.1)
+    pick_menu_item(fname)
+
+    # do not write anything just exit
+    # yikes
+    press_cancel()
+    time.sleep(.2)
+    pick_menu_item("Restore Bkup")
+    press_cancel()
+
 # EOF
