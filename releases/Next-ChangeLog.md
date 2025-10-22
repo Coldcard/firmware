@@ -4,6 +4,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk4 and Q
 
+- Bugfix: Exiting text input of Custom Backup Password causes yikes
 
 # Mk4 Specific Changes
 
