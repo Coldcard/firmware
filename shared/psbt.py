@@ -2309,7 +2309,7 @@ class psbtObject(psbtProxy):
                 if inp.taproot_subpaths:
                     drop_sighash = (inp.sighash == SIGHASH_DEFAULT)
                 else:
-                    drop_sighash = (inp.sighash == SIGHASH_DEFAULT)
+                    drop_sighash = (inp.sighash == SIGHASH_ALL)
 
                 schnorrsig = False
                 tr_sh = []
