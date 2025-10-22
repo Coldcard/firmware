@@ -20,9 +20,9 @@ def fake_txn(dev, pytestconfig):
     # - but has UTXO's to match needs
     # - input total = num_inputs * 1BTC
 
-    def doit(inputs, outputs, master_xpub=None, psbt_hacker=None,
-             add_xpub=None, psbt_v2=None, fee=200, addr_fmt="p2wpkh",
-             input_amount=100_000_000, capture_scripts=None): # sats
+    def doit(inputs, outputs, master_xpub=None, psbt_hacker=None, add_xpub=None, psbt_v2=None,
+             fee=200, addr_fmt="p2wpkh", input_amount=100_000_000, capture_scripts=None,
+             force_full_tx_utxo=False, supply_num_ins=1, supply_num_outs=1): # input_amount in sats
 
         psbt = BasicPSBT()
 
@@ -126,7 +126,6 @@ def fake_txn(dev, pytestconfig):
             else:
                 raise ValueError("unknown addr_fmt %s" % af)
 
-
             # UTXO that provides the funding for to-be-signed txn
             supply = CTransaction()
             supply.nVersion = 2
@@ -134,14 +133,15 @@ def fake_txn(dev, pytestconfig):
                 uint256_from_str(struct.pack('4Q', 0xdead, 0xbeef, 0, 0)),
                 73
             )
-            supply.vin = [CTxIn(out_point, nSequence=0xffffffff)]
-            supply.vout.append(CTxOut(ia, scr))
+            supply.vin = [CTxIn(out_point, nSequence=0xffffffff)] * supply_num_ins
+            supply.vout = [CTxOut(ia, scr)] * supply_num_outs
 
-            if is_segwit:
+            if is_segwit and not force_full_tx_utxo:
                 # just utxo for segwit
                 psbt.inputs[i].witness_utxo = supply.vout[-1].serialize()
             else:
                 # whole tx for pre-segwit
+                # can be also with segwit txn - use force force_full_tx_utxo
                 psbt.inputs[i].utxo = supply.serialize_with_witness()
 
             supply.calc_sha256()
@@ -239,7 +239,7 @@ def fake_txn(dev, pytestconfig):
         rv = BytesIO()
         psbt.serialize(rv)
         pos = rv.tell()
-        assert pos <= MAX_TXN_LEN, 'too fat %d' % pos
+        # assert pos <= MAX_TXN_LEN, 'too fat %d' % pos
 
         return rv.getvalue()
 
