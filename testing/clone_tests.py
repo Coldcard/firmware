@@ -32,7 +32,7 @@ def _clone(source, target):
     assert f"Bring that card back and press {'ENTER' if target_is_Q else 'OK'} to complete clone process" in story
 
     # SOURCE
-    # clone with multisig wallet
+    # clone with miniscript wallet
     sim_source = ColdcardSimulator(args=[source_sim_arg, "--ms", "--p2wsh",
                                          "--set", "nfc=1", "--set", "vidsk=1"])
     sim_source.start(start_wait=6)
@@ -91,10 +91,10 @@ def _clone(source, target):
     sim_target.start(start_wait=6)
     device = ColdcardDevice(is_simulator=True)
     _pick_menu_item(device, target_is_Q, "Settings")
-    _pick_menu_item(device, target_is_Q, "Multisig Wallets")
+    _pick_menu_item(device, target_is_Q, "Miniscript")
     time.sleep(.1)
     m = _cap_menu(device)
-    assert "2/4: P2WSH--2-of-4" in m
+    assert "P2WSH--2-of-4" in m
 
     # check NFC/VDisk after clone - must be disabled
     # USB enabled as we are on the simulator
