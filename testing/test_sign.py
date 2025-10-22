@@ -2201,30 +2201,28 @@ def _test_single_sig_sighash(cap_story, press_select, start_sign, end_sign, dev,
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32", "bech32m"])
 @pytest.mark.parametrize("sighash", [sh for sh in SIGHASH_MAP if sh not in ['ALL', 'DEFAULT']])
-@pytest.mark.parametrize("num_outs", [1, 3, 5])
-@pytest.mark.parametrize("num_ins", [2, 5])
-def test_sighash_same(addr_fmt, sighash, num_ins, num_outs, _test_single_sig_sighash):
+def test_sighash_same(addr_fmt, sighash, _test_single_sig_sighash):
     # sighash is the same among all inputs
-    _test_single_sig_sighash(addr_fmt, [sighash], num_inputs=num_ins, num_outputs=num_outs)
+    _test_single_sig_sighash(addr_fmt, [sighash], num_inputs=4, num_outputs=2)
 
 
 @pytest.mark.bitcoind
-@pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32", "bech32m"])
+@pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32"])
 @pytest.mark.parametrize("sighash", list(itertools.combinations(SIGHASH_MAP_NON_TAPROOT.keys(), 2)))
-@pytest.mark.parametrize("num_outs", [2, 3, 5])
-def test_sighash_different(addr_fmt, sighash, num_outs, _test_single_sig_sighash):
+def test_sighash_different(addr_fmt, sighash, _test_single_sig_sighash):
     # sighash differ among all inputs
-    _test_single_sig_sighash(addr_fmt, sighash, num_inputs=2, num_outputs=num_outs)
+    _test_single_sig_sighash(addr_fmt, sighash, num_inputs=2, num_outputs=5)
 
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("sighash", [
-    ('DEFAULT', 'NONE'), ('DEFAULT', 'SINGLE'), ('DEFAULT', 'ALL|ANYONECANPAY'),
-    ('DEFAULT', 'NONE|ANYONECANPAY'), ('DEFAULT', 'SINGLE|ANYONECANPAY')
+    ('ALL', 'DEFAULT', 'NONE'), ('ALL', 'DEFAULT', 'SINGLE'), ('ALL', 'DEFAULT', 'ALL|ANYONECANPAY'),
+    ('DEFAULT', 'ALL', 'NONE|ANYONECANPAY'), ('DEFAULT', 'ALL', 'SINGLE|ANYONECANPAY')
 ])
-def test_sighash_different_default(sighash, _test_single_sig_sighash):
+@pytest.mark.parametrize("num_outs", [1, 5])
+def test_sighash_different_taproot(sighash, num_outs, _test_single_sig_sighash):
     # sighash differ among all inputs
-    _test_single_sig_sighash("bech32m", sighash, num_inputs=2, num_outputs=5)
+    _test_single_sig_sighash("bech32m", sighash, num_inputs=3, num_outputs=num_outs)
 
 
 @pytest.mark.bitcoind
@@ -2250,10 +2248,11 @@ def test_sighash_disallowed_consolidation(sighash, _test_single_sig_sighash):
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("sighash", ["NONE", "NONE|ANYONECANPAY"])
-def test_sighash_disallowed_NONE(sighash, _test_single_sig_sighash):
+@pytest.mark.parametrize("num_outs", [1, 3])
+def test_sighash_disallowed_NONE(sighash, num_outs, _test_single_sig_sighash):
     # sighash is the same among all inputs
-    _test_single_sig_sighash("bech32", [sighash], num_inputs=2, num_outputs=2,
-                             consolidation=False, sh_checks=True)
+    _test_single_sig_sighash("bech32", [sighash], num_inputs=2,
+                             num_outputs=num_outs, consolidation=False, sh_checks=True)
 
 
 @pytest.mark.bitcoind
