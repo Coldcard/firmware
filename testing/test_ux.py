@@ -45,8 +45,9 @@ def test_get_secrets(get_secrets, master_xpub):
     assert v['xpub'] == master_xpub
 
 def test_home_menu(cap_menu, cap_story, cap_screen, need_keypress, reset_seed_words,
-                   press_select, press_cancel, press_down, is_q1):
+                   press_select, press_cancel, press_down, is_q1, microsd_wipe):
     reset_seed_words()
+    microsd_wipe()
     # get to top, force a redraw
     press_cancel()
     press_cancel()
@@ -86,7 +87,7 @@ def test_home_menu(cap_menu, cap_story, cap_screen, need_keypress, reset_seed_wo
     need_keypress('0')
     press_select()
 
-    time.sleep(.01)      # required
+    time.sleep(.1)      # required
 
     title, body = cap_story()
     assert title == 'NO-TITLE'

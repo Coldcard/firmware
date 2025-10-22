@@ -2078,7 +2078,8 @@ class psbtObject(psbtProxy):
         if sh_unusual and not settings.get("sighshchk"):
             if self.consolidation_tx:
                 # policy: all inputs must be sighash ALL in purely consolidation txn
-                raise FatalPSBTIssue("Only sighash ALL is allowed for pure consolidation transactions.")
+                raise FatalPSBTIssue("Only sighash ALL/DEFAULT is allowed"
+                                     " for pure consolidation transactions.")
 
             if none_sh:
                 # sighash NONE or NONE|ANYONECANPAY is proposed: block
@@ -2473,24 +2474,21 @@ class psbtObject(psbtProxy):
                             sig = ngu.secp256k1.sign_schnorr(kpt, digest, ngu.random.bytes(32))
                             if inp.sighash != SIGHASH_DEFAULT:
                                 sig += bytes([inp.sighash])
-                            else:
-                                # drop sighash from PSBT field if default (SIGHASH_DEFAULT)
-                                inp.sighash = None
 
                             # in the common case of SIGHASH_DEFAULT, encoded as '0x00', a space optimization MUST be made by
                             # 'omitting' the sighash byte, resulting in a 64-byte signature with SIGHASH_DEFAULT assumed
                             inp.taproot_key_sig = sig
 
                             del kpt
+
+                        drop_sighash = (inp.sighash == SIGHASH_DEFAULT)
                         del kp
                     else:
                         der_sig = self.ecdsa_grind_sign(sk, digest, inp.sighash)
                         inp.added_sigs = inp.added_sigs or []
                         inp.added_sigs.append((pk_coord, der_sig))
 
-                        # drop sighash from PSBT field if default (SIGHASH_ALL)
-                        if inp.sighash == SIGHASH_ALL:
-                            inp.sighash = None
+                        drop_sighash = (inp.sighash == SIGHASH_ALL)
 
                     # private key no longer required
                     stash.blank_object(sk)
@@ -2499,6 +2497,12 @@ class psbtObject(psbtProxy):
 
                     if self.is_v2:
                         self.set_modifiable_flag(inp)
+
+                    if drop_sighash:
+                        # only drop after modifiable is set, in case of PSBTv2
+                        # SIGHASH_DEFAULT if taproot
+                        # SIGHASH_ALL if non-taproot
+                        inp.sighash = None
 
                 del to_sign
                 gc.collect()
