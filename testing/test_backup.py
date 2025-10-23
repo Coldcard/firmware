@@ -744,4 +744,32 @@ def test_exit_dev_backup(tmp, unit_test, goto_home, pick_menu_item, need_keypres
     pick_menu_item("Restore Bkup")
     press_cancel()
 
+
+@pytest.mark.parametrize("fname", [
+    '03edd162a5f57eece68d8eea3891e2a150383a225187179ecb1599efe00d16dd70-ccbk.7z',
+    ('W'*31) + ".7z",
+])
+def test_backup_long_name_display(fname, goto_home, pick_menu_item, need_keypress, src_root_dir,
+                                  microsd_path, press_cancel, cap_screen):
+    fn = microsd_path(fname)
+    shutil.copy(f'{src_root_dir}/docs/backup.7z', fn)
+
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('Temporary Seed')
+    need_keypress("4")
+    pick_menu_item('Coldcard Backup')
+
+    time.sleep(.1)
+    pick_menu_item(fname)
+    time.sleep(.1)
+    scr = cap_screen()
+    if len(fname) > 34:  # CHARS_W
+        assert fname[:16] in scr
+        assert fname[-16:] in scr
+    else:
+        assert fname in scr
+
+    press_cancel()
+
 # EOF

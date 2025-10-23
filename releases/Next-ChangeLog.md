@@ -18,6 +18,6 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 1.3.5Q - 2025-10-xx
 
-- 
+- Enhancement: Show backup filename at the top of the screen during backup password entry
 
 
