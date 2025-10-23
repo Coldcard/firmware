@@ -594,7 +594,7 @@ def ux_draw_words(y, num_words, words):
 
     return rv
 
-async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
+async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None, line2=None):
     # Accept a seed phrase, only
     # - replaces WordNestMenu on Q1
     # - max word length is 8, min is 3
@@ -604,13 +604,23 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
 
     assert num_words and prompt
 
+    not24 = (num_words != 24)
+
     def redraw_words(wrds=None):
         if not wrds:
             wrds = ['' for _ in range(num_words)]
 
         dis.clear()
         dis.text(None, 0, prompt, invert=1)
-        p = ux_draw_words(2 if num_words != 24 else 1, num_words, wrds)
+
+        Y = 2 if not24 else 1
+        if line2 and not24:
+            # add second line, if provided, but only if words length < 24
+            # currently only used to show backup filename during backup pwd entry
+            dis.text(None, 1, line2, invert=1)
+            Y += 1
+
+        p = ux_draw_words(Y, num_words, wrds)
         return wrds, p
 
     words, pos = redraw_words()

@@ -2339,9 +2339,9 @@ def restore_backup_unpacked(unit_test, pick_menu_item, cap_story, cap_menu,
     return doit
 
 @pytest.fixture
-def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
-                      press_select, word_menu_entry, get_setting, is_q1,
-                      need_keypress, scan_a_qr, cap_screen, enter_complex, restore_backup_unpacked):
+def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu, press_select, word_menu_entry,
+                      get_setting, is_q1, need_keypress, scan_a_qr, cap_screen, enter_complex,
+                      restore_backup_unpacked):
     # restore backup with clear seed as first step
     def doit(fn, passphrase, avail_settings=None, pass_way=None, custom_bkpw=False):
         unit_test('devtest/clear_seed.py')
@@ -2360,7 +2360,7 @@ def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
         pick_menu_item(fn)
 
         time.sleep(.1)
-        if is_q1 and pass_way and pass_way == "qr":
+        if is_q1 and pass_way and (pass_way == "qr"):
             need_keypress(KEY_QR)
             time.sleep(.1)
             qr = ' '.join(w[:4] for w in passphrase)
@@ -2374,6 +2374,11 @@ def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
         elif custom_bkpw:
             enter_complex(passphrase, b39pass=False)
         else:
+            # looking at word entry right now
+            if is_q1:
+                scr = cap_screen()
+                assert fn in scr  # backup fname shown at the top
+                assert "Enter Password for:" in scr
             word_menu_entry(passphrase, has_checksum=False)
 
         restore_backup_unpacked(avail_settings=avail_settings)

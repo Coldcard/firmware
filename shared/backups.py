@@ -570,9 +570,17 @@ async def restore_complete(fname_or_fd, temporary=False, words=True, usb=False):
 
     if words:
         if version.has_qwerty:
-            from ux_q1 import seed_word_entry
-            return await seed_word_entry('Enter Password:', num_pw_words,
-                                         done_cb=done, has_checksum=False)
+            from ux_q1 import seed_word_entry, CHARS_W
+
+            basename = None
+            if isinstance(fname_or_fd, str):
+                basename = fname_or_fd.split('/')[-1]
+                if len(basename) > CHARS_W:
+                    basename = basename[:16] + "⋯" + basename[-16:]
+
+            return await seed_word_entry("Enter Password%s:" % (" for" if basename else ""),
+                                         num_pw_words, done_cb=done, has_checksum=False,
+                                         line2=basename)
 
         # give them a menu to pick from, and start picking
         if usb:
