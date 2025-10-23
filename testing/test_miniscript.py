@@ -3367,7 +3367,15 @@ def test_legacy_sh_miniscript(offer_minsc_import, press_select, create_core_wall
     assert "Miniscript in legacy P2SH not allowed" in str(e)
 
 
-@pytest.mark.parametrize("lock", ["older", "after"])
+@pytest.mark.parametrize("lock", [
+    ("older", 0),
+    ("after", 0),
+    ("older", 65536),
+    ("after", 2147483648),
+    # time-based relative locks
+    ("older", 4194304),
+    ("older", 4259840),
+])
 def test_timelocks_without_consesnsus_meaning(lock, clear_miniscript, goto_home, get_cc_key,
                                               offer_minsc_import, press_select):
     goto_home()
@@ -3375,10 +3383,8 @@ def test_timelocks_without_consesnsus_meaning(lock, clear_miniscript, goto_home,
     policy = "and_v(v:pk(@0/<0;1>/*),locktime())"
 
     # not allowed to import on CC
-    if lock == "older":
-        to_replace = "older(65536)"
-    else:
-        to_replace = "after(2147483648)"
+    _type, val = lock
+    to_replace = f"{_type}({val})"
 
     policy = policy.replace("locktime()", to_replace)
 
@@ -3392,7 +3398,21 @@ def test_timelocks_without_consesnsus_meaning(lock, clear_miniscript, goto_home,
     with pytest.raises(Exception) as e:
         offer_minsc_import(json.dumps(dict(name=wname, desc=desc)))
 
-    assert f"{lock} out of range [1, {(2**16)-1 if (lock == 'older') else (2**31)-1}]" in e.value.args[0]
+    if _type == "older":
+        if val & (1 << 22):
+            what = "Time-based "
+            x = 4194305
+            y = 4259839
+        else:
+            what = "Block-based "
+            x = 1
+            y = (2**16)-1
+    else:
+        what = ""
+        x = 1
+        y = (2**31)-1
+
+    assert f"{what}{lock[0]} out of range [{x}, {y}]" in e.value.args[0]
     press_select()
 
 # EOF

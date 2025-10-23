@@ -35,7 +35,8 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
   with BIP-380 extended key expression `[xfp/origin_path]xpub`.
 - Bugfix: Disjoint derivation in miniscript wallets
 - Bugfix: Disallow P2SH legacy miniscript
-- Bugfix: Do not allow to import miniscript with `older(N > 65535)`
+- Bugfix: Do not allow to import miniscripts with relative lock without consensus meaning.
+  Only allow to import block-based in range `older(1 - 65535)` & time-based in range `older(4194305 - 4259839)`
 
 # Mk4 Specific Changes
 

@@ -280,14 +280,17 @@ class After(OneArg):
 
     def verify(self):
         super().verify()
-        assert 1 <= self.arg.num < 0x80000000, "%s out of range [1, 2147483647]" % self.NAME
+        assert 0 < self.arg.num < 0x80000000, "%s out of range [1, 2147483647]" % self.NAME
 
     def __len__(self):
         return self.len_args() + 1
 
-class Older(After):
+class Older(OneArg):
     # <n> CHECKSEQUENCEVERIFY
     NAME = "older"
+    ARGCLS = Number
+    TYPE = "B"
+    PROPS = "z"
 
     def inner_compile(self):
         return self.carg + b"\xb2"
@@ -296,7 +299,15 @@ class Older(After):
         super().verify()
         # not consensus valid
         # https://github.com/bitcoin/bitcoin/pull/33135 older(65536) is equivalent to older(1)
-        assert self.arg.num < 0x10000, "%s out of range [1, 65535]" % self.NAME
+        if self.arg.num & (1 << 22):
+            # time-based
+            assert 0x400000 < self.arg.num < 0x410000, "Time-based %s out of range [4194305, 4259839]" % self.NAME
+        else:
+            # block-based
+            assert 0 < self.arg.num < 0x10000, "Block-based %s out of range [1, 65535]" % self.NAME
+
+    def __len__(self):
+        return self.len_args() + 1
 
 class Sha256(OneArg):
     # SIZE <32> EQUALVERIFY SHA256 <h> EQUAL
