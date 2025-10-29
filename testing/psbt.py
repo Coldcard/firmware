@@ -14,58 +14,63 @@ b2a_hex = lambda a: str(_b2a_hex(a), 'ascii')
 # BIP-174 aka PSBT defined values
 #
 # GLOBAL ===
-PSBT_GLOBAL_UNSIGNED_TX 	     = 0x00
-PSBT_GLOBAL_XPUB        	     = 0x01
-PSBT_GLOBAL_VERSION              = 0xfb
-PSBT_GLOBAL_PROPRIETARY          = 0xfc
+PSBT_GLOBAL_UNSIGNED_TX 	        = 0x00
+PSBT_GLOBAL_XPUB        	        = 0x01
+PSBT_GLOBAL_VERSION                 = 0xfb
+PSBT_GLOBAL_PROPRIETARY             = 0xfc
 
 # BIP-370
-PSBT_GLOBAL_TX_VERSION           = 0x02
-PSBT_GLOBAL_FALLBACK_LOCKTIME    = 0x03
-PSBT_GLOBAL_INPUT_COUNT          = 0x04
-PSBT_GLOBAL_OUTPUT_COUNT         = 0x05
-PSBT_GLOBAL_TX_MODIFIABLE        = 0x06
+PSBT_GLOBAL_TX_VERSION              = 0x02
+PSBT_GLOBAL_FALLBACK_LOCKTIME       = 0x03
+PSBT_GLOBAL_INPUT_COUNT             = 0x04
+PSBT_GLOBAL_OUTPUT_COUNT            = 0x05
+PSBT_GLOBAL_TX_MODIFIABLE           = 0x06
 
 # INPUTS ===
-PSBT_IN_NON_WITNESS_UTXO 	     = 0x00
-PSBT_IN_WITNESS_UTXO 	         = 0x01
-PSBT_IN_PARTIAL_SIG 	         = 0x02
-PSBT_IN_SIGHASH_TYPE 	         = 0x03
-PSBT_IN_REDEEM_SCRIPT 	         = 0x04
-PSBT_IN_WITNESS_SCRIPT 	         = 0x05
-PSBT_IN_BIP32_DERIVATION 	     = 0x06
-PSBT_IN_FINAL_SCRIPTSIG 	     = 0x07
-PSBT_IN_FINAL_SCRIPTWITNESS      = 0x08
-PSBT_IN_POR_COMMITMENT           = 0x09   # Proof of Reserves
-PSBT_IN_RIPEMD160                = 0x0a
-PSBT_IN_SHA256                   = 0x0b
-PSBT_IN_HASH160                  = 0x0c
-PSBT_IN_HASH256                  = 0x0d
+PSBT_IN_NON_WITNESS_UTXO 	        = 0x00
+PSBT_IN_WITNESS_UTXO 	            = 0x01
+PSBT_IN_PARTIAL_SIG 	            = 0x02
+PSBT_IN_SIGHASH_TYPE 	            = 0x03
+PSBT_IN_REDEEM_SCRIPT 	            = 0x04
+PSBT_IN_WITNESS_SCRIPT 	            = 0x05
+PSBT_IN_BIP32_DERIVATION 	        = 0x06
+PSBT_IN_FINAL_SCRIPTSIG 	        = 0x07
+PSBT_IN_FINAL_SCRIPTWITNESS         = 0x08
+PSBT_IN_POR_COMMITMENT              = 0x09   # Proof of Reserves
+PSBT_IN_RIPEMD160                   = 0x0a
+PSBT_IN_SHA256                      = 0x0b
+PSBT_IN_HASH160                     = 0x0c
+PSBT_IN_HASH256                     = 0x0d
 # BIP-370
-PSBT_IN_PREVIOUS_TXID            = 0x0e
-PSBT_IN_OUTPUT_INDEX             = 0x0f
-PSBT_IN_SEQUENCE                 = 0x10
-PSBT_IN_REQUIRED_TIME_LOCKTIME   = 0x11
-PSBT_IN_REQUIRED_HEIGHT_LOCKTIME = 0x12
+PSBT_IN_PREVIOUS_TXID               = 0x0e
+PSBT_IN_OUTPUT_INDEX                = 0x0f
+PSBT_IN_SEQUENCE                    = 0x10
+PSBT_IN_REQUIRED_TIME_LOCKTIME      = 0x11
+PSBT_IN_REQUIRED_HEIGHT_LOCKTIME    = 0x12
 # BIP-371
-PSBT_IN_TAP_KEY_SIG              = 0x13
-PSBT_IN_TAP_SCRIPT_SIG           = 0x14
-PSBT_IN_TAP_LEAF_SCRIPT          = 0x15
-PSBT_IN_TAP_BIP32_DERIVATION     = 0x16
-PSBT_IN_TAP_INTERNAL_KEY         = 0x17
-PSBT_IN_TAP_MERKLE_ROOT          = 0x18
+PSBT_IN_TAP_KEY_SIG                 = 0x13
+PSBT_IN_TAP_SCRIPT_SIG              = 0x14
+PSBT_IN_TAP_LEAF_SCRIPT             = 0x15
+PSBT_IN_TAP_BIP32_DERIVATION        = 0x16
+PSBT_IN_TAP_INTERNAL_KEY            = 0x17
+PSBT_IN_TAP_MERKLE_ROOT             = 0x18
+
+PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS  = 0x1a
+PSBT_IN_MUSIG2_PUB_NONCE            = 0x1b
+PSBT_IN_MUSIG2_PARTIAL_SIG          = 0x1c
 
 # OUTPUTS ===
-PSBT_OUT_REDEEM_SCRIPT 	         = 0x00
-PSBT_OUT_WITNESS_SCRIPT 	     = 0x01
-PSBT_OUT_BIP32_DERIVATION 	     = 0x02
+PSBT_OUT_REDEEM_SCRIPT 	            = 0x00
+PSBT_OUT_WITNESS_SCRIPT 	        = 0x01
+PSBT_OUT_BIP32_DERIVATION 	        = 0x02
 # BIP-370
-PSBT_OUT_AMOUNT                  = 0x03
-PSBT_OUT_SCRIPT                  = 0x04
+PSBT_OUT_AMOUNT                     = 0x03
+PSBT_OUT_SCRIPT                     = 0x04
 # BIP-371
-PSBT_OUT_TAP_INTERNAL_KEY        = 0x05
-PSBT_OUT_TAP_TREE                = 0x06
-PSBT_OUT_TAP_BIP32_DERIVATION    = 0x07
+PSBT_OUT_TAP_INTERNAL_KEY           = 0x05
+PSBT_OUT_TAP_TREE                   = 0x06
+PSBT_OUT_TAP_BIP32_DERIVATION       = 0x07
+PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS = 0x08
 
 PSBT_PROP_CK_ID = b"COINKITE"
 
@@ -133,6 +138,9 @@ class BasicPSBTInput(PSBTSection):
         self.sequence = None             # v2
         self.req_time_locktime = None    # v2
         self.req_height_locktime = None  # v2
+        self.musig_pubkeys = {}
+        self.musig_pubnonces = {}
+        self.musig_part_sigs = {}
         self.others = {}
         self.unknown = {}
 
@@ -160,6 +168,9 @@ class BasicPSBTInput(PSBTSection):
              a.sequence == b.sequence and \
              a.req_time_locktime == b.req_time_locktime and \
              a.req_height_locktime == b.req_height_locktime and \
+             a.musig_pubkeys == b.musig_pubkeys and \
+             a.musig_pubnonces == b.musig_pubnonces and \
+             a.musig_part_sigs == b.musig_part_sigs and \
              a.unknown == b.unknown
         if rv:
             # NOTE: equality test on signatures requires parsing DER stupidness
@@ -225,6 +236,30 @@ class BasicPSBTInput(PSBTSection):
             self.taproot_scripts[leaf_script].add(key)
         elif kt == PSBT_IN_TAP_MERKLE_ROOT:
             self.taproot_merkle_root = val
+        elif kt == PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS:
+            assert len(key) == 33  # compressed aggregate pubkey length
+            assert len(val) % 33 == 0  # list of compressed participant pubkeys
+            assert key not in self.musig_pubkeys
+            pk_list = []
+            for i in range(0, len(val), 33):
+                pk_list.append(val[i:i + 33])
+            self.musig_pubkeys[key] = pk_list
+        elif kt == PSBT_IN_MUSIG2_PUB_NONCE:
+            assert len(key) in (66, 98)  # participant pubkey (33) + aggregate pubkey (33) + (optional) tapleaf hash (32)
+            assert len(val) == 66  # serialized pubnonce
+            assert key not in self.musig_pubnonces
+            participant_key = key[:33]
+            aggregate_key = key[33:66]
+            tapleaf_h = key[66:]
+            self.musig_pubnonces[(participant_key, aggregate_key, tapleaf_h)] = val
+        elif kt == PSBT_IN_MUSIG2_PARTIAL_SIG:
+            assert len(key) in (66, 98)  # participant pubkey (33) + aggregate pubkey (33) + (optional) tapleaf hash (32)
+            assert len(val) == 32  # serialized musig partial signature
+            assert key not in self.musig_part_sigs
+            participant_key = key[:33]
+            aggregate_key = key[33:66]
+            tapleaf_h = key[66:]
+            self.musig_part_sigs[(participant_key, aggregate_key, tapleaf_h)] = val
         else:
             self.unknown[bytes([kt]) + key] = val
 
@@ -280,6 +315,18 @@ class BasicPSBTInput(PSBTSection):
             if self.req_height_locktime is not None:
                 wr(PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, struct.pack("<I", self.req_height_locktime))
 
+        if self.musig_pubkeys:
+            for agg_k, pk_lst in self.musig_pubkeys.items():
+                wr(PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS, b"".join(pk_lst), agg_k)
+
+        if self.musig_pubnonces:
+            for (pk, ak, lh), pubnonce in self.musig_pubnonces.items():
+                wr(PSBT_IN_MUSIG2_PUB_NONCE, pubnonce, pk+ak+lh)
+
+        if self.musig_part_sigs:
+            for (pk, ak, lh), part_sig in self.musig_part_sigs.items():
+                wr(PSBT_IN_MUSIG2_PARTIAL_SIG, part_sig, pk + ak + lh)
+
         for k in self.others:
             wr(k, self.others[k])
         if isinstance(self.unknown, list):
@@ -303,6 +350,7 @@ class BasicPSBTOutput(PSBTSection):
         self.script = None  # v2
         self.amount = None  # v2
         self.proprietary = {}
+        self.musig_pubkeys = {}
         self.unknown = {}
 
     def __eq__(a, b):
@@ -316,6 +364,7 @@ class BasicPSBTOutput(PSBTSection):
             a.taproot_internal_key == b.taproot_internal_key and \
             a.proprietary == b.proprietary and \
             a.taproot_tree == b.taproot_tree and \
+            a.musig_pubkeys == b.musig_pubkeys and \
             a.unknown == b.unknown
 
     def parse_kv(self, kt, key, val):
@@ -347,6 +396,14 @@ class BasicPSBTOutput(PSBTSection):
             self.script = val
         elif kt == PSBT_OUT_AMOUNT:
             self.amount = struct.unpack("<q", val)[0]
+        elif kt == PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS:
+            assert len(key) == 33  # compressed aggregate pubkey length
+            assert len(val) % 33 == 0  # list of compressed participant pubkeys
+            assert key not in self.musig_pubkeys
+            pk_list = []
+            for i in range(0, len(val), 33):
+                pk_list.append(val[i:i + 33])
+            self.musig_pubkeys[key] = pk_list
         elif kt == PSBT_GLOBAL_PROPRIETARY:
             self.proprietary[key] = val
         else:
@@ -374,6 +431,10 @@ class BasicPSBTOutput(PSBTSection):
             wr(PSBT_OUT_SCRIPT, self.script)
         if v2 and self.amount is not None:
             wr(PSBT_OUT_AMOUNT, struct.pack("<q", int(self.amount)))
+
+        if self.musig_pubkeys:
+            for agg_k, pk_lst in self.musig_pubkeys.items():
+                wr(PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS, b"".join(pk_lst), agg_k)
 
         for k in self.proprietary:
             wr(PSBT_GLOBAL_PROPRIETARY, self.proprietary[k], k)

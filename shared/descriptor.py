@@ -5,11 +5,11 @@
 import ngu, chains
 from io import BytesIO
 from collections import OrderedDict
-from binascii import hexlify as b2a_hex
-from utils import xfp2str
+from utils import xfp2str, swab32
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from public_constants import AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, MAX_TR_SIGNERS
-from desc_utils import parse_desc_str, append_checksum, descriptor_checksum, Key
+from desc_utils import (parse_desc_str, append_checksum, descriptor_checksum,
+                        KeyExpression, ExtendedKey, MusigKey)
 from miniscript import Miniscript
 from precomp_tag_hash import TAP_BRANCH_H
 
@@ -170,9 +170,12 @@ class Descriptor:
         keys_info = OrderedDict()
 
         for k in self.keys:
-            pk = k.node.pubkey()
-            if pk not in keys_info:
-                keys_info[pk] = k.to_string(external=False, internal=False)
+            ks = k.keys if isinstance(k, MusigKey) else [k]
+
+            for kk in ks:
+                pk = kk.node.pubkey()
+                if pk not in keys_info:
+                    keys_info[pk] = kk.to_string(external=False, internal=False)
 
         desc_tmplt = self.to_string(checksum=False).replace("/<0;1>/*", "/**")
 
@@ -198,7 +201,17 @@ class Descriptor:
             if self.is_taproot and k.is_provably_unspendable and skip_unspend_ik:
                 continue
 
-            res.append(k.origin.psbt_derivation())
+            if isinstance(k, MusigKey):
+                agg_k = [swab32(k.node.my_fp())]
+                # even if dupes - add
+                res.append(agg_k)
+
+                for kk in k.keys:
+                    psbt_der = kk.origin.psbt_derivation()
+                    if psbt_der not in res:
+                        res.append(psbt_der)
+            else:
+                res.append(k.origin.psbt_derivation())
 
         return res
 
@@ -231,16 +244,18 @@ class Descriptor:
         if self._keys:
             return self._keys
 
-        if self.tapscript:
+        if self.is_taproot:
             # internal is always first
             # use ordered dict as order preserving set
             keys = OrderedDict()
-            # add internal key
+            # add internal key (whether musig or not)
             keys[self.key] = None
-            # taptree keys
-            for lv in self.tapscript.iter_leaves():
-                for k in lv.keys:
-                    keys[k] = None
+
+            if self.tapscript:
+                # taptree keys
+                for lv in self.tapscript.iter_leaves():
+                    for k in lv.keys:
+                        keys[k] = None
 
             self._keys = list(keys)
 
@@ -259,21 +274,20 @@ class Descriptor:
             # duplicate keys can be may be found in different leaves
             # use map to derive each key just once
             derived_keys = OrderedDict()
-            ikd = None
             for i, k in enumerate(self.keys):
-                dk = k.derive(idx, change=change)
-                dk.taproot = self.is_taproot
-                derived_keys[k] = dk
-                if not i:
-                    # internal key is always at index 0 in self.keys
-                    ikd = dk
+                if not isinstance(k, MusigKey):
+                    dk = k.derive(idx, change=change)
+                    dk.taproot = self.is_taproot
+                    derived_keys[k] = dk
 
-            return type(self)(
-                ikd,
-                tapscript=self.tapscript.derive(idx, derived_keys, change=change),
-                addr_fmt=self.addr_fmt,
-                keys=list(derived_keys.values()),
-            )
+            derived_tapsript = None
+            if self.tapscript:
+                derived_tapsript = self.tapscript.derive(idx, derived_keys, change=change)
+
+            return type(self)(self.key.derive(idx, change=change),
+                              tapscript=derived_tapsript, addr_fmt=self.addr_fmt,
+                              keys=list(derived_keys.values()))
+
         if self.miniscript:
             return type(self)(
                 None,
@@ -371,8 +385,7 @@ class Descriptor:
         if start.startswith(b"tr("):
             af = AF_P2TR
             s.seek(-5, 1)
-            internal_key = Key.parse(s)
-            internal_key.taproot = True
+            internal_key = KeyExpression.read_from(s, taproot=True)
             sep = s.read(1)
             if sep == b")":
                 s.seek(-1, 1)
@@ -408,7 +421,7 @@ class Descriptor:
             key = internal_key
             nbrackets = 1 + int(af == AF_P2WSH_P2SH)
         else:
-            key = Key.parse(s)
+            key = ExtendedKey.read_from(s, taproot=False)
             nbrackets = 1 + int(af == AF_P2WPKH_P2SH)
 
         end = s.read(nbrackets)

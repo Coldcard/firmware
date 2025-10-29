@@ -649,7 +649,9 @@ async def kt_send_psbt(psbt, psbt_len):
     ms = psbt.active_miniscript
     all_xfps = {x for x,*p in ms.to_descriptor().xfp_paths(skip_unspend_ik=True)}
 
-    need = [x for x in psbt.miniscript_xfps_needed() if x in all_xfps]
+    # ignore -> keys to ignore, currently only musig aggregate keys
+    need, ignore = psbt.miniscript_xfps_needed()
+    need = [x for x in need if x in all_xfps]
     # maybe it's not really a PSBT where we know the other signers? might be
     # a weird coinjoin we don't fully understand
     if not need:
@@ -679,7 +681,7 @@ async def kt_send_psbt(psbt, psbt_len):
 
     ci = []
     next_signer = None
-    for idx, x in enumerate(all_xfps):
+    for idx, x in enumerate(all_xfps - ignore):  # set diff
         txt = '[%s] Co-signer #%d' % (xfp2str(x), idx+1)
         f = done_cb
         if x == my_xfp:
@@ -715,7 +717,7 @@ async def kt_send_psbt(psbt, psbt_len):
     m.goto_idx(next_signer)     # position cursor on next candidate
     the_ux.push(m)
     await m.interact()
-    
+
     if m.next_xfp:
         assert m.next_xfp != my_xfp
         ri, rx_pubkey, kp = ms.kt_make_rxkey(m.next_xfp)

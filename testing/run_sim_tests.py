@@ -405,6 +405,9 @@ def main():
                 queue.append((0, [module_name, simulator_args, "test_bitcoind_tapscript_address", "-sep3"]))
                 queue.append((0, [module_name, simulator_args, "test_minitapscript", "-sep4"]))
 
+            elif module_name == "test_musig2.py":
+                queue.append((0, [module_name, simulator_args, None, ""]))
+
             elif module_name == "test_multisig.py":
                 # split takes too much time
                 queue.append((0, [module_name, simulator_args, "not tutorial and not airgapped and not ms_address and not descriptor_export", ""]))

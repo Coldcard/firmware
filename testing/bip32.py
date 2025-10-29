@@ -1,6 +1,6 @@
 # (c) Copyright 2024 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import hashlib, hmac, bech32
+import hashlib, hmac, bech32, os
 from typing import Union
 from io import BytesIO
 try:
@@ -19,6 +19,7 @@ except ImportError:
 
 from helpers import hash160, str_to_path
 from base58 import encode_base58_checksum, decode_base58_checksum
+from constants import H
 
 HARDENED = 2 ** 31
 
@@ -787,3 +788,21 @@ class BIP32Node:
 
     def parent_fingerprint(self):
         return self.node.parent_fingerprint
+
+
+def ranged_unspendable_internal_key(chain_code=32 * b"\x01", subderiv="/<0;1>/*"):
+    # provide ranged provably unspendable key in serialized extended key format for core to understand it
+    # core does NOT understand 'unspend('
+    pk = b"\x02" + bytes.fromhex(H)
+    node = BIP32Node.from_chaincode_pubkey(chain_code, pk)
+    return node.hwif() + subderiv
+
+
+def random_keys(num_keys, path="86h/1h/0h"):
+    keys = []
+    for _ in range(num_keys):
+        k = BIP32Node.from_master_secret(os.urandom(32))
+        key = f"[{k.fingerprint().hex()}/{path}]{k.subkey_for_path(path).hwif()}"
+        keys.append(key)
+
+    return keys

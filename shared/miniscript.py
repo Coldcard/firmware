@@ -6,7 +6,7 @@ import ngu
 from binascii import unhexlify as a2b_hex
 from binascii import hexlify as b2a_hex
 from serializations import ser_compact_size
-from desc_utils import Key, read_until
+from desc_utils import ExtendedKey, MusigKey, KeyExpression, read_until
 from public_constants import MAX_TR_SIGNERS
 
 
@@ -41,15 +41,7 @@ class Number:
         return "%d" % self.num
 
 
-class KeyHash(Key):
-    @classmethod
-    def parse_key(cls, k: bytes, *args, **kwargs):
-        # convert to string
-        kd = k.decode()
-        # raw 20-byte hash
-        if len(kd) == 40:
-            return kd, None
-        return super().parse_key(k, *args, **kwargs)
+class KeyHash(ExtendedKey):
 
     def serialize(self, *args, **kwargs):
         start = 1 if self.taproot else 0
@@ -62,6 +54,27 @@ class KeyHash(Key):
         d = self.serialize()
         return ser_compact_size(len(d)) + d
 
+
+class KeyHashMusig(MusigKey):
+    def serialize(self, *args, **kwargs):
+        return ngu.hash.hash160(self.key_bytes())
+
+    def __len__(self):
+        return 21 # <20:pkh>
+
+    def compile(self):
+        d = self.serialize()
+        return ser_compact_size(len(d)) + d
+
+class KeyHashExpression:
+    @classmethod
+    def read_from(cls, s, taproot=False):
+        is_musig = (s.read(6) == b"musig(")
+        s.seek(-6, 1)
+        if is_musig:
+            return KeyHashMusig.read_from(s, taproot=taproot)
+        else:
+            return KeyHash.read_from(s, taproot=taproot)
 
 class Raw:
     def __init__(self, raw):
@@ -114,7 +127,7 @@ class Miniscript:
         for arg in self.args:
             if isinstance(arg, Miniscript):
                 res += arg.keys
-            elif isinstance(arg, Key):  # KeyHash is subclass of Key
+            elif isinstance(arg, ExtendedKey) or isinstance(arg, MusigKey):  # KeyHash is subclass of ExtendedKey
                 res.append(arg)
         return res
 
@@ -139,7 +152,9 @@ class Miniscript:
     def derive(self, idx, key_map=None, change=False):
         args = []
         for arg in self.args:
-            if isinstance(arg, Key):  # KeyHash is subclass of Key
+            if isinstance(arg, MusigKey):
+                arg = arg.derive(idx, change)
+            elif isinstance(arg, ExtendedKey):  # KeyHash is subclass of ExtendedKey
                 arg = self.key_derive(arg, idx, key_map, change=change)
             elif hasattr(arg, "derive"):
                 arg = arg.derive(idx, key_map, change)
@@ -244,7 +259,7 @@ class OneArg(Miniscript):
 class PkK(OneArg):
     # <key>
     NAME = "pk_k"
-    ARGCLS = Key
+    ARGCLS = KeyExpression
     TYPE = "K"
     PROPS = "ondu"
 
@@ -258,7 +273,7 @@ class PkK(OneArg):
 class PkH(OneArg):
     # DUP HASH160 <HASH160(key)> EQUALVERIFY
     NAME = "pk_h"
-    ARGCLS = KeyHash
+    ARGCLS = KeyHashExpression
     TYPE = "K"
     PROPS = "ndu"
 
@@ -752,7 +767,7 @@ class Multi(Miniscript):
     # <k> <key1> ... <keyn> <n> CHECKMULTISIG
     NAME = "multi"
     NARGS = None
-    ARGCLS = (Number, Key)
+    ARGCLS = (Number, ExtendedKey)
     TYPE = "B"
     PROPS = "ndu"
     N_MAX = 20
@@ -831,7 +846,7 @@ class Sortedmulti_a(Multi_a):
 class Pk(OneArg):
     # <key> CHECKSIG
     NAME = "pk"
-    ARGCLS = Key
+    ARGCLS = KeyExpression
     TYPE = "B"
     PROPS = "ondu"
 
@@ -845,7 +860,7 @@ class Pk(OneArg):
 class Pkh(OneArg):
     # DUP HASH160 <HASH160(key)> EQUALVERIFY CHECKSIG
     NAME = "pkh"
-    ARGCLS = KeyHash
+    ARGCLS = KeyHashExpression
     TYPE = "B"
     PROPS = "ndu"
 

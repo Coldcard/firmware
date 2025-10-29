@@ -13,24 +13,22 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
-- New Feature: Support for v3 transactions
-- New Feature: Send keystrokes with all derived BIP-85 secrets
-- Enhancement: CCC allow to reset block height
+- New Feature: Ability to sign MuSig2 UTXOs. Read more [here](docs/musig.md)  TODO proper link
 - Bugfix: PSBT global XPUBs validation when signing with specific wallet
 - Bugfix: Do not allow sighash DEFAULT outside taproot context
 
 # Mk4 Specific Changes
 
-## 6.4.1X - 2026-xx-xx
+## 6.5.0X - 2026-03-24
 
-- todo
+- synced with master up to `5.5.0`
 
 
 # Q Specific Changes
 
-## 6.4.0QX - 2026-xx-xx
+## 6.5.0QX - 2026-03-24
 
-- todo
+- synced with master up to `1.4.0Q`
 
 
 # Release History

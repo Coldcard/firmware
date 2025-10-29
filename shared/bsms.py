@@ -17,7 +17,7 @@ from menu import MenuSystem, MenuItem
 from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_show_story, ux_enter_number, restore_menu, ux_input_text
 from ux import the_ux, _import_prompt_builder, export_prompt_builder
-from descriptor import Descriptor, Key, append_checksum
+from descriptor import Descriptor, ExtendedKey, append_checksum
 from miniscript import Sortedmulti, Number
 from charcodes import KEY_NFC, KEY_QR
 
@@ -686,7 +686,7 @@ async def bsms_coordinator_round2(menu, label, item):
         )
         version, tok, key_exp, description, sig = data.strip().split("\n")
         assert tok == token, "Token mismatch saved %s, received from signer %s" % (token, tok)
-        key = Key.from_string(key_exp)
+        key = ExtendedKey.from_string(key_exp)
         dis.progress_bar_show(i_div_N / 4)
         msg = signer_data_round1(token, key_exp, description)
         digest = chain.hash_message(msg.encode())
