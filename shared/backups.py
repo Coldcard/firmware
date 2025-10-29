@@ -584,7 +584,7 @@ async def restore_complete(fname_or_fd, temporary=False, words=True, usb=False):
         if words is False:
             ipw = await ux_input_text("", prompt="Your Backup Password",
                                       min_len=bkpw_min_len, max_len=128)
-            if not pwd: return
+            if not ipw: return
             pwd.append(ipw)
 
         await done(pwd)
