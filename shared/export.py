@@ -275,7 +275,7 @@ importmulti '{imp_multi}'
 def generate_bitcoin_core_wallet(account_num, example_addrs):
     # Generate the data for an RPC command to import keys into Bitcoin Core
     # - yields dicts for json purposes
-    from descriptor import Descriptor, Key
+    from descriptor import Descriptor, ExtendedKey
 
     chain = chains.current_chain()
 
@@ -306,10 +306,10 @@ def generate_bitcoin_core_wallet(account_num, example_addrs):
             example_addrs.append(('m/%s/%s' % (derive_v1, sp), a))
 
     xfp = settings.get('xfp')
-    key0 = Key.from_cc_data(xfp, derive_v0, xpub_v0)
+    key0 = ExtendedKey.from_cc_data(xfp, derive_v0, xpub_v0)
     desc_v0 = Descriptor(key=key0, addr_fmt=AF_P2WPKH)
 
-    key1 = Key.from_cc_data(xfp, derive_v1, xpub_v1)
+    key1 = ExtendedKey.from_cc_data(xfp, derive_v1, xpub_v1)
     desc_v1 = Descriptor(key=key1, addr_fmt=AF_P2TR)
 
     OWNERSHIP.note_wallet_used(AF_P2WPKH, account_num)
@@ -391,7 +391,7 @@ def generate_unchained_export(account_num=0):
 
 def generate_generic_export(account_num=0):
     # Generate data that other programers will use to import Coldcard (single-signer)
-    from descriptor import Descriptor, Key
+    from descriptor import Descriptor, ExtendedKey
 
     chain = chains.current_chain()
     master_xfp = settings.get("xfp")
@@ -422,7 +422,7 @@ def generate_generic_export(account_num=0):
             xfp = xfp2str(swab32(node.my_fp()))
             xp = chain.serialize_public(node, AF_CLASSIC)
             zp = chain.serialize_public(node, fmt) if fmt not in (AF_CLASSIC, AF_P2TR) else None
-            key = Key.from_cc_data(master_xfp, dd, xp)
+            key = ExtendedKey.from_cc_data(master_xfp, dd, xp)
             key_exp = key.to_string(external=False, internal=False)
 
             rv[name] = OrderedDict(name=atype,
@@ -491,7 +491,7 @@ def generate_electrum_wallet(addr_type, account_num):
 
 async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int_ext=True,
                                         fname_pattern="descriptor.txt", direct_way=None):
-    from descriptor import Descriptor, Key
+    from descriptor import Descriptor, ExtendedKey
     from glob import dis
 
     dis.fullscreen('Generating...')
@@ -514,7 +514,7 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
 
     dis.progress_bar_show(0.7)
 
-    key = Key.from_cc_data(xfp, derive, xpub)
+    key = ExtendedKey.from_cc_data(xfp, derive, xpub)
     desc = Descriptor(key=key, addr_fmt=addr_type)
     dis.progress_bar_show(0.8)
     if int_ext:

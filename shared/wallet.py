@@ -6,7 +6,8 @@
 import ngu, ujson, uio, chains, ure, version, stash
 from binascii import hexlify as b2a_hex
 from serializations import ser_string
-from desc_utils import bip388_wallet_policy_to_descriptor, append_checksum, bip388_validate_policy, Key
+from desc_utils import (bip388_wallet_policy_to_descriptor, append_checksum, bip388_validate_policy,
+                        ExtendedKey, MusigKey)
 from public_constants import AF_P2TR, AF_P2WSH, AF_CLASSIC, AF_P2SH, AF_P2WSH_P2SH
 from menu import MenuSystem, MenuItem, start_chooser
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, OK, X, ux_enter_bip32_index
@@ -144,10 +145,10 @@ class MasterSingleSigWallet(WalletABC):
         return self._path + '/%d/%d' % (change_idx, idx)
 
     def to_descriptor(self):
-        from descriptor import Descriptor, Key
+        from descriptor import Descriptor, ExtendedKey
         xfp = settings.get('xfp')
         xpub = settings.get('xpub')
-        d = Descriptor(key=Key.from_cc_data(xfp, self._path, xpub), addr_fmt=self.addr_fmt)
+        d = Descriptor(key=ExtendedKey.from_cc_data(xfp, self._path, xpub), addr_fmt=self.addr_fmt)
         return d
 
 
@@ -329,7 +330,7 @@ class MiniScriptWallet(WalletABC):
             for i, k_str in enumerate(self.keys_info):
                 if not i and self.ik_u and skip_unspend_ik:
                     continue
-                k = Key.from_string(k_str)
+                k = ExtendedKey.from_string(k_str)
                 res.append(k.origin.psbt_derivation())
             return res
 
@@ -337,7 +338,6 @@ class MiniScriptWallet(WalletABC):
 
     def matching_subpaths(self, xfp_paths):
         my_xfp_paths = self.to_descriptor().xfp_paths()
-
         if len(xfp_paths) != len(my_xfp_paths):
             return False
 
@@ -359,7 +359,8 @@ class MiniScriptWallet(WalletABC):
             for y in xfp_paths:
                 if x == y[:prefix_len]:
                     to_derive = tuple(y[prefix_len:])
-                    res.add(to_derive)
+                    if to_derive:
+                        res.add(to_derive)
 
         err = "derivation indexes"
         assert res, err
@@ -460,11 +461,8 @@ class MiniScriptWallet(WalletABC):
         for idx, k_str in enumerate(self.keys_info):
             if idx:
                 msg += '\n---===---\n\n'
-            elif self.addr_fmt == AF_P2TR:
-                # index 0, taproot internal key
-                msg += "Taproot internal key:\n\n"
-                if self.ik_u:
-                    msg += "(provably unspendable)\n\n"
+            elif self.addr_fmt == AF_P2TR and self.ik_u:
+                msg += "Provably unspendable internal key:\n\n"
 
             msg += '@%s:\n  %s\n\n' % (idx, k_str)
 
@@ -568,7 +566,7 @@ class MiniScriptWallet(WalletABC):
 
         keys = []
         for ek, xfp_pth in xpubs_list:
-            k = Key.from_psbt_xpub(ek, xfp_pth)
+            k = ExtendedKey.from_psbt_xpub(ek, xfp_pth)
             has_mine += k.validate(my_xfp, cls.disable_checks)
             keys.append(k)
 
@@ -586,7 +584,7 @@ class MiniScriptWallet(WalletABC):
         # using __hash__ of the key object ignores origin derivation
         keys = set()
         for ek, xfp_pth in psbt_xpubs:
-            key = Key.from_psbt_xpub(ek, xfp_pth)
+            key = ExtendedKey.from_psbt_xpub(ek, xfp_pth)
             key.validate(settings.get('xfp', 0), self.disable_checks)
             keys.add(key.to_string(external=False, internal=False))
 
@@ -815,11 +813,13 @@ class MiniScriptWallet(WalletABC):
         # return list of XPUB's which match xfp
         res = []
         desc = self.to_descriptor()
-        for k in desc.keys:
-            if k.origin and k.origin.cc_fp == xfp:
-                res.append(k)
-            elif swab32(k.node.my_fp()) == xfp:
-                res.append(k)
+        for key in desc.keys:
+            ks = key.keys if isinstance(key, MusigKey) else [key]
+            for k in ks:
+                if k.origin and k.origin.cc_fp == xfp:
+                    res.append(k)
+                elif swab32(k.node.my_fp()) == xfp:
+                    res.append(k)
 
         assert res, "missing xfp %s" % xfp2str(xfp)
         # returned is list of keys with corresponding master xfp
@@ -870,15 +870,19 @@ class MiniScriptWallet(WalletABC):
 
         for msc in cls.iter_wallets():
             kp = msc.kt_my_keypair(ri)
-            for k in msc.to_descriptor().keys:
-                if k.origin.cc_fp == my_xfp:
-                    continue
-                kk = k.derive(KT_RXPUBKEY_DERIV).derive(ri)
-                his_pubkey = kk.node.pubkey()
-                # if implied session key decodes the checksum, it is right
-                ses_key, body = decode_step1(kp, his_pubkey, payload[4:])
-                if ses_key:
-                    return ses_key, body, kk.origin.cc_fp
+
+            for key in msc.to_descriptor().keys:
+                ks = key.keys if isinstance(key, MusigKey) else [key]
+                for k in ks:
+                    if not k.origin: continue
+                    if k.origin.cc_fp == my_xfp:
+                        continue
+                    kk = k.derive(KT_RXPUBKEY_DERIV).derive(ri)
+                    his_pubkey = kk.node.pubkey()
+                    # if implied session key decodes the checksum, it is right
+                    ses_key, body = decode_step1(kp, his_pubkey, payload[4:])
+                    if ses_key:
+                        return ses_key, body, kk.origin.cc_fp
 
         return None, None, None
 
@@ -1007,6 +1011,7 @@ async def import_miniscript(*a):
         possible_name = (fn.split('/')[-1].split('.'))[0] if fn else None
         maybe_enroll_xpub(config=data, name=possible_name)
     except BaseException as e:
+        # import sys;sys.print_exception(e)
         await ux_show_story('Failed to import miniscript.\n\n%s\n%s' % (e, problem_file_line(e)))
 
 async def import_miniscript_nfc(*a):
@@ -1313,7 +1318,7 @@ def miniscript_640_migrate(old_serialization):
             ik_key = chains.current_chain().serialize_public(n)
         else:
             ik_key, ik_subder = remove_subderivation(key)
-            ik_u = Key.from_string(ik_key).is_provably_unspendable
+            ik_u = ExtendedKey.from_string(ik_key).is_provably_unspendable
 
         if ik_subder == "/<0;1>/*":
             ik_subder = "/**"

@@ -66,7 +66,6 @@ class Bitcoind:
                 "-server=1",
                 "-listen=0",
                 "-keypool=1",
-                "-listen=0"
                 f"-port={self.p2p_port}",
                 f"-rpcport={self.rpc_port}"
             ]

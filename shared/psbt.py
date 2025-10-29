@@ -7,7 +7,7 @@ from ucollections import OrderedDict
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, B2A, keypath_to_str, validate_derivation_path_length, problem_file_line, node_from_privkey
-from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str
+from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str, swab32
 from uhashlib import sha256
 from uio import BytesIO
 from sffile import SizerFile
@@ -22,6 +22,7 @@ from serializations import ALL_SIGHASH_FLAGS, SIGHASH_DEFAULT
 from opcodes import OP_CHECKMULTISIG, OP_RETURN
 from glob import settings
 from precomp_tag_hash import TAP_TWEAK_H, TAP_SIGHASH_H
+from desc_utils import MusigKey, MUSIG_CHAIN_CODE
 from wif import init_wif_store
 
 from public_constants import (
@@ -38,6 +39,8 @@ from public_constants import (
     PSBT_GLOBAL_FALLBACK_LOCKTIME, PSBT_GLOBAL_TX_VERSION, PSBT_IN_PREVIOUS_TXID,
     PSBT_IN_OUTPUT_INDEX, PSBT_IN_SEQUENCE, PSBT_IN_REQUIRED_TIME_LOCKTIME,
     PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, MAX_SIGNERS,
+    PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS, PSBT_IN_MUSIG2_PUB_NONCE, PSBT_IN_MUSIG2_PARTIAL_SIG,
+    PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS,
     AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH,
     AFC_SEGWIT, AF_BARE_PK
 )
@@ -62,6 +65,9 @@ DEFAULT_MAX_FEE_PERCENTAGE = const(10)
 
 # print some things, sometimes
 DEBUG = ckcc.is_simulator()
+
+
+MUSIG_SESSION_CACHE = {}
 
 class HashNDump:
     def __init__(self, d=None):
@@ -210,7 +216,7 @@ class psbtProxy:
     no_keys = ()
 
     # these fields will return None but are not stored unless a value is set
-    blank_flds = ('unknown', )
+    blank_flds = ('unknown',)
 
     def __init__(self):
         self.fd = None
@@ -316,6 +322,7 @@ class psbtProxy:
 
     def parse_taproot_subpaths(self, my_xfp, parent, cosign_xfp=None):
         my_sp_idxs = []
+        ik_idxs = []
         parsed_subpaths = OrderedDict()
         for i in range(len(self.taproot_subpaths)):
             key, val = self.taproot_subpaths[i]
@@ -328,7 +335,7 @@ class psbtProxy:
             if leaf_hash_len:
                 self.fd.seek(32*leaf_hash_len, 1)
             else:
-                self.ik_idx = i
+                ik_idxs.append(i)
 
             curr_pos = self.fd.tell()
             # this position is where actual xfp+path starts
@@ -343,13 +350,14 @@ class psbtProxy:
             here = list(unpack_from('<%dI' % (to_read // 4), v))
             here = self.handle_zero_xfp(here, my_xfp, parent)
             parsed_subpaths[xonly_pk] = [leaf_hash_len] + here
-            if (here[0] == my_xfp) or (cosign_xfp and (here[0] == cosign_xfp)):
-                my_sp_idxs.append(i)
-            elif parent.key_in_wif_store(xonly_pk):
+            if (here[0] == my_xfp) or (here[0] == cosign_xfp) or parent.key_in_wif_store(xonly_pk):
                 my_sp_idxs.append(i)
 
         if my_sp_idxs:
             self.sp_idxs = my_sp_idxs
+
+        if ik_idxs:
+            self.ik_idx = ik_idxs
 
         return parsed_subpaths
 
@@ -369,7 +377,7 @@ class psbtProxy:
             here = self.handle_zero_xfp(here, my_xfp, parent)
 
             parsed_subpaths[pk] = here
-            if (here[0] == my_xfp) or (cosign_xfp and (here[0] == cosign_xfp)) or (pk in parent.wif_store):
+            if (here[0] == my_xfp) or (here[0] == cosign_xfp) or parent.key_in_wif_store(pk):
                 my_sp_idxs.append(i)
 
             # else:
@@ -397,7 +405,8 @@ class psbtOutputProxy(psbtProxy):
 
     blank_flds = ('unknown', 'subpaths', 'redeem_script', 'witness_script', 'sp_idxs',
                   'is_change', 'amount', 'script', 'attestation', 'proprietary',
-                  'taproot_internal_key', 'taproot_subpaths', 'taproot_tree', 'ik_idx')
+                  'taproot_internal_key', 'taproot_subpaths', 'taproot_tree', 'ik_idx',
+                  'musig_pubkeys')
 
     def __init__(self, fd, idx):
         super().__init__()
@@ -412,6 +421,7 @@ class psbtOutputProxy(psbtProxy):
         #self.witness_script = None
         #self.script = None
         #self.amount = None
+        #self.musig_pubkeys = None
 
         # this flag is set when we are assuming output will be change (same wallet)
         #self.is_change = False
@@ -459,6 +469,9 @@ class psbtOutputProxy(psbtProxy):
             self.taproot_subpaths.append((key, val))
         elif kt == PSBT_OUT_TAP_TREE:
             self.taproot_tree = val
+        elif kt == PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS:
+            self.musig_pubkeys = self.musig_pubkeys or []
+            self.musig_pubkeys.append((key, val))
         else:
             self.unknown = self.unknown or []
             pos, length = key
@@ -487,6 +500,10 @@ class psbtOutputProxy(psbtProxy):
 
         if self.taproot_tree:
             wr(PSBT_OUT_TAP_TREE, self.taproot_tree)
+
+        if self.musig_pubkeys:
+            for k, v in self.musig_pubkeys:
+                wr(PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS, v, k)
 
         if is_v2:
             wr(PSBT_OUT_SCRIPT, self.script)
@@ -595,7 +612,7 @@ class psbtOutputProxy(psbtProxy):
         elif af == AF_P2TR:
             if msc:
                 try:
-                    xfp_paths = [v[1:] for v in parsed_subpaths.values() if len(v[1:]) > 1]
+                    xfp_paths = [v[1:] for v in parsed_subpaths.values()]
                     if msc.matching_subpaths(xfp_paths):
                         msc.validate_script_pubkey(txo.scriptPubKey, xfp_paths)
                         self.is_change = True
@@ -638,9 +655,10 @@ class psbtInputProxy(psbtProxy):
         'fully_signed', 'af', 'is_miniscript', "subpaths", 'utxo', 'utxo_spk',
         'amount', 'previous_txid', 'part_sigs', 'added_sigs',  'prevout_idx', 'sequence',
         'req_time_locktime', 'req_height_locktime',
-        'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts', 'use_keypath',
+        'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts',
         'taproot_subpaths', 'taproot_internal_key', 'taproot_key_sig', 'tr_added_sigs',
-        'ik_idx',
+        'ik_idx', 'musig_pubkeys', 'musig_pubnonces', 'musig_part_sigs', 'musig_agg_idx',
+        'musig_added_pubnonces', 'musig_added_sigs'
     )
 
     def __init__(self, fd, idx):
@@ -674,7 +692,6 @@ class psbtInputProxy(psbtProxy):
         # self.taproot_merkle_root = None
         # self.taproot_script_sigs = None
         # self.taproot_scripts = None
-        # self.use_keypath = None   # signing taproot inputs that have script path with internal key
         # self.ik_idx = None   # index of taproot internal key in taproot_subpaths
         # ===
 
@@ -684,11 +701,20 @@ class psbtInputProxy(psbtProxy):
         #self.req_time_locktime = None
         #self.req_height_locktime = None
 
+        # === musig ===
+        #self.musig_pubkeys = None
+        #self.musig_pubnonces = None
+        #self.musig_part_sigs = None
+
         self.parse(fd)
 
     @property
     def is_segwit(self):
         return self.af & AFC_SEGWIT
+
+    @property
+    def is_musig(self):
+        return bool(self.musig_pubkeys or self.musig_pubnonces or self.musig_part_sigs)
 
     def get_taproot_script_sigs(self):
         # returns set of (xonly, script) provided via PSBT_IN_TAP_SCRIPT_SIG
@@ -710,6 +736,65 @@ class psbtInputProxy(psbtProxy):
             t_scr[script[:-1]] = script[-1]  # only script, and script version
 
         return t_scr
+
+    def get_musig_pubkeys(self):
+        parsed_musig_pubkeys = {}
+        for k, v in self.musig_pubkeys or []:
+            key = self.get(k)
+            pubkeys = self.get(v)
+            pk_list = []
+            for i in range(0, len(pubkeys), 33):
+                pk_list.append(pubkeys[i:i+33])
+
+            parsed_musig_pubkeys[key] = pk_list
+
+        return parsed_musig_pubkeys
+
+    def parse_musig_composite_key(self, key_coords):
+        # helper function to parse key from:
+        #  * PSBT_IN_MUSIG2_PUB_NONCE
+        #  * PSBT_IN_MUSIG2_PARTIAL_SIG
+        key = self.get(key_coords)
+        return key[:33], key[33:66], key[66:]
+
+    def get_musig_pubnonces(self):
+        parsed_musig_pubnonces = {}
+        for k, v in self.musig_pubnonces or []:
+            # participant pubkey, aggregate key, tapleaf hash
+            pk, ak, tlh = self.parse_musig_composite_key(k)
+            pubnonce = self.get(v)
+            parsed_musig_pubnonces[(pk, ak, tlh)] = pubnonce
+
+        return parsed_musig_pubnonces
+
+    def get_musig_part_sigs(self):
+        parsed_musig_part_sigs = {}
+        for k, v in self.musig_part_sigs or []:
+            # participant pubkey, aggregate key, tapleaf hash
+            pk, ak, tlh = self.parse_musig_composite_key(k)
+            sig = self.get(v)
+            parsed_musig_part_sigs[(pk, ak, tlh)] = sig
+
+        return parsed_musig_part_sigs
+
+    def get_tr_der_coords_by_key(self, target_key):
+        if not self.taproot_subpaths:
+            return None
+
+        if len(target_key) == 33:
+            # taproot subpaths only contain xonly keys
+            # yet function parameter 'target_key' may be classic compressed pubkey
+            # get rid of first bytes (containing parity bit)
+            target_key = target_key[1:]
+
+        sp = None
+        for k, v in self.taproot_subpaths:
+            xonly = self.get(k)
+            if target_key == xonly:
+                sp = v[2]
+                break
+
+        return sp
 
     def has_relative_timelock(self, txin):
         # https://github.com/bitcoin/bips/blob/master/bip-0068.mediawiki
@@ -894,7 +979,7 @@ class psbtInputProxy(psbtProxy):
                             # remove from sp_idxs so we do not attempt to sign again
                             self.sp_idxs.remove(i)
 
-                    elif (path[0] == my_xfp) or (pubkey in psbt.wif_store):
+                    elif (path[0] == my_xfp) or psbt.key_in_wif_store(pubkey):
                         # slight chance of dup xfps, so handle
                         assert i in self.sp_idxs
 
@@ -912,14 +997,13 @@ class psbtInputProxy(psbtProxy):
             if len(parsed_subpaths) == 1:
                 # keyspend without a script path
                 assert self.taproot_merkle_root is None, "merkle_root should not be defined for simple keyspend"
-                assert self.ik_idx is not None
+                assert self.ik_idx == [0]
                 xonly_pubkey, lhs_path = list(parsed_subpaths.items())[0]
                 lhs, path = lhs_path[0], lhs_path[1:]
                 assert not lhs, "LeafHashes have to be empty for internal key"
                 assert self.sp_idxs[0] == 0
                 assert taptweak(xonly_pubkey) == addr_or_pubkey
             else:
-                # tapscript (is always miniscript wallet)
                 self.is_miniscript = True
 
                 if self.taproot_merkle_root is not None:
@@ -934,21 +1018,19 @@ class psbtInputProxy(psbtProxy):
                         assert i in self.sp_idxs
 
                     lhs, path = lhs_path[0], lhs_path[1:]
-                    assert merkle_root is not None, "Merkle root not defined"
-                    if self.ik_idx == i:
+                    # assert merkle_root is not None, "Merkle root not defined"
+                    if self.ik_idx and len(self.ik_idx) == 1 and self.ik_idx[0] == i:
                         assert not lhs
                         output_key = taptweak(xonly_pubkey, merkle_root)
                         if output_key == addr_or_pubkey:
                             # if we find a possibility to spend keypath (internal_key) - we do keypath
                             # even though script path is available
                             self.sp_idxs = [i]
-                            self.use_keypath = True
                             break  # done ignoring all other possibilities
                     else:
                         internal_key = self.get(self.taproot_internal_key)
                         output_pubkey = taptweak(internal_key, merkle_root)
-                        if addr_or_pubkey == output_pubkey:
-                            assert i in self.sp_idxs
+                        assert addr_or_pubkey == output_pubkey
 
         if self.is_miniscript:
             if not self.sp_idxs: return
@@ -960,9 +1042,7 @@ class psbtInputProxy(psbtProxy):
                 return  # required key is None
 
             if self.af == AF_P2TR:
-                xfp_paths = [item[1:]
-                             for item in parsed_subpaths.values()
-                             if len(item[1:]) > 1]
+                xfp_paths = [item[1:] for item in parsed_subpaths.values()]
             else:
                 xfp_paths = list(parsed_subpaths.values())
 
@@ -987,8 +1067,8 @@ class psbtInputProxy(psbtProxy):
             try:
                 # contains PSBT merkle root verification (if taproot)
                 if not MiniScriptWallet.disable_checks:
-                    psbt.active_miniscript.validate_script_pubkey(self.utxo_spk,
-                                                                  xfp_paths, merkle_root)
+                    psbt.active_miniscript.validate_script_pubkey(self.utxo_spk, xfp_paths,
+                                                                  merkle_root)
             except BaseException as e:
                 # sys.print_exception(e)
                 raise FatalPSBTIssue('Input #%d: %s\n\n' % (my_idx, e) + problem_file_line(e))
@@ -1074,6 +1154,15 @@ class psbtInputProxy(psbtProxy):
             self.req_time_locktime = unpack("<I", self.get(val))[0]
         elif kt == PSBT_IN_REQUIRED_HEIGHT_LOCKTIME:
             self.req_height_locktime = unpack("<I", self.get(val))[0]
+        elif kt == PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS:
+            self.musig_pubkeys = self.musig_pubkeys or []
+            self.musig_pubkeys.append((key, val))
+        elif kt == PSBT_IN_MUSIG2_PUB_NONCE:
+            self.musig_pubnonces = self.musig_pubnonces or []
+            self.musig_pubnonces.append((key, val))
+        elif kt == PSBT_IN_MUSIG2_PARTIAL_SIG:
+            self.musig_part_sigs = self.musig_part_sigs or []
+            self.musig_part_sigs.append((key, val))
         else:
             # including: PSBT_IN_FINAL_SCRIPTSIG, PSBT_IN_FINAL_SCRIPTWITNESS
             self.unknown = self.unknown or []
@@ -1135,6 +1224,26 @@ class psbtInputProxy(psbtProxy):
         if self.taproot_scripts:
             for k, v in self.taproot_scripts:
                 wr(PSBT_IN_TAP_LEAF_SCRIPT, v, k)
+
+        if self.musig_pubkeys:
+            for k, v in self.musig_pubkeys:
+                wr(PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS, v, k)
+
+        if self.musig_pubnonces:
+            for k, v in self.musig_pubnonces:
+                wr(PSBT_IN_MUSIG2_PUB_NONCE, v, k)
+
+        if self.musig_added_pubnonces:
+            for (pk, ak, lh), pubnonce in self.musig_added_pubnonces.items():
+                wr(PSBT_IN_MUSIG2_PUB_NONCE, pubnonce, pk + ak + lh)
+
+        if self.musig_part_sigs:
+            for k, v in self.musig_part_sigs:
+                wr(PSBT_IN_MUSIG2_PARTIAL_SIG, v, k)
+
+        if self.musig_added_sigs:
+            for (pk, ak, lh), v in self.musig_added_sigs.items():
+                wr(PSBT_IN_MUSIG2_PARTIAL_SIG, v, pk + ak + lh)
 
         if is_v2:
             wr(PSBT_IN_PREVIOUS_TXID, self.previous_txid)
@@ -1221,10 +1330,18 @@ class psbtObject(psbtProxy):
         self.has_goc = False  # global output count
         self.has_gtv = False  # global txn version
 
+        # musig related
+        self.session = None
+        self.allow_cache_store = True
+
         # Proof of Reserves
         self.por322 = False
         self.por322_msg_hash = None
         self.por322_msg_challenge = None
+
+        # tracks whether any signatures were added by us
+        # in musig world, we can only add nonce
+        self.sig_added = False
 
     def key_in_wif_store(self, key):
         # key -> public key (xonly or classic compressed)
@@ -1596,6 +1713,15 @@ class psbtObject(psbtProxy):
             raise FatalPSBTIssue("Duplicate key. Key for unknown value"
                                  " already provided in %s." % label)
 
+    def validate_musig_pubkeys(self, obj):
+        # for both input & output objects:
+        #   * PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS
+        #   * PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS
+        for k, v in obj.musig_pubkeys:
+            assert k[1] == 33  #  compressed pubkey len 33
+            assert v[1]  # list of pubkeys cannot be empty
+            assert (v[1] % 33 == 0)  # each pubkey len 33
+
     async def validate(self):
         # Do a first pass over the txn. Raise assertions, be terse tho because
         # these messages are rarely seen. These are syntax/fatal errors.
@@ -1685,6 +1811,20 @@ class psbtObject(psbtProxy):
                     assert (k[1] - 1) % 32 == 0  # "PSBT_IN_TAP_LEAF_SCRIPT control block is not valid"
                     assert v[1] != 0  # "PSBT_IN_TAP_LEAF_SCRIPT cannot be empty"
 
+            if i.musig_pubkeys:
+                self.validate_musig_pubkeys(i)
+
+            if i.musig_pubnonces:
+                for k, v in i.musig_pubnonces:
+                    assert k[1] in (66, 98)  # PSBT_IN_MUSIG2_PUB_NONCE key is participant pubkey (33) + aggregate pubkey (33) + (optional) tapleaf hash (32)
+                    assert v[1] == 66  # PSBT_IN_MUSIG2_PUB_NONCE value is pubnonce
+
+            if i.musig_part_sigs:
+                for k, v in i.musig_part_sigs:
+                    assert k[1] in (66, 98)  # PSBT_IN_MUSIG2_PARTIAL_SIG key is participant pubkey (33) + aggregate pubkey (33) + (optional) tapleaf hash (32)
+                    assert v[1] == 32  # PSBT_IN_MUSIG2_PARTIAL_SIG value is partial signature
+
+
             if i.sighash and (i.sighash not in ALL_SIGHASH_FLAGS):
                 raise FatalPSBTIssue("Unsupported sighash flag 0x%x" % i.sighash)
 
@@ -1705,6 +1845,9 @@ class psbtObject(psbtProxy):
 
             if o.taproot_internal_key:
                 assert o.taproot_internal_key[1] == 32  # "PSBT_OUT_TAP_INTERNAL_KEY length != 32"
+
+            if o.musig_pubkeys:
+                self.validate_musig_pubkeys(o)
 
             self.validate_unkonwn(o, "output")
 
@@ -1765,6 +1908,12 @@ class psbtObject(psbtProxy):
 
         for idx, txo in self.output_iter():
             dis.progress_sofar(idx, self.num_outputs)
+
+            if self.session:
+                if idx == 0:
+                    self.session.update(ser_compact_size(self.num_outputs))
+                self.session.update(txo.serialize())
+
             output = self.outputs[idx]
 
             parsed_subpaths = output.parse_subpaths(self.my_xfp, self, cosign_xfp)
@@ -1937,6 +2086,11 @@ class psbtObject(psbtProxy):
 
             if len(prevouts) < 100:
                 prevouts.add(k)
+
+            if self.session:
+                if i == 0:
+                    self.session.update(ser_compact_size(self.num_inputs))
+                self.session.update(txi.serialize())
 
             inp = self.inputs[i]
 
@@ -2244,8 +2398,21 @@ class psbtObject(psbtProxy):
 
         assert rv.num_inputs is not None
         assert rv.num_outputs is not None
-        rv.inputs = [psbtInputProxy(fd, idx) for idx in range(rv.num_inputs)]
+
+        has_musig_inputs = False
+        rv.inputs = []
+        for idx in range(rv.num_inputs):
+            inp = psbtInputProxy(fd, idx)
+            if inp.is_musig:
+                has_musig_inputs = True
+            rv.inputs.append(inp)
+
         rv.outputs = [psbtOutputProxy(fd, idx) for idx in range(rv.num_outputs)]
+
+        if has_musig_inputs:
+            # we need session
+            rv.session = sha256()
+            rv.session.update(pack('<i', rv.txn_version))
 
         return rv
 
@@ -2348,6 +2515,163 @@ class psbtObject(psbtProxy):
         der_sig = ser_sig_der(r, s, sighash)
         return der_sig
 
+    @staticmethod
+    def musig_derive_keyagg_cache(to_derive, agg_key, keyagg_cache):
+        ck = MUSIG_CHAIN_CODE
+        agg = agg_key
+        for idx in to_derive:
+            I = ngu.hmac.hmac_sha512(ck, agg + pack(">I", idx))
+            IL, ck = I[:32], I[32:]
+            ngu.secp256k1.musig_pubkey_ec_tweak_add(keyagg_cache, IL)
+            agg = keyagg_cache.agg_pubkey().to_bytes()
+
+        return agg
+
+    def musig_process_input(self, session, inp_idx, inp, keypair, agg_k, der_agg_k,
+                            digest, leaf_hash=b""):
+
+        assert session  # needed
+        session_digest, session_rand, round1 = session
+        my_participant_key = keypair.pubkey().to_bytes()
+        musig_pubkeys = inp.get_musig_pubkeys()
+        cosigners = musig_pubkeys.get(agg_k, None)
+
+        if (cosigners is None) or (my_participant_key not in cosigners):
+            return
+
+        musig_partial_sigs = inp.get_musig_part_sigs()
+        musig_pubnonces = inp.get_musig_pubnonces()
+
+        keyagg_cache = ngu.secp256k1.MusigKeyAggCache()
+
+        # below will sort, but should be already sorted in PSBT
+        ngu.secp256k1.musig_pubkey_agg(
+            [ngu.secp256k1.pubkey(pk) for pk in cosigners],
+            keyagg_cache
+        )
+        # verify aggregate key is correct
+        assert keyagg_cache.agg_pubkey().to_bytes() == agg_k
+
+        musig_index = None  # index of musig expression in key list
+        for i, k in enumerate(self.active_miniscript.to_descriptor().keys):
+            if not isinstance(k, MusigKey):
+                continue
+            if k.node.pubkey() == agg_k:
+                musig_index = i
+                break
+
+        assert musig_index is not None  # important, must be there
+
+        # get derivation we need to use for musig
+        sp = inp.get_tr_der_coords_by_key(der_agg_k)
+        assert sp
+        to_derive = self.parse_xfp_path(sp)[1:]
+
+        # is derived aggregate key xonly ?
+        dak_xo = int(len(der_agg_k) == 32)
+        # key is derived inside the key_agg cache
+        assert self.musig_derive_keyagg_cache(to_derive, agg_k, keyagg_cache)[dak_xo:] == der_agg_k
+
+        if not leaf_hash:
+            # now finally get the output key - only for musig in taproot internal key
+            tweak_data = der_agg_k
+            if inp.taproot_merkle_root:
+                tweak_data += self.get(inp.taproot_merkle_root)
+            tweak32 = ngu.hash.sha256t(TAP_TWEAK_H, tweak_data, True)
+            output_key = ngu.secp256k1.musig_pubkey_xonly_tweak_add(keyagg_cache, tweak32)
+            # tweaked derived aggregate key
+            der_agg_k = output_key.to_bytes()
+
+        my_musig_pubnonces_key = (my_participant_key, der_agg_k, leaf_hash)
+
+        inp.musig_added_pubnonces = inp.musig_added_pubnonces or {}
+
+        if my_musig_pubnonces_key in musig_partial_sigs:
+            # we have already signed
+            self.allow_cache_store = False
+            return
+
+        if my_musig_pubnonces_key in musig_pubnonces:
+            # I have already provided pubnonce & now I need to use the same secrand
+            # so that my pubnonce & secnonce match what I have provided in first round
+            if round1:
+                raise FatalPSBTIssue("musig needs restart")
+        else:
+            if not round1:
+                raise FatalPSBTIssue("resign")
+
+        # sec_rand is pseudo random, derived from session true randomness
+        sec_rand = ngu.hash.sha256s(session_rand + pack("<I", inp_idx) + pack("<I", musig_index))
+
+        # generate musig2 secnonce & pubnonce
+        sn, pn = ngu.secp256k1.musig_nonce_gen(keypair.pubkey(), sec_rand, keypair.privkey(), digest)
+
+        pubnonces = set()
+        if my_musig_pubnonces_key not in musig_pubnonces:
+            # I haven't added my pubnoce yet - adding now
+            my_pn_bytes = pn.to_bytes()
+            inp.musig_added_pubnonces[my_musig_pubnonces_key] = my_pn_bytes
+            pubnonces.add(my_pn_bytes)
+
+        for (pk, ak, lh), pnonce in musig_pubnonces.items():
+            if (ak == der_agg_k) and (lh == leaf_hash):
+                # this is the nonce belonging to our aggregate key
+                pubnonces.add(pnonce)
+
+        if inp.musig_added_pubnonces:
+            # we added nonce - done
+            # strict 1st & 2nd round separation
+            return
+
+        if len(pubnonces) < len(cosigners):
+            # we just added nonce - but cannot sign as number of pubnonces is insufficient
+            return
+
+        # all pubnonces are known - we can sign
+        aggnonce = ngu.secp256k1.musig_nonce_agg([ngu.secp256k1.MusigPubNonce(pn) for pn in pubnonces])
+        session = ngu.secp256k1.musig_nonce_process(aggnonce, digest, keyagg_cache)
+        part_sig = ngu.secp256k1.musig_partial_sign(sn, keypair, keyagg_cache, session)
+        my_part_sig_bytes = part_sig.to_bytes()
+        self.sig_added = True
+
+        # good for debug - verification of partial musig signature CC created
+        # assert part_sig.verify(pn, keypair.pubkey(), keyagg_cache, session)
+
+        musig_part_sigs = set()
+        musig_part_sigs.add(my_part_sig_bytes)
+
+        inp.musig_added_sigs = inp.musig_added_sigs or {}
+        # musig pubnonce and part signatures have same key structure
+        inp.musig_added_sigs[my_musig_pubnonces_key] = my_part_sig_bytes
+
+        # our signature added
+        # session rand no longer needed - as adding signature, terminates 2nd round
+        # even if we are the first signed input - remove from cache
+        # other inputs still have access to session_rand from sign_it scope
+        self.allow_cache_store = False
+
+        for (pk, ak, lh), sig in musig_partial_sigs.items():
+            if (ak == der_agg_k) and (lh == leaf_hash):
+                # good for debug - verify validity of cosigner musig partial signatures
+                # other_pn = ngu.secp256k1.MusigPubNonce(musig_pubnonces[(pk,ak,lh)])
+                # psig = ngu.secp256k1.MusigPartSig(sig)
+                # assert psig.verify(other_pn, ngu.secp256k1.pubkey(pk), keyagg_cache, session)
+                musig_part_sigs.add(sig)
+
+        if len(musig_part_sigs) < len(cosigners):
+            # no way to aggregate - threshold not met
+            return
+
+        # we are done and can provide final aggregate signature
+        agg_sig = ngu.secp256k1.musig_partial_sig_agg(
+            [ngu.secp256k1.MusigPartSig(sig) for sig in musig_part_sigs],
+            session
+        )
+
+        assert len(agg_sig) == 64
+        # return aggregate signature and public key against which it verifies
+        return agg_sig, der_agg_k
+
     def sign_it(self, alternate_secret=None, my_xfp=None):
         # txn is approved. sign all inputs we can sign. add signatures
         # - hash the txn first
@@ -2360,6 +2684,22 @@ class psbtObject(psbtProxy):
 
         if my_xfp is None:
             my_xfp = self.my_xfp
+
+        musig_session = None
+        musig_round1 = False
+        if self.session:
+            # initialize MuSig2 session
+            session_digest = self.session.digest() + pack('<I', my_xfp)  # to differentiate tmp keys
+            # if we already have it stored, this is 2nd round
+            # remove it - only one chance to make it right, as consequences for re-use are catastrophic
+            session_rand = MUSIG_SESSION_CACHE.pop(session_digest, None)
+            if session_rand is None:
+                musig_round1 = True
+                # first round - create new session rand and (maybe) store it for 2nd round
+                session_rand = ngu.random.bytes(32)
+
+            # initialized Musig2 session tuple
+            musig_session = (session_digest, session_rand, musig_round1)
 
         with stash.SensitiveValues(secret=alternate_secret) as sv:
             # Double-check the change outputs are right. This is slow, but critical because
@@ -2474,27 +2814,37 @@ class psbtObject(psbtProxy):
                             continue
 
                         to_sign.append((node, pubk))
-                        if is_xonly and not inp.use_keypath:
+
+                        if is_xonly and self.active_miniscript.to_descriptor().tapscript:
                             # get the script
                             inner_tr_sh = []
                             assert self.active_miniscript
                             xfp_paths = [self.handle_zero_xfp(self.parse_xfp_path(x[2]), self.my_xfp, None)
                                          for _, x in inp.taproot_subpaths]
+
                             der_d = self.active_miniscript.derive_desc(xfp_paths)
 
                             # mapping from script to leaf version
                             taproot_scripts = inp.get_taproot_scripts()
+
                             for leaf in der_d.tapscript.iter_leaves():
-                                target_leaf = None
                                 # always exact check/match the script, if we would generate such
                                 scr = leaf.compile()
                                 if scr not in taproot_scripts:
                                     continue
 
-                                # TODO just check if which key is in script bytes, no need to serialize keys
-                                # TODO but that may not be true for KeyHash expressions
-                                if which_key in [k.key_bytes() for k in leaf.keys]:
-                                    inner_tr_sh.append((scr, taproot_scripts[scr]))
+                                for k in leaf.keys:
+                                    is_musig = False
+                                    if isinstance(k, MusigKey):
+                                        agg_k = k.aggregate_pubkey()
+                                        der_agg_k = k.node.pubkey()
+                                        is_musig = (agg_k.to_bytes(), der_agg_k)
+                                        kk = [mk.key_bytes() for mk in k.keys]
+                                    else:
+                                        kk = [k.key_bytes()]
+
+                                    if which_key in kk:
+                                        inner_tr_sh.append((scr, taproot_scripts[scr], is_musig))
 
                             tr_sh.append(inner_tr_sh)
                             del taproot_scripts
@@ -2540,6 +2890,7 @@ class psbtObject(psbtProxy):
                         OWNERSHIP.note_subpath_used(int_pth)
 
                 # normal operation with valid sighash
+                digest = None
                 if not inp.is_segwit:
                     # Hash by serializing/blanking various subparts of the transaction
                     txi.scriptSig = inp.get_scriptSig()
@@ -2550,13 +2901,10 @@ class psbtObject(psbtProxy):
                         digest = self.make_txn_segwit_sighash(in_idx, txi, inp.amount,
                                                               inp.segwit_v0_scriptCode(),
                                                               inp.sighash)
-                    elif not tr_sh:
-                        # taproot keyspend
-                        digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash)
                     # else:
-                        # sighashes for tapscript spend are calculated later
+                        # sighashes for taproot internal key & tapscript spends are calculated later
 
-                if sv.deltamode:
+                if digest and sv.deltamode:
                     # Current user is actually a thug with a slightly wrong PIN, so we
                     # do have access to the private keys and could sign txn, but we
                     # are going to silently corrupt our signatures.
@@ -2577,37 +2925,25 @@ class psbtObject(psbtProxy):
                     if schnorrsig:
                         kp = ngu.secp256k1.keypair(sk)
                         xonly_pk = kp.xonly_pubkey().to_bytes()
-                        if tr_sh:
-                            # in tapscript keys are not tweaked, just sign with the key in the script
-                            taproot_script_sigs = inp.get_taproot_script_sigs()
-                            inp.tr_added_sigs = inp.tr_added_sigs or {}
 
-                            for taproot_script, leaf_ver in tr_sh[i]:
-                                _key = (xonly_pk, tapleaf_hash(taproot_script, leaf_ver))
-                                if _key in taproot_script_sigs:
-                                    continue  # already done ?
-
-                                digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash,
-                                                                       scriptpath=True,
-                                                                       script=taproot_script, leaf_ver=leaf_ver)
-
-                                if sv.deltamode:
-                                    digest = ngu.hash.sha256d(digest)
-
-                                sig = ngu.secp256k1.sign_schnorr(sk, digest, ngu.random.bytes(32))
-                                # in the common case of SIGHASH_DEFAULT, encoded as '0x00', a space optimization MUST be made by
-                                # 'omitting' the sighash byte, resulting in a 64-byte signature with SIGHASH_DEFAULT assumed
-                                if inp.sighash != SIGHASH_DEFAULT:
-                                    sig += bytes([inp.sighash])
-
-                                # separate container for PSBT_IN_TAP_SCRIPT_SIG that we added
-                                inp.tr_added_sigs[_key] = sig
+                        if inp.taproot_internal_key:
+                            # if internal key is provided in PSBT use that
+                            internal_key = self.get(inp.taproot_internal_key)
+                        elif len(inp.ik_idx) == 1:
+                            # if not - it is in taproot paths
+                            # but there can be multiple - in case of musig
+                            internal_key = self.get(inp.taproot_subpaths[inp.ik_idx[0]][0])
                         else:
+                            raise ValueError("Internal key missing")
+
+                        if xonly_pk == internal_key:
+                            # internal key is our key -> easy
+
                             # BIP 341 states: "If the spending conditions do not require a script path,
                             # the output key should commit to an unspendable script path instead of having no script path.
                             # This can be achieved by computing the output key point as Q = P + int(hashTapTweak(bytes(P)))G."
                             tweak = xonly_pk
-                            if inp.taproot_merkle_root and inp.use_keypath:
+                            if inp.taproot_merkle_root:
                                 # we have a script path but internal key is spendable by us
                                 # merkle root needs to be added to tweak with internal key
                                 # merkle root was already verified against registered script in determine_my_signing_key
@@ -2615,6 +2951,11 @@ class psbtObject(psbtProxy):
 
                             tweak = ngu.hash.sha256t(TAP_TWEAK_H, tweak, True)
                             kpt = kp.xonly_tweak_add(tweak)
+
+                            digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash)
+                            if sv.deltamode:
+                                digest = ngu.hash.sha256d(digest)
+
                             sig = ngu.secp256k1.sign_schnorr(kpt, digest, ngu.random.bytes(32))
                             if inp.sighash != SIGHASH_DEFAULT:
                                 sig += bytes([inp.sighash])
@@ -2622,14 +2963,91 @@ class psbtObject(psbtProxy):
                             # in the common case of SIGHASH_DEFAULT, encoded as '0x00', a space optimization MUST be made by
                             # 'omitting' the sighash byte, resulting in a 64-byte signature with SIGHASH_DEFAULT assumed
                             inp.taproot_key_sig = sig
+                            self.sig_added = True
+                            # debug
+                            # ngu.secp256k1.verify_schnorr(sig, digest, kpt.xonly_pubkey())
 
                             del kpt
 
+                        elif isinstance(self.active_miniscript.to_descriptor().key, MusigKey):
+                            # internal key is musig
+                            agg_k = self.active_miniscript.to_descriptor().key.node.pubkey()
+
+                            digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash)
+                            if sv.deltamode:
+                                digest = ngu.hash.sha256d(digest)
+
+                            complete = self.musig_process_input(musig_session, in_idx, inp, kp,
+                                                                agg_k, internal_key, digest)
+                            if complete:
+                                agg_sig, pubkey = complete
+                                # we can finalize musig in taproot internal key
+                                if inp.sighash != SIGHASH_DEFAULT:
+                                    agg_sig += bytes([inp.sighash])
+                                inp.taproot_key_sig = agg_sig
+
+                                # debug
+                                # ngu.secp256k1.verify_schnorr(agg_sig, digest, ngu.secp256k1.xonly_pubkey(pubkey[1:]))
+
+                        if tr_sh:
+                            # in tapscript keys are not tweaked, just sign with the key in the script
+                            # signing tapscript even if we already signed internal key
+                            taproot_script_sigs = inp.get_taproot_script_sigs()
+                            inp.tr_added_sigs = inp.tr_added_sigs or {}
+
+                            for taproot_script, leaf_ver, is_musig in tr_sh[i]:
+                                tlh = tapleaf_hash(taproot_script, leaf_ver)
+                                digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash,
+                                                                       scriptpath=True,
+                                                                       script=taproot_script,
+                                                                       leaf_ver=leaf_ver)
+                                if sv.deltamode:
+                                    digest = ngu.hash.sha256d(digest)
+
+                                if is_musig:
+                                    agg_k, der_agg_k = is_musig
+                                    assert len(der_agg_k) == 33
+                                    _key = (der_agg_k[1:], tlh)
+                                    if _key in taproot_script_sigs:
+                                        continue  # already done ?
+
+                                    complete = self.musig_process_input(musig_session, in_idx, inp, kp,
+                                                                        agg_k, der_agg_k, digest, tlh)
+                                    if complete:
+                                        agg_sig, pubkey = complete
+                                        assert der_agg_k == pubkey
+                                        if inp.sighash != SIGHASH_DEFAULT:
+                                            agg_sig += bytes([inp.sighash])
+
+                                        # separate container for PSBT_IN_TAP_SCRIPT_SIG that we added
+                                        inp.tr_added_sigs[_key] = agg_sig
+                                        # debug
+                                        # ngu.secp256k1.verify_schnorr(agg_sig, digest, ngu.secp256k1.xonly_pubkey(pubkey[1:]))
+
+                                else:
+                                    _key = (xonly_pk, tlh)
+                                    if _key in taproot_script_sigs:
+                                        continue  # already done ?
+
+                                    sig = ngu.secp256k1.sign_schnorr(sk, digest, ngu.random.bytes(32))
+                                    # in the common case of SIGHASH_DEFAULT, encoded as '0x00', a space optimization MUST be made by
+                                    # 'omitting' the sighash byte, resulting in a 64-byte signature with SIGHASH_DEFAULT assumed
+                                    if inp.sighash != SIGHASH_DEFAULT:
+                                        sig += bytes([inp.sighash])
+
+                                    # separate container for PSBT_IN_TAP_SCRIPT_SIG that we added
+                                    inp.tr_added_sigs[_key] = sig
+                                    self.sig_added = True
+                                    # debug
+                                    # ngu.secp256k1.verify_schnorr(sig, digest, kp.xonly_pubkey())
+
                         del kp
                     else:
+                        # ECDSA signing
                         der_sig = self.ecdsa_grind_sign(sk, digest, inp.sighash)
                         inp.added_sigs = inp.added_sigs or []
                         inp.added_sigs.append((pk_coord, der_sig))
+                        self.sig_added = True
 
                     # private key no longer required
                     stash.blank_object(sk)
@@ -2647,6 +3065,11 @@ class psbtObject(psbtProxy):
 
                 del to_sign
                 gc.collect()
+
+        # store musig session - only at the end of this function execution
+        # if any exceptions were raised - just do not store
+        if musig_session and musig_round1 and self.allow_cache_store:
+            MUSIG_SESSION_CACHE[session_digest] = session_rand
 
         # done.
         dis.progress_bar_show(1)
@@ -3017,6 +3440,7 @@ class psbtObject(psbtProxy):
         # - used to find which multisig-signer needs to go next
         rv = set()
         done_keys = set()
+        ignore_keys = set()
 
         for inp in self.inputs:
             if inp.fully_signed:
@@ -3036,6 +3460,42 @@ class psbtObject(psbtProxy):
                     for (xo, _) in inp.tr_added_sigs:
                         done_keys.add(xo)
 
+                if inp.is_musig:
+                    # in how many musig expressions is this key included
+                    key_musig_num_map = {}
+                    for ak, key_lst in inp.get_musig_pubkeys().items():
+                        # filter out just musig aggregate keys (they are not co-signers)
+                        ignore_keys.add(unpack('<I', hash160(ak)[:4])[0])
+                        for k in key_lst:
+                            if k not in key_musig_num_map:
+                                key_musig_num_map[k] = 1
+                            else:
+                                key_musig_num_map[k] += 1
+
+                    key_signed_num_map = {}
+                    for pk, *_ in inp.get_musig_part_sigs():
+                        if pk not in key_signed_num_map:
+                            key_signed_num_map[pk] = 1
+                        else:
+                            key_signed_num_map[pk] += 1
+
+                    if inp.musig_added_sigs:
+                        for pk, *_ in inp.musig_added_sigs:
+                            if pk not in key_signed_num_map:
+                                key_signed_num_map[pk] = 1
+                            else:
+                                key_signed_num_map[pk] += 1
+
+                    for key, num in key_signed_num_map.items():
+                        xkey = key[1:]
+                        if key_musig_num_map.get(key) == num:
+                            # all musig expressions signed
+                            done_keys.add(xkey)
+                        else:
+                            # not all musig expression signed
+                            # BUT maybe we added to done keys because some signatures were added
+                            done_keys.discard(xkey)  # remove
+
                 for i, (k, v) in enumerate(inp.taproot_subpaths):
                     xpk = self.get(k)
                     if inp.ik_idx == i:
@@ -3049,6 +3509,7 @@ class psbtObject(psbtProxy):
 
                     # add xfp
                     xfp = self.handle_zero_xfp(self.parse_xfp_path(v[2]), self.my_xfp, None)[0]
+                    if xfp in ignore_keys: continue
                     rv.add(xfp)
 
             else:
@@ -3065,7 +3526,7 @@ class psbtObject(psbtProxy):
                         xfp = self.handle_zero_xfp(self.parse_xfp_path(v), self.my_xfp, None)[0]
                         rv.add(xfp)
 
-        return rv
+        return rv, ignore_keys
 
     def finalize(self, fd):
         # Stream out the finalized transaction, with signatures applied
@@ -3093,7 +3554,7 @@ class psbtObject(psbtProxy):
             inp = self.inputs[in_idx]
 
             # first check - if no signature(s) - fail soon
-            if inp.is_miniscript and not inp.use_keypath:
+            if inp.is_miniscript and not inp.taproot_key_sig:
                 assert self.miniscript_input_complete(inp), 'Incomplete signature set on input #%d' % in_idx
             else:
                 # single signature
@@ -3175,8 +3636,13 @@ class psbtObject(psbtProxy):
             # easy w/o witness data
             txid = ngu.hash.sha256s(fd.checksum.digest())
         else:
-            # legacy cost here for segwit: re-read what we just wrote
-            txid = calc_txid(fd, (0, fd.tell()), (body_start, body_end-body_start))
+            if self.session:
+                # musig transaction with session already calculated, which is basically TXID
+                # just needs another single SHA256 + byte reverse done few lines below
+                txid = ngu.hash.sha256s(self.session.digest())
+            else:
+                # legacy cost here for segwit: re-read what we just wrote
+                txid = calc_txid(fd, (0, fd.tell()), (body_start, body_end-body_start))
 
         history.add_segwit_utxos_finalize(txid)
 

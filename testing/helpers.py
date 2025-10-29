@@ -236,4 +236,31 @@ def bitcoind_addr_fmt(script_type):
 
     return addr_type
 
+
+def generate_binary_tree_template(num_scripts, strategy="balanced"):
+    assert num_scripts >= 1
+    assert strategy in {"balanced", "left_heavy", "right_heavy"}
+
+    def build(n: int) -> str:
+        if n == 1:
+            return '%s'
+
+        left_sizes = list(range(1, n))
+        if strategy == "left_heavy":
+            left_sizes.sort(reverse=True)
+        elif strategy == "right_heavy":
+            left_sizes.sort()
+        elif strategy == "balanced":
+            left_sizes.sort(key=lambda l: (abs(2 * l - n), -l))
+
+        for left_size in left_sizes:
+            right_size = n - left_size
+            if strategy == "balanced" and left_size > right_size:
+                continue
+            return f'{{{build(left_size)},{build(right_size)}}}'
+
+        raise RuntimeError("Unreachable")
+
+    return build(num_scripts)
+
 # EOF

@@ -14,6 +14,9 @@ from serializations import ser_compact_size
 WILDCARD = "*"
 PROVABLY_UNSPENDABLE = b'\x02P\x92\x9bt\xc1\xa0IT\xb7\x8bK`5\xe9z^\x07\x8aZ\x0f(\xec\x96\xd5G\xbf\xee\x9a\xce\x80:\xc0'
 
+# sha256(b"MuSig2MuSig2MuSig2")
+MUSIG_CHAIN_CODE = b'\x86\x80\x87\xca\x02\xa6\xf9t\xc4Y\x89$\xc3kWv-2\xcbEqqg\xe3\x00b,qg\xe3\x89e'
+
 INPUT_CHARSET = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ "
 CHECKSUM_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
 
@@ -89,6 +92,13 @@ def read_until(s, chars=b",)(#"):
         if chunk in chars:
             return res, chunk
         res += chunk
+
+
+def musig_synthetic_node(agg_pk_bytes):
+    assert len(agg_pk_bytes) == 33  # need non-xonly pubkey
+    node = ngu.hdnode.HDNode()
+    node.from_chaincode_pubkey(MUSIG_CHAIN_CODE, agg_pk_bytes)
+    return node
 
 
 class KeyOriginInfo:
@@ -219,8 +229,29 @@ class KeyDerivationInfo:
             res.append(i)
         return "/".join(res)
 
+    def der_index(self, idx, change=False):
+        if isinstance(idx, list):
+            for i in idx:
+                mp_i = self.multi_path_index or 0
+                if i in self.indexes[mp_i]:
+                    idx = i
+                    break
+            else:
+                assert False
 
-class Key:
+        elif idx is None:
+            # derive according to key subderivation if any
+            if self is None:
+                idx = 1 if change else 0
+            else:
+                if self.multi_path_index is not None:
+                    ext, inter = self.indexes[self.multi_path_index]
+                    idx = inter if change else ext
+
+        return idx
+
+
+class ExtendedKey:
     def __init__(self, node, origin, derivation=None, taproot=False, chain_type=None):
         self.origin = origin
         self.node = node
@@ -232,7 +263,6 @@ class Key:
         return hash(self) == hash(other)
 
     def __hash__(self):
-        # return hash(self.to_string())
         return hash(self.node.pubkey()) + hash(self.derivation)
 
     def __len__(self):
@@ -248,33 +278,6 @@ class Key:
     def compile(self):
         d = self.serialize()
         return ser_compact_size(len(d)) + d
-
-    @classmethod
-    def parse(cls, s):
-        first = s.read(1)
-        origin = None
-
-        if first == b"[":
-            prefix, char = read_until(s, b"]")
-            if char != b"]":
-                raise ValueError("Invalid key - missing ] in key origin info")
-            origin = KeyOriginInfo.from_string(prefix.decode())
-        else:
-            s.seek(-1, 1)
-
-        k, char = read_until(s, b",)/")
-        der = None
-        if char == b"/":
-            der = KeyDerivationInfo.parse(s)
-        if char is not None:
-            s.seek(-1, 1)
-
-        # parse key
-        node, chain_type = cls.parse_key(k)
-        if origin is None:
-            cc_fp = swab32(node.my_fp())
-            origin = KeyOriginInfo(ustruct.pack('<I', cc_fp), [], cc_fp)
-        return cls(node, origin, der, chain_type=chain_type)
 
     @classmethod
     def parse_key(cls, key_str):
@@ -342,23 +345,10 @@ class Key:
         return is_mine
 
     def derive(self, idx=None, change=False):
-        if isinstance(idx, list):
-            for i in idx:
-                mp_i = self.derivation.multi_path_index or 0
-                if i in self.derivation.indexes[mp_i]:
-                    idx = i
-                    break
-            else:
-                assert False
-
-        elif idx is None:
-            # derive according to key subderivation if any
-            if self.derivation is None:
-                idx = 1 if change else 0
-            else:
-                if self.derivation.multi_path_index is not None:
-                    ext, inter = self.derivation.indexes[self.derivation.multi_path_index]
-                    idx = inter if change else ext
+        if self.derivation:
+            idx = self.derivation.der_index(idx, change)
+        else:
+            assert idx
 
         new_node = self.node.copy()
         new_node.derive(idx, False)
@@ -368,12 +358,42 @@ class Key:
         else:
             origin = KeyOriginInfo(self.origin.fingerprint, [idx], self.origin.cc_fp)
 
-        return type(self)(new_node, origin, KeyDerivationInfo(self.derivation.indexes[1:]),
-                          taproot=self.taproot)
+        new_der = None
+        if self.derivation:
+            new_der = KeyDerivationInfo(self.derivation.indexes[1:])
+
+        return type(self)(new_node, origin, new_der, taproot=self.taproot)
 
     @classmethod
-    def read_from(cls, s, taproot=False):
-        return cls.parse(s)
+    def read_from(cls, s, taproot=False, musig=False):
+        first = s.read(1)
+        origin = None
+
+        if first == b"[":
+            prefix, char = read_until(s, b"]")
+            if char != b"]":
+                raise ValueError("Invalid key - missing ] in key origin info")
+            origin = KeyOriginInfo.from_string(prefix.decode())
+        else:
+            s.seek(-1, 1)
+
+        k, char = read_until(s, b",)/")
+        if musig and char not in b",)":
+            assert b"musig(" not in k, "nested musig not allowed"
+            assert char != b"/", "key derivation not allowed inside musig"
+
+        der = None
+        if char == b"/":
+            der = KeyDerivationInfo.parse(s)
+        if char is not None:
+            s.seek(-1, 1)
+
+        # parse key
+        node, chain_type = cls.parse_key(k)
+        if origin is None:
+            cc_fp = swab32(node.my_fp())
+            origin = KeyOriginInfo(ustruct.pack('<I', cc_fp), [], cc_fp)
+        return cls(node, origin, der, chain_type=chain_type, taproot=taproot)
 
     @classmethod
     def from_cc_data(cls, xfp, deriv, xpub):
@@ -441,7 +461,116 @@ class Key:
     @classmethod
     def from_string(cls, s):
         s = BytesIO(s.encode())
-        return cls.parse(s)
+        return cls.read_from(s)
+
+
+class MusigKey:
+    def __init__(self, keys, der=None, node=None):
+        self.keys = keys
+        self.derivation = der or KeyDerivationInfo()
+        self._node = node
+
+    def __len__(self):
+        return 33  # length + <32:xonly>
+
+    def __eq__(self, other):
+        return hash(self) == hash(other)
+
+    def __hash__(self):
+        return hash(self.node.pubkey()) + hash(self.derivation)
+
+    def serialize(self):
+        return self.key_bytes()
+
+    def compile(self):
+        d = self.serialize()
+        return ser_compact_size(len(d)) + d
+
+    @property
+    def node(self):
+        if self._node is None:
+            self._node = musig_synthetic_node(self.aggregate_pubkey().to_bytes())
+        return self._node
+
+    def validate(self, my_xfp, disable_checks=False):
+        has_mine = 0
+        for k in self.keys:
+            assert not k.is_provably_unspendable, "unspendable key inside musig"
+            if k.validate(my_xfp, disable_checks):
+                has_mine += 1
+
+        assert len(self.keys) == len(set(self.keys)), "musig keys not unique"
+        assert has_mine <= 1, "multiple own keys in musig"
+        return has_mine
+
+    def key_bytes(self):
+        return ngu.secp256k1.pubkey(self.node.pubkey()).to_xonly().to_bytes()
+
+    def aggregate_pubkey(self):
+        keyagg_cache = ngu.secp256k1.MusigKeyAggCache()
+        secp_pubkeys = [ngu.secp256k1.pubkey(k.node.pubkey()) for k in self.keys]
+        ngu.secp256k1.musig_pubkey_agg(secp_pubkeys, keyagg_cache)
+        return keyagg_cache.agg_pubkey()
+
+    def to_string(self, external=True, internal=True):
+        base = "musig(%s)" % (",".join([k.to_string(False, False) for k in self.keys]))
+        base += "/" + self.derivation.to_string(external, internal)
+        return base
+
+    def derive(self, idx=None, change=False):
+        idx = self.derivation.der_index(idx, change)
+        new_node = self.node.copy()
+        new_node.derive(idx, False)
+
+        return type(self)(self.keys, KeyDerivationInfo(self.derivation.indexes[1:]),
+                          node=new_node)
+
+    @property
+    def is_provably_unspendable(self):
+        return False
+
+    @classmethod
+    def read_from(cls, s, taproot=True):
+        assert taproot, "musig in non-taproot context"
+        assert s.read(6) == b"musig(", "not musig()"
+
+        der = None
+        keys = []
+        while True:
+            k = ExtendedKey.read_from(s, taproot=taproot, musig=True)
+            k.der = None
+            k.taproot = taproot
+            # already verified that no der present in keys
+            k.derivation = None
+            keys.append(k)
+            c = s.read(1)
+            if c == b")":
+                sep = s.read(1)
+                if sep == b"/":
+                    der = KeyDerivationInfo.parse(s)
+
+                s.seek(-1, 1)
+                break
+
+            assert c == b","
+
+        return cls(keys, der)
+
+    @classmethod
+    def from_string(cls, s):
+        s = BytesIO(s.encode())
+        return cls.read_from(s)
+
+
+class KeyExpression:
+    @classmethod
+    def read_from(cls, s, taproot=False):
+        is_musig = (s.read(6) == b"musig(")
+        s.seek(-6, 1)
+        if is_musig:
+            return MusigKey.read_from(s, taproot=taproot)
+        else:
+            return ExtendedKey.read_from(s, taproot=taproot)
 
 
 def bip388_wallet_policy_to_descriptor(desc_tmplt, keys_info):
@@ -453,22 +582,36 @@ def bip388_wallet_policy_to_descriptor(desc_tmplt, keys_info):
 
 
 def bip388_validate_policy(desc_tmplt, keys_info):
-    from uio import BytesIO
-
     s = BytesIO(desc_tmplt)
     r = []
     while True:
-        got, char = read_until(s, b"@")
+        g1, char = read_until(s, b"@")
         if not char:
             # no more - done
             break
 
         # key derivation info required for policy
-        got, char = read_until(s, b"/")
+        g2, char = read_until(s, b"/")
         assert char, "key derivation missing"
-        num = int(got.decode())
-        if num not in r:
-            r.append(num)
+        if g1.endswith(b"musig("):
+            # key derivations not allowed inside musig
+            assert b"/" not in g2
+            assert g2[-1:] == b")"
+
+            for i, num in enumerate(g2[:-1].split(b",")):
+                if i:
+                    # 0th element has @ already removed
+                    assert num[0:1] == b"@"
+                    num = num[1:]
+
+                num = int(num.decode())
+                if num not in r:
+                    r.append(num)
+
+        else:
+            num = int(g2.decode())
+            if num not in r:
+                r.append(num)
 
         assert s.read(1) in b"<*", "need multipath"
 

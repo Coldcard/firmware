@@ -8,6 +8,7 @@ from ubinascii import b2a_base64, a2b_base64
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from uhashlib import sha256
+from ustruct import pack
 from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, SUPPORTED_ADDR_FORMATS, AF_P2TR
 from public_constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED, AF_P2SH, AF_P2WPKH_P2SH
 from sffile import SFFile
@@ -433,6 +434,9 @@ class ApproveTransaction(UserAuthorizedAction):
             # which outputs are change
             self.psbt.consider_dangerous_sighash()
 
+            if self.psbt.session:
+                self.psbt.session.update(pack('<I', self.psbt.lock_time))
+
         except FraudulentChangeOutput as exc:
             # sys.print_exception(exc)
             #print('FraudulentChangeOutput: ' + exc.args[0])
@@ -816,6 +820,7 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
     first_time = True
     msg = None
     title = None
+    base_title = "PSBT " + ("Signed" if psbt.sig_added else "Updated")
 
     is_complete = psbt.is_complete()
     if finalize is not None:
@@ -849,7 +854,7 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
 
         first_time = False
         msg = noun + " shared via USB."
-        title = "PSBT Signed"
+        title = base_title
 
     if txid and await try_push_tx(data_len, txid, data_sha2):
         # go directly to reexport menu after pushTX
@@ -946,7 +951,7 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
 
         input_method = None
         first_time = False
-        title = "PSBT Signed"
+        title = base_title
 
 async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_encoder, filename=None):
     # Saving a PSBT from PSRAM to something disk-like.
@@ -1805,6 +1810,9 @@ class TXInpExplorer(TXExplorer):
                     M, N = disassemble_multisig_mn(ks)
                     psbt_item += "Multisig: %dof%d\n\n" % (M, N)
                 except: pass
+
+        if inp.is_musig:
+            psbt_item += "MuSig2\n\n"
 
         if inp.part_sigs or inp.taproot_script_sigs:
             # do not show XFPs in case input is fully signed

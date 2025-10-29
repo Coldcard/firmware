@@ -11,7 +11,7 @@ from ux import ux_show_story, ux_dramatic_pause, ux_enter_number, ux_enter_bip32
 from public_constants import MAX_SIGNERS
 from glob import settings
 from charcodes import KEY_QR
-from desc_utils import Key, KeyOriginInfo
+from desc_utils import ExtendedKey, KeyOriginInfo
 
 
 async def ms_coordinator_qr(af_str, my_xfp):
@@ -50,9 +50,9 @@ async def ms_coordinator_qr(af_str, my_xfp):
             break
         try:
             if isinstance(key, dict):
-                k = Key.from_cc_json(key, af_str)
+                k = ExtendedKey.from_cc_json(key, af_str)
             else:
-                k = Key.from_string(key)
+                k = ExtendedKey.from_string(key)
 
             num_mine += k.validate(my_xfp)
             keys.append(k)
@@ -116,9 +116,9 @@ async def ms_coordinator_file(af_str, my_xfp, slot_b=None):
 
                         try:
                             if isinstance(vals, dict):
-                                k = Key.from_cc_json(vals, af_str)
+                                k = ExtendedKey.from_cc_json(vals, af_str)
                             else:
-                                k = Key.from_string(vals)
+                                k = ExtendedKey.from_string(vals)
                         except Exception as e:
                             # sys.print_exception(e)
                             raise
@@ -152,7 +152,7 @@ def add_own_xpub(chain, acct_num, addr_fmt, secret=None):
         the_xfp = xfp2str(sv.get_xfp())
         koi = KeyOriginInfo.from_string(the_xfp + "/" + deriv)
         node = sv.derive_path(deriv, register=False)
-        key = Key(node, koi, chain_type=chain.ctype)
+        key = ExtendedKey(node, koi, chain_type=chain.ctype)
         return key
 
 

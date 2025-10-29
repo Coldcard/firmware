@@ -2,7 +2,7 @@
 #
 # Invalid Extended Keys test
 # https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki#test-vector-5
-from desc_utils import Key
+from desc_utils import ExtendedKey
 from seed import xprv_to_encoded_secret
 from glob import settings
 
@@ -32,7 +32,7 @@ TO_CHECK_PRV = [
 settings.set('chain', "BTC")
 for i, ek in enumerate(TO_CHECK_PUB):
     try:
-        Key.from_string(ek).validate(None)
+        ExtendedKey.from_string(ek).validate(None)
         raise RuntimeError
     except (AssertionError, ValueError) as e:
         print("exc", e)

@@ -966,6 +966,216 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
         assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
 
 
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("tapscript,wtype", [(True,0), (False,0), (True,1)])
+def test_teleport_musig_sign(tapscript, wtype, reset_seed_words, use_regtest, clear_miniscript,
+                             build_musig_wallet, bitcoind, try_sign, cap_story, need_keypress,
+                             cap_menu, press_cancel, cap_screen, dev, pick_menu_item, grab_payload,
+                             offer_minsc_import, press_select, rx_complete,  goto_eph_seed_menu,
+                             microsd_path, settings_get, goto_home, restore_main_seed):
+    reset_seed_words()
+    use_regtest()
+    clear_miniscript()
+    name = "tele_musig"
+
+    wo, signers, desc = build_musig_wallet(name, 3, tapscript=tapscript, num_utxo_available=1,
+                                           tapscript_musig_threshold=2, wallet_type=wtype)
+
+    private_data = []
+    for s in signers:
+        res = s.listdescriptors(True)["descriptors"]
+        priv_ek = None
+        for obj in res:
+            dd = obj.get("desc", "")
+            if dd.startswith("pkh("):
+                priv_ek = dd.replace("pkh(", "").split("/")[0]
+                break
+
+        assert priv_ek
+        node = BIP32Node.from_wallet_key(priv_ek)
+        private_data.append((priv_ek, node.fingerprint().hex().upper(), node))
+
+    unspent = wo.listunspent()
+    assert len(unspent) == 1
+
+    all_of_it = wo.getbalance()
+    to_send = [{bitcoind.supply_wallet.getnewaddress(): all_of_it}]
+
+    psbt_resp = wo.walletcreatefundedpsbt([], to_send, 0, {"fee_rate": 2,
+                                                           "change_type": "bech32m",
+                                                           "subtractFeeFromOutputs": [0]})
+    psbt = psbt_resp.get("psbt")
+
+    _, psbt = try_sign(base64.b64decode(psbt), accept=True, exit_export_loop=False)
+    title, body = cap_story()
+    if not wtype:
+        assert title == "PSBT Updated" # added only nonce
+    else:
+        # wallet type 1 contains classic sortedmulti_a leaf to which we provide signature in first sitting
+        assert title == "PSBT Signed"
+    assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
+
+    my_xfp = xfp2str(simulator_fixed_xfp)
+
+    # nonces first
+    for i, (ek, fp, node) in enumerate(private_data):
+        need_keypress('t')
+        time.sleep(.1)
+
+        m = cap_menu()
+        assert len(m) == (len(signers) + 1)  # signers + me
+
+        assert "\x14\x00" not in cap_screen()  # nothing is done
+
+        # pick other xfp to send to
+        nm, = [mi for mi in m if fp in mi]
+        pick_menu_item(nm)
+
+        # grab the payload and pw
+        pw, data, qr_raw = grab_payload('E')
+        assert len(pw) == 8
+
+        time.sleep(.1)
+        title, story = cap_story()
+        assert title == 'Sent by Teleport'
+
+        fname = "ek_priv.txt"
+        with open(microsd_path(fname), "w") as f:
+            f.write(ek)
+
+        # switch personalities, and try to read that QR
+        goto_eph_seed_menu()
+        pick_menu_item("Import XPRV")
+        need_keypress("1")
+        try:
+            pick_menu_item(fname)
+        except: pass
+
+        press_select()
+
+        use_regtest()
+        clear_miniscript()
+        dev.start_encryption()
+        assert xfp2str(settings_get('xfp')) == fp
+
+        # need miniscript wallet
+        title, story = offer_minsc_import(json.dumps({"name": name, "desc": desc}))
+        assert "Create new miniscript wallet?" in story
+        press_select()
+        time.sleep(.2)
+
+        # import and sign
+        last_xfp = my_xfp if (i == 0) else private_data[i-1][1]
+        rx_complete(('E', qr_raw), pw, expect_xfp=str2xfp(last_xfp))
+
+        title, body = cap_story()
+        assert title == 'OK TO SEND?'
+
+        press_select()
+        time.sleep(.25)
+
+        title, body = cap_story()
+        if not wtype:
+            assert title == "PSBT Updated"  # added only nonce
+        else:
+            # wallet type 1 contains classic sortedmulti_a leaf to which we provide signature in first sitting
+            assert title == "PSBT Signed"
+        assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
+
+
+    # now start adding signatures
+    for i, (ek, fp, node) in enumerate(reversed(private_data)):
+        # reversed so that we do not need to change tmp seed for the first signer that was last in nonce adding
+        need_keypress('t')
+
+        time.sleep(.1)
+        m = cap_menu()
+        nm, = [mi for mi in m if fp in mi]
+        pick_menu_item(nm)
+
+        if i:
+            # grab the payload and pw
+            pw, data, qr_raw = grab_payload('E')
+            assert len(pw) == 8
+
+            time.sleep(.1)
+            title, story = cap_story()
+            assert title == 'Sent by Teleport'
+
+            fname = "ek_priv.txt"
+            with open(microsd_path(fname), "w") as f:
+                f.write(ek)
+
+            # switch personalities, and try to read that QR
+            goto_eph_seed_menu()
+            pick_menu_item("Import XPRV")
+            need_keypress("1")
+            try:
+                pick_menu_item(fname)
+            except:
+                pass
+
+            press_select()
+
+            dev.start_encryption()
+            assert xfp2str(settings_get('xfp')) == fp
+
+            rx_complete(('E', qr_raw), pw, expect_xfp=str2xfp(private_data[1][1]))
+
+        title, body = cap_story()
+        assert title == 'OK TO SEND?'
+
+        press_select()
+        time.sleep(.25)
+
+        title, body = cap_story()
+        assert title == "PSBT Signed"  # added signature(s)
+        assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
+
+    # now finish with sim CC
+    need_keypress('t')
+    # now both cosigners are done
+    time.sleep(.1)
+    m = cap_menu()
+    scr = cap_screen()
+    assert "YOU \x14\x00" in scr
+    assert "DONE" in scr
+
+    time.sleep(.1)
+    nm, = [mi for mi in m if xfp2str(simulator_fixed_xfp) in mi]
+    pick_menu_item(nm)
+    pw, data, qr_raw = grab_payload('E')
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == 'Sent by Teleport'
+    try:
+        restore_main_seed()
+    except: pass
+    dev.start_encryption()
+    assert xfp2str(settings_get('xfp')) == xfp2str(simulator_fixed_xfp)
+
+    # import and sign
+    rx_complete(('E', qr_raw), pw)
+    title, body = cap_story()
+    assert title == 'OK TO SEND?'
+    press_select()
+    time.sleep(.25)
+    title, body = cap_story()
+    assert '(T) to use Key Teleport to send PSBT to other co-signers' not in body  # done
+    assert "Finalized TX ready for broadcast" in body
+    txid = body.split("\n\n")[1].split()[1]
+
+    done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
+    resp_len, chk = done
+    tx_out = dev.download_file(resp_len, chk)
+    tx_hex = tx_out.hex()
+    res = wo.testmempoolaccept([tx_hex])
+    assert res[0]["allowed"]
+    res = wo.sendrawtransaction(tx_hex)
+    assert res == txid  # tx id
+    press_cancel()
+
+
 def test_hobble_limited(set_hobble, scan_a_qr, cap_menu, cap_screen, pick_menu_item, grab_payload,
                         rx_complete, cap_story, press_cancel, press_select, settings_get,
                         settings_set, restore_backup_unpacked, main_do_over, set_encoded_secret,

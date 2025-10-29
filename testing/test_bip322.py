@@ -694,46 +694,18 @@ def test_miniscript_bip322_por(minisc, clear_miniscript, cap_story, microsd_path
     # do some checks on policy --> helper function to replace keys with letters
     press_select()
 
-    wo = create_core_wallet(name, addr_fmt, "sd", True)
+    wo = create_core_wallet(name, addr_fmt, "sd", num_ins)
 
     unspent = wo.listunspent()
-    assert len(unspent) == 1
+    assert len(unspent) == num_ins
 
-    if num_ins == 20:
-        all_of_it = wo.getbalance()
-        num_outs = 20
-        nVal = all_of_it / num_outs
-        conso_addrs = [{wo.getnewaddress("", addr_fmt): nVal} for _ in range(num_outs)]  # self-spend
-    else:
-        conso_addrs = [{bitcoind.supply_wallet.getnewaddress(): 2.333}]
+    all_of_it = wo.getbalance()
+    to_send = [{bitcoind.supply_wallet.getnewaddress(): all_of_it}]
 
-    psbt_resp = wo.walletcreatefundedpsbt([], conso_addrs, 0, {"fee_rate": 2,
-                                                               "change_type": addr_fmt,
-                                                               "subtractFeeFromOutputs": [0]})
+    psbt_resp = wo.walletcreatefundedpsbt([], to_send, 0, {"fee_rate": 2,
+                                                           "change_type": addr_fmt,
+                                                           "subtractFeeFromOutputs": [0]})
     psbt = psbt_resp.get("psbt")
-    if num_ins == 20:
-        if has_c:
-            psbt_res = signers[1].walletprocesspsbt(psbt, True,
-                                                    "DEFAULT" if addr_fmt == "bech32m" else "ALL")
-            psbt = psbt_res.get("psbt")
-
-        start_sign(base64.b64decode(psbt))
-        res = end_sign(accept=True)
-
-        res = wo.finalizepsbt(base64.b64encode(res).decode())
-        assert res["complete"]
-        tx_hex = res["hex"]
-        res = wo.testmempoolaccept([tx_hex])
-        assert res[0]["allowed"]
-        res = wo.sendrawtransaction(tx_hex)
-        assert len(res) == 64  # tx id
-        bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
-        unspent = wo.listunspent()
-        assert len(unspent) == 20
-        dest = [{bitcoind.supply_wallet.getnewaddress(): wo.getbalance()}]
-        psbt_resp = wo.walletcreatefundedpsbt([], dest, 0, {"fee_rate": 2, "change_type": addr_fmt,
-                                                            "subtractFeeFromOutputs": [0]})
-        psbt = psbt_resp.get("psbt")
 
     por_psbt, _ = bip322_from_classic_tx(psbt.encode())
     # this is miniscript that we cannot finalize
@@ -754,5 +726,77 @@ def test_miniscript_bip322_por(minisc, clear_miniscript, cap_story, microsd_path
             assert len(i.taproot_script_sigs) == 1
         else:
             assert len(i.part_sigs) == 1
+
+
+@pytest.mark.parametrize("num_ins", [1, 10])
+@pytest.mark.parametrize("tapscript", [True, False])
+def test_musig_bip322_por(num_ins, tapscript, bitcoind, use_regtest, clear_miniscript, cap_story,
+                          build_musig_wallet, bip322_from_classic_tx, start_sign, end_sign,
+                          verify_msg_bip322_por):
+    use_regtest()
+    clear_miniscript()
+
+    name = "b322_musig"
+    wo, signers, desc = build_musig_wallet(name, 3, tapscript=tapscript, num_utxo_available=num_ins,
+                                           tapscript_musig_threshold=2)
+
+    unspent = wo.listunspent()
+    assert len(unspent) == num_ins
+
+    all_of_it = wo.getbalance()
+    to_send = [{bitcoind.supply_wallet.getnewaddress(): all_of_it}]
+
+    psbt_resp = wo.walletcreatefundedpsbt([], to_send, 0, {"fee_rate": 2,
+                                                           "change_type": "bech32m",
+                                                           "subtractFeeFromOutputs": [0]})
+    psbt = psbt_resp.get("psbt")
+
+    por_psbt, _ = bip322_from_classic_tx(psbt.encode())
+    start_sign(por_psbt)
+    verify_msg_bip322_por("POR", way="sd")
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Proof of Reserves" in story
+    assert "warning" not in story
+    assert f"{num_ins} input{'s' if num_ins > 1 else ''}" in story
+    assert "1 output" in story
+    assert "- OP_RETURN -" in story
+    assert "null-data" in story
+    res = end_sign(accept=True)
+    po = BasicPSBT().parse(res)
+    for i in po.inputs:
+        assert len(i.musig_pubnonces) == (3 if tapscript else 1)
+
+    b64_res_psbt = po.as_b64_str()
+    for s in signers:
+        psbt_resp = s.walletprocesspsbt(b64_res_psbt, True, "DEFAULT", True, False)
+        b64_res_psbt = psbt_resp.get("psbt")
+
+    po = BasicPSBT().parse(base64.b64decode(b64_res_psbt))
+    for i in po.inputs:
+        assert len(i.musig_pubnonces) == (9 if tapscript else 3)
+
+    # cosigners adding signatures - seems core is unable to add both nonce and signature in one iteration
+    for s in signers[int(tapscript):]:
+        psbt_resp = s.walletprocesspsbt(b64_res_psbt, True, "DEFAULT", True, False)
+        b64_res_psbt = psbt_resp.get("psbt")
+
+    po = BasicPSBT().parse(base64.b64decode(b64_res_psbt))
+    for i in po.inputs:
+        assert len(i.musig_part_sigs) == (3 if tapscript else 2)
+
+    # core fixed utxo for input0 - rework
+    por_psbt, _ = bip322_from_classic_tx(po.as_bytes())
+    start_sign(por_psbt, finalize=not tapscript)
+    verify_msg_bip322_por("POR", way="sd")
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Proof of Reserves" in story
+    assert "warning" not in story
+    assert f"{num_ins} input{'s' if num_ins > 1 else ''}" in story
+    assert "1 output" in story
+    assert "- OP_RETURN -" in story
+    assert "null-data" in story
+    end_sign(accept=True, finalize=not tapscript)
 
 # EOF

@@ -1,7 +1,6 @@
 # Miniscript
 
-**COLDCARD<sup>&reg;</sup>** Mk4 experimental `EDGE` versions
-support Miniscript and MiniTapscript.
+**COLDCARD<sup>&reg;</sup>** `EDGE` versions support Miniscript and MiniTapscript.
 
 ## Import/Export
 

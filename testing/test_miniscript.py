@@ -2,40 +2,15 @@
 #
 # Miniscript-related tests.
 #
-import pytest, json, time, itertools, struct, random, os, base64
+import pytest, json, time, itertools, struct, random, os, base64, re, copy
 from ckcc.protocol import CCProtocolPacker
 from constants import AF_P2TR
 from psbt import BasicPSBT
 from charcodes import KEY_QR, KEY_RIGHT, KEY_CANCEL, KEY_DELETE
 from bbqr import split_qrs
-from bip32 import BIP32Node
-from helpers import str_to_path
-
-
-H = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"  # BIP-0341
-TREE = {
-    1: '%s',
-    2: '{%s,%s}',
-    3: random.choice(['{{%s,%s},%s}','{%s,{%s,%s}}']),
-    4: '{{%s,%s},{%s,%s}}',
-    5: random.choice(['{{%s,%s},{%s,{%s,%s}}}', '{{{%s,%s},%s},{%s,%s}}']),
-    6: '{{%s,{%s,%s}},{{%s,%s},%s}}',
-    7: '{{%s,{%s,%s}},{%s,{%s,{%s,%s}}}}',
-    8: '{{{%s,%s},{%s,%s}},{{%s,%s},{%s,%s}}}',
-    # more than MAX (4) for test purposes
-    9: '{{{%s,{%s,%s}},{%s,%s}},{{%s,%s},{%s,%s}}}',
-    10: '{{{{%s,%s},{%s,%s}},{%s,%s}},{{%s,%s},{%s,%s}}}',
-    11: '{{{{%s,%s},{%s,%s}},{%s,%s}},{{%s,%s},{%s,{%s,%s}}}}',
-    12: '{{{{%s,%s},{%s,%s}},{%s,%s}},{{%s,%s},{{%s,%s},{%s,%s}}}}',
-}
-
-
-def ranged_unspendable_internal_key(chain_code=32 * b"\x01", subderiv="/<0;1>/*"):
-    # provide ranged provably unspendable key in serialized extended key format for core to understand it
-    # core does NOT understand 'unspend('
-    pk = b"\x02" + bytes.fromhex(H)
-    node = BIP32Node.from_chaincode_pubkey(chain_code, pk)
-    return node.hwif() + subderiv
+from bip32 import BIP32Node, ranged_unspendable_internal_key
+from constants import H
+from helpers import generate_binary_tree_template, str_to_path
 
 
 @pytest.fixture
@@ -305,28 +280,55 @@ def get_cc_key(dev):
 
 @pytest.fixture
 def bitcoin_core_signer(bitcoind):
-    def doit(name="core_signer"):
+    def doit(name="core_signer", desc_type="pkh(", privkey=False):
         # core signer
+        par_c = desc_type.count("(")
         signer = bitcoind.create_wallet(wallet_name=name, disable_private_keys=False,
                                         blank=False, passphrase=None, avoid_reuse=False,
                                         descriptors=True)
         target_desc = ""
         bitcoind_descriptors = signer.listdescriptors()["descriptors"]
         for d in bitcoind_descriptors:
-            if d["desc"].startswith("pkh(") and d["internal"] is False:
+            if d["desc"].startswith(desc_type) and d["internal"] is False:
                 target_desc = d["desc"]
                 break
         core_desc, checksum = target_desc.split("#")
-        core_key = core_desc[4:-1]
-        return signer, core_key
+        core_pubkey = core_desc[len(desc_type):-par_c]
+
+        if privkey:
+            bitcoind_descriptors = signer.listdescriptors(True)["descriptors"]
+            for d in bitcoind_descriptors:
+                if d["desc"].startswith(desc_type) and d["internal"] is False:
+                    target_desc = d["desc"]
+                    break
+            core_desc, checksum = target_desc.split("#")
+            core_privkey = core_desc[len(desc_type):-par_c]
+
+            return signer, core_pubkey, core_privkey
+
+        return signer, core_pubkey
     return doit
+
+
+def find_multipath_derivations(text):
+    number_pattern = r'(?:0|[1-9]\d*)'
+    pattern = rf'/<{number_pattern};{number_pattern}>/\*'
+    matches = re.findall(pattern, text)
+    return matches
+
+
+def multipath_to_singlepath(multipath):
+    s = multipath.split(";")
+    ext_num = s[0].split("<")[-1]
+    int_num = s[1].split(">")[0]
+    return f"/{ext_num}/*", f"/{int_num}/*"
 
 
 @pytest.fixture
 def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
                            cap_story, miniscript_descriptors, load_export,
                            usb_miniscript_addr, cap_screen_qr, press_select):
-    def doit(way, addr_fmt, wallet, cc_minsc_name, export_check=True):
+    def doit(way, addr_fmt, wallet, cc_minsc_name):
         goto_home()
         pick_menu_item("Address Explorer")
         need_keypress('4')  # warning
@@ -401,26 +403,38 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
 
         time.sleep(1)
 
-        if export_check:
-            desc_export = miniscript_descriptors(cc_minsc_name)
+        desc_export = miniscript_descriptors(cc_minsc_name)
 
-            def remove_minisc_syntactic_sugar(descriptor, a, b):
-                # syntactic sugar https://bitcoin.sipa.be/miniscript/
-                target_len = len(a)
-                idx = 0
-                while idx != -1:
-                    idx = descriptor.find(a, idx)
-                    if idx == -1: break
-                    # needs colon more identities than just 'c'
-                    rep = f":{b}" if descriptor[idx-1] in "asctdvjnlu" else f"{b}"
-                    descriptor = descriptor[:idx] + rep + descriptor[idx+target_len:]
+        def remove_minisc_syntactic_sugar(descriptor, a, b):
+            # syntactic sugar https://bitcoin.sipa.be/miniscript/
+            target_len = len(a)
+            idx = 0
+            while idx != -1:
+                idx = descriptor.find(a, idx)
+                if idx == -1: break
+                # needs colon more identities than just 'c'
+                rep = f":{b}" if descriptor[idx-1] in "asctdvjnlu" else f"{b}"
+                descriptor = descriptor[:idx] + rep + descriptor[idx+target_len:]
 
-                return descriptor
+            return descriptor
 
-            desc_export = remove_minisc_syntactic_sugar(desc_export, "c:pk_k(", "pk(")
-            desc_export = remove_minisc_syntactic_sugar(desc_export, "c:pk_h(", "pkh(")
-            # TODO format with and without multipath expression
-            # assert desc_export.split("#")[0] == external_desc.split("#")[0].replace("'", "h")
+        desc_export = remove_minisc_syntactic_sugar(desc_export, "c:pk_k(", "pk(")
+        desc_export = remove_minisc_syntactic_sugar(desc_export, "c:pk_h(", "pkh(")
+
+        desc_export = desc_export.split("#")[0]  # remove checksum
+
+        multipaths = find_multipath_derivations(desc_export)
+
+        # fake copy
+        desc_ext_export = str(desc_export)
+        desc_int_export = str(desc_export)
+        for mp in multipaths:
+            ext_path, int_path = multipath_to_singlepath(mp)
+            desc_int_export = desc_int_export.replace(mp, int_path)
+            desc_ext_export = desc_ext_export.replace(mp, ext_path)
+
+        assert desc_ext_export == external_desc.split("#")[0].replace("'", "h")
+        assert desc_int_export == internal_desc.split("#")[0].replace("'", "h")
 
         bitcoind_addrs = wallet.deriveaddresses(external_desc, addr_range)
         bitcoind_addrs_change = wallet.deriveaddresses(internal_desc, addr_range)
@@ -459,7 +473,7 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
 
 @pytest.fixture
 def create_core_wallet(goto_home, pick_menu_item, load_export, bitcoind):
-    def doit(name, addr_type, way="sd", funded=True):
+    def doit(name, addr_type, way="sd", funded=1):
         try:
             pick_menu_item(name)  # pick imported descriptor multisig wallet
         except:
@@ -491,16 +505,19 @@ def create_core_wallet(goto_home, pick_menu_item, load_export, bitcoind):
             assert obj["success"]
 
         if funded:
-            addr = ms.getnewaddress("", addr_type)
+            addrs = [ms.getnewaddress("", addr_type) for _ in range(funded)]
             if addr_type == "bech32":
                 sw = "bcrt1q"
             elif addr_type == "bech32m":
                 sw = "bcrt1p"
             else:
                 sw = "2"
-            assert addr.startswith(sw)
-            # get some coins and fund above multisig address
-            bitcoind.supply_wallet.sendtoaddress(addr, 49)
+
+            for addr in addrs:
+                assert addr.startswith(sw)
+
+            nVal = 49 / funded
+            bitcoind.supply_wallet.sendmany("", {a: nVal for a in addrs})
             bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())  # mine above
 
         return ms
@@ -558,7 +575,7 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
                 else:
                     pytest.skip("Scripts full")
 
-            temp = TREE[len(scripts)]
+            temp = generate_binary_tree_template(len(scripts))
             temp = temp % tuple(scripts)
 
             desc = desc % temp
@@ -1103,7 +1120,7 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
     use_regtest()
     clear_miniscript()
     microsd_wipe()
-    tmplt = TREE[num_leafs]
+    tmplt = generate_binary_tree_template(num_leafs)
     bitcoind_signers_xpubs = []
     bitcoind_signers = []
     for i in range(num_leafs):
@@ -1172,19 +1189,27 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
     assert "PSBT Signed" == title
     assert "Updated PSBT is:" in story
     press_select()
-    fname_psbt = story.split("\n\n")[1]
-    # fname_txn = story.split("\n\n")[3]
+    split_story = story.split("\n\n")
+    fname_psbt = split_story[1]
     fpath_psbt = microsd_path(fname_psbt)
     with open(fpath_psbt, "r") as f:
         final_psbt = f.read().strip()
 
     garbage_collector.append(fpath_psbt)
-    # with open(microsd_path(fname_txn), "r") as f:
-    #     final_txn = f.read().strip()
+
+    if internal_key_spendable:
+        fname_txn = split_story[3]
+        fpath_txn = microsd_path(fname_txn)
+        with open(fpath_txn, "r") as f:
+            final_txn = f.read().strip()
+
+        garbage_collector.append(fpath_txn)
+
     res = ts.finalizepsbt(final_psbt)
     assert res["complete"]
     tx_hex = res["hex"]
-    # assert tx_hex == final_txn
+    if internal_key_spendable:
+        assert tx_hex == final_txn
     res = ts.testmempoolaccept([tx_hex])
     assert res[0]["allowed"]
     txn_id = bitcoind.supply_wallet.sendrawtransaction(tx_hex)
@@ -1235,7 +1260,7 @@ def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe,
     cc_key = get_cc_key("86h/0h/100h")
     cc_leaf = f"pk({cc_key})"
 
-    tmplt = TREE[2]
+    tmplt = generate_binary_tree_template(2)
     tmplt = tmplt % (cc_leaf, cc_leaf)
     desc = f"tr({core_key},{tmplt})"
     fname = "dup_leafs.txt"
@@ -1559,7 +1584,7 @@ def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
         k = get_cc_key(f"84h/0h/{i}h")
         scripts.append(f"pk({k})")
 
-    tree = TREE[leaf_num] % tuple(scripts)
+    tree = generate_binary_tree_template(leaf_num) % tuple(scripts)
     desc = f"tr({ranged_unspendable_internal_key()},{tree})"
     fname = "9leafs.txt"
     fpath = microsd_path(fname)

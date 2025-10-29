@@ -77,6 +77,7 @@
 - derivation path for each cosigner must be known and consistent with PSBT
 - XFP values (fingerprints) MUST be unique for each of the co-signers
 - multisig wallet `name` can only contain printable ASCII characters `range(32, 127)`
+- for taproot multisig (musig) limitations check musig.md
 
 ### BIP-67
 
