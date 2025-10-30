@@ -817,7 +817,10 @@ def test_exit_dev_backup(tmp, unit_test, goto_home, pick_menu_item, need_keypres
     ('W'*31) + ".7z",
 ])
 def test_backup_long_name_display(fname, goto_home, pick_menu_item, need_keypress, src_root_dir,
-                                  microsd_path, press_cancel, cap_screen):
+                                  microsd_path, press_cancel, cap_screen, is_q1):
+    if not is_q1:
+        raise pytest.skip("Only Q")
+
     fn = microsd_path(fname)
     shutil.copy(f'{src_root_dir}/docs/backup.7z', fn)
 

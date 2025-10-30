@@ -100,7 +100,8 @@ def test_menu_contents(set_hobble, pick_menu_item, cap_menu, en_okeys, en_notes,
                     'Export Wallet',
                     'View Identity',
                     'Paper Wallets',
-                    'Destroy Seed' }
+                    'Destroy Seed',
+                    f'Show {"Firmware" if is_q1 else "FW"} Version' }
 
     if is_q1 and en_miniscript:
         adv_expect.add('Teleport Miniscript PSBT')
@@ -327,6 +328,9 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
         
         word_menu_entry(pw, has_checksum=False)
 
+        time.sleep(.1)
+        press_select() # confirm loading of the backup
+        time.sleep(.1)
         title, story = cap_story()
         assert title == 'FAILED'
         assert 'successfully tested recovery' in story
