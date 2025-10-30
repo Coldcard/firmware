@@ -828,6 +828,9 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
         data_len = psram.tell()
         data_sha2 = psram.checksum.digest()
 
+    # BBQR is at TMP_OUTPUT_OFFSET + 1MB - allowing it in this case would overwrite txn
+    allow_qr = data_len < (1024*1024)
+
     if input_method == "usb":
         # return result over USB before going to all options
         tx_req.result = data_len, data_sha2
@@ -855,7 +858,8 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
         if first_time:
             # first time, assume they want to send out same way it came in -- don't prompt
             if input_method == "qr":
-                ch = KEY_QR
+                if allow_qr:
+                    ch = KEY_QR
             elif input_method == "nfc":
                 ch = KEY_NFC
             elif input_method == "kt":
@@ -878,7 +882,7 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
             # files on SD infinitely (would never actually prompt).
             ch = await import_export_prompt(noun, intro="\n\n".join(intro), offer_kt=offer_kt,
                                             txid=txid, title=title, force_prompt=not first_time,
-                                            no_qr=not version.has_qwerty)
+                                            no_qr=not version.has_qwerty or not allow_qr)
         if ch == KEY_CANCEL:
             UserAuthorizedAction.cleanup()
             break

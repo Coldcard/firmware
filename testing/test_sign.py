@@ -213,7 +213,8 @@ def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn,
     num_in = 250
     num_out = 2000
 
-    psbt = fake_txn(num_in, num_out, dev.master_xpub, addr_fmt=addr_fmt)
+    psbt = fake_txn(num_in, num_out, dev.master_xpub, addr_fmt=addr_fmt,
+                    force_full_tx_utxo=True, supply_num_ins=10, supply_num_outs=10)
 
     with open(f'{sim_root_dir}/debug/last.psbt', 'wb') as f:
         f.write(psbt)

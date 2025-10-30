@@ -1207,7 +1207,7 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
     from ux import ux_wait_keydown
     import uqr
 
-    # put QR shenanigans at unused offset 1MB after TXN_OUTPUT_OFFSET
+    # put QR shenanigans at offset 1MB after TXN_OUTPUT_OFFSET
     TMP_OFFSET = const(3 * 1024 * 1024)
 
     assert not PSRAM.is_at(data, TMP_OFFSET)  # output data would be overwritten with our work

@@ -438,6 +438,8 @@ def test_big_guys(microsd_path, src_root_dir, goto_home, pick_menu_item, need_ke
         enter_complex(32*"a", apply=False, b39pass=False)
         time.sleep(.5)
         press_select()
+        time.sleep(.1)
+        press_select()
 
         with open(microsd_path(fname.split(".")[0]+".psbt"), "w") as f:
             f.write(psbt)
