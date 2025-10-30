@@ -61,19 +61,20 @@ class SpendingPolicy(dict):
                 self.update(v.items())      # mpy bugfix, when called with SpendingPolicy
             
 
-    def _save_policy(self):
+    def _save_policy(self, master_only=True):
         # serialize the spending policy, save it
         v = dict(settings.master_get(self.nvkey, {}))
         v['pol'] = self.copy()
-        settings.master_set(self.nvkey, v, master_only=True)
+        settings.master_set(self.nvkey, v, master_only=master_only)
 
-    def update_policy_key(self, _quiet=False, **kws):
+    def update_policy_key(self, _quiet=False, _master_only=True, **kws):
         # Update a few elements of the spending policy
         # - all changes are saved immediately (which is a little slow/visible)
         if not _quiet:
             dis.fullscreen("Saving...")
+
         self.update(kws)
-        self._save_policy()
+        self._save_policy(_master_only)
 
     def meets_policy(self, psbt):
         # Does policy allow signing this? Else raise why. Return T if web2fa required.
@@ -156,7 +157,8 @@ class SpendingPolicy(dict):
             # always update last block height, even if velocity isn't enabled yet
             # - attacker might have changed to testnet, but there is no
             #   reason to ever lower block height. strictly ascending
-            self.update_policy_key(_quiet=True, block_h=psbt.lock_time)
+            # allow update block_h from temporary seed
+            self.update_policy_key(_quiet=True, _master_only=False, block_h=psbt.lock_time)
 
 class SSSPFeature:
     # Using setting value "sssp"
@@ -170,8 +172,6 @@ class SSSPFeature:
     @classmethod
     def update_last_signed(cls, psbt):
         # new PSBT has been completely signed successfully.
-        if not cls.is_enabled():
-            return
         pol = cls.get_policy()
         pol.update_last_signed(psbt)
 

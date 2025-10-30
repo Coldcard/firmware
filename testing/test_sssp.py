@@ -637,7 +637,7 @@ def test_deltamode_signature(active_policy, setup_sssp, bitcoind, settings_set,
 def test_sssp_enforce_tmp_seed(setup_sssp, bitcoind, settings_set, settings_get, press_select,
                                pick_menu_item, cap_menu, go_to_passphrase, enter_complex,
                                need_keypress, word_menu_entry, fake_txn, start_sign, dev,
-                               cap_story):
+                               cap_story, get_last_violation, end_sign):
     tmp_words = "style car win bomb plug raccoon predict warm wrap flush usual seminar"
     blocks = 6  # ~1 hour
     settings_set("chain", "XRT")
@@ -681,13 +681,50 @@ def test_sssp_enforce_tmp_seed(setup_sssp, bitcoind, settings_set, settings_get,
     assert "Passphrase" not in m  # xprv based
     assert "Settings" not in m  # still in hobbled
 
-    xpub = dev.send_recv(CCProtocolPacker.get_xpub("m"), timeout=None)
-    psbt = fake_txn(2, 2, input_amount=200000000, master_xpub=xpub)
+    xpub1 = dev.send_recv(CCProtocolPacker.get_xpub("m"), timeout=None)
+    psbt = fake_txn(2, 2, input_amount=200000000, master_xpub=xpub1)
     start_sign(psbt)
     time.sleep(.1)
     _, story = cap_story()
     assert "Spending Policy violation" in story
     press_select()
+    time.sleep(.1)
+
+    # try success signing
+    psbt = fake_txn(2, 2, input_amount=1000000, master_xpub=xpub1, lock_time=50)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    assert "Spending Policy violation" not in story
+    assert end_sign()
+
+    # go back to previous temporary seed and verify block_h was updated
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Temporary Seed")
+    need_keypress("4")
+    pick_menu_item("Import Words")
+    pick_menu_item("12 Words")
+    word_menu_entry(tmp_words.split())
+    press_select()
+
+    # lock time is still 50 - as in previous case = rewound
+    psbt = fake_txn(2, 2, input_amount=1000000, master_xpub=xpub, lock_time=50)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Spending Policy violation" in story
+    assert get_last_violation() == "rewound (50)"
+    press_select()
+    time.sleep(.1)
+
+    # bump locktime
+    psbt = fake_txn(2, 2, input_amount=1000000, master_xpub=xpub, lock_time=56)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    assert end_sign()
     time.sleep(.1)
 
     pick_menu_item("Restore Master")
@@ -697,12 +734,31 @@ def test_sssp_enforce_tmp_seed(setup_sssp, bitcoind, settings_set, settings_get,
     m = cap_menu()
     assert "Passphrase" in m
     assert "Settings" not in m  # still in hobbled
-    psbt = fake_txn(2, 2, input_amount=200000000)
+    psbt = fake_txn(2, 2, input_amount=200000000, lock_time=150)
     start_sign(psbt)
     time.sleep(.1)
     _, story = cap_story()
     assert "Spending Policy violation" in story
     press_select()
+
+    # lock time is still 56 - as in previous case = rewound
+    psbt = fake_txn(2, 2, input_amount=1000000, lock_time=56)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Spending Policy violation" in story
+    assert get_last_violation() == "rewound (56)"
+    press_select()
+    time.sleep(.1)
+
+    # bump locktime
+    psbt = fake_txn(2, 2, input_amount=1000000, lock_time=70)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    assert end_sign()
+    time.sleep(.1)
 
 def test_sssp_notes_enable(only_q1, setup_sssp):
     # just test menu item works
