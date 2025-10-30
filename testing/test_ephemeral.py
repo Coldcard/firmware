@@ -1387,8 +1387,8 @@ def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_se
 
     word_menu_entry(bk_pw, has_checksum=False)
 
-    title, story = cap_story()
     time.sleep(.5)
+    title, story = cap_story()
     assert f"[{xfp_str}]" == title
     assert "Above is the master fingerprint of the seed stored in the backup." in story
     assert f"load backup as temporary seed" in story
@@ -1471,8 +1471,8 @@ def test_temporary_from_backup_usb(backup_system, set_seed_words, cap_story, ver
     elif password:
         enter_complex(bkpw, apply=False, b39pass=False)
 
-    title, story = cap_story()
     time.sleep(.5)
+    title, story = cap_story()
     assert f"[{xfp_str}]" == title
     assert "Above is the master fingerprint of the seed stored in the backup." in story
     assert f"load backup as temporary seed" in story
