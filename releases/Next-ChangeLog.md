@@ -8,6 +8,8 @@ This lists the new changes that have not yet been published in a normal release.
 - Enhancement: Show master XFP of backup secret & ask user for confirmation before loading backup.
 - Enhancement: Show firmware version added to hobbled Advanced/Tools menu
 - Bugfix: Exiting text input of Custom Backup Password causes yikes
+- Bugfix: Temporary seeds in SSSP mode were not able to update block height
+
 
 # Mk4 Specific Changes
 

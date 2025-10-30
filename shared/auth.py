@@ -544,8 +544,9 @@ class ApproveTransaction(UserAuthorizedAction):
                 dis.fullscreen('Co-Signing...')
                 gc.collect()
                 CCCFeature.sign_psbt(self.psbt)
-            else:
-                # maybe capture new min-height for velocity limit
+
+            if SSSPFeature.is_enabled():
+                # capture new min-height for velocity limit
                 SSSPFeature.update_last_signed(self.psbt)
 
         except FraudulentChangeOutput as exc:
