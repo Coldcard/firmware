@@ -13,6 +13,10 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
+### WARNING: 6.4.0X is not backwards-compatible with previous firmware versions.
+#### Before installing 6.4.0X, create a backup!!! If for some reason migration fails, or you decide to downgrade, only way to get back to previous version(s) is from the backup created on previous version(s).
+#### Everything is Miniscript from 6.4.0X. All multisig wallet need to be migrated to Miniscript. Old miniscript backend format is migrated to the new one, that is using BIP-388 wallet policies. After you install 6.4.0X, head directly to Settings->Miniscript to migrate your wallets.
+
 - New Feature: Key Teleport
 - New Feature: Spending Policy for Miniscript Wallets
 - New Feature: Internal descriptor cache speeding up sequential operation with miniscript wallets.
@@ -40,16 +44,16 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Mk4 Specific Changes
 
-## 6.3.6X - 2025-XX-XX
+## 6.4.0X - 2025-XX-XX
 
-- synced with master up to `5.4.4`
+- synced with master up to `5.4.5`
 
 
 # Q Specific Changes
 
-## 6.3.6QX - 2025-XX-XX
+## 6.4.0QX - 2025-XX-XX
 
-- synced with master up to `1.3.4Q`
+- synced with master up to `1.3.5Q`
 
 
 # Release History
