@@ -24,7 +24,7 @@ TRUST_OFFER = const(1)
 TRUST_PSBT = const(2)
 
 MAX_BIP32_IDX = (2 ** 31) - 1
-MAX_NAME_LEN = 20
+MAX_NAME_LEN = 30  # use (almost) full potential of Q screen
 
 class WalletOutOfSpace(RuntimeError):
     pass
@@ -1344,7 +1344,8 @@ def miniscript_640_migrate(old_serialization):
     if ct != "BTC":
         new_opts['ct'] = ct
 
-    return name, desc_tmplt, keys_info, new_opts
+    # previous version had unbounded names, cut it
+    return name[:MAX_NAME_LEN], desc_tmplt, keys_info, new_opts
 
 
 async def multisig_640_migration(multisig_wallets):
@@ -1357,7 +1358,8 @@ async def multisig_640_migration(multisig_wallets):
 
     migrated_multi = []
     # first element is always name, whether migrated or not
-    taken_names = [tup[0] for tup in settings.get("miniscript", [])]
+    # shorten to MAX_NAME_LEN that will be done to miniscript names upon migration
+    taken_names = [tup[0][:MAX_NAME_LEN] for tup in settings.get("miniscript", [])]
     for i, ms in enumerate(multisig_wallets):
         bip67 = 1  # default enabled, requires 5-element serialization to disable
         if len(ms) == 5:
@@ -1408,12 +1410,17 @@ async def multisig_640_migration(multisig_wallets):
         if ct != "BTC":
             new_opts['ct'] = ct
 
+        # this should not happen as multisg names were limited to 20 chars max
+        name = name[:MAX_NAME_LEN]
         if name in taken_names:
             # name collision with miniscript
-            name = name + "1"
-            if len(name) > MAX_NAME_LEN:
-                # issue
-                name = name[:15] + "mig1"
+            while name in taken_names:
+                suffix = str(ngu.random.uniform(100))
+                if (len(name) + len(suffix)) > MAX_NAME_LEN:
+                    # issue
+                    name = name[:MAX_NAME_LEN-len(suffix)]
+
+                name = name + suffix
 
         migrated_multi.append((name, desc_tmplt, keys_info, new_opts))
         dis.progress_sofar(i+1, total)

@@ -829,7 +829,9 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
         data_sha2 = psram.checksum.digest()
 
     # BBQR is at TMP_OUTPUT_OFFSET + 1MB - allowing it in this case would overwrite txn
-    allow_qr = data_len < (1024*1024)
+    # allow_qr = data_len < (1024*1024)
+    # actual more reasonable limit - as BBQR has some overhead and only 1Mbit of space
+    allow_qr = data_len < (671*1024)
 
     if input_method == "usb":
         # return result over USB before going to all options

@@ -1,5 +1,6 @@
 import pytest, time, base64, shutil
 
+
 msc0 = ('msc0', 'XTN', 14, None,
         ['[0f056943/84h/1h/0h]tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*',
          '[0f056943/84h/1h/0h]tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<2;3>/*'],
@@ -458,6 +459,33 @@ def test_big_guys(microsd_path, src_root_dir, goto_home, pick_menu_item, need_ke
         assert len(msc[0]) == 4  # new format
         press_cancel()
 
+
+def test_anchor_bug(goto_home, pick_menu_item, microsd_path, src_root_dir, press_select,
+                    unit_test, cap_menu):
+    fname = "bonus101.txt"
+    shutil.copy(f"{src_root_dir}/testing/data/migration_640/{fname}", microsd_path(""))
+    # unit_test('devtest/clear_seed.py')
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Danger Zone")
+    pick_menu_item("I Am Developer.")
+    pick_menu_item("Restore Bkup")
+    pick_menu_item(fname)
+    time.sleep(.1)
+    press_select()
+
+    time.sleep(.1)
+    press_select()
+
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Miniscript")
+    time.sleep(2)
+    m = cap_menu()
+    assert len(m) == 17
+    assert all(len(name) <= 30 for name in m)
+
+
 def test_multisig_miniscript_migration(settings_append, clear_miniscript, settings_get,
                                        settings_remove, settings_set, goto_home, pick_menu_item):
 
@@ -496,10 +524,10 @@ def test_name_clash(settings_set, clear_miniscript, settings_remove, goto_home, 
     # length issue, name cannot be longer than 20 chars
     # but adding '1' would cause length failure - need some replacing
     new_ms2 = list(ms2)
-    new_ms2[0] = 20*"a"
+    new_ms2[0] = 35*"a"
 
     new_msc16 = list(msc16)
-    new_msc16[0] = 20*"a"
+    new_msc16[0] = 31*"a"
 
     settings_set("miniscript", [new_msc6, msc11, new_msc16])
     settings_set("multisig", [ms0, ms1, new_ms2, ms3])
@@ -511,6 +539,7 @@ def test_name_clash(settings_set, clear_miniscript, settings_remove, goto_home, 
     assert settings_get("multisig", None) is None
     miniscripts = settings_get("miniscript")
 
-    assert [m[0] for m in miniscripts] == ["ms0", "msc11", 20*"a", "ms01", "ms1", 15*"a"+"mig1", "ms3"]
+    assert all([len(m[0]) <= 30 for m in miniscripts])
+    assert len(set([m[0] for m in miniscripts])) == 7
 
 # EOF
