@@ -3319,7 +3319,7 @@ def test_miniscript_rename(offer_minsc_import, clear_miniscript, press_select, g
         scr = cap_screen()
         assert name in scr
 
-    new_name = 25 * "0"
+    new_name = 35 * "0"
     # first delete old one
     for _ in range(len(name) - (0 if is_q1 else 1)):
         need_keypress(KEY_DELETE if is_q1 else "x")
@@ -3332,10 +3332,10 @@ def test_miniscript_rename(offer_minsc_import, clear_miniscript, press_select, g
         scr = cap_screen()
         assert "Need 1" in scr
 
-    # it is not possible to input more than 20 characters
+    # it is not possible to input more than 30 characters
     enter_complex(new_name, apply=False, b39pass=False)
 
-    real_name = new_name[:20]
+    real_name = new_name[:30]
 
     # specific wallet menu has changed
     time.sleep(.1)

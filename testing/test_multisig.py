@@ -219,7 +219,7 @@ def test_ms_import_variations(N, offer_minsc_import, press_cancel, is_q1, get_cc
         assert name in story
 
     # too long name
-    name = 'A' * 21
+    name = 'A' * 31
     with pytest.raises(BaseException) as ee:
         title, story = offer_minsc_import(json.dumps({"name": name, "desc": desc0}))
     assert 'name len' in str(ee.value)
