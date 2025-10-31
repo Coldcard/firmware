@@ -781,5 +781,9 @@ class BIP32Node:
     def chain_code(self):
         return self.node.chain_code
 
+    def privkey(self):
+        assert isinstance(self.node, PrvKeyNode)
+        return bytes(self.node.private_key)
+
     def parent_fingerprint(self):
         return self.node.parent_fingerprint

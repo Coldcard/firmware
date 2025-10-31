@@ -57,7 +57,7 @@ to be the first (non-change) receive address for the wallet.
 segregate funds into sub-wallets. Don't assume it's zero.
 
 3. When making your PSBT files to spend these amounts, remember that the XFP of the master
-(`0F056943` in this example) is is the root of the subkey paths found in the file, and 
+(`0F056943` in this example) is the root of the subkey paths found in the file, and 
 you must include the full derivation path from master. So based on this example,
 to spend a UTXO on `tb1qc58ys2dphtphg6yuugdf3d0kufmk0tye044g3l`, the input section
 of your PSBT would need to specify `(m=0F056943)/84'/1'/123'/0/0`.

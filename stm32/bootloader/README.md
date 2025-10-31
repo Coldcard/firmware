@@ -19,7 +19,7 @@ your key storage per-system unique.
 
 - the most helpful file here is `bootloader.lss` which is generated in build process
 
-- using OpenOCD is prefered for lower level code like this (not GDB)
+- using OpenOCD is preferred for lower level code like this (not GDB)
 
 - `stm32l4x.cpu arm disassemble 0x000008 10 thumb` is very helpful
 
@@ -140,7 +140,7 @@ Mk4:
 
 ## Re-do Bag Number
 
-- cannot writes ones, and then change flash cells; have to remain unprogrammed
+- cannot write ones, and then change flash cells; have to remain unprogrammed
 
     dfu-util -d 0483:df11 -a 0 -s 0x0801c000:8192 -U pairing.bin
 

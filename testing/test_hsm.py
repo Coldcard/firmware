@@ -71,7 +71,7 @@ def compute_policy_hash(policy):
             if type_ == Deriv:
                 rv = []
                 for orig in value or []:
-                    rv.append(orig if orig in ["any", "p2sh"] else orig.replace('p', "h").replace("'", 'h'))
+                    rv.append(orig if orig in ["any", "msas"] else orig.replace('p', "h").replace("'", 'h'))
             elif type_ == WhitelistOpts:
                 rv = OrderedDict()
                 rv["mode"] =  value.get("mode", "BASIC")
@@ -122,7 +122,7 @@ def enable_hsm_commands(dev, sim_exec, only_mk4):
     sim_exec(cmd)
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture
 def hsm_reset(dev, sim_exec):
     # filename for the policy file, as stored on simulated CC
 
@@ -170,10 +170,10 @@ def hsm_reset(dev, sim_exec):
     (DICT(msg_paths=["any"]), "(any path)"),
 
     # data sharing
-    (DICT(share_addrs=["m/1'/2p/3H"]), ['Address values values will be shared', "m/1h/2h/3h"]),
-    (DICT(share_addrs=["m/1", "m/2"]), ['Address values values will be shared', "m/1 OR m/2"]),
-    (DICT(share_addrs=["any"]), ['Address values values will be shared', "(any path)"]),
-    (DICT(share_addrs=["p2sh", "any"]), ['Address values values will be shared', "(any P2SH)", "(any path"]),
+    (DICT(share_addrs=["m/1'/2p/3H"]), ['Address values will be shared', "m/1h/2h/3h"]),
+    (DICT(share_addrs=["m/1", "m/2"]), ['Address values will be shared', "m/1 OR m/2"]),
+    (DICT(share_addrs=["any"]), ['Address values will be shared', "(any path)"]),
+    (DICT(share_addrs=["msas", "any"]), ['Address values will be shared', "(any miniscript)", "(any path"]),
 
     (DICT(share_xpubs=["m/1'/2p/3H"]), ['XPUB values will be shared', "m/1h/2h/3h"]),
     (DICT(share_xpubs=["m/1", "m/2"]), ['XPUB values will be shared', "m/1 OR m/2"]),
@@ -476,10 +476,11 @@ def wait_til_signed(dev):
     return result
 
 @pytest.fixture
-def attempt_psbt(hsm_status, start_sign, dev):
+def attempt_psbt(hsm_status, start_sign, dev, sim_root_dir):
 
     def doit(psbt, refuse=None, remote_error=None):
-        open('debug/attempt.psbt', 'wb').write(psbt)
+        with open(f'{sim_root_dir}/debug/attempt.psbt', 'wb') as f:
+            f.write(psbt)
         start_sign(psbt)
 
         try:
@@ -532,54 +533,54 @@ def test_simple_limit(dev, amount, over, start_hsm, fake_txn, attempt_psbt, twea
     assert 'Rule #2' not in stat.summary
 
     # create a transaction
-    psbt = fake_txn(2, 2, dev.master_xpub, outvals=[amount, 2E8-amount],
-                        change_outputs=[1], fee=0)
+    psbt = fake_txn(2, [["p2tr", int(amount)],["p2wpkh", int(2E8-amount), True]],
+                    dev.master_xpub, fee=0)
     attempt_psbt(psbt)
 
-    psbt = fake_txn(2, 2, dev.master_xpub, outvals=[amount+over, 2E8-amount-over],
-                                                    change_outputs=[1], fee=0)
+    psbt = fake_txn(2, [["p2tr", int(amount+over)],["p2wpkh", int(2E8-amount-over), True]],
+                    dev.master_xpub, fee=0)
     attempt_psbt(psbt, "amount exceeded")
 
     if tweak_rule:
         tweak_rule(0, dict(max_amount=int(amount+over)))
         attempt_psbt(psbt)
 
-def test_named_wallets(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_status,
-                       attempt_psbt, fake_txn, fake_ms_txn, amount=5E6, incl_xpubs=False):
+def test_named_wallets(dev, start_hsm, tweak_rule, import_ms_wallet, hsm_status,
+                       attempt_psbt, fake_txn, fake_ms_txn, amount=5E6):
     wname = 'Myself-4'
     M = 4
 
     stat = hsm_status()
     assert not stat.active
 
-    for retry in range(3):
-        keys, _ = make_myself_wallet(4)       # slow AF
+    keys = import_ms_wallet(M,M, name=wname, accept=True)
+    time.sleep(.2)
 
-        stat = hsm_status()
-        if wname in stat.wallets:
-            break
+    stat = hsm_status()
+    assert wname in stat.wallets
 
     # policy: only allow multisig w/ that name
     policy = DICT(rules=[dict(wallet=wname)])
 
     stat = start_hsm(policy)
-    assert 'Any amount from multisig wallet' in stat.summary
+    assert 'Any amount from miniscript wallet' in stat.summary
     assert wname in stat.summary
     assert 'wallets' not in stat
 
     # simple p2pkh should fail
 
-    psbt = fake_txn(1, 2, dev.master_xpub, outvals=[amount, 1E8-amount], change_outputs=[1], fee=0)
+    psbt = fake_txn(1, [["p2tr", int(amount)],["p2wpkh", int(1E8-amount), True]],
+                    dev.master_xpub, fee=0)
     attempt_psbt(psbt, "singlesig only")
 
     # but txn w/ multisig wallet should work
     psbt = fake_ms_txn(1, 2, M, keys, fee=0, outvals=[amount, 1E8-amount], outstyles=['p2wsh'],
-                                    change_outputs=[1], incl_xpubs=incl_xpubs)
+                                    change_outputs=[1])
     attempt_psbt(psbt)
 
     # check ms txn not accepted when rule spec's a single signer
     tweak_rule(0, dict(wallet='1'))
-    attempt_psbt(psbt, 'wrong multisig wallet')
+    attempt_psbt(psbt, 'wrong miniscript wallet')
 
 @pytest.mark.bitcoind
 def test_named_wallets_miniscript(dev, start_hsm, tweak_rule, make_myself_wallet,
@@ -610,7 +611,7 @@ def test_named_wallets_miniscript(dev, start_hsm, tweak_rule, make_myself_wallet
         pick_menu_item(name)
         pick_menu_item("Descriptors")
         pick_menu_item("Bitcoin Core")
-        text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
+        text = load_export("sd", label="Bitcoin Core miniscript", is_json=False)
         text = text.replace("importdescriptors ", "").strip()
         # remove junk
         r1 = text.find("[")
@@ -648,7 +649,7 @@ def test_named_wallets_miniscript(dev, start_hsm, tweak_rule, make_myself_wallet
     assert 'wallets' not in stat
 
     # simple p2pkh should fail
-    psbt = fake_txn(1, 2, outvals=[5E6, 1E8-5E6], change_outputs=[1], fee=0)
+    psbt = fake_txn(1, [["p2tr", int(5E6)],["p2wpkh", int(1E8-5E6), True]], fee=0)
     attempt_psbt(psbt, "singlesig only")
 
     # but txn from target miniscript wallet 0 must work
@@ -708,11 +709,9 @@ def test_whitelist_single(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, wi
     # try all addr types
     for style in ['p2wpkh', 'p2wsh', 'p2sh', 'p2pkh', 'p2wsh-p2sh', 'p2wpkh-p2sh', 'p2tr']:
         dests = []
-        psbt = fake_txn(1, 2, dev.master_xpub,
-                            outstyles=[style, 'p2wpkh'],
-                            outvals=[amount, 1E8-amount], change_outputs=[1], fee=0,
-                            capture_scripts=dests)
 
+        psbt = fake_txn(1, [[style, int(amount)], ["p2wpkh", int(1E8-amount), True]],
+                        dev.master_xpub, fee=0, capture_scripts=dests)
         dest = render_address(dests[0])
 
         tweak_rule(0, dict(whitelist=[dest]))
@@ -734,8 +733,7 @@ def test_whitelist_multi(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, amo
     # make a txn that sends to every type of output
     styles = ['p2wpkh', 'p2wsh', 'p2sh', 'p2pkh', 'p2wsh-p2sh', 'p2wpkh-p2sh']
     dests = []
-    psbt = fake_txn(1, len(styles), dev.master_xpub,
-                        outstyles=styles, capture_scripts=dests)
+    psbt = fake_txn(1, [[outs] for outs in styles], dev.master_xpub, capture_scripts=dests)
 
     dests = [render_address(s) for s in dests]
 
@@ -870,7 +868,7 @@ def test_big_txn(num_in, num_out, dev, quick_start_hsm, hsm_status, is_simulator
         attempt_psbt(psbt)
 
 
-@pytest.mark.veryslow
+@pytest.mark.manual
 def test_multiple_signings(dev, quick_start_hsm, is_simulator,
                            attempt_psbt, fake_txn, load_hsm_users,
                            auth_user):
@@ -880,19 +878,20 @@ def test_multiple_signings(dev, quick_start_hsm, is_simulator,
     quick_start_hsm(policy)
 
     for count in range(400):
-        psbt = fake_txn(2, 2, dev.master_xpub, change_outputs=[0])
+        psbt = fake_txn(2, [["p2wpkh", None, True],["p2sh-p2wpkh", None]],
+                        dev.master_xpub, addr_fmt="p2wpkh")
         auth_user.psbt_hash = sha256(psbt).digest()
         auth_user("pw")
         attempt_psbt(psbt)
 
 
-@pytest.mark.veryslow
+@pytest.mark.manual
 @pytest.mark.parametrize("cc_first", [True, False])
 @pytest.mark.parametrize("M_N", [(2,3), (3,5), (15,15)])
 def test_multiple_signings_multisig(cc_first, M_N, dev, quick_start_hsm,
                                     is_simulator, attempt_psbt, fake_txn,
                                     load_hsm_users, auth_user, bitcoind,
-                                    request):
+                                    request, sim_root_dir):
     # signs 400 different PSBTs in loop beaing one leg of multisig
     # CC must be on regtest if testing with real thing
     af = "bech32"
@@ -962,7 +961,9 @@ def test_multiple_signings_multisig(cc_first, M_N, dev, quick_start_hsm,
 
     # uploading only external to CC
     file_len, sha = dev.upload_file(desc_ext.encode('ascii'))
-    open('debug/last-config.txt', 'wt').write(desc_ext)
+    with open(f'{sim_root_dir}/debug/last-config.txt', 'wt') as f:
+        f.write(desc_ext)
+
     dev.send_recv(CCProtocolPacker.multisig_enroll(file_len, sha), timeout=30000)
 
     time.sleep(.2)
@@ -1187,7 +1188,7 @@ def test_storage_locker(package, count, start_hsm, dev):
 def test_usb_cmds_block(quick_start_hsm, dev):
     # check these commands return errors (test whitelist)
     block_list = [
-        'rebo', 'dfu_', 'enrl', 'enok',
+        'rebo', 'dfu_', 'enrl', 'enok', 'rest',
         'back', 'pass', 'bagi', 'hsms', 'nwur', 'rmur', 'pwok', 'bkok',
     ]
 
@@ -1195,8 +1196,8 @@ def test_usb_cmds_block(quick_start_hsm, dev):
 
     for cmd in block_list:
         with pytest.raises(CCProtoError) as ee:
-            got = dev.send_recv(cmd)
-        assert 'HSM' in str(ee)
+            dev.send_recv(cmd)
+        assert 'Not allowed in HSM mode' in str(ee)
 
 def test_unit_local_conf(sim_exec, enter_local_code, quick_start_hsm):
     # just testing our fixture really
@@ -1238,37 +1239,6 @@ def test_show_addr(dev, quick_start_hsm, change_hsm):
         path = path.replace('*', '73')
         addr = doit(path, addr_fmt)
 
-def test_show_p2sh_addr(dev, hsm_reset, start_hsm, change_hsm, make_myself_wallet, addr_vs_path):
-    # MULTISIG addrs
-    from test_multisig import HARD, make_redeem
-    M = 4
-    pm = lambda i: [HARD(45), i, 0,0]
-
-    # can't amke ms wallets inside HSM mode
-    hsm_reset()
-    keys, _ = make_myself_wallet(M)       # slow AF
-
-    permit = ['p2sh', 'm/73']
-    start_hsm(DICT(share_addrs=permit))
-
-
-    scr, pubkeys, xfp_paths = make_redeem(M, keys, path_mapper=pm)
-    assert len(scr) <= 520, "script too long for standard!"
-
-    got_addr = dev.send_recv(CCProtocolPacker.show_p2sh_address(
-                                    M, xfp_paths, scr, addr_fmt=AF_P2WSH))
-    addr_vs_path(got_addr, addr_fmt=AF_P2WSH, script=scr)
-
-    # turn it off; p2sh must be explicitly allowed
-    for allow in ['m', 'any']:
-        change_hsm(DICT(share_addrs=[allow]))
-        dev.send_recv(CCProtocolPacker.show_address('m', AF_CLASSIC))
-
-        with pytest.raises(CCProtoError) as ee:
-            got_addr = dev.send_recv(CCProtocolPacker.show_p2sh_address(
-                                    M, xfp_paths, scr, addr_fmt=AF_P2WSH))
-        assert 'Not allowed in HSM mode' in str(ee)
-
 def test_show_miniscript_addr(dev, offer_minsc_import, start_hsm,
                               change_hsm, need_keypress, clear_miniscript):
     clear_miniscript()
@@ -1281,7 +1251,7 @@ def test_show_miniscript_addr(dev, offer_minsc_import, start_hsm,
     need_keypress("y")
     time.sleep(.2)
 
-    policy = DICT(share_addrs=["any", "p2sh"], rules=[dict(wallet=name)])
+    policy = DICT(share_addrs=["any"], rules=[dict(wallet=name)])
     start_hsm(policy)
 
     with pytest.raises(CCProtoError) as ee:
@@ -1289,7 +1259,7 @@ def test_show_miniscript_addr(dev, offer_minsc_import, start_hsm,
     assert "Not allowed in HSM mode" in ee.value.args[0]
 
     # change policy to allow miniscript address show
-    policy = DICT(share_addrs=["any", "p2sh", "msas"], rules=[dict(wallet=name)])
+    policy = DICT(share_addrs=["any", "msas"], rules=[dict(wallet=name)])
     change_hsm(policy)
     addr = dev.send_recv(CCProtocolPacker.miniscript_address(name, False, 0))
     assert addr[2:4] == "1q"
@@ -1356,7 +1326,7 @@ def test_velocity(dev, start_hsm, fake_txn, attempt_psbt, fast_forward, hsm_stat
     psbt = fake_txn(2, 10, dev.master_xpub)
     attempt_psbt(psbt, 'would exceed period spending')
 
-    psbt = fake_txn(2, 2, dev.master_xpub, outvals=[level, 2E8-level], change_outputs=[1])
+    psbt = fake_txn(2, [["p2wpkh", level], ["p2tr", int(2E8-level), True]], dev.master_xpub)
     attempt_psbt(psbt)      # exactly the limit
 
     s = hsm_status()
@@ -1375,7 +1345,7 @@ def test_velocity(dev, start_hsm, fake_txn, attempt_psbt, fast_forward, hsm_stat
     assert 'has_spend' not in s
 
     amt = 0.30E8
-    psbt = fake_txn(1, 2, dev.master_xpub, outvals=[amt, 1E8-amt], change_outputs=[1])
+    psbt = fake_txn(1, [["p2tr", int(amt)], ["p2wpkh", int(1E8-amt), True]], dev.master_xpub)
     attempt_psbt(psbt)      # 1/3rd of limit
     attempt_psbt(psbt)      # 1/3rd of limit
     attempt_psbt(psbt)      # 1/3rd of limit
@@ -1390,16 +1360,16 @@ def test_min_pct_self_transfer(dev, start_hsm, fake_txn, attempt_psbt):
 
     start_hsm(policy)
 
-    psbt = fake_txn(1, 2, invals = [1000], outvals = [500, 500], change_outputs = [], fee = 0)
+    psbt = fake_txn([["p2pkh", None, 1000]], [["p2tr", 500], ["p2pkh", 500]], fee = 0)
     attempt_psbt(psbt, 'does not meet self transfer threshold, expected: %.2f, actual: %.2f' % (75, 0))
 
-    psbt = fake_txn(1, 2, invals = [1000], outvals = [750, 250], change_outputs = [1], fee = 0)
+    psbt = fake_txn([["p2tr", None, 1000]], [["p2pkh", 750], ["p2tr", 250, True]], fee = 0)
     attempt_psbt(psbt, 'does not meet self transfer threshold, expected: %.2f, actual: %.2f' % (75, 25))
 
-    psbt = fake_txn(1, 2, invals = [1000], outvals = [250, 750], change_outputs = [1], fee = 0)
+    psbt = fake_txn([["p2wpkh", None, 1000]], [["p2tr", 250], ["p2wpkh", 750, True]], fee = 0)
     attempt_psbt(psbt) # exact threshold
 
-    psbt = fake_txn(1, 2, invals = [1000], outvals = [1, 999], change_outputs = [1], fee = 0)
+    psbt = fake_txn([["p2sh-p2wpkh", None, 1000]], [["p2tr", 1], ["p2sh-p2wpkh", 999, True]], fee = 0)
     attempt_psbt(psbt) # exceeding the threshold
 
 @pytest.mark.parametrize('pattern', ['EQ_NUM_INS_OUTS', 'EQ_NUM_OWN_INS_OUTS', 'EQ_OUT_AMOUNTS'] )
@@ -1419,17 +1389,17 @@ def test_patterns(pattern, dev, start_hsm, fake_txn, attempt_psbt):
         psbt = fake_txn(2, 2)
         attempt_psbt(psbt, 'unequal number of own inputs and outputs')
 
-        psbt = fake_txn(2, 2, change_outputs = [0])
+        psbt = fake_txn(2, [["p2pkh", None, True], ["p2tr"]])
         attempt_psbt(psbt, 'unequal number of own inputs and outputs')
 
-        psbt = fake_txn(2, 2, change_outputs = [0, 1])
+        psbt = fake_txn(2, [["p2pkh", None, True], ["p2tr", None, True]])
         attempt_psbt(psbt) # equal number of own ins and outs
 
     if pattern == 'EQ_OUT_AMOUNTS':
-        psbt = fake_txn(1, 2, invals = [1500], outvals = [1000, 500], fee = 0)
+        psbt = fake_txn([["p2wpkh", None, 1500]], [["p2tr", 1000], ["p2pkh", 500]], fee=0)
         attempt_psbt(psbt, 'not all output amounts are equal')
 
-        psbt = fake_txn(1, 2, invals = [2000], outvals = [1000, 1000], fee = 0)
+        psbt = fake_txn([["p2tr", None, 2000]], [["p2wpkh", 1000], ["p2tr", 1000]], fee=0)
         attempt_psbt(psbt) # all output amounts are equal
 
 def test_user_subset(dev, start_hsm, tweak_rule, load_hsm_users, fake_txn, attempt_psbt, auth_user):
@@ -1573,7 +1543,7 @@ def worst_case_policy():
 
     addrs = [render_address(b'\x00\x14' + prandom(20)) for i in range(5)]
 
-    p = DICT(period=30, share_xpubs=paths, share_addrs=paths+['p2sh'], msg_paths=paths,
+    p = DICT(period=30, share_xpubs=paths, share_addrs=paths+['msas'], msg_paths=paths,
                 warnings_ok=False, must_log=True)
     p.rules = [dict(
                         local_conf=True, 
@@ -1655,7 +1625,9 @@ def test_priv_over_ux(quick_start_hsm, hsm_status, load_hsm_users):
 @pytest.mark.parametrize("allow_op_return", [False, True])
 def test_op_return_output_local(op_return_data, start_hsm, attempt_psbt, fake_txn, allow_op_return):
     dests = []
-    psbt = fake_txn(2, 2, op_return=[(0, op_return_data)], capture_scripts=dests)
+    psbt = fake_txn(2, [["p2tr", 10000], ["p2tr", 10000], ["op_return", 0, None, op_return_data]],
+                    input_amount=10000, capture_scripts=dests)
+
     if allow_op_return:
         policy = DICT(rules=[dict(whitelist=[render_address(d) for d in dests[0:2]],
             whitelist_opts=dict(allow_zeroval_outs=True))])
@@ -1695,7 +1667,8 @@ def test_hsm_commands_disabled(dev, goto_home, pick_menu_item, hsm_reset, start_
     # disable HSM related commands (now enabled because module scope fixture 'enable_hsm_commands')
     goto_home()
     pick_menu_item("Advanced/Tools")
-    pick_menu_item("Enable HSM")
+    pick_menu_item("Spending Policy")
+    pick_menu_item("HSM Mode")
     pick_menu_item("Default Off")
     goto_home()
     try:

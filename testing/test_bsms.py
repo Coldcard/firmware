@@ -103,7 +103,7 @@ def bsms_sr1_fname(token, is_extended, suffix, index=None):
 @pytest.fixture
 def make_signer_round1(settings_get, settings_set, settings_remove, microsd_path, virtdisk_path):
     def doit(token, way, root_xprv=None, bsms_version=BSMS_VERSION, description=None, purge_bsms=True,
-             add_to_settings=False, data_only=False, index=None, wrong_sig=False, wrong_encryption=False, slip=False):
+             add_to_settings=False, data_only=False, index=None, wrong_sig=False, wrong_encryption=False):
         is_extended = len(token) == 32
         if purge_bsms:
             settings_remove(BSMS_SETTINGS)  # clear bsms
@@ -123,8 +123,6 @@ def make_signer_round1(settings_get, settings_set, settings_remove, microsd_path
         path = random.choice(paths)
         sk = wk.subkey_for_path(path)
         xpub = sk.hwif(as_private=False)
-        if slip:
-            xpub = xpub.replace("tpub", random.choice(["upub", "vpub", "Upub", "Vpub"]))
         key_expr = "[%s/%s]%s" % (root_xfp, path, xpub)
         data = "%s\n" % bsms_version
         data += "%s\n" % token
@@ -269,9 +267,10 @@ def make_coordinator_round2(make_coordinator_round1, settings_get, settings_set,
 @pytest.mark.parametrize("encryption_type", ["1", "2", "3"])
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
-def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home, need_keypress,
+def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_miniscript, goto_home, need_keypress,
                             pick_menu_item, cap_menu, cap_story, microsd_path, settings_remove,
-                            nfc_read_text, request, settings_get, microsd_wipe, press_select, is_q1):
+                            nfc_read_text, request, settings_get, microsd_wipe, press_select,
+                            is_q1, press_cancel):
     if way == "vdisk":
         virtdisk_wipe = request.getfixturevalue("virtdisk_wipe")
         virtdisk_path = request.getfixturevalue("virtdisk_path")
@@ -283,7 +282,7 @@ def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_
     settings_remove(BSMS_SETTINGS)  # clear bsms
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -335,7 +334,7 @@ def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_
                 time.sleep(0.2)
                 bsms_tokens = nfc_read_text()
                 time.sleep(0.2)
-                press_select()  # exit NFC UI simulation
+                press_cancel()  # exit NFC UI simulation
                 time.sleep(0.5)
         else:
             # virtual disk
@@ -423,10 +422,10 @@ def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_
 @pytest.mark.parametrize("encryption_type", ["1", "2", "3"])
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
-def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home, need_keypress, pick_menu_item, cap_menu,
+def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_miniscript, goto_home, need_keypress,
                        cap_story, microsd_path, settings_remove, nfc_read_text, request, settings_get,
                        make_coordinator_round1, nfc_write_text, microsd_wipe, press_select,
-                       is_q1):
+                       is_q1, pick_menu_item, cap_menu, press_cancel):
     if way == "vdisk":
         virtdisk_wipe = request.getfixturevalue("virtdisk_wipe")
         virtdisk_path = request.getfixturevalue("virtdisk_path")
@@ -441,7 +440,7 @@ def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home,
         assert tokens == []
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -513,7 +512,7 @@ def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home,
             time.sleep(0.2)
             signer_r1 = nfc_read_text()
             time.sleep(0.2)
-            press_select()  # exit NFC UI simulation
+            press_cancel()  # exit NFC UI simulation
             time.sleep(0.5)
     else:
         # virtual disk
@@ -580,10 +579,10 @@ def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home,
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
 @pytest.mark.parametrize("auto_collect", [True, False])
-def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, clear_ms, goto_home, need_keypress,
+def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, clear_miniscript, goto_home,
                             cap_menu, cap_story, microsd_path, settings_remove, nfc_read_text, request,
                             settings_get, make_coordinator_round1, make_signer_round1, nfc_write_text,
-                            microsd_wipe, pick_menu_item, press_select, is_q1):
+                            microsd_wipe, pick_menu_item, press_select, is_q1, need_keypress, press_cancel):
     def get_token(index):
         if len(tokens) == 1 and encryption_type == "1":
             token = tokens[0]
@@ -612,7 +611,7 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
 
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -724,7 +723,7 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
                 rv = nfc_read_text()
                 time.sleep(.5)
                 descriptor_templates.append(rv)
-                press_select()  # exit animation
+                press_cancel()  # exit animation
 
             time.sleep(.1)
             title, story = cap_story()
@@ -735,7 +734,7 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
             rv = nfc_read_text()
             time.sleep(.5)
             descriptor_templates.append(rv)
-            press_select()  # exit animation
+            press_cancel()  # exit animation
     else:
         if way == "sd":
             path_fn = microsd_path
@@ -805,7 +804,7 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
 @pytest.mark.parametrize("with_checksum", [True, False])
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
-def test_signer_round2(refuse, way, encryption_type, M_N, addr_fmt, clear_ms, goto_home, need_keypress, pick_menu_item,
+def test_signer_round2(refuse, way, encryption_type, M_N, addr_fmt, clear_miniscript, goto_home, need_keypress, pick_menu_item,
                        cap_menu, cap_story, microsd_path, settings_remove, nfc_read_text, request, settings_get,
                        make_coordinator_round2, nfc_write_text, microsd_wipe, with_checksum,
                        press_select, press_cancel, is_q1):
@@ -814,12 +813,12 @@ def test_signer_round2(refuse, way, encryption_type, M_N, addr_fmt, clear_ms, go
         virtdisk_path = request.getfixturevalue("virtdisk_path")
         virtdisk_wipe()
     M, N = M_N
-    clear_ms()
+    clear_miniscript()
     microsd_wipe()
     desc_template, token = make_coordinator_round2(M, N, addr_fmt, encryption_type, way=way, add_checksum=with_checksum)
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -874,18 +873,17 @@ def test_signer_round2(refuse, way, encryption_type, M_N, addr_fmt, clear_ms, go
 
     time.sleep(0.5)
     _, story = cap_story()
-    assert "Create new multisig wallet?" in story
+    assert "Create new miniscript wallet?" in story
     assert "bsms" in story  # part of the name
     policy = "Policy: %d of %d" % (M, N)
     assert policy in story
     assert addr_fmt.upper() in story
     ms_wal_name = story.split("\n\n")[1].split("\n")[-1].strip()
-    ms_wal_menu_item = "%d/%d: %s" % (M, N, ms_wal_name)
     if refuse:
         press_cancel()
         time.sleep(0.1)
         menu = cap_menu()
-        assert ms_wal_menu_item not in menu
+        assert ms_wal_name not in menu
         bsms_settings = settings_get(BSMS_SETTINGS)
         # signer round 2 NOT removed
         assert bsms_settings.get(BSMS_SIGNER_SETTINGS)
@@ -893,7 +891,7 @@ def test_signer_round2(refuse, way, encryption_type, M_N, addr_fmt, clear_ms, go
         press_select()
         time.sleep(0.1)
         menu = cap_menu()
-        assert ms_wal_menu_item in menu
+        assert ms_wal_name in menu
         bsms_settings = settings_get(BSMS_SETTINGS)
         # signer round 2 removed
         assert not bsms_settings.get(BSMS_SIGNER_SETTINGS, None)
@@ -911,7 +909,7 @@ def test_invalid_token_signer_round1(token, way, pick_menu_item, cap_story, need
                                      press_select, is_q1):
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -963,7 +961,7 @@ def test_invalid_token_signer_round1(token, way, pick_menu_item, cap_story, need
     assert "Invalid token length. Expected 64 or 128 bits (16 or 32 hex characters)" in story
 
 
-@pytest.mark.parametrize("failure", ["slip", "wrong_sig", "bsms_version"])
+@pytest.mark.parametrize("failure", ["wrong_sig", "bsms_version"])
 @pytest.mark.parametrize("encryption_type", ["1", "2", "3"])
 def test_failure_coordinator_round2(encryption_type, make_coordinator_round1, make_signer_round1, microsd_wipe, cap_menu,
                                     pick_menu_item, press_select, goto_home, cap_story, failure,
@@ -992,7 +990,7 @@ def test_failure_coordinator_round2(encryption_type, make_coordinator_round1, ma
         make_signer_round1(token, "sd", purge_bsms=False, index=index, **kws)
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -1028,9 +1026,7 @@ def test_failure_coordinator_round2(encryption_type, make_coordinator_round1, ma
     title, story = cap_story()
     assert title == "FAILURE"
     assert "BSMS coordinator round2 failed" in story
-    if failure == "slip":
-        failure_msg = "no slip"
-    elif failure == "wrong_sig":
+    if failure == "wrong_sig":
         failure_msg = "Recovered key from signature does not equal key provided. Wrong signature?"
     else:
         failure_msg = "Incompatible BSMS version. Need BSMS 1.0 got BSMS 1.1"
@@ -1061,7 +1057,7 @@ def test_wrong_encryption_coordinator_round2(encryption_type, make_coordinator_r
         make_signer_round1(token, "sd", purge_bsms=False, index=index, wrong_encryption=True)
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -1154,7 +1150,7 @@ def test_failure_signer_round2(encryption_type, goto_home, press_select, pick_me
     failure_msg = failure_msg.format(token=token[:4])
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -1183,7 +1179,7 @@ def test_failure_signer_round2(encryption_type, goto_home, press_select, pick_me
 @pytest.mark.parametrize("encryption_type", ["1", "2", "3"])
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
-def test_integration_signer(encryption_type, M_N, addr_fmt, clear_ms, microsd_wipe, goto_home, pick_menu_item, cap_story,
+def test_integration_signer(encryption_type, M_N, addr_fmt, clear_miniscript, microsd_wipe, goto_home, pick_menu_item, cap_story,
                             press_select, settings_remove, microsd_path, settings_get, cap_menu, use_mainnet,
                             need_keypress):
     # test CC signer full with bsms lib coordinator (test just SD card no need to retest IO paths again - tested above)
@@ -1199,7 +1195,7 @@ def test_integration_signer(encryption_type, M_N, addr_fmt, clear_ms, microsd_wi
     M, N = M_N
     settings_remove(BSMS_SETTINGS)
     use_mainnet()
-    clear_ms()
+    clear_miniscript()
     microsd_wipe()
     coordinator = CoordinatorSession(M, N, addr_fmt, et_map[encryption_type])
     session_data = coordinator.generate_token_key_pairs()
@@ -1211,7 +1207,7 @@ def test_integration_signer(encryption_type, M_N, addr_fmt, clear_ms, microsd_wi
     # ROUND 1
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -1292,7 +1288,7 @@ def test_integration_signer(encryption_type, M_N, addr_fmt, clear_ms, microsd_wi
     time.sleep(0.1)
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -1311,17 +1307,16 @@ def test_integration_signer(encryption_type, M_N, addr_fmt, clear_ms, microsd_wi
     pick_menu_item(menu_item)
     time.sleep(0.1)
     title, story = cap_story()
-    assert "Create new multisig wallet?" in story
+    assert "Create new miniscript wallet?" in story
     assert "bsms" in story  # part of the name
     policy = "Policy: %d of %d" % (M, N)
     assert policy in story
     assert addr_fmt.upper() in story
     ms_wal_name = story.split("\n\n")[1].split("\n")[-1].strip()
-    ms_wal_menu_item = "%d/%d: %s" % (M, N, ms_wal_name)
     press_select()
     time.sleep(0.1)
     menu = cap_menu()
-    assert ms_wal_menu_item in menu
+    assert ms_wal_name in menu
     bsms_settings = settings_get(BSMS_SETTINGS)
     # signer round 2 removed
     assert not bsms_settings.get(BSMS_SIGNER_SETTINGS, None)
@@ -1331,17 +1326,17 @@ def test_integration_signer(encryption_type, M_N, addr_fmt, clear_ms, microsd_wi
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
 @pytest.mark.parametrize("cr1_shortcut", [True, False])
-def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_ms, microsd_wipe, goto_home, pick_menu_item,
+def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_miniscript, microsd_wipe, goto_home, pick_menu_item,
                                  cap_story, need_keypress, settings_remove, microsd_path, settings_get, cap_menu,
                                  use_mainnet, cr1_shortcut, press_select):
     M, N = M_N
     settings_remove(BSMS_SETTINGS)
     use_mainnet()
-    clear_ms()
+    clear_miniscript()
     microsd_wipe()
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -1470,7 +1465,7 @@ def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_ms, micro
 
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
@@ -1547,7 +1542,7 @@ def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_ms, micro
         # still need to add our signer
         goto_home()
         pick_menu_item('Settings')
-        pick_menu_item('Multisig Wallets')
+        pick_menu_item('Miniscript')
         pick_menu_item('BSMS (BIP-129)')
         press_select()
         pick_menu_item('Signer')
@@ -1562,17 +1557,16 @@ def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_ms, micro
         pick_menu_item(fnames[0])
         time.sleep(0.1)
         title, story = cap_story()
-        assert "Create new multisig wallet?" in story
+        assert "Create new miniscript wallet?" in story
         assert "bsms" in story  # part of the name
         policy = "Policy: %d of %d" % (M, N)
         assert policy in story
         assert addr_fmt.upper() in story
         ms_wal_name = story.split("\n\n")[1].split("\n")[-1].strip()
-        ms_wal_menu_item = "%d/%d: %s" % (M, N, ms_wal_name)
         press_select()
         time.sleep(0.1)
         menu = cap_menu()
-        assert ms_wal_menu_item in menu
+        assert ms_wal_name in menu
         bsms_settings = settings_get(BSMS_SETTINGS)
         # signer round 2 removed
         assert not bsms_settings.get(BSMS_SIGNER_SETTINGS, None)
@@ -1637,7 +1631,7 @@ def test_auto_collection_coordinator_r2(encryption_type, M_N, goto_home, need_ke
         all_data.append(make_signer_round1(token, "sd", purge_bsms=False, index=index))
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Miniscript')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
     assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story

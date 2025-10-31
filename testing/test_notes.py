@@ -6,7 +6,6 @@ import pytest, time, json, random, os, pdb
 from helpers import prandom
 from charcodes import *
 from constants import AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2WPKH
-from test_bbqr import readback_bbqr
 from bbqr import split_qrs
 
 
@@ -41,12 +40,14 @@ def goto_notes(cap_story, cap_menu, press_select, goto_home, pick_menu_item):
     return doit
 
 @pytest.fixture
-def need_some_notes(settings_get, settings_set):
+def need_some_notes(is_q1, settings_get, settings_set):
     # create a note or use what's there, provide as obj
     def doit(title='Title Here', body='Body'):
+        assert is_q1
         notes = settings_get('notes', [])
         if not notes:
             settings_set('notes', [dict(misc=body, title=title)])
+            settings_set('secnap', True)
         return notes
     return doit
 
@@ -54,8 +55,8 @@ def need_some_notes(settings_get, settings_set):
 def need_some_passwords(settings_get, settings_set):
     def doit():
         notes = settings_get('notes', [])
-        if any(n.get('password', False) for n in notes):
-            settings_set('notes', [
+        if not any(1  for n in notes if n.get('password', False)):
+            notes.extend([
                 {'misc': 'More Notes AAAA',
                  'password': 'fds65fd5f1sd51s',
                  'site': 'https://a.com',
@@ -67,6 +68,8 @@ def need_some_passwords(settings_get, settings_set):
                  'title': 'B-Title',
                  'user': 'Buzzer'}
             ])
+            settings_set('notes', notes)
+            settings_set('secnap', True)
         return notes
     return doit
 

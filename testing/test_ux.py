@@ -2,7 +2,7 @@
 #
 import pytest, time, os, re, hashlib, shutil
 from helpers import xfp2str, prandom
-from charcodes import KEY_DOWN, KEY_QR, KEY_NFC, KEY_DELETE
+from charcodes import KEY_DOWN, KEY_QR, KEY_NFC, KEY_DELETE, KEY_CANCEL
 from constants import AF_CLASSIC, simulator_fixed_words, simulator_fixed_xfp
 from mnemonic import Mnemonic
 from bip32 import BIP32Node
@@ -10,7 +10,7 @@ from bip32 import BIP32Node
 
 @pytest.fixture
 def enable_hw_ux(pick_menu_item, cap_story, press_select, goto_home):
-    def doit(way):
+    def doit(way, disable=False):
         pick_menu_item("Settings")
         pick_menu_item("Hardware On/Off")
         if way == "vdisk":
@@ -18,13 +18,19 @@ def enable_hw_ux(pick_menu_item, cap_story, press_select, goto_home):
             _, story = cap_story()
             if "emulate a virtual disk drive" in story:
                 press_select()
-            pick_menu_item("Enable")
+            if disable:
+                pick_menu_item("Default Off")
+            else:
+                pick_menu_item("Enable")
         elif way == "nfc":
             pick_menu_item("NFC Sharing")
             _, story = cap_story()
             if "(Near Field Communications)" in story:
                 press_select()
-            pick_menu_item("Enable NFC")
+            if disable:
+                pick_menu_item("Default Off")
+            else:
+                pick_menu_item("Enable NFC")
         else:
             raise RuntimeError("TODO")
 
@@ -39,8 +45,9 @@ def test_get_secrets(get_secrets, master_xpub):
     assert v['xpub'] == master_xpub
 
 def test_home_menu(cap_menu, cap_story, cap_screen, need_keypress, reset_seed_words,
-                   press_select, press_cancel, press_down, is_q1):
+                   press_select, press_cancel, press_down, is_q1, microsd_wipe):
     reset_seed_words()
+    microsd_wipe()
     # get to top, force a redraw
     press_cancel()
     press_cancel()
@@ -80,7 +87,7 @@ def test_home_menu(cap_menu, cap_story, cap_screen, need_keypress, reset_seed_wo
     need_keypress('0')
     press_select()
 
-    time.sleep(.01)      # required
+    time.sleep(.1)      # required
 
     title, body = cap_story()
     assert title == 'NO-TITLE'
@@ -95,33 +102,34 @@ def word_menu_entry(cap_menu, pick_menu_item, is_q1, do_keypresses, cap_screen):
             # easier for us on Q, but have to anticipate the autocomplete
             for n, w in enumerate(words, start=1):
                 do_keypresses(w[0:2])
-                time.sleep(0.50)
+                time.sleep(0.05)
                 if 'Next key' in cap_screen():
                     do_keypresses(w[2])
-                    time.sleep(.1)
+                    time.sleep(.01)
                 if 'Next key' in cap_screen():
                     if len(w) > 3:
                         do_keypresses(w[3])
                     else:
                         do_keypresses(KEY_DOWN)
-                    time.sleep(.1)
+                    time.sleep(.01)
 
                 pat = rf'{n}:\s?{w}'
                 for x in range(10):
                     if re.search(pat, cap_screen()):
                         break
-                    time.sleep(0.20)
+                    time.sleep(0.02)
                 else:
                     raise RuntimeError('timeout')
 
             if len(words) == 23:
                 do_keypresses(KEY_DOWN)
-                time.sleep(.3)
+                time.sleep(.03)
                 cap_scr = cap_screen()
                 while 'Next key' in cap_scr:
                     target = cap_scr.split("\n")[-1].replace("Next key: ", "")
+                    # picks first choice!?
                     do_keypresses(target[0])
-                    time.sleep(.3)
+                    time.sleep(.03)
                     cap_scr = cap_screen()
             else:
                 cap_scr = cap_screen()
@@ -338,12 +346,13 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
         time.sleep(0.1)
         title, body = cap_story()
 
-    assert f'Record these {nwords}' in body
-
-    assert f'{KEY_QR if is_q1 else "(1)"} to view as QR Code' in body
+    target = f'Record these {nwords}'
     if is_q1:
+        assert target in title
         words = [i[:4].upper() for i in seed_story_to_words(body)]
     else:
+        assert target in body
+        assert  "(1) to view as QR Code" in body
         words = [i[4:4+4].upper() for i in re.findall(r'[ 0-9][0-9]: \w*', body)]
 
     if not is_headless:
@@ -389,8 +398,12 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, expect_ftux,
     pick_menu_item(f'{nwords} Words')
 
     title, body = cap_story()
-    assert title == 'NO-TITLE'
-    assert f'Record these {nwords} secret words!' in body
+    target = f'Record these {nwords} secret words!'
+    if is_q1:
+        assert target in title
+    else:
+        assert title == 'NO-TITLE'
+        assert target in body
 
     if is_q1:
         words = seed_story_to_words(body)
@@ -584,10 +597,11 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
     time.sleep(0.01)
 
     title, body = cap_story()
-    assert title == 'NO-TITLE'
+    if not is_q1:
+        assert title == 'NO-TITLE'
 
     if mode == 'words':
-        assert '24' in body
+        assert '24' in (title if is_q1 else body)
 
         lines = body.split('\n')
         if is_q1:
@@ -597,10 +611,10 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
 
         if b39_word:
             if is_q1:
-                assert lines[11] == 'BIP-39 Passphrase:'
-                assert "*" in lines[12]
-                assert "Seed+Passphrase" in lines[14]
-                ek = lines[15]
+                assert lines[9] == 'BIP-39 Passphrase:'
+                assert "*" in lines[10]
+                assert "Seed+Passphrase" in lines[12]
+                ek = lines[13]
             else:
                 assert lines[26] == 'BIP-39 Passphrase:'
                 assert "*" in lines[27]
@@ -702,11 +716,14 @@ def test_destroy_seed(goto_home, pick_menu_item, cap_story, press_select,
 
 def test_menu_wrapping(goto_home, pick_menu_item, cap_story, cap_menu,
                        press_select, press_up, press_down, press_cancel,
-                       is_q1):
+                       is_q1, settings_remove):
+    settings_remove("wa")  # disable
     goto_home()
     # first try that infinite scroll is turned off
     # home
-    for i in range(10):  # settings on 5th in home (10 is way past that)
+    assert len(cap_menu()) < 10
+
+    for i in range(10):
         press_down()
 
     # sitting at Logout
@@ -717,7 +734,7 @@ def test_menu_wrapping(goto_home, pick_menu_item, cap_story, cap_menu,
     press_select()
     pick_menu_item("Menu Wrapping")
     press_select()
-    pick_menu_item("Enable")
+    pick_menu_item("Always Wrap")
     time.sleep(1)
     press_cancel()  # back to home menu
     press_cancel()  # at Ready To Sign
@@ -728,7 +745,7 @@ def test_menu_wrapping(goto_home, pick_menu_item, cap_story, cap_menu,
     press_select()
 
     pick_menu_item("Menu Wrapping")
-    pick_menu_item("Default Off")
+    pick_menu_item("Default")
     time.sleep(1)
     press_cancel()  # back in home menu
     press_cancel()  # at Ready To Sign
@@ -802,7 +819,6 @@ def test_sign_file_from_list_files(f_len, goto_home, cap_story, pick_menu_item, 
         verify_detached_signature_file([fname], signame, "sd", AF_CLASSIC)
         time.sleep(0.1)
         _, story = cap_story()
-        assert "(4) to sign file digest and export detached signature" not in story
 
     assert "(6) to delete" in story
 
@@ -812,8 +828,71 @@ def test_sign_file_from_list_files(f_len, goto_home, cap_story, pick_menu_item, 
     assert "List Files" in menu
 
 
+def test_rename_from_list_files(goto_home, cap_story, pick_menu_item, need_keypress, is_q1,
+                                microsd_path, press_select, cap_screen, enter_complex):
+    def clear(fname):
+        for i in range(len(fname)):
+            if not is_q1 and not i:
+                # Mk4 different menu entry UX
+                continue
+            need_keypress(KEY_DELETE if is_q1 else "x")
+            time.sleep(0.01)
+
+    fname = "file_to_rename.pdf"
+    fpath = microsd_path(fname)
+    contents = os.urandom(64)
+    digest = hashlib.sha256(contents).digest().hex()
+    with open(fpath, "wb") as f:
+        f.write(contents)
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item('File Management')
+    pick_menu_item('List Files')
+    time.sleep(0.1)
+    pick_menu_item(fname)
+    time.sleep(0.1)
+    _, story = cap_story()
+    assert f"SHA256({fname})" in story
+    assert digest in story
+    assert "Press (1) to rename file" in story
+    need_keypress("1")
+    time.sleep(0.1)
+    if is_q1:
+        scr = cap_screen()
+        assert fname in scr
+
+    clear(fname)
+
+    bad_fnames = ["renamed file.txt", "/sd/renamed_file.txt", "renamed\\file.txt"]
+    for bad in bad_fnames:
+        enter_complex(bad, b39pass=False)
+        time.sleep(.1)
+        title, story = cap_story()
+        assert title == "Failure"
+        assert "Failed to rename the file" in story
+        assert "illegal char" in story
+        press_select()
+        time.sleep(.1)
+        need_keypress("1")  # rename again
+        time.sleep(.1)
+        clear(fname)
+        if not is_q1:
+            need_keypress("1")  # toggle case back to upper (enter complex expect to start in that state)
+
+    new_fname = "renamed_file.txt"
+    enter_complex(new_fname, b39pass=False)
+    time.sleep(.1)
+    _, story = cap_story()
+    assert f"SHA256({new_fname})" in story
+    assert digest in story
+    assert not os.path.exists(fpath)
+    assert os.path.exists(microsd_path(new_fname))
+
+
 def test_bip39_pw_signing_xfp_ux(pick_menu_item, press_select, cap_story, enter_complex,
-                                 reset_seed_words, cap_menu, go_to_passphrase):
+                                 reset_seed_words, cap_menu, go_to_passphrase, microsd_wipe):
+    microsd_wipe()  # need to wipe all PSBT on SD card so we do not proceed to signing
     go_to_passphrase()
     enter_complex("21coinkite21", apply=True)
     time.sleep(0.3)
@@ -821,6 +900,7 @@ def test_bip39_pw_signing_xfp_ux(pick_menu_item, press_select, cap_story, enter_
     assert title == "[0C9DC99D]"
     assert 'Above is the master key fingerprint of the new wallet' in story
     press_select()  # confirm passphrase
+    time.sleep(0.1)
     m = cap_menu()
     assert m[0] == "[0C9DC99D]"
     pick_menu_item("Ready To Sign")
@@ -949,19 +1029,48 @@ def test_custom_pushtx_url(goto_home, pick_menu_item, press_select, enter_comple
     assert settings_get('ptxurl', None) is None
 
 
-@pytest.mark.parametrize("fname,mode,ftype", [
-    ("ccbk-start.json", "r", "J"),
-    ("ckcc-backup.txt", "r", "U"),
-    ("devils-txn.txn", "rb", "T"),
-    ("example-change.psbt", "rb", "P"),
-    ("sim_conso5.psbt", "rb", "P"),  # binary psbt
-    ("payjoin.psbt", "r", "U"),  # base64 string in file
-    ("worked-unsigned.psbt", "rb", "U"),  # hex string psbt
-    ("coldcard-export.json", "rb", "J"),
-    ("coldcard-export.sig", "r", "U"),
+@pytest.mark.parametrize("fname,ftype", [
+    ("ccbk-start.json", "J"),
+    ("ckcc-backup.txt", "U"),
+    ("devils-txn.txn", "T"),
+    ("example-change.psbt", "P"),
+    ("sim_conso5.psbt", "P"),  # binary psbt
+    ("payjoin.psbt", "U"),  # base64 string in file
+    ("worked-unsigned.psbt", "U"),  # hex string psbt
+    ("coldcard-export.json", "J"),
+    ("coldcard-export.sig", "U"),
 ])
-def test_qr_share_files(fname, mode, ftype, readback_bbqr, need_keypress,
-                        goto_home, pick_menu_item, is_q1, cap_menu):
+def test_bbqr_share_files(fname, ftype, readback_bbqr, need_keypress, src_root_dir,
+                          goto_home, pick_menu_item, is_q1, cap_menu, sim_root_dir):
+    goto_home()
+    if not is_q1:
+        pick_menu_item("Advanced/Tools")
+        pick_menu_item("File Management")
+        assert "BBQr File Share" not in cap_menu()
+        return
+
+    fpath = f"{src_root_dir}/testing/data/" + fname
+    shutil.copy2(fpath, f'{sim_root_dir}/MicroSD')
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("File Management")
+    pick_menu_item("BBQr File Share")
+    time.sleep(.1)
+    pick_menu_item(fname)
+    file_type, rb = readback_bbqr()
+    assert file_type == ftype
+    with open(fpath, "rb") as f:
+        res = f.read()
+
+    assert res == rb
+    os.remove(f'{sim_root_dir}/MicroSD/' + fname)
+
+@pytest.mark.parametrize("fname", [
+    "ccbk-start.json",
+    "devils-txn.txn",
+    "payjoin.psbt",  # base64 string in file
+])
+def test_qr_share_files(fname, pick_menu_item, goto_home, is_q1, cap_menu, cap_screen_qr,
+                        src_root_dir, sim_root_dir):
     goto_home()
     if not is_q1:
         pick_menu_item("Advanced/Tools")
@@ -969,23 +1078,123 @@ def test_qr_share_files(fname, mode, ftype, readback_bbqr, need_keypress,
         assert "QR File Share" not in cap_menu()
         return
 
-    fpath = "data/" + fname
-    shutil.copy2(fpath, '../unix/work/MicroSD')
+    fpath = f"{src_root_dir}/testing/data/" + fname
+    shutil.copy2(fpath, f'{sim_root_dir}/MicroSD')
     pick_menu_item("Advanced/Tools")
     pick_menu_item("File Management")
     pick_menu_item("QR File Share")
     time.sleep(.1)
     pick_menu_item(fname)
-    file_type, rb = readback_bbqr()
-    assert file_type == ftype
-    with open(fpath, mode) as f:
+    qr = cap_screen_qr()
+    with open(fpath, "r") as f:
         res = f.read()
 
-    if fname.endswith(".txn"):
-        res = bytes.fromhex(res.decode())
+    assert res == qr.decode()
+    os.remove(f'{sim_root_dir}/MicroSD/' + fname)
 
-    assert res == rb
-    os.remove('../unix/work/MicroSD/' + fname)
+@pytest.mark.parametrize("word,cs_word", [
+    # few combos with all words with length 8 + their longest possible checksum word
+    ("acoustic", "decrease"),
+    ("electric", "witness"),
+    ("umbrella", "convince"),
+    ("universe", "hamster"),
+])
+def test_q1_24_8char_words(set_seed_words, is_q1, goto_home, pick_menu_item, press_select,
+                           cap_story, cap_screen, word, cs_word):
+    # /issues/965
+    # vectors calculated with `coldcard-mpy`:
+    #
+    #  w8 = [w for w in bip39.wordlist_en if len(w) >= 8]
+    #  for w in w8:
+    #      wl = ([w]*23)
+    #      ds = list(bip39.a2b_words_guess(wl))
+    #      print(w, max(ds, key=len))
+    if not is_q1:
+        raise pytest.skip("only Q")
+
+    goto_home()
+    # longest words in wordlist_en have 8 chars
+    words = ([word] * 23) + [cs_word]
+    set_seed_words(" ".join(words))
+
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Danger Zone")
+    pick_menu_item("Seed Functions")
+    pick_menu_item('View Seed Words')
+    time.sleep(.01)
+    press_select()  # skip warning
+    time.sleep(0.01)
+
+    title, body = cap_story()
+    assert '24' in title
+    scr = cap_screen().split("\n")
+    assert "Seed words (24)" in scr[0]
+    assert scr[1] == ""
+    # 8 rows
+    assert len(scr[2:]) == 8
+
+    x = 1
+    y = 9
+    z = 17
+    for row in scr[2:]:
+        # each row contains 3 colons (aka 3 words)
+        srow = [r for r in row.split(" ") if r]  # filter empty strings
+        assert len(srow) == 3  # three columns
+
+        # 8 words for each column
+        (tx, w0), (ty, w1), (tz, w2) = [pr.split(":") for pr in srow]
+        assert x == int(tx) and y == int(ty) and z == int(tz)
+        x += 1
+        y += 1
+        z += 1
+
+        if int(tz) == 24:
+            # last line with checksum word
+            assert w2 == cs_word
+            assert w0 == w1 == word
+        else:
+            assert w0 == w1 == w2 == word
+
+
+def test_file_picker_suffixes(pick_menu_item, goto_home, cap_story, microsd_wipe, press_select,
+                              microsd_path):
+    # make sure no .txt, .7z & .pdf files are not on the SD card
+    microsd_wipe()
+    # create files that must not be recognized, because they're missing the dot
+    for fn in ["backup7z", "backuptxt", "template:pdf"]:
+        with open(microsd_path(fn), "w") as f:
+            f.write("dummy")
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Danger Zone")
+    pick_menu_item("I Am Developer.")
+    pick_menu_item("Restore Bkup")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "No suitable files found" in story
+    assert "The filename must end in: .7z OR .txt" in story
+    press_select()
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Paper Wallets")
+    press_select()
+    pick_menu_item("Don't make PDF")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "No suitable files found" in story
+    assert "The filename must end in: .pdf" in story
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("File Management")
+    pick_menu_item("Sign Text File")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "No suitable files found" in story
+    assert "The filename must end in: .txt OR .json" in story
+    microsd_wipe()
 
 
 @pytest.mark.onetime
@@ -994,7 +1203,7 @@ def test_dump_menutree(sim_execfile):
     sim_execfile('devtest/menu_dump.py')
 
 if 0:
-    # show what the final word can be (debug only)
+    # show what the final word can be (debug only) Mk4 only
     def test_23_words(goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, reset_seed_words, cap_screen_qr, qr_quality_check):
         
         unit_test('devtest/clear_seed.py')

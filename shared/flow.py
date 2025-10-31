@@ -9,8 +9,7 @@ from glob import settings
 from actions import *
 from choosers import *
 from mk4 import dev_enable_repl
-from multisig import make_multisig_menu, import_multisig_nfc
-from miniscript import make_miniscript_menu
+from wallet import make_miniscript_menu, import_miniscript_nfc
 from seed import make_ephemeral_seed_menu, make_seed_vault_menu, start_b39_pw
 from address_explorer import address_explore
 from drv_entro import drv_entro_start, password_entry
@@ -20,9 +19,11 @@ from countdowns import countdown_chooser
 from paper import make_paper_wallet
 from trick_pins import TrickPinMenu
 from tapsigner import import_tapsigner_backup_file
+from ccc import toggle_ccc_feature, sssp_spending_policy, sssp_feature_menu
 
 # useful shortcut keys
 from charcodes import KEY_QR, KEY_NFC
+from public_constants import AF_P2WPKH_P2SH, AF_P2WPKH
 
 
 # Optional feature: HSM, depends on hardware
@@ -39,12 +40,14 @@ if version.has_battery:
     from battery import battery_idle_timeout_chooser, brightness_chooser
     from q1 import scan_and_bag
     from notes import make_notes_menu
+    from teleport import kt_start_rx, kt_send_file_psbt
 else:
     battery_idle_timeout_chooser = None
     brightness_chooser = None
     scan_and_bag = None
     make_notes_menu = None
-
+    kt_start_rx = None
+    kt_send_file_psbt = None
 
 #
 # NOTE: "Always In Title Case"
@@ -69,6 +72,8 @@ def has_secrets():
     # Secret is loaded, may be from SE or tmp
     from pincodes import pa
     return pa.has_secrets()
+
+qr_and_has_secrets = has_secrets if version.has_qr else False
 
 def nfc_enabled():
     from glob import NFC
@@ -95,6 +100,33 @@ def word_based_seed():
 def hsm_available():
     # contains hsm feature + can it be used (needs se2 secret and no tmp active)
     return version.supports_hsm and has_real_secret()
+
+def qr_and_ms():
+    # has QR scanner, and at least one MS wallet
+    if not version.has_qr: return False
+    return bool(settings.get('miniscript', False))
+
+def has_pushtx_url():
+    # they want to use PushTX feature
+    return bool(settings.get("ptxurl", False))
+
+# Spending Policy (Hobbled mode) predicates.
+#
+def is_hobble_testdrive():
+    from pincodes import pa
+    return (pa.hobbled_mode == 2)
+
+def sssp_related_keys():
+    return sssp_spending_policy('okeys')
+
+def sssp_allow_passphrase():
+    return word_based_seed() and sssp_related_keys()
+
+def sssp_allow_notes():
+    return settings.get("secnap", False) and sssp_spending_policy('notes')
+
+def sssp_allow_vault():
+    return settings.master_get('seedvault') and sssp_related_keys()
 
 async def goto_home(*a):
     goto_top_menu()
@@ -137,10 +169,8 @@ SettingsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Login Settings', menu=LoginPrefsMenu),
     MenuItem('Hardware On/Off', menu=HWTogglesMenu),
-    NonDefaultMenuItem('Multisig Wallets', 'multisig',
-                       menu=make_multisig_menu, predicate=has_secrets),
     NonDefaultMenuItem('Miniscript', 'miniscript',
-                       menu=make_miniscript_menu, predicate=has_secrets),
+                       menu=make_miniscript_menu, predicate=has_secrets, shortcut="m"),
     NonDefaultMenuItem('NFC Push Tx', 'ptxurl', menu=pushtx_setup_menu),
     MenuItem('Display Units', chooser=value_resolution_chooser),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
@@ -157,9 +187,9 @@ The signed transaction will be named <TXID>.txn, so the file name does not leak 
 MS-DOS tools should not be able to find the PSBT data (ie. undelete), but forensic tools \
 which take apart the flash chips of the SDCard may still be able to find the \
 data or filenames.'''),
-    ToggleMenuItem('Menu Wrapping', 'wa', ['Default Off', 'Enable'],
+    ToggleMenuItem('Menu Wrapping', 'wa', ['Default', 'Always Wrap'],
            story='''When enabled, allows scrolling past menu top/bottom \
-(wrap around). By default, this only happens in very large menus.'''),
+(wrap around). By default, this only happens in menus whose length is greater than 10.'''),
     ToggleMenuItem('Home Menu XFP', 'hmx', ['Only Tmp', 'Always Show'],
                    story=('Forces display of XFP (seed fingerprint) '
                           'at top of main menu. Normally, XFP is shown only when '
@@ -187,17 +217,20 @@ XpubExportMenu = [
 
 WalletExportMenu = [  
     #         xxxxxxxxxxxxxxxx
+    MenuItem("Sparrow", f=named_generic_skeleton, arg="Sparrow"),
+    MenuItem("Cove", f=named_generic_skeleton, arg="Cove"),
     MenuItem("Bitcoin Core", f=bitcoin_core_skeleton),
-    MenuItem("Fully Noded", f=named_generic_skeleton, arg="Fully Noded"),
-    MenuItem("Sparrow Wallet", f=named_generic_skeleton, arg="Sparrow"),
     MenuItem("Nunchuk", f=named_generic_skeleton, arg="Nunchuk"),
+    MenuItem("Bull Bitcoin", f=ss_descriptor_skeleton,
+             arg=(True, [AF_P2WPKH], "", "bull-bitcoin.txt", KEY_QR)),
     MenuItem("Zeus", f=ss_descriptor_skeleton,
-             arg=(True, [AF_P2WPKH, AF_P2WPKH_P2SH], "Zeus Wallet", "zeus-export.txt")),
+             arg=(True, [AF_P2WPKH, AF_P2WPKH_P2SH], "Zeus Wallet", "zeus-export.txt", None)),
     MenuItem("Electrum Wallet", f=electrum_skeleton),
-    MenuItem("Theya", f=named_generic_skeleton, arg="Theya"),
     MenuItem("Wasabi Wallet", f=wasabi_skeleton),
+    MenuItem("Fully Noded", f=named_generic_skeleton, arg="Fully Noded"),
     MenuItem("Unchained", f=unchained_capital_export),
-    MenuItem("Lily Wallet", f=named_generic_skeleton, arg="Lily"),
+    MenuItem("Theya", f=named_generic_skeleton, arg="Theya"),
+    MenuItem("Bitcoin Safe", f=named_generic_skeleton, arg="Bitcoin Safe"),
     MenuItem("Samourai Postmix", f=samourai_post_mix_descriptor_export),
     MenuItem("Samourai Premix", f=samourai_pre_mix_descriptor_export),
     # MenuItem("Samourai BadBank", f=samourai_bad_bank_descriptor_export),  # not released yet
@@ -215,6 +248,7 @@ FileMgmtMenu = [
     MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu),        #dup elsewhere
     MenuItem('Sign Text File', predicate=has_secrets, f=sign_message_on_sd),
     MenuItem('Batch Sign PSBT', predicate=has_secrets, f=batch_sign),
+    MenuItem('Teleport Miniscript PSBT', predicate=qr_and_has_secrets, f=kt_send_file_psbt),
     MenuItem('List Files', f=list_files),
     MenuItem('Verify Sig File', f=verify_sig_file),
     MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file, shortcut=KEY_NFC),
@@ -236,8 +270,9 @@ DevelopersMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Serial REPL", f=dev_enable_repl),
     MenuItem('Warm Reset', f=reset_self),
-    MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
-    MenuItem("BKPW Override", menu=bkpw_override),
+    MenuItem("Restore Bkup", f=restore_backup_dev),
+    MenuItem("BKPW Override", menu=bkpw_override, predicate=has_secrets),
+    MenuItem('Reflash GPU', f=reflash_gpu, predicate=version.has_qwerty),
 ]
 
 AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
@@ -254,6 +289,7 @@ AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
     MenuItem("Upgrade Firmware", menu=UpgradeMenu, predicate=is_not_tmp),
     MenuItem("File Management", menu=FileMgmtMenu),
+    MenuItem("Key Teleport (start)", f=kt_start_rx, predicate=version.has_qr),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
     MenuItem("I Am Developer.", menu=maybe_dev_menu),
@@ -329,7 +365,6 @@ correctly- crafted transactions signed on Testnet could be broadcast on Mainnet.
     MenuItem('Settings Space', f=show_settings_space),
     MenuItem('MCU Key Slots', f=show_mcu_keys_left),
     MenuItem('Bless Firmware', f=bless_flash),          # no need for this anymore?
-    MenuItem('Reflash GPU', f=reflash_gpu, predicate=version.has_qwerty),
     MenuItem("Wipe LFS", f=wipe_filesystem),    # kills other-seed settings, HSM stuff, addr cache
 ]
 
@@ -337,7 +372,7 @@ BackupStuffMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Backup System", f=backup_everything),
     MenuItem("Verify Backup", f=verify_backup),
-    MenuItem("Restore Backup", f=restore_everything),   # just a redirect really
+    MenuItem("Restore Backup", f=need_clear_seed),   # just a UX msg really
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
 ]
 
@@ -348,8 +383,21 @@ NFCToolsMenu = [
     MenuItem('Verify Sig File', f=nfc_sign_verify),
     MenuItem('Verify Address', f=nfc_address_verify),
     MenuItem('File Share', f=nfc_share_file),
-    MenuItem('Import Multisig', f=import_multisig_nfc),
-    MenuItem('Push Transaction', f=nfc_pushtx_file, predicate=lambda: settings.get("ptxurl", False)),
+    MenuItem('Import Miniscript', f=import_miniscript_nfc),
+    MenuItem('Push Transaction', f=nfc_pushtx_file, predicate=has_pushtx_url),
+]
+
+
+SpendingPolicySubMenu = [
+    NonDefaultMenuItem('Single-Signer', 'sssp', f=sssp_feature_menu, predicate=has_real_secret),
+    NonDefaultMenuItem('Co-Sign Multi.' if not version.has_qwerty else 'Co-Sign Multisig (CCC)',
+                'ccc', f=toggle_ccc_feature, predicate=is_not_tmp),
+    ToggleMenuItem('HSM Mode', 'hsmcmd', ['Default Off', 'Enable'],
+       story=("Enable HSM? Enables all user management commands, and other HSM-only USB commands. "
+              "By default these commands are disabled."),
+               predicate=hsm_available),
+    MenuItem('User Management', menu=make_users_menu,
+                predicate=lambda: hsm_available() and settings.get('hsmcmd', False)),
 ]
 
 AdvancedNormalMenu = [
@@ -364,13 +412,9 @@ AdvancedNormalMenu = [
                             f=drv_entro_start),
     MenuItem("View Identity", f=view_ident),
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
+    MenuItem("Key Teleport (start)", f=kt_start_rx, predicate=version.has_qr),
+    MenuItem("Spending Policy", menu=SpendingPolicySubMenu,shortcut='s',predicate=has_real_secret),
     MenuItem('Paper Wallets', f=make_paper_wallet),
-    ToggleMenuItem('Enable HSM', 'hsmcmd', ['Default Off', 'Enable'],
-                   story=("Enable HSM? Enables all user management commands, and other HSM-only USB commands. "
-                          "By default these commands are disabled."),
-                   predicate=hsm_available),
-    MenuItem('User Management', menu=make_users_menu,
-             predicate=hsm_available),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu, shortcut=KEY_NFC),
     MenuItem("Danger Zone", menu=DangerZoneMenu, shortcut='z'),
 ]
@@ -379,7 +423,7 @@ AdvancedNormalMenu = [
 VirginSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Choose PIN Code', f=initial_pin_setup),
-    MenuItem('Advanced/Tools', menu=AdvancedVirginMenu),
+    MenuItem('Advanced/Tools', menu=AdvancedVirginMenu, shortcut='t'),
     MenuItem('Bag Number', f=show_bag_number),
     MenuItem('Help', f=virgin_help, predicate=not version.has_qwerty),
 ]
@@ -390,7 +434,7 @@ ImportWallet = [
     MenuItem("24 Words", menu=start_seed_import, arg=24),
     MenuItem('Scan QR Code', predicate=version.has_qr,
              shortcut=KEY_QR, f=scan_any_qr, arg=(True, False)),
-    MenuItem("Restore Backup", f=restore_everything),
+    MenuItem("Restore Backup", f=restore_backup, arg=False),  # tmp=False
     MenuItem("Clone Coldcard", menu=clone_start),
     MenuItem("Import XPRV", f=import_xprv, arg=False),  # ephemeral=False
     MenuItem("Tapsigner Backup", f=import_tapsigner_backup_file, arg=False),
@@ -414,9 +458,11 @@ EmptyWallet = [
     MenuItem('New Seed Words', menu=NewSeedMenu),
     MenuItem('Import Existing', menu=ImportWallet),
     MenuItem("Migrate Coldcard", menu=clone_start),
+    MenuItem("Key Teleport (start)", f=kt_start_rx, predicate=version.has_qr),
     MenuItem('Help', f=virgin_help, predicate=not version.has_qwerty),
-    MenuItem('Advanced/Tools', menu=AdvancedPinnedVirginMenu),
+    MenuItem('Advanced/Tools', menu=AdvancedPinnedVirginMenu, shortcut='t'),
     MenuItem('Settings', menu=SettingsMenu),
+    ShortcutItem(KEY_QR, predicate=version.has_qr, f=scan_any_qr, arg=(True, False)),
 ]
 
 # In operation, normal system, after a good PIN received.
@@ -443,10 +489,78 @@ NormalSystem = [
 
 # Shown until unit is put into a numbered bag
 FactoryMenu = [
-    MenuItem('Version: ' + version.get_mpy_version()[1], f=show_version),
     MenuItem('Bag Me Now', f=scan_and_bag),
+    MenuItem('Version: ' + version.get_mpy_version()[1], f=show_version),
     MenuItem('DFU Upgrade', f=start_dfu, shortcut='u'),
     MenuItem('Ship W/O Bag', f=ship_wo_bag),
     MenuItem("Debug Functions", menu=DebugFunctionsMenu, shortcut='f'),
     MenuItem("Perform Selftest", f=start_selftest, shortcut='s'),
+]
+
+# Special menus for hobbled mode where we have a (single signer) spending policy in effect.
+# - no access to secrets, backups, firmware up/downgrades.
+# - secure notes, but readonly; can be disabled completely.
+# - key teleport, but only for PSBT & multisig purposes.
+# - can only be enabled after we have secrets, so no need for has_secrets tests here
+#
+
+# Slightly limited file menu when hobbled.
+# - no backup/restore
+HobbledFileMgmtMenu = [
+    #         xxxxxxxxxxxxxxxx
+    MenuItem('Sign Text File', f=sign_message_on_sd),
+    MenuItem('Batch Sign PSBT', f=batch_sign),
+    MenuItem('List Files', f=list_files),
+    MenuItem('Export Wallet', menu=WalletExportMenu),        # dup under Adv/Tools
+    MenuItem('Verify Sig File', f=verify_sig_file),
+    MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file, shortcut=KEY_NFC),
+    MenuItem('BBQr File Share', predicate=version.has_qr, f=qr_share_file, arg=True),
+    MenuItem('QR File Share', predicate=version.has_qr, f=qr_share_file, shortcut=KEY_QR),
+    MenuItem('Format SD Card', f=wipe_sd_card),
+    MenuItem('Format RAM Disk', predicate=vdisk_enabled, f=wipe_vdisk),
+]
+
+# NFC tools when hobbled: not much different.
+HobbledNFCToolsMenu = [
+    MenuItem('Sign PSBT', f=nfc_sign_psbt),
+    MenuItem('Show Address', f=nfc_show_address),
+    MenuItem('Sign Message', f=nfc_sign_msg),
+    MenuItem('Verify Sig File', f=nfc_sign_verify),
+    MenuItem('Verify Address', f=nfc_address_verify),
+    MenuItem('File Share', f=nfc_share_file),
+    MenuItem('Push Transaction', f=nfc_pushtx_file, predicate=has_pushtx_url),
+]
+
+# Very limited advanced menu when hobbled.
+HobbledAdvancedMenu = [
+    #         xxxxxxxxxxxxxxxx
+    MenuItem("File Management", menu=HobbledFileMgmtMenu),
+    MenuItem('Export Wallet', menu=WalletExportMenu, shortcut='x'),  # also inside FileMgmt
+    MenuItem('Teleport Miniscript PSBT', predicate=qr_and_ms, f=kt_send_file_psbt),
+    MenuItem("View Identity", f=view_ident),
+    MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu, predicate=sssp_related_keys),
+    MenuItem('Paper Wallets', f=make_paper_wallet),
+    MenuItem('NFC Tools', predicate=nfc_enabled, menu=HobbledNFCToolsMenu, shortcut=KEY_NFC),
+    MenuItem('Show %s Version' % ("Firmware" if version.has_qwerty else "FW"), f=show_version),
+    MenuItem("Destroy Seed", f=clear_seed, predicate=has_real_secret),
+]
+
+# Main menu when a spending policy (hobbled) is in effect.
+HobbledTopMenu = [
+    #         xxxxxxxxxxxxxxxx
+    MenuItem('Ready To Sign', f=ready2sign, shortcut='r'),
+    MenuItem('Passphrase', menu=start_b39_pw, predicate=sssp_allow_passphrase, shortcut='p'),
+    MenuItem('Scan Any QR Code', predicate=version.has_qr, f=scan_any_qr, arg=(False, True),
+             shortcut=KEY_QR),
+    MenuItem("Address Explorer", menu=address_explore, shortcut='x'),
+    MenuItem('Secure Notes & Passwords', menu=make_notes_menu, predicate=sssp_allow_notes,
+             shortcut='n'),
+    MenuItem('Type Passwords', f=password_entry, shortcut='t',
+             predicate=lambda: settings.get("emu", False) and sssp_related_keys()),
+    MenuItem('Seed Vault', menu=make_seed_vault_menu, predicate=sssp_allow_vault,
+             shortcut='v'),
+    MenuItem('Advanced/Tools', menu=HobbledAdvancedMenu, shortcut='t'),
+    MenuItem('Secure Logout', f=logout_now, predicate=not version.has_battery),
+    MenuItem('EXIT TEST DRIVE', f=sssp_feature_menu, predicate=is_hobble_testdrive),
+    ShortcutItem(KEY_NFC, predicate=nfc_enabled, menu=HobbledNFCToolsMenu),
 ]

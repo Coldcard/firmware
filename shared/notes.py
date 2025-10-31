@@ -13,7 +13,7 @@ from files import CardMissingError, needs_microsd, CardSlot
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 from charcodes import KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6
 from lcd_display import CHARS_W
-from utils import problem_file_line, url_decode
+from utils import problem_file_line, url_unquote, wipe_if_deltamode
 
 # title, username and such are limited that they fit on the one line both in
 # text entry (W-2) and also in menu display (W-3)
@@ -21,11 +21,16 @@ from utils import problem_file_line, url_decode
 ONE_LINE = CHARS_W-2
 
 async def make_notes_menu(*a):
-
     from pincodes import pa
-    if pa.is_deltamode():
-        import callgate
-        callgate.fast_wipe()
+
+    if pa.hobbled_mode:
+        # Read only version of menu system
+        # - used when spending policy in effect
+        # - must have some notes already, or unreachable
+        assert NoteContent.count()
+        rv = NotesMenu(NotesMenu.construct_readonly())
+        rv.readonly = True
+        return rv
 
     if not settings.get('secnap', False):
         # Explain feature, and then enable if interested. Drop them into menu.
@@ -110,6 +115,8 @@ async def get_a_password(old_value, min_len=0, max_len=128):
 
 class NotesMenu(MenuSystem):
 
+    readonly = False
+
     @classmethod
     def construct(cls):
         # Dynamic menu with user-defined names of notes shown
@@ -122,6 +129,8 @@ class NotesMenu(MenuSystem):
         if not cnt:
             rv = news + [ MenuItem('Disable Feature', f=cls.disable_notes) ]
         else:
+            wipe_if_deltamode()
+
             rv = []
             for note in NoteContent.get_all():
                 rv.append(MenuItem('%d: %s' % (note.idx+1, note.title), menu=note.make_menu))
@@ -134,6 +143,18 @@ class NotesMenu(MenuSystem):
                 rv.append(MenuItem('Sort By Title', f=cls.sort_titles))
 
         rv.append(MenuItem('Import', f=import_from_other))
+
+        return rv
+
+    @classmethod
+    def construct_readonly(cls):
+        # When only allowed to view, no export/add new/delete.
+        wipe_if_deltamode()
+
+        rv = []
+        for note in NoteContent.get_all():
+            rv.append(MenuItem('%d: %s' % (note.idx+1, note.title),
+                               menu=note.make_menu, arg=True))  # readonly=True
 
         return rv
 
@@ -165,7 +186,7 @@ class NotesMenu(MenuSystem):
 
         if got.startswith('otpauth://totp/'):
             # see <https://github.com/google/google-authenticator/wiki/Key-Uri-Format>
-            tmp.title = url_decode(got[15:]).split('?', 1)[0]
+            tmp.title = url_unquote(got[15:]).split('?', 1)[0]
         elif got.startswith('otpauth-migration://offline'):
             # see <https://github.com/qistoph/otp_export>
             tmp.title = 'Google Auth'
@@ -178,7 +199,6 @@ class NotesMenu(MenuSystem):
 
         await tmp._save_ux(menu)
         await cls.drill_to(menu, tmp)
-
 
     def update_contents(self):
         # Reconstruct the list of notes on this dynamic menu, because
@@ -209,8 +229,8 @@ class NotesMenu(MenuSystem):
     async def drill_to(cls, menu, item):
         # make it so looks like we drilled down into the new note
         menu.goto_idx(item.idx)
-        m = MenuSystem(await item.make_menu())
-        the_ux.push(m)
+        m = await item._make_menu()
+        the_ux.push(MenuSystem(m))
 
 
 class NoteContentBase:
@@ -278,7 +298,7 @@ class NoteContentBase:
 
         await ux_dramatic_pause('Deleted.', 3)
 
-    async def share_nfc(self, menu, _, item):
+    async def share_nfc(self, a, b, item):
         # share something via NFC -- if small enough and enabled
         from glob import NFC
 
@@ -288,12 +308,26 @@ class NoteContentBase:
         if len(v) < 8000:       # see MAX_NFC_SIZE
             await NFC.share_text(v)
 
+    async def view_qr(self, k):
+        # full screen QR
+        try:
+            await show_qr_code(getattr(self, k), msg=self.title, is_secret=True)
+        except Exception as exc:
+            # - not all data can be a QR (non-text, binary, zeros)
+            # - might be too big for single QR
+            # - may be a RuntimeError(n) where n is line number inside uqr
+            await ux_show_story("Unable to display as QR.\n\nError: " + str(exc))
+
+    async def view_qr_menu(self, a, b, item):
+        await self.view_qr(item.arg)
+
     async def _save_ux(self, menu):
         is_new = self.save()
 
         if not is_new:
             # change our own menu contents
-            menu.replace_items(await self.make_menu())
+            mi = await self._make_menu()
+            menu.replace_items(mi)
 
             # update parent
             parent = the_ux.parent_of(menu)
@@ -322,7 +356,7 @@ class NoteContentBase:
         await start_export([self])
 
     async def sign_txt_msg(self, a, b, item):
-        from auth import ux_sign_msg, msg_signing_done
+        from msgsign import ux_sign_msg, msg_signing_done
         txt = item.arg
         await ux_sign_msg(txt, approved_cb=msg_signing_done, kill_menu=False)
 
@@ -335,24 +369,35 @@ class PasswordContent(NoteContentBase):
     flds = ['title', 'user', 'password', 'site', 'misc' ]
     type_label = 'password'
 
-    async def make_menu(self, *a):
+    async def _make_menu(self, readonly=False):
         rv = [MenuItem('"%s"' % self.title, f=self.view)]
         if self.user:
             rv.append(MenuItem('↳ %s' % self.user, f=self.view))
         if self.site:
             rv.append(MenuItem('↳ %s' % self.site, f=self.view))
-        #if self.misc: rv.append(MenuItem('↳ (notes)', f=self.view))
-        return rv + [
+        # if self.misc: rv.append(MenuItem('↳ (notes)', f=self.view))
+        rv += [
             MenuItem('View Password', f=self.view_pw),
             MenuItem('Send Password', f=self.send_pw, predicate=lambda: settings.get('du', True)),
-            MenuItem('Export', f=self.export),
-            MenuItem('Edit Metadata', f=self.edit),
-            MenuItem('Delete', f=self.delete),
-            MenuItem('Change Password', f=self.change_pw),
-            self.sign_misc_menu_item(),
-            ShortcutItem(KEY_QR, f=self.view_qr),
-            ShortcutItem(KEY_NFC, f=self.share_nfc, arg='password'),
         ]
+        if not readonly:
+            rv += [
+                MenuItem('Export', f=self.export),
+                MenuItem('Edit Metadata', f=self.edit),
+                MenuItem('Delete', f=self.delete),
+                MenuItem('Change Password', f=self.change_pw),
+            ]
+        rv += [
+            self.sign_misc_menu_item(),
+            ShortcutItem(KEY_QR, f=self.view_qr_menu, arg=self.type_label),
+            ShortcutItem(KEY_NFC, f=self.share_nfc, arg=self.type_label),
+        ]
+
+        return rv
+
+    async def make_menu(self, a, b, item):
+        items = await self._make_menu(readonly=item.arg)
+        return MenuSystem(items)
 
     async def view(self, *a):
         pl = len(self.password)
@@ -392,7 +437,7 @@ class PasswordContent(NoteContentBase):
         ch = await ux_show_story(msg, title=self.title, escape=KEY_QR,
                                  hint_icons=KEY_QR)
         if ch == KEY_QR:
-            await self.view_qr()
+            await self.view_qr(self.type_label)
             
     async def send_pw(self, *a):
         # use USB to send it -- weak at present
@@ -403,10 +448,6 @@ class PasswordContent(NoteContentBase):
             return await ux_show_story("Sorry, your password contains a character that "
                                             "we cannot type at this time.")
         await single_send_keystrokes(self.password)
-
-    async def view_qr(self, *a):
-        # full screen QR
-        await show_qr_code(self.password, msg=self.title)
 
     async def edit(self, menu, _, item):
         # Edit, also used for add new
@@ -471,34 +512,34 @@ class NoteContent(NoteContentBase):
     flds = ['title', 'misc']
     type_label = 'note'
 
-    async def make_menu(self, *a):
+    async def _make_menu(self, readonly=False):
         # Details and actions for this Note
-        return [
+        rv = [
             MenuItem('"%s"' % self.title, f=self.view),
             MenuItem('View Note', f=self.view),
-            MenuItem('Edit', f=self.edit),
-            MenuItem('Delete', f=self.delete),
-            MenuItem('Export', f=self.export),
+        ]
+        if not readonly:
+            rv += [
+                MenuItem('Edit', f=self.edit),
+                MenuItem('Delete', f=self.delete),
+                MenuItem('Export', f=self.export),
+            ]
+        rv += [
             self.sign_misc_menu_item(),
-            ShortcutItem(KEY_QR, f=self.view_qr),
+            ShortcutItem(KEY_QR, f=self.view_qr_menu, arg="misc"),
             ShortcutItem(KEY_NFC, f=self.share_nfc, arg='misc'),
         ]
+        return rv
+
+    async def make_menu(self, a, b, item):
+        items = await self._make_menu(readonly=item.arg)
+        return MenuSystem(items)
 
     async def view(self, *a):
         ch = await ux_show_story(self.misc, title=self.title, escape=KEY_QR,
                                  hint_icons=KEY_QR)
         if ch == KEY_QR:
-            await self.view_qr()
-
-    async def view_qr(self, *a):
-        # full screen QR
-        try:
-            await show_qr_code(self.misc, msg=self.title)
-        except Exception as exc:
-            # - not all data can be a QR (non-text, binary, zeros)
-            # - might be too big for single QR
-            # - may be a RuntimeError(n) where n is line number inside uqr
-            await ux_show_story("Unable to display as QR.\n\nError: "+str(exc))
+            await self.view_qr("misc")
 
     async def edit(self, menu, _, item):
         # Edit, also used for add new
@@ -541,16 +582,16 @@ class NoteContent(NoteContentBase):
 async def start_export(notes):
     # Save out notes/passwords
     from glob import NFC
-    from auth import write_sig_file
+    from msgsign import write_sig_file
     import ujson as json
     from ux_q1 import show_bbqr_codes
 
     singular = (len(notes) == 1)
 
     item = notes[0].type_label if singular else  'all notes & passwords'
-    choice = await import_export_prompt(item, is_import=False, title="Data Export", no_nfc=True,
-                    footnotes="\n\nWARNING: No encryption happens here. "
-                                            "Your secrets will be cleartext.")
+    choice = await import_export_prompt(item, title="Data Export", no_nfc=True,
+                                        footnotes="WARNING: No encryption happens here."
+                                                  " Your secrets will be cleartext.")
     if choice == KEY_CANCEL:
         return
 
@@ -579,7 +620,7 @@ async def start_export(notes):
         await needs_microsd()
         return
     except Exception as e:
-        await ux_show_story('Failed to write!\n\n\n'+str(e))
+        await ux_show_story('Failed to write!\n\n'+str(e))
         return
 
     msg = 'Export file written:\n\n%s\n\nSignature file written:\n\n%s' % (
@@ -608,14 +649,11 @@ async def import_from_other(menu, *a):
     else:
         def contains_json(fname):
             if not fname.endswith('.json'): return False
-            print(fname)
             try:
                 obj = json.load(open(fname, 'rt'))
                 assert 'coldcard_notes' in obj
                 return True
-            except Exception as exc:
-                import sys; sys.print_exception(exc)
-                pass
+            except: pass
 
         fn = await file_picker(min_size=8, max_size=100000, taster=contains_json, **choice)
         if not fn: return
@@ -624,7 +662,13 @@ async def import_from_other(menu, *a):
             records = json.load(open(fn, 'rt'))
 
     # We have some JSON, parsed now.
-    # - should dedup, but we aren't
+    await import_from_json(records)
+
+    await ux_dramatic_pause('Saved.', 3)
+    menu.update_contents()
+
+async def import_from_json(records):
+    # should dedup, but we aren't
     try:
         assert 'coldcard_notes' in records, 'Incorrect format'
 
@@ -634,14 +678,11 @@ async def import_from_other(menu, *a):
 
         was = list(settings.get('notes', []))
         was.extend(new)
-        settings.put('notes', was)
+        settings.set('notes', was)
+        settings.set('secnap', True)
         settings.save()
 
     except Exception as e:
         await ux_show_story(title="Failure", msg=str(e) + '\n\n' + problem_file_line(e))
-        
-    await ux_dramatic_pause('Saved.', 3)
-    menu.update_contents()
-    
 
 # EOF

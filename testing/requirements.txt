@@ -23,3 +23,5 @@ git+https://github.com/coinkite/bsms-bitcoin-secure-multisig-setup.git@master#eg
 # BBQr library
 git+https://github.com/coinkite/BBQr.git@master#egg=bbqr&subdirectory=python
 
+# for backend testing
+requests==2.32.4

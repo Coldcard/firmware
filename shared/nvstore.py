@@ -32,8 +32,8 @@ from utils import call_later_ms
 #   batt_to = (when on battery only) idle timeout period
 #   _age = internal verison number for data (see below)
 #   tested = selftest has been completed successfully
-#   multisig = list of defined multisig wallets (complex)
-#   miniscript = list of defined miniscript wallets (complex)
+#   multisig = list of defined multisig wallets (complex) [before removal of MultisigWallet]
+#   miniscript = list of defined miniscript wallets, including multisig (complex)
 #   pms = trust/import/distrust xpubs found in PSBT files
 #   fee_limit = (int) percentage of tx value allowed as max fee
 #   axi = index of last selected address in explorer
@@ -64,7 +64,11 @@ from utils import call_later_ms
 #   b85max = (bool) allow max BIP-32 int value in BIP-85 derivations
 #   ptxurl = (str) URL for PushTx feature, clear to disable feature
 #   hmx    = (bool) Force display of current XFP in home menu, even w/o tmp seed active
-#   unsort_ms = (bool) Allow unsorted multisig with BIP-67 disabled
+#   ccc = (complex) If present, CCC feature is enabled and key details stored here.
+#   ktrx = (privkey) Key teleport Rx has been started, this will be our keypair
+#   aemscsv = (bool) opt-in enable more verbose CSV output for miniscript wallets with Derivations and Scripts
+#   sssp = (complex) If present, a (single signer) spending-policy is defined (maybe disabled)
+#   lfr = (string) If present, the reason why Spending Policy blocked last transaction
 
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
@@ -78,7 +82,7 @@ from utils import call_later_ms
 #   terms_ok = customer has signed-off on the terms of sale
 
 # settings linked to seed
-# LINKED_SETTINGS = ["multisig","miniscript", "tp", "ovc", "xfp", "xpub", "words"]
+# LINKED_SETTINGS = ["miniscript", "tp", "ovc", "xfp", "xpub", "words"]
 # settings that does not make sense to copy to temporary secret
 # LINKED_SETTINGS += ["sd2fa", "usr", "axi", "hsmcmd"]
 # prelogin settings - do not need to be part of other saved settings
@@ -88,7 +92,9 @@ KEEP_IF_BLANK_SETTINGS = ["wa", "sighshchk", "emu", "rz", "b39skip",
                           "axskip", "del", "pms", "idle_to", "batt_to",
                           "bright"]
 
-SEEDVAULT_FIELDS = ['seeds', 'seedvault', 'xfp', 'words', "bkpw"]
+# key value pairs saved directly to master seed settings
+# held in RAM for tmp seed sessions
+MASTER_FIELDS = ['seeds', 'seedvault', 'xfp', 'words', "bkpw", "sssp"]
 
 NUM_SLOTS = const(100)
 SLOTS = range(NUM_SLOTS)
@@ -278,10 +284,11 @@ class SettingsObject:
 
     def leaving_master_seed(self):
         # going from master seed to a tmp seed, so capture a few values we need.
+        self.save_if_dirty()
 
         SettingsObject.master_nvram_key = self.nvram_key
 
-        for fn in SEEDVAULT_FIELDS:
+        for fn in MASTER_FIELDS:
             curr = self.current.get(fn, None)
             if curr is not None:
                 SettingsObject.master_sv_data[fn] = curr
@@ -297,7 +304,7 @@ class SettingsObject:
         SettingsObject.master_sv_data.clear()
         SettingsObject.master_nvram_key = None
 
-    def master_set(self, key, value):
+    def master_set(self, key, value, master_only=False):
         # Set a value, and it must be saved under the master seed's 
         # Concern is we may be changing a setting from a tmp seed mode
         # - always does a save
@@ -308,6 +315,7 @@ class SettingsObject:
             self.set(key, value)
             self.save()
         else:
+            assert not master_only
             # harder, slower: have to load, change and write
             master = SettingsObject(nvram_key=SettingsObject.master_nvram_key)
             master.load()
@@ -316,7 +324,7 @@ class SettingsObject:
             del master
 
             # track our copies
-            if key in SEEDVAULT_FIELDS:
+            if key in MASTER_FIELDS:
                 SettingsObject.master_sv_data[key] = value
 
     def master_get(self, kn, default=None):
@@ -328,7 +336,7 @@ class SettingsObject:
             return self.get(kn, default)
 
         # LIMITATION: only supporting a few values we know we will need
-        assert kn in SEEDVAULT_FIELDS
+        assert kn in MASTER_FIELDS
         res = SettingsObject.master_sv_data.get(kn, default)
         if res is None:
             return default
@@ -414,7 +422,7 @@ class SettingsObject:
 
         if previous:
             for k in KEEP_IF_BLANK_SETTINGS:
-                if k in previous and k not in self.current:
+                if (k in previous) and (k not in self.current):
                     self.current[k] = previous[k]
 
         # nfc, usb, vidsk handling

@@ -6,8 +6,9 @@ from uasyncio import sleep_ms
 from queues import QueueEmpty
 import utime, gc, version
 from utils import word_wrap
-from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME, KEY_NFC, KEY_QR,
-            KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ENTER, KEY_CANCEL, OUT_CTRL_TITLE)
+from version import has_qwerty, num_sd_slots, has_qr
+from charcodes import (KEY_UP, KEY_DOWN, KEY_HOME, KEY_NFC, KEY_QR, KEY_END, KEY_PAGE_UP,
+                       KEY_PAGE_DOWN, KEY_ENTER, KEY_CANCEL, OUT_CTRL_TITLE)
 
 from exceptions import AbortInteraction
 
@@ -16,21 +17,24 @@ DEFAULT_IDLE_TIMEOUT = const(4*3600)      # (seconds) 4 hours
 # See ux_mk or ux_q1 for some display functions now
 if version.has_qwerty:
     from lcd_display import CHARS_W, CHARS_H
-    CH_PER_W = CHARS_W
+    # stories look nicer if we do not use the whole width
+    CH_PER_W = (CHARS_W - 1)
     STORY_H = CHARS_H
-    from ux_q1 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
-    from ux_q1 import ux_login_countdown, ux_confirm, ux_dice_rolling, ux_render_words
+    from ux_q1 import PressRelease, ux_enter_number, ux_input_text, ux_show_pin
+    from ux_q1 import ux_login_countdown, ux_dice_rolling, ux_render_words
     from ux_q1 import ux_show_phish_words
     OK = "ENTER"
     X = "CANCEL"
 
 else:
     # How many characters can we fit on each line? How many lines?
-    # (using FontSmall)
+    # (using FontSmall) .. except it's an approximation since variable-width font.
+    # - 18 can work but rightmost spot is half-width. We allow . and , in that spot.
+    # - really should look at rendered-width of text
     CH_PER_W = 17
     STORY_H = 5
-    from ux_mk4 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
-    from ux_mk4 import ux_login_countdown, ux_confirm, ux_dice_rolling, ux_render_words
+    from ux_mk4 import PressRelease, ux_enter_number, ux_input_text, ux_show_pin
+    from ux_mk4 import ux_login_countdown, ux_dice_rolling, ux_render_words
     from ux_mk4 import ux_show_phish_words
     OK = "OK"
     X = "X"
@@ -170,7 +174,6 @@ def ux_poll_key():
 
     return ch
 
-
 async def ux_show_story(msg, title=None, escape=None, sensitive=False,
                         strict_escape=False, hint_icons=None):
     # show a big long string, and wait for XY to continue
@@ -246,7 +249,21 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False,
             if ch in { KEY_NFC, KEY_QR }:
                 return ch
 
-        
+async def ux_confirm(msg, title="Are you SURE ?!?", confirm_key=None):
+    # confirmation screen, with stock title and Y=of course.
+    if not version.has_qwerty and len(title) > 12:
+        msg = title + "\n\n" + msg
+        title = None
+
+    suffix = ""
+    if confirm_key:
+        suffix = ("\n\nPress (%s) to prove you read to the end of this message"
+                  " and accept all consequences.") % confirm_key
+
+    msg += suffix
+    r = await ux_show_story(msg, title=title, escape=confirm_key)
+
+    return r == (confirm_key or 'y')
 
 async def idle_logout():
     import glob
@@ -341,7 +358,6 @@ async def ux_enter_bip32_index(prompt, can_cancel=False, unlimited=False):
     return await ux_enter_number(prompt=prompt, max_value=max_value, can_cancel=can_cancel)
 
 def _import_prompt_builder(title, no_qr, no_nfc, slot_b_only=False):
-    from version import has_qwerty, num_sd_slots, has_qr
     from glob import NFC, VD
 
     prompt, escape = None, KEY_CANCEL+"x"
@@ -377,16 +393,15 @@ def _import_prompt_builder(title, no_qr, no_nfc, slot_b_only=False):
     return prompt, escape
 
 
-def export_prompt_builder(what_it_is, no_qr=False, no_nfc=False, key0=None,
-                          force_prompt=False):
+def export_prompt_builder(what_it_is, no_qr=False, no_nfc=False, key0=None, offer_kt=False,
+                          force_prompt=False, txid=None):
     # Build the prompt for export
     # - key0 can be for special stuff
-    from version import has_qwerty, num_sd_slots, has_qr
     from glob import NFC, VD
 
     prompt, escape = None, KEY_CANCEL+"x"
 
-    if (NFC or VD) or (num_sd_slots>1) or key0 or force_prompt:
+    if (NFC or VD) or (num_sd_slots>1) or key0 or force_prompt or offer_kt or txid or (not no_qr):
         # no need to spam with another prompt, only option is SD card
 
         prompt = "Press (1) to save %s to SD Card" % what_it_is
@@ -415,6 +430,14 @@ def export_prompt_builder(what_it_is, no_qr=False, no_nfc=False, key0=None,
             else:
                 prompt += ", (4) to show QR code"
                 escape += '4'
+
+        if txid:
+            prompt += ", (6) for QR Code of TXID"
+            escape += "6"
+
+        if offer_kt:
+            prompt += ", (T) to " + offer_kt
+            escape += 't'
 
         if key0:
             prompt += ', (0) ' + key0
@@ -457,18 +480,22 @@ def import_export_prompt_decode(ch):
 
 async def import_export_prompt(what_it_is, is_import=False, no_qr=False,
                                no_nfc=False, title=None, intro='', footnotes='',
-                               slot_b_only=False, force_prompt=False):
+                               offer_kt=False, slot_b_only=False, force_prompt=False,
+                               txid=None):
+
     # Show story allowing user to select source for importing/exporting
     # - return either str(mode) OR dict(file_args)
     # - KEY_NFC or KEY_QR for those sources
     # - KEY_CANCEL for abort by user
     # - dict() => do file system thing, using file_args to control vdisk vs. SD vs slot_b
+    # - 't' => key teleport, but only offered with offer_kt is set (contetxt, and Q only)
+    from glob import NFC
 
     if is_import:
         prompt, escape = _import_prompt_builder(what_it_is, no_qr, no_nfc, slot_b_only)
     else:
-        prompt, escape = export_prompt_builder(what_it_is, no_qr, no_nfc,
-                                               force_prompt=force_prompt)
+        prompt, escape = export_prompt_builder(what_it_is, no_qr, no_nfc, txid=txid,
+                                               force_prompt=force_prompt, offer_kt=offer_kt)
 
     # TODO: detect if we're only asking A or B, when just one card is inserted
     # - assume that's what they want to do
@@ -478,8 +505,10 @@ async def import_export_prompt(what_it_is, is_import=False, no_qr=False,
         # they don't have NFC nor VD enabled, and no second slots... so will be file.
         return dict(force_vdisk=False, slot_b=None)
     else:
-        ch = await ux_show_story(intro+prompt+footnotes, escape=escape, title=title,
-                                 strict_escape=True)
+        hints = ("" if no_qr else KEY_QR) + (KEY_NFC if not no_nfc and NFC else "")
+        msg_lst = [i for i in (intro, prompt, footnotes) if i]
+        ch = await ux_show_story("\n\n".join(msg_lst), escape=escape, title=title,
+                                 strict_escape=True, hint_icons=hints)
 
         return import_export_prompt_decode(ch)
 

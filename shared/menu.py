@@ -119,7 +119,7 @@ class ShortcutItem(MenuItem):
         super().__init__('SHORTCUT', shortcut=key, **kws)
 
 class NonDefaultMenuItem(MenuItem):
-    # Show a checkmark if setting is defined and not the default ... so know know it's set
+    # Show a checkmark if setting is defined and not the default
     def __init__(self, label, nvkey, prelogin=False, default_value=None, **kws):
         super().__init__(label, **kws)
         self.nvkey = nvkey
@@ -182,7 +182,7 @@ class ToggleMenuItem(MenuItem):
         if self.nvkey == "chain":
             default = (self.get() == "BTC")
         else:
-            default = (self.get(None) == None)
+            default = (self.get(None) is None)
         if self.story and default:
             ch = await ux_show_story(self.story)
             if ch == 'x': return
@@ -306,10 +306,6 @@ class MenuSystem:
             if fcn and fcn():
                 checked = True
 
-            if not has_qwerty and checked and (len(msg) > 14):
-                # on mk4 every label longer than 14 will overlap with checkmark
-                checked = False
-
             if self.multi_selected is not None and (real_idx in self.multi_selected):
                 # ignore length constraint above, we need to visually show that
                 # smthg is selected - in any case
@@ -335,9 +331,8 @@ class MenuSystem:
         if wrap: return True
 
         # Do wrap-around (by request from NVK) if longer than the screen itself (on Q),
-        # for mk4, limit is 16 which hits mostly the seed word menus.
-        limit = 10 if has_qwerty else 16
-        return self.count > limit
+        # Mk4: same limit
+        return self.count > 10
 
     def down(self):
         if self.cursor < self.count-1:
@@ -382,7 +377,7 @@ class MenuSystem:
                 self.up()
 
     # events
-    def on_cancel(self):
+    async def on_cancel(self):
         # override me
         if the_ux.pop():
             # top of stack (main top-level menu)
@@ -393,7 +388,7 @@ class MenuSystem:
         #
         if picked is None:
             # "go back" or cancel or something
-            self.on_cancel()
+            await self.on_cancel()
         else:
             await picked.activate(self, self.cursor)
 
@@ -406,7 +401,7 @@ class MenuSystem:
             gc.collect()
             if self.multi_selected is not None:
                 # multichoice
-                self.on_cancel()
+                await self.on_cancel()
                 return ch
 
             await self.activate(ch)

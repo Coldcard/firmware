@@ -16,7 +16,6 @@
     Advanced
       12 Word Dice Roll
       24 Word Dice Roll
-  Migrate COLDCARD
   Import Existing
     12 Words
     [SEED WORD ENTRY]
@@ -30,6 +29,8 @@
     Import XPRV
     Tapsigner Backup
     Seed XOR
+  Migrate Coldcard
+  Key Teleport (start)
   Help
   Advanced/Tools
     View Identity
@@ -57,14 +58,18 @@
       List Files
       Verify Sig File
       NFC File Share [IF NFC ENABLED]
+      BBQr File Share [IF QR SCANNER]
+      QR File Share [IF QR SCANNER]
       Format SD Card
       Format RAM Disk [IF VIRTDISK ENABLED]
+    Key Teleport (start)
     Paper Wallets
     Perform Selftest
     I Am Developer.
       Serial REPL
       Warm Reset
-      Restore Txt Bkup
+      Restore Bkup
+      Reflash GPU [IF QWERTY KEYBOARD]
     Secure Logout
   Settings
     Login Settings
@@ -106,6 +111,11 @@
       NFC Sharing
         Default Off
         Enable NFC
+    NFC Push Tx
+      coldcard.com
+      mempool.space
+      Custom URL...
+      Disable
     Display Units
       BTC
       mBTC
@@ -140,8 +150,9 @@
       50%
       60%
       70%
-      80% (default)
+      80%
       90%
+      95% (default)
       100%
     Delete PSBTs
       Default Keep
@@ -149,17 +160,20 @@
     Menu Wrapping
       Default Off
       Enable
+    Home Menu XFP [IF SECRET AND NOT TMP SEED]
+      Only Tmp
+      Always Show
 ---
 
 [NORMAL OPERATION]
   Ready To Sign
   Passphrase [IF WORD BASED SEED]
-    Restore Saved [MAYBE]
-      A***********
-        [0C52BAD4]
+    Restore Saved
+      c*******
+        [3A14F788]
         Restore
         Delete
-    Edit Phrase [MAYBE]
+    Edit Phrase [IF QWERTY]
     Add Word [IF NOT QWERTY]
       [SEED WORD MENUS]
     Add Numbers [IF NOT QWERTY]
@@ -183,35 +197,44 @@
     Account Number
     Custom Path
     CC-2-of-4
-  Secure Notes & Passwords [IF ENBALED]
-    1: note1
-      "note1"
+  Secure Notes & Passwords [IF ENBALED] [MAYBE]
+    1: note0
+      "note0"
       View Note
       Edit
       Delete
       Export
-      SHORTCUT
-      SHORTCUT
-    2: nostr
-      "nostr"
-      ↳ scg
-      ↳ brb.io
+      Sign Note Text
+    2: secret-PWD
+      "secret-PWD"
+      ↳ satoshi
+      ↳ abc.org
       View Password
       Send Password [MAYBE]
       Export
       Edit Metadata
       Delete
       Change Password
-      SHORTCUT
-      SHORTCUT
+      Sign Note Text
     New Note
     New Password
     Export All
+    Sort By Title
     Import
   Type Passwords [MAYBE]
   Seed Vault [MAYBE]
-    1: [B14E9AE0]
-      [B14E9AE0]
+     1: [7126EB3C]
+      [7126EB3C]
+      Use This Seed
+      Rename
+      Delete
+     2: [CCEE13B9]
+      [CCEE13B9]
+      Use This Seed
+      Rename
+      Delete
+     3: [03EE9989]
+      [03EE9989]
       Use This Seed
       Rename
       Delete
@@ -222,12 +245,18 @@
       Restore Backup
       Clone Coldcard
     Export Wallet
+      Sparrow
+      Cove
       Bitcoin Core
-      Sparrow Wallet
+      Nunchuk
+      Bull Bitcoin
+      Zeus
       Electrum Wallet
       Wasabi Wallet
+      Fully Noded
       Unchained
-      Lily Wallet
+      Theya
+      Bitcoin Safe
       Samourai Postmix
       Samourai Premix
       Descriptor
@@ -235,7 +264,7 @@
       Export XPUB
         Segwit (BIP-84)
         Classic (BIP-44)
-        P2WPKH/P2SH (49)
+        P2WPKH/P2SH (BIP-49)
         Master XPUB
         Current XFP
       Dump Summary
@@ -247,12 +276,18 @@
       Verify Backup
       Backup System
       Export Wallet
+        Sparrow
+        Cove
         Bitcoin Core
-        Sparrow Wallet
+        Nunchuk
+        Bull Bitcoin
+        Zeus
         Electrum Wallet
         Wasabi Wallet
+        Fully Noded
         Unchained
-        Lily Wallet
+        Theya
+        Bitcoin Safe
         Samourai Postmix
         Samourai Premix
         Descriptor
@@ -260,42 +295,44 @@
         Export XPUB
           Segwit (BIP-84)
           Classic (BIP-44)
-          P2WPKH/P2SH (49)
+          P2WPKH/P2SH (BIP-49)
           Master XPUB
           Current XFP
         Dump Summary
       Sign Text File
       Batch Sign PSBT
+      Teleport Multisig PSBT
       List Files
       Verify Sig File
       NFC File Share [IF NFC ENABLED]
+      BBQr File Share [IF QR SCANNER]
+      QR File Share [IF QR SCANNER]
       Clone Coldcard
       Format SD Card
       Format RAM Disk [IF VIRTDISK ENABLED]
     Secure Notes & Passwords [IF QWERTY KEYBOARD]
-      1: note1
-        "note1"
+      1: note0
+        "note0"
         View Note
         Edit
         Delete
         Export
-        SHORTCUT
-        SHORTCUT
-      2: nostr
-        "nostr"
-        ↳ scg
-        ↳ brb.io
+        Sign Note Text
+      2: secret-PWD
+        "secret-PWD"
+        ↳ satoshi
+        ↳ abc.org
         View Password
         Send Password [MAYBE]
         Export
         Edit Metadata
         Delete
         Change Password
-        SHORTCUT
-        SHORTCUT
+        Sign Note Text
       New Note
       New Password
       Export All
+      Sort By Title
       Import
     Derive Seeds (BIP-85)
     View Identity
@@ -314,18 +351,24 @@
       Import XPRV
       Tapsigner Backup
       Coldcard Backup
+    Key Teleport (start)
+    Spending Policy
+      Single-Signer [IF SECRET AND NOT TMP SEED]
+      Co-Sign Multisig (CCC) [IF NOT TMP SEED]
+      HSM Mode [IF HSM AND SECRET]
+        Default Off
+        Enable
+      User Management [MAYBE]
     Paper Wallets
-    Enable HSM [IF HSM AND SECRET]
-      Default Off
-      Enable
-    User Management [IF HSM AND SECRET]
     NFC Tools [IF NFC ENABLED]
+      Sign PSBT
       Show Address
       Sign Message
       Verify Sig File
       Verify Address
       File Share
       Import Multisig
+      Push Transaction [IF PUSHTX ENABLED]
     Danger Zone
       Debug Functions
       Seed Functions
@@ -334,13 +377,15 @@
           Split Existing [IF WORD BASED SEED]
           Restore Seed XOR
         Destroy Seed [IF SECRET AND NOT TMP SEED]
-        Lock Down Seed
+        Lock Down Seed [MAYBE]
         Export SeedQR [IF WORD BASED SEED]
       I Am Developer.
         Serial REPL
         Warm Reset
-        Restore Txt Bkup
-      Seed Vault [IF SECRET]
+        Restore Bkup
+        BKPW Override
+        Reflash GPU [IF QWERTY KEYBOARD]
+      Seed Vault [IF SECRET AND NOT TMP SEED]
         Default Off
         Enable
       Perform Selftest
@@ -353,30 +398,43 @@
         Warn
       Testnet Mode
         Bitcoin
-        Testnet3
+        Testnet4
         Regtest
-      AE Start IDX
+      AE Start Index
         Default Off
         Enable
+      B85 Idx Values
+        Default Off
+        Unlimited
       Settings Space
       MCU Key Slots
       Bless Firmware
-      Reflash GPU [IF QWERTY KEYBOARD]
       Wipe LFS
   Settings
     Login Settings
       Change Main PIN
       Trick PINs [IF SECRET AND NOT TMP SEED]
         Trick PINs:
-        ↳123-254
-          PIN 123-254
+        ↳11-11
+          PIN 11-11
+          ↳Bricks CC
+          Hide Trick
+          Delete Trick
+          Change PIN
+        ↳333-3334
+          PIN 333-3334
           ↳Duress Wallet
           Activate Wallet
           Hide Trick
           Delete Trick
           Change PIN
+        ↳WRONG PIN
+          After 3 wrong:
+          ↳Wipes seed
+          ↳Reboots
+          Hide Trick
+          Delete Trick
         Add New Trick
-        Add If Wrong
         Delete All
       Set Nickname
       Scramble Keys
@@ -421,17 +479,27 @@
         View Details
         Delete
         Coldcard Export
+        Electrum Wallet
         Descriptors
           View Descriptor
           Export
           Bitcoin Core
-        Electrum Wallet
       Import from File
+      Import from QR [IF QR SCANNER]
       Import via NFC [IF NFC ENABLED]
       Export XPUB
       Create Airgapped
       Trust PSBT?
       Skip Checks?
+      Full Address View?
+        Partly Censor
+        Show Full
+      Unsorted Multisig?
+    NFC Push Tx
+      coldcard.com
+      mempool.space
+      Custom URL...
+      Disable
     Display Units
       BTC
       mBTC
@@ -466,8 +534,9 @@
       50%
       60%
       70%
-      80% (default)
+      80%
       90%
+      95% (default)
       100%
     Delete PSBTs
       Default Keep
@@ -475,25 +544,171 @@
     Menu Wrapping
       Default Off
       Enable
+    Home Menu XFP [IF SECRET AND NOT TMP SEED]
+      Only Tmp
+      Always Show
     Keyboard EMU
       Default Off
       Enable
   Secure Logout
   SHORTCUT [IF NFC ENABLED]
+    Sign PSBT
     Show Address
     Sign Message
     Verify Sig File
     Verify Address
     File Share
     Import Multisig
+    Push Transaction [IF PUSHTX ENABLED]
 ---
 
 [FACTORY MODE]
-  Version: 5.x.x
   Bag Me Now
+  Version: 5.x.x
   DFU Upgrade
   Ship W/O Bag
   Debug Functions
   Perform Selftest
+---
+
+[SSSP]
+  Ready To Sign
+  Passphrase [IF WORD BASED SEED & SSSP RELATED KEYS ENABLED]
+    Restore Saved
+      c*******
+        [3A14F788]
+        Restore
+        Delete
+    Edit Phrase
+  Scan Any QR Code [IF QR SCANNER]
+  Address Explorer
+    Classic P2PKH
+     ↳ mtHSVByP9EYZ⋯Vm19gvpecb5R
+    P2SH-Segwit
+     ↳ 2NCAJ5wD4Gvm⋯NphNU8UYoEJv
+    Segwit P2WPKH
+     ↳ tb1qupyd58nd⋯vu9jtdyws9n9
+    Applications
+      Samourai
+        Post-mix
+        Pre-mix
+      Wasabi
+    Account Number
+    Custom Path
+    CC-2-of-4
+  Secure Notes & Passwords[IF ENABLED & SSSP ALLOW NOTES]
+    1: note0
+      "note0"
+      View Note
+      Sign Note Text
+    2: secret-PWD
+      "secret-PWD"
+      ↳ satoshi
+      ↳ abc.org
+      View Password
+      Send Password [MAYBE]
+      Sign Note Text
+  Type Passwords [MAYBE]
+  Seed Vault[IF ENABLED & SSSP RELATED KEYS ENABLED]
+     1: [7126EB3C]
+      [7126EB3C]
+      Use This Seed
+     2: [CCEE13B9]
+      [CCEE13B9]
+      Use This Seed
+     3: [03EE9989]
+      [03EE9989]
+      Use This Seed
+  Advanced/Tools
+    File Management
+      Sign Text File
+      Batch Sign PSBT
+      List Files
+      Export Wallet
+        Sparrow
+        Cove
+        Bitcoin Core
+        Nunchuk
+        Bull Bitcoin
+        Zeus
+        Electrum Wallet
+        Wasabi Wallet
+        Fully Noded
+        Unchained
+        Theya
+        Bitcoin Safe
+        Samourai Postmix
+        Samourai Premix
+        Descriptor
+        Generic JSON
+        Export XPUB
+          Segwit (BIP-84)
+          Classic (BIP-44)
+          P2WPKH/P2SH (BIP-49)
+          Master XPUB
+          Current XFP
+        Dump Summary
+      Verify Sig File
+      NFC File Share [IF NFC ENABLED]
+      BBQr File Share [IF QR SCANNER]
+      QR File Share [IF QR SCANNER]
+      Format SD Card
+      Format RAM Disk [IF VIRTDISK ENABLED]
+    Export Wallet
+      Sparrow
+      Cove
+      Bitcoin Core
+      Nunchuk
+      Bull Bitcoin
+      Zeus
+      Electrum Wallet
+      Wasabi Wallet
+      Fully Noded
+      Unchained
+      Theya
+      Bitcoin Safe
+      Samourai Postmix
+      Samourai Premix
+      Descriptor
+      Generic JSON
+      Export XPUB
+        Segwit (BIP-84)
+        Classic (BIP-44)
+        P2WPKH/P2SH (BIP-49)
+        Master XPUB
+        Current XFP
+      Dump Summary
+    Teleport Multisig PSBT [MAYBE]
+    View Identity
+    Temporary Seed [IF SSSP RELATED KEYS ENABLED]
+      Import from QR Scan [IF QR SCANNER]
+      Import Words
+        12 Words
+        18 Words
+        24 Words
+        Import via NFC [IF NFC ENABLED]
+      Import XPRV
+      Tapsigner Backup
+      Coldcard Backup
+    Paper Wallets
+    NFC Tools [IF NFC ENABLED]
+      Sign PSBT
+      Show Address
+      Sign Message
+      Verify Sig File
+      Verify Address
+      File Share
+      Push Transaction [IF PUSHTX ENABLED]
+    Destroy Seed
+  Secure Logout
+  EXIT TEST DRIVE [MAYBE]
+  SHORTCUT [IF NFC ENABLED]
+    Sign PSBT
+    Show Address
+    Sign Message
+    Verify Sig File
+    Verify Address
+    File Share
+    Push Transaction [IF PUSHTX ENABLED]
 ---
 

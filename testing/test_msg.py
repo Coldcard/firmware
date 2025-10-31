@@ -125,8 +125,6 @@ def msg_sign_export(cap_story, press_nfc, nfc_read_text, press_select, press_can
                 time.sleep(0.3)
                 press_cancel()
                 time.sleep(.1)
-                title, story = cap_story()
-                assert f"Press {OK} to share again" in story
                 press_cancel()
 
         elif way == "qr":
@@ -253,7 +251,7 @@ def sign_msg_from_text(pick_menu_item, enter_number, press_select,
 @pytest.fixture
 def sign_msg_from_address(need_keypress, scan_a_qr, press_select, enter_complex, cap_story,
                           addr_vs_path, verify_msg_sign_story, msg_sign_export):
-    def doit(msg, addr, subpath, addr_fmt, way=None, testnet=True):
+    def doit(msg, addr, subpath, addr_fmt, way=None, chain="XTN"):
         if way == 'qr':
             # scan text via QR
             need_keypress(KEY_QR)
@@ -265,17 +263,17 @@ def sign_msg_from_address(need_keypress, scan_a_qr, press_select, enter_complex,
 
         time.sleep(.1)
         title, story = cap_story()
-        verify_msg_sign_story(story, msg, subpath, addr_fmt, testnet, addr)
+        verify_msg_sign_story(story, msg, subpath, addr_fmt, chain=="XTN", addr)
         press_select()
         time.sleep(.1)
         signed_msg = msg_sign_export(way)
         ret_msg, addr, sig = parse_signed_message(signed_msg)
-        addr_vs_path(addr, subpath, addr_fmt, chain="XTN" if testnet else "BTC")
+        addr_vs_path(addr, subpath, addr_fmt, chain=chain)
 
     return doit
 
 
-@pytest.mark.parametrize('path,expect', [ 
+@pytest.mark.parametrize('path,expect', [
     ('1/1hard/2', 'invalid characters'), 
     ('m/m/m/1/1hard/2', 'invalid characters'),
     ('m/', 'empty path component'),
@@ -389,7 +387,8 @@ def test_sign_msg_microsd_good(sign_on_microsd, msg, path, addr_vs_path,
                                addr_fmt, testnet, settings_set, bitcoind,
                                use_json):
 
-    settings_set("chain", "XTN" if testnet else "BTC")
+    chain = "XTN" if testnet else "BTC"
+    settings_set("chain", chain)
     # cases we expect to work
     sig, addr, ret_msg = sign_on_microsd(msg, path, addr_fmt, testnet=testnet,
                                 use_json=use_json)
@@ -405,7 +404,7 @@ def test_sign_msg_microsd_good(sign_on_microsd, msg, path, addr_vs_path,
         path = default_derivation_by_af(addr_fmt, testnet=testnet)
 
     # check expected addr was used
-    addr_vs_path(addr, path, addr_fmt, chain="XTN" if testnet else "BTC")
+    addr_vs_path(addr, path, addr_fmt, chain=chain)
     assert verify_message(addr, sig, msg) is True
     if addr_fmt == AF_CLASSIC and testnet:
         res = bitcoind.rpc.verifymessage(addr, sig, ret_msg)
@@ -459,13 +458,10 @@ def sign_using_nfc(goto_home, pick_menu_item, nfc_write_text, cap_story, press_s
         addr_vs_path(addr, subpath, addr_fmt, chain="XTN" if testnet else "BTC")
         assert verify_message(addr, sig, msg) is True
         time.sleep(0.5)
-        _, story = cap_story()
-        assert f"Press {OK} to share again" in story
         press_select()
         signed_msg_again = nfc_read_text()
         assert signed_msg == signed_msg_again
         press_cancel()  # exit NFC animation
-        press_cancel()  # do not want to share again
 
         return sig, addr, msg
 
@@ -505,9 +501,9 @@ def test_sign_msg_with_ascii_non_printable_chars(msg, way, sign_on_microsd, addr
     ('hello%20sworld'%'', "m", AF_CLASSIC, 'many spaces', 0, 0),  # spaces
     ('hello%10sworld'%'', "m/1h/3h", AF_P2WPKH_P2SH, 'many spaces', 0, 0),  # spaces
     ('hello%5sworld'%'', "m", AF_CLASSIC, 'many spaces', 0, 0),  # spaces
-    ("coinkite", "m", AF_P2WSH, "Unsupported address format", 0, 0),  # invalid address format
+    ("coinkite", "m", AF_P2WSH, "Unsupported address format: 'p2wsh'", 0, 0),  # invalid address format
     ("coinkite", "m", AF_P2WSH_P2SH, "Unsupported address format", 0, 0),  # invalid address format
-    ("coinkite", " m", AF_P2TR, "Unsupported address format", 0, 0),  # invalid address format
+    ("coinkite", " m", AF_P2TR, "Unsupported address format: 'p2tr'", 0, 0),  # invalid address format
     ("coinkite", "m/0/0/0/0/0/0/0/0/0/0/0/0/0", AF_CLASSIC, "too deep", 0, 0),  # invalid path
     ("coinkite", "m/0/0/0/0/0/q/0/0/0", AF_P2WPKH, "invalid characters in path", 0, 0),  # invalid path
     ("coinkite ", "m", AF_CLASSIC, "trailing space(s)", 0, 0),  # invalid msg - trailing space
@@ -548,7 +544,7 @@ def test_sign_msg_fails(dev, sign_on_microsd, msg, subpath, addr_fmt, concern,
     assert concern in story
 
 
-@pytest.mark.parametrize('msg,num_iter,expect', [ 
+@pytest.mark.parametrize('msg,num_iter,expect', [
     ('Test2', 1, 'IHra0jSywF1TjIJ5uf7IDECae438cr4o3VmG6Ri7hYlDL+pUEXyUfwLwpiAfUQVqQFLgs6OaX0KsoydpuwRI71o='),
     ('Test', 2, 'IDgMx1ljPhLHlKUOwnO/jBIgK+K8n8mvDUDROzTgU8gOaPDMs+eYXJpNXXINUx5WpeV605p5uO6B3TzBVcvs478='),
     ('Test1', 3, 'IEt/v9K95YVFuRtRtWaabPVwWOFv1FSA/e874I8ABgYMbRyVvHhSwLFz0RZuO87ukxDd4TOsRdofQwMEA90LCgI='),
@@ -937,7 +933,6 @@ def test_verify_signature_file_truncated(way, microsd_path, cap_story, verify_ar
     else:
         assert title == "FAILURE"
         assert "Armor text MUST be surrounded by exactly five (5) dashes" in story
-        assert "auth.py" in story
 
 
 @pytest.mark.parametrize("msg", ["this is the message to sign", "this is meessage to sign\n with newline", "a"*200])

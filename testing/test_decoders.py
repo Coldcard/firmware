@@ -57,39 +57,47 @@ def test_detector_bin(fname, expect, encoding, try_decode):
     
 
 @pytest.mark.parametrize('url', [
-'bitcoin:mtHSVByP9EYZmB26jASDdPVm19gvpecb5R',
-'bitcoin:mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?label=Luke-Jr',
-'bitcoin:mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?amount=20.3&label=Luke-Jr',
-'bitcoin:mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?amount=50&label=Luke-Jr&message=Donation%20for%20project%20xyz',
-'bitcoin:mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?req-somethingyoudontunderstand=50&req-somethingelseyoudontget=999',
-'bitcoin:mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?somethingyoudontunderstand=50&somethingelseyoudontget=999',
+'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R',
+'BCRT1QUPYD58NDSH7LUT0ET0VTRQ432JVU9JTDX8FGYV',
+'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?label=Luke-Jr',
+'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?amount=20.3&label=Luke-Jr',
+'BCRT1QUPYD58NDSH7LUT0ET0VTRQ432JVU9JTDX8FGYV?amount=50&label=Luke-Jr&message=Donation%20for%20project%20xyz',
+'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?req-somethingyoudontunderstand=50&req-somethingelseyoudontget=999',
+'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?somethingyoudontunderstand=50&somethingelseyoudontget=999',
+'tb1q4d67p7stxml3kdudrgkg5mgaxsrgzcqzjrrj4gg62nxtvnsnvqjsxjkej0?wallet=my_wal',
+'tb1q4d67p7stxml3kdudrgkg5mgaxsrgzcqzjrrj4gg62nxtvnsnvqjsxjkej0?wallet=my wal',
+'tb1q4d67p7stxml3kdudrgkg5mgaxsrgzcqzjrrj4gg62nxtvnsnvqjsxjkej0?wallet=my%20wal',
+'tb1q4d67p7stxml3kdudrgkg5mgaxsrgzcqzjrrj4gg62nxtvnsnvqjsxjkej0?wallet=my:wal',
+'tb1q4d67p7stxml3kdudrgkg5mgaxsrgzcqzjrrj4gg62nxtvnsnvqjsxjkej0?wallet=my-wal',
+'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R?label=total%20due:%20500',
 ])
 @pytest.mark.parametrize('bip21', range(2))
-@pytest.mark.parametrize('addr_fmt', range(2))
-def test_detector_url(url, bip21, addr_fmt, try_decode):
-    a1, a2 = ('mtHSVByP9EYZmB26jASDdPVm19gvpecb5R',
-                            'BCRT1QUPYD58NDSH7LUT0ET0VTRQ432JVU9JTDX8FGYV')
+def test_detector_url(url, bip21, try_decode):
+    target = url.split('?', 1)[0]
+    if target[:2].lower() in ["tb", "bc"]:
+        target = target.lower()
 
-    if not bip21:
-        _, url = url.split(':', 1)
-    if addr_fmt:
-        url = url.replace(a1, a2)
-        expect_addr = a2.lower()
-    else:
-        expect_addr = a1
+    if bip21:
+        url = f"bitcoin:{url}"
 
     ft, vals = try_decode(url)
     assert ft == 'addr'
     proto, addr, args =  vals
-    assert addr == expect_addr
+    assert addr == target
     assert proto == ('bitcoin' if bip21 else None)
 
     p = urlparse(url)
     assert (p.path == addr) or (p.path.lower() == addr.lower())
 
+    # below nest values to the list
     xargs = parse_qs(p.query)
     if args:
-        assert xargs.keys() == args.keys()
+        assert len(xargs) == len(args)
+        for k, v in args.items():
+            val = xargs[k]
+            assert len(val) == 1
+            # unwrap value
+            assert val[0] == v
     else:
         assert not xargs
 
@@ -141,8 +149,8 @@ def test_detector_xp(code, try_decode):
 def test_urldecode(url, sim_exec):
     from urllib.parse import unquote_plus
 
-    cmd = "from utils import url_decode;  " + \
-                f"RV.write(url_decode({url!r}))"
+    cmd = "from utils import url_unquote;  " + \
+                f"RV.write(url_unquote({url!r}))"
     result = sim_exec(cmd)
 
     assert result == unquote_plus(url)
@@ -163,8 +171,9 @@ def test_multisig(config, try_decode):
 
     ft, vals = try_decode(config)
 
-    assert ft == "multi"
+    assert ft == "text"
     assert vals[0] == config
+    # this import/export format is disabled - use descriptors
 
 @pytest.mark.parametrize('desc', [
     'wsh(sortedmulti(2,[0f056943/48h/1h/0h/2h]tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[6ba6cfd0/48h/1h/0h/2h]tpubDFcrvj5n7gyaxWQkoX69k2Zij4vthiAwvN2uhYjDrE6wktKoQaE7gKVZRiTbYdrAYH1UFPGdzdtWJc6WfR2gFMq6XpxA12gCdQmoQNU9mgm/0/*,[747b698e/48h/1h/0h/2h]tpubDExj5FnaUnPAn7sHGUeBqD3buoNH5dqmjAT6884vbDpH1iDYWigb7kFo2cA97dc8EHb54u13TRcZxC4kgRS9gc3Ey2xc8c5urytEzTcp3ac/0/*,[7bb026be/48h/1h/0h/2h]tpubDFiuHYSJhNbHcbLJoxWdbjtUcbKR6PvLq53qC1Xq6t93CrRx78W3wcng8vJyQnY3giMJZEgNCRVzTojLb8RqPFpW5Ms2dYpjcJYofN1joyu/0/*))#al5z7mcj',

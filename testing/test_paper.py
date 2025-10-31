@@ -18,7 +18,7 @@ from ckcc_protocol.constants import *
 @pytest.mark.parametrize('netcode', ["XRT", "BTC", "XTN"])
 def test_generate(mode, pdf, netcode, dev, cap_menu, pick_menu_item, goto_home, cap_story,
                   need_keypress, microsd_path, verify_detached_signature_file, settings_set,
-                  press_select, validate_address, bitcoind):
+                  press_select, validate_address, bitcoind, src_root_dir):
     # test UX and operation of the 'bitcoin core' wallet export
     mx = "Don't make PDF"
 
@@ -49,7 +49,7 @@ def test_generate(mode, pdf, netcode, dev, cap_menu, pick_menu_item, goto_home, 
 
     if pdf:
         assert mx in cap_menu()
-        shutil.copy('../docs/paperwallet.pdf', microsd_path('paperwallet.pdf'))
+        shutil.copy(f'{src_root_dir}/docs/paperwallet.pdf', microsd_path('paperwallet.pdf'))
         pick_menu_item(mx)
 
         time.sleep(0.2)

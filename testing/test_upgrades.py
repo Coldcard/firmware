@@ -14,7 +14,7 @@ assert packed_len == FW_HEADER_SIZE
 def parse_hdr(hdr):
     return Header(**dict(zip(FWH_PY_VALUES.split(), struct.unpack(FWH_PY_FORMAT, hdr))))
 
-@pytest.fixture()
+@pytest.fixture
 def upload_file(dev):
     def doit(data, pkt_len=2048):
         for pos in range(0, len(data), pkt_len):
@@ -25,13 +25,13 @@ def upload_file(dev):
     return doit
 
 @pytest.fixture
-def make_firmware():
-    def doit(hw_compat, fname='../stm32/firmware-signed.bin', outname='tmp-firmware.bin'):
+def make_firmware(src_root_dir):
+    def doit(hw_compat, fname=f'{src_root_dir}/stm32/firmware-signed.bin', outname='tmp-firmware.bin'):
         # os.system(f'signit sign 3.0.99 --keydir ../stm32/keys -r {fname} -o {outname} --hw-compat=0x{hw_compat:02x}')
         p = subprocess.run(
             [
                 'signit', 'sign', '3.0.99',
-                 '--keydir', '../stm32/keys',
+                 '--keydir', f'{src_root_dir}/stm32/keys',
                  '-r', f'{fname}',
                  '-o', f'{outname}',
                  f'--hw-compat={hw_compat}'
@@ -50,7 +50,7 @@ def make_firmware():
     return doit
 
 @pytest.fixture
-def upgrade_by_sd(open_microsd, cap_story, pick_menu_item, goto_home, press_select, microsd_path, sim_exec):
+def upgrade_by_sd(open_microsd, cap_story, pick_menu_item, goto_home, press_select, microsd_path, sim_exec, src_root_dir):
 
     # send a firmware file over the microSD card
 
@@ -64,7 +64,7 @@ def upgrade_by_sd(open_microsd, cap_story, pick_menu_item, goto_home, press_sele
         # create DFU file (wrapper)
         open(f'{fname}.bin', 'wb').write(data)
         dfu = microsd_path('tmp-firmware.dfu')
-        cmd = f'../external/micropython/tools/dfu.py -b 0x08008000:{fname}.bin {dfu}'
+        cmd = f'{src_root_dir}/external/micropython/tools/dfu.py -b 0x08008000:{fname}.bin {dfu}'
         print(cmd)
         os.system(cmd)
 
@@ -91,28 +91,19 @@ def upgrade_by_sd(open_microsd, cap_story, pick_menu_item, goto_home, press_sele
 
 @pytest.mark.parametrize('mode', ['compat', 'incompat'])
 @pytest.mark.parametrize('transport', ['sd', 'usb'])
-def test_hacky_upgrade(mode, cap_story, transport, dev, sim_exec, make_firmware, upload_file, sim_eval, upgrade_by_sd):
-
-    # manually: run this test on all Mark1 thru 3 simulators
-    hw_label = eval(sim_eval('version.hw_label'))
-    assert hw_label[0:2] in ['mk', 'q1']
-    try:
-        mkn = int(hw_label[2])
-    except IndexError:
-        mkn = "q1"  # q1
-
-    print(f"Simulator is {hw_label}")
+def test_hacky_upgrade(mode, cap_story, transport, dev, sim_exec, make_firmware, upload_file,
+                       upgrade_by_sd, press_cancel, is_q1):
 
     if mode == 'compat':
-        data = make_firmware(mkn)
+        data = make_firmware("q1" if is_q1 else 4)
     elif mode == 'incompat':
-        with pytest.raises(RuntimeError) as err:
-            if mkn == "q1":
-                mkn = 4
-
-            make_firmware(mkn-1)
-        assert "too big for our USB upgrades" in str(err)
-        return
+        if is_q1:
+            data = make_firmware(4)
+        else:
+            with pytest.raises(RuntimeError) as err:
+                make_firmware(3)
+            assert "too big for our USB upgrades" in str(err)
+            return
 
     hdr = data[FW_HEADER_OFFSET:FW_HEADER_OFFSET+FW_HEADER_SIZE]
 
@@ -139,6 +130,7 @@ def test_hacky_upgrade(mode, cap_story, transport, dev, sim_exec, make_firmware,
 
     _, story = cap_story()
     assert "Install this new firmware?" in story
+    press_cancel()
     # check data was uploaded verbatim (VERY SLOW)
     # for pos in range(0, cooked.firmware_length + 128, 128):
     #     to_eval = f'from sflash import SF;SF.array[{pos}:{pos+128}]'
@@ -148,6 +140,6 @@ def test_hacky_upgrade(mode, cap_story, transport, dev, sim_exec, make_firmware,
     #         assert a == hdr, f"wrong @ {pos}"
     #     else:
     #         assert a == data[pos:pos+128], repr(pos)
-    
+
 
 # EOF

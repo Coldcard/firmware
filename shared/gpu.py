@@ -8,7 +8,6 @@
 #
 import utime, struct
 import uasyncio as asyncio
-from utils import B2A
 from machine import Pin
 from ustruct import pack
 

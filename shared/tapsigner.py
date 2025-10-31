@@ -33,7 +33,7 @@ async def import_tapsigner_backup_file(_1, _2, item):
         from pincodes import pa
         assert pa.is_secret_blank()  # "must not have secret"
 
-    meta = "from "
+    origin = "from "
     label = "TAPSIGNER encrypted backup file"
     choice = await import_export_prompt(label, is_import=True)
 
@@ -67,9 +67,9 @@ async def import_tapsigner_backup_file(_1, _2, item):
                     continue
             break
     else:
-        fn = await file_picker(suffix="aes", min_size=100, max_size=160, **choice)
+        fn = await file_picker(suffix=".aes", min_size=100, max_size=160, **choice)
         if not fn: return
-        meta += (" (%s)" % fn)
+        origin += (" (%s)" % fn)
         try:
             with CardSlot(**choice) as card:
                 with open(fn, 'rb') as fp:
@@ -103,6 +103,6 @@ async def import_tapsigner_backup_file(_1, _2, item):
             await ux_show_story(title="FAILURE", msg=str(e))
             continue
 
-    await import_extended_key_as_secret(extended_key, ephemeral, meta=meta)
+    await import_extended_key_as_secret(extended_key, ephemeral, origin=origin)
 
 # EOF

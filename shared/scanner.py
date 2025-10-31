@@ -201,7 +201,7 @@ class QRScanner:
                     if not rv: continue
 
                     if rv[0:2] == 'B$' and bbqr.collect(rv):
-                        # BBQr protocol detected; collect more data
+                        # BBQr protocol detected, accepted need to collect more data
                         continue
 
                     break 

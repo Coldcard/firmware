@@ -2,9 +2,9 @@
 #
 # Copyright (c) 2020 Stepan Snigirev MIT License embit/arguments.py
 #
-import ngu, chains, ustruct
+import ngu, chains, ustruct, stash
 from io import BytesIO
-from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AF_CLASSIC, AF_P2TR
+from public_constants import MAX_PATH_DEPTH
 from binascii import unhexlify as a2b_hex
 from binascii import hexlify as b2a_hex
 from utils import keypath_to_str, str_to_keypath, swab32, xfp2str
@@ -80,30 +80,8 @@ def parse_desc_str(string):
     return res
 
 
-def multisig_descriptor_template(xpub, path, xfp, addr_fmt):
-    key_exp = "[%s%s]%s/0/*" % (xfp.lower(), path.replace("m", ''), xpub)
-    if addr_fmt == AF_P2WSH_P2SH:
-        descriptor_template = "sh(wsh(sortedmulti(M,%s,...)))"
-    elif addr_fmt == AF_P2WSH:
-        descriptor_template = "wsh(sortedmulti(M,%s,...))"
-    elif addr_fmt == AF_P2SH:
-        descriptor_template = "sh(sortedmulti(M,%s,...))"
-    elif addr_fmt == AF_P2TR:
-        # provably unspendable BIP-0341
-        descriptor_template = "tr(" + b2a_hex(PROVABLY_UNSPENDABLE[1:]).decode() + ",sortedmulti_a(M,%s,...))"
-    else:
-        return None
-    descriptor_template = descriptor_template % key_exp
-    return descriptor_template
-
-
 def read_until(s, chars=b",)(#"):
-    # TODO potential infinite loop
-    # what is the longest possible element? (proly some raw( but that is unsupported)
-    #
     res = b""
-    chunk = b""
-    char = None
     while True:
         chunk = s.read(1)
         if len(chunk) == 0:
@@ -111,20 +89,25 @@ def read_until(s, chars=b",)(#"):
         if chunk in chars:
             return res, chunk
         res += chunk
-    return res, None
 
 
 class KeyOriginInfo:
-    def __init__(self, fingerprint: bytes, derivation: list):
+    def __init__(self, fingerprint: bytes, derivation: list, cc_fp=None):
         self.fingerprint = fingerprint
         self.derivation = derivation
-        self.cc_fp = swab32(int(b2a_hex(self.fingerprint).decode(), 16))
+        self._cc_fp = cc_fp
 
     def __eq__(self, other):
         return self.psbt_derivation() == other.psbt_derivation()
 
     def __hash__(self):
         return hash(tuple(self.psbt_derivation()))
+
+    @property
+    def cc_fp(self):
+        if self._cc_fp is None:
+            self._cc_fp = ustruct.unpack('<I', self.fingerprint)[0]
+        return self._cc_fp
 
     def str_derivation(self):
         return keypath_to_str(self.derivation, prefix='m/', skip=0)
@@ -143,12 +126,13 @@ class KeyOriginInfo:
         arr[0] = "m"
         path = "/".join(arr)
         derivation = str_to_keypath(xfp, path)[1:]  # ignoring xfp here, already stored
+        assert len(derivation) <= MAX_PATH_DEPTH, "origin too deep"
         return cls(xfp, derivation)
 
     def __str__(self):
         rv = "%s" % b2a_hex(self.fingerprint).decode()
         if self.derivation:
-            rv += "/%s" % keypath_to_str(self.derivation, prefix='', skip=0).replace("'", "h")
+            rv += "/%s" % keypath_to_str(self.derivation, prefix='', skip=0)
         return rv
 
 
@@ -157,77 +141,73 @@ class KeyDerivationInfo:
     def __init__(self, indexes=None):
         self.indexes = indexes
         if self.indexes is None:
-            self.indexes = [[0, 1], WILDCARD]
+            self.indexes = ((0, 1), WILDCARD)
             self.multi_path_index = 0
         else:
             self.multi_path_index = None
 
-    @property
-    def is_int_ext(self):
-        if self.multi_path_index is not None:
-            return True
-        return False
+    def __hash__(self):
+        return hash(self.indexes)
 
-    @property
-    def is_external(self):
-        if self.is_int_ext:
-            return True
-        elif self.indexes[-2] % 2 == 0:
-            return True
+    @staticmethod
+    def not_hardened(x):
+        assert (b"'" not in x) and (b"h" not in x), "Cannot use hardened sub derivation path"
 
-        return False
-
-    @property
-    def branches(self):
-        if self.is_int_ext:
-            return self.indexes[self.multi_path_index]
-        else:
-            return [self.indexes[-2]]
+    def get_ext_int(self):
+        return self.indexes[self.multi_path_index]
 
     @classmethod
-    def from_string(cls, s):
-        fail_msg = "Cannot use hardened sub derivation path"
-        if not s:
-            return cls()
-        res = []
-        mp = 0
-        mpi = None
-        for idx, i in enumerate(s.split("/")):
-            start_i = i.find("<")
-            if start_i != -1:
-                end_i = s.find(">")
-                assert end_i
-                inner = s[start_i+1:end_i]
-                assert ";" in inner
-                inner_split = inner.split(";")
-                assert len(inner_split) == 2, "wrong multipath"
-                res.append([int(i) for i in inner_split])
-                mp += 1
-                mpi = idx
+    def parse(cls, s):
+        err = "Malformed key derivation"
+        multi_i = None
+        idxs = []
+        while True:
+            got, char = read_until(s, b"<,)/")
+            if char == b"<":
+                assert multi_i is None, "too many multipaths"
+                ext_num, char = read_until(s, b";")
+                assert char, err
+                cls.not_hardened(ext_num)
+                int_num, char = read_until(s, b">")
+                assert char, err
+                assert b";" not in int_num, "Solved cardinality > 2"
+                cls.not_hardened(int_num)
+
+                assert int_num != ext_num  # cannot be the same
+                multi_i = len(idxs)
+                idxs.append((int(ext_num.decode()), int(int_num.decode())))
+
             else:
-                if i == WILDCARD:
-                    res.append(WILDCARD)
-                else:
-                    assert "'" not in i, fail_msg
-                    assert "h" not in i, fail_msg
-                    res.append(int(i))
+                # char in "/),"
+                if got == b"*":
+                    # every derivation has to end with wildcard (only ranged keys allowed)
+                    idxs.append(WILDCARD)
+                    break
+                elif got:
+                    cls.not_hardened(got)
+                    idxs.append(int(got.decode()))
 
-        # only one <x;y> allowed in subderivation
-        assert mp <= 1, "too many multipaths (%d)" % mp
+            # comma and parenthesis not allowed in subderivation, marker of the end
+            if char in b",)": break
 
-        if res == [0, WILDCARD]:
+        assert idxs[-1] == WILDCARD, "All keys must be ranged"
+        if idxs == [0, WILDCARD]:
+            # normalize and instead save as <0;1> as change derivation was not provided
             obj = cls()
         else:
-            assert len(res) == 2, "Key derivation too long"
-            assert res[-1] == WILDCARD, "All keys must be ranged"
-            obj = cls(res)
-            obj.multi_path_index = mpi
+
+            assert multi_i is not None, "need multipath"
+            assert len(idxs[multi_i]) == 2, "wrong multipath"
+
+            obj = cls(tuple(idxs))
+            obj.multi_path_index = multi_i
+
         return obj
 
     def to_string(self, external=True, internal=True):
         res = []
         for i in self.indexes:
-            if isinstance(i, list):
+            if isinstance(i, tuple):
                 if internal is True and external is False:
                     i = str(i[1])
                 elif internal is False and external is True:
@@ -239,25 +219,21 @@ class KeyDerivationInfo:
             res.append(i)
         return "/".join(res)
 
-    def to_int_list(self, branch_idx, idx):
-        assert branch_idx in self.indexes[0]
-        return [branch_idx, idx]
-
 
 class Key:
     def __init__(self, node, origin, derivation=None, taproot=False, chain_type=None):
         self.origin = origin
         self.node = node
-        self.derivation = derivation
+        self.derivation = derivation or KeyDerivationInfo()
         self.taproot = taproot
         self.chain_type = chain_type
 
     def __eq__(self, other):
-        return self.origin == other.origin \
-                and self.derivation.indexes == other.derivation.indexes
+        return hash(self) == hash(other)
 
     def __hash__(self):
-        return hash(self.to_string())
+        # return hash(self.to_string())
+        return hash(self.node.pubkey()) + hash(self.derivation)
 
     def __len__(self):
         return 34 - int(self.taproot) # <33:sec> or <32:xonly>
@@ -277,9 +253,6 @@ class Key:
     def parse(cls, s):
         first = s.read(1)
         origin = None
-        if first == b"u":
-            s.seek(-1, 1)
-            return Unspend.parse(s)
 
         if first == b"[":
             prefix, char = read_until(s, b"]")
@@ -288,42 +261,85 @@ class Key:
             origin = KeyOriginInfo.from_string(prefix.decode())
         else:
             s.seek(-1, 1)
+
         k, char = read_until(s, b",)/")
-        der = b""
+        der = None
         if char == b"/":
-            der, char = read_until(s, b"<,)")
-            if char == b"<":
-                der += b"<"
-                branch, char = read_until(s, b">")
-                if char is None:
-                    raise ValueError("Failed reading the key, missing >")
-                der += branch + b">"
-                rest, char = read_until(s, b",)")
-                der += rest
+            der = KeyDerivationInfo.parse(s)
         if char is not None:
             s.seek(-1, 1)
+
         # parse key
         node, chain_type = cls.parse_key(k)
-        der = KeyDerivationInfo.from_string(der.decode())
         if origin is None:
-            origin = KeyOriginInfo(ustruct.pack('<I', swab32(node.my_fp())), [])
+            cc_fp = swab32(node.my_fp())
+            origin = KeyOriginInfo(ustruct.pack('<I', cc_fp), [], cc_fp)
         return cls(node, origin, der, chain_type=chain_type)
 
     @classmethod
     def parse_key(cls, key_str):
-        assert key_str[1:4].lower() == b"pub", "only extended keys allowed"
+        assert key_str[1:4].lower() == b"pub", "only extended pubkeys allowed"
         # extended key
         # or xpub or tpub as we use descriptors (SLIP-132 NOT allowed)
         hint = key_str[0:1].lower()
         if hint == b"x":
             chain_type = "BTC"
-        else:
-            assert hint == b"t", "no slip"
+        elif hint == b"t":
             chain_type = "XTN"
+        else:
+            # slip (ignore any implied address format)
+            chain_type = "BTC" if hint in b"yz" else "XTN"
+
         node = ngu.hdnode.HDNode()
         node.deserialize(key_str)
+        try:
+            assert node.privkey() is None, "no privkeys"
+        except ValueError:
+            # ValueError is thrown from libngu if key is public
+            pass
 
         return node, chain_type
+
+    def validate(self, my_xfp, disable_checks=False):
+        assert self.chain_type == chains.current_key_chain().ctype, "wrong chain"
+
+        # xfp is always available, even if key was serialized without origin info
+        # upon parse root origin info is generated from key itself
+        xfp = self.origin.cc_fp
+        is_mine = (xfp == my_xfp)
+
+        # raises ValueError on invalid pubkey (should be in libngu)
+        # invalid public key not allowed even with disable checks
+        ngu.secp256k1.pubkey(self.node.pubkey())
+
+        if not disable_checks:
+            depth = self.node.depth()
+            # we now allow blinded keys that have depth X but derivation len is 0,
+            # where only fingerprint constitutes key origin
+            # only check if derivation length is greater than 0
+            if self.origin.derivation:
+                assert len(self.origin.derivation) == depth, \
+                    "deriv len != xpub depth (xfp=%s)" % xfp2str(xfp)
+            if depth == 0:
+                # blinded keys allowed
+                # assert not self.node.parent_fp()
+                # assert self.node.child_number()[0] == 0
+                assert swab32(self.node.my_fp()) == xfp, "master xfp mismatch"
+            elif depth == 1:
+                target = swab32(self.node.parent_fp())
+                assert xfp == target, 'xfp depth=1 wrong'
+
+            if is_mine:
+                # it's supposed to be my key, so I should be able to generate pubkey
+                # - might indicate collision on xfp value between co-signers,
+                #   and that's not supported
+                deriv = self.origin.str_derivation()
+                with stash.SensitiveValues() as sv:
+                    chk_node = sv.derive_path(deriv)
+                    assert self.node.pubkey() == chk_node.pubkey(), \
+                                "[%s/%s] wrong pubkey" % (xfp2str(xfp), deriv[2:])
+
+        return is_mine
 
     def derive(self, idx=None, change=False):
         if isinstance(idx, list):
@@ -347,13 +363,13 @@ class Key:
         new_node = self.node.copy()
         new_node.derive(idx, False)
         if self.origin:
-            origin = KeyOriginInfo(self.origin.fingerprint, self.origin.derivation + [idx])
+            origin = KeyOriginInfo(self.origin.fingerprint, self.origin.derivation + [idx],
+                                   self.origin.cc_fp)
         else:
-            fp = ustruct.pack('<I', swab32(self.node.my_fp()))
-            origin = KeyOriginInfo(fp, [idx])
+            origin = KeyOriginInfo(self.origin.fingerprint, [idx], self.origin.cc_fp)
 
-        derivation = KeyDerivationInfo(self.derivation.indexes[1:])
-        return type(self)(new_node, origin, derivation, taproot=self.taproot)
+        return type(self)(new_node, origin, KeyDerivationInfo(self.derivation.indexes[1:]),
+                          taproot=self.taproot)
 
     @classmethod
     def read_from(cls, s, taproot=False):
@@ -361,16 +377,34 @@ class Key:
 
     @classmethod
     def from_cc_data(cls, xfp, deriv, xpub):
-        koi = KeyOriginInfo.from_string("%s/%s" % (xfp2str(xfp), deriv.replace("m/", "")))
-        node = ngu.hdnode.HDNode()
-        node.deserialize(xpub)
-        return cls(node, koi, KeyDerivationInfo())
+        xfp_str = xfp if isinstance(xfp, str) else xfp2str(xfp)
+        koi = KeyOriginInfo.from_string("%s/%s" % (xfp_str, deriv.replace("m/", "")))
+        node, chain_type = cls.parse_key(xpub.encode())
 
-    def to_cc_data(self):
-        ch = chains.current_chain()
-        return (self.origin.cc_fp,
-                self.origin.str_derivation(),
-                ch.serialize_public(self.node, AF_CLASSIC))
+        return cls(node, koi, KeyDerivationInfo(), chain_type=chain_type)
+
+    @classmethod
+    def from_cc_json(cls, vals, af_str):
+        key_exp = af_str + "_key_exp"
+        if key_exp in vals:
+            # new firmware, prefer key expression
+            return cls.from_string(vals[key_exp])
+
+        # TODO
+        node, _, _, _ = chains.slip132_deserialize(vals[af_str])
+        ek = chains.current_chain().serialize_public(node)
+        return cls.from_cc_data(vals["xfp"], vals["%s_deriv" % af_str], ek)
+
+    @classmethod
+    def from_psbt_xpub(cls, ek_bytes, xfp_path):
+        xfp, *path = xfp_path
+        koi = KeyOriginInfo(a2b_hex(xfp2str(xfp)), path)
+        # TODO this should be done by C code, no need to base58 encode/decode
+        # byte-serialized key should be decodable
+        ek = ngu.codecs.b58_encode(ek_bytes)
+        node, chain_type = cls.parse_key(ek.encode())
+
+        return cls(node, koi, KeyDerivationInfo(), chain_type=chain_type)
 
     @property
     def is_provably_unspendable(self):
@@ -389,18 +423,17 @@ class Key:
     def key_bytes(self):
         kb = self.node.pubkey()
         if self.taproot:
-            if len(kb) == 33:
-                kb = kb[1:]
-            assert len(kb) == 32
+            # xonly
+            kb = kb[1:]
         return kb
 
     def extended_public_key(self):
         return chains.current_chain().serialize_public(self.node)
 
-    def to_string(self, external=True, internal=True, subderiv=True):
+    def to_string(self, external=True, internal=True):
         key = self.prefix
         key += self.extended_public_key()
-        if self.derivation and subderiv:
+        if self.derivation and (external or internal):
             key += "/" + self.derivation.to_string(external, internal)
 
         return key
@@ -411,123 +444,34 @@ class Key:
         return cls.parse(s)
 
 
-class Unspend(Key):
-    def __init__(self, node, origin=None, derivation=None, taproot=True, chain_type=None):
-        super().__init__(node, origin, derivation, taproot, chain_type)
-        assert self.taproot
-
-    def __eq__(self, other):
-        return self.node.chain_code() == other.node.chain_code() \
-            and self.node.pubkey() == other.node.pubkey() \
-            and self.derivation.indexes == other.derivation.indexes
-
-    @classmethod
-    def parse(cls, s):
-        assert s.read(8) == b"unspend("
-        chain_code, c = read_until(s, b")")
-        chain_code = a2b_hex(chain_code)
-        assert len(chain_code) == 32, "chain code length"
-        assert c
-        char = s.read(1)
-        if char != b"/":
-            raise ValueError("ranged unspend required")
-        der, char = read_until(s, b"<,)")
-        if char == b"<":
-            der += b"<"
-            branch, char = read_until(s, b">")
-            if char is None:
-                raise ValueError("Failed reading the key, missing >")
-            der += branch + b">"
-            rest, char = read_until(s, b",)")
-            der += rest
-        if char is not None:
-            s.seek(-1, 1)
-
-        node = ngu.hdnode.HDNode().from_chaincode_pubkey(chain_code,
-                                                         PROVABLY_UNSPENDABLE)
-        der = KeyDerivationInfo.from_string(der.decode())
-        return cls(node, None, der, chain_type=None)
-
-    def to_string(self, external=True, internal=True, subderiv=True):
-        res = "unspend(%s)" % b2a_hex(self.node.chain_code()).decode()
-        if self.derivation and subderiv:
-            res += "/" + self.derivation.to_string(external, internal)
-
-        return res
-
-    @property
-    def is_provably_unspendable(self):
-        return True
-
-
-def fill_policy(policy, keys, external=True, internal=True):
-    orig_keys = []
-    for k in keys:
-        if not isinstance(k, str):
-            k_orig = k.to_string(external, internal, subderiv=False)
-        else:
-            _idx = k.find("]")  # end of key origin info - no more / expected besides subderivation
-            if _idx != -1:
-                ek = k[_idx+1:].split("/")[0]
-                k_orig = k[:_idx+1] + ek
-            else:
-                # no origin info
-                k_orig = k.split("/")[0]
-
-        if k_orig not in orig_keys:
-            orig_keys.append(k_orig)
-
-    for i in range(len(orig_keys) - 1, -1, -1):
-        k = orig_keys[i]
+def bip388_wallet_policy_to_descriptor(desc_tmplt, keys_info):
+    for i in range(len(keys_info) - 1, -1, -1):
+        k_str = keys_info[i]
         ph = "@%d" % i
-        ph_len = len(ph)
-        while True:
-            ix = policy.find(ph)
-            if ix == -1:
-                break
-
-            assert policy[ix+ph_len] == "/"
-            # subderivation is part of the policy
-            x = ix + ph_len
-            substr = policy[x:x+26]  # 26 is the longest possible subderivation allowed "/<2147483647;2147483646>/*"
-            mp_start = substr.find("<")
-            assert mp_start != -1
-            mp_end = substr.find(">")
-            mp = substr[mp_start:mp_end + 1]
-            _ext, _int = mp[1:-1].split(";")
-            if external and not internal:
-                sub = _ext
-            elif internal and not external:
-                sub = _int
-            else:
-                sub = None
-            if sub is not None:
-                policy = policy[:x + mp_start] + sub + policy[x + mp_end + 1:]
-
-            x = policy[ix:ix + ph_len]
-            assert x == ph
-            policy = policy[:ix] + k + policy[ix + ph_len:]
-
-    return policy
+        desc_tmplt = desc_tmplt.replace(ph, k_str)
+    return desc_tmplt.replace("/**", "/<0;1>/*")
 
 
-def taproot_tree_helper(scripts):
-    from miniscript import Miniscript
+def bip388_validate_policy(desc_tmplt, keys_info):
+    from uio import BytesIO
 
-    if isinstance(scripts, Miniscript):
-        script = scripts.compile()
-        assert isinstance(script, bytes)
-        h = ngu.secp256k1.tagged_sha256(b"TapLeaf", chains.tapscript_serialize(script))
-        return [(chains.TAPROOT_LEAF_TAPSCRIPT, script, bytes())], h
-    if len(scripts) == 1:
-        return taproot_tree_helper(scripts[0])
+    s = BytesIO(desc_tmplt)
+    r = []
+    while True:
+        got, char = read_until(s, b"@")
+        if not char:
+            # no more - done
+            break
 
-    split_pos = len(scripts) // 2
-    left, left_h = taproot_tree_helper(scripts[0:split_pos])
-    right, right_h = taproot_tree_helper(scripts[split_pos:])
-    left = [(version, script, control + right_h) for version, script, control in left]
-    right = [(version, script, control + left_h) for version, script, control in right]
-    if right_h < left_h:
-        right_h, left_h = left_h, right_h
-    h = ngu.secp256k1.tagged_sha256(b"TapBranch", left_h + right_h)
-    return left + right, h
+        # key derivation info required for policy
+        got, char = read_until(s, b"/")
+        assert char, "key derivation missing"
+        num = int(got.decode())
+        if num not in r:
+            r.append(num)
+
+        assert s.read(1) in b"<*", "need multipath"
+
+
+    assert len(r) == len(keys_info), "Invalid policy"
+    assert r == list(range(len(r))), "Out of order"

@@ -16,6 +16,6 @@ raw = main.ENCODED_SECRET
 pa.change(new_secret=raw)
 pa.new_main_secret(raw)
 
-print("New key in effect: %s" % settings.get('xpub', 'MISSING'))
-print("Fingerprint: %s" % xfp2str(settings.get('xfp', 0)))
+print("New key in effect (encoded): %s" % settings.get('xpub', 'MISSING'))
+print(".. w/ XFP= %s" % xfp2str(settings.get('xfp', 0)))
 

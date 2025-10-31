@@ -19,9 +19,9 @@ class CCBusyError(RuntimeError):
 # HSM is blocking your action
 class HSMDenied(RuntimeError):
     pass
-
 class HSMCMDDisabled(RuntimeError):
     pass
+
 
 # PSBT / transaction related
 class FatalPSBTIssue(RuntimeError):
@@ -49,6 +49,14 @@ class QRDecodeExplained(ValueError):
 
 # Text about the problem w/ a address during search
 class UnknownAddressExplained(ValueError):
+    pass
+
+# We're not going to (co-)sign using spending policy features
+class SpendPolicyViolation(RuntimeError):
+    pass
+
+# data too big for simple QR
+class QRTooBigError(ValueError):
     pass
 
 # EOF

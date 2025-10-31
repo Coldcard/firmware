@@ -9,22 +9,20 @@ from uhashlib import sha256
 from uasyncio import sleep_ms
 from ubinascii import hexlify as b2a_hex
 from utils import imported, problem_file_line, get_filesize, encode_seed_qr
-from utils import xfp2str, B2A, txid_from_fname
+from utils import xfp2str, B2A, txid_from_fname, wipe_if_deltamode
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
 from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt, OK, X, ux_render_words
-from export import make_json_wallet, make_summary_file, make_descriptor_wallet_export
+from export import export_contents, make_summary_file, make_descriptor_wallet_export
 from export import make_bitcoin_core_wallet, generate_wasabi_wallet, generate_generic_export
 from export import generate_unchained_export, generate_electrum_wallet
 from files import CardSlot, CardMissingError, needs_microsd
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR, MAX_TXN_LEN_MK4
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2TR
 from glob import settings
 from pincodes import pa
 from menu import start_chooser, MenuSystem, MenuItem
 from version import MAX_TXN_LEN
 from charcodes import KEY_NFC, KEY_QR, KEY_CANCEL
 
-
-CLEAR_PIN = '999999-999999'
 
 async def start_selftest(*args):
     # selftest is harmless, no need to warn anymore,
@@ -321,7 +319,7 @@ Press (6) to prove you read to the end of this message.''', title='WARNING', esc
         if ch == '6': break
 
     # do the actual picking
-    pin = await lll.get_new_pin(title)
+    pin = await lll.get_new_pin()
     del lll
 
     if pin is None: return
@@ -525,7 +523,7 @@ async def new_from_dice(menu, label, item):
 
 async def any_active_duress_ux():
     from trick_pins import tp
-    tp.reload()
+    # if TPs are hidden this msg will not be shown
     if any(tp.get_duress_pins()):
         await ux_show_story('You have one or more duress wallets defined '
                             'under Trick PINs. Please empty them, and clear '
@@ -562,7 +560,7 @@ async def convert_ephemeral_to_master(*a):
 
     msg += 'A reboot is part of this process. '
     msg += 'PIN code, and %s funds are not affected.' % _type
-    if not await ux_confirm(msg):
+    if not await ux_confirm(msg, confirm_key='4'):
         return await ux_aborted()
 
     # settings.save is part of re-building fs
@@ -574,23 +572,29 @@ async def clear_seed(*a):
     # This is super dangerous for the customer's money.
     import seed
 
-    if await any_active_duress_ux():
-        return await ux_aborted()
+    # in hobble mode, they cannot reach duress wallets and/or maybe we don't
+    # want to reveal them? So don't block them based on that.
+    if not pa.hobbled_mode:
+        if await any_active_duress_ux():
+            return await ux_aborted()
 
     if not await ux_confirm('Wipe seed words and reset wallet. '
                             'All funds will be lost. '
                             'You better have a backup of the seed words. '
                             'All settings like multisig wallets are also wiped. '
-                            'Saved temporary seed settings and Seed Vault are lost.'):
+                            'Saved temporary seed settings and Seed Vault are lost. '
+                            'Trick PINs are also completely removed.'):
         return await ux_aborted()
 
-    ch = await ux_show_story('''Are you REALLY sure though???\n\n\
+    if not await ux_confirm('''Are you REALLY sure though???\n\n\
 This action will certainly cause you to lose all funds associated with this wallet, \
 unless you have a backup of the seed words and know how to import them into a \
-new wallet.\n\nPress (4) to prove you read to the end of this message and accept all \
-consequences.''', escape='4')
-    if ch != '4':
+new wallet.''', 'AGAIN...', confirm_key='4'):
         return await ux_aborted()
+
+    # clear all trick PINs from SE2
+    from trick_pins import tp
+    tp.clear_all()
 
     # clear settings, address cache, settings from tmp seeds / seedvault seeds
     from files import wipe_flash_filesystem
@@ -616,7 +620,12 @@ def render_master_secrets(mode, raw, node):
         qr = ' '.join(w[0:4] for w in words)
         qr_alnum = True
 
-        msg = 'Seed words (%d):\n' % len(words)
+        title = 'Seed words (%d):' % len(words)
+        msg = ""
+        if not version.has_qwerty:
+            msg += title + "\n"
+            title = None
+
         msg += ux_render_words(words)
 
         if stash.bip39_passphrase:
@@ -626,28 +635,30 @@ def render_master_secrets(mode, raw, node):
 
 
     elif mode == 'xprv':
+        title = "Extended Private Key" if version.has_qwerty else None
         msg = c.serialize_private(node)
         qr = msg
 
     elif mode == 'master':
+        title = "Master Secret" if version.has_qwerty else None
         msg = '%d bytes:\n\n' % len(raw)
         qr = str(b2a_hex(raw), 'ascii')
         msg += qr
     else:
         raise ValueError(mode)
 
-    return msg, qr, qr_alnum
+    return title, msg, qr, qr_alnum
 
 async def view_seed_words(*a):
-    import stash
-
     if not await ux_confirm('The next screen will show the seed words'
                             ' (and if defined, your BIP-39 passphrase).'
                             '\n\nAnyone with knowledge of those words '
                             'can control all funds in this wallet.'):
         return
 
-    from glob import dis
+    import stash
+    from glob import dis, NFC
+
     dis.fullscreen("Wait...")
     dis.busy_bar(True)
 
@@ -657,33 +668,35 @@ async def view_seed_words(*a):
     raw = mode = None
     if stash.bip39_passphrase:
         # get main secret - bypass tmp
-        with stash.SensitiveValues(bypass_tmp=True) as sv:
-            if not sv.deltamode:
-                assert sv.mode == "words"
-                raw = sv.raw[:]
-                mode = sv.mode
+        with stash.SensitiveValues(bypass_tmp=True, enforce_delta=True) as sv:
+            assert sv.mode == "words"
+            raw = sv.raw[:]
+            mode = sv.mode
 
         stash.SensitiveValues.clear_cache()
 
-    with stash.SensitiveValues(bypass_tmp=False) as sv:
-        if sv.deltamode:
-            # give up and wipe self rather than show true seed values.
-            import callgate
-            callgate.fast_wipe()
-
+    with stash.SensitiveValues(bypass_tmp=False, enforce_delta=True) as sv:
         dis.busy_bar(False)
-        msg, qr, qr_alnum = render_master_secrets(mode or sv.mode,
-                                                  raw or sv.raw,
-                                                  sv.node)
-
+        title, msg, qr, qr_alnum = render_master_secrets(mode or sv.mode,
+                                                         raw or sv.raw,
+                                                         sv.node)
+        esc = "1"
         if not version.has_qwerty:
-            msg += '\n\nPress (1) to view as QR Code.'
+            msg += '\n\nPress (1) to view as QR Code'
+            if NFC:
+                msg += ", (3) to share via NFC"
+                esc += "3"
+            msg += "."
 
         while 1:
-            ch = await ux_show_story(msg, sensitive=True, escape='1'+KEY_QR)
+            ch = await ux_show_story(msg, title=title, sensitive=True, escape=esc,
+                                     hint_icons=KEY_QR+(KEY_NFC if NFC else ''))
             if ch in '1'+KEY_QR:
                 from ux import show_qr_code
-                await show_qr_code(qr, qr_alnum)
+                await show_qr_code(qr, qr_alnum, is_secret=True)
+                continue
+            elif NFC and (ch in '3'+KEY_NFC):
+                await NFC.share_text(qr, is_secret=True)
                 continue
             break
 
@@ -706,12 +719,7 @@ async def export_seedqr(*a):
 
     # Note: cannot reach this menu item if no words. If they are tmp, that's cool.
 
-    with stash.SensitiveValues(bypass_tmp=False) as sv:
-        if sv.deltamode:
-            # give up and wipe self rather than show true seed values.
-            import callgate
-            callgate.fast_wipe()
-
+    with stash.SensitiveValues(bypass_tmp=False, enforce_delta=True) as sv:
         if sv.mode != 'words':
             raise ValueError(sv.mode)
 
@@ -723,7 +731,7 @@ async def export_seedqr(*a):
         del words
 
     from ux import show_qr_code
-    await show_qr_code(qr, True, msg="SeedQR")
+    await show_qr_code(qr, True, msg="SeedQR", is_secret=True)
 
     stash.blank_object(qr)
 
@@ -794,26 +802,37 @@ async def start_login_sequence():
 
     # If that didn't work, or no skip defined, force
     # them to login successfully.
-
+    sp_unlock = False
     try:
+        from trick_pins import tp
+
         # Get a PIN and try to use it to login
         # - does warnings about attempt usage counts
         await block_until_login()
 
+        sp_unlock = tp.was_sp_unlock()
+        if sp_unlock:
+            # Trying to unlock spending policy: ask for main PIN next.
+            await ux_show_story("Spending Policy Unlock: Please provide Main PIN next.")
+            pa.reset()
+            await block_until_login()
+
+            # we don't really know if that was the Main PIN (could easily be the bypass
+            # PIN again) and if it's a duress wallet, that's cool...
+
         # Do we need to do countdown delay? (real or otherwise)
-        # Q/Mk4 approach:
-        # - wiping has already occured if that was picked
+        # - wiping has already occured if that was selected by trick details
         # - delay is variable, stored in tc_arg
-        from trick_pins import tp
         delay = tp.was_countdown_pin()
 
-        # Maybe they do know the right PIN, but do a delay anyway, because they wanted that
+        # Maybe they do know the right PIN, but always do a delay anyway, because they wanted that
         if not delay:
             delay = settings.get('lgto', 0)
 
         if delay:
             # kill some time, with countdown, and get "the" PIN again for real login
             pa.reset()
+
             await ux_login_countdown(delay * (60 if not version.is_devmode else 1))
 
             # keep it simple for Mk4+: just challenge again for any PIN
@@ -827,7 +846,7 @@ async def start_login_sequence():
         # safe to do so. Remember the bootrom checks PIN on every access to
         # the secret, so "letting" them past this point is harmless if they don't know
         # the true pin.
-        sys.print_exception(exc)
+        # sys.print_exception(exc)
         if not pa.is_successful():
             raise
 
@@ -841,16 +860,32 @@ async def start_login_sequence():
     # handle upgrades/downgrade issues
     try:
         await version_migration()
-    except:
-        pass
+    except: pass
 
     # Maybe insist on the "right" microSD being already installed?
     try:
         from pwsave import MicroSD2FA
         MicroSD2FA.enforce_policy()
-    except BaseException as exc:
-        # robustness: keep going!
-        sys.print_exception(exc)
+    except: pass
+
+    # apply the hobbling for the spending policy, if appropriate
+    try:
+        from ccc import sssp_spending_policy, sssp_word_challenge
+
+        if sp_unlock and sssp_spending_policy('words'):
+            # challenge them also for first and last seed word! (will reboot on fail)
+            await sssp_word_challenge()
+            dis.fullscreen("Startup...")
+
+        if sp_unlock:
+            # Disable spending policy going forward; user has to re-enable.
+            pa.hobbled_mode = False
+            sssp_spending_policy('en', set_value=False)
+        else:
+            # normal entry mode, but might have policy enabled, if so enable it now.
+            pa.hobbled_mode = sssp_spending_policy('en')
+
+    except: pass
 
     # implement idle timeout now that we are logged-in
     IMPT.start_task('idle', idle_logout())
@@ -946,7 +981,7 @@ async def restore_main_secret(*a):
     goto_top_menu()
 
 def make_top_menu():
-    from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu
+    from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu, HobbledTopMenu
     from glob import hsm_active, settings
     from pincodes import pa
 
@@ -962,7 +997,9 @@ def make_top_menu():
         assert pa.is_successful(), "nonblank but wrong pin"
 
         if pa.has_secrets():
-            _cls = NormalSystem[:]
+            # let them do a few things, but not all the things, when "hobbled"
+            _cls = HobbledTopMenu[:] if pa.hobbled_mode else NormalSystem[:]
+
             if pa.tmp_value or settings.get("hmx", False):
                 active_xfp = settings.get("xfp", 0)
                 sl, sr = ("[", "]") if pa.tmp_value else ("<", ">")
@@ -994,7 +1031,7 @@ SENSITIVE_NOT_SECRET = '''
 The file created is sensitive--in terms of privacy--but should not \
 compromise your funds directly.'''
 
-PICK_ACCOUNT = '''\n\nPress (1) to enter a non-zero account number.'''
+PICK_ACCOUNT = '\n\nPress %s to continue. Press (1) to enter a non-zero account number.' % OK
 
 
 async def dump_summary(*A):
@@ -1127,19 +1164,21 @@ def ss_descriptor_export_story(addition="", background="", acct=True):
 
 async def ss_descriptor_skeleton(_0, _1, item):
     # Export of descriptor data (wallet)
-    int_ext, addition, f_pattern = None, "", "descriptor.txt"
+    addition, f_pattern = "", "descriptor.txt"
+    int_ext = direct_way = None
     allowed_af = chains.SINGLESIG_AF
     if item.arg:
-        int_ext, allowed_af, ll, f_pattern = item.arg
+        int_ext, allowed_af, ll, f_pattern, direct_way = item.arg
         addition = " for " + ll
 
-    ch = await ux_show_story(ss_descriptor_export_story(addition), escape='1')
-
     account_num = 0
-    if ch == '1':
-        account_num = await ux_enter_bip32_index('Account Number:', unlimited=True) or 0
-    elif ch != 'y':
-        return
+    if not direct_way:
+        ch = await ux_show_story(ss_descriptor_export_story(addition), escape='1')
+
+        if ch == '1':
+            account_num = await ux_enter_bip32_index('Account Number:', unlimited=True) or 0
+        elif ch != 'y':
+            return
 
     if int_ext is None:
         ch = await ux_show_story(
@@ -1150,13 +1189,12 @@ async def ss_descriptor_skeleton(_0, _1, item):
         int_ext = False if ch == "1" else True
 
     if len(allowed_af) == 1:
-        await make_descriptor_wallet_export(allowed_af[0], account_num,
-                                            int_ext=int_ext,
-                                            fname_pattern=f_pattern)
+        await make_descriptor_wallet_export(allowed_af[0], account_num, int_ext=int_ext,
+                                            fname_pattern=f_pattern, direct_way=direct_way)
     else:
         rv = [
             MenuItem(chains.addr_fmt_label(af), f=descriptor_skeleton_step2,
-                     arg=(af, account_num, int_ext, f_pattern))
+                     arg=(af, account_num, int_ext, f_pattern, direct_way))
             for af in allowed_af
         ]
         the_ux.push(MenuSystem(rv))
@@ -1190,9 +1228,9 @@ async def samourai_account_descriptor(name, account_num):
 
 async def descriptor_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
-    addr_fmt, account_num, int_ext, f_pattern = item.arg
+    addr_fmt, account_num, int_ext, f_pattern, dw = item.arg
     await make_descriptor_wallet_export(addr_fmt, account_num, int_ext=int_ext,
-                                        fname_pattern=f_pattern)
+                                        fname_pattern=f_pattern, direct_way=dw)
 
 
 async def bitcoin_core_skeleton(*A):
@@ -1218,9 +1256,9 @@ without ever connecting this Coldcard to a computer.\
 async def electrum_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
     addr_fmt, account_num = item.arg
-    await make_json_wallet('Electrum wallet',
-                           lambda: generate_electrum_wallet(addr_fmt, account_num),
-                           "new-electrum.json")
+    await export_contents('Electrum wallet',
+                          lambda: generate_electrum_wallet(addr_fmt, account_num),
+                          "new-electrum.json", is_json=True)
 
 async def _generic_export(prompt, label, f_pattern):
     # like the Multisig export, make a single JSON file with
@@ -1232,7 +1270,8 @@ async def _generic_export(prompt, label, f_pattern):
     elif ch != 'y':
         return
 
-    await make_json_wallet(label, lambda: generate_generic_export(account_num), f_pattern)
+    await export_contents(label, lambda: generate_generic_export(account_num),
+                          f_pattern, is_json=True)
 
 async def generic_skeleton(*A):
     # like the Multisig export, make a single JSON file with
@@ -1267,7 +1306,8 @@ You can then open that file in Wasabi without ever connecting this Coldcard to a
         return
 
     # no choices to be made, just do it.
-    await make_json_wallet('Wasabi wallet', lambda: generate_wasabi_wallet(), 'new-wasabi.json')
+    await export_contents('Wasabi wallet', lambda: generate_wasabi_wallet(),
+                          'new-wasabi.json', is_json=True)
 
 async def unchained_capital_export(*a):
     # they were using our airgapped export, and the BIP-45 path from that
@@ -1284,9 +1324,8 @@ This saves multisig XPUB information required to setup on the Unchained platform
     xfp = xfp2str(settings.get('xfp', 0))
     fname = 'unchained-%s.json' % xfp
 
-    await make_json_wallet('Unchained',
-                           lambda: generate_unchained_export(account_num),
-                           fname)
+    await export_contents('Unchained', lambda: generate_unchained_export(account_num),
+                          fname, is_json=True)
 
 
 async def backup_everything(*A):
@@ -1308,17 +1347,13 @@ async def verify_backup(*A):
     # do a limited CRC-check over encrypted file
     await backups.verify_backup_file(fn)
 
-async def import_extended_key_as_secret(extended_key, ephemeral, meta=None):
+async def import_extended_key_as_secret(extended_key, ephemeral, origin=None):
     try:
         import seed
         if ephemeral:
-            await seed.set_ephemeral_seed_extended_key(extended_key, meta=meta)
+            await seed.set_ephemeral_seed_extended_key(extended_key, origin=origin)
         else:
             await seed.set_seed_extended_key(extended_key)
-    except ValueError:
-        msg = ("Sorry, wasn't able to find a valid extended private key to import. "
-               "It should be at the start of a line, and probably starts with 'xprv'.")
-        await ux_show_story(title="FAILED", msg=msg)
     except Exception as e:
         await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
@@ -1364,7 +1399,7 @@ async def import_xprv(_1, _2, item):
     else:
         # only get here if NFC was not chosen
         # pick a likely-looking file.
-        fn = await file_picker(suffix='txt', min_size=50, max_size=2000, taster=contains_xprv,
+        fn = await file_picker(suffix='.txt', min_size=50, max_size=2000, taster=contains_xprv,
                                none_msg="Must contain " + label + ".", **choice)
 
         if not fn: return
@@ -1376,50 +1411,29 @@ async def import_xprv(_1, _2, item):
                         extended_key = ln
                         break
 
-    await import_extended_key_as_secret(extended_key, ephemeral, meta='Imported XPRV')
+    await import_extended_key_as_secret(extended_key, ephemeral, origin='Imported XPRV')
     # not reached; will do reset.
 
-EMPTY_RESTORE_MSG = '''\
+async def need_clear_seed(*a):
+    await ux_show_story('''\
 You must clear the wallet seed before restoring a backup because it replaces \
 the seed value and the old seed would be lost.\n\n\
-Visit the advanced menu and choose 'Destroy Seed'.'''
+Visit the advanced menu and choose 'Destroy Seed'.''')
 
-async def restore_temporary(*A):
-
+async def restore_backup(a, b, item):
+    # normal word based imports (tmp or master depending on item.arg)
     fn = await file_picker(suffix=".7z")
-
     if fn:
         import backups
-        await backups.restore_complete(fn, temporary=True)
+        await backups.restore_complete(fn, item.arg, True)
 
-async def restore_everything(*A):
-
-    if not pa.is_secret_blank():
-        await ux_show_story(EMPTY_RESTORE_MSG)
-        return
-
-    # restore everything, using a password, from single encrypted 7z file
-    fn = await file_picker(suffix='.7z')
-
+async def restore_backup_dev(*a):
+    # used ONLY for Restore Bkup in I Am Developer
+    fn = await file_picker(suffix=[".7z", ".txt"])
     if fn:
+        words = False if fn[-3:] == ".7z" else None
         import backups
-        await backups.restore_complete(fn)
-
-async def restore_everything_cleartext(*A):
-    # Asssume no password on backup file; devs and crazy people only
-
-    if not pa.is_secret_blank():
-        await ux_show_story(EMPTY_RESTORE_MSG)
-        return
-
-    # restore everything, using NO password, from single text file, like would be wrapped in 7z
-    fn = await file_picker(suffix='.txt')
-
-    if fn:
-        import backups
-        prob = await backups.restore_complete_doit(fn, [])
-        if prob:
-            await ux_show_story(prob, title='FAILED')
+        await backups.restore_complete(fn, not pa.is_secret_blank(), words)
 
 async def bkpw_override(*A):
     # allows user to:
@@ -1433,9 +1447,7 @@ async def bkpw_override(*A):
     if pa.is_secret_blank():
         return
 
-    if pa.is_deltamode():
-        import callgate
-        callgate.fast_wipe()
+    wipe_if_deltamode()
 
     while True:
         pwd = settings.get("bkpw", None)
@@ -1483,7 +1495,7 @@ async def wipe_filesystem(*A):
 Erase internal filesystem and rebuild it. Resets contents of internal flash area \
 used for settings, address search cache, and HSM config file. Does not affect funds, \
 or seed words but will reset settings used with other temporary seeds & BIP-39 passphrases. \
-Does not affect MicroSD card, if any.'''):
+Does not affect MicroSD card, if any.''', confirm_key="4"):
         return
 
     from files import wipe_flash_filesystem
@@ -1518,47 +1530,52 @@ async def qr_share_file(_1, _2, item):
         return f.endswith('.psbt') or f.endswith('.txn') \
             or f.endswith('.txt') or f.endswith(".json") or fname.endswith(".sig")
 
-    while 1:
-        txid = None
-        fn = await file_picker(min_size=10, max_size=MAX_TXN_LEN_MK4, taster=is_suitable)
-        if not fn: return
+    try:
+        while 1:
+            txid = None
+            fn = await file_picker(min_size=10, max_size=MAX_TXN_LEN, taster=is_suitable)
+            if not fn: return
 
-        basename = fn.split('/')[-1]
-        ext = fn.split('.')[-1].lower()
+            basename = fn.split('/')[-1]
+            ext = fn.split('.')[-1].lower()
 
-        try:
-            with CardSlot() as card:
-                with open(fn, 'rb') as fp:
-                    data = fp.read()
+            try:
+                with CardSlot() as card:
+                    with open(fn, 'rb') as fp:
+                        data = fp.read()
 
-        except CardMissingError:
-            await needs_microsd()
-            return
+            except CardMissingError:
+                await needs_microsd()
+                return
 
-        if ext == "txn":
-            tc = "T"
-            txid = txid_from_fname(basename)
-            if data[2:8] == b'000000':
-                # it's a txn, and we wrote as hex
+            if ext == "txn":
+                tc = "T"
+                txid = txid_from_fname(basename)
+                if data[2:8] == b'000000':
+                    # it's a txn, and we wrote as hex
+                    data = data.decode()
+                else:
+                    assert data[2:8] == bytes(6)
+                    data = b2a_hex(data).decode()
+            elif data[0:5] == b'psbt\xff':
+                tc = "P"
+            elif data[0:6] in (b'cHNidP', b'707362'):
+                tc = "U"
+                data = data.decode().strip()
+            elif ext in ('txt', 'json', 'sig'):
+                tc = "U"
+                if ext == "json":
+                    tc = "J"
                 data = data.decode()
             else:
-                assert data[2:8] == bytes(6)
-                data = b2a_hex(data).decode()
-        elif data[0:5] == b'psbt\xff':
-            tc = "P"
-        elif data[0:6] in (b'cHNidP', b'707362'):
-            tc = "U"
-            data = data.decode().strip()
-        elif ext in ('txt', 'json', 'sig'):
-            tc = "U"
-            if ext == "json":
-                tc = "J"
-            data = data.decode()
-        else:
-            raise ValueError(ext)
+                raise ValueError(ext)
 
-        await export_by_qr(data, txid, tc, force_bbqr=force_bbqr)
-
+            await export_by_qr(data, txid, tc, force_bbqr=force_bbqr)
+    except Exception as e:
+        await ux_show_story(
+            title="ERROR",
+            msg="Failed to share file via QR.\n\n%s\n%s" % (e, problem_file_line(e))
+        )
 
 async def nfc_share_file(*A):
     # Share txt, txn and PSBT files over NFC.
@@ -1668,41 +1685,58 @@ async def list_files(*A):
     from pincodes import pa
 
     digest = chk.digest()
-    basename = fn.rsplit('/', 1)[-1]
-    msg_base = 'SHA256(%s)\n\n%s\n\nPress ' % (basename, B2A(digest))
-    escape = "6"
+    path, basename = fn.rsplit('/', 1)
+    msg_base = 'SHA256(%s)\n\n' + B2A(digest) + '\n\nPress (1) to rename file, '
+    escape = "61"
     if pa.has_secrets():
-        msg_sign = '(4) to sign file digest and export detached signature, '
+        msg_base += '(4) to sign file digest and export detached signature, '
         escape += "4"
-    else:
-        msg_sign = ""
-    msg_delete = '(6) to delete.'
-    msg = msg_base + msg_sign + msg_delete
+    msg_base += '(6) to delete.'
+
     while True:
-        ch = await ux_show_story(msg, escape=escape)
+        ch = await ux_show_story(msg_base % basename, escape=escape)
         if ch == "x": break
-        if ch in '46':
+        if ch in '461':
             with CardSlot() as card:
                 if ch == '6':
                     card.securely_blank_file(fn)
                     break
+                elif ch == '1':
+                    new_basename = await ux_input_text(basename, max_len=32, min_len=3)
+                    if new_basename:
+                        try:
+                            # prohibit both slashes and space in filenames
+                            for s in "\/ ":
+                                assert s not in new_basename, "illegal char"
+                            uos.rename(path + "/" + basename, path + "/" + new_basename)
+                            basename = new_basename
+                        except Exception as e:
+                            await ux_show_story("Failed to rename the file. " + str(e),
+                                                title="Failure")
                 else:
-                    from auth import write_sig_file
+                    from msgsign import write_sig_file
 
                     sig_nice = write_sig_file([(digest, fn)])
                     await ux_show_story("Signature file %s written." % sig_nice)
-                    msg = msg_base + msg_delete
     return
 
 async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
                       choices=None, none_msg=None, force_vdisk=False, slot_b=None,
-                      allow_batch_sign=False, ux=True):
+                      allow_batch=False, ux=True):
     # present a menu w/ a list of files... to be read
     # - optionally, enforce a max size, and provide a "tasting" function
-    # - if msg==None, don't prompt, just do the search and return list
+    # - if (not ux), don't prompt, just do the search and return list
     # - if choices is provided; skip search process
     # - escape: allow these chars to skip picking process
     # - slot_b: None=>pick slot w/ card in it, or A if both.
+    # - allow_batch: adds an "all of the above" choice: ("menu label", menu_handler)
+    # - suffix argument MUST contain the dot (.txt), if list of suffixes, all MUST
+
+    if suffix:
+        # actually make it a list of "suffixes"
+        if not isinstance(suffix, list):
+            suffix = [suffix]
+        assert all(s[0] == '.' for s in suffix)
 
     if choices is None:
         choices = []
@@ -1716,13 +1750,13 @@ async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
                             # ignore subdirs
                             continue
 
-                        if suffix:
-                            if not isinstance(suffix, list):
-                                suffix = [suffix]
-                            if not any([fn.lower().endswith(s) for s in suffix]):
-                                continue
+                        if fn[0] == '.':
+                            # unix-style hidden files
+                            continue
 
-                        if fn[0] == '.': continue
+                        if suffix and not any(fn.lower().endswith(s) for s in suffix):
+                            # wrong suffix, skip
+                            continue
 
                         full_fname = path + '/' + fn
 
@@ -1746,7 +1780,7 @@ async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
                         label = fn
                         while label in sofar:
                             # just the file name isn't unique enough sometimes?
-                            # - shouldn't happen anymore now that we dno't support internal FS
+                            # - shouldn't happen anymore now that we don't support internal FS
                             # - unless we do muliple paths
                             label += path.split('/')[-1] + '/' + fn
 
@@ -1768,7 +1802,7 @@ async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
         if none_msg:
             msg += none_msg
         if suffix:
-            msg += '\n\nThe filename must end in "%s". ' % suffix
+            msg += '\n\nThe filename must end in: ' + ' OR '.join(suffix)
 
         msg += '\n\nMaybe insert (another) SD card and try again?'
 
@@ -1783,10 +1817,10 @@ async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
     choices.sort()
 
     items = [MenuItem(label, f=clicked, arg=(path, fn)) for label, path, fn in choices]
-    if allow_batch_sign and len(choices) > 1:
-        # we know that each choices member is psbt as allow_batch_sign is only True
-        # in Ready To Sign
-        items.insert(0, MenuItem("[Sign All]", f=batch_sign, arg=choices))
+    if allow_batch and len(choices) > 1:
+        # Allow an "all" selection
+        label, funct = allow_batch
+        items.insert(0, MenuItem(label, f=funct, arg=choices))
 
     menu = MenuSystem(items)
     the_ux.push(menu)
@@ -1848,7 +1882,7 @@ async def _batch_sign(choices=None):
             return
         assert isinstance(picked, dict)
 
-        choices = await file_picker(suffix='psbt', min_size=50, ux=False,
+        choices = await file_picker(suffix='.psbt', min_size=50, ux=False,
                                     max_size=MAX_TXN_LEN, taster=is_psbt, **picked)
 
     if not choices:
@@ -1874,20 +1908,22 @@ async def batch_sign(_1, _2, item):
         import sys
         await ux_show_story("FAILURE: batch sign failed\n\n" + problem_file_line(e))
 
-
-async def ready2sign(*a):
-    # Top menu choice of top menu! Signing!
-    # - check if any signable in SD card, if so do it
+async def _ready2sign(intro="", probe=True, miniscript_wallet=None):
+    # - if probe=True -> check if any signable in SD card (A slot on Q), if so do it
+    # - if probe=False -> offer all enabled import options via UX
     # - if no card, check virtual disk for PSBT
-    # - if still nothing, then talk about USB connection
     from pincodes import pa
     from glob import NFC
 
     opt = {}
+    choices = []
+    sb_only = False
 
-    # just check if we have candidates, no UI
-    choices = await file_picker(suffix='psbt', min_size=50, ux=False,
-                                max_size=MAX_TXN_LEN, taster=is_psbt)
+    if probe:
+        # just check if we have candidates, no UI
+        sb_only = True
+        choices = await file_picker(suffix='.psbt', min_size=50, ux=False,
+                                    max_size=MAX_TXN_LEN, taster=is_psbt)
 
     if pa.tmp_value:
         title = '[%s]' % xfp2str(settings.get('xfp'))
@@ -1895,25 +1931,17 @@ async def ready2sign(*a):
         title = None
 
     if not choices:
-        msg = '''Coldcard is ready to sign spending transactions!
-
-Put the proposed transaction onto MicroSD card \
-in PSBT format (Partially Signed Bitcoin Transaction) \
-or upload a transaction to be signed \
-from your desktop wallet software or command line tools.\n\n'''
-
-        footnotes = ("\n\nYou will always be prompted to confirm the details "
-                     "before any signature is performed.")
-
         # if we have only one SD card inserted, at this point, we know no PSBTs on them
         # as above file_picker already checked
         # if we have both inserted, A was already checked - so only care about B
-        picked = await import_export_prompt("PSBT", is_import=True, intro=msg,
-                                            footnotes=footnotes, slot_b_only=True,
+        footnotes = ("You will always be prompted to confirm the details "
+                     "before any signature is performed.")
+        picked = await import_export_prompt("PSBT", is_import=True, intro=intro,
+                                            footnotes=footnotes, slot_b_only=sb_only,
                                             title=title)
         if isinstance(picked, dict):
             opt = picked  # reset options to what was chosen by user
-            choices = await file_picker(suffix='psbt', min_size=50, ux=False,
+            choices = await file_picker(suffix='.psbt', min_size=50, ux=False,
                                         max_size=MAX_TXN_LEN, taster=is_psbt,
                                         **opt)
             if not choices:
@@ -1922,9 +1950,9 @@ from your desktop wallet software or command line tools.\n\n'''
                 return
         else:
             if NFC and picked == KEY_NFC:
-                await NFC.start_psbt_rx()
+                await NFC.start_psbt_rx(miniscript_wallet)
             if picked == KEY_QR:
-                await _scan_any_qr()
+                await _scan_any_qr(miniscript_wallet=miniscript_wallet)
 
             return
 
@@ -1934,14 +1962,27 @@ from your desktop wallet software or command line tools.\n\n'''
         input_psbt = path + '/' + fn
     else:
         # multiples - ask which, and offer batch to sign them all
-        input_psbt = await file_picker(choices=choices, allow_batch_sign=True)
+        input_psbt = await file_picker(choices=choices, allow_batch=("[Sign All]", batch_sign))
         if not input_psbt:
             return
 
     # start the process
     from auth import sign_psbt_file
-
+    opt["miniscript_wallet"] = miniscript_wallet
     await sign_psbt_file(input_psbt, **opt)
+
+
+async def ready2sign(*a):
+    # Top menu choice of top menu! Signing!
+    # - check if any signable in SD card, if so do it
+    # - if no card, check virtual disk for PSBT
+
+    await _ready2sign('''Coldcard is ready to sign spending transactions!
+
+Put the proposed transaction onto MicroSD card \
+in PSBT format (Partially Signed Bitcoin Transaction) \
+or upload a transaction to be signed \
+from your desktop wallet software or command line tools.''')
 
 
 async def sign_message_on_sd(*a):
@@ -1955,7 +1996,7 @@ async def sign_message_on_sd(*a):
             # min 1 line max 3 lines
             return 1 <= len(lines) <= 3
 
-    fn = await file_picker(suffix=['txt', "json"], min_size=2, max_size=500, taster=is_signable,
+    fn = await file_picker(suffix=['.txt', ".json"], min_size=2, max_size=500, taster=is_signable,
                            none_msg=('Must be txt file with one msg line, optionally '
                                      'followed by a subkey derivation path on a second line '
                                      'and/or address format on third line. JSON msg signing '
@@ -1984,7 +2025,7 @@ async def verify_sig_file(*a):
         return
 
     # start the process
-    from auth import verify_txt_sig_file
+    from msgsign import verify_txt_sig_file
     await verify_txt_sig_file(fn)
 
 
@@ -2031,7 +2072,7 @@ Write it down.'''
     while 1:
         lll.reset()
         lll.subtitle = "New " + title
-        pin = await lll.get_new_pin(title, allow_clear=False)
+        pin = await lll.get_new_pin()
 
         if pin is None:
             return await ux_aborted()
@@ -2324,10 +2365,11 @@ async def scan_any_qr(menu, label, item):
     expect_secret, tmp = item.arg
     await _scan_any_qr(expect_secret, tmp)
 
-async def _scan_any_qr(expect_secret=False, tmp=False):
+async def _scan_any_qr(expect_secret=False, tmp=False, miniscript_wallet=None):
     from ux_q1 import QRScannerInteraction
     x = QRScannerInteraction()
-    await x.scan_anything(expect_secret=expect_secret, tmp=tmp)
+    await x.scan_anything(expect_secret=expect_secret, tmp=tmp,
+                          miniscript_wallet=miniscript_wallet)
 
 
 PUSHTX_SUPPLIERS = [
@@ -2336,6 +2378,21 @@ PUSHTX_SUPPLIERS = [
     # from https://github.com/mempool/mempool/pull/5132
     ('mempool.space', 'https://mempool.space/pushtx#'),
 ]
+
+async def feature_requires_nfc():
+    # prompt them that it's need (iff not already enabled)
+    # - return F if they decline
+    if settings.get('nfc'):
+        return True
+
+    # force on NFC, so it works... but they can still turn it off later, etc.
+    if not await ux_confirm("This feature requires NFC to be enabled. %s to enable." % OK):
+        return False
+
+    settings.set("nfc", 1)
+    await change_nfc_enable(1)
+
+    return True
 
 async def pushtx_setup_menu(*a):
     # let them pick a URL from menu to enable "pushtx" feature, and provide
@@ -2355,12 +2412,9 @@ async def pushtx_setup_menu(*a):
         if ch != "y":
             return
 
-    if not settings.get('nfc'):
-        # force on NFC, so it works... but they can still turn it off later, etc.
-        if not await ux_confirm("This feature requires NFC to be enabled. %s to enable." % OK):
-            return
-        settings.set("nfc", 1)
-        await change_nfc_enable(1)
+    if not await feature_requires_nfc():
+        # they don't want to proceed
+        return
 
     async def doit(menu, picked, xx_self):
         # using stock values, or Disable 

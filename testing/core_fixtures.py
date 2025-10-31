@@ -17,6 +17,11 @@ def _sim_exec(device, cmd, binary=False, timeout=60000):
     # print(f'sim_exec: {cmd!r} -> {s!r}')
     return s.decode('utf-8') if not isinstance(s, str) else s
 
+def _sim_eval(device, cmd, binary=False, timeout=None):
+    s = device.send_recv(b'EVAL' + cmd.encode('utf-8'), timeout=timeout)
+    if binary: return s
+    return s.decode('utf-8')
+
 def _cap_story(device):
     cmd = "RV.write('\0'.join(sim_display.story or []))"
     rv = _sim_exec(device, cmd)
@@ -39,6 +44,10 @@ def _press_select(device, is_Q, timeout=None):
     btn = KEY_ENTER if is_Q else "y"
     _need_keypress(device, btn, timeout=timeout)
 
+def _press_cancel(device, is_Q, timeout=None):
+    btn = KEY_CANCEL if is_Q else "x"
+    _need_keypress(device, btn, timeout=timeout)
+
 def _dev_hw_label(device):
     # gets a short string that labels product: mk4 / q1, etc
     v = device.send_recv(CCProtocolPacker.version()).split()
@@ -46,7 +55,7 @@ def _dev_hw_label(device):
 
 def _pick_menu_item(device, is_Q, text):
     print(f"PICK menu item: {text}")
-    WRAP_IF_OVER = 16  # see ../shared/menu.py .. this is larger of 10 or 16
+    WRAP_IF_OVER = 10  # see ../shared/menu.py
 
     _need_keypress(device, KEY_HOME if is_Q else "0")
     m = _cap_menu(device)

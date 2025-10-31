@@ -6,308 +6,215 @@ import ngu, chains
 from io import BytesIO
 from collections import OrderedDict
 from binascii import hexlify as b2a_hex
-from utils import cleanup_deriv_path, check_xpub, xfp2str, swab32
+from utils import xfp2str
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
-from public_constants import AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, MAX_SIGNERS, MAX_TR_SIGNERS
+from public_constants import AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, MAX_TR_SIGNERS
 from desc_utils import parse_desc_str, append_checksum, descriptor_checksum, Key
-from desc_utils import taproot_tree_helper, fill_policy, Unspend
 from miniscript import Miniscript
-
-
-class DescriptorException(ValueError):
-    pass
-
-
-class WrongCheckSumError(Exception):
-    pass
+from precomp_tag_hash import TAP_BRANCH_H
 
 
 class Tapscript:
-    def __init__(self, tree=None, keys=None, policy=None):
-        self.tree = tree
-        self.keys = keys
-        self.policy = policy
+    def __init__(self, tree):
+        self.tree = tree   # miniscript or (tapscript, tapscript)
         self._merkle_root = None
+        self._processed_tree = None
 
-    @staticmethod
-    def iter_leaves(tree):
-        if isinstance(tree, Miniscript):
-            yield tree
+    def iter_leaves(self):
+        if isinstance(self.tree, Miniscript):
+            yield self.tree
         else:
-            assert isinstance(tree, list)
-            for lv in tree:
-                yield from Tapscript.iter_leaves(lv)
+            for ts in self.tree:
+                yield from ts.iter_leaves()
 
     @property
     def merkle_root(self):
         if not self._merkle_root:
-            self.process_tree()
+            self._processed_tree, self._merkle_root = self.process_tree()
         return self._merkle_root
 
-    @staticmethod
-    def _derive(tree, idx, key_map, change=False):
-        if isinstance(tree, Miniscript):
-            return tree.derive(idx, key_map, change=change)
+    def derive(self, idx, key_map, change=False):
+        if isinstance(self.tree, Miniscript):
+            tree = self.tree.derive(idx, key_map, change=change)
         else:
-            if len(tree) == 1 and isinstance(tree[0], Miniscript):
-                return tree[0].derive(idx, key_map, change=change)
-            l, r = tree
-            return [Tapscript._derive(l, idx, key_map, change=change),
-                    Tapscript._derive(r, idx, key_map, change=change)]
+            l, r = self.tree
+            tree = [l.derive(idx, key_map, change=change),
+                    r.derive(idx, key_map, change=change)]
 
-    def derive(self, idx=None, change=False):
-        derived_keys = OrderedDict()
-        for k in self.keys:
-            derived_keys[k] = k.derive(idx, change=change)
-        tree = Tapscript._derive(self.tree, idx, derived_keys, change=change)
-        return type(self)(tree, policy=self.policy, keys=list(derived_keys.values()))
+        return type(self)(tree)
 
     def process_tree(self):
-        info, mr = taproot_tree_helper(self.tree)
-        self._merkle_root = mr
-        return info, mr
+        if isinstance(self.tree, Miniscript):
+            script = self.tree.compile()
+            h = chains.tapleaf_hash(script)
+            return [(chains.TAPROOT_LEAF_TAPSCRIPT, script, bytes())], h
+
+        l, r = self.tree
+        left, left_h = l.process_tree()
+        right, right_h = r.process_tree()
+        left = [(version, script, control + right_h) for version, script, control in left]
+        right = [(version, script, control + left_h) for version, script, control in right]
+        if right_h < left_h:
+            right_h, left_h = left_h, right_h
+
+        h = ngu.hash.sha256t(TAP_BRANCH_H, left_h + right_h, True)
+        return left + right, h
+
+    # UNUSED - using above proces tree cached result to dump scripts to CSV
+    # def script_tree(self):
+    #     if isinstance(self.tree, Miniscript):
+    #         return b2a_hex(chains.tapscript_serialize(self.tree.compile())).decode()
+    #
+    #     l, r = self.tree
+    #     return "{" + l.script_tree() + "," +r.script_tree() + "}"
 
     @classmethod
     def read_from(cls, s):
-        num_leafs = 0
-        depth = 0
-        tapscript = []
-        p0 = s.read(1)
-        if p0 != b"{":
-            # depth zero
-            s.seek(-1, 1)
-            alone = Miniscript.read_from(s, taproot=True)
-            alone.is_sane(taproot=True)
-            alone.verify()
-            tapscript.append(alone)
-            num_leafs += 1
-        else:
-            assert p0 == b"{"
-            depth += 1
-            itmp = None
-            itmp_p = None
-            while True:
-                p1 = s.read(1)
-                if p1 == b'':
-                    break
-                elif p1 == b")":
-                    s.seek(-1, 1)
-                    break
-                elif p1 == b",":
-                    continue
-                elif p1 == b"{":
-                    if itmp is None:
-                        itmp = []
-                    else:
-                        if itmp_p:
-                            itmp[itmp_p].append([])
-                        else:
-                            itmp.append(([]))
-                        itmp_p = -1
+        c = s.read(1)
+        assert len(c)
+        if c == b"{":  # more than one miniscript
+            left = cls.read_from(s)
+            c = s.read(1)
+            if c == b"}":
+                return left
+            if c != b",":
+                raise ValueError("Invalid tapscript: expected ','")
 
-                    depth += 1
-                    continue
-                elif p1 == b"}":
-                    depth -= 1
-                    if depth == 1:
-                        tapscript.append(itmp)
-                        itmp = None
+            right = cls.read_from(s)
+            if s.read(1) != b"}":
+                raise ValueError("Invalid tapscript: expected '}'")
 
-                    if depth <= 2:
-                        itmp_p = None
-                    continue
+            return cls((left, right))
 
-                s.seek(-1, 1)
-                item = Miniscript.read_from(s, taproot=True)
-                item.is_sane(taproot=True)
-                item.verify()
-                num_leafs += 1
-                if itmp is None:
-                    tapscript.append(item)
-                else:
-                    if itmp_p and depth == 4:
-                        itmp[itmp_p][itmp_p].append(item)
-                    elif itmp_p:
-                        itmp[itmp_p].append(item)
-                    else:
-                        itmp.append(item)
-
-        assert num_leafs <= 8, "num_leafs > 8"
-        ts = cls(tapscript)
-        ts.parse_policy()
-        return ts
-
-    def parse_policy(self):
-        self.policy, self.keys = self._parse_policy(self.tree, [])
-        orig_keys = OrderedDict()
-        for k in self.keys:
-            if k.origin not in orig_keys:
-                orig_keys[k.origin] = []
-            orig_keys[k.origin].append(k)
-        for i, k_lst in enumerate(orig_keys.values()):
-            # always keep subderivation in policy string
-            self.policy = self.policy.replace(k_lst[0].to_string(subderiv=False), chr(64) + str(i))
-
-    @staticmethod
-    def _parse_policy(tree, all_keys):
-        if isinstance(tree, Miniscript):
-            keys, leaf_str = tree.keys, tree.to_string()
-            for k in keys:
-                if k not in all_keys:
-                    all_keys.append(k)
-
-            return leaf_str, all_keys
-        else:
-            assert isinstance(tree, list)
-            if len(tree) == 1 and isinstance(tree[0], Miniscript):
-                keys, leaf_str = tree[0].keys, tree[0].to_string()
-                for k in keys:
-                    if k not in all_keys:
-                        all_keys.append(k)
-
-                return leaf_str, all_keys
-            else:
-                l, r = tree
-                ll, all_keys = Tapscript._parse_policy(l, all_keys)
-                rr, all_keys = Tapscript._parse_policy(r, all_keys)
-                return "{" + ll + "," + rr + "}", all_keys
-
-    @staticmethod
-    def script_tree(tree):
-        if isinstance(tree, Miniscript):
-            return b2a_hex(chains.tapscript_serialize(tree.compile())).decode()
-        else:
-            assert isinstance(tree, list)
-            if len(tree) == 1 and isinstance(tree[0], Miniscript):
-                return b2a_hex(chains.tapscript_serialize(tree[0].compile())).decode()
-            else:
-                l, r = tree
-                ll = Tapscript.script_tree(l)
-                rr = Tapscript.script_tree(r)
-                return "{" + ll + "," + rr + "}"
+        s.seek(-1, 1)
+        ms = Miniscript.read_from(s, taproot=True)
+        return cls(ms)
 
     def to_string(self, external=True, internal=True):
-        return fill_policy(self.policy, self.keys, external, internal)
+        if isinstance(self.tree, Miniscript):
+            return self.tree.to_string(external, internal)
+
+        l, r = self.tree
+        return ("{" + l.to_string(external,internal) + ","
+                + r.to_string(external, internal) + "}")
 
 
 class Descriptor:
-    def __init__(self, miniscript=None, sh=False, wsh=True, key=None, wpkh=True,
-                 taproot=False, tapscript=None):
-        if key is None and miniscript is None:
-            raise DescriptorException("Provide either miniscript or a key")
+    def __init__(self, key=None, miniscript=None, tapscript=None, addr_fmt=None, keys=None):
+        if addr_fmt in [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH]:
+            assert miniscript
+            assert not key
+        else:
+            # single-sig + taproot/tapscript
+            assert miniscript is None
+            assert key
 
-        self.sh = sh
-        self.wsh = wsh
         self.key = key
         self.miniscript = miniscript
-        self.wpkh = wpkh
-        self.taproot = taproot
         self.tapscript = tapscript
+        self.addr_fmt = addr_fmt
+        # cached keys
+        self._keys = keys
 
-        if taproot:
-            if self.key:
-                self.key.taproot = True
-            for k in self.keys:
-                k.taproot = taproot
-
-    def validate(self):
+    def validate(self, disable_checks=False):
+        # should only be run once while importing wallet
         from glob import settings
-        if self.miniscript:
-            if self.is_basic_multisig:
-                assert len(self.keys) <= MAX_SIGNERS
-            else:
-                assert len(self.keys) <= 20
-            self.miniscript.verify()
-            if self.miniscript.type != "B":
-                raise DescriptorException("Top level miniscript should be 'B'")
 
+        c = 0
         has_mine = 0
-        my_xfp = settings.get('xfp')
-        to_check = self.keys.copy()
+        err_top_B = "Top level miniscript should be 'B'"
+        max_signers = 20
+
         if self.tapscript:
-            assert len(self.keys) <= MAX_TR_SIGNERS
             assert self.key  # internal key (would fail during parse)
-            if not self.key.is_provably_unspendable:
-                to_check += [self.key]
-        else:
-            assert self.key is None and self.miniscript, "not miniscript"
+            max_signers = MAX_TR_SIGNERS
+            for l in self.tapscript.iter_leaves():
+                assert l.type == "B", err_top_B
+                l.verify()
+                l.is_sane(taproot=True)
+                # cannot have same keys in single miniscript
+                # provably unspendable taproot internal key is not covered here
+                assert len(l.keys) == len(set(l.keys)), "Insane"
 
-        c = chains.current_key_chain().ctype
-        for k in to_check:
-            assert k.chain_type == c, "wrong chain"
-            xfp = k.origin.cc_fp
-            deriv = k.origin.str_derivation()
-            xpub = k.extended_public_key()
-            deriv = cleanup_deriv_path(deriv)
-            is_mine, _ = check_xpub(xfp, xpub, deriv, c, my_xfp, False)
-            if is_mine:
-                has_mine += 1
+        elif self.miniscript:
+            assert self.key is None
+            assert self.miniscript.type == "B", err_top_B
+            self.miniscript.verify()
+            self.miniscript.is_sane(taproot=False)
+            # cannot have same keys in single miniscript
+            assert len(self.miniscript.keys) == len(set(self.miniscript.keys)), "Insane"
 
-        assert has_mine != 0, 'My key %s missing in descriptor.' % xfp2str(my_xfp).upper()
-
-    def storage_policy(self):
-        if self.tapscript:
-            return self.tapscript.policy
-
-        s = self.miniscript.to_string()
-        orig_keys = OrderedDict()
+        my_xfp = settings.get('xfp', 0)
+        ext_nums = set()
+        int_nums = set()
         for k in self.keys:
-            if k.origin not in orig_keys:
-                orig_keys[k.origin] = []
-            orig_keys[k.origin].append(k)
-        for i, k_lst in enumerate(orig_keys.values()):
-            s = s.replace(k_lst[0].to_string(subderiv=False), chr(64) + str(i))
-        return s
+            has_mine += k.validate(my_xfp, disable_checks)
+            ext, int = k.derivation.get_ext_int()
+            ext_nums.add(ext)
+            int_nums.add(int)
+            c += 1
 
-    def ux_policy(self):
-        if self.tapscript:
-            return "Taproot tree keys:\n\n" + self.tapscript.policy
+        if not self.tapscript and not self.is_basic_multisig:
+            # this is non-taproot Miniscript
+            # Miniscript expressions can only be used in wsh or tr.
+            assert self.addr_fmt != AF_P2SH, "Miniscript in legacy P2SH not allowed"
 
-        return self.storage_policy()
+        assert ext_nums.isdisjoint(int_nums), "Non-disjoint multipath"
+        assert c <= max_signers, "max signers"
+
+        assert has_mine > 0, 'My key %s missing in descriptor.' % xfp2str(my_xfp).upper()
+
+    def bip388_wallet_policy(self):
+        # only same origin keys
+        keys_info = OrderedDict()
+        for k in self.keys:
+            pk = k.node.pubkey()
+            if pk not in keys_info:
+                keys_info[pk] = k.to_string(external=False, internal=False)
+
+        desc_tmplt = self.to_string(checksum=False).replace("/<0;1>/*", "/**")
+
+        keys_info = list(keys_info.values())
+        for i, k_str in enumerate(keys_info):
+            desc_tmplt = desc_tmplt.replace(k_str, chr(64) + str(i))
+
+        return desc_tmplt, keys_info
 
     @property
     def script_len(self):
-        if self.taproot:
+        if self.is_taproot:
             return 34 # OP_1 <32:xonly>
         if self.miniscript:
             return len(self.miniscript)
-        if self.wpkh:
+        if self.addr_fmt == AF_P2WPKH:
             return 22 # 00 <20:pkh>
         return 25 # OP_DUP OP_HASH160 <20:pkh> OP_EQUALVERIFY OP_CHECKSIG
 
-    def xfp_paths(self):
+    def xfp_paths(self, skip_unspend_ik=False):
         res = []
-        if self.taproot:
-            if self.key.origin:
-                # spendable internal key
-                res.append(self.key.origin.psbt_derivation())
-            elif self.key.is_provably_unspendable:
-                res.append([swab32(self.key.node.my_fp())])
-
         for k in self.keys:
-            if k.origin:
-                res.append(k.origin.psbt_derivation())
+            if self.is_taproot and k.is_provably_unspendable and skip_unspend_ik:
+                continue
+
+            res.append(k.origin.psbt_derivation())
+
         return res
 
     @property
-    def is_wrapped(self):
-        return self.sh and self.is_segwit
-
-    @property
-    def is_legacy(self):
-        return not (self.is_segwit or self.is_taproot)
+    def is_segwit_v0(self):
+        return self.addr_fmt in [AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH]
 
     @property
     def is_segwit(self):
-        return (self.wsh and self.miniscript) or (self.wpkh and self.key) or self.taproot
-
-    @property
-    def is_pkh(self):
-        return self.key is not None and not self.taproot
+        return self.is_taproot or self.is_segwit_v0
 
     @property
     def is_taproot(self):
-        return self.taproot
+        return self.addr_fmt == AF_P2TR
+
+    @property
+    def is_legacy_sh(self):
+        return self.addr_fmt in [AF_P2SH, AF_P2WSH_P2SH, AF_P2WPKH_P2SH]
 
     @property
     def is_basic_multisig(self):
@@ -319,142 +226,96 @@ class Descriptor:
 
     @property
     def keys(self):
+        if self._keys:
+            return self._keys
+
         if self.tapscript:
-            return self.tapscript.keys
-        elif self.key:
-            return [self.key]
-        return self.miniscript.keys
+            # internal is always first
+            # use ordered dict as order preserving set
+            keys = OrderedDict()
+            # add internal key
+            keys[self.key] = None
+            # taptree keys
+            for lv in self.tapscript.iter_leaves():
+                for k in lv.keys:
+                    keys[k] = None
 
-    @property
-    def addr_fmt(self):
-        if self.sh and not self.wsh:
-            af = AF_P2SH
-        elif self.wsh and not self.sh:
-            af = AF_P2WSH
-        elif self.sh and self.wsh:
-            af = AF_P2WSH_P2SH
-        elif self.taproot:
-            af = AF_P2TR
-        elif self.sh and self.wpkh:
-            af = AF_P2WPKH_P2SH
-        elif self.wpkh and not self.sh:
-            af = AF_P2WPKH
-        else:
-            af = AF_CLASSIC
-        return af
+            self._keys = list(keys)
 
-    def set_from_addr_fmt(self, addr_fmt):
-        self.taproot = False
-        self.wsh = False
-        self.wpkh = False
-        self.sh = False
-        if addr_fmt == AF_P2TR:
-            self.taproot = True
-            assert self.key
-        elif addr_fmt == AF_P2WPKH:
-            self.wpkh = True
-            self.miniscript = None
-            assert self.key
-        elif addr_fmt == AF_P2WPKH_P2SH:
-            self.wpkh = True
-            self.sh = True
-            self.miniscript = None
-            assert self.key
-        elif addr_fmt == AF_P2SH:
-            self.sh = True
-            assert self.miniscript
-            assert not self.key
-        elif addr_fmt == AF_P2WSH:
-            self.wsh = True
-            assert self.miniscript
-            assert not self.key
-        elif addr_fmt == AF_P2WSH_P2SH:
-            self.wsh = True
-            self.sh = True
-            assert self.miniscript
-            assert not self.key
-        else:
-            # AF_CLASSIC
-            assert self.key
-            assert not self.miniscript
+        elif self.miniscript:
+            self._keys = self.miniscript.keys
 
-    def scriptpubkey_type(self):
-        if self.is_taproot:
-            return "p2tr"
-        if self.sh:
-            return "p2sh"
-        if self.is_pkh:
-            if self.is_legacy:
-                return "p2pkh"
-            if self.is_segwit:
-                return "p2wpkh"
         else:
-            return "p2wsh"
+            # single-sig
+            self._keys = [self.key]
+
+        return self._keys
 
     def derive(self, idx=None, change=False):
-        if self.taproot:
+        if self.is_taproot:
+            # derive keys first
+            # duplicate keys can be may be found in different leaves
+            # use map to derive each key just once
+            derived_keys = OrderedDict()
+            ikd = None
+            for i, k in enumerate(self.keys):
+                dk = k.derive(idx, change=change)
+                dk.taproot = self.is_taproot
+                derived_keys[k] = dk
+                if not i:
+                    # internal key is always at index 0 in self.keys
+                    ikd = dk
+
             return type(self)(
-                None,
-                self.sh,
-                self.wsh,
-                self.key.derive(idx, change=change),
-                self.wpkh,
-                self.taproot,
-                tapscript=self.tapscript.derive(idx, change=change),
+                ikd,
+                tapscript=self.tapscript.derive(idx, derived_keys, change=change),
+                addr_fmt=self.addr_fmt,
+                keys=list(derived_keys.values()),
             )
         if self.miniscript:
             return type(self)(
+                None,
                 self.miniscript.derive(idx, change=change),
-                self.sh,
-                self.wsh,
-                None,
-                self.wpkh,
-                self.taproot,
-                tapscript=None,
-            )
-        else:
-            return type(self)(
-                None, self.sh, self.wsh,
-                self.key.derive(idx, change=change),
-                self.wpkh, self.taproot, tapscript=None
+                addr_fmt=self.addr_fmt,
             )
 
-    def witness_script(self):
-        if self.wsh and self.miniscript is not None:
-            return self.miniscript.compile()
+        # single-sig
+        return type(self)(self.key.derive(idx, change=change))
 
-    def redeem_script(self):
-        if not self.sh:
-            return None
-        if self.miniscript:
-            if self.wsh:
-                return b"\x00\x20" + ngu.hash.sha256s(self.miniscript.compile())
-            else:
-                return self.miniscript.compile()
-
-        else:
-            return b"\x00\x14" + ngu.hash.hash160(self.key.node.pubkey())
-
-    def script_pubkey(self):
-        if self.taproot:
+    def script_pubkey(self, compiled_scr=None):
+        if self.is_taproot:
             tweak = None
             if self.tapscript:
                 tweak = self.tapscript.merkle_root
             output_pubkey = chains.taptweak(self.key.serialize(), tweak)
             return b"\x51\x20" + output_pubkey
-        if self.sh:
-            return b"\xa9\x14" + ngu.hash.hash160(self.redeem_script()) + b"\x87"
-        if self.wsh:
-            return b"\x00\x20" + ngu.hash.sha256s(self.witness_script())
-        if self.miniscript:
-            return self.miniscript.compile()
-        if self.wpkh:
+
+        if self.is_legacy_sh:
+            if self.miniscript:
+                # caller may have already built a script
+                scr = compiled_scr or self.miniscript.compile()
+                redeem_scr = scr
+                if self.addr_fmt == AF_P2WSH_P2SH:
+                    redeem_scr = b"\x00\x20" + ngu.hash.sha256s(scr)
+            else:
+                redeem_scr = b"\x00\x14" + ngu.hash.hash160(self.key.node.pubkey())
+
+            return b"\xa9\x14" + ngu.hash.hash160(redeem_scr) + b"\x87"
+
+        if self.addr_fmt == AF_P2WSH:
+            # witness script p2wsh only
+            return b"\x00\x20" + ngu.hash.sha256s(compiled_scr or self.miniscript.compile())
+
+        if self.addr_fmt == AF_P2WPKH:
             return b"\x00\x14" + ngu.hash.hash160(self.key.serialize())
+
+        # p2pkh
+        assert self.addr_fmt == AF_CLASSIC
         return b"\x76\xa9\x14" + ngu.hash.hash160(self.key.serialize()) + b"\x88\xac"
 
     @classmethod
     def is_descriptor(cls, desc_str):
-        """Quick method to guess whether this is a descriptor"""
+        # Quick method to guess whether this is a descriptor
         try:
             temp = parse_desc_str(desc_str)
         except:
@@ -481,7 +342,7 @@ class Descriptor:
             return desc_w_checksum, None
         calc_checksum = descriptor_checksum(desc)
         if calc_checksum != checksum:
-            raise WrongCheckSumError("Wrong checksum %s, expected %s" % (checksum, calc_checksum))
+            raise ValueError("Wrong checksum %s, expected %s" % (checksum, calc_checksum))
         return desc, checksum
 
     @classmethod
@@ -500,19 +361,15 @@ class Descriptor:
         return res
 
     @classmethod
-    def read_from(cls, s, taproot=False):
+    def read_from(cls, s):
         start = s.read(8)
-        sh = False
-        wsh = False
-        wpkh = False
-        is_miniscript = True
+        af = AF_CLASSIC
         internal_key = None
         tapscript = None
         if start.startswith(b"tr("):
-            is_miniscript = False  # miniscript vs. tapscript (that can contain miniscripts in tree)
-            taproot = True
+            af = AF_P2TR
             s.seek(-5, 1)
-            internal_key = Key.parse(s)  # internal key is a must - also handles unspend(
+            internal_key = Key.parse(s)
             internal_key.taproot = True
             sep = s.read(1)
             if sep == b")":
@@ -520,76 +377,68 @@ class Descriptor:
             else:
                 assert sep == b","
                 tapscript = Tapscript.read_from(s)
+
         elif start.startswith(b"sh(wsh("):
-            sh = True
-            wsh = True
+            af = AF_P2WSH_P2SH
             s.seek(-1, 1)
         elif start.startswith(b"wsh("):
-            sh = False
-            wsh = True
+            af = AF_P2WSH
             s.seek(-4, 1)
         elif start.startswith(b"sh(wpkh("):
-            is_miniscript = False
-            sh = True
-            wpkh = True
+            af = AF_P2WPKH_P2SH
         elif start.startswith(b"wpkh("):
-            is_miniscript = False
-            wpkh = True
+            af = AF_P2WPKH
             s.seek(-3, 1)
         elif start.startswith(b"pkh("):
-            is_miniscript = False
             s.seek(-4, 1)
         elif start.startswith(b"sh("):
-            sh = True
-            wsh = False
+            af = AF_P2SH
             s.seek(-5, 1)
         else:
             raise ValueError("Invalid descriptor")
 
-        if is_miniscript:
-            miniscript = Miniscript.read_from(s)
-            miniscript.is_sane(taproot=False)
-            key = internal_key
-            nbrackets = int(sh) + int(wsh)
-        elif taproot:
-            miniscript = None
+        miniscript = None
+        if af == AF_P2TR:
             key = internal_key
             nbrackets = 1
+        elif af in [AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH]:
+            miniscript = Miniscript.read_from(s)
+            key = internal_key
+            nbrackets = 1 + int(af == AF_P2WSH_P2SH)
         else:
-            miniscript = None
             key = Key.parse(s)
-            nbrackets = 1 + int(sh)
+            nbrackets = 1 + int(af == AF_P2WPKH_P2SH)
 
         end = s.read(nbrackets)
         if end != b")" * nbrackets:
             raise ValueError("Invalid descriptor")
-        o = cls(miniscript, sh=sh, wsh=wsh, key=key, wpkh=wpkh,
-                taproot=taproot, tapscript=tapscript)
-        o.validate()
-        return o
+
+        desc = cls(key, miniscript, tapscript, af)
+        return desc
 
     def to_string(self, external=True, internal=True, checksum=True):
-        if self.taproot:
+        if self.is_taproot:
             desc = "tr(%s" % self.key.to_string(external, internal)
             if self.tapscript:
                 desc += ","
                 tree = self.tapscript.to_string(external, internal)
                 desc += tree
 
-            desc = desc + ")"
-            return append_checksum(desc)
+            res = desc + ")"
 
-        if self.miniscript is not None:
-            res = self.miniscript.to_string(external, internal)
-            if self.wsh:
-                res = "wsh(%s)" % res
         else:
-            if self.wpkh:
-                res = "wpkh(%s)" % self.key.to_string(external, internal)
+            if self.miniscript is not None:
+                res = self.miniscript.to_string(external, internal)
+                if self.addr_fmt in [AF_P2WSH, AF_P2WSH_P2SH]:
+                    res = "wsh(%s)" % res
             else:
-                res = "pkh(%s)" % self.key.to_string(external, internal)
-        if self.sh:
-            res = "sh(%s)" % res
+                if self.addr_fmt in [AF_P2WPKH, AF_P2WPKH_P2SH]:
+                    res = "wpkh(%s)" % self.key.to_string(external, internal)
+                else:
+                    res = "pkh(%s)" % self.key.to_string(external, internal)
+
+            if self.is_legacy_sh:
+                res = "sh(%s)" % res
 
         if checksum:
             res = append_checksum(res)

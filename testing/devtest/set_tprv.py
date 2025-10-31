@@ -1,6 +1,7 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# load up the simulator w/ indicated test master key
+# load up the simulator w/ indicated test master key in TPRV format.
+#
 import main, ngu
 from sim_settings import sim_defaults
 import stash, chains
@@ -34,8 +35,9 @@ pa.change(new_secret=raw)
 pa.new_main_secret(raw)
 settings.set('words', False)
 
-print("New key in effect: %s" % settings.get('xpub', 'MISSING'))
-print("Fingerprint: %s" % xfp2str(settings.get('xfp', 0)))
-
 assert settings.get('xfp', 0) == swab32(node.my_fp())
+
+print("TESTING: New tprv in effect [%s]: %s" % (
+        settings.get('xpub', 'MISSING'),
+        xfp2str(settings.get('xfp', 0))))
 

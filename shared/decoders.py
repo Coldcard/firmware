@@ -101,7 +101,7 @@ def decode_qr_result(got, expect_secret=False, expect_text=False, expect_bbqr=Fa
         try:
             ty, final_size, got = got.storage.finalize()
         except BaseException as exc:
-            import sys; sys.print_exception(exc)
+            #import sys; sys.print_exception(exc)
             raise QRDecodeExplained("BBQr decode failed: " + str(exc))
 
         if expect_bbqr:
@@ -136,6 +136,18 @@ def decode_qr_result(got, expect_secret=False, expect_text=False, expect_bbqr=Fa
                 what = "smsg"
 
             return what, (got,)
+
+        elif ty in 'RSE':
+            # key-teleport related
+
+            from pincodes import pa
+            if pa.hobbled_mode and ty != 'E':
+                raise QRDecodeExplained("KT Blocked")
+
+            if ty == 'R' and len(got) != 33:
+                raise QRDecodeExplained("Truncated KT RX")
+
+            return 'teleport', (ty, got)
         else:
             msg = TYPE_LABELS.get(ty, 'Unknown FileType')
             raise QRDecodeExplained("Sorry, %s not useful." % msg)
@@ -210,21 +222,6 @@ def decode_short_text(got):
         except:
             # was something else.
             pass
-
-    if ("\n" in got) and ('pub' in got):
-        # legacy multisig import/export format
-        # [0-9a-fA-F]{8}\s*:\s*[xtyYzZuUvV]pub[1-9A-HJ-NP-Za-km-z]{107}
-        # above is more precise BUT counted repetitions not supported in mpy
-        cc_ms_pat = r"[0-9a-fA-F]+\s*:\s*[xtyYzZuUvV]pub[1-9A-HJ-NP-Za-km-z]+"
-        rgx = ure.compile(cc_ms_pat)
-        # go line by line and match above, once 2 matches observed - considered multisig
-        # important to not use ure.search for big strings (can run out of stack)
-        c = 0  # match count
-        for l in got.split("\n"):
-            if rgx.search(l):
-                c += 1
-            if c > 1:
-                return 'multi', (got,)
 
     from descriptor import Descriptor
     if Descriptor.is_descriptor(got):

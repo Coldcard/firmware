@@ -45,7 +45,7 @@ def fake_dest_addr(style='p2pkh'):
     if style == 'p2wsh':
         return bytes([0, 32]) + prandom(32)
 
-    if style in ['p2sh', 'p2wsh-p2sh', 'p2wpkh-p2sh']:
+    if style in ['p2sh', 'p2wsh-p2sh', 'p2sh-p2wsh', 'p2wpkh-p2sh', 'p2sh-p2wpkh']:
         # all equally bogus P2SH outputs
         return bytes([0xa9, 0x14]) + prandom(20) + bytes([0x87])
 
@@ -79,7 +79,7 @@ def make_change_addr(wallet, style):
         is_segwit = False
     elif style == 'p2wpkh':
         redeem_scr = bytes([0, 20]) + target
-    elif style == 'p2wpkh-p2sh':
+    elif style in ('p2wpkh-p2sh', 'p2sh-p2wpkh'):
         redeem_scr = bytes([0, 20]) + target
         actual_scr = bytes([0xa9, 0x14]) + hash160(redeem_scr) + bytes([0x87])
     elif style == 'p2tr':
@@ -102,6 +102,11 @@ def xfp2str(xfp):
     from binascii import b2a_hex
     from struct import pack
     return b2a_hex(pack('<I', xfp)).decode('ascii').upper()
+
+def str2xfp(s):
+    assert len(s) == 8
+    b = bytes.fromhex(s)
+    return int.from_bytes(b, 'little')
 
 def addr_from_display_format(dis_addr):
     assert dis_addr[0] == '\x02'        # OUT_CTRL_ADDRESS
@@ -219,5 +224,16 @@ def seconds2human_readable(s):
         msg.append("%ds" % seconds)
 
     return " ".join(msg)
+
+def bitcoind_addr_fmt(script_type):
+    if script_type == "p2wsh":
+        addr_type = "bech32"
+    elif script_type == "p2sh":
+        addr_type = "legacy"
+    else:
+        assert script_type == "p2sh-p2wsh"
+        addr_type = "p2sh-segwit"
+
+    return addr_type
 
 # EOF
