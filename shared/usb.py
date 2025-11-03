@@ -535,7 +535,7 @@ class USBHandler:
                 assert 0 <= idx < (2 ** 31), "child idx"
 
                 name = args[8:]
-                assert len(name) <= 20, "name len"
+                assert len(name) <= 32, "name len"
 
                 ok, w = get_miniscript_by_name(name)
                 if not ok:
@@ -545,7 +545,7 @@ class USBHandler:
                 return b'asci' + start_show_miniscript_address(w, change, idx)
 
 
-            assert len(args) <= 20, "name len"
+            assert len(args) <= 32, "name len"
             ok, w = get_miniscript_by_name(args)
             if not ok:
                 return w
@@ -576,8 +576,9 @@ class USBHandler:
 
             # optional miniscript wallet name
             try:
-                name = str(args[40:], 'ascii')
-                assert len(name) <= 20, "name len"
+                name_len = unpack_from('B', args[40:])[0]
+                name = str(args[41:41 + name_len], "ascii")
+                assert 1 <= len(name) <= 32, "name len"
             except:
                 name = None
 
