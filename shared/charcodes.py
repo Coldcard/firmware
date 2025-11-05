@@ -109,7 +109,9 @@ if has_qwerty:
 
 # These affect how 'ux stories' are rendered; they are control
 # characters on the output side of things, not input.
-OUT_CTRL_TITLE = '\x01'     # must be first char in line: be a title line
-OUT_CTRL_ADDRESS = '\x02'   # must be first char in line: it's a payment address
+# - must be first char in line
+OUT_CTRL_TITLE = '\x01'     # be a title line
+OUT_CTRL_ADDRESS = '\x02'   # it's a payment address
+OUT_CTRL_NOWRAP = '\x03'    # do not word wrap this line
 
 # EOF

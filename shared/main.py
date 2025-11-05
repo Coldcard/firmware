@@ -61,9 +61,7 @@ try:
     from psram import PSRAMWrapper
     glob.PSRAM = PSRAMWrapper()
 
-except BaseException as exc:
-    sys.print_exception(exc)
-    # continue tho
+except: pass  # continue tho
 
 # Setup keypad/keyboard
 if version.has_qwerty:
@@ -83,7 +81,6 @@ glob.settings = settings
 
 async def more_setup():
     # Boot up code; splash screen is being shown
-
     try:
         from files import CardSlot
         CardSlot.setup()
@@ -91,6 +88,10 @@ async def more_setup():
         # This "pa" object holds some state shared w/ bootloader about the PIN
         try:
             from pincodes import pa
+            # check for bricked system early
+            # bricked CC not going past this point
+            await pa.enforce_brick()
+
             pa.setup(b'')       # just to see where we stand.
             is_blank = pa.is_blank()
         except RuntimeError as e:

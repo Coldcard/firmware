@@ -22,6 +22,7 @@ item with `<name>` is added to `Address Explorer` menu.
 ## Limitations
 * no duplicate keys in miniscript (at least change indexes in subderivation has to be different)
 * subderivation may be omitted during the import - default `<0;1>/*` is implied
-* only keys with key origin info `[xfp/p/a/t/h]xpub`
+* both keys with key origin info `[xfp/p/a/t/h]xpub/<0;1>/*` & blinded keys `xpub/<2;3>/*` allowed
+* use of blinded keys for co-signers requires PSBT provider to supply path from current key fingerprint
 * maximum number of keys allowed in segwit v0 miniscript is 20
 * check MiniTapscript limitations in `docs/taproot.md`

@@ -7,6 +7,7 @@ from constants import simulator_fixed_words, simulator_fixed_tprv
 from charcodes import KEY_QR
 from bip32 import BIP32Node
 from mnemonic import Mnemonic
+from ckcc_protocol.protocol import CCProtocolPacker
 
 
 @pytest.fixture
@@ -93,10 +94,7 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
         # st -> seed type
         # ct -> cleartext backup
         if reuse_pw:
-            if isinstance(reuse_pw, list):
-                assert len(reuse_pw) == 12
-            else:
-                assert reuse_pw is True  # default
+            if reuse_pw is True:
                 reuse_pw = ['zoo' for _ in range(12)]
 
             settings_set('bkpw', ' '.join(reuse_pw))
@@ -129,20 +127,24 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
 
             need_keypress("6")
             time.sleep(.1)
-            _, story = cap_story()
-            assert "Are you SURE ?!?" in story
+            title, story = cap_story()
+            assert "Are you SURE ?!?" in (title if is_q1 else story)
             assert "**NOT** be encrypted" in story
             press_select()
             return  # nothing more to be done
 
         if reuse_pw:
-            assert (' 1: %s' % reuse_pw[0]) in body
-            assert ('12: %s' % reuse_pw[-1]) in body
+            if len(reuse_pw) == 1:
+                reuse_pw = reuse_pw[0]
+                assert f"{reuse_pw[0]}...{reuse_pw[-1]}" in body
+            else:
+                assert (' 1: %s' % reuse_pw[0]) in body
+                assert ('12: %s' % reuse_pw[-1]) in body
             press_select()
             words = ['zoo'] * 12
         else:
             assert title == 'NO-TITLE'
-            assert 'Record this' in body
+            assert 'Record this (12 word)' in body
             assert 'password:' in body
 
             words = seed_story_to_words(body)
@@ -176,6 +178,31 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
 
     return doit
 
+@pytest.fixture
+def make_big_notes(settings_set, sim_exec):
+    def doit(count=9):
+        print(">>> Making huge backup file")
+
+        # - to bypass USB msg limit, append as we go
+        notes = []
+        settings_set('notes', [])
+        for n in range(count):
+            v = { fld:('a'*30) if fld != 'misc' else 'b'*1800
+                    for fld in ['user', 'password', 'site', 'misc'] }
+            v['title'] = f'Note {n+1}'
+            notes.append(v)
+            rv = sim_exec(cmd := f'settings.current["notes"].append({v!r})')
+            assert 'error' not in rv.lower()
+
+        rv = sim_exec('settings.changed()')
+        assert 'error' not in rv.lower()
+
+        assert len(notes) == count
+
+        return notes
+
+    return doit
+
 
 @pytest.mark.qrcode
 @pytest.mark.parametrize('multisig', [False, 'multisig'])
@@ -189,11 +216,11 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
                      pass_word_quiz, reset_seed_words, import_ms_wallet, get_setting,
                      reuse_pw, save_pw, settings_set, settings_remove, press_select,
                      generate_ephemeral_words, set_bip39_pw, verify_backup_file,
-                     check_and_decrypt_backup, restore_backup_cs, clear_ms, seedvault,
+                     check_and_decrypt_backup, restore_backup_cs, clear_miniscript, seedvault,
                      restore_main_seed, import_ephemeral_xprv, backup_system,
-                     press_cancel, sim_exec, pass_way, garbage_collector):
+                     press_cancel, sim_exec, pass_way, garbage_collector, make_big_notes):
     # Make an encrypted 7z backup, verify it, and even restore it!
-    clear_ms()
+    clear_miniscript()
     reset_seed_words()
     settings_set("seedvault", int(seedvault))
     settings_set("seeds", [] if seedvault else None)
@@ -201,20 +228,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     # test larger backup files > 10,000 bytes
     if multisig == False and st == None and not reuse_pw and not save_pw and not seedvault:
         # pick just one test case.
-        # - to bypass USB msg limit, append as we go
-        print(">>> Making huge backup file")
-        notes = []
-        settings_set('notes', [])
-        for n in range(9):
-            v = { fld:('a'*30) if fld != 'misc' else 'b'*1800
-                    for fld in ['user', 'password', 'site', 'misc'] }
-            v['title'] = f'Note {n+1}'
-            notes.append(v)
-            rv = sim_exec(cmd := f'settings.current["notes"].append({v!r})')
-            print(rv)
-            assert 'error' not in rv.lower()
-        rv = sim_exec(cmd := f'settings.changed()')
-        assert 'error' not in rv.lower()
+        notes = make_big_notes()
     else:
         notes = None
 
@@ -223,7 +237,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         import_ms_wallet(15, 15)
         press_select()
         time.sleep(.1)
-        assert len(get_setting('multisig')) == 1
+        assert len(get_setting('miniscript')) == 1
 
     if not reuse_pw:
         # drop saved bkpw before we get to ephemeral settings
@@ -231,7 +245,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
 
     if st == "b39pass":
         xfp_pass = set_bip39_pw("coinkite", reset=False, seed_vault=seedvault)
-        assert not get_setting('multisig', None)
+        assert not get_setting('miniscript', None)
     elif st == "eph":
         eph_seed = generate_ephemeral_words(num_words=24, dice=False, from_main=True,
                                             seed_vault=seedvault)
@@ -240,7 +254,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
             import_ms_wallet(15, 15, dev_key=True, common="605'/0'/0'")
             press_select()
             time.sleep(.1)
-            assert len(get_setting('multisig')) == 1
+            assert len(get_setting('miniscript')) == 1
     else:
         # create ephemeral seed - add to seed vault if necessary
         # and restore master (just so we have something in setting.seeds)
@@ -257,7 +271,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         # multisig is only in main wallet
         # must not be copied from main to b39pass
         # must not be available after backup done
-        assert not get_setting('multisig', None)
+        assert not get_setting('miniscript', None)
 
     if notes:
         # verify large notes survived
@@ -309,7 +323,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
 
     # test verify on device (CRC check)
     if multisig:
-        avail_settings.append("multisig")
+        avail_settings.append("miniscript")
 
     restore_backup_cs(files[0], words, avail_settings=avail_settings,
                       pass_way=pass_way)
@@ -547,28 +561,10 @@ def test_seed_vault_backup(settings_set, reset_seed_words, generate_ephemeral_wo
         assert xfp_ui in sv_xfp_menu
 
 
-def test_seed_vault_backup_frozen(reset_seed_words, settings_set, repl):
-    from test_ephemeral import SEEDVAULT_TEST_DATA
-
+def test_seed_vault_backup_frozen(reset_seed_words, settings_set, repl, build_test_seed_vault):
     reset_seed_words()
     settings_set("seedvault", 1)
-
-    sv = []
-    for item in SEEDVAULT_TEST_DATA:
-        xfp, entropy, mnemonic = item
-
-        # build stashed encoded secret
-        entropy_bytes = bytes.fromhex(entropy)
-        if mnemonic:
-            vlen = len(entropy_bytes)
-            assert vlen in [16, 24, 32]
-            marker = 0x80 | ((vlen // 8) - 2)
-            stored_secret = bytes([marker]) + entropy_bytes
-        else:
-            stored_secret = entropy_bytes
-
-        sv.append((xfp, stored_secret.hex(), f"[{xfp}]", "meta"))
-
+    sv = build_test_seed_vault()
     settings_set("seeds", sv)
     bk = repl.exec('import backups; RV.write(backups.render_backup_contents())', raw=1)
     assert 'Coldcard backup file' in bk
@@ -576,13 +572,14 @@ def test_seed_vault_backup_frozen(reset_seed_words, settings_set, repl):
     assert target in bk
 
 
-def test_clone_start(reset_seed_words, pick_menu_item, cap_story, goto_home):
-    sd_dir = "../unix/work/MicroSD"
+def test_clone_start(reset_seed_words, pick_menu_item, cap_story, goto_home, src_root_dir,
+                     sim_root_dir):
+    sd_dir = f"{sim_root_dir}/MicroSD"
     num_7z = len([i for i in os.listdir(sd_dir) if i.endswith(".7z")])
     fname = "ccbk-start.json"
     reset_seed_words()
     goto_home()
-    shutil.copy(f"data/{fname}", sd_dir)
+    shutil.copy(f"{src_root_dir}/testing/data/{fname}", sd_dir)
     pick_menu_item("Advanced/Tools")
     pick_menu_item("Backup")
     pick_menu_item("Clone Coldcard")
@@ -598,17 +595,25 @@ def test_clone_start(reset_seed_words, pick_menu_item, cap_story, goto_home):
 
 
 def test_bkpw_override(reset_seed_words, override_bkpw, goto_home, pick_menu_item,
-                       cap_story, press_select, garbage_collector, microsd_path):
+                       cap_story, press_select, garbage_collector, microsd_path,
+                       restore_backup_cs, is_q1):
     reset_seed_words()  # clean slate
     old_pw = None
     test_cases = [
-        " ".join(12 * ["elevator"]),
-        " ".join(12 * ["fever"]),
         32 * "a",
-        (16 * "0") + "   " + (16 *"1"),
-        64 * "Q",
         (26 * "?") + "!@#$%^&*()",
     ]
+    if is_q1:
+        # not needed on mk4 - even tho works (takes too much time)
+        # Mk4 display is not suitable for these type of passwords anyways
+        test_cases += [
+            "arm prob slot merc hub fiel wing aver tale undo diar boos army cabl mous teac drif risk frow achi poet ecol boss grit",
+            " ".join(12 * ["elevator"]),
+            " ".join(12 * ["fever"]),
+            64 * "Q",
+        ]
+
+    fnames = []
     for pw in test_cases:
         override_bkpw(pw, old_pw)
 
@@ -630,7 +635,211 @@ def test_bkpw_override(reset_seed_words, override_bkpw, goto_home, pick_menu_ite
         time.sleep(1)
         title, story = cap_story()
         assert "Backup file written" in story
-        garbage_collector.append(microsd_path(story.split("\n\n")[1]))
+        fname = story.split("\n\n")[1]
+        garbage_collector.append(microsd_path(fname))
+        fnames.append(fname)
         press_select()
+
+    for pw, fn in zip(test_cases, fnames):
+        restore_backup_cs(fn, pw, custom_bkpw=True)
+
+
+@pytest.mark.parametrize('btype', ["classic", "custom_bkpw", "plaintext"])
+@pytest.mark.parametrize('force_tmp', [True, False])
+def test_restore_usb_backup(backup_system, set_seed_words, cap_story, verify_ephemeral_secret_ui,
+                            settings_slots, reset_seed_words, word_menu_entry, confirm_tmp_seed,
+                            dev, microsd_path, press_select, btype, force_tmp,
+                            unit_test, restore_main_seed, cap_menu, is_q1, enter_complex):
+
+    from test_ephemeral import SEEDVAULT_TEST_DATA
+    xfp_str, encoded_str, mnemonic = SEEDVAULT_TEST_DATA[2]
+    set_seed_words(mnemonic)
+    bkpw = 34*"Z"
+    plaintext = (btype == "plaintext")
+    password = False
+
+    # ACTUAL BACKUP
+    if plaintext:
+        bk_pw = backup_system(ct=True)
+    elif btype == "custom_bkpw":
+        # encrypted but with custom pwd
+        password = True
+        bk_pw = backup_system(reuse_pw=[bkpw])
+    else:
+        # classic word-based encrypted backup
+        bk_pw = backup_system()
+
+    time.sleep(.1)
+    title, story = cap_story()
+    fname = story.split("\n\n")[1]
+
+    # remove all saved slots, one of them will be the one where we just created backup
+    # slot where backup was created needs to be removed - otherwise we will load back to it
+    # and see multisig wallet there without the need for backup to actually copy it
+    for s in settings_slots():
+        try:
+            os.remove(s)
+        except: pass
+
+    # clear seed
+    unit_test('devtest/clear_seed.py')
+
+    with open(microsd_path(fname), "rb") as f:
+        file_len, sha = dev.upload_file(f.read())
+
+    dev.send_recv(CCProtocolPacker.restore_backup(file_len, sha, password, plaintext, force_tmp),
+                  timeout=None)
+    time.sleep(.2)
+    _, story = cap_story()
+    assert f"Restore uploaded backup as a {'temporary' if force_tmp else 'master'} seed" in story
+    press_select()
+
+    time.sleep(.1)
+    if btype == "classic":
+        word_menu_entry(bk_pw, has_checksum=False)
+    elif password:
+        enter_complex(bkpw, apply=False, b39pass=False)
+
+    time.sleep(.2)
+    mnemonic = mnemonic.split(" ")
+
+    title, story = cap_story()
+    assert f"[{xfp_str}]" == title
+    assert "Above is the master fingerprint of the seed stored in the backup." in story
+    assert f"load backup as {'temporary' if force_tmp else 'master'} seed" in story
+    press_select()
+    time.sleep(.1)
+
+    if force_tmp:
+        confirm_tmp_seed(seedvault=False)
+        verify_ephemeral_secret_ui(mnemonic=mnemonic, xpub=None, seed_vault=False)
+        restore_main_seed()
+        time.sleep(.1)
+        assert "New Seed Words" in cap_menu()
+    else:
+        _, story = cap_story()
+        assert "configured for best security practices" in story
+        press_select()
+        time.sleep(.1)
+        _, story = cap_story()
+        assert "now reboot" in story
+
+
+@pytest.mark.parametrize('way', ["sd", "usb"])
+@pytest.mark.parametrize('tmp', [True, False])
+def test_refuse_backup(way, tmp, set_seed_words, backup_system, cap_story, unit_test, microsd_path,
+                       dev, press_select, word_menu_entry, X, press_cancel, cap_menu, pick_menu_item,
+                       reset_seed_words, need_keypress, get_secrets, goto_home):
+
+    from test_ephemeral import SEEDVAULT_TEST_DATA
+    xfp_str, encoded_str, mnemonic = SEEDVAULT_TEST_DATA[0]
+    set_seed_words(mnemonic)
+    bk_pw = backup_system()
+
+    time.sleep(.1)
+    title, story = cap_story()
+    fname = story.split("\n\n")[1]
+    press_select()
+
+    if tmp:
+        reset_seed_words()
+        press_cancel()
+    else:
+        unit_test('devtest/clear_seed.py')
+
+    if way == "usb":
+        with open(microsd_path(fname), "rb") as f:
+            file_len, sha = dev.upload_file(f.read())
+
+        dev.send_recv(CCProtocolPacker.restore_backup(file_len, sha), timeout=None)
+        time.sleep(.2)
+        press_select()
+    else:
+        if tmp:
+            pick_menu_item("Advanced/Tools")
+            pick_menu_item("Temporary Seed")
+            need_keypress("4")
+            pick_menu_item("Coldcard Backup")
+        else:
+            pick_menu_item("Import Existing")
+            pick_menu_item("Restore Backup")
+
+        pick_menu_item(fname)
+
+    time.sleep(.2)
+    word_menu_entry(bk_pw, has_checksum=False)
+    time.sleep(.2)
+    title, story = cap_story()
+    assert f"[{xfp_str}]" == title
+    assert "Above is the master fingerprint of the seed stored in the backup." in story
+    assert f"load backup as {'temporary' if tmp else 'master'} seed" in story
+    assert f"Press {X} to abort" in story
+    press_cancel()  # refuse backup
+    time.sleep(.1)
+    if tmp:
+        cur_mnemonic = get_secrets()["mnemonic"]
+        assert mnemonic != cur_mnemonic  # nothing was loaded
+    else:
+        goto_home()
+        assert "New Seed Words" in cap_menu() # nothing was loaded
+
+
+@pytest.mark.parametrize('tmp', [True, False])
+def test_exit_dev_backup(tmp, unit_test, goto_home, pick_menu_item, need_keypress, src_root_dir,
+                         microsd_path, press_cancel, cap_menu, cap_story):
+    fname = 'backup.7z'
+    fn = microsd_path(fname)
+    shutil.copy(f'{src_root_dir}/docs/backup.7z', fn)
+
+    if not tmp:
+        unit_test('devtest/clear_seed.py')
+
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    if tmp:
+        pick_menu_item("Danger Zone")
+    pick_menu_item('I Am Developer.')
+    pick_menu_item('Restore Bkup')
+
+    time.sleep(.1)
+    pick_menu_item(fname)
+
+    # do not write anything just exit
+    # yikes
+    press_cancel()
+    time.sleep(.2)
+    pick_menu_item("Restore Bkup")
+    press_cancel()
+
+
+@pytest.mark.parametrize("fname", [
+    '03edd162a5f57eece68d8eea3891e2a150383a225187179ecb1599efe00d16dd70-ccbk.7z',
+    ('W'*31) + ".7z",
+])
+def test_backup_long_name_display(fname, goto_home, pick_menu_item, need_keypress, src_root_dir,
+                                  microsd_path, press_cancel, cap_screen, is_q1):
+    if not is_q1:
+        raise pytest.skip("Only Q")
+
+    fn = microsd_path(fname)
+    shutil.copy(f'{src_root_dir}/docs/backup.7z', fn)
+
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('Temporary Seed')
+    need_keypress("4")
+    pick_menu_item('Coldcard Backup')
+
+    time.sleep(.1)
+    pick_menu_item(fname)
+    time.sleep(.1)
+    scr = cap_screen()
+    if len(fname) > 34:  # CHARS_W
+        assert fname[:16] in scr
+        assert fname[-16:] in scr
+    else:
+        assert fname in scr
+
+    press_cancel()
 
 # EOF

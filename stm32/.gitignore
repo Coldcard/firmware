@@ -9,7 +9,7 @@ firmware.lss
 firmware-signed.*
 firmware.elf
 file_time.c
-*-RC1-coldcard.dfu
+*-RC1-*.dfu
 RC2-*.dfu
 
 # somewhat useful binary snapshots

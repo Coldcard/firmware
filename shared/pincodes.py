@@ -3,8 +3,7 @@
 # pincodes.py - manage PIN code (which map to wallet seeds)
 #
 import ustruct, ckcc, version, chains, stash
-# from ubinascii import hexlify as b2a_hex
-from callgate import enter_dfu
+from callgate import enter_dfu, get_is_bricked
 from bip39 import wordlist_en
 
 # See ../stm32/bootloader/pins.h for source of these constants.
@@ -127,17 +126,14 @@ class PinAttempt:
         self.private_state = 0          # opaque data, but preserve
         self.cached_main_pin = bytearray(32)
 
+        # If set, a spending policy is in effect, and so even tho we know the master
+        # seed, we are not going to let them see it, nor sign things we dont like, etc.
+        self.hobbled_mode = False
 
-        assert MAX_PIN_LEN == 32        # update FMT otherwise
-        assert ustruct.calcsize(PIN_ATTEMPT_FMT_V1) == PIN_ATTEMPT_SIZE_V1
-        assert ustruct.calcsize(PIN_ATTEMPT_FMT_V2_ADDITIONS) == PIN_ATTEMPT_SIZE - PIN_ATTEMPT_SIZE_V1
-
-        # check for bricked system early
-        import callgate
-        if callgate.get_is_bricked():
-            # die right away if it's not going to work
-            print("SE bricked")
-            callgate.enter_dfu(3)
+        #assert MAX_PIN_LEN == 32        # update FMT otherwise
+        #assert ustruct.calcsize(PIN_ATTEMPT_FMT_V1) == PIN_ATTEMPT_SIZE_V1
+        #assert ustruct.calcsize(PIN_ATTEMPT_FMT_V2_ADDITIONS) \
+        #                    == PIN_ATTEMPT_SIZE - PIN_ATTEMPT_SIZE_V1
 
     def __repr__(self):
         return '<PinAttempt: fails/left=%d/%d tc_flag/arg=0x%x/0x%x>' % (
@@ -177,7 +173,7 @@ class PinAttempt:
                 old_pin = self.pin
 
             assert len(new_pin) <= MAX_PIN_LEN
-            assert old_pin != None
+            assert old_pin is not None
             assert len(old_pin) <= MAX_PIN_LEN
         else:
             new_pin = b''
@@ -339,10 +335,6 @@ class PinAttempt:
 
         return self.state_flags
 
-    def delay(self):
-        # obsolete since Mk3, but called from login.py
-        self.roundtrip(1)
-
     def login(self):
         # test we have the PIN code right, and unlock access if so.
         chk = self.roundtrip(2)
@@ -418,8 +410,12 @@ class PinAttempt:
         # Main secret has changed: reset the settings+their key,
         # and capture xfp/xpub
         # if None is provided as raw_secret -> restore to main seed
+        import glob
         from glob import settings, dis
         stash.SensitiveValues.clear_cache()
+
+        # invalidate descriptor cache - upon new secret load
+        glob.DESC_CACHE = {}
 
         bypass_tmp = False
         stash.bip39_passphrase = bool(bip39pw)
@@ -533,10 +529,24 @@ class PinAttempt:
         from trick_pins import TC_DELTA_MODE
         return bool(self.delay_required & TC_DELTA_MODE)
 
+
     def get_tc_values(self):
         # Mk4 only
         # return (tc_flags, tc_arg)
         return self.delay_required, self.delay_achieved
+
+    @staticmethod
+    async def enforce_brick():
+        # check for bricked system early
+        if get_is_bricked():
+            try:
+                # regardless of settings, become a forever calculator after brickage.
+                while version.has_qwerty:
+                    from calc import login_repl
+                    await login_repl()
+            finally:
+                # die right away if it's not going to work
+                enter_dfu(3)
         
 
 # singleton

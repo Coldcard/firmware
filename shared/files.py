@@ -264,7 +264,7 @@ class CardSlot:
             self.active_led = self.active_led2 if use_b_slot else self.active_led1
 
     def __enter__(self):
-        # Mk4: maybe use our virtual disk in preference to SD Card
+        # maybe use our virtual disk in preference to SD Card
         if glob.VD and (self.force_vdisk or not self.is_inserted()):
             self.mountpt = glob.VD.mount(self.readonly)
             return self

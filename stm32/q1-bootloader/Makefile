@@ -8,8 +8,11 @@
 #	clobber - delete all build products
 #
 
-# for any file it cant find, look in ../mk4-bootloader
-VPATH = ../mk4-bootloader
+# for any source file needed, look also in ../mk4-bootloader
+vpath %.c ../mk4-bootloader
+vpath %.S ../mk4-bootloader
+vpath %.h ../mk4-bootloader
+vpath %.py ../mk4-bootloader
 
 # Toolchain
 TOOLCHAIN = arm-none-eabi-

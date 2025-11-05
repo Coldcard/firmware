@@ -154,7 +154,7 @@ class Display:
         # otherwise: respect setting
 
         if on_battery is None:
-            on_battery = (get_batt_threshold() != None)
+            on_battery = (get_batt_threshold() is not None)
 
         if on_battery:
             # user-defined brightness when running on batteries.
@@ -190,7 +190,7 @@ class Display:
             self.image(165, 0, 'tmp_%d' % kws['tmp'])
 
         xfp = kws.get('xfp', None)      # expects an integer
-        if xfp != None:
+        if xfp is not None:
             x = 217
             for ch in xfp2str(xfp).lower():
                 self.image(x, 0, 'ch_'+ch)
@@ -268,7 +268,7 @@ class Display:
 
         if x is None or x < 0:
             w = self.width(msg)
-            if x == None:
+            if x is None:
                 # center: also blanks rest of line
                 x = max(0, (CHARS_W - w) // 2)
                 end_x = x + w
@@ -622,7 +622,8 @@ class Display:
                 # title ... but we have no special font? Inverse!
                 self.text(0, y, ' '+ln[1:]+' ', invert=True)
                 if hint_icons:
-                    # maybe show that [QR] can do something
+                    # hint_icons not shown if is story without title
+                    # maybe show that [QR,NFC] can do something
                     self.text(-1, y, hint_icons, dark=True)
 
             elif ln and ln[0] == OUT_CTRL_ADDRESS:
@@ -641,10 +642,10 @@ class Display:
 
     def _draw_addr(self, y, addr, prev_x=None):
         # Draw a single-line of an address
-        # - use prev_x=0 to start centered 
+        # - use prev_x=0 to start centered
         if prev_x is None:
             # left justify (for stories)
-            prev_x = x = 1 
+            prev_x = x = 1
         elif prev_x == 0:
             # center first line, following line(s) will be left-justified to match that
             prev_x = x = max(((CHARS_W - (len(addr) * 5) // 4) // 2), 0)
@@ -655,7 +656,61 @@ class Display:
 
         return prev_x
 
-    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, partial_bar=None, is_addr=False):
+    @staticmethod
+    def handle_qr_msg(msg, max_lines=False):
+        if len(msg) <= CHARS_W:
+            parts = [msg]
+        elif ' ' not in msg and (len(msg) <= (CHARS_W * 2)):
+            # fits in two lines, but has no spaces
+            hh = len(msg) // 2
+            parts = [msg[0:hh], msg[hh:]]
+        else:
+            if not max_lines:
+                # do word wrap
+                parts = list(word_wrap(msg, CHARS_W))
+            else:
+                # 2 lines max
+                parts = [msg[:30] + "⋯", "⋯" + msg[-30:]]
+
+        return parts
+
+    def draw_qr_lines(self, lines, is_addr):
+        y = CHARS_H - len(lines)
+        prev_x = 0
+        for line in lines:
+            if not is_addr:
+                self.text(None, y, line)
+            else:
+                prev_x = self._draw_addr(y, line, prev_x=prev_x)
+            y += 1
+
+    def draw_qr_idx_hint(self, str_idx):
+        lh = len(str_idx)
+        assert lh <= 10
+        if lh > 5:
+            # needs 2 lines
+            self.text(-1, 0, str_idx[:5])
+            self.text(-1, 1, str_idx[5:])
+        else:
+            self.text(-1, 0, str_idx)
+
+    def draw_qr_error(self, idx_hint, msg=None):
+        x = 85
+        y = 30
+        w = 150
+        self.clear()
+        self.dis.fill_rect(x, y, w, w, COL_TEXT)
+        self.dis.fill_rect(x + 1, y + 1, w - 2, w - 2)  # Black
+        self.text(12, 3, "QR too big")
+        if msg:
+            lines = self.handle_qr_msg(msg, max_lines=True)
+            self.draw_qr_lines(lines, False)
+
+        self.draw_qr_idx_hint(idx_hint)
+        self.show()
+
+    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, partial_bar=None,
+                        is_addr=False, force_msg=False, is_change=False):
         # Show a QR code on screen w/ some text under it
         # - invert not supported on Q1
         # - sidebar not supported here (see users.py)
@@ -675,16 +730,7 @@ class Display:
                 # p2wsh address would need 3 lines to show, so we won't
                 num_lines = 0
         elif msg:
-            if len(msg) <= CHARS_W:
-                parts = [msg]
-            elif ' ' not in msg and (len(msg) <= CHARS_W*2):
-                # fits in two lines, but has no spaces
-                hh = len(msg) // 2
-                parts = [msg[0:hh], msg[hh:]]
-            else:
-                # do word wrap
-                parts = list(word_wrap(msg, CHARS_W))
-
+            parts = self.handle_qr_msg(msg)
             num_lines = len(parts)
         else:
             num_lines = 0
@@ -705,25 +751,21 @@ class Display:
         fullscreen = False
         trim_lines = 0
 
-        if w == 77:
-            # v15 =>  77px x 3: 77*3 = 231px
-            expand = 3
-            num_lines = 0
-            fullscreen = True
-        elif w in (109, 113, 117):
-            # v23 => 109px x 2 = 218px
-            # v24 => 113px x 2 = 226px
-            # v25 => 117px x 2 = 234px
-            expand = 2
-            num_lines = 0
-            fullscreen = True
-        elif expand == 1 and num_lines:
-            # Maybe loose the text lines?
-            expand2 = max(1, ACTIVE_H // (w+2))
-            if expand2 > expand:
-                # v18,v19,v20,v21,v22
+        # always try to show the biggest possible QR code if not force_msg
+        if not force_msg:
+            if num_lines:
+                # better with text dropped?
+                e2 = max(1, ACTIVE_H // (w + 2))
+                if e2 > expand:
+                    num_lines = 0
+                    expand = e2
+
+            # fullscreen ?
+            e3 = (ACTIVE_H + 20) // (w + 2)
+            if expand < e3:
+                expand = e3
+                fullscreen = True
                 num_lines = 0
-                expand = expand2
 
         # vert center in available space
         qw = (w+2) * expand
@@ -757,24 +799,17 @@ class Display:
 
             if num_lines:
                 # centered text under that
-                y = CHARS_H - num_lines
-                prev_x = 0
-                for line in parts:
-                    if not is_addr:
-                        self.text(None, y, line)
-                    else:
-                        prev_x = self._draw_addr(y, line, prev_x=prev_x)
-                    y += 1
+                self.draw_qr_lines(parts, is_addr)
 
             if idx_hint:
-                lh = len(idx_hint)
-                assert lh <= 10
-                if lh > 5:
-                    # needs 2 lines
-                    self.text(-1, 0, idx_hint[:5])
-                    self.text(-1, 1, idx_hint[5:])
-                else:
-                    self.text(-1, 0, idx_hint)
+                self.draw_qr_idx_hint(idx_hint)
+
+            if is_addr and is_change:
+                for i, c in enumerate("CHANGE", start=4):
+                    self.text(1, i, c)
+
+                for i, c in enumerate("BACK", start=6):
+                    self.text(-1, i, c)
 
             # pass a max brightness flag here, which will be cleared after next show
             self.show(max_bright=True)
@@ -809,8 +844,12 @@ class Display:
         else:
             pat = ''                # clear line
 
-        self.text(None, -3, pat)
+        if count == hdr.num_parts and count == 1:
+            # skip the BS, it's a simple one
+            self.progress_bar_show(1)
+            return
 
+        self.text(None, -3, pat)
         self.text(None, -2, 'Keep scanning more...' if count < hdr.num_parts else 'Got all parts!')
         self.text(None, -1, '%s: %d of %d parts' % (hdr.file_label(), count, hdr.num_parts),
                                                         dark=True)

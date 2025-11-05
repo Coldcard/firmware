@@ -6,7 +6,7 @@ import pytest, json, time, itertools, struct, random, os, base64
 from ckcc.protocol import CCProtocolPacker
 from constants import AF_P2TR
 from psbt import BasicPSBT
-from charcodes import KEY_QR, KEY_RIGHT, KEY_CANCEL
+from charcodes import KEY_QR, KEY_RIGHT, KEY_CANCEL, KEY_DELETE
 from bbqr import split_qrs
 from bip32 import BIP32Node
 
@@ -22,7 +22,10 @@ TREE = {
     7: '{{%s,{%s,%s}},{%s,{%s,{%s,%s}}}}',
     8: '{{{%s,%s},{%s,%s}},{{%s,%s},{%s,%s}}}',
     # more than MAX (4) for test purposes
-    9: '{{{%s{%s,%s}},{%s,%s}},{{%s,%s},{%s,%s}}}'
+    9: '{{{%s,{%s,%s}},{%s,%s}},{{%s,%s},{%s,%s}}}',
+    10: '{{{{%s,%s},{%s,%s}},{%s,%s}},{{%s,%s},{%s,%s}}}',
+    11: '{{{{%s,%s},{%s,%s}},{%s,%s}},{{%s,%s},{%s,{%s,%s}}}}',
+    12: '{{{{%s,%s},{%s,%s}},{%s,%s}},{{%s,%s},{{%s,%s},{%s,%s}}}}',
 }
 
 
@@ -35,12 +38,13 @@ def ranged_unspendable_internal_key(chain_code=32 * b"\x01", subderiv="/<0;1>/*"
 
 
 @pytest.fixture
-def offer_minsc_import(cap_story, dev):
+def offer_minsc_import(cap_story, dev, sim_root_dir):
     def doit(config, allow_non_ascii=False):
         # upload the file, trigger import
         file_len, sha = dev.upload_file(config.encode('utf-8' if allow_non_ascii else 'ascii'))
 
-        open('debug/last-config-msc.txt', 'wt').write(config)
+        with open(f'{sim_root_dir}/debug/last-config-msc.txt', 'wt') as f:
+            f.write(config)
         dev.send_recv(CCProtocolPacker.miniscript_enroll(file_len, sha))
 
         time.sleep(.2)
@@ -51,63 +55,102 @@ def offer_minsc_import(cap_story, dev):
 
 
 @pytest.fixture
-def import_miniscript(goto_home, pick_menu_item, cap_story, need_keypress,
-                      nfc_write_text, press_select, scan_a_qr, press_nfc):
-    def doit(fname, way="sd", data=None):
-        goto_home()
-        pick_menu_item('Settings')
-        pick_menu_item('Miniscript')
-        pick_menu_item('Import')
-        time.sleep(.3)
-        _, story = cap_story()
-        if way == "nfc":
-            if "via NFC" not in story:
-                pytest.skip("nfc disabled")
+def import_miniscript(request, is_q1, need_keypress, offer_minsc_import, press_cancel):
+    def doit(fname=None, way="sd", data=None, name=None):
+        assert fname or data
 
-            press_nfc()
-            time.sleep(.1)
-            if isinstance(data, dict):
-                data = json.dumps(data)
-            nfc_write_text(data)
-            time.sleep(1)
-            return cap_story()
-        elif way == "qr":
-            if isinstance(data, dict):
-                data = json.dumps(data)
-
-            need_keypress(KEY_QR)
-            try:
-                scan_a_qr(data)
-            except:
-                # always as text - even if it is json
-                actual_vers, parts = split_qrs(data, 'U', max_version=20)
-                random.shuffle(parts)
-
-                for p in parts:
-                    scan_a_qr(p)
-                    time.sleep(1)  # just so we can watch
-
-            time.sleep(1)
-            return cap_story()
-
-        if "Press (1) to import miniscript wallet file from SD Card" in story:
-            # in case Vdisk or NFC is enabled
+        if fname:
             if way == "sd":
-                need_keypress("1")
+                microsd_path = request.getfixturevalue("microsd_path")
+                fpath = microsd_path(fname)
+            else:
+                virtdisk_path = request.getfixturevalue("virtdisk_path")
+                fpath = virtdisk_path(fname)
+            with open(fpath, 'r') as f:
+                config = f.read()
+        else:
+            config = data
 
-            elif way == "vdisk":
-                if "ress (2)" not in story:
+        if way in ("usb", None):
+            return offer_minsc_import(config)
+        else:
+            # only get those simulator related fixtures here, to be able to
+            # use this with real HW
+            cap_menu = request.getfixturevalue('cap_menu')
+            cap_story = request.getfixturevalue('cap_story')
+            goto_home = request.getfixturevalue('goto_home')
+            press_nfc = request.getfixturevalue('press_nfc')
+            pick_menu_item = request.getfixturevalue('pick_menu_item')
+
+            goto_home()
+            pick_menu_item("Settings")
+            pick_menu_item("Miniscript")
+            time.sleep(.1)
+
+            pick_menu_item('Import')
+            time.sleep(.2)
+            _, story = cap_story()
+            if way == "nfc":
+                if "via NFC" not in story:
+                    press_cancel()
+                    pytest.skip("nfc disabled")
+
+                press_nfc()
+                time.sleep(.1)
+                if isinstance(config, dict):
+                    config = json.dumps(config)
+
+                nfc_write_text = request.getfixturevalue('nfc_write_text')
+                nfc_write_text(config)
+                time.sleep(1)
+                return cap_story()
+            elif way == "qr":
+                scan_a_qr = request.getfixturevalue('scan_a_qr')
+                if isinstance(data, dict):
+                    data = json.dumps(data)
+
+                need_keypress(KEY_QR)
+                try:
+                    scan_a_qr(data)
+                except:
+                    # always as text - even if it is json
+                    actual_vers, parts = split_qrs(data, 'U', max_version=20)
+                    random.shuffle(parts)
+
+                    for p in parts:
+                        scan_a_qr(p)
+                        time.sleep(1)  # just so we can watch
+
+                time.sleep(1)
+                return cap_story()
+
+            if not fname:
+                microsd_path = request.getfixturevalue("microsd_path")
+                virtdisk_path = request.getfixturevalue("virtdisk_path")
+                path_f = microsd_path if way == "sd" else virtdisk_path
+                fname = (name or "ms_wal") + ".txt"
+                with open(path_f(fname), "w") as f:
+                    f.write(config)
+
+            if "Press (1) to import miniscript wallet file from SD Card" in story:
+                # in case Vdisk or NFC is enabled
+                if way == "sd":
+                    need_keypress("1")
+
+                elif way == "vdisk":
+                    if "ress (2)" not in story:
+                        press_cancel()
+                        pytest.xfail(way)
+
+                    need_keypress("2")
+            else:
+                if way != "sd":
                     pytest.xfail(way)
 
-                need_keypress("2")
-        else:
-            if way != "sd":
-                pytest.xfail(way)
-
-        time.sleep(.5)
-        pick_menu_item(fname)
-        time.sleep(.1)
-        return cap_story()
+            time.sleep(.3)
+            pick_menu_item(fname)
+            time.sleep(.1)
+            return cap_story()
 
     return doit
 
@@ -138,10 +181,11 @@ def import_duplicate(import_miniscript, press_cancel, virtdisk_path, microsd_pat
                 with open(new_fpath, "w") as f:
                     f.write(res)
 
+            press_cancel()
             title, story = import_miniscript(new_fname, way, data=data)
             time.sleep(.2)
 
-        assert "duplicate of already saved wallet" in story
+        assert "Duplicate wallet" in story
         assert "OK to approve" not in story
         press_cancel()
 
@@ -156,14 +200,13 @@ def miniscript_descriptors(goto_home, pick_menu_item, need_keypress, cap_story,
                            garbage_collector):
 
     def doit(minsc_name):
-        qr_external = None
+        qr_data = None
         goto_home()
         pick_menu_item("Settings")
         pick_menu_item("Miniscript")
         pick_menu_item(minsc_name)
         pick_menu_item("Descriptors")
         pick_menu_item("Export")
-        need_keypress("1")  # internal and external separately
         time.sleep(.1)
         if is_q1:
             # check QR
@@ -171,15 +214,13 @@ def miniscript_descriptors(goto_home, pick_menu_item, need_keypress, cap_story,
             try:
                 file_type, data = readback_bbqr()
                 assert file_type == "U"
-                data = data.decode()
+                qr_data = data.decode().strip()
             except:
-                data = cap_screen_qr().decode('ascii')
+                qr_data = cap_screen_qr().decode('ascii').strip()
 
-            qr_external, qr_internal = data.split("\n")
             need_keypress(KEY_CANCEL)
 
             pick_menu_item("Export")
-            need_keypress("1")  # internal and external separately
             time.sleep(.2)
 
         title, story = cap_story()
@@ -189,16 +230,16 @@ def miniscript_descriptors(goto_home, pick_menu_item, need_keypress, cap_story,
             title, story = cap_story()
 
         assert "Miniscript file written" in story
-        fname = story.split("\n\n")[-1]
+        assert "signature file written" in story
+        fname = story.split("\n\n")[1]
         fpath = microsd_path(fname)
         garbage_collector.append(fpath)
         with open(fpath, "r") as f:
-            cont = f.read()
-        external, internal = cont.split("\n")
-        if qr_external:
-            assert qr_external == external
-            assert qr_internal == internal
-        return external, internal
+            cont = f.read().strip()
+
+        if qr_data:
+            assert qr_data == cont
+        return cont
 
     return doit
 
@@ -212,6 +253,15 @@ def usb_miniscript_get(dev):
 
     return doit
 
+
+@pytest.fixture
+def usb_miniscript_policy(dev):
+    def doit(name):
+        dev.check_mitm()
+        resp = dev.send_recv(CCProtocolPacker.miniscript_policy(name))
+        return json.loads(resp)
+
+    return doit
 
 @pytest.fixture
 def usb_miniscript_delete(dev):
@@ -273,8 +323,8 @@ def bitcoin_core_signer(bitcoind):
 
 @pytest.fixture
 def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
-                           cap_story, load_export, miniscript_descriptors,
-                           usb_miniscript_addr, cap_screen_qr):
+                           cap_story, miniscript_descriptors, load_export,
+                           usb_miniscript_addr, cap_screen_qr, press_select):
     def doit(way, addr_fmt, wallet, cc_minsc_name, export_check=True):
         goto_home()
         pick_menu_item("Address Explorer")
@@ -283,9 +333,7 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
         wal_name = m[-1]
         pick_menu_item(wal_name)
 
-        title, story = cap_story()
-        assert "Taproot internal key" not in story
-
+        time.sleep(1)
         if way == "qr":
             need_keypress(KEY_QR)
             cc_addrs = []
@@ -295,16 +343,20 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
                 time.sleep(.2)
             need_keypress(KEY_CANCEL)
         else:
-            contents = load_export(way, label="Address summary", is_json=False, sig_check=False)
+            contents = load_export(way, label="Address summary", is_json=False)
             addr_cont = contents.strip()
+            press_select()
 
-        time.sleep(.5)
+
+        time.sleep(1)
         title, story = cap_story()
-        assert "(0)" in story
-        assert "change addresses." in story
+
+        assert "change addresses." in story and "(0)" in story
         need_keypress("0")
-        time.sleep(.5)
+
+        time.sleep(1)
         title, story = cap_story()
+
         assert "(0)" not in story
         assert "change addresses." not in story
 
@@ -317,8 +369,7 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
                 time.sleep(.2)
             need_keypress(KEY_CANCEL)
         else:
-            contents_change = load_export(way, label="Address summary", is_json=False,
-                                          sig_check=False)
+            contents_change = load_export(way, label="Address summary", is_json=False)
             addr_cont_change = contents_change.strip()
 
         if way == "nfc":
@@ -333,22 +384,10 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
             addr_range = [0, 249]
             cc_addrs_split = addr_cont.split("\n")
             cc_addrs_split_change = addr_cont_change.split("\n")
-            # header is different for taproot
-            if addr_fmt == "bech32m":
-                try:
-                    assert "Internal Key" in cc_addrs_split[0]
-                except AssertionError:
-                    assert "Unspendable Internal Key" in cc_addrs_split[0]
-                assert "Taptree" in cc_addrs_split[0]
-            else:
-                assert "Internal Key" not in cc_addrs_split[0]
-                assert "Taptree" not in cc_addrs_split[0]
 
             cc_addrs = cc_addrs_split[1:]
             cc_addrs_change = cc_addrs_split_change[1:]
             part_addr_index = 1
-
-        time.sleep(2)
 
         internal_desc = None
         external_desc = None
@@ -359,30 +398,28 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
             else:
                 external_desc = desc["desc"]
 
+        time.sleep(1)
+
         if export_check:
-            cc_external, cc_internal = miniscript_descriptors(cc_minsc_name)
+            desc_export = miniscript_descriptors(cc_minsc_name)
 
-            unspend = "unspend("
-            if unspend in cc_external:
-                assert "unspend(" in cc_internal
-                netcode = "XTN" if "tpub" in cc_external else "BTC"
-                # bitcoin core does not recognize unspend( - needs hack
-                # CC properly exports any imported unspend( for bitcoin core
-                # as extended key serialization xpub/<0;1>/*
-                start_idx = cc_external.find(unspend)
-                assert start_idx != -1
-                end_idx = start_idx + len(unspend) + 64 + 1
-                uns = cc_external[start_idx: end_idx]
-                chain_code = bytes.fromhex(uns[len(unspend):-1])
-                node = BIP32Node.from_chaincode_pubkey(chain_code,
-                                                       b"\x02" + bytes.fromhex(H),
-                                                       netcode=netcode)
-                ek = node.hwif()
-                cc_external = cc_external.replace(uns, ek)
-                cc_internal = cc_internal.replace(uns, ek)
+            def remove_minisc_syntactic_sugar(descriptor, a, b):
+                # syntactic sugar https://bitcoin.sipa.be/miniscript/
+                target_len = len(a)
+                idx = 0
+                while idx != -1:
+                    idx = descriptor.find(a, idx)
+                    if idx == -1: break
+                    # needs colon more identities than just 'c'
+                    rep = f":{b}" if descriptor[idx-1] in "asctdvjnlu" else f"{b}"
+                    descriptor = descriptor[:idx] + rep + descriptor[idx+target_len:]
 
-            assert cc_external.split("#")[0] == external_desc.split("#")[0].replace("'", "h")
-            assert cc_internal.split("#")[0] == internal_desc.split("#")[0].replace("'", "h")
+                return descriptor
+
+            desc_export = remove_minisc_syntactic_sugar(desc_export, "c:pk_k(", "pk(")
+            desc_export = remove_minisc_syntactic_sugar(desc_export, "c:pk_h(", "pkh(")
+            # TODO format with and without multipath expression
+            # assert desc_export.split("#")[0] == external_desc.split("#")[0].replace("'", "h")
 
         bitcoind_addrs = wallet.deriveaddresses(external_desc, addr_range)
         bitcoind_addrs_change = wallet.deriveaddresses(internal_desc, addr_range)
@@ -419,6 +456,166 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
     return doit
 
 
+@pytest.fixture
+def create_core_wallet(goto_home, pick_menu_item, load_export, bitcoind):
+    def doit(name, addr_type, way="sd", funded=True):
+        try:
+            pick_menu_item(name)  # pick imported descriptor multisig wallet
+        except:
+            # probably not in Miniscript
+            goto_home()
+            pick_menu_item('Settings')
+            pick_menu_item('Miniscript')
+            pick_menu_item(name)
+
+        pick_menu_item("Descriptors")
+        pick_menu_item("Bitcoin Core")
+        text = load_export(way, label="Bitcoin Core miniscript", is_json=False)
+        text = text.replace("importdescriptors ", "").strip()
+        # remove junk
+        r1 = text.find("[")
+        r2 = text.find("]", -1, 0)
+        text = text[r1: r2]
+        core_desc_object = json.loads(text)
+
+        # watch only wallet where miniscript descriptor will be imported
+        ms = bitcoind.create_wallet(
+            wallet_name=name, disable_private_keys=True,
+            blank=True, passphrase=None, avoid_reuse=False, descriptors=True
+        )
+
+        # import descriptors to watch only wallet
+        res = ms.importdescriptors(core_desc_object)
+        for obj in res:
+            assert obj["success"]
+
+        if funded:
+            addr = ms.getnewaddress("", addr_type)
+            if addr_type == "bech32":
+                sw = "bcrt1q"
+            elif addr_type == "bech32m":
+                sw = "bcrt1p"
+            else:
+                sw = "2"
+            assert addr.startswith(sw)
+            # get some coins and fund above multisig address
+            bitcoind.supply_wallet.sendtoaddress(addr, 49)
+            bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())  # mine above
+
+        return ms
+    return doit
+
+
+@pytest.fixture
+def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
+                        pick_menu_item, goto_home, cap_menu, microsd_path,
+                        use_regtest, get_cc_key, import_miniscript,
+                        bitcoin_core_signer, import_duplicate, press_select,
+                        virtdisk_path, garbage_collector, create_core_wallet):
+    def doit(M, N, script_type, internal_key=None, cc_account=0, funded=True,
+             tapscript_threshold=False, add_own_pk=False, same_account=False, way="sd"):
+
+        use_regtest()
+        bitcoind_signers = []
+        bitcoind_signers_xpubs = []
+        for i in range(N - 1):
+            s, core_key = bitcoin_core_signer(f"bitcoind--signer{i}")
+            s.keypoolrefill(10)
+            bitcoind_signers.append(s)
+            bitcoind_signers_xpubs.append(core_key)
+
+        me_pth = f"m/48h/1h/{cc_account}h/3h"
+        me = get_cc_key(me_pth)
+        ik = internal_key or ranged_unspendable_internal_key()
+
+        if tapscript_threshold:
+            signers_xp = [me] + bitcoind_signers_xpubs
+            assert len(signers_xp) == N
+            desc = f"tr({ik},%s)"
+
+            scripts = []
+            for c in itertools.combinations(signers_xp, M):
+                tmplt = f"sortedmulti_a({M},{','.join(c)})"
+                scripts.append(tmplt)
+
+            if len(scripts) > 8:
+                while True:
+                    # just some of them but at least one has to have my key
+                    x = random.sample(scripts, 8)
+                    if any(me in s for s in x):
+                        scripts = x
+                        break
+
+            if add_own_pk:
+                if len(scripts) < 8:
+                    if same_account:
+                        cc_key = get_cc_key(me_pth, subderiv="/<2;3>/*")
+                    else:
+                        cc_key = get_cc_key("m/86h/1h/1000h")
+                    cc_pk_leaf = f"pk({cc_key})"
+                    scripts.append(cc_pk_leaf)
+                else:
+                    pytest.skip("Scripts full")
+
+            temp = TREE[len(scripts)]
+            temp = temp % tuple(scripts)
+
+            desc = desc % temp
+
+        else:
+            if add_own_pk:
+                if same_account:
+                    ss = [get_cc_key(me_pth, subderiv="/<4;5>/*")] + bitcoind_signers_xpubs
+                    cc_key = get_cc_key(me_pth, subderiv="/<6;7>/*")
+                else:
+                    ss = [get_cc_key("m/86h/1h/0h")] + bitcoind_signers_xpubs
+                    cc_key = get_cc_key("m/86h/1h/1000h")
+
+                tmplt = f"sortedmulti_a({M},{','.join(ss)})"
+                cc_pk_leaf = f"pk({cc_key})"
+                desc = f"tr({ik},{{{tmplt},{cc_pk_leaf}}})"
+            else:
+                desc = f"tr({ik},sortedmulti_a({M},{me},{','.join(bitcoind_signers_xpubs)}))"
+
+        name = "minisc"
+        fname = None
+        if way in ["sd", "vdisk"]:
+            data = None
+            fname = f"{name}.txt"
+            path_f = microsd_path if way == 'sd' else virtdisk_path
+            fpath = path_f(fname)
+            with open(fpath, "w") as f:
+                f.write(desc + "\n")
+            garbage_collector.append(fpath)
+        else:
+            data = dict(name=name, desc=desc)
+
+        _, story = import_miniscript(fname, way=way, data=data)
+        assert "Create new miniscript wallet?" in story
+        assert name in story
+        assert "Press (1) to see extended public keys" in story
+        if script_type == "p2wsh":
+            af = "bech32"
+            assert "P2WSH" in story
+        elif script_type == "p2sh":
+            af = "legacy"
+            assert "P2SH" in story
+        elif script_type == "p2tr":
+            af = "bech32m"
+            assert "P2TR" in story
+        else:
+            af = "p2sh-segwit"
+            assert "P2SH-P2WSH" in story
+        # assert "Derivation:\n  Varies (2)" in story
+        press_select()  # approve multisig import
+        import_duplicate(fname, way=way, data=data)
+        ms = create_core_wallet(name, af, way, funded)
+
+        return ms, bitcoind_signers
+
+    return doit
+
+
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("addr_fmt", ["bech32", "p2sh-segwit"])
 @pytest.mark.parametrize("lt_type", ["older", "after"])  # this is actually not generated by liana (liana is relative only)
@@ -433,12 +630,13 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
 
     "or_d(pk(@A),and_v(v:multi(2,@B,@C),locktime(N)))",
 ])
-def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_miniscript, goto_home,
-                                  pick_menu_item, cap_menu, cap_story, microsd_path, way,
-                                  use_regtest, bitcoind, microsd_wipe, load_export, dev,
+def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_miniscript,
+                                  pick_menu_item, cap_story, microsd_path, way, dev,
+                                  use_regtest, bitcoind, microsd_wipe, load_export,
                                   address_explorer_check, get_cc_key, import_miniscript,
                                   bitcoin_core_signer, import_duplicate, press_select,
-                                  virtdisk_path, skip_if_useless_way, garbage_collector):
+                                  virtdisk_path, skip_if_useless_way, garbage_collector,
+                                  create_core_wallet, goto_home):
     skip_if_useless_way(way)
     normal_cosign_core = False
     recovery_cosign_core = False
@@ -489,6 +687,7 @@ def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_min
     fname = f"{name}.txt"
     if way in ["qr", "nfc"]:
         data = dict(name=name, desc=desc)
+        fname = None
     else:
         path_f = microsd_path if way == "sd" else virtdisk_path
         data = None
@@ -497,41 +696,18 @@ def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_min
         with open(fpath, "w") as f:
             f.write(desc)
 
-    wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
-                                passphrase=None, avoid_reuse=False, descriptors=True)
-
     _, story = import_miniscript(fname, way=way, data=data)
-    try:
-        assert "Create new miniscript wallet?" in story
-    except:
-        time.sleep(.2)
-        _, story = cap_story()
-        assert "Create new miniscript wallet?" in story
-    # do some checks on policy --> helper function to replace keys with letters
+    time.sleep(.2)
+    assert "Create new miniscript wallet?" in story
     press_select()
-    import_duplicate(fname, way=way, data=data)
-    menu = cap_menu()
-    assert menu[0] == name
-    pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export(way, label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
-    addr = wo.getnewaddress("", addr_fmt)
-    addr_dest = wo.getnewaddress("", addr_fmt)  # self-spend
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    # import_duplicate(fname, way=way, data=data)
+
+    wo = create_core_wallet(name, addr_fmt, way, True)
+
     all_of_it = wo.getbalance()
     unspent = wo.listunspent()
     assert len(unspent) == 1
+    addr_dest = wo.getnewaddress("", addr_fmt)  # self-spend
     inp = {"txid": unspent[0]["txid"], "vout": unspent[0]["vout"]}
     if recovery and sequence:
         inp["sequence"] = sequence
@@ -609,7 +785,7 @@ def test_liana_miniscripts_complex(addr_fmt, minsc, bitcoind, use_regtest, clear
                                    load_export, goto_home, address_explorer_check, cap_menu,
                                    get_cc_key, import_miniscript, bitcoin_core_signer,
                                    import_duplicate, press_select, way, skip_if_useless_way,
-                                   garbage_collector):
+                                   garbage_collector, create_core_wallet):
     skip_if_useless_way(way)
     use_regtest()
     clear_miniscript()
@@ -667,33 +843,16 @@ def test_liana_miniscripts_complex(addr_fmt, minsc, bitcoind, use_regtest, clear
 
         garbage_collector.append(fpath)
 
-    wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
-                                  passphrase=None, avoid_reuse=False, descriptors=True)
     _, story = import_miniscript(fname, way=way, data=data)
+    time.sleep(.2)
     assert "Create new miniscript wallet?" in story
     # do some checks on policy --> helper function to replace keys with letters
     press_select()
     import_duplicate(fname, way=way, data=data)
-    menu = cap_menu()
-    assert menu[0] == name
-    pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export(way, label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
 
-    addr = wo.getnewaddress("", addr_fmt)
+    wo = create_core_wallet(name, addr_fmt, way, True)
+
     addr_dest = wo.getnewaddress("", addr_fmt)  # self-spend
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
     unspent = wo.listunspent()
     assert len(unspent) == 1
     inp = {"txid": unspent[0]["txid"], "vout": unspent[0]["vout"]}
@@ -761,159 +920,6 @@ def test_liana_miniscripts_complex(addr_fmt, minsc, bitcoind, use_regtest, clear
 
     # check addresses
     address_explorer_check(way, addr_fmt, wo, name)
-
-
-@pytest.fixture
-def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
-                        pick_menu_item, goto_home, cap_menu, microsd_path,
-                        use_regtest, get_cc_key, import_miniscript,
-                        bitcoin_core_signer, import_duplicate, press_select,
-                        virtdisk_path, garbage_collector):
-    def doit(M, N, script_type, internal_key=None, cc_account=0, funded=True,
-             tapscript_threshold=False, add_own_pk=False, same_account=False, way="sd"):
-
-        use_regtest()
-        bitcoind_signers = []
-        bitcoind_signers_xpubs = []
-        for i in range(N - 1):
-            s, core_key = bitcoin_core_signer(f"bitcoind--signer{i}")
-            s.keypoolrefill(10)
-            bitcoind_signers.append(s)
-            bitcoind_signers_xpubs.append(core_key)
-
-        # watch only wallet where multisig descriptor will be imported
-        ms = bitcoind.create_wallet(
-            wallet_name=f"watch_only_{script_type}_{M}of{N}", disable_private_keys=True,
-            blank=True, passphrase=None, avoid_reuse=False, descriptors=True
-        )
-        me_pth = f"m/48h/1h/{cc_account}h/3h"
-        me = get_cc_key(me_pth)
-        ik = internal_key or ranged_unspendable_internal_key()
-
-        if tapscript_threshold:
-            signers_xp = [me] + bitcoind_signers_xpubs
-            assert len(signers_xp) == N
-            desc = f"tr({ik},%s)"
-
-            scripts = []
-            for c in itertools.combinations(signers_xp, M):
-                tmplt = f"sortedmulti_a({M},{','.join(c)})"
-                scripts.append(tmplt)
-
-            if len(scripts) > 8:
-                while True:
-                    # just some of them but at least one has to have my key
-                    x = random.sample(scripts, 8)
-                    if any(me in s for s in x):
-                        scripts = x
-                        break
-
-            if add_own_pk:
-                if len(scripts) < 8:
-                    if same_account:
-                        cc_key = get_cc_key(me_pth, subderiv="/<2;3>/*")
-                    else:
-                        cc_key = get_cc_key("m/86h/1h/1000h")
-                    cc_pk_leaf = f"pk({cc_key})"
-                    scripts.append(cc_pk_leaf)
-                else:
-                    pytest.skip("Scripts full")
-
-            temp = TREE[len(scripts)]
-            temp = temp % tuple(scripts)
-
-            desc = desc % temp
-
-        else:
-            if add_own_pk:
-                if same_account:
-                    ss = [get_cc_key(me_pth, subderiv="/<4;5>/*")] + bitcoind_signers_xpubs
-                    cc_key = get_cc_key(me_pth, subderiv="/<6;7>/*")
-                else:
-                    ss = [get_cc_key("m/86h/1h/0h")] + bitcoind_signers_xpubs
-                    cc_key = get_cc_key("m/86h/1h/1000h")
-
-                tmplt = f"sortedmulti_a({M},{','.join(ss)})"
-                cc_pk_leaf = f"pk({cc_key})"
-                desc = f"tr({ik},{{{tmplt},{cc_pk_leaf}}})"
-            else:
-                desc = f"tr({ik},sortedmulti_a({M},{me},{','.join(bitcoind_signers_xpubs)}))"
-
-        name = "minisc"
-        fname = None
-        if way in ["sd", "vdisk"]:
-            data = None
-            fname = f"{name}.txt"
-            path_f = microsd_path if way == 'sd' else virtdisk_path
-            fpath = path_f(fname)
-            with open(fpath, "w") as f:
-                f.write(desc + "\n")
-            garbage_collector.append(fpath)
-        else:
-            data = dict(name=name, desc=desc)
-
-        _, story = import_miniscript(fname, way=way, data=data)
-        assert "Create new miniscript wallet?" in story
-        assert name in story
-        if script_type == "p2tr":
-            assert "Taproot internal key" in story
-            assert "Tapscript" in story
-        assert "Press (1) to see extended public keys" in story
-        if script_type == "p2wsh":
-            assert "P2WSH" in story
-        elif script_type == "p2sh":
-            assert "P2SH" in story
-        elif script_type == "p2tr":
-            assert "P2TR" in story
-        else:
-            assert "P2SH-P2WSH" in story
-        # assert "Derivation:\n  Varies (2)" in story
-        press_select()  # approve multisig import
-        import_duplicate(fname, way=way, data=data)
-        goto_home()
-        pick_menu_item('Settings')
-        pick_menu_item('Miniscript')
-        menu = cap_menu()
-        pick_menu_item(menu[0])  # pick imported descriptor multisig wallet
-        pick_menu_item("Descriptors")
-        pick_menu_item("Bitcoin Core")
-        text = load_export(way, label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-        text = text.replace("importdescriptors ", "").strip()
-        # remove junk
-        r1 = text.find("[")
-        r2 = text.find("]", -1, 0)
-        text = text[r1: r2]
-        core_desc_object = json.loads(text)
-        # import descriptors to watch only wallet
-        res = ms.importdescriptors(core_desc_object)
-        assert res[0]["success"]
-        assert res[1]["success"]
-
-        if funded:
-            if script_type == "p2wsh":
-                addr_type = "bech32"
-            elif script_type == "p2tr":
-                addr_type = "bech32m"
-            elif script_type == "p2sh":
-                addr_type = "legacy"
-            else:
-                addr_type = "p2sh-segwit"
-
-            addr = ms.getnewaddress("", addr_type)
-            if script_type == "p2wsh":
-                sw = "bcrt1q"
-            elif script_type == "p2tr":
-                sw = "bcrt1p"
-            else:
-                sw = "2"
-            assert addr.startswith(sw)
-            # get some coins and fund above multisig address
-            bitcoind.supply_wallet.sendtoaddress(addr, 49)
-            bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())  # mine above
-
-        return ms, bitcoind_signers
-
-    return doit
 
 
 @pytest.mark.bitcoind
@@ -992,20 +998,15 @@ def test_tapscript(M_N, cc_first, clear_miniscript, goto_home, pick_menu_item,
 @pytest.mark.parametrize("add_pk", [True, False])
 @pytest.mark.parametrize('M_N', [(3, 15), (2, 2), (3, 5)])
 @pytest.mark.parametrize('way', ["qr", "sd", "vdisk", "nfc"])
-@pytest.mark.parametrize('internal_type', ["unspend(", "xpub"])
 def test_bitcoind_tapscript_address(M_N, clear_miniscript, bitcoind_miniscript,
                                     use_regtest, way, csa, address_explorer_check,
-                                    add_pk, internal_type, skip_if_useless_way):
+                                    add_pk, skip_if_useless_way):
     skip_if_useless_way(way)
     use_regtest()
     clear_miniscript()
     M, N = M_N
 
-    ik = None  # default static
-    if internal_type == "unspend(":
-        ik = f"unspend({os.urandom(32).hex()})/<20;21>/*"
-    elif internal_type == "xpub":
-        ik = ranged_unspendable_internal_key(os.urandom(32))
+    ik = ranged_unspendable_internal_key(os.urandom(32), subderiv=f"/<22;23>/*")
 
     ms_wo, _ = bitcoind_miniscript(M, N, "p2tr", funded=False, tapscript_threshold=csa,
                                    add_own_pk=add_pk, way=way, internal_key=ik)
@@ -1020,12 +1021,11 @@ def test_bitcoind_tapscript_address(M_N, clear_miniscript, bitcoind_miniscript,
     True,
     False,
     "tpubD6NzVbkrYhZ4WhUnV3cPSoRWGf9AUdG2dvNpsXPiYzuTnxzAxemnbajrATDBWhaAVreZSzoGSe3YbbkY2K267tK3TrRmNiLH2pRBpo8yaWm/<2;3>/*",
-    "unspend(c72231504cf8c1bbefa55974db4e0cdac781049a9a81a87e7ff5beeb45b34d3d)/<0;1>/*"
 ])
 def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, bitcoind, goto_home, cap_menu,
                             pick_menu_item, cap_story, microsd_path, load_export, microsd_wipe, dev, way,
                             bitcoind_miniscript, clear_miniscript, get_cc_key, press_cancel, press_select,
-                            skip_if_useless_way, garbage_collector):
+                            skip_if_useless_way, garbage_collector, file_tx_signing_done):
     skip_if_useless_way(way)
     M, N = m_n
     clear_miniscript()
@@ -1073,22 +1073,8 @@ def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, 
     press_select()
     time.sleep(0.1)
     title, story = cap_story()
-    split_story = story.split("\n\n")
-    cc_tx_id = None
-    if "(ready for broadcast)" in story:
-        signed_fname = split_story[1]
-        signed_txn_fname = split_story[-2]
-        cc_tx_id = split_story[-1].split("\n")[-1]
-        txn_fpath = microsd_path(signed_txn_fname)
-        with open(txn_fpath, "r") as f:
-            signed_txn = f.read().strip()
-        garbage_collector.append(txn_fpath)
-    else:
-        signed_fname = split_story[-1]
 
-    fpath = microsd_path(signed_fname)
-    with open(fpath, "r") as f:
-        signed_psbt = f.read().strip()
+    signed_psbt, signed_txn, cc_tx_id = file_tx_signing_done(story)
 
     garbage_collector.append(fpath)
     if cc_first:
@@ -1112,7 +1098,7 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
                       internal_key_spendable, dev, microsd_path, get_cc_key,
                       pick_menu_item, cap_story, goto_home, cap_menu, load_export,
                       import_miniscript, bitcoin_core_signer, import_duplicate,
-                      press_select, garbage_collector):
+                      press_select, garbage_collector, create_core_wallet):
     use_regtest()
     clear_miniscript()
     microsd_wipe()
@@ -1137,11 +1123,6 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
         random.shuffle(leafs)
         desc = f"tr({internal_key},{tmplt % (*leafs,)})"
 
-    ts = bitcoind.create_wallet(
-        wallet_name=f"watch_only_pk_ts", disable_private_keys=True,
-        blank=True, passphrase=None, avoid_reuse=False, descriptors=True
-    )
-
     fname = "ts_pk.txt"
     fpath = microsd_path(fname)
     with open(fpath, "w") as f:
@@ -1151,35 +1132,18 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
     _, story = import_miniscript(fname)
     assert "Create new miniscript wallet?" in story
     assert fname.split(".")[0] in story
-    assert "Taproot internal key" in story
-    assert "Tapscript" in story
     assert "Press (1) to see extended public keys" in story
     assert "P2TR" in story
 
     press_select()
     import_duplicate(fname)
+
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Miniscript')
     menu = cap_menu()
-    pick_menu_item(menu[0])
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    # import descriptors to watch only wallet
-    res = ts.importdescriptors(core_desc_object)
-    assert res[0]["success"]
-    assert res[1]["success"]
 
-    addr = ts.getnewaddress("", "bech32m")
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    ts = create_core_wallet(menu[0], "bech32m", "sd", True)
 
     dest_addr = ts.getnewaddress("", "bech32m")  # selfspend
     psbt = ts.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 2})["psbt"]
@@ -1227,16 +1191,19 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
 
 
 @pytest.mark.parametrize("desc", [
-    "tr(unspend(61350cde0f20e0268d0f33c22967863d9ebcbc3f448b78c9e83810d2152692e0)/<0;1>/*,{{sortedmulti_a(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*),sortedmulti_a(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)},sortedmulti_a(2,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)})",
-    "tr(unspend(af042dea4fdb855b7b66732ce8512829d95bbf4963a7b28279d5a0b5b48e5bea)/<0;1>/*,{sortedmulti_a(2,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)}})",
-    "tr(tpubD6NzVbkrYhZ4XB7hZjurMYsPsgNY32QYGZ8YFVU7cy1VBRNoYpKAVuUfqfUFss6BooXRrCeYAdK9av2yFnqWXZaUMJuZdpE9Kuh6gubCVHu/<0;1>/*,{sortedmulti_a(2,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)}})",
-    "tr(unspend(f19573a10866ee9881769e24464f9a0e989c2cb8e585db385934130462abed90)/<0;1>/*,{{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)},sortedmulti_a(2,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)})",
-    "tr(unspend(dfed64ff493dca2ab09eadefaa0c88be8404908fa6eff869ff71c0d359d086b9)/<2;3>/*,{{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)},or_d(pk([0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*),and_v(v:pkh([30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),older(500)))})",
-    "tr(unspend(b320077905d0954b01a8a328ea08c0ac3b4b066d1240f47a1b2c58651dcda4eb)/<0;1>/*,{{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)},or_d(pk([0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*),and_v(v:pkh([30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),older(500)))})",
+    "tr(unspend(),{{sortedmulti_a(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*),sortedmulti_a(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)},sortedmulti_a(2,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)})",
+    "tr(unspend(),{sortedmulti_a(2,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)}})",
+    "tr(unspend(),{sortedmulti_a(2,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)}})",
+    "tr(unspend(),{{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)},sortedmulti_a(2,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)})",
+    "tr(unspend(),{{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)},or_d(pk([0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*),and_v(v:pkh([30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),older(500)))})",
+    "tr(unspend(),{{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)},or_d(pk([0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*),and_v(v:pkh([30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),older(500)))})",
 ])
 def test_tapscript_import_export(clear_miniscript, pick_menu_item, cap_story,
                                  import_miniscript, load_export, desc, microsd_path,
                                  press_select):
+    i = random.randint(2, 10)  # needs to be disjoint
+    unspend = ranged_unspendable_internal_key(os.urandom(32), subderiv=f"/<{i};{i+1}>/*")
+    desc = desc.replace("unspend()", unspend)
     clear_miniscript()
     fname = "imdesc.txt"
     with open(microsd_path(fname), "w") as f:
@@ -1246,12 +1213,7 @@ def test_tapscript_import_export(clear_miniscript, pick_menu_item, cap_story,
     pick_menu_item(fname.split(".")[0])
     pick_menu_item("Descriptors")
     pick_menu_item("Export")
-    time.sleep(.1)
-    title, story = cap_story()
-    assert "(<0;1> notation) press OK" in story
-    press_select()
-    contents = load_export("sd", label="Miniscript", is_json=False, addr_fmt=AF_P2TR,
-                           sig_check=False)
+    contents = load_export("sd", label="Miniscript", is_json=False, addr_fmt=AF_P2TR)
     descriptor = contents.strip()
     assert desc.split("#")[0].replace("<0;1>/*", "0/*").replace("'", "h") == descriptor.split("#")[0].replace("<0;1>/*", "0/*").replace("'", "h")
 
@@ -1259,14 +1221,15 @@ def test_tapscript_import_export(clear_miniscript, pick_menu_item, cap_story,
 def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe, bitcoind, dev,
                                     goto_home, pick_menu_item, microsd_path, import_miniscript,
                                     cap_story, load_export, get_cc_key, garbage_collector,
-                                    bitcoin_core_signer, import_duplicate, press_select):
+                                    bitcoin_core_signer, import_duplicate, press_select,
+                                    create_core_wallet):
     # works in core - but some discussions are ongoing
     # https://github.com/bitcoin/bitcoin/issues/27104
     # CC also allows this for now... (experimental branch)
     use_regtest()
     clear_miniscript()
     microsd_wipe()
-    ss, core_key = bitcoin_core_signer(f"dup_leafs")
+    ss, core_key = bitcoin_core_signer(f"s1_dup_leafs")
 
     cc_key = get_cc_key("86h/0h/100h")
     cc_leaf = f"pk({cc_key})"
@@ -1284,39 +1247,13 @@ def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe,
     _, story = import_miniscript(fname)
     assert "Create new miniscript wallet?" in story
     assert fname.split(".")[0] in story
-    assert "Taproot internal key" in story
-    assert "Tapscript" in story
     assert "Press (1) to see extended public keys" in story
     assert "P2TR" in story
 
     press_select()
     import_duplicate(fname)
-    goto_home()
-    pick_menu_item('Settings')
-    pick_menu_item('Miniscript')
-    pick_menu_item(fname.split(".")[0])
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    # wo wallet
-    ts = bitcoind.create_wallet(
-        wallet_name=f"dup_leafs_wo", disable_private_keys=True,
-        blank=True, passphrase=None, avoid_reuse=False, descriptors=True
-    )
-    # import descriptors to watch only wallet
-    res = ts.importdescriptors(core_desc_object)
-    assert res[0]["success"]
-    assert res[1]["success"]
 
-    addr = ts.getnewaddress("", "bech32m")
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    ts = create_core_wallet(fname.split(".")[0], "bech32m", "sd", True)
 
     dest_addr = ts.getnewaddress("", "bech32m")  # selfspend
     psbt = ts.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 2})["psbt"]
@@ -1363,7 +1300,7 @@ def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe,
 def test_same_key_account_based_minisc(goto_home, pick_menu_item, cap_story,
                                        clear_miniscript, microsd_path, load_export, bitcoind,
                                        import_miniscript, use_regtest, import_duplicate,
-                                       press_select, garbage_collector):
+                                       press_select, garbage_collector, create_core_wallet):
     clear_miniscript()
     use_regtest()
 
@@ -1387,32 +1324,8 @@ def test_same_key_account_based_minisc(goto_home, pick_menu_item, cap_story,
 
     press_select()
     import_duplicate(fname)
-    goto_home()
-    pick_menu_item('Settings')
-    pick_menu_item('Miniscript')
-    pick_menu_item(fname.split(".")[0])
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    # wo wallet
-    wo = bitcoind.create_wallet(
-        wallet_name=f"multi-account", disable_private_keys=True,
-        blank=True, passphrase=None, avoid_reuse=False, descriptors=True
-    )
-    # import descriptors to watch only wallet
-    res = wo.importdescriptors(core_desc_object)
-    assert res[0]["success"]
-    assert res[1]["success"]
 
-    addr = wo.getnewaddress("", "bech32")
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    wo = create_core_wallet(fname.split(".")[0], "bech32", "sd", True)
 
     dest_addr = wo.getnewaddress("", "bech32")  # selfspend
     psbt = wo.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 2})["psbt"]
@@ -1504,7 +1417,7 @@ CHANGE_BASED_DESCS = [
 def test_same_key_change_based_minisc(goto_home, pick_menu_item, cap_story,
                                       clear_miniscript, microsd_path, load_export, bitcoind,
                                       import_miniscript, address_explorer_check, use_regtest,
-                                      desc, press_select, garbage_collector):
+                                      desc, press_select, garbage_collector, create_core_wallet):
     clear_miniscript()
     use_regtest()
     if desc.startswith("tr("):
@@ -1523,34 +1436,9 @@ def test_same_key_change_based_minisc(goto_home, pick_menu_item, cap_story,
     assert "Create new miniscript wallet?" in story
     assert fname.split(".")[0] in story
     assert "Press (1) to see extended public keys" in story
-
     press_select()
-    goto_home()
-    pick_menu_item('Settings')
-    pick_menu_item('Miniscript')
-    pick_menu_item(fname.split(".")[0])
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    # wo wallet
-    wo = bitcoind.create_wallet(
-        wallet_name=f"minsc-change", disable_private_keys=True,
-        blank=True, passphrase=None, avoid_reuse=False, descriptors=True
-    )
-    # import descriptors to watch only wallet
-    res = wo.importdescriptors(core_desc_object)
-    assert res[0]["success"]
-    assert res[1]["success"]
 
-    addr = wo.getnewaddress("", af)
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    wo = create_core_wallet(name, af, "sd", True)
 
     dest_addr = wo.getnewaddress("", af)  # selfspend
     psbt = wo.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 2})["psbt"]
@@ -1639,26 +1527,6 @@ def test_same_key_change_based_minisc(goto_home, pick_menu_item, cap_story,
     address_explorer_check("sd", af, wo, "mini-change")
 
 
-def test_same_key_account_based_multisig(goto_home, pick_menu_item, cap_story,
-                                         clear_miniscript, microsd_path, load_export, bitcoind,
-                                         import_miniscript, garbage_collector):
-    clear_miniscript()
-    desc = ("wsh(sortedmulti(2,"
-            "[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*,"
-            "[0f056943/84'/1'/9']tpubDC7jGaaSE66QBAcX8TUD3JKWari1zmGH4gNyKZcrfq6NwCofKujNF2kyeVXgKshotxw5Yib8UxLrmmCmWd8NVPVTAL8rGfMdc7TsAKqsy6y/<0;1>/*"
-            "))")
-    name = "multi-accounts"
-    fname = f"{name}.txt"
-    fpath = microsd_path(fname)
-    with open(fpath, "w") as f:
-        f.write(desc)
-    garbage_collector.append(fpath)
-
-    _, story = import_miniscript(fname)
-    assert "Failed to import" in story
-    assert "Use Settings -> Multisig Wallets" in story
-
-
 @pytest.mark.parametrize("desc", [
     "wsh(or_d(pk(@A),and_v(v:pkh(@A),older(5))))",
     "tr(@ik,multi_a(2,@A,@A))",
@@ -1706,7 +1574,6 @@ def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
 @pytest.mark.parametrize("same_acct", [True, False])
 @pytest.mark.parametrize("recovery", [True, False])
 @pytest.mark.parametrize("leaf2_mine", [True, False])
-@pytest.mark.parametrize("internal_type", ["unspend(", "xpub"])
 @pytest.mark.parametrize("minisc", [
     "or_d(pk(@A),and_v(v:pkh(@B),locktime(N)))",
 
@@ -1717,11 +1584,11 @@ def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
     "or_d(pk(@A),and_v(v:multi_a(2,@B,@C),locktime(N)))",
 ])
 def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home,
-                       pick_menu_item, cap_menu, cap_story, microsd_path, internal_type,
+                       pick_menu_item, cap_menu, cap_story, microsd_path,
                        use_regtest, bitcoind, microsd_wipe, load_export, dev,
                        address_explorer_check, get_cc_key, import_miniscript,
                        bitcoin_core_signer, same_acct, import_duplicate, press_select,
-                       garbage_collector):
+                       garbage_collector, start_sign, end_sign, create_core_wallet):
     lt_type = "older"
     # needs bitcoind 26.0
     normal_cosign_core = False
@@ -1748,6 +1615,7 @@ def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home
     for i in range(3):
         # core signers
         signer, core_key = bitcoin_core_signer(f"co-signer{i}")
+        signer.keypoolrefill(25)
         core_keys.append(core_key)
         signers.append(signer)
 
@@ -1770,11 +1638,7 @@ def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home
     if "@C" in minisc:
         minisc = minisc.replace("@C", core_keys[1])
 
-    if internal_type == "unspend(":
-        ik = f"unspend({os.urandom(32).hex()})/<2;3>/*"
-    else:
-        assert internal_type == "xpub"
-        ik = ranged_unspendable_internal_key(os.urandom(32))
+    ik = ranged_unspendable_internal_key(os.urandom(32))
 
     if leaf2_mine:
         desc = f"tr({ik},{{{minisc},pk({cc_key1})}})"
@@ -1790,50 +1654,38 @@ def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home
         f.write(desc)
 
     garbage_collector.append(fpath)
-
-    wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
-                                  passphrase=None, avoid_reuse=False, descriptors=True)
-
     _, story = import_miniscript(fname)
     assert "Create new miniscript wallet?" in story
     # do some checks on policy --> helper function to replace keys with letters
     press_select()
     import_duplicate(fname)
-    menu = cap_menu()
-    assert menu[0] == name
-    pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
-    addr = wo.getnewaddress("", "bech32m")
-    addr_dest = wo.getnewaddress("", "bech32m")  # self-spend
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    wo = create_core_wallet(name, "bech32m", "sd", True)
+
     all_of_it = wo.getbalance()
     unspent = wo.listunspent()
     assert len(unspent) == 1
     inp = {"txid": unspent[0]["txid"], "vout": unspent[0]["vout"]}
+
     if recovery and sequence and not leaf2_mine:
         inp["sequence"] = sequence
+
+    # split to
+    num_outs = 20
+    nVal = all_of_it / num_outs
+    conso_addrs = [{wo.getnewaddress("", "bech32m"): nVal} for _ in range(num_outs)]  # self-spend
     psbt_resp = wo.walletcreatefundedpsbt(
         [inp],
-        [{addr_dest: all_of_it - 1}],
+        conso_addrs,
         locktime if (recovery and not leaf2_mine) else 0,
-        {"fee_rate": 20, "change_type": "bech32m", "subtractFeeFromOutputs": [0]},
+        {"fee_rate": 2, "change_type": "bech32m", "subtractFeeFromOutputs": [0]},
     )
     psbt = psbt_resp.get("psbt")
 
     if (normal_cosign_core or recovery_cosign_core) and not leaf2_mine:
-        psbt = signers[1].walletprocesspsbt(psbt, True, "ALL")["psbt"]
+        psbt_res = signers[1].walletprocesspsbt(psbt, True, "DEFAULT")
+        assert psbt_res["psbt"] != psbt
+        psbt = psbt_res.get("psbt")
 
     name = f"{name}.psbt"
     fpath = microsd_path(name)
@@ -1850,6 +1702,9 @@ def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home
         time.sleep(0.1)
         title, story = cap_story()
     assert title == "OK TO SEND?"
+    assert "warning" not in story
+    assert "1 input" in story
+    assert "20 outputs" in story
     assert "Consolidating" in story
     press_select()  # confirm signing
     time.sleep(0.5)
@@ -1869,6 +1724,63 @@ def test_minitapscript(leaf2_mine, recovery, minisc, clear_miniscript, goto_home
     assert res["complete"]
     tx_hex = res["hex"]
     # assert tx_hex == final_txn
+    res = wo.testmempoolaccept([tx_hex])
+    if recovery and not leaf2_mine:
+        assert not res[0]["allowed"]
+        assert res[0]["reject-reason"] == 'non-BIP68-final' if sequence else "non-final"
+        bitcoind.supply_wallet.generatetoaddress(6, bitcoind.supply_wallet.getnewaddress())
+        res = wo.testmempoolaccept([tx_hex])
+        assert res[0]["allowed"]
+    else:
+        assert res[0]["allowed"]
+
+    res = wo.sendrawtransaction(tx_hex)
+    assert len(res) == 64  # tx id
+
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    unspent = wo.listunspent()
+    assert len(unspent) == 20
+    ins = [{"txid": u["txid"], "vout": u["vout"]} for u in unspent]
+
+    if recovery and sequence and not leaf2_mine:
+        for i in ins:
+            i["sequence"] = sequence
+
+    # consolidate multiple inputs to one for us
+    # BUT also send 1 corn back to supply (so not a consolidation)
+    outs = [
+        {wo.getnewaddress("", "bech32m"): wo.getbalance() - 1},
+        {bitcoind.supply_wallet.getnewaddress("", "bech32"): 1},
+    ]
+    psbt_resp = wo.walletcreatefundedpsbt(
+        ins,
+        outs,
+        locktime if (recovery and not leaf2_mine) else 0,
+        {"fee_rate": 2, "change_type": "bech32m", "subtractFeeFromOutputs": [0]},
+    )
+    psbt = psbt_resp.get("psbt")
+
+    # now CC first
+    start_sign(base64.b64decode(psbt))
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "warning" not in story
+    assert "Consolidating" not in story
+    assert "20 inputs" in story
+    assert "2 outputs" in story
+    final_psbt = end_sign(True)
+    psbt = base64.b64encode(final_psbt).decode()
+
+    if (normal_cosign_core or recovery_cosign_core) and not leaf2_mine:
+        # core co-signer second after CC (if needed)
+        psbt_res = signers[1].walletprocesspsbt(psbt, True, "DEFAULT")
+        assert psbt_res["psbt"] != psbt
+        psbt = psbt_res.get("psbt")
+
+    res = wo.finalizepsbt(psbt)
+    assert res["complete"]
+    tx_hex = res["hex"]
     res = wo.testmempoolaccept([tx_hex])
     if recovery and not leaf2_mine:
         assert not res[0]["allowed"]
@@ -1913,7 +1825,7 @@ def test_timelock_mixin():
 def test_d_wrapper(addr_fmt, bitcoind, get_cc_key, goto_home, pick_menu_item, cap_story, cap_menu,
                    load_export, microsd_path, use_regtest, clear_miniscript, cc_first,
                    address_explorer_check, import_miniscript, bitcoin_core_signer, press_select,
-                   garbage_collector):
+                   garbage_collector, create_core_wallet):
 
     # check D wrapper u property for segwit v0 and v1
     # https://github.com/bitcoin/bitcoin/pull/24906/files
@@ -1945,9 +1857,6 @@ def test_d_wrapper(addr_fmt, bitcoind, get_cc_key, goto_home, pick_menu_item, ca
         f.write(desc)
     garbage_collector.append(fpath)
 
-    wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
-                                  passphrase=None, avoid_reuse=False, descriptors=True)
-
     clear_miniscript()
     use_regtest()
     _, story = import_miniscript(fname)
@@ -1959,26 +1868,10 @@ def test_d_wrapper(addr_fmt, bitcoind, get_cc_key, goto_home, pick_menu_item, ca
     assert "Create new miniscript wallet?" in story
     # do some checks on policy --> helper function to replace keys with letters
     press_select()
-    menu = cap_menu()
-    assert menu[0] == name
-    pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
 
-    addr = wo.getnewaddress("", addr_fmt)  # self-spend
+    wo = create_core_wallet(name, addr_fmt, "sd", True)
+
     addr_dest = wo.getnewaddress("", addr_fmt)  # self-spend
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
     all_of_it = wo.getbalance()
     unspent = wo.listunspent()
     assert len(unspent) == 1
@@ -2082,10 +1975,10 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
 
     import_miniscript(fname_xtn)
     press_select()
-    # assert that wallets created at XRT always store XTN anywas (key_chain)
-    res = settings_get("miniscript")
+    time.sleep(.1)
+    res = settings_get("miniscript", [])
     assert len(res) == 1
-    assert res[0][1] == "XTN"
+    assert res[0][-1]["ct"] == "XRT"
 
     goto_home()
     pick_menu_item("Settings")
@@ -2100,9 +1993,8 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
     pick_menu_item("Miniscript")
     time.sleep(0.1)
     m = cap_menu()
-    # asterisk hints that some wallets are already stored
     # but not on current active chain
-    assert "(none setup yet)*" in m
+    assert "(none setup yet)" in m
     import_miniscript(fname_btc)
     press_select()
     goto_home()
@@ -2140,12 +2032,10 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
     "or_d(pk(@A),and_v(v:pkh(@B),after(100)))",
     "or_d(multi(2,@A,@C),and_v(v:pkh(@B),after(100)))",
 ])
-def test_import_same_policy_same_keys_diff_order(taproot_ikspendable, minisc,
-                                                 clear_miniscript, use_regtest,
-                                                 get_cc_key, bitcoin_core_signer,
-                                                 offer_minsc_import, cap_menu,
-                                                 bitcoind, pick_menu_item,
-                                                 press_select):
+def test_import_same_policy_same_keys_diff_order(taproot_ikspendable, minisc, use_regtest,
+                                                 clear_miniscript, bitcoin_core_signer,
+                                                 get_cc_key, settings_get, cap_menu,
+                                                 offer_minsc_import, bitcoind, press_select):
     use_regtest()
     clear_miniscript()
     taproot, ik_spendable = taproot_ikspendable
@@ -2189,21 +2079,16 @@ def test_import_same_policy_same_keys_diff_order(taproot_ikspendable, minisc,
     title, story = offer_minsc_import(desc1)
     assert "Create new miniscript wallet?" in story
     press_select()
-    pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
-    m = cap_menu()
-    m = [i for i in m if not i.startswith("Import")]
-    assert len(m) == 2
+    time.sleep(.2)
+    assert len(settings_get("miniscript", [])) == 2
 
 
 @pytest.mark.parametrize("cs", [True, False])
 @pytest.mark.parametrize("way", ["usb", "nfc", "sd", "vdisk"])
-def test_import_miniscript_usb_json(use_regtest, cs, way, cap_menu,
-                                    clear_miniscript, pick_menu_item,
-                                    get_cc_key, bitcoin_core_signer,
-                                    offer_minsc_import, bitcoind, microsd_path,
-                                    virtdisk_path, import_miniscript, goto_home,
-                                    press_select):
+def test_import_miniscript_usb_json(use_regtest, cs, way, cap_menu, clear_miniscript, get_cc_key,
+                                    bitcoin_core_signer, offer_minsc_import, bitcoind, microsd_path,
+                                    virtdisk_path, import_miniscript, goto_home, press_select,
+                                    settings_get):
     name = "my_minisc"
     minsc = f"tr({ranged_unspendable_internal_key()},or_d(multi_a(2,@A,@C),and_v(v:pkh(@B),after(100))))"
     use_regtest()
@@ -2246,13 +2131,9 @@ def test_import_miniscript_usb_json(use_regtest, cs, way, cap_menu,
     assert name in story
     press_select()
     time.sleep(.2)
-    goto_home()
-    pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
-    m = cap_menu()
-    m = [i for i in m if not i.startswith("Import")]
-    assert len(m) == 1
-    assert m[0] == name
+    msc = settings_get("miniscript", [])
+    assert len(msc) == 1
+    assert msc[0][0] == name
 
 
 @pytest.mark.parametrize("config", [
@@ -2297,23 +2178,21 @@ def test_unique_name(clear_miniscript, use_regtest, offer_minsc_import,
     pick_menu_item("Settings")
     pick_menu_item("Miniscript")
     m = cap_menu()
-    m = [i for i in m if not i.startswith("Import")]
-    assert len(m) == 1
     assert m[0] == name
+    assert m[1] == "Import"
 
     # completely different wallet but with the same name (USB)
     yd = json.dumps({"name": name, "desc": y})
     title, story = offer_minsc_import(yd)
-    assert title == "FAILED"
+    assert ("'%s' already exists" % name) in story
     assert "MUST have unique names" in story
     press_select()
     # nothing imported
     pick_menu_item("Settings")
     pick_menu_item("Miniscript")
     m = cap_menu()
-    m = [i for i in m if not i.startswith("Import")]
-    assert len(m) == 1
     assert m[0] == name
+    assert m[1] == "Import"
 
     goto_home()
     fname = f"{name}.txt"
@@ -2335,7 +2214,7 @@ def test_unique_name(clear_miniscript, use_regtest, offer_minsc_import,
             f.write(yd if is_json else y)
 
     title, story = import_miniscript(fname=fname, way=way, data=nfc_data)
-    assert "FAILED" == title
+    assert ("'%s' already exists" % name) in story
     assert "MUST have unique names" in story
 
 
@@ -2527,7 +2406,8 @@ aA+bduIqWCMpBW2K5F0FuxfY4ofjfGWLKDMAAAgAEAAIAAAACAAgAAgAEAAAADAAAAAA=="""
 def test_expanding_multisig(tmplt, clear_miniscript, goto_home, pick_menu_item, garbage_collector,
                             cap_menu, cap_story, microsd_path, use_regtest, bitcoind, microsd_wipe,
                             load_export, dev, address_explorer_check, get_cc_key, import_miniscript,
-                            bitcoin_core_signer, import_duplicate, press_select, start_sign, end_sign):
+                            bitcoin_core_signer, import_duplicate, press_select, start_sign, end_sign,
+                            create_core_wallet):
     use_regtest()
     clear_miniscript()
     sequence = 10
@@ -2565,33 +2445,12 @@ def test_expanding_multisig(tmplt, clear_miniscript, goto_home, pick_menu_item, 
 
     garbage_collector.append(fpath)
 
-    wo = bitcoind.create_wallet(wallet_name=wname, disable_private_keys=True, blank=True,
-                                  passphrase=None, avoid_reuse=False, descriptors=True)
-
     _, story = import_miniscript(fname)
     assert "Create new miniscript wallet?" in story
     # do some checks on policy --> helper function to replace keys with letters
     press_select()
-    menu = cap_menu()
-    assert menu[0] == wname
-    pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
 
-    # fund wallet
-    addr = wo.getnewaddress("", af)
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    wo = create_core_wallet(wname, af, "sd", True)
 
     # use non-recovery path to split into 5 utxos + 1 going back to supply (not a conso)
     unspent = wo.listunspent()
@@ -2614,17 +2473,21 @@ def test_expanding_multisig(tmplt, clear_miniscript, goto_home, pick_menu_item, 
         psbt = csigner0.walletprocesspsbt(psbt, True)["psbt"]
 
     # now CC
-    start_sign(base64.b64decode(psbt))
+    start_sign(base64.b64decode(psbt), finalize=have_internal)
     time.sleep(.1)
     title, story = cap_story()
     assert title == "OK TO SEND?"
     assert "Consolidating" not in story
-    final_psbt = end_sign(True)
+    final_psbt = end_sign(True, finalize=have_internal)
 
-    # client software finalization
-    res = wo.finalizepsbt(base64.b64encode(final_psbt).decode())
-    assert res["complete"]
-    tx_hex = res["hex"]
+    if have_internal:
+        tx_hex = final_psbt.hex()  # it is final tx actually
+    else:
+        # client software finalization
+        res = wo.finalizepsbt(base64.b64encode(final_psbt).decode())
+        assert res["complete"]
+        tx_hex = res["hex"]
+
     res = wo.testmempoolaccept([tx_hex])
     assert res[0]["allowed"]
     res = wo.sendrawtransaction(tx_hex)
@@ -2645,23 +2508,27 @@ def test_expanding_multisig(tmplt, clear_miniscript, goto_home, pick_menu_item, 
     psbt = psbt_resp.get("psbt")
 
     # now CC signing first
-    start_sign(base64.b64decode(psbt))
+    start_sign(base64.b64decode(psbt), finalize=have_internal)
     time.sleep(.1)
     title, story = cap_story()
     assert title == "OK TO SEND?"
     assert "Consolidating" in story
-    updated_psbt = end_sign(True)
-    updated_psbt = base64.b64encode(updated_psbt).decode()
+    updated_psbt = end_sign(True, finalize=have_internal)
 
     if not have_internal:
         # now cosigner (still on non-recovery path)
+        updated_psbt = base64.b64encode(updated_psbt).decode()
         final_psbt = csigner0.walletprocesspsbt(updated_psbt, True,
                                                 "DEFAULT"if "tr(" == tmplt[:3] else "ALL")["psbt"]
 
-    # client software finalization
-    res = wo.finalizepsbt(final_psbt)
-    assert res["complete"]
-    tx_hex = res["hex"]
+        # client software finalization
+        res = wo.finalizepsbt(final_psbt)
+        assert res["complete"]
+        tx_hex = res["hex"]
+    else:
+        # actually a final tx
+        tx_hex = updated_psbt.hex()
+
     res = wo.testmempoolaccept([tx_hex])
     assert res[0]["allowed"]
     res = wo.sendrawtransaction(tx_hex)
@@ -2726,7 +2593,8 @@ def test_expanding_multisig(tmplt, clear_miniscript, goto_home, pick_menu_item, 
 @pytest.mark.parametrize("blinded", [True, False])
 def test_big_boy(use_regtest, clear_miniscript, bitcoin_core_signer, get_cc_key, microsd_path,
                  garbage_collector, pick_menu_item, bitcoind, import_miniscript, press_select,
-                 cap_story, cap_menu, load_export, start_sign, end_sign, blinded):
+                 cap_story, cap_menu, load_export, start_sign, end_sign, blinded,
+                 create_core_wallet):
     # keys (@0,@4,@5) are more important (primary) than keys (@1,@2,@3) (secondary)
     # currently requires to tweak MAX_TR_SIGNERS = 33
     # with blinded=True, all co-signer keys are blinded (have no key origin info)
@@ -2769,33 +2637,12 @@ def test_big_boy(use_regtest, clear_miniscript, bitcoin_core_signer, get_cc_key,
 
     garbage_collector.append(fpath)
 
-    wo = bitcoind.create_wallet(wallet_name=wname, disable_private_keys=True, blank=True,
-                                passphrase=None, avoid_reuse=False, descriptors=True)
-
     _, story = import_miniscript(fname)
     assert "Create new miniscript wallet?" in story
     # do some checks on policy --> helper function to replace keys with letters
     press_select()
-    menu = cap_menu()
-    assert menu[0] == wname
-    pick_menu_item(menu[0])  # pick imported descriptor multisig wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
 
-    # fund wallet
-    addr = wo.getnewaddress("", af)
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    wo = create_core_wallet(wname, af, "sd", True)
 
     unspent = wo.listunspent()
     assert len(unspent) == 1
@@ -2840,7 +2687,7 @@ def test_big_boy(use_regtest, clear_miniscript, bitcoin_core_signer, get_cc_key,
 def test_single_key_miniscript(af, settings_set, clear_miniscript, goto_home, get_cc_key,
                                garbage_collector, microsd_path, bitcoind, import_miniscript,
                                press_select, cap_menu, pick_menu_item, load_export, cap_story,
-                               start_sign, end_sign):
+                               start_sign, end_sign, create_core_wallet):
     sequence = 10
     goto_home()
     clear_miniscript()
@@ -2863,33 +2710,12 @@ def test_single_key_miniscript(af, settings_set, clear_miniscript, goto_home, ge
 
     garbage_collector.append(fpath)
 
-    wo = bitcoind.create_wallet(wallet_name=wname, disable_private_keys=True, blank=True,
-                                passphrase=None, avoid_reuse=False, descriptors=True)
-
     _, story = import_miniscript(fname)
     assert "Create new miniscript wallet?" in story
     # do some checks on policy --> helper function to replace keys with letters
     press_select()
-    menu = cap_menu()
-    assert menu[0] == wname
-    pick_menu_item(menu[0])  # pick imported descriptor multisig wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
 
-    # fund wallet
-    addr = wo.getnewaddress("", af)
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    wo = create_core_wallet(wname, af, "sd", True)
 
     unspent = wo.listunspent()
     assert len(unspent) == 1
@@ -2980,7 +2806,7 @@ def test_single_key_miniscript(af, settings_set, clear_miniscript, goto_home, ge
 def test_originless_keys(tmplt, offer_minsc_import, get_cc_key, bitcoin_core_signer, bitcoind,
                          pick_menu_item, load_export, goto_home, cap_menu, clear_miniscript,
                          use_regtest, press_select, start_sign, end_sign, cap_story, cc_sign,
-                         has_orig, address_explorer_check):
+                         has_orig, address_explorer_check, create_core_wallet):
     # can be both:
     #   a.) just ranged xpub without origin info -> xpub1/<0;1>/*
     #   b.) ranged xpub with its fp -> [xpub1_fp]xpub1/<0;1>/*
@@ -3005,32 +2831,7 @@ def test_originless_keys(tmplt, offer_minsc_import, get_cc_key, bitcoin_core_sig
     offer_minsc_import(json.dumps(to_import))
     press_select()
 
-    wo = bitcoind.create_wallet(wallet_name=name, disable_private_keys=True, blank=True,
-                                passphrase=None, avoid_reuse=False, descriptors=True)
-
-    goto_home()
-    pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
-    menu = cap_menu()
-    assert menu[0] == name
-    pick_menu_item(menu[0])  # pick imported descriptor miniscript wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    res = wo.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"]
-
-    # fund wallet
-    addr = wo.getnewaddress("", af)
-    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
-    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    wo = create_core_wallet(name, af, "sd", True)
 
     unspent = wo.listunspent()
     assert len(unspent) == 1
@@ -3103,4 +2904,515 @@ def test_static_internal_key(internal_key, clear_miniscript, microsd_path, pick_
 
     title, story = import_miniscript(fname)
     assert "Failed to import" in story
-    assert "only extended keys allowed" in story
+    assert "only extended pubkeys allowed" in story
+
+
+# @pytest.mark.bitcoind
+# def test_csa_tapscript(clear_miniscript, bitcoin_core_signer, get_cc_key,
+#                        use_regtest, address_explorer_check, bitcoind,
+#                        offer_minsc_import, create_core_wallet, press_select):
+#     use_regtest()
+#     clear_miniscript()
+#     M, N = 11, 12
+#
+#     bitcoind_signers = []
+#     bitcoind_signers_xpubs = []
+#     for i in range(N - 1):
+#         s, core_key = bitcoin_core_signer(f"bitcoind--signer{i}")
+#         s.keypoolrefill(10)
+#         bitcoind_signers.append(s)
+#         bitcoind_signers_xpubs.append(core_key)
+#
+#     me = get_cc_key(f"m/48h/1h/0h/3h")
+#     ik = ranged_unspendable_internal_key()
+#
+#     signers_xp = [me] + bitcoind_signers_xpubs
+#     assert len(signers_xp) == N
+#     desc = f"tr({ik},%s)"
+#
+#     scripts = []
+#     for c in itertools.combinations(signers_xp, M):
+#         tmplt = f"multi_a({M},{','.join(c)})"
+#         scripts.append(tmplt)
+#
+#     assert len(scripts) == 12
+#     temp = TREE[len(scripts)]
+#     temp = temp % tuple(scripts)
+#
+#     desc = desc % temp
+#
+#     title, story = offer_minsc_import(desc)
+#     name = story.split("\n")[3].strip()
+#     assert "Create new miniscript wallet?" in story
+#     press_select()
+#     ms_wo = create_core_wallet(name, "bech32m", "sd", False)
+#     address_explorer_check("sd", "bech32m", ms_wo, "minisc")
+
+
+# @pytest.mark.parametrize("desc", [
+#
+#     # "wsh(or_i(and_v(v:pkh(@A),older(100)),or_d(multi(3,@A,@B,@C),and_v(v:thresh(2,pkh(@A),a:pkh(@B),a:pkh(@C)),older(500)))))"
+# ])
+def test_tapscript_disjoint_derivation(cap_story, offer_minsc_import, microsd_path,
+                                       get_cc_key, bitcoin_core_signer):
+    desc = "tr(unspend(),{{sortedmulti_a(2,@A,@B),sortedmulti_a(2,@AA,@C)},sortedmulti_a(2,@AAA,@BB,@CC)})"
+
+    # internal key is OK
+    unspend = ranged_unspendable_internal_key(os.urandom(32), subderiv=f"/<0;1>/*")
+    desc = desc.replace("unspend()", unspend)
+
+    # @A, @AA & @AAA is us - all OK
+    kA = get_cc_key("m/999h/1h/66h")
+    kAA = kA.replace("/<0;1>/*", "/<2;3>/*")
+    kAAA = kA.replace("/<0;1>/*", "/<4;5>/*")
+
+    desc = desc.replace("@AAA", kAAA)
+    desc = desc.replace("@AA", kAA)
+    desc = desc.replace("@A", kA)
+
+    s0, kB = bitcoin_core_signer("B")
+    # this is problematic - as it is nto disjoint
+    kB = kB.replace("/0/*", "/<1;2>/*")
+    kBB = kB.replace("/<1;2>/*", "/<0;1>/*")
+
+    s1, kC = bitcoin_core_signer("C")
+    kC = kC.replace("/0/*", "/<0;1>/*")
+    kCC = kC.replace("/<0;1>/*", "/<2;3>/*")
+
+    desc = desc.replace("@BB", kBB)
+    desc = desc.replace("@B", kB)
+    desc = desc.replace("@CC", kCC)
+    desc = desc.replace("@C", kC)
+
+    with pytest.raises(Exception) as e:
+        offer_minsc_import(desc)
+    assert "Non-disjoint multipath" in e.value.args[0]
+
+    # now make internal key non-disjoint
+    desc = desc.replace(unspend, ranged_unspendable_internal_key(os.urandom(32), subderiv=f"/<3;4>/*"))
+    # previously invalid key
+    desc = desc.replace(kB, kB.replace("/<1;2>/*", "/<2;3>/*"))
+
+    with pytest.raises(Exception) as e:
+        offer_minsc_import(desc)
+    assert "Non-disjoint multipath" in e.value.args[0]
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("way", ["usb", "nfc", "sd", "vdisk", "qr"])
+def test_same_key_set_miniscript(get_cc_key, bitcoin_core_signer, create_core_wallet, way,
+                                 offer_minsc_import, press_select, bitcoind, start_sign,
+                                 cap_story, end_sign, clear_miniscript, goto_home, scan_a_qr,
+                                 pick_menu_item, microsd_path, garbage_collector, press_cancel,
+                                 need_keypress, press_nfc, nfc_write_text, nfc_read,
+                                 readback_bbqr, virtdisk_path, skip_if_useless_way):
+    # same keys in miniscript, impossible to match correct wallet with auto-match
+    skip_if_useless_way(way)
+    goto_home()
+    clear_miniscript()
+
+    msc1 = "wsh(andor(pk(@D),after(1767225600),multi(2,@A,@B,@C)))"
+    msc2 = "wsh(or_d(pk(@D),and_v(v:multi(2,@A,@B,@C),older(65535))))"
+
+    ak = get_cc_key("m/48h/1h/0h/2h")
+    bs, bk = bitcoin_core_signer("bb")
+    cs, ck = bitcoin_core_signer("cc")
+    ds, dk = bitcoin_core_signer("dd")
+
+    bk = bk.replace("/0/*", "/<0;1>/*")
+    ck = ck.replace("/0/*", "/<0;1>/*")
+    dk = dk.replace("/0/*", "/<0;1>/*")
+
+    msc1 = msc1.replace("@A", ak)
+    msc1 = msc1.replace("@B", bk)
+    msc1 = msc1.replace("@C", ck)
+    msc1 = msc1.replace("@D", dk)
+
+    msc2 = msc2.replace("@A", ak)
+    msc2 = msc2.replace("@B", bk)
+    msc2 = msc2.replace("@C", ck)
+    msc2 = msc2.replace("@D", dk)
+
+    title, story = offer_minsc_import(json.dumps(dict(name="msc1", desc=msc1)))
+    assert "msc1" in story
+    assert "Create new miniscript wallet?" in story
+    press_select()
+
+    title, story = offer_minsc_import(json.dumps(dict(name="msc2", desc=msc2)))
+    assert "msc2" in story
+    assert "Create new miniscript wallet?" in story
+    press_select()
+
+    m1 = create_core_wallet("msc1", "bech32")
+    m2 = create_core_wallet("msc2", "bech32")
+
+    # now try to sign (via Ready To Sign) PSBT from msc2
+    # this will not work, as msc1 has same key set and was imported first
+    # so we match msc1
+    psbt = m2.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 1.0}],
+                                     0, {"fee_rate": 2})["psbt"]
+
+    if way == "usb":
+        # first try classic way without specifying wallet name
+        # will fail with scriptPubKey mismatch
+        start_sign(base64.b64decode(psbt))
+        time.sleep(.1)
+        title, story = cap_story()
+        assert "spk mismatch" in story
+
+        # now with name specified via USB
+        start_sign(base64.b64decode(psbt), miniscript="msc2")
+        time.sleep(.1)
+        title, story = cap_story()
+        assert title == "OK TO SEND?"
+        assert "msc2" in story
+        end_sign(accept=True)
+
+    else:
+        fname = "the_txn.psbt"
+        fpath = microsd_path(fname)
+        garbage_collector.append(fpath)
+        with open(fpath, "w") as f:
+            f.write(psbt)
+
+        goto_home()
+        # just try SD for normal matching without name
+        pick_menu_item("Ready To Sign")
+        title, story = cap_story()
+        if 'OK TO SEND' not in title:
+            try:
+                pick_menu_item(fname)
+                time.sleep(0.1)
+                title, story = cap_story()
+            except: pass
+
+        assert "spk mismatch" in story
+        press_select()  # exit
+
+        # now correct way via miniscript wallet
+        pick_menu_item("Settings")
+        pick_menu_item("Miniscript")
+        pick_menu_item("msc2")
+        pick_menu_item("Sign PSBT")
+        title, story = cap_story()
+        if way == "nfc":
+            if "import via NFC" not in story:
+                raise pytest.skip("NFC disabled")
+
+            press_nfc()
+            nfc_write_text(psbt)
+            time.sleep(1)
+            title, story = cap_story()
+            assert title == "OK TO SEND?"
+            assert "msc2" in story
+            press_select()  # confirm signing
+            time.sleep(0.1)
+            got = nfc_read()
+            time.sleep(1)
+            assert got
+            press_cancel()  # exit NFC loop
+
+        elif way == "qr":
+            if "scan QR code" not in story:
+                raise pytest.skip("Mk4 no QR")
+
+            need_keypress(KEY_QR)
+            # base64 PSBT as text
+            actual_vers, parts = split_qrs(psbt, 'U', max_version=20)
+            random.shuffle(parts)
+
+            for p in parts:
+                scan_a_qr(p)
+                time.sleep(1)  # just so we can watch
+
+            title, story = cap_story()
+            assert title == "OK TO SEND?"
+            assert "msc2" in story
+            press_select()  # confirm signing
+            time.sleep(.2)
+            file_type, rb = readback_bbqr()
+            assert file_type == 'P'
+            press_cancel()
+        else:
+            if way == "sd":
+                assert "Press (1)" in story
+                need_keypress("1")
+            else:
+                assert way == "vdisk"
+                if "import from Virtual Disk" not in story:
+                    raise pytest.skip("Virtual Disk disabled")
+
+                fpath = virtdisk_path(fname)
+                garbage_collector.append(fpath)
+                with open(fpath, "w") as f:
+                    f.write(psbt)
+
+                need_keypress("2")
+
+            title, story = cap_story()
+            if 'OK TO SEND' not in title:
+                pick_menu_item(fname)
+                time.sleep(0.1)
+                title, story = cap_story()
+
+            assert title == "OK TO SEND?"
+            assert "msc2" in story
+            press_select()  # confirm signing
+            time.sleep(0.1)
+            title, story = cap_story()
+            assert title == 'PSBT Signed'
+
+
+@pytest.mark.parametrize("desc", CHANGE_BASED_DESCS)
+@pytest.mark.parametrize("way", ["usb", "sd", "vdisk", "nfc", "qr"])
+def test_bip388_policies(desc, way, offer_minsc_import, press_select, pick_menu_item, goto_home,
+                         clear_miniscript, microsd_path, virtdisk_path, garbage_collector,
+                         need_keypress, cap_story, load_export, press_cancel, usb_miniscript_get,
+                         skip_if_useless_way, scan_a_qr, press_nfc, nfc_write_text,
+                         usb_miniscript_policy):
+
+    skip_if_useless_way(way)
+    clear_miniscript()
+    title, story = offer_minsc_import(json.dumps(dict(name="msc1", desc=desc)))
+    assert "msc1" in story
+    assert "Create new miniscript wallet?" in story
+    press_select()
+
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Miniscript")
+    pick_menu_item("msc1")
+    pick_menu_item("Descriptors")
+    pick_menu_item("BIP-388 Policy")
+
+    if way == "usb":
+        contents = usb_miniscript_policy("msc1")
+    else:
+        contents = load_export(way, "BIP-388 Wallet Policy", is_json=True)
+        press_cancel()
+        press_cancel()
+        if way != "nfc":
+            press_cancel()
+
+        pick_menu_item("Import")
+
+    # try import - must raise duplicate
+    new_name = "b388_reimport"
+    # change name - make it harder
+    contents["name"] = new_name
+    to_import = json.dumps(contents)
+
+    if way == "nfc":
+        press_nfc()
+        nfc_write_text(to_import)
+        time.sleep(1)
+        title, story = cap_story()
+        assert "Duplicate wallet. Wallet 'msc1' is the same." in story
+        assert "b388_reimport" in story
+        press_cancel()
+
+        clear_miniscript()
+        pick_menu_item("Import")
+        press_nfc()
+
+        nfc_write_text(to_import)
+        time.sleep(1)
+
+    elif way == "qr":
+        need_keypress(KEY_QR)
+        # base64 PSBT as text
+        actual_vers, parts = split_qrs(to_import, 'U', max_version=20)
+        random.shuffle(parts)
+
+        for p in parts:
+            scan_a_qr(p)
+            time.sleep(1)  # just so we can watch
+
+        title, story = cap_story()
+        assert "Duplicate wallet. Wallet 'msc1' is the same." in story
+        assert "b388_reimport" in story
+        press_cancel()
+
+        clear_miniscript()
+        pick_menu_item("Import")
+        need_keypress(KEY_QR)
+
+        for p in parts:
+            scan_a_qr(p)
+            time.sleep(1)  # just so we can watch
+
+    elif way == "usb":
+        goto_home()
+        title, story = offer_minsc_import(to_import)
+        assert "Duplicate wallet. Wallet 'msc1' is the same." in story
+        assert "b388_reimport" in story
+        press_cancel()
+
+        clear_miniscript()
+        offer_minsc_import(to_import)
+
+    else:
+        path_f = microsd_path if way == "sd" else virtdisk_path
+        fname = "b388_reimport.json"
+        fpath = path_f(fname)
+        garbage_collector.append(fpath)
+        with open(path_f(fname), "w") as f:
+            f.write(to_import)
+
+        if way == "sd":
+            assert "Press (1)" in story
+            need_keypress("1")
+        else:
+            assert way == "vdisk"
+            if "import from Virtual Disk" not in story:
+                raise pytest.skip("Virtual Disk disabled")
+
+            need_keypress("2")
+
+        # try to import duplicate
+        time.sleep(.1)
+        pick_menu_item(fname)
+        time.sleep(.1)
+        title, story = cap_story()
+        assert "Duplicate wallet. Wallet 'msc1' is the same." in story
+        assert "b388_reimport" in story
+
+        press_cancel()
+        # now clear imported miniscript and import
+        clear_miniscript()
+        pick_menu_item("Import")
+        need_keypress("1" if way == "sd" else "2")
+        time.sleep(.1)
+        pick_menu_item(fname)
+
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Duplicate wallet" not in story
+    assert "Create new miniscript wallet?" in story
+    assert "b388_reimport" in story
+    press_select()
+
+    # verify that the descriptor matches
+    assert usb_miniscript_get(new_name)["desc"].split("#")[0] == desc.split("#")[0].replace("'", 'h')
+
+
+def test_miniscript_rename(offer_minsc_import, clear_miniscript, press_select, goto_home,
+                           pick_menu_item, enter_complex, cap_menu, cap_screen, is_q1,
+                           need_keypress, press_cancel):
+    clear_miniscript()
+    name = "old_name"
+    title, story = offer_minsc_import(json.dumps(dict(name=name, desc=CHANGE_BASED_DESCS[0])))
+    assert "old_name" in story
+    assert "Create new miniscript wallet?" in story
+    press_select()
+
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Miniscript")
+    pick_menu_item(name)
+    pick_menu_item("Rename")
+    if is_q1:
+        # old name is filled in input field
+        # same for Mk4, just not possible with cap_screen, or cap_story
+        time.sleep(.1)
+        scr = cap_screen()
+        assert name in scr
+
+    new_name = 35 * "0"
+    # first delete old one
+    for _ in range(len(name) - (0 if is_q1 else 1)):
+        need_keypress(KEY_DELETE if is_q1 else "x")
+
+    if is_q1:
+        # attempt to use empty string as a name
+        # on Mk4 it is not possible to not have at least one char
+        press_select()
+        time.sleep(.1)
+        scr = cap_screen()
+        assert "Need 1" in scr
+
+    # it is not possible to input more than 30 characters
+    enter_complex(new_name, apply=False, b39pass=False)
+
+    real_name = new_name[:30]
+
+    # specific wallet menu has changed
+    time.sleep(.1)
+    m = cap_menu()
+    assert name not in m
+    assert real_name == m[0]
+
+    # miniscript wallets menu has changed
+    press_cancel()  # one back
+
+    time.sleep(.1)
+    m = cap_menu()
+    assert name not in m
+    assert real_name == m[0]
+
+
+def test_legacy_sh_miniscript(offer_minsc_import, press_select, create_core_wallet, clear_miniscript):
+    clear_miniscript()
+    desc = ("sh("
+            "or_d(pk([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*),"
+            "and_v("
+            "v:pkh([0f056943/84'/1'/9']tpubDC7jGaaSE66QBAcX8TUD3JKWari1zmGH4gNyKZcrfq6NwCofKujNF2kyeVXgKshotxw5Yib8UxLrmmCmWd8NVPVTAL8rGfMdc7TsAKqsy6y/<0;1>/*),"
+            "older(5))))")
+
+    name = "legacy_sh_msc"
+    with pytest.raises(Exception) as e:
+        offer_minsc_import(json.dumps(dict(name=name, desc=desc)))
+
+    assert "Miniscript in legacy P2SH not allowed" in str(e)
+
+
+@pytest.mark.parametrize("lock", [
+    ("older", 0),
+    ("after", 0),
+    ("older", 65536),
+    ("after", 2147483648),
+    # time-based relative locks
+    ("older", 4194304),
+    ("older", 4259840),
+])
+def test_timelocks_without_consesnsus_meaning(lock, clear_miniscript, goto_home, get_cc_key,
+                                              offer_minsc_import, press_select):
+    goto_home()
+    clear_miniscript()
+    policy = "and_v(v:pk(@0/<0;1>/*),locktime())"
+
+    # not allowed to import on CC
+    _type, val = lock
+    to_replace = f"{_type}({val})"
+
+    policy = policy.replace("locktime()", to_replace)
+
+    tmplt = f"wsh({policy})"
+
+    cc_key = get_cc_key("m/88h/0h/0h",).replace('/<0;1>/*', '')
+    desc = tmplt.replace("@0", cc_key)
+
+    wname = "locks_oob"
+
+    with pytest.raises(Exception) as e:
+        offer_minsc_import(json.dumps(dict(name=wname, desc=desc)))
+
+    if _type == "older":
+        if val & (1 << 22):
+            what = "Time-based "
+            x = 4194305
+            y = 4259839
+        else:
+            what = "Block-based "
+            x = 1
+            y = (2**16)-1
+    else:
+        what = ""
+        x = 1
+        y = (2**31)-1
+
+    assert f"{what}{lock[0]} out of range [{x}, {y}]" in e.value.args[0]
+    press_select()
+
+# EOF

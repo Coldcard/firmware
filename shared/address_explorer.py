@@ -7,28 +7,17 @@
 import chains, stash, version
 from ux import ux_show_story, the_ux, ux_enter_bip32_index
 from ux import export_prompt_builder, import_export_prompt_decode
-from menu import MenuSystem, MenuItem
-from public_constants import AFC_BECH32, AFC_BECH32M, AF_P2WPKH, AF_P2TR
-from multisig import MultisigWallet
-from miniscript import MiniScriptWallet
+from menu import MenuSystem, MenuItem, ToggleMenuItem
+from public_constants import AFC_BECH32, AFC_BECH32M, AF_P2WPKH, AF_P2TR, AF_CLASSIC
+from wallet import MiniScriptWallet
 from uasyncio import sleep_ms
 from uhashlib import sha256
 from glob import settings
-from auth import write_sig_file
+from msgsign import write_sig_file
 from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME, KEY_LEFT, KEY_RIGHT
 from charcodes import KEY_CANCEL
-from utils import show_single_address, problem_file_line
+from utils import show_single_address, problem_file_line, truncate_address
 
-def truncate_address(addr):
-    # Truncates address to width of screen, replacing middle chars
-    if not version.has_qwerty:
-        # - 16 chars screen width
-        # - but 2 lost at left (menu arrow, corner arrow)
-        # - want to show not truncated on right side
-        return addr[0:6] + '⋯' + addr[-6:]
-    else:
-        # tons of space on Q1
-        return addr[0:12] + '⋯' + addr[-12:]
 
 class KeypathMenu(MenuSystem):
     def __init__(self, path=None, nl=0):
@@ -209,14 +198,15 @@ class AddressListMenu(MenuSystem):
             items.append(MenuItem("Account Number", f=self.change_account))
             items.append(MenuItem("Custom Path", menu=self.make_custom))
 
-            # if they have MS wallets, add those next
-            for ms in MultisigWallet.iter_wallets():
-                if not ms.addr_fmt: continue
-                items.append(MenuItem(ms.name, f=self.pick_miniscript, arg=ms))
-
             # if they have miniscript wallets, add those next
-            for msc in MiniScriptWallet.iter_wallets():
-                items.append(MenuItem(msc.name, f=self.pick_miniscript, arg=msc))
+            if MiniScriptWallet.exists():
+                items.append(ToggleMenuItem('MS Scripts/Derivs', 'aemscsv',
+                                            ['Default Off', 'Enable'], story=(
+                    "Enable this option to add script(s) and derivations to the CSV export"
+                    " of Miniscript wallets. Default is to only export addresses.")))
+
+                for msc in MiniScriptWallet.iter_wallets():
+                    items.append(MenuItem(msc.name, f=self.pick_miniscript, arg=msc))
         else:
             items.append(MenuItem("Account: %d" % self.account_num, f=self.change_account))
 
@@ -277,7 +267,7 @@ Press (3) if you really understand and accept these risks.
     async def show_n_addresses(self, path, addr_fmt, ms_wallet, start=0, n=10, allow_change=True):
         # Displays n addresses by replacing {idx} in path format.
         # - also for other {account} numbers
-        # - or multisig case
+        # - or miniscript case
         from glob import dis, NFC
         from wallet import MAX_BIP32_IDX
 
@@ -312,8 +302,10 @@ Press (3) if you really understand and accept these risks.
 
             # export options
             k0 = 'to show change addresses' if allow_change and change == 0 else None
-            export_msg, escape = export_prompt_builder('address summary file',
-                                                       key0=k0, force_prompt=True)
+            export_msg, escape = export_prompt_builder(
+                'address summary file',
+                key0=k0, force_prompt=True
+            )
             if version.has_qwerty:
                 escape += KEY_LEFT+KEY_RIGHT+KEY_HOME+KEY_PAGE_UP+KEY_PAGE_DOWN+KEY_QR
             else:
@@ -359,6 +351,7 @@ Press (3) if you really understand and accept these risks.
                 addr_fmt = addr_fmt or ms_wallet.addr_fmt
                 is_alnum = bool(addr_fmt & (AFC_BECH32 | AFC_BECH32M))
                 await show_qr_codes(addrs, is_alnum, start, is_addrs=True)
+
                 continue
 
             elif NFC and (choice == KEY_NFC):
@@ -376,7 +369,7 @@ Press (3) if you really understand and accept these risks.
                 else:
                     # only custom path sets allow_change to False
                     # msg sign
-                    from auth import sign_with_own_address
+                    from msgsign import sign_with_own_address
                     await sign_with_own_address(path, addr_fmt)
 
             elif n is None:
@@ -409,16 +402,14 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
     from ownership import OWNERSHIP
 
     if ms_wallet:
-        if (start == 0) and (n > 100) and change in (0, 1):
-            saver = OWNERSHIP.saver(ms_wallet, change, start)
-        else:
-            saver = None
+        # saver will be None if we don't think it worth saving these addresses
+        saver = OWNERSHIP.saver(ms_wallet, change, start, n)
 
-        for line in ms_wallet.generate_address_csv(start, n, change):
+        for line in ms_wallet.generate_address_csv(start, n, change, saver=saver):
             yield line
 
         if saver:
-            saver(None)     # close file
+            saver(None, 0)     # close cache file
 
         return
 
@@ -426,26 +417,24 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
     from wallet import MasterSingleSigWallet
     main = MasterSingleSigWallet(addr_fmt, path, account_num)
 
-    if n and (start == 0) and (n > 100) and change in (0, 1):
-        saver = OWNERSHIP.saver(main, change, start)
-    else:
-        saver = None
+    # saver will be None if we don't think it worth saving these addresses
+    saver = OWNERSHIP.saver(main, change, start, n)
 
     yield '"Index","Payment Address","Derivation"\n'
-    for (idx, addr, deriv) in main.yield_addresses(start, n, change_idx=change):
+    for (idx, addr, deriv) in main.yield_addresses(start, n, change):
         if saver:
-            saver(addr)
+            saver(addr, idx)
 
         yield '%d,"%s","%s"\n' % (idx, addr, deriv)
 
     if saver:
-        saver(None)     # close
+        saver(None, 0)     # close cache file
 
 async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
                                     start=0, count=250, change=0, **save_opts):
 
     # write addresses into a text file on the MicroSD/VirtDisk
-    from glob import dis
+    from glob import dis, settings
     from files import CardSlot, CardMissingError, needs_microsd
 
     # simple: always set number of addresses.
@@ -457,7 +446,6 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
     # generator function
     body = generate_address_csv(path, addr_fmt, ms_wallet, account_num, count,
                                 start=start, change=change)
-
     # pick filename and write
     try:
         with CardSlot(**save_opts) as card:
@@ -468,27 +456,32 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
                 for idx, part in enumerate(body):
                     ep = part.encode()
                     fd.write(ep)
-                    if not ms_wallet:
-                        h.update(ep)
-
+                    h.update(ep)
                     dis.progress_sofar(idx, count or 1)
 
             sig_nice = None
-            if not ms_wallet and addr_fmt != AF_P2TR:
+            if ms_wallet:
+                # sign with my key at the same path as first address of export
+                addr_fmt = AF_CLASSIC
+                derive = ms_wallet.get_my_deriv()
+                derive += "/%d/%d" % (change, start)
+            else:
+                addr_fmt = AF_CLASSIC if addr_fmt == AF_P2TR else addr_fmt
                 derive = path.format(account=account_num, change=change, idx=start)  # first addr
-                sig_nice = write_sig_file([(h.digest(), fname)], derive, addr_fmt)
+
+            sig_nice = write_sig_file([(h.digest(), fname)], derive, addr_fmt)
+
+
+        msg = '''Address summary file written:\n\n%s''' % nice
+        if sig_nice:
+            msg += "\n\nAddress signature file written:\n\n%s" % sig_nice
+        await ux_show_story(msg)
 
     except CardMissingError:
         await needs_microsd()
-        return
     except Exception as e:
-        await ux_show_story('Failed to write!\n\n\n%s\n%s' % (e, problem_file_line(e)))
-        return
+        await ux_show_story('Failed to write!\n\n%s\n%s' % (e, problem_file_line(e)))
 
-    msg = '''Address summary file written:\n\n%s''' % nice
-    if sig_nice:
-        msg += "\n\nAddress signature file written:\n\n%s" % sig_nice
-    await ux_show_story(msg)
 
 async def address_explore(*a):
     # explore addresses based on derivation path chosen

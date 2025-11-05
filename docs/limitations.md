@@ -14,11 +14,12 @@
 # PIN Codes
 
 - 2-2 through 6-6 in size, numeric digits only
-- pin code 999999-999999 is reserved (means 'clear pin')
+- pin code 999999-999999 was reserved (meaning 'clear pin'), but now available again
 
 # Backup Files
 
 - we don't know what day it is, so meta data on files will not have correct date/time
+- release date of the firmware version that made the file is used instead of true date
 - encrypted files produced cannot be changed, and we don't support other tools making them
 
 # Micro SD
@@ -55,14 +56,18 @@
 
 - only one signature will be added per input. However, if needed the partly-signed 
   PSBT can be given again, and the "next" leg will be signed.
-- we do not support PSBT combining or finalizing of transactions involving
-  P2SH signatures (so the combine step must be off-device)
+- finalizing of multisig transactions involving P2SH signatures:
+    * SD/Vdisk signing exports both signed PSBT and finalized txn ready for broadcast (if txn is complete)
+    * QR/NFC outputs finalized txn ready for broadcast if txn is complete otherwise signed PSBT only
+    * USB signing requires `--finalize` parameter (as for standard single signature wallets)
+
 - we can sign for P2SH and P2WSH addresses that represent multisig (M of N) but
   we cannot sign for non-standard scripts because we don't know how to present
   that to the user for approval.
 - during USB "show address" for multisig, we limit subkey paths to
   16 levels deep (including master fingerprint)
-- max of 15 co-signers due to 520 byte script limitation in consensus layer with classic P2SH (same limit applies to segwit even though consensus allows up to 20 co-signers)
+- max of 15 co-signers due to 1650 byte `scriptSig` limitation in policy with classic P2SH (same limit applies to segwit even though consensus allows up to 20 co-signers).
+  note: the consensus layer sets an upper bound of 520 bytes for the length of each stack element
 - (mk3) we have space for up to 8 M-of-3 wallets, or a single M-of-15 wallet. YMMV
 - only a single multisig wallet can be involved in a PSBT; can't sign inputs from two different
     multisig wallets at the same time.
@@ -74,6 +79,7 @@
 - multisig wallet `name` can only contain printable ASCII characters `range(32, 127)`
 
 ### BIP-67
+
 - importing multisig from PSBT can ONLY create `sortedmulti(...)` multisig according to BIP-67, DO NOT use with `multi(...)`
 - creating airgapped multisig using COLDCARD as coordinator always produces `sortedmulti(...)` multisig according to BIP-67
 - COLDCARD import/export [format](https://coldcard.com/docs/multisig/#configuration-text-file-for-multisig) only supports `sortedmulti(...)` multisig according to BIP-67. To import multisig wallet with `multi(...)` use descriptor import [format](https://github.com/bitcoin/bips/blob/master/bip-0383.mediawiki)
@@ -135,6 +141,10 @@ We will summarize transaction outputs as "change" back into same wallet, however
 
 - key derivatation paths must be 12 or less in depth (`MAX_PATH_DEPTH`)
 
+# Pay-to-Pubkey
+
+- although we have some code for "pay to pubkey" (P2PK not P2PKH), it is untested
+  and unused since this style of payment address is obsolete and largely unused today
 
 # NFC Feature
 
@@ -198,4 +208,17 @@ We will summarize transaction outputs as "change" back into same wallet, however
 - does not search Seed Vault, you'll need to load each of those and re-search
 - if you have an XFP collision between multiple wallets in SeedVault (ie. two wallets
   with same descriptors, but different seeds) you will get false negatives
+
+# Spending Policy
+
+- (Cosign mode) only 12 or 24 word seeds (not XPRV) are accepted for "key C"
+- velocity limit:
+    - based on a max magnitude per txn, and a required minimum block height
+      gap, based on previous `nLockTime` value in last-signed PSBT.
+    - if you sign a transaction, but never broadcast it, you will still have to wait out 
+      the velocity policy.
+    - PSBT creator must put in `nLockTime` block heights (most already do to avoid fee sniping)
+- maximum of 25 whitelisted addresses can be stored
+- Web2FA: any number of mobile devices can be enrolled, but all will have the same shared secret
+- any warning from the PSBT, such as huge fees, will cause the transaction to be rejected
 

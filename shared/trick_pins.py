@@ -12,6 +12,8 @@ from menu import MenuSystem, MenuItem
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_enter_number, the_ux
 from stash import SecretStash
 from drv_entro import bip85_derive
+from glob import settings
+
 
 # see from mk4-bootloader/se2.h
 NUM_TRICKS      = const(14)
@@ -32,13 +34,17 @@ TC_WORD_WALLET  = const(0x1000)
 TC_XPRV_WALLET  = const(0x0800)
 TC_DELTA_MODE   = const(0x0400)
 TC_REBOOT       = const(0x0200)
-TC_RFU          = const(0x0100)
+TC_FW_DEFINED   = const(0x0100)
 # for our use, not implemented in bootrom
 TC_BLANK_WALLET = const(0x0080)
 TC_COUNTDOWN    = const(0x0040)         # tc_arg = minutes of delay
 
 # tc_args encoding:
 # TC_WORD_WALLET -> BIP-85 index, 1001..1003 for 24 words, 2001..2003 for 12-words
+
+# If TC_FW_DEFINED is true, then we can do anything with this PIN at the firmware
+# level. First application is to unlock spending stuff.
+TCA_SP_UNLOCK = const(0x0001)         # spending policy unlock
 
 # special "pin" used as catch-all for wrong pins
 WRONG_PIN_CODE = '!p'
@@ -94,22 +100,6 @@ class TrickPinMgmt:
 
     def __init__(self):
         assert uctypes.sizeof(TRICK_SLOT_LAYOUT) == 128
-        self.reload()
-
-    def reload(self):
-        # we track known PINS as a dictionary:
-        #   pin (in ascii) => (slot_num, tc_flags, arg)
-        from glob import settings
-        self.tp = settings.get('tp', {})
-
-    def save_record(self):
-        # commit changes back to settings
-        from glob import settings
-        if self.tp:
-            settings.set('tp', self.tp)
-        else:
-            settings.remove_key('tp')
-        settings.save()
 
     def roundtrip(self, method_num, slot_buf=None):
         from pincodes import pa
@@ -129,26 +119,36 @@ class TrickPinMgmt:
 
         return rc
 
+    def get_all(self):
+        return settings.get("tp", {})
+
+    def commit(self, trick_pins):
+        settings.set("tp", trick_pins)
+        settings.save()
+
     def clear_all(self):
         # get rid of them all
         self.roundtrip(0)
-        self.tp = {}
-        self.save_record()
+        settings.remove_key('tp')
+        settings.save()
 
     def forget_pin(self, pin):
         # forget about settings for a PIN
-        self.tp.pop(pin, None)
-        self.save_record()
+        t_pins = self.get_all()
+        t_pins.pop(pin, None)
+        self.commit(t_pins)
 
     def restore_pin(self, new_pin):
         # remember/restore PIN that we "forgot", return T if worked
-        b, slot = tp.get_by_pin(new_pin)
+        b, slot = self.get_by_pin(new_pin)
         if slot is None: return False
 
         record = (slot.slot_num, slot.tc_flags, 
                         0xffff if slot.tc_flags & TC_DELTA_MODE else slot.tc_arg)
-        self.tp[new_pin] = record
-        self.save_record()
+
+        t_pins = self.get_all()
+        t_pins[new_pin] = record
+        self.commit(t_pins)
 
         return True
 
@@ -221,17 +221,18 @@ class TrickPinMgmt:
 
             # pick a free slot
             sn = self.find_empty_slots(1 if not secret else 1+(len(secret)//32))
-            if sn == None:
+            if sn is None:
                 # we are full
                 raise RuntimeError("no space left")
 
             slot.slot_num = sn
 
+        t_pins = self.get_all()
         if new_pin is not None:
             slot.pin_len = len(new_pin)
             slot.pin[0:slot.pin_len] = new_pin
             if new_pin != pin:
-                self.tp.pop(pin.decode(), None)
+                t_pins.pop(pin.decode(), None)
             pin = new_pin
 
         if tc_flags is not None:
@@ -265,14 +266,18 @@ class TrickPinMgmt:
         assert rc == 0
 
         # record key details.
-        self.tp[pin.decode()] = record
-        self.save_record()
+        t_pins[pin.decode()] = record
+        self.commit(t_pins)
 
         return b, slot
 
     def all_tricks(self):
         # put them in order, with "wrong" last
-        return sorted(self.tp.keys(), key=lambda i: i if (i != WRONG_PIN_CODE) else 'Z')
+        return sorted(self.get_all().keys(), key=lambda i: i if (i != WRONG_PIN_CODE) else 'Z')
+
+    def define_unlock_pin(self, new_pin):
+        # user is setting the bypass PIN for first time.
+        self.update_slot(new_pin.encode(), new=True, tc_flags=TC_FW_DEFINED, tc_arg=TCA_SP_UNLOCK)
 
     def was_countdown_pin(self):
         # was the trick pin just used? if so how much delay needed (or zero if not)
@@ -284,24 +289,51 @@ class TrickPinMgmt:
         else:
             return 0
 
+    def was_sp_unlock(self):
+        # was a trick pin just used that enables acess to spending policy?
+        # - ok if it's also a trick PIN .. a wiping bypass for example
+        from pincodes import pa
+        tc_flags, tc_arg = pa.get_tc_values()
+        return bool(tc_flags & TC_FW_DEFINED) and (tc_arg == TCA_SP_UNLOCK)
+
+    def has_sp_unlock(self):
+        # if spending policy defined, this PIN allows adjustment
+        # - not TRICK bypass choices, like ones that wipe
+        # - could be multiple, but only first returned.
+        for k, (sn,flags,arg) in self.get_all().items():
+            if (flags == TC_FW_DEFINED) and (arg == TCA_SP_UNLOCK):
+                return k
+        return None
+
+    def delete_sp_unlock_pins(self):
+        # remove all bypass pins, they are done w/ feature
+        for k, (sn,flags,arg) in self.get_all().items():
+            if (flags & TC_FW_DEFINED) and (arg == TCA_SP_UNLOCK):
+                self.clear_slots([sn])
+                self.forget_pin(k)
+
+
     def get_deltamode_pins(self):
         # iterate over all delta-mode PIN's defined.
-        for k, (sn,flags,args) in self.tp.items():
+        for k, (sn,flags,args) in self.get_all().items():
             if flags & TC_DELTA_MODE:
                 yield k
 
     def get_duress_pins(self):
         # iterate over all duress wallets
-        for k, (sn,flags,args) in self.tp.items():
+        for k, (sn,flags,args) in self.get_all().items():
             if flags & (TC_WORD_WALLET | TC_XPRV_WALLET):
                 yield k
 
     def check_new_main_pin(self, pin):
         # user is trying to change main PIN to new value; check for issues
         # - dups bad but also: delta mode pin might not work w/ longer main true pin
+        # - deciding whether TP already exists must be done via comms with SE2
+        #   as checking only self.tp is not sufficient for hidden TPs or after fast wipe
         # - return error msg or None
         assert isinstance(pin, str)
-        if pin in self.tp:
+        b, slot = self.get_by_pin(pin)
+        if slot is not None:
             return 'That PIN is already in use as a Trick PIN.'
 
         for d_pin in self.get_deltamode_pins():
@@ -319,8 +351,9 @@ class TrickPinMgmt:
     def backup_duress_wallets(self, sv):
         # for backup file, yield (label, path, pairs-of-data)
         done = set()
+        t_pins = self.get_all()
         for pin in self.get_duress_pins():
-            sn, flags, arg = self.tp[pin]
+            sn, flags, arg = t_pins[pin]
 
             if (flags, arg) in done:
                 continue
@@ -330,7 +363,7 @@ class TrickPinMgmt:
                 label = "Duress: BIP-85 Derived wallet"
                 nwords = 12 if ((arg // 1000) == 2) else 24
                 path = "BIP85(words=%d, index=%d)" % (nwords, arg)
-                b, slot = tp.get_by_pin(pin)
+                b, slot = self.get_by_pin(pin)
                 words = bip39.b2a_words(slot.xdata[0:(32 if nwords==24 else 16)])
 
                 d = [ ('duress_%d_words' % arg, words) ]
@@ -369,10 +402,15 @@ class TrickPinMgmt:
                 # might need to construct a BIP-85 or XPRV secret to match
                 path, new_secret = construct_duress_secret(flags, arg)
 
-                b, slot = tp.update_slot(pin.encode(), new=True,
-                                     tc_flags=flags, tc_arg=arg, secret=new_secret)
-            except Exception as exc:
-                sys.print_exception(exc)        # not visible
+                self.update_slot(pin.encode(), new=True, tc_flags=flags,
+                                 tc_arg=arg, secret=new_secret)
+            except: pass
+
+    @staticmethod
+    async def err_unique_pin(pin):
+        # standardized error UX
+        return await ux_show_story(
+            "That PIN (%s) is already in use. All PIN codes must be unique." % pin)
             
 
 tp = TrickPinMgmt()
@@ -401,7 +439,6 @@ class TrickPinMenu(MenuSystem):
         if bool(pa.tmp_value):
             return [MenuItem('Not Available')]
 
-        tp.reload()
         tricks = tp.all_tricks()
 
         if self.current_pin in tricks:
@@ -489,7 +526,7 @@ class TrickPinMenu(MenuSystem):
                            tc_arg=tc_arg, secret=new_secret)
             await ux_dramatic_pause("Saved.", 1)
         except BaseException as exc:
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
             await ux_show_story("Failed: %s" % exc)
 
         self.update_contents()
@@ -518,8 +555,7 @@ class TrickPinMenu(MenuSystem):
             have.remove(existing_pin)
 
         if (new_pin == self.current_pin) or (new_pin in have):
-            await ux_show_story("That PIN (%s) is already in use. All PIN codes must be unique." % new_pin)
-            return
+            return await tp.err_unique_pin(new_pin)
 
         # check if we "forgot" this pin, and read it back if we did.
         # - important this is after the above checks so we don't reveal any trick pin used
@@ -604,6 +640,9 @@ the seed phrase, but still a somewhat riskier mode.
 For this mode only, trick PIN must be same length as true PIN and \
 differ only in final 4 positions (ignoring dash).\
 ''', flags=TC_DELTA_MODE),
+            StoryMenuItem('Policy Unlock', "Adds (another?) Spending Policy unlock PIN.", flags=TC_FW_DEFINED, arg=TCA_SP_UNLOCK),
+            StoryMenuItem('Policy Unlock & Wipe' if version.has_qwerty else 'P.U. & Wipe',
+                "Pretends correct Spending Policy unlock PIN given, but silently wipes seed before asking for main PIN.", flags=TC_FW_DEFINED|TC_WIPE, arg=TCA_SP_UNLOCK),
         ]
         m = MenuSystem(FirstMenu)
         m.goto_idx(1)
@@ -632,22 +671,30 @@ setting) the Coldcard will always brick after 13 failed PIN attempts.''')
             #              xxxxxxxxxxxxxxxx
             MenuItem('[%s WRONG PIN]' % rel),
             StoryMenuItem('Wipe, Stop', "Seed is wiped and a message is shown.",
-                arg=num, flags=TC_WIPE),
+                          arg=num, flags=TC_WIPE),
             StoryMenuItem('Wipe & Reboot', "Seed is wiped and Coldcard reboots without notice.",
-                            arg=num, flags=TC_WIPE|TC_REBOOT),
+                          arg=num, flags=TC_WIPE|TC_REBOOT),
             StoryMenuItem('Silent Wipe', "Seed is silently wiped and Coldcard acts as if PIN code was just wrong.",
-                            arg=num, flags=TC_WIPE|TC_FAKE_OUT),
-            StoryMenuItem('Brick Self', "Become a brick instantly and forever.", flags=TC_BRICK, arg=num),
-            StoryMenuItem('Last Chance', "Wipe seed, then give one more try and then brick if wrong PIN.", arg=num, flags=TC_WIPE|TC_BRICK),
-            StoryMenuItem('Just Reboot', "Reboot when this happens. Doesn't do anything else.", arg=num, flags=TC_REBOOT),
+                          arg=num, flags=TC_WIPE|TC_FAKE_OUT),
+            StoryMenuItem('Brick Self', "Become a brick instantly and forever.",
+                          arg=num, flags=TC_BRICK,),
+            StoryMenuItem('Last Chance', "Wipe seed, then give one more try and then brick if wrong PIN.",
+                          arg=num, flags=TC_WIPE|TC_BRICK),
+            StoryMenuItem('Just Reboot', "Reboot when this happens. Doesn't do anything else.",
+                          arg=num, flags=TC_REBOOT),
         ])
 
         m.goto_idx(1)
         the_ux.push(m)
 
     async def clear_all(self, m,l,item):
+
         if not await ux_confirm("Remove ALL TRICK PIN codes and special wrong-pin handling?"):
             return
+
+        if tp.has_sp_unlock():
+            if not await ux_confirm("You will not be able to bypass spending policy anymore."):
+                return
 
         if any(tp.get_duress_pins()):
             if not await ux_confirm("Any funds on the duress wallet(s) have been moved already?"):
@@ -657,7 +704,7 @@ setting) the Coldcard will always brick after 13 failed PIN attempts.''')
         m.update_contents()
 
     async def hide_pin(self, m,l, item):
-        pin, slot_num, flags = item.arg
+        pin, slot_num, flags, arg = item.arg
 
         if flags & TC_DELTA_MODE:
             await ux_show_story('''Delta mode PIN will be hidden if trick PIN menu is shown \
@@ -665,12 +712,14 @@ to attacker, and we need to update this record if the main PIN is changed, so we
 hiding this item.''')
             return
 
-        if pin != WRONG_PIN_CODE:
+        if (flags == TC_FW_DEFINED) and (arg == TCA_SP_UNLOCK):
+            msg = "It will still be possible to change or disable the spending policy if this PIN is known."
+        elif pin == WRONG_PIN_CODE:
+            msg = "This will hide what happens with wrong PINs from the menus but it will still be in effect."
+        else:
             msg = '''This will hide the PIN from the menus but it will still be in effect.
 
 You can restore it by trying to re-add the same PIN (%s) again later.''' % pin
-        else:
-            msg = "This will hide what happens with wrong PINs from the menus but it will still be in effect."
 
         if not await ux_confirm(msg): return
 
@@ -706,14 +755,18 @@ You can restore it by trying to re-add the same PIN (%s) again later.''' % pin
 
             self.pop_submenu()      # too lazy to get redraw right
         except BaseException as exc:
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
             await ux_show_story("Failed: %s" % exc)
 
     async def delete_pin(self, m,l, item):
-        pin, slot_num, flags = item.arg
+        pin, slot_num, flags, arg = item.arg
 
         if flags & (TC_WORD_WALLET | TC_XPRV_WALLET):
             if not await ux_confirm("Any funds on this duress wallet have been moved already?"):
+                return
+
+        if (flags == TC_FW_DEFINED) and (arg == TCA_SP_UNLOCK):
+            if not await ux_confirm("Changes to the spending policy will not be possible anymore."):
                 return
 
         if pin == WRONG_PIN_CODE:
@@ -743,11 +796,9 @@ You can restore it by trying to re-add the same PIN (%s) again later.''' % pin
 
         ch = await ux_show_story('''\
 This will temporarily load the secrets associated with this trick wallet \
-so you may perform transactions with it. Reboot the Coldcard to restore \
-normal operation.''')
+so you may perform transactions with it.''')
         if ch != 'y': return
 
-        from pincodes import pa, AE_SECRET_LEN
         b, slot = tp.get_by_pin(pin)
         assert slot
 
@@ -771,7 +822,7 @@ normal operation.''')
 
         # switch over to new secret!
         dis.fullscreen("Applying...")
-        await set_ephemeral_seed(encoded, meta=name)
+        await set_ephemeral_seed(encoded, origin=name)
         goto_top_menu()
 
     async def countdown_details(self, m, l, item):
@@ -784,7 +835,7 @@ normal operation.''')
 
         # "arg" can be out-of-date, if they edited timer value after parent was
         # rendered, where arg was captured into item.arg ... so don't use it.
-        cd_val = tp.tp[pin][2]
+        cd_val = tp.get_all()[pin][2]
 
         msg = 'Shows login countdown (%s)' % lgto_map.get(cd_val, '???').strip()
         if flags & TC_WIPE:
@@ -800,16 +851,14 @@ normal operation.''')
 
         def adjust_countdown_chooser():
             # 'disabled' choice not appropriate for this case
-            ch = lgto_ch[1:]
             va = lgto_va[1:]
 
             def set_it(idx, text):
                 new_val = va[idx]
                 # save it
                 try:
-                    b, slot = tp.update_slot(pin.encode(), tc_flags=flags, tc_arg=new_val)
-                except BaseException as exc:
-                    sys.print_exception(exc)
+                    tp.update_slot(pin.encode(), tc_flags=flags, tc_arg=new_val)
+                except: pass
 
             return va.index(cd_val), lgto_ch[1:], set_it
 
@@ -833,7 +882,8 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
         if ch != '6': return
 
         b, s = tp.get_by_pin(pin)
-        if s == None:
+        if s is None:
+            title = None
             # could not find in SE2. Our settings vs. SE2 are not in sync.
             msg = "Not found in SE2. Delete and remake."
         else:
@@ -845,21 +895,22 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
                 ch, pk = s.xdata[0:32], s.xdata[32:64]
                 node.from_chaincode_privkey(ch, pk)
 
-                msg, *_ = render_master_secrets('xprv', None, node)
+                title, msg, *_ = render_master_secrets('xprv', None, node)
             elif flags & TC_WORD_WALLET:
                 raw = s.xdata[0:(32 if nwords == 24 else 16)]
-                msg, *_ = render_master_secrets('words', raw, None)
+                title, msg, *_ = render_master_secrets('words', raw, None)
             else:
                 raise ValueError(hex(flags))
 
-        await ux_show_story(msg, sensitive=True)
+        await ux_show_story(msg, title=title, sensitive=True)
         
 
     async def pin_submenu(self, menu, label, item):
         # drill down into a sub-menu per existing PIN
         # - data display only, no editing; just clear and redo
         pin = item.arg
-        slot_num, flags, arg = tp.tp[pin] if (pin in tp.tp) else (-1, 0, 0)
+        t_pins = tp.get_all()
+        slot_num, flags, arg = t_pins[pin] if (pin in t_pins) else (-1, 0, 0)
 
         rv = []
 
@@ -878,6 +929,8 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
             rv.append(MenuItem("↳Pretends Wrong"))
         elif flags & TC_DELTA_MODE:
             rv.append(MenuItem("↳Delta Mode"))
+        elif (flags & TC_FW_DEFINED) and (arg == TCA_SP_UNLOCK):
+            rv.append(MenuItem("↳Unlock Policy"))       # width issues on Mk4
 
         for m, msg in [
             (TC_WIPE,   '↳Wipes seed'),
@@ -891,8 +944,8 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
             rv.append(MenuItem("Activate Wallet", f=self.activate_wallet, arg=(pin, flags, arg)))
 
         rv.extend([
-            MenuItem('Hide Trick', f=self.hide_pin, arg=(pin, slot_num, flags)),
-            MenuItem('Delete Trick', f=self.delete_pin, arg=(pin, slot_num, flags)),
+            MenuItem('Hide Trick', f=self.hide_pin, arg=(pin, slot_num, flags, arg)),
+            MenuItem('Delete Trick', f=self.delete_pin, arg=(pin, slot_num, flags, arg)),
         ])
         if pin != WRONG_PIN_CODE:
             rv.append(
@@ -903,6 +956,7 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
 
 class StoryMenuItem(MenuItem):
     def __init__(self, label, story, flags=0, **kws):
+        # arg= .. handled by super
         self.story = story
         self.flags = flags
         super().__init__(label, **kws)

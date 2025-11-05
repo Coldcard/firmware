@@ -1,8 +1,6 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 
-SIM_PATH = '/tmp/ckcc-simulator.sock'
-
 # Simulator normally powers up with this 'wallet'
 simulator_fixed_tprv = "tprv8ZgxMBicQKsPeXJHL3vPPgTAEqQ5P2FD9qDeCQT4Cp1EMY5QkwMPWFxHdxHrxZhhcVRJ2m7BNWTz9Xre68y7mX5vCdMJ5qXMUfnrZ2si2X4"
 simulator_fixed_tpub = "tpubD6NzVbkrYhZ4XzL5Dhayo67Gorv1YMS7j8pRUvVMd5odC2LBPLAygka9p7748JtSq82FNGPppFEz5xxZUdasBRCqJqXvUHq6xpnsMcYJzeh"
@@ -43,8 +41,7 @@ addr_fmt_names = {
     AF_P2WPKH: 'p2wpkh',
     AF_P2WSH: 'p2wsh',
     AF_P2WPKH_P2SH: 'p2wpkh-p2sh',
-    AF_P2WSH_P2SH: 'p2wsh-p2sh',
-    AF_P2TR: "p2tr",
+    AF_P2WSH_P2SH: 'p2sh-p2wsh',
 }
     
 
@@ -59,6 +56,7 @@ ADDR_STYLES_MS = ['p2sh', 'p2wsh', 'p2wsh-p2sh']
 
 # SIGHASH
 SIGHASH_MAP = {
+    "DEFAULT": 0,
     "ALL": 1,
     "NONE": 2,
     "SINGLE": 3,
@@ -66,6 +64,8 @@ SIGHASH_MAP = {
     "NONE|ANYONECANPAY": 2 | 0x80,
     "SINGLE|ANYONECANPAY": 3 | 0x80,
 }
+
+SIGHASH_MAP_NON_TAPROOT = {k:v for k, v in SIGHASH_MAP.items() if k != "DEFAULT"}
 
 # (2**31) - 1 --> max unhardened, but we handle hardened via h elsewhere
 MAX_BIP32_IDX = 2147483647

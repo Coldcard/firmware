@@ -76,7 +76,7 @@ class Display:
         if x is None or x < 0:
             # center/rjust
             w = self.width(msg, font)
-            if x == None:
+            if x is None:
                 x = max(0, (self.WIDTH - w) // 2)
             else:
                 # measure from right edge (right justify)
@@ -156,10 +156,13 @@ class Display:
 
     def fullscreen(self, msg, percent=None, line2=None):
         # show a simple message "fullscreen". 
-        # - 'line2' not supported on smaller screen sizes, ignore
         self.clear()
         y = 14
         self.text(None, y, msg, font=FontLarge)
+
+        if line2:
+            # 21 + 6 ie. FontLarge.height of above text + FontTiny.height as space between
+            self.text(None, y + 27, line2, font=FontSmall)
 
         if percent is not None:
             self.progress_bar(percent)
@@ -272,17 +275,18 @@ class Display:
         if is_sel:
             self.dis.fill_rect(0, y, Display.WIDTH, h-1, 1)
             self.icon(2, y, 'wedge', invert=1)
-            self.text(x, y, msg, invert=1)
+            nx = self.text(x, y, msg, invert=1)
         else:
-            self.text(x, y, msg)
+            nx = self.text(x, y, msg)
 
         # LATER: removed because caused confusion w/ underscore
         #if msg[0] == ' ' and space_indicators:
             # see also graphics/mono/space.txt
             #self.icon(x-2, y+9, 'space', invert=is_sel)
 
-        if is_checked:
-            self.icon(108, y, 'selected', invert=is_sel)
+        if is_checked and nx <= 113:
+            # omit checkmark if it doesn't fit
+            self.icon(113, y, 'selected', invert=is_sel)
 
     def menu_show(self, *a):
         self.show()
@@ -334,14 +338,25 @@ class Display:
         # no status bar on Mk4
         return
 
-    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, is_addr=False):
+    def draw_qr_error(self, idx_hint, msg):
+        self.clear()
+        lm = 4
+        bw = 54
+        y = (self.HEIGHT - bw) // 2
+        # empty rectangle
+        self.dis.fill_rect(lm, y, bw, bw, 1)
+        self.dis.fill_rect(lm+1, y+1, bw-2, bw-2, 0)
+        # error in rectangle - handpicked position
+        self.text(lm+5,y+10, "QR too")
+        self.text(lm+16,y+24, "big")
+        self._draw_qr_display(bw, lm, msg, False, None, idx_hint, False)
+
+    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert,
+                        is_addr=False, force_msg=False, is_change=False):
         # 'sidebar' is a pre-formated obj to show to right of QR -- oled life
         # - 'msg' will appear to right if very short, else under in tiny
         # - ignores "is_addr" because exactly zero space to do anything special
-        from utils import word_wrap
-
         self.clear()
-
         w = qr_data.width()
         if w <= 29:
             # version 1,2,3 => we can double-up the pixels
@@ -381,13 +396,23 @@ class Display:
             gly = framebuf.FrameBuffer(bytearray(packed), w, w, framebuf.MONO_HLSB)
             self.dis.blit(gly, XO, YO, 1)
 
+        self._draw_qr_display(bw, lm, msg, is_alnum, sidebar, idx_hint, invert, is_addr, is_change)
+
+    def _draw_qr_display(self, bw, lm, msg, is_alnum, sidebar, idx_hint, invert,
+                        is_addr=False, is_change=False):
+        # does not draw actual QR, but all other things in the screen
+        from utils import word_wrap
+
         if not sidebar and not msg:
             pass
-        elif not sidebar and len(msg) > (5*7):
+        elif not sidebar and ((len(msg) > (5*7)) or is_change):
             # use FontTiny and word wrap (will just split if no spaces)
+            # native segwit addresses and taproot
+            # if is_change=True also p2pkh and p2sh fall into this category as space is needed for "CHANGE"
             x = bw + lm + 4
             ww = ((128 - x)//4) - 1        # char width avail
             y = 1
+
             parts = list(word_wrap(msg, ww))
             if len(parts) > 8:
                 parts = parts[:8]
@@ -398,9 +423,13 @@ class Display:
             for line in parts:
                 self.text(x, y, line, FontTiny)
                 y += 8
+
+            if is_addr and is_change:
+                self.text(x+4, y+8, "CHANGE BACK", FontTiny)
         else:
             # hand-positioned for known cases
             # - sidebar = (text, #of char per line)
+            # p2pkh and p2sh addresses (if is_change=False)
             x, y = 73, (0 if is_alnum else 2)
             dy = 10 if is_alnum else 12
             sidebar, ll = sidebar if sidebar else (msg, 7)

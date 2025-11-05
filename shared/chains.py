@@ -5,13 +5,14 @@
 import ngu
 from uhashlib import sha256
 from ubinascii import hexlify as b2a_hex
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2TR
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2TR, AF_BARE_PK
 from public_constants import AF_P2SH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH
-from public_constants import AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32, AFC_SCRIPT
+from public_constants import AFC_PUBKEY, AFC_BECH32, AFC_SCRIPT
 from public_constants import TAPROOT_LEAF_TAPSCRIPT, TAPROOT_LEAF_MASK
 from serializations import hash160, ser_compact_size, disassemble, ser_string
 from ucollections import namedtuple
 from opcodes import OP_RETURN, OP_1, OP_16
+from precomp_tag_hash import TAP_TWEAK_H, TAP_LEAF_H
 
 
 SINGLESIG_AF = (AF_P2WPKH, AF_CLASSIC, AF_P2TR, AF_P2WPKH_P2SH)
@@ -23,12 +24,14 @@ Slip132Version = namedtuple('Slip132Version', ('pub', 'priv', 'hint'))
 # See also:
 # - <https://github.com/satoshilabs/slips/blob/master/slip-0132.md>
 #   - defines ypub/zpub/Xprc variants
-# - <https://github.com/satoshilabs/slips/blob/master/slip-0032.md>
-#   - nice bech32 encoded scheme for going forward
 # - <https://lists.linuxfoundation.org/pipermail/bitcoin-dev/2017-September/014907.html>
 #   - mailing list post proposed ypub, etc.
 #   - from <https://github.com/Bit-Wasp/bitcoin-php/issues/576>
 # - also electrum source: electrum/lib/constants.py
+
+# nLockTime in transaction equal or above this value is a unix timestamp (time_t) not block height.
+NLOCK_IS_TIME = const(500000000)
+
 
 def taptweak(internal_key, tweak=None):
     # BIP 341 states: "If the spending conditions do not require a script path,
@@ -36,7 +39,7 @@ def taptweak(internal_key, tweak=None):
     # This can be achieved by computing the output key point as:
     # Q = P + int(hashTapTweak(bytes(P)))G."
     actual_tweak = internal_key if tweak is None else internal_key + tweak
-    tweak = ngu.secp256k1.tagged_sha256(b"TapTweak", actual_tweak)
+    tweak = ngu.hash.sha256t(TAP_TWEAK_H, actual_tweak, True)
     xo_pubkey = ngu.secp256k1.xonly_pubkey(internal_key)
     xo_pubkey_tweaked = xo_pubkey.tweak_add(tweak)
     return xo_pubkey_tweaked.to_bytes()
@@ -47,13 +50,14 @@ def tapscript_serialize(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
     return bytes([lv]) + ser_string(script)
 
 def tapleaf_hash(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
-    return ngu.secp256k1.tagged_sha256(b"TapLeaf",
-                                       tapscript_serialize(script, leaf_version))
+    return ngu.hash.sha256t(TAP_LEAF_H, tapscript_serialize(script, leaf_version), True)
 
 
 class ChainsBase:
 
     curve = 'secp256k1'
+    menu_name = None        # use 'name' if this isn't defined
+    ccc_min_block = 0
 
     # b44_cointype comes from
     #    <https://github.com/satoshilabs/slips/blob/master/slip-0044.md>
@@ -88,68 +92,50 @@ class ChainsBase:
         return node.serialize(cls.slip132[addr_fmt].pub, False)
 
     @classmethod
-    def deserialize_node(cls, text, addr_fmt):
-        # xpub/xprv to object
-        addr_fmt = AF_CLASSIC if addr_fmt == AF_P2SH else addr_fmt
-        node = ngu.hdnode.HDNode()
-        version = node.deserialize(text)
-        assert (version == cls.slip132[addr_fmt].pub) \
-                or (version == cls.slip132[addr_fmt].priv)
-        return node
+    def script_pubkey(cls, addr_fmt, pubkey=None, script=None):
+        digest = None
+        if addr_fmt & AFC_SCRIPT:
+            assert script, "need witness/redeem script"
 
-    @classmethod
-    def p2sh_address(cls, addr_fmt, witdeem_script):
-        # Multisig and general P2SH support
-        # - witdeem => witness script for segwit, or redeem script otherwise
-        # - redeem script can be generated from witness script if needed.
-        # - this function needs a witdeem script to be provided, not simple to make
-        # - more verification needed to prove it's change/included address (NOT HERE)
-        # - reference: <https://bitcoincore.org/en/segwit_wallet_dev/>
-        # - returns: str(address)
+            if addr_fmt in [AF_P2WSH, AF_P2WSH_P2SH]:
+                digest = ngu.hash.sha256s(script)
+                # bech32 encoded segwit p2sh
+                spk = b'\x00\x20' + digest
+                if addr_fmt == AF_P2WSH_P2SH:
+                    # segwit p2wsh encoded as classic P2SH
+                    digest = hash160(spk)
+                    spk = b'\xA9\x14' + digest + b'\x87'
 
-        assert addr_fmt & AFC_SCRIPT, 'for p2sh only'
-        assert witdeem_script, "need witness/redeem script"
+            else:
+                assert addr_fmt == AF_P2SH
+                digest = hash160(script)
+                spk = b'\xA9\x14' + digest + b'\x87'
 
-        if addr_fmt & AFC_SEGWIT:
-            digest = ngu.hash.sha256s(witdeem_script)
         else:
-            digest = hash160(witdeem_script)
+            assert pubkey
+            keyhash = ngu.hash.hash160(pubkey)
+            if addr_fmt == AF_P2TR:
+                assert len(pubkey) == 32  # internal
+                spk = b'\x51\x20' + taptweak(pubkey)
+            elif addr_fmt == AF_CLASSIC:
+                spk = b'\x76\xA9\x14' + keyhash + b'\x88\xAC'
+            elif addr_fmt == AF_P2WPKH_P2SH:
+                redeem_script = b'\x00\x14' + keyhash
+                spk = b'\xA9\x14' + ngu.hash.hash160(redeem_script) + b'\x87'
+            elif addr_fmt == AF_P2WPKH:
+                spk = b'\x00\x14' + keyhash
+            else:
+                raise ValueError('bad address template: %s' % addr_fmt)
 
-        if addr_fmt & AFC_BECH32:
-            # bech32 encoded segwit p2sh
-            addr = ngu.codecs.segwit_encode(cls.bech32_hrp, 0, digest)
-        elif addr_fmt == AF_P2WSH_P2SH:
-            # segwit p2wsh encoded as classic P2SH
-            addr = ngu.codecs.b58_encode(cls.b58_script + hash160(b'\x00\x20' + digest))
-        else:
-            # P2SH classic
-            addr = ngu.codecs.b58_encode(cls.b58_script + digest)
-
-        return addr
+        return spk, digest
 
     @classmethod
     def pubkey_to_address(cls, pubkey, addr_fmt):
         # - renders a pubkey to an address
         # - works only with single-key addresses
         assert not addr_fmt & AFC_SCRIPT
-
-        if addr_fmt == AF_P2TR:
-            assert len(pubkey) == 32  # internal
-            script = b'\x51\x20' + taptweak(pubkey)
-        else:
-            keyhash = ngu.hash.hash160(pubkey)
-            if addr_fmt == AF_CLASSIC:
-                script =  b'\x76\xA9\x14' + keyhash + b'\x88\xAC'
-            elif addr_fmt == AF_P2WPKH_P2SH:
-                redeem_script = b'\x00\x14' + keyhash
-                scripthash = ngu.hash.hash160(redeem_script)
-                script = b'\xA9\x14' + scripthash + b'\x87'
-            elif addr_fmt == AF_P2WPKH:
-                script = b'\x00\x14' + keyhash
-            else:
-                raise ValueError('bad address template: %s' % addr_fmt)
-
-        return cls.render_address(script)
+        spk, _ = cls.script_pubkey(addr_fmt, pubkey=pubkey)
+        return cls.render_address(spk)
 
     @classmethod
     def address(cls, node, addr_fmt):
@@ -164,7 +150,7 @@ class ChainsBase:
             return node.addr_help(cls.b58_addr[0])
 
         if addr_fmt & AFC_SCRIPT:
-            # use p2sh_address() instead.
+            # use chain.render_address
             raise ValueError(hex(addr_fmt))
 
         # so must be P2PKH, fetch it.
@@ -191,7 +177,7 @@ class ChainsBase:
     @classmethod
     def hash_message(cls, msg=None, msg_len=0):
         # Perform sha256 for message-signing purposes (only)
-        # - or get setup for that, if msg == None
+        # - or get setup for that, if msg is None
         s = sha256()
 
         s.update(cls.msg_signing_prefix())
@@ -272,36 +258,36 @@ class ChainsBase:
 
     @classmethod
     def op_return(cls, script):
-        """Returns decoded string op return data if script is op return otherwise None"""
+        # returns decoded string op return data if script is op return otherwise None
         gen = disassemble(script)
         script_type = next(gen)
-        if OP_RETURN in script_type:
-            try:
-                data = next(gen)[0]
-                if data is None: raise RuntimeError
-            except (RuntimeError, StopIteration):
-                return "null-data", ""
-            data_hex = b2a_hex(data).decode()
-            data_ascii = None
-            if min(data) >= 32 and max(data) < 127:  # printable
-                try:
-                    data_ascii = data.decode("ascii")
-                except:
-                    pass
-            return data_hex, data_ascii
-        return None
+        if OP_RETURN not in script_type:
+            return
+
+        try:
+            data = next(gen)[0]
+            if data:
+                return data
+        except StopIteration:
+            pass
+
+        return b""
 
     @classmethod
     def possible_address_fmt(cls, addr):
         # Given a text (serialized) address, return what
         # address format applies to the address, but
         # for AF_P2SH case, could be: AF_P2SH,  AF_P2WPKH_P2SH, AF_P2WSH_P2SH. .. we don't know
-        if addr.startswith(cls.bech32_hrp):
-            if addr.startswith(cls.bech32_hrp+'1p'):
-                # really any ver=1 script or address, but for now...
+        hrp = cls.bech32_hrp + "1"
+        if addr.startswith(hrp):
+            if addr.startswith(hrp+'p'):
+                # segwit v1 (any ver=1 script or address, but for now just taproot...)
                 return AF_P2TR
-            else:
+            elif addr.startswith(hrp+'q'):
+                # segwit v0
                 return AF_P2WPKH if len(addr) < 55 else AF_P2WSH
+
+            return 0
 
         try:
             raw = ngu.codecs.b58_decode(addr)
@@ -321,6 +307,7 @@ class BitcoinMain(ChainsBase):
     # see <https://github.com/bitcoin/bitcoin/blob/master/src/chainparams.cpp#L140>
     ctype = 'BTC'
     name = 'Bitcoin Mainnet'
+    ccc_min_block = 922061          # Nov 3/2025
 
     slip132 = {
         AF_CLASSIC:     Slip132Version(0x0488B21E, 0x0488ADE4, 'x'),
@@ -339,7 +326,7 @@ class BitcoinMain(ChainsBase):
 
     b44_cointype = 0
 
-class BitcoinTestnet(BitcoinMain):
+class BitcoinTestnet(ChainsBase):
     # testnet4 (was testnet3 up until 2025 but all parameters are the same)
     ctype = 'XTN'
     name = 'Bitcoin Testnet 4'
@@ -362,7 +349,7 @@ class BitcoinTestnet(BitcoinMain):
     b44_cointype = 1
 
 
-class BitcoinRegtest(BitcoinMain):
+class BitcoinRegtest(ChainsBase):
     ctype = 'XRT'
     name = 'Bitcoin Regtest'
 
@@ -417,7 +404,7 @@ def current_key_chain():
 # Overbuilt: will only be testnet and mainchain.
 AllChains = [BitcoinMain, BitcoinTestnet, BitcoinRegtest]
 
-def slip32_deserialize(xp):
+def slip132_deserialize(xp):
     # .. and classify chain and addr-type, as implied by prefix
     node = ngu.hdnode.HDNode()
     version = node.deserialize(xp)
@@ -450,15 +437,38 @@ STD_DERIVATIONS = {
     "p2sh-p2wpkh": CommonDerivations[1][1],
     "p2wpkh-p2sh": CommonDerivations[1][1],
     "p2wpkh": CommonDerivations[2][1],
+    "p2tr": CommonDerivations[3][1],
+}
+
+MS_STD_DERIVATIONS = {
+    ("p2sh", "m/45h", AF_P2SH),
+    ("p2sh_p2wsh", "m/48h/{coin}h/{acct_num}h/1h", AF_P2WSH_P2SH),
+    ("p2wsh", "m/48h/{coin}h/{acct_num}h/2h", AF_P2WSH),
+    ('p2tr', "m/48h/{coin}h/{acct_num}h/3h", AF_P2TR),
+}
+
+AF_TO_STR_AF = {
+    AF_BARE_PK: "p2pk",
+    AF_CLASSIC: "p2pkh",
+    AF_P2TR: "p2tr",
+    AF_P2WPKH: "p2wpkh",
+    AF_P2WPKH_P2SH: "p2sh-p2wpkh",
+    AF_P2SH: "p2sh",
+    AF_P2WSH: "p2wsh",
+    AF_P2WSH_P2SH: "p2sh-p2wsh",
 }
 
 def parse_addr_fmt_str(addr_fmt):
     # accepts strings and also integers if already parsed
+    # integers are coming from USB
     try:
         if isinstance(addr_fmt, int):
             if addr_fmt in [AF_P2WPKH_P2SH, AF_P2WPKH, AF_CLASSIC]:
                 return addr_fmt
             else:
+                try:
+                    addr_fmt = AF_TO_STR_AF[addr_fmt]  # just for error msg
+                except: pass
                 raise ValueError
 
         addr_fmt = addr_fmt.lower()
@@ -477,7 +487,8 @@ def parse_addr_fmt_str(addr_fmt):
 
 
 def af_to_bip44_purpose(addr_fmt):
-    # single signature only
+    # Address format to BIP-44 "purpose" number
+    # - single signature only
     return {AF_CLASSIC: 44,
             AF_P2WPKH_P2SH: 49,
             AF_P2WPKH: 84,
@@ -490,7 +501,8 @@ def addr_fmt_label(addr_fmt):
         AF_P2WPKH: "Segwit P2WPKH",
         AF_P2TR: "Taproot P2TR",
         AF_P2WSH: "Segwit P2WSH",
-        AF_P2WSH_P2SH: "P2SH-P2WSH"
+        AF_P2WSH_P2SH: "P2SH-P2WSH",
+        AF_P2SH: "Legacy P2SH",
     }[addr_fmt]
 
 def verify_recover_pubkey(sig, digest):

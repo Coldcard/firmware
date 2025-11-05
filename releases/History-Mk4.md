@@ -1,5 +1,126 @@
 *See ChangeLog.md for more recent changes, these are historic versions*
 
+
+## 5.4.4 - 2025-09-30
+
+- Spending policies for "Single Signers" adds new spending policy options:
+    - limit your Coldcard so it refuses to sign transactions that are "too big"
+    - require 2FA authentication before signing any transaction (NFC+web)
+    - velocity limits can restrict how often new transactions can be signed
+    - see `docs/spending-policy.md` for more details
+    - "Enable HSM" and "User Management" have moved into `Advanced > Spending Policy`.
+    - Old "CCC" feature has been renamed and moved into that menu as well: "Co-Sign Multisig"
+- Added `Bull Bitcoin` export to `Export Wallet` menu.
+- Enhancement: Added warning for zero value outputs if not `OP_RETURN`.
+- Enhancement: Show QR codes of output addresses in transaction output explorer. Explorer is
+  now offered for transactions of all sizes, not just complex ones.
+- Enhancement: Added file rename, when listing contents of SD card.
+- Enhancement: Added ability to restore Coldcard backup via USB (needs latest of ckcc version)
+- Enhancement: Address ownership allows to specify particular multisig wallet in which to search,
+  if `wallet` query parameter is provided via trivial extension to
+  [BIP-21](https://github.com/bitcoin/bips/blob/master/bip-0021.mediawiki).
+  Example: `tb1q4d67p7stxml3kdudrgkg5mgaxsrgzcqzjrrj4gg62nxtvnsnvqjsxjkej0?wallet=Haystack`
+- Bugfix: If all change outputs have `nValue=0`, they were not shown in UX.
+- Bugfix: Disallow negative input/output amounts in PSBT.
+- Bugfix: Fix filesystem initialization after Wipe LFS or Destroy Seed.
+- Bugfix: Fix MicroSD selftest code.
+- Bugfix: NFC loop exporting secrets would not work after first value exported.
+- Bugfix: Multisig address format handling.
+- Bugfix: Ownership check failing to find addresses near max (~760), needed to be re-run to succeed
+- (Mk4 only) Bugfix: Part of extended keys (xpubs) were not always visible.
+- (Mk4 only) Change: Mk4 default menu wrap-around lowered from 16 to 10 items.
+
+
+## 5.4.3 - 2025-05-14
+
+- Enhancement: Text word-wrap done more carefully so never cuts off any text, and yet
+  doesn't waste space.
+- Bugfix: `Add current tmp` option, which could be shown in `Seed Vault` menu under
+  specific circumstances, would corrupt master settings if selected.
+- Bugfix: PUSHDATA2 in bitcoin script caused yikes.
+- Bugfix: Warning for unknown scripts was not shown at the top of the signing story.
+- Bugfix: With both NFC & Virtual Disk OFF, user cannot exit `Export Wallet` menu. Gets stuck
+  in export loop and needs reboot to escape.
+- Bugfix: Part of extended keys in stories were not always visible.
+
+
+## 5.4.2 - 2025-04-16
+
+- Huge new feature: CCC - ColdCard Cosign
+    - COLDCARD holds a key in a 2-of-3 multisig, in addition to the normal signing key it has.
+    - it applies a spending policy like an HSM:
+        - velocity and magnitude limits
+        - whitelisted destination addresses
+        - 2FA authentication using phone app ([RFC 6238](https://www.rfc-editor.org/rfc/rfc6238))
+    - but will sign its part of a transaction automatically if those condition are met, 
+      giving you 2 keys of the multisig and control over the funds
+    - spending policy can be exceeded with help of the other co-signer (3rd key), when needed
+    - cannot view or change the CCC spending policy once set, policy violations are not explained
+    - existing multisig wallets can be used by importing the spending-policy-controlled key
+- New Feature: Multisig transactions are finalized. Allows use of [PushTX](https://pushtx.org/)
+  with multisig wallets.  Read more [here](https://github.com/Coldcard/firmware/blob/master/docs/limitations.md#p2sh--multisig)
+- New Feature: Signing artifacts re-export to various media. Now you have the option of
+  exporting the signing products (transaction/PSBT) to different media than the original source.
+  Incoming PSBT over QR can be signed and saved to SD card if desired.
+- New Feature: Multisig export files are signed now. Read more [here](https://github.com/Coldcard/firmware/blob/master/docs/msg-signing.md#signed-exports)
+- Enhancement: NFC export usability upgrade: NFC keeps exporting until CANCEL/X is pressed
+- Enhancement: Add `Bitcoin Safe` option to `Export Wallet`
+- Enhancement: 10% performance improvement in USB upload speed for large files
+- Bugfix: Do not allow change Main PIN to same value already used as Trick PIN, even if
+  Trick PIN is hidden.
+- Bugfix: Fix stuck progress bar under `Receiving...` after a USB communications failure
+- Bugfix: Showing derivation path in Address Explorer for root key (m) showed double slash (//)
+- Bugfix: Can restore developer backup with custom password other than 12 words format
+- Bugfix: Virtual Disk auto mode ignores already signed PSBTs (with "-signed" in file name)
+- Bugfix: Virtual Disk auto mode stuck on "Reading..." screen sometimes
+- Bugfix: Finalization of foreign inputs from partial signatures. Thanks Christian Uebber
+- Bugfix: Temporary seed from COLDCARD backup failed to load stored multisig wallets
+- Change: `Destroy Seed` also removes all Trick PINs from SE2.
+- Change: `Lock Down Seed` requires pressing confirm key (4) to execute
+
+## 5.4.1 - 2025-02-13
+
+- New signing features:
+    - Sign message from note text, or password note
+    - JSON message signing. Use JSON object to pass data to sign in form
+        `{"msg":"<required msg>","subpath":"<optional sp>","addr_fmt": "<optional af>"}`
+    - Sign message with key resulting from positive ownership check. Press (0) and
+      enter or scan message text to be signed.
+    - Sign message with key selected from Address Explorer Custom Path menu. Press (2) and
+      enter or scan message text to be signed.
+- Enhancement: New address display format improves address verification on screen (groups of 4).
+- Deltamode enhancements:
+    - Hide Secure Notes & Passwords in Deltamode. Wipe seed if notes menu accessed. 
+    - Hide Seed Vault in Deltamode. Wipe seed if Seed Vault menu accessed. 
+    - Catch more DeltaMode cases in XOR submenus. Thanks [@dmonakhov](https://github.com/dmonakhov)
+- Enhancement: Add ability to switch between BIP-32 xpub, and obsolete SLIP-132 format
+  in `Export XPUB`
+- Enhancement: Use the fact that master seed cannot be used as ephemeral seed, to show message 
+  about successful master seed verification.
+- Enhancement: Allow devs to override backup password.
+- Enhancement: Add option to show/export full multisg addresses without censorship. Enable
+  in `Settings > Multisig Wallets > Full Address View`.
+- Enhancement: If derivation path is omitted during message signing, derivation path
+  default is no longer root (m), instead it is based on requested address format
+  (`m/44h/0h/0h/0/0` for p2pkh, and `m/84h/0h/0h/0/0` for p2wpkh). Conversely,
+  if address format is not provided but subpath derivation starts with:
+  `m/84h/...` or `m/49h/...`, then p2wpkh or p2sh-p2wpkh respectively, is used.
+- Bugfix: Sometimes see a struck screen after _Verifying..._ in boot up sequence.
+  On Q, result is blank screen, on Mk4, result is three-dots screen.
+- Bugfix: Do not allow to enable/disable Seed Vault feature when in temporary seed mode.
+- Bugfix: Bless Firmware causes hanging progress bar.
+- Bugfix: Prevent yikes in ownership search.
+- Bugfix: Factory-disabled NFC was not recognized correctly.
+- Bugfix: Be more robust about flash filesystem holding the settings.
+- Bugfix: Do not include sighash in PSBT input data, if sighash value is `SIGHASH_ALL`.
+- Bugfix: Allow import of multisig descriptor with root (m) keys in it.
+  Thanks [@turkycat](https://github.com/turkycat)
+- Change: Do not purge settings of current active tmp seed when deleting it from Seed Vault.
+- Change: Rename Testnet3 -> Testnet4 (all parameters unchanged).
+- Mk4 Specific Change:
+  - Enhancement: Export single sig descriptor with simple QR.
+
+
 ## 5.4.0 - 2024-09-12
 
 - New Feature: Opt-in support for unsorted multisig, which ignores BIP-67 policy. Use

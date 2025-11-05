@@ -65,7 +65,7 @@ def decode_slot(data):
     assert len(data) == 128
     return SlotInfo(*struct.unpack(TRICK_FMT, data))
 
-@pytest.fixture(scope='function')
+@pytest.fixture
 def se2_gate(sim_exec):
     # not-so-low-level method: include auth data for main PIN
     def doit(method_num, obj=None, buf=None):
@@ -252,7 +252,7 @@ def test_ux_trick_menus(goto_trick_menu, pick_menu_item, cap_menu,
     # all clear now
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture
 def new_trick_pin(goto_trick_menu, pick_menu_item, cap_menu, press_select,
                   cap_story, enter_pin, se2_gate, is_simulator, is_q1):
     # using menus and UX, setup a new trick PIN
@@ -301,8 +301,10 @@ def new_trick_pin(goto_trick_menu, pick_menu_item, cap_menu, press_select,
         time.sleep(.1)
         m = cap_menu()
         assert m[0] == f'[{new_pin}]'
-        assert set(m[1:]) == {'Duress Wallet', 'Just Reboot', 'Wipe Seed', \
-                                'Delta Mode', 'Look Blank', 'Brick Self', 'Login Countdown'}
+        assert set(m[1:]) == {'Duress Wallet', 'Just Reboot', 'Wipe Seed', 'Delta Mode',
+                              'Look Blank', 'Policy Unlock',
+                              'Policy Unlock & Wipe' if is_q1 else 'P.U. & Wipe',
+                              'Brick Self', 'Login Countdown'}
 
         pick_menu_item(op_mode)
         
@@ -515,7 +517,7 @@ def test_ux_countdown_choices(subchoice, expect, xflags, new_trick_pin, new_pin_
     # ( 'Blank Coldcard', 'freshly wiped Coldcard', TC_WIPE|TC_BLANK_WALLET, 0 ),
 ])
 def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs, words12,
-        reset_seed_words, repl, clear_all_tricks, import_ms_wallet, get_setting, clear_ms,
+        reset_seed_words, repl, clear_all_tricks, import_ms_wallet, get_setting, clear_miniscript,
         new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress,
         press_select, press_cancel, seed_story_to_words, is_q1, set_seed_words,
         stop_after_activated=False,
@@ -529,11 +531,11 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs, words12,
             xargs += 1000
 
     # import multisig
-    clear_ms()
+    clear_miniscript()
     import_ms_wallet(2, 2, dev_key=words12)
     press_select()
     time.sleep(.1)
-    assert len(get_setting('multisig')) == 1
+    assert len(get_setting('miniscript')) == 1
 
     # after Wipe Seed -> Wipe->Wallet choice, another level
     clear_all_tricks()
@@ -611,7 +613,7 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs, words12,
     xp = repl.eval("settings.get('xpub')")
     assert xp == wallet.hwif(as_private=False)
 
-    assert not get_setting('multisig')  # multisig is not copied
+    assert not get_setting('miniscript')  # multisig is not copied
 
     # re-login to recover normal seed
     reset_seed_words()
@@ -879,7 +881,7 @@ def build_duress_wallets(request, seed_vault=False):
 
     # fixtures I need in test_ux_duress_choices
     args = {f: request.getfixturevalue(f)
-              for f in ['reset_seed_words', 'repl', 'clear_all_tricks', 'new_trick_pin', 'clear_ms',
+              for f in ['reset_seed_words', 'repl', 'clear_all_tricks', 'new_trick_pin', 'clear_miniscript',
                         'import_ms_wallet', 'get_setting', 'press_select', 'press_cancel', 'is_q1',
                         'new_pin_confirmed', 'cap_menu', 'pick_menu_item', 'cap_story', 'need_keypress',
                         'seed_story_to_words', 'set_seed_words']}
@@ -913,6 +915,14 @@ def build_duress_wallets(request, seed_vault=False):
     # number of entries created
     return 4
 
+
+def test_deltamode_toggle(get_deltamode, set_deltamode):
+    # check test fixture works.
+    assert get_deltamode() == False
+    set_deltamode(True)
+    assert get_deltamode() == True
+    set_deltamode(False)
+    assert get_deltamode() == False
 
 
 # TODO

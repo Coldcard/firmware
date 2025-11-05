@@ -7,6 +7,19 @@
 - for experimental use.  DO NOT use for large Bitcoin amounts.
 ```
 
+# 6.3.5X & 6.3.5QX Shared Improvements - Both Mk4 and Q
+
+Change: Allow origin-less extended keys in multisig & miniscript descriptors
+Change: Static internal keys disallowed - all keys need to be ranged extended keys
+
+# Mk4 Specific Changes
+
+- all updates from `5.4.1`
+
+# Q Specific Changes
+
+- all updates from version `1.3.1Q`
+
 
 # 6.3.4X & 6.3.4QX Shared Improvements - Both Mk4 and Q
 

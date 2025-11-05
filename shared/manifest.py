@@ -1,6 +1,6 @@
 # Freeze everything in this list.
 # - not optimized because we need asserts to work
-# - for specific boards, see manifest_mk[34].py and manifest_q1.py
+# - for specific boards, see manifest_{mk4,q1}.py
 freeze_as_mpy('', [
 	'actions.py',
 	'address_explorer.py',
@@ -8,6 +8,7 @@ freeze_as_mpy('', [
 	'backups.py',
 	'bsms.py',
 	'callgate.py',
+	'ccc.py',
 	'chains.py',
 	'choosers.py',
 	'compat7z.py',
@@ -28,17 +29,24 @@ freeze_as_mpy('', [
 	'login.py',
 	'main.py',
 	'menu.py',
-	'miniscript.py',
+    "miniscript.py",
+	'mk4.py',
+	'msgsign.py',
 	'multisig.py',
+	'ndef.py',
+	'nfc.py',
 	'numpad.py',
 	'nvstore.py',
 	'opcodes.py',
+	'ownership.py',
 	'paper.py',
 	'pincodes.py',
+	'precomp_tag_hash.py',
 	'psbt.py',
+	'psram.py',
 	'pwsave.py',
-	'queues.py',
 	'qrs.py',
+	'queues.py',
 	'random.py',
 	'seed.py',
 	'selftest.py',
@@ -46,31 +54,33 @@ freeze_as_mpy('', [
 	'sffile.py',
 	'ssd1306.py',
 	'stash.py',
+	'tapsigner.py',
+	'trick_pins.py',
 	'usb.py',
 	'utils.py',
 	'ux.py',
+	'vdisk.py',
 	'version.py',
-	'xor_seed.py',
-	'tapsigner.py',
 	'wallet.py',
-	'ownership.py',
+	'web2fa.py',
+	'xor_seed.py'
 ], opt=0)
 
 # Optimize data-like files, since no need to debug them.
 freeze_as_mpy('', [
-	'sigheader.py',
-	'public_constants.py',
 	'charcodes.py',
+	'public_constants.py',
+	'sigheader.py',
 ], opt=3)
 
 # Maybe include test code.
 import os
 if int(os.environ.get('DEBUG_BUILD', 0)):
     freeze_as_mpy('', [
+		'dev_helper.py',
         'h.py',
-        'dev_helper.py',
-        'usb_test_commands.py',
         'sim_display.py',
+		'usb_test_commands.py',
     ], opt=0)
 
 include("$(MPY_DIR)/extmod/uasyncio/manifest.py")

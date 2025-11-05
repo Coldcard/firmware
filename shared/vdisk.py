@@ -79,7 +79,7 @@ class VirtDisk:
             # corrupt or unformated?
             # XXX incomplete error handling here; needs work
             VBLKDEV.set_inserted(True)
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
 
             return None
 
@@ -93,7 +93,7 @@ class VirtDisk:
             return list(sorted(('/vdisk/'+fn, sz) for (fn,ty,_,sz) in os.ilistdir('/vdisk') 
                                                         if ty == 0x8000))
         except BaseException as exc:
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
 
             return []
         finally:
@@ -111,10 +111,10 @@ class VirtDisk:
 
         return actual
 
-    def new_psbt(self, filename, sz):
+    def new_psbt(self, filename):
         # New incoming PSBT has been detected, start to sign it.
         from auth import sign_psbt_file
-        uasyncio.create_task(sign_psbt_file(filename, force_vdisk=True))
+        uasyncio.create_task(sign_psbt_file(filename, force_vdisk=True, ux_abort=True))
 
     def new_firmware(self, filename, sz):
         # potential new firmware file detected
@@ -157,9 +157,9 @@ class VirtDisk:
 
             lfn = fn.lower()
 
-            if lfn.endswith('.psbt') and sz > 100:
+            if lfn.endswith('.psbt') and sz > 100 and ("-signed" not in lfn):
                 self.ignore.add(fn)
-                self.new_psbt(fn, sz)
+                self.new_psbt(fn)
                 break
 
             if lfn.endswith('.dfu') and sz > FW_MIN_LENGTH:

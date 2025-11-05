@@ -2,25 +2,15 @@
 #
 # utils.py - Misc utils. My favourite kind of source file.
 #
-import gc, sys, ustruct, ngu, chains, ure, time, version, uos, uio, bip39
+import gc, sys, ustruct, ngu, chains, ure, uos, uio, time, bip39, version, uasyncio
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
-from charcodes import OUT_CTRL_ADDRESS
+from charcodes import OUT_CTRL_ADDRESS, OUT_CTRL_NOWRAP
 from uhashlib import sha256
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR, MAX_PATH_DEPTH
-from public_constants import AF_P2WSH, AF_P2WSH_P2SH
-
+from public_constants import MAX_PATH_DEPTH, AF_CLASSIC
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
-
-STD_DERIVATIONS = {
-    "p2pkh": "m/44h/{chain}h/0h/0/0",
-    "p2sh-p2wpkh": "m/49h/{chain}h/0h/0/0",
-    "p2wpkh-p2sh": "m/49h/{chain}h/0h/0/0",
-    "p2wpkh": "m/84h/{chain}h/0h/0/0",
-    "p2tr": "m/86h/{chain}h/0h/0/0",
-}
 
 try:
     from font_iosevka import FontIosevka
@@ -231,6 +221,7 @@ def to_ascii_printable(s, strip=False, only_printable=True):
 def problem_file_line(exc):
     # return a string of just the filename.py and line number where
     # an exception occured. Best used on AssertionError.
+
     tmp = uio.StringIO()
     sys.print_exception(exc, tmp)
     lines = tmp.getvalue().split('\n')[-3:]
@@ -260,7 +251,6 @@ def cleanup_deriv_path(bin_path, allow_star=False):
     # - assume 'm' prefix, so '34' becomes 'm/34', etc
     # - do not assume /// is m/0/0/0
     # - if allow_star, then final position can be * or *h (wildcard)
-    from public_constants import MAX_PATH_DEPTH
 
     s = to_ascii_printable(bin_path, strip=True).lower()
 
@@ -446,7 +436,9 @@ def clean_shutdown(style=0):
     # wipe SPI flash and shutdown (wiping main memory)
     # - mk4: SPI flash not used, but NFC may hold data (PSRAM cleared by bootrom)
     # - bootrom wipes every byte of SRAM, so no need to repeat here
-    import callgate, uasyncio
+    # - style=2 => reboot and try login again
+    # - default is logout and (if applicable) power down.
+    import callgate
 
     # save if anything pending
     from glob import settings
@@ -469,36 +461,49 @@ def clean_shutdown(style=0):
     callgate.show_logout(style)
 
 def call_later_ms(delay, cb, *args, **kws):
-    import uasyncio
-
     async def doit():
         await uasyncio.sleep_ms(delay)
         await cb(*args, **kws)
         
     uasyncio.create_task(doit())
 
-def txtlen(s):
-    # width of string in chars, accounting for
-    # double-wide characters which happen on Q.
-    rv = len(s)
-
-    if DOUBLE_WIDE:
-        rv += sum(1 for ch in s if ch in DOUBLE_WIDE)
-
-    return rv
 
 def word_wrap(ln, w):
     # Generate the lines needed to wrap one line into X "width"-long lines.
     #  - tests in testing/test_unit.py
-
-    if txtlen(ln) <= w:
-        yield ln
+    if ln and (ln[0] == OUT_CTRL_NOWRAP):
+        # no need to wrap this line - as requested by caller
+        yield ln[1:]
         return
 
-    while ln:
-        # find a space in (width) first part of remainder
-        sp = ln.rfind(' ', 0, w-1)
-        if sp == -1:
+    while True:
+        # ln_len considers DOUBLE_WIDTH chars
+        ln_len = 0
+        sp = None
+        for idx, ch in enumerate(ln):
+            if ch == ' ':
+                # split point on space if possible
+                sp = idx
+
+            ln_len += 1
+            if ch in DOUBLE_WIDE:
+                ln_len += 1
+
+            if ln_len > w:
+                # if one of .,:; is last -> allow one more character
+                # even if only half visible on Mk4
+                # on Q it's OK as (CHARS_W-1) is used as w
+                if ch in ".,:;":
+                    idx += 1
+                    sp = None
+
+                break
+
+        else:
+            yield ln
+            return
+
+        if sp is None:
             if ln[0] == OUT_CTRL_ADDRESS:
                 # special handling for lines w/ payment address in them
                 # - add same marker to newly split lines
@@ -514,70 +519,29 @@ def word_wrap(ln, w):
                 return
 
             # bad-break the line
-            sp = min(txtlen(ln), w)
-            nsp = sp
-            if ln[nsp:nsp+1] == ' ':
+            sp = nsp = idx
+            if ln[sp:nsp+1] == " ":
                 nsp += 1
         else:
             # split on found space
             nsp = sp+1
 
         left = ln[0:sp]
-        ln = ln[nsp:]
-
-        if txtlen(left) + 1 + txtlen(ln) <= w:
-            # not clear when this would happen? final bit??
-            left = left + ' ' + ln
-            ln = ''
-
         yield left
+        ln = ln[nsp:]
+        if not ln: return
 
-def parse_extended_key(ln, private=False):
-    # read an xpub/ypub/etc and return BIP-32 node and what chain it's on.
-    # - can handle any garbage line
-    # - returns (node, chain, addr_fmt)
-    # - people are using SLIP132 so we need this
-    node, chain, addr_fmt = None, None, None
-    if ln is None:
-        return node, chain, addr_fmt
-
-    ln = ln.strip()
-    if private:
-        rgx = r'.prv[A-Za-z0-9]+'
-    else:
-        rgx = r'.pub[A-Za-z0-9]+'
-
-    pat = ure.compile(rgx)
-    found = pat.search(ln)
-    # serialize, and note version code
-    try:
-        node, chain, addr_fmt, is_private = chains.slip32_deserialize(found.group(0))
-    except:
-        pass
-
-    return node, chain, addr_fmt
-
-def chunk_writer(fd, body):
-    from glob import dis
-    dis.fullscreen("Saving...")
-    body_len = len(body)
-    chunk = body_len // 10
-    for idx, i in enumerate(range(0, body_len, chunk)):
-        fd.write(body[i:i + chunk])
-        dis.progress_bar_show(idx / 10)
-    dis.progress_bar_show(1)
-
-
-def pad_raw_secret(raw_sec_str):
+def deserialize_secret(text_sec_str):
     # Chip can hold 72-bytes as a secret
-    # every secret has 0th byte as marker
-    # then secret and padded to zero to AE_SECRET_LEN
+    # - has 0th byte as marker, secret and zero padding to AE_SECRET_LEN
+    # - also does hex to binary conversion
+    # - converse of: SecretStash.storage_serialize()
     from pincodes import AE_SECRET_LEN
 
     raw = bytearray(AE_SECRET_LEN)
-    if len(raw_sec_str) % 2:
-        raw_sec_str += '0'
-    x = a2b_hex(raw_sec_str)
+    if len(text_sec_str) % 2:
+        text_sec_str += '0'
+    x = a2b_hex(text_sec_str)
     raw[0:len(x)] = x
     return raw
 
@@ -626,7 +590,7 @@ def txid_from_fname(fname):
         except: pass
     return None
 
-def url_decode(u):
+def url_unquote(u):
     # expand control chars from %XX and '+'
     # - equiv to urllib.parse.unquote_plus
     # - ure.sub is missing, so not being clever here.
@@ -646,29 +610,38 @@ def url_decode(u):
 
     return u
 
+def url_quote(u):
+    # convert non-text chars into %hex for URL usage
+    # - urllib.parse.quote() but w/o as much thought
+    return ''.join( (ch if 33 <= ord(ch) <= 127 else '%%%02x' % ord(ch)) \
+                    for ch in u)
+
 def decode_bip21_text(got):
     # Assume text is a BIP-21 payment address (url), with amount, description
     # and url protocol prefix ... all optional except the address.
     # - also will detect correctly encoded & checksummed xpubs
+    # - always verifies checksum of data it finds
 
     proto, args, addr = None, None, None
 
-    # remove URL protocol: if present
-    if ':' in got:
-        proto, got = got.split(':', 1)
-
+    # remove query params first - if any
     # looks like BIP-21 payment URL
     if '?' in got:
-        addr, args = got.split('?', 1)
+        got, args = got.split('?', 1)
 
         # full URL decode here, but assuming no repeated keys
         parts = args.split('&')
         args = dict()
         for p in parts:
             k, v = p.split('=', 1)
-            args[k] = url_decode(v)
+            args[k] = url_unquote(v)
 
-    # assume it's an bare address for now
+    # remove URL protocol: if present
+    if ':' in got:
+        proto, got = got.split(':', 1)
+        assert proto.lower() == "bitcoin"
+
+    # assume it's a bare address for now
     if not addr:
         addr = got
 
@@ -676,10 +649,12 @@ def decode_bip21_text(got):
     try:
         raw = ngu.codecs.b58_decode(addr)
 
-        # it's valid base58
-        # an address, P2PKH or xpub (xprv checked above)
+        # It's valid base58: could be
+        # an address, P2PKH or xpub/xprv
         if addr[1:4] == 'pub':
             return 'xpub', (addr,)
+        if addr[1:4] == 'prv':
+            return 'xprv', (addr,)
 
         return 'addr', (proto, addr, args)
     except:
@@ -694,87 +669,6 @@ def decode_bip21_text(got):
 
     raise ValueError('not bip-21')
 
-def check_xpub(xfp, xpub, deriv, expect_chain, my_xfp, disable_checks=False):
-    # Shared code: consider an xpub for inclusion into a wallet
-    # return T if it's our own key and parsed details in form (xfp, deriv, xpub)
-    # - deriv can be None, and in very limited cases can recover derivation path
-    # - could enforce all same depth, and/or all depth >= 1, but
-    #   seems like more restrictive than needed, so "m" is allowed
-    import stash
-    from public_constants import AF_P2SH
-    try:
-        # Note: addr fmt detected here via SLIP-132 isn't useful
-        node, chain, _ = parse_extended_key(xpub)
-    except:
-        raise AssertionError('unable to parse xpub')
-
-    try:
-        assert node.privkey() == None       # 'no privkeys plz'
-    except ValueError:
-        pass
-
-    if expect_chain == "XRT":
-        # HACK but there is no difference extended_keys - just bech32 hrp
-        assert chain.ctype == "XTN"
-    else:
-        assert chain.ctype == expect_chain, 'wrong chain'
-
-    depth = node.depth()
-
-    if depth == 1:
-        if not xfp:
-            # allow a shortcut: zero/omit xfp => use observed parent value
-            xfp = swab32(node.parent_fp())
-        else:
-            # generally cannot check fingerprint values, but if we can, do so.
-            if not disable_checks:
-                assert swab32(node.parent_fp()) == xfp, 'xfp depth=1 wrong'
-
-    assert xfp, 'need fingerprint'          # happens if bare xpub given
-
-    # In most cases, we cannot verify the derivation path because it's hardened
-    # and we know none of the private keys involved.
-    if depth == 1:
-        # but derivation is implied at depth==1
-        kn, is_hard = node.child_number()
-        if is_hard: kn |= 0x80000000
-        guess = keypath_to_str([kn], skip=0)
-
-        if deriv:
-            if not disable_checks:
-                assert guess == deriv, '%s != %s' % (guess, deriv)
-        else:
-            deriv = guess           # reachable? doubt it
-
-    assert deriv, 'empty deriv'         # or force to be 'm'?
-    assert deriv[0] == 'm'
-
-    # path length of derivation given needs to match xpub's depth
-    if not disable_checks:
-        p_len = deriv.count('/')
-        if p_len:
-            # only check this for keys that have origin derivation
-            # originless keys are expected to be blinded
-            assert p_len == depth, 'deriv %d != %d xpub depth (xfp=%s)' % (
-                p_len, depth, xfp2str(xfp)
-            )
-        else:
-            # depth can be more than zero here - keys can be blinded
-            assert xfp == swab32(node.my_fp()), "xpub xfp wrong %s" % xfp2str(xfp)
-
-        if xfp == my_xfp:
-            # it's supposed to be my key, so I should be able to generate pubkey
-            # - might indicate collision on xfp value between co-signers,
-            #   and that's not supported
-            with stash.SensitiveValues() as sv:
-                chk_node = sv.derive_path(deriv)
-                assert node.pubkey() == chk_node.pubkey(), \
-                            "[%s/%s] wrong pubkey" % (xfp2str(xfp), deriv[2:])
-
-    # serialize xpub w/ BIP-32 standard now.
-    # - this has effect of stripping SLIP-132 confusion away
-    return xfp == my_xfp, (xfp, deriv, chain.serialize_public(node, AF_P2SH))
-
 def encode_seed_qr(words):
     return ''.join('%04d' % bip39.get_word_index(w) for w in words)
 
@@ -786,5 +680,66 @@ def show_single_address(addr):
 def chunk_address(addr):
     # useful to show payment addresses specially
     return [addr[i:i+4] for i in range(0, len(addr), 4)]
+
+def cleanup_payment_address(s):
+    # Cleanup a payment  address, or raise if bad checksum
+    # - later matching is string-based, so just doing basic syntax check here
+    # - must be checksumed-base58 or bech32
+    try:
+        ngu.codecs.b58_decode(s)
+        assert len(s) < 40          # or else it's an xpub/xprv
+        return s
+    except: pass
+
+    try:
+        ngu.codecs.segwit_decode(s)
+        return s.lower()
+    except: pass
+
+    raise ValueError('bad address value: ' + s)
+
+def truncate_address(addr):
+    # Truncates address to width of screen, replacing middle chars
+    if not version.has_qwerty:
+        # - 16 chars screen width
+        # - but 2 lost at left (menu arrow, corner arrow)
+        # - want to show not truncated on right side
+        return addr[0:6] + '⋯' + addr[-6:]
+    else:
+        # tons of space on Q1
+        return addr[0:12] + '⋯' + addr[-12:]
+
+def wipe_if_deltamode():
+    # If in deltamode, give up and wipe self rather do
+    # a thing that might reveal true master secret...
+    from pincodes import pa
+
+    if pa.is_deltamode():
+        import callgate
+        callgate.fast_wipe()
+
+def chunk_checksum(fd, chunk=1024):
+    # reads from open file descriptor
+    md = sha256()
+    while True:
+        data = fd.read(chunk)
+        if not data:
+            break
+        md.update(data)
+
+    return md.digest()
+
+def xor(*args):
+    # bit-wise xor between all args
+    vlen = len(args[0])
+    # all have to be same length
+    assert all(len(e) == vlen for e in args)
+    rv = bytearray(vlen)
+
+    for i in range(vlen):
+        for a in args:
+            rv[i] ^= a[i]
+
+    return rv
 
 # EOF

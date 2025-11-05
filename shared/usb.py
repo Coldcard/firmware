@@ -2,16 +2,17 @@
 #
 # usb.py - USB related things
 #
-import ckcc, pyb, callgate, sys, ux, ngu, stash, aes256ctr
+import ckcc, pyb, callgate, sys, ux, ngu, stash, aes256ctr, ujson
 from uasyncio import sleep_ms, core
 from uhashlib import sha256
-from public_constants import MAX_MSG_LEN, MAX_BLK_LEN, AFC_SCRIPT
+from public_constants import MAX_MSG_LEN, MAX_BLK_LEN
 from public_constants import STXN_FLAGS_MASK
 from ustruct import pack, unpack_from
 from ckcc import watchpoint, is_simulator
 from utils import problem_file_line, call_later_ms
 from version import supports_hsm, is_devmode, MAX_TXN_LEN, MAX_UPLOAD_LEN
-from exceptions import FramingError, CCBusyError, HSMDenied, HSMCMDDisabled
+from exceptions import FramingError, CCBusyError, HSMDenied, HSMCMDDisabled, SpendPolicyViolation
+from pincodes import pa
 
 # Unofficial, unpermissioned... numbers
 COINKITE_VID = 0xd13e
@@ -52,8 +53,8 @@ HSM_WHITELIST = frozenset({
     'smsg',                     # limited by policy
     'blkc', 'hsts',             # report status values
     'stok', 'smok',             # completion check: sign txn or msg
-    'xpub', 'msck',             # quick status checks
-    'p2sh', 'show', 'msas',     # limited by HSM policy
+    'xpub',                     # quick status checks
+    'show', 'msas',             # limited by HSM policy
     'user',                     # auth HSM user, other user cmds not allowed
     'gslr',                     # read storage locker; hsm mode only, limited usage
 })
@@ -61,6 +62,21 @@ HSM_WHITELIST = frozenset({
 # HSM related commands that are not allowed if 'hsmcmd' is disabled.
 HSM_DISABLE_CMDS = frozenset({
     "user",
+    "rmur",
+    "nwur",
+    "gslr",
+    "hsts",
+    "hsms",
+})
+
+# spending policy active: blacklist some commands
+# - 'pass' may be allowed if 'okeys' is enabled
+HOBBLED_CMDS = frozenset({
+    'enrl',             # no new multisigs during policy enforcement
+    'back',             # no backups
+    'bagi', 'dfu_',     # just in case
+
+    "user",             # same as HSM_DISABLE_CMDS
     "rmur",
     "nwur",
     "gslr",
@@ -117,6 +133,16 @@ def is_vcp_active():
 
     return cur and ('VCP' in cur) and en
 
+
+def get_miniscript_by_name(name_bytes):
+    from wallet import MiniScriptWallet
+
+    for w in MiniScriptWallet.iter_wallets():
+        if w.name == str(name_bytes, 'ascii'):
+            return True, w
+    else:
+        return False, b'err_Miniscript wallet not found'
+
 class USBHandler:
     def __init__(self):
         self.dev = pyb.USB_HID()
@@ -169,6 +195,7 @@ class USBHandler:
         msg_len = 0
 
         while 1:
+            success = False
             yield core._io_queue.queue_read(self.blockable)
 
             try:
@@ -212,14 +239,14 @@ class USBHandler:
                     # this saves memory over a simple slice (confirmed)
                     args = memoryview(self.msg)[4:msg_len]
                     resp = await self.handle(self.msg[0:4], args)
-                    msg_len = 0
+                    success = True
                 except CCBusyError:
                     # auth UX is doing something else
                     resp = b'busy'
-                    msg_len = 0
+                except SpendPolicyViolation:
+                    resp = b'err_Spending policy in effect'
                 except HSMDenied:
                     resp = b'err_Not allowed in HSM mode'
-                    msg_len = 0
                 except HSMCMDDisabled:
                     # do NOT change below error msg as other applications depend on it
                     resp = b'err_HSM commands disabled'
@@ -227,16 +254,14 @@ class USBHandler:
                 except (ValueError, AssertionError) as exc:
                     # some limited invalid args feedback
                     #print("USB request caused assert: ", end='')
-                    #sys.print_exception(exc)
+                    # sys.print_exception(exc)
                     msg = str(exc)
                     if not msg:
                         msg = 'Assertion ' + problem_file_line(exc)
                     resp = b'err_' + msg.encode()[0:80]
-                    msg_len = 0
                 except MemoryError:
                     # prefer to catch at higher layers, but sometimes can't
                     resp = b'err_Out of RAM'
-                    msg_len = 0
                 except FramingError as exc:
                     raise exc
                 except Exception as exc:
@@ -245,9 +270,15 @@ class USBHandler:
                         print("USB request caused this: ", end='')
                         sys.print_exception(exc)
                     resp = b'err_Confused ' + problem_file_line(exc)
-                    msg_len = 0
 
-                # aways send a reply if they get this far
+                if not success:
+                    # do not let the progress screen hang on "Receiving..."
+                    from ux import restore_menu
+                    restore_menu()
+
+                msg_len = 0
+
+                # always send a reply if they get this far
                 await self.send_response(resp)
 
             except FramingError as exc:
@@ -342,7 +373,7 @@ class USBHandler:
         except:
             raise FramingError('decode')
 
-        if cmd[0].isupper() and is_devmode:
+        if is_devmode and cmd[0].isupper():
             # special hacky commands to support testing w/ the simulator
             try:
                 from usb_test_commands import do_usb_command
@@ -355,7 +386,18 @@ class USBHandler:
             if cmd not in HSM_WHITELIST:
                 raise HSMDenied
 
-        if not settings.get('hsmcmd', False):
+        if pa.hobbled_mode:
+            # block some commands when we are hobbled.
+            if cmd in HOBBLED_CMDS:
+                raise SpendPolicyViolation
+
+            if cmd in {'pwok', 'pass'}:
+                from ccc import sssp_spending_policy
+                if not sssp_spending_policy('okeys'):
+                    raise SpendPolicyViolation
+            
+        elif not settings.get('hsmcmd', False):
+            # block these HSM-related command if not using feature
             if cmd in HSM_DISABLE_CMDS:
                 raise HSMCMDDisabled
 
@@ -432,39 +474,6 @@ class USBHandler:
             sign_msg(msg, subpath, addr_fmt)
             return None
 
-        if cmd == 'p2sh':
-            # show P2SH (probably multisig) address on screen (also provides it back)
-            # - must provide redeem script, and list of [xfp+path]
-            from auth import start_show_p2sh_address
-
-            if hsm_active and not hsm_active.approve_address_share(is_p2sh=True):
-                raise HSMDenied
-
-            # new multsig goodness, needs mapping from xfp->path and M values
-            addr_fmt, M, N, script_len = unpack_from('<IBBH', args)
-
-            assert addr_fmt & AFC_SCRIPT
-            assert 1 <= M <= N <= 20
-            assert 30 <= script_len <= 520
-
-            offset = 8
-            witdeem_script = args[offset:offset+script_len]
-            offset += script_len
-
-            assert len(witdeem_script) == script_len
-
-            xfp_paths = []
-            for i in range(N):
-                ln = args[offset]
-                assert 1 <= ln <= 16, 'badlen'
-                xfp_paths.append(unpack_from('<%dI' % ln, args, offset+1))
-                offset += (ln*4) + 1
-
-            assert offset == len(args)
-
-            return b'asci' + start_show_p2sh_address(M, N, addr_fmt, xfp_paths,
-                                                     witdeem_script)
-
         if cmd == 'show':
             # simple cases, older code: text subpath
             from auth import usb_show_address
@@ -502,77 +511,60 @@ class USBHandler:
 
             # Start an UX interaction, return immediately here
             from auth import maybe_enroll_xpub
-            maybe_enroll_xpub(sf_len=file_len, ux_reset=True, miniscript=True)
+            maybe_enroll_xpub(sf_len=file_len, ux_reset=True)
 
             return None
 
-        if cmd == "msls":
-            # list all registered miniscript wallet names
+        if cmd.startswith("ms"):
+            # miniscript related commands
             assert self.encrypted_req, 'must encrypt'
-            from miniscript import MiniScriptWallet
-            wallets = [w.name for w in MiniScriptWallet.iter_wallets()]
-            import ujson
-            return b'asci' + ujson.dumps(wallets)
 
-        if cmd == "msdl":
-            # delete miniscript wallet by its name (unique id)
-            assert self.encrypted_req, 'must encrypt'
-            from miniscript import MiniScriptWallet
+            if cmd == "msls":
+                # list all registered miniscript wallet names
+                from wallet import MiniScriptWallet
+                wallets = [w.name for w in MiniScriptWallet.iter_wallets()]
+                return b'asci' + ujson.dumps(wallets)
 
-            assert len(args) < 40, "len args"
-            for w in MiniScriptWallet.iter_wallets():
-                if w.name == str(args, 'ascii'):
-                    break
-            else:
-                return b'err_Miniscript wallet not found'
+            if cmd == "msas":
+                # get miniscript address based on int/ext index
+                if hsm_active and not hsm_active.approve_address_share(miniscript=True):
+                    raise HSMDenied
 
-            from auth import maybe_delete_miniscript
-            maybe_delete_miniscript(w)
-            return None
+                change, idx, = unpack_from('<II', args)
+                assert change in (0, 1), "change not bool"
+                assert 0 <= idx < (2 ** 31), "child idx"
 
-        if cmd == "msgt":
-            # takes name and returns descriptor + name json
-            assert self.encrypted_req, 'must encrypt'
-            from miniscript import MiniScriptWallet
+                name = args[8:]
+                assert len(name) <= 32, "name len"
 
-            assert len(args) < 40, "len args"
-            for w in MiniScriptWallet.iter_wallets():
-                if w.name == str(args, 'ascii'):
-                    import ujson
-                    return b'asci' + ujson.dumps({"name": w.name, "desc": w.to_string()})
-            return b'err_Miniscript wallet not found'
+                ok, w = get_miniscript_by_name(name)
+                if not ok:
+                    return w
 
-        if cmd == "msas":
-            # get miniscript address based on int/ext index
-            assert self.encrypted_req, 'must encrypt'
-            if hsm_active and not hsm_active.approve_address_share(miniscript=True):
-                raise HSMDenied
+                from auth import start_show_miniscript_address
+                return b'asci' + start_show_miniscript_address(w, change, idx)
 
-            from miniscript import MiniScriptWallet
 
-            change, idx, = unpack_from('<II', args)
-            assert change in (0, 1), "change not bool"
-            assert 0 <= idx < (2 ** 31), "child idx"
+            assert len(args) <= 32, "name len"
+            ok, w = get_miniscript_by_name(args)
+            if not ok:
+                return w
 
-            name = args[8:]
+            if cmd == "msdl":
+                # delete miniscript wallet by its name (unique id)
+                from auth import maybe_delete_miniscript
+                maybe_delete_miniscript(w)
+                return None
 
-            msc = None
-            for w in MiniScriptWallet.iter_wallets():
-                if w.name == str(name, 'ascii'):
-                    msc = w
-                    break
-            else:
-                return b'err_Miniscript wallet not found'
+            if cmd == "msgt":
+                # takes name and returns descriptor + name json
+                # MiniscriptWallet.to_string only fills policy
+                return b'asci' + ujson.dumps({"name": w.name, "desc": w.to_string()})
 
-            from auth import start_show_miniscript_address
-            return b'asci' + start_show_miniscript_address(msc, change, idx)
-
-        if cmd == 'msck':
-            # Quick check to test if we have a wallet already installed.
-            from multisig import MultisigWallet
-            M, N, xfp_xor = unpack_from('<3I', args)
-
-            return int(MultisigWallet.quick_check(M, N, xfp_xor))
+            if cmd == "mspl":
+                # takes name and returns BIP-388 Wallet Policy
+                return b'asci' + ujson.dumps({"name": w.name, "desc_template": w.desc_tmplt,
+                                               "keys_info": w.keys_info})
 
         if cmd == 'stxn':
             # sign transaction
@@ -582,8 +574,22 @@ class USBHandler:
 
             assert 50 < txn_len <= MAX_TXN_LEN, "badlen"
 
+            # optional miniscript wallet name
+            try:
+                name_len = unpack_from('B', args[40:])[0]
+                name = str(args[41:41 + name_len], "ascii")
+                assert 1 <= len(name) <= 32, "name len"
+            except:
+                name = None
+
+            w = None
+            if name:
+                ok, w = get_miniscript_by_name(name)
+                if not ok:
+                    return w
+
             from auth import sign_transaction
-            sign_transaction(txn_len, (flags & STXN_FLAGS_MASK), txn_sha)
+            sign_transaction(txn_len, (flags & STXN_FLAGS_MASK), txn_sha, miniscript_wallet=w)
             return None
 
         if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok':
@@ -607,7 +613,6 @@ class USBHandler:
             if not req.result:
                 # STILL waiting on user
                 return None
-
 
             if cmd == 'pwok':
                 # return new root xpub
@@ -634,6 +639,7 @@ class USBHandler:
             assert settings.get("words", True), 'no seed'
             assert len(args) < 400, 'too long'
             pw = str(args, 'utf8')
+            assert len(pw), 'too short'
             assert len(pw) < 100, 'too long'
 
             return start_bip39_passphrase(pw)
@@ -642,6 +648,15 @@ class USBHandler:
             # start backup: asks user, takes long time.
             from auth import start_remote_backup
             return start_remote_backup()
+
+        if cmd == 'rest':
+            # restore backup from what is already uploaded in PSRAM
+            file_len, file_sha, bf = unpack_from('<I32sB', args)
+            if file_sha != self.file_checksum.digest():
+                return b'err_Checksum'
+
+            from auth import start_remote_restore_backup
+            return start_remote_restore_backup(file_len, bf)
 
         if cmd == 'blkc':
             # report which blockchain we are configured for
@@ -674,7 +689,6 @@ class USBHandler:
             if cmd == 'hsts':
                 # can always query HSM mode
                 from hsm import hsm_status_report
-                import ujson
                 return b'asci' + ujson.dumps(hsm_status_report())
 
             if cmd == 'gslr':
@@ -814,29 +828,30 @@ class USBHandler:
         from glob import dis, hsm_active
         from utils import check_firmware_hdr
         from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_HEADER_MAGIC
-        from pincodes import pa
 
         # maintain a running SHA256 over what's received
         if offset == 0:
             self.file_checksum = sha256()
             self.is_fw_upgrade = False
+            dis.fullscreen("Receiving...", 0)
+        else:
+            dis.progress_sofar(offset, total_size)
 
         assert offset % 256 == 0, 'alignment'
         assert offset+len(data) <= total_size <= MAX_UPLOAD_LEN, 'long'
 
-        if hsm_active:
-            # additional restrictions in HSM mode
+        if hsm_active or pa.hobbled_mode:
+            # additional restriction in HSM mode or hobbled: must be PSBT
             assert offset+len(data) <= total_size <= MAX_TXN_LEN, 'psbt'
             if offset == 0:
                 assert data[0:5] == b'psbt\xff', 'psbt'
 
+        self.file_checksum.update(data)
+
         for pos in range(offset, offset+len(data), 256):
-            if pos % 4096 == 0:
-                dis.fullscreen("Receiving...", offset/total_size)
 
             # write up to 256 bytes
             here = data[pos-offset:pos-offset+256]
-            self.file_checksum.update(here)
 
             # Very special case for firmware upgrades: intercept and modify
             # header contents on the fly, and also fail faster if wouldn't work
@@ -905,7 +920,6 @@ class USBHandler:
     def handle_bag_number(self, bag_num):
         import version, callgate
         from glob import dis, settings
-        from pincodes import pa
 
         if bag_num and version.is_factory_mode and not version.has_qr:
             # check state first

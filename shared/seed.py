@@ -10,30 +10,46 @@
 #    - 'abandon' * 17 + 'agent'
 #    - 'abandon' * 11 + 'about'
 #
-import ngu, uctypes, bip39, random, stash, version
+import ngu, uctypes, bip39, random, version, ure, chains
 from ucollections import OrderedDict
 from menu import MenuItem, MenuSystem
-from utils import xfp2str, parse_extended_key, swab32, pad_raw_secret, problem_file_line
+from utils import xfp2str, swab32
+from utils import deserialize_secret, problem_file_line, wipe_if_deltamode
 from uhashlib import sha256
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, OK, X
-from ux import PressRelease, ux_input_numbers, ux_input_text, show_qr_code
+from ux import PressRelease, ux_input_text, show_qr_code
 from actions import goto_top_menu
-from stash import SecretStash, ZeroSecretException
+from stash import SecretStash, SensitiveValues
 from ubinascii import hexlify as b2a_hex
 from pwsave import PassphraseSaver, PassphraseSaverMenu
 from glob import settings, dis
 from pincodes import pa
 from nvstore import SettingsObject
-from files import CardMissingError, needs_microsd, CardSlot
-from charcodes import KEY_QR, KEY_ENTER, KEY_CANCEL, KEY_CLEAR
-
+from files import CardMissingError, needs_microsd
+from charcodes import KEY_QR, KEY_ENTER, KEY_CANCEL, KEY_NFC
+from uasyncio import sleep_ms
+from ucollections import namedtuple
 
 # seed words lengths we support: 24=>256 bits, and recommended
 VALID_LENGTHS = (24, 18, 12)
 
 # bit flag that means "also include bare prefix as a valid word"
 _PREFIX_MARKER = const(1<<26)
-    
+
+# what we store (in JSON as a tuple) for each seed vault key.
+# - 'encoded' is hex, and has is trimmed of right side zeros
+VaultEntry = namedtuple('VaultEntry', 'xfp encoded label origin')
+
+def not_hobbled_mode():
+    # used as menu predicate and similar
+    return not pa.hobbled_mode
+
+def seed_vault_iter():
+    # iterate over all seeds in the vault; returns VaultEntry instances.
+    # raw vault entries are list type when json.loaded from flash
+    for lst in settings.master_get("seeds", []):
+        yield VaultEntry(*lst)
+
 def letter_choices(sofar='', depth=0, thres=5):
     # make a list of word completions based on indicated prefix
     if not sofar:
@@ -138,22 +154,61 @@ class WordNestMenu(MenuSystem):
     done_cb = None
 
     def __init__(self, num_words=None, has_checksum=True, done_cb=commit_new_words,
-                        items=None, is_commit=False):
+                 items=None, is_commit=False, menu_cbf=None, prefix="", words=None):
 
         if num_words is not None:
             WordNestMenu.target_words = num_words
             WordNestMenu.has_checksum = has_checksum
             WordNestMenu.words = []
-            assert done_cb
             WordNestMenu.done_cb = done_cb
             is_commit = True
 
+        if words:
+            WordNestMenu.words = words
+
         if not items:
-            items = [MenuItem(i, menu=self.next_menu) for i in letter_choices()]
+            ch = letter_choices(prefix)
+            if menu_cbf:
+                items = [MenuItem(i, f=menu_cbf) for i in ch]
+            else:
+                items = [MenuItem(i, menu=self.next_menu)  for i in ch]
 
         self.is_commit = is_commit
 
         super(WordNestMenu, self).__init__(items)
+
+    @classmethod
+    async def get_n_words(cls, num_words):
+        rv = []
+        for _ in range(num_words):
+            rv = await cls.get_word(rv, num_words)
+
+        return rv
+
+    @classmethod
+    async def get_word(cls, words=None, target_words=None):
+        # Just block until N words are provided. May only work before menus start?
+        from glob import numpad
+
+        async def menu_done_cbf(menu, b, c):
+            # duplicates some of the logic of next_menu
+            if c.label[-1] == '-':
+                lc = c.label[0:-1]
+            else:
+                cls.words.append(c.label)
+                numpad.abort_ux()
+                return
+
+            m = cls(prefix=lc, menu_cbf=menu_done_cbf)
+            the_ux.push(m)
+            await the_ux.interact()
+
+        m = cls(num_words=target_words, menu_cbf=menu_done_cbf, has_checksum=False, words=words)
+
+        the_ux.push(m)
+        await the_ux.interact()
+
+        return cls.words
 
     @staticmethod
     async def next_menu(self, idx, choice):
@@ -215,7 +270,7 @@ class WordNestMenu(MenuSystem):
         while isinstance(the_ux.top_of_stack(), cls):
             the_ux.pop()
 
-    def on_cancel(self):
+    async def on_cancel(self):
         # user pressed cancel on a menu (so he's going upwards)
         # - if it's a step where we added to the word list, undo that.
         # - but keep them in our system until:
@@ -273,9 +328,16 @@ individual words if you wish.''')
 
 
 async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False):
-    msg = (prompt or 'Record these %d secret words!\n') % len(words)
-
     from ux import ux_render_words
+    from glob import NFC
+
+    if prompt:
+        title = None
+        msg = prompt
+    else:
+        m = 'Record these %d secret words!' % len(words)
+        title, msg = (m, "") if version.has_qwerty else (None, m+"\n")
+
     msg += ux_render_words(words)
 
     msg += '\n\nPlease check and double check your notes.'
@@ -283,22 +345,30 @@ async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False)
         # user can skip quiz for ephemeral secrets
         msg += " There will be a test!"
 
+    escape = (escape or '') + '1'
     if not version.has_qwerty:
-        escape = (escape or '') + '1'
-        extra += 'Press (1) to view as QR Code. '
-    else:
-        escape = (escape or '') + KEY_QR
-        extra += 'Press '+ KEY_QR + ' to view as QR Code. '
+        title = None
+        extra += 'Press (1) to view as QR Code'
+        if NFC:
+            extra += ", (3) to share via NFC"
+            escape += "3"
+        extra += "."
 
     if extra:
         msg += '\n\n'
         msg += extra
 
     while 1:
-        ch = await ux_show_story(msg, escape=escape, sensitive=True)
-        if ch == '1' or ch == KEY_QR:
-            await show_qr_code(' '.join(w[0:4] for w in words), True)
+        rv = ' '.join(w[0:4] for w in words)
+        ch = await ux_show_story(msg, title=title, escape=escape, sensitive=True,
+                                 hint_icons=KEY_QR+(KEY_NFC if NFC else ''))
+        if ch in ('1'+KEY_QR):
+            await show_qr_code(rv, True, is_secret=True)
             continue
+        if NFC and (ch in "3"+KEY_NFC):
+            await NFC.share_text(rv, is_secret=True)
+            continue
+
         break
 
     return ch
@@ -411,15 +481,17 @@ async def new_from_dice(nwords):
         await commit_new_words(words)
 
 def in_seed_vault(encoded):
-    # Test if indicated xfp (or currently active XFP) is in the seed vault already.
-    seeds = settings.master_get("seeds", [])
-    if seeds:
-        ss = stash.SecretStash.storage_serialize(encoded)
-        if ss in [s[1] for s in seeds]:
+    # Test if indicated secret is in the seed vault already.
+    hss = None
+    for rec in seed_vault_iter():
+        if not hss:
+            hss = SecretStash.storage_serialize(encoded)
+        if hss == rec.encoded:
             return True
+
     return False
 
-async def add_seed_to_vault(encoded, meta=None):
+async def add_seed_to_vault(encoded, origin=None, label=None):
 
     if not settings.master_get("seedvault", False):
         # seed vault disabled
@@ -432,6 +504,10 @@ async def add_seed_to_vault(encoded, meta=None):
 
     # do not offer to store secrets that are already in vault
     if in_seed_vault(encoded):
+        return
+
+    # stay "read only" in hobbled mode
+    if pa.hobbled_mode:
         return
 
     main_xfp = settings.master_get("xfp", 0)
@@ -459,10 +535,9 @@ async def add_seed_to_vault(encoded, meta=None):
         return
 
     # Save it into master settings
-    seeds.append((new_xfp_str,
-                  stash.SecretStash.storage_serialize(encoded),
-                  xfp_ui,
-                  meta))
+    rec = VaultEntry(xfp=new_xfp_str, encoded=SecretStash.storage_serialize(encoded),
+                            label=(label or xfp_ui), origin=origin)
+    seeds.append(list(rec))
 
     settings.master_set("seeds", seeds)
 
@@ -471,9 +546,10 @@ async def add_seed_to_vault(encoded, meta=None):
     return True
 
 async def set_ephemeral_seed(encoded, chain=None, summarize_ux=True, bip39pw='',
-                             is_restore=False, meta=None):
-    if not is_restore:
-        await add_seed_to_vault(encoded, meta=meta)
+                             is_restore=False, origin=None, label=None):
+    # Capture tmp seed into vault, if so enabled, and regardless apply it as new tmp.
+    if not is_restore and not_hobbled_mode():
+        await add_seed_to_vault(encoded, origin=origin, label=label)
         dis.fullscreen("Wait...")
 
     applied, err_msg = pa.tmp_secret(encoded, chain=chain, bip39pw=bip39pw)
@@ -490,11 +566,11 @@ async def set_ephemeral_seed(encoded, chain=None, summarize_ux=True, bip39pw='',
 
     return applied
 
-async def set_ephemeral_seed_words(words, meta):
+async def set_ephemeral_seed_words(words, origin):
     dis.progress_bar_show(0.1)
     encoded = seed_words_to_encoded_secret(words)
     dis.progress_bar_show(0.5)
-    await set_ephemeral_seed(encoded, meta=meta)
+    await set_ephemeral_seed(encoded, origin=origin)
     goto_top_menu()
 
 async def ephemeral_seed_generate_from_dice(nwords):
@@ -511,7 +587,7 @@ async def ephemeral_seed_generate_from_dice(nwords):
     words = await approve_word_list(seed, nwords, ephemeral=True)
     if words:
         dis.fullscreen("Applying...")
-        await set_ephemeral_seed_words(words, meta='Dice')
+        await set_ephemeral_seed_words(words, origin='Dice')
 
 def generate_seed():
     # Generate 32 bytes of best-quality high entropy TRNG bytes.
@@ -534,7 +610,7 @@ async def make_new_wallet(nwords):
 async def ephemeral_seed_import(nwords):
     async def import_done_cb(words):
         dis.fullscreen("Applying...")
-        await set_ephemeral_seed_words(words, meta='Imported')
+        await set_ephemeral_seed_words(words, origin='Imported')
 
     if version.has_qwerty:
         from ux_q1 import seed_word_entry
@@ -548,17 +624,17 @@ async def ephemeral_seed_generate(nwords):
     words = await approve_word_list(seed, nwords, ephemeral=True)
     if words:
         dis.fullscreen("Applying...")
-        await set_ephemeral_seed_words(words, meta="TRNG Words")
+        await set_ephemeral_seed_words(words, origin="TRNG Words")
 
 async def set_seed_extended_key(extended_key):
     encoded, chain = xprv_to_encoded_secret(extended_key)
     set_seed_value(encoded=encoded, chain=chain)
     goto_top_menu(first_time=True)
 
-async def set_ephemeral_seed_extended_key(extended_key, meta=None):
+async def set_ephemeral_seed_extended_key(extended_key, origin=None):
     encoded, chain = xprv_to_encoded_secret(extended_key)
     dis.fullscreen("Applying...")
-    await set_ephemeral_seed(encoded=encoded, chain=chain, meta=meta)
+    await set_ephemeral_seed(encoded=encoded, chain=chain, origin=origin)
     goto_top_menu()
 
 async def approve_word_list(seed, nwords, ephemeral=False):
@@ -627,17 +703,25 @@ def seed_words_to_encoded_secret(words):
     return nv
 
 def xprv_to_encoded_secret(xprv):
-    node, chain, _ = parse_extended_key(xprv, private=True)
-    if node is None:
-        raise ValueError("Failed to parse extended private key.")
+    # read an xprv/tprv/etc and return BIP-32 node and what chain it's on.
+    # - can handle any garbage line
+    # - returns (node, chain)
+    # - people are using SLIP132 so we need this
+    ln = xprv.strip()
+    pat = ure.compile('.prv[A-Za-z0-9]+')
+    found = pat.search(ln)
+    assert found, "not extended privkey"
+    # serialize, and note version code
+    node, chain, addr_fmt, is_private = chains.slip132_deserialize(found.group(0))
+    assert node, "wrong extended privkey"
     nv = SecretStash.encode(xprv=node)
     node.blank()
     return nv, chain  # need to know chain
 
 
 def set_seed_value(words=None, encoded=None, chain=None):
-    # Save the seed words (or other encoded private key) into secure element,
-    # and reboot. BIP-39 passphrase is not set at this point (empty string).
+    # Save the seed words (or other encoded private key) into secure element.
+    # BIP-39 passphrase is not set at this point (empty string).
     if words:
         nv = seed_words_to_encoded_secret(words)
     else:
@@ -662,13 +746,12 @@ def set_seed_value(words=None, encoded=None, chain=None):
 
 async def calc_bip39_passphrase(pw, bypass_tmp=False):
     from glob import dis, settings
-    from pincodes import pa
 
     dis.fullscreen("Working...")
 
     current_xfp = settings.get("xfp", 0)
 
-    with stash.SensitiveValues(bip39pw=pw, bypass_tmp=bypass_tmp) as sv:
+    with SensitiveValues(bip39pw=pw, bypass_tmp=bypass_tmp) as sv:
         # can't do it without original seed words (late, but caller has checked)
         assert sv.mode == 'words', sv.mode
         nv = SecretStash.encode(xprv=sv.node)
@@ -679,7 +762,7 @@ async def calc_bip39_passphrase(pw, bypass_tmp=False):
 async def set_bip39_passphrase(pw, bypass_tmp=False, summarize_ux=True):
     nv, xfp, parent_xfp = await calc_bip39_passphrase(pw, bypass_tmp=bypass_tmp)
     ret = await set_ephemeral_seed(nv, summarize_ux=summarize_ux, bip39pw=pw,
-                                   meta="BIP-39 Passphrase on [%s]" % xfp2str(parent_xfp))
+                                   origin="BIP-39 Passphrase on [%s]" % xfp2str(parent_xfp))
     dis.draw_status(bip39=int(bool(pw)), xfp=xfp, tmp=1)
     return ret
 
@@ -709,7 +792,7 @@ async def remember_ephemeral_seed():
     # address cache, settings from tmp seeds / seedvault seeds
     # rebuild fs as we want to save current tmp settings immediately
     from files import wipe_flash_filesystem
-    wipe_flash_filesystem(True)
+    wipe_flash_filesystem()
 
     dis.draw_status(bip39=0, tmp=0)
     dis.fullscreen('Saving...')
@@ -820,7 +903,7 @@ class SeedVaultMenu(MenuSystem):
         from glob import dis
         dis.fullscreen("Applying...")
 
-        xfp, encoded = item.arg
+        encoded = item.arg          # 72 bytes binary
 
         await set_ephemeral_seed(encoded, is_restore=True)
 
@@ -832,15 +915,15 @@ class SeedVaultMenu(MenuSystem):
 
         esc = ""
         tmp_val = False
-        idx, xfp_str, encoded = item.arg
+        idx, rec, encoded = item.arg
         current_active = (pa.tmp_value == bytes(encoded))
 
-        msg = "Remove seed from seed vault "
+        msg = "Remove seed from seed vault"
         if pa.tmp_value and current_active:
             tmp_val = True
             msg += "?\n\n"
         else:
-            msg += ("and delete its settings?\n\n"
+            msg += (" and delete its settings?\n\n"
                     "Press %s to continue, press (1) to "
                     "only remove from seed vault and keep "
                     "encrypted settings for later use.\n\n") % OK
@@ -848,8 +931,10 @@ class SeedVaultMenu(MenuSystem):
 
         msg += "WARNING: Funds will be lost if wallet is not backed-up elsewhere."
 
-        ch = await ux_show_story(title="[" + xfp_str + "]", msg=msg, escape=esc)
+        ch = await ux_show_story(title="[" + rec.xfp + "]", msg=msg, escape=esc)
         if ch == "x": return
+
+        assert not_hobbled_mode()
 
         dis.fullscreen("Saving...")
 
@@ -861,6 +946,7 @@ class SeedVaultMenu(MenuSystem):
             xs.load()
             xs.blank()
             del xs
+
 
         # CAUTION: will get shadow copy if in tmp seed mode already
         seeds = settings.master_get("seeds", [])
@@ -882,13 +968,13 @@ class SeedVaultMenu(MenuSystem):
 
     @staticmethod
     async def _detail(menu, label, item):
-        xfp_str, encoded, name, meta = item.arg
+        rec, encoded = item.arg
 
-        # - first byte represents type of secret (internal encoding flag)
+        # - first byte represents type of secret (internal encoding flags)
         txt = SecretStash.summary(encoded[0])
 
-        detail = "Name:\n%s\n\nMaster XFP:\n%s\n\nOrigin:\n%s\n\nSecret Type:\n%s" \
-                        % (name, xfp_str, meta, txt)
+        detail = "Name:\n%s\n\nMaster XFP: %s\nSecret Type: %s\n\nOrigin:\n%s\n\n" \
+                        % (rec.label, rec.xfp, txt, rec.origin)
 
         await ux_show_story(detail)
 
@@ -898,30 +984,30 @@ class SeedVaultMenu(MenuSystem):
         from glob import dis
         from ux import ux_input_text
 
-        idx, xfp_str = item.arg
+        assert not_hobbled_mode()
 
-        seeds = settings.master_get("seeds", [])
-        chk_xfp, encoded, old_name, meta = seeds[idx]
-        assert chk_xfp == xfp_str
+        idx, old = item.arg
+        new_label = await ux_input_text(old.label, confirm_exit=False, max_len=40)
 
-        new_name = await ux_input_text(old_name, confirm_exit=False, max_len=40)
-
-        if not new_name:
+        if not new_label:
             return
 
         dis.fullscreen("Saving...")
+        seeds = settings.master_get("seeds", [])
 
         # save it
-        seeds[idx] = (chk_xfp, encoded, new_name, meta)
-
+        seeds[idx] = (old.xfp, old.encoded, new_label, old.origin)
         # need to load and work on master secrets, will be slow if on tmp seed
         settings.master_set("seeds", seeds)
 
         # update label in sub-menu
-        menu.items[0].label = new_name
-        menu.items[0].arg = menu.items[0].arg[0:2] + (new_name,) + menu.items[0].arg[3:]
+        menu.items[0].label = new_label
+        # take old arg, in rename we cannot change encoded value, so it can be used without
+        # the need to deserialize it again
+        _, encoded = menu.items[0].arg
+        menu.items[0].arg = VaultEntry(*seeds[idx]), encoded
 
-        # .. and name in parent menu too
+        # and name in parent menu too
         parent = the_ux.parent_of(menu)
         if parent:
             parent.update_contents()
@@ -929,6 +1015,8 @@ class SeedVaultMenu(MenuSystem):
     @staticmethod
     async def _add_current_tmp(*a):
         from pincodes import pa
+
+        assert not_hobbled_mode()
 
         assert pa.tmp_value
         main_xfp = settings.master_get("xfp", 0)
@@ -949,10 +1037,9 @@ class SeedVaultMenu(MenuSystem):
         seeds = settings.master_get("seeds", [])
 
         # Save it into master settings
-        seeds.append((new_xfp_str,
-                      stash.SecretStash.storage_serialize(pa.tmp_value),
-                      xfp_ui,
-                      "unknown origin"))
+        seeds.append(list(VaultEntry(new_xfp_str,
+                      SecretStash.storage_serialize(pa.tmp_value),
+                      xfp_ui, "unknown origin")))
 
         settings.master_set("seeds", seeds)
 
@@ -966,34 +1053,36 @@ class SeedVaultMenu(MenuSystem):
         # Dynamic menu with user-defined names of seeds shown
         from pincodes import pa
 
-        if pa.is_deltamode():
-            # attacker has re-enabled SeedVault in Settings
-            import callgate
-            callgate.fast_wipe()
-
-
         rv = []
         add_current_tmp = MenuItem("Add current tmp", f=cls._add_current_tmp)
 
-        seeds = settings.master_get("seeds", [])
+        seeds = list(seed_vault_iter())
 
         if not seeds:
             rv.append(MenuItem('(none saved yet)'))
-            if pa.tmp_value:
-                rv.append(add_current_tmp)
-            rv.append(MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu))
+            if not_hobbled_mode():
+                if pa.tmp_value:
+                    rv.append(add_current_tmp)
+                rv.append(MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu))
         else:
+            wipe_if_deltamode()
+
             tmp_in_sv = False
-            for i, (xfp_str, encoded, name, meta) in enumerate(seeds):
+            for i, rec in enumerate(seeds):
                 is_active = False
-                encoded = pad_raw_secret(encoded)
+
+                # de-serialize encoded secret
+                encoded = deserialize_secret(rec.encoded)
                 if encoded == pa.tmp_value:
                     is_active = tmp_in_sv = True
+
                 submenu = [
-                    MenuItem(name, f=cls._detail, arg=(xfp_str, encoded, name, meta)),
-                    MenuItem('Use This Seed', f=cls._set, arg=(xfp_str, encoded)),
-                    MenuItem('Rename', f=cls._rename, arg=(i, xfp_str)),
-                    MenuItem('Delete', f=cls._remove, arg=(i, xfp_str, encoded)),
+                    MenuItem(rec.label, f=cls._detail, arg=(rec, encoded)),
+                    MenuItem('Use This Seed', f=cls._set, arg=encoded),
+                    MenuItem('Rename', f=cls._rename, arg=(i, rec),
+                             predicate=not_hobbled_mode),
+                    MenuItem('Delete', f=cls._remove, arg=(i, rec, encoded),
+                             predicate=not_hobbled_mode),
                 ]
                 if is_active:
                     submenu[1] = MenuItem("Seed In Use")
@@ -1004,14 +1093,14 @@ class SeedVaultMenu(MenuSystem):
                     # DO NOT offer any modification api (rename/delete)
                     submenu = submenu[:2]
 
-                item = MenuItem('%2d: %s' % (i+1, name), menu=MenuSystem(submenu))
+                item = MenuItem('%2d: %s' % (i+1, rec.label), menu=MenuSystem(submenu))
                 if is_active:
                     item.is_chosen = lambda: True
 
                 rv.append(item)
 
             if pa.tmp_value:
-                if seeds and (not tmp_in_sv):
+                if seeds and (not tmp_in_sv) and not_hobbled_mode():
                     # give em chance to store current active
                     rv.append(add_current_tmp)
 
@@ -1025,6 +1114,44 @@ class SeedVaultMenu(MenuSystem):
         # we added or changed them and are showing that same menu again.
         tmp = self.construct()
         self.replace_items(tmp)
+
+class SeedVaultChooserMenu(MenuSystem):
+    def __init__(self, words_only=False):
+        self.result = None
+
+        items = []
+        for i, rec in enumerate(seed_vault_iter()):
+            if words_only and not SecretStash.is_words(deserialize_secret(rec.encoded)):
+                continue
+
+            item = MenuItem('%2d: %s' % (i+1, rec.label), arg=rec, f=self.picked)
+            items.append(item)
+
+        if not items:
+            items.append(MenuItem("(none suitable)"))
+
+        super().__init__(items)
+
+    async def picked(self, menu, idx, mi):
+        assert menu == self
+
+        # show as "checked", for a touch
+        menu.chosen = idx
+        menu.show()
+        await sleep_ms(100)
+
+        self.result = mi.arg
+        the_ux.pop()            # causes interact to stop
+
+    @classmethod
+    async def pick(cls, **kws):
+        # nice simple blocking menu present and pick
+        m = cls(**kws)
+
+        the_ux.push(m)
+        await m.interact()
+
+        return m.result
 
 class EphemeralSeedMenu(MenuSystem):
 
@@ -1044,8 +1171,9 @@ class EphemeralSeedMenu(MenuSystem):
     def construct(cls):
         from glob import NFC
         from actions import nfc_recv_ephemeral, import_xprv
-        from actions import restore_temporary, scan_any_qr
+        from actions import restore_backup, scan_any_qr
         from tapsigner import import_tapsigner_backup_file
+        from xor_seed import xor_restore_start
         from charcodes import KEY_QR
 
         import_ephemeral_menu = [
@@ -1062,32 +1190,31 @@ class EphemeralSeedMenu(MenuSystem):
         ]
 
         rv = [
-            MenuItem("Generate Words", menu=gen_ephemeral_menu),
+            MenuItem("Generate Words", menu=gen_ephemeral_menu, predicate=not_hobbled_mode),
             MenuItem('Import from QR Scan', predicate=version.has_qr,
                      shortcut=KEY_QR, f=scan_any_qr, arg=(True, True)),
             MenuItem("Import Words", menu=import_ephemeral_menu),
             MenuItem("Import XPRV", f=import_xprv, arg=True),  # ephemeral=True
             MenuItem("Tapsigner Backup", f=import_tapsigner_backup_file, arg=True), # ephemeral=True
-            MenuItem("Coldcard Backup", f=restore_temporary),
+            MenuItem("Coldcard Backup", f=restore_backup, arg=True),  # tmp=True
+            MenuItem("Restore Seed XOR", f=xor_restore_start),
         ]
 
         return rv
 
 
 async def make_ephemeral_seed_menu(*a):
+
     if (not pa.tmp_value) and (not settings.master_get("seedvault", False)):
         # force a warning on them, unless they are already doing it.
-        ch = await ux_show_story(
+        if not await ux_confirm(
             "Temporary seed is a secret completely separate "
             "from the master seed, typically held in device RAM and "
             "not persisted between reboots in the Secure Element. "
-            "Enable the Seed Vault feature to store these secrets longer-term."
-            "\n\nPress (4) to prove you read to the end"
-            " of this message and accept all consequences.",
+            "Enable the Seed Vault feature to store these secrets longer-term.",
             title="WARNING",
-            escape="4"
-        )
-        if ch != "4":
+            confirm_key="4"
+        ):
             return
 
     rv = EphemeralSeedMenu.construct()
@@ -1193,7 +1320,7 @@ class PassphraseMenu(MenuSystem):
 
         return PassphraseSaverMenu(items)
 
-    def on_cancel(self):
+    async def on_cancel(self):
         if not version.has_qwerty:
             # zip to cancel item when they fail to exit via X button
             self.goto_idx(self.count - 1)
@@ -1208,7 +1335,9 @@ class PassphraseMenu(MenuSystem):
     @classmethod
     async def add_numbers(cls, *a):
         # Mk4 only: add some digits (quick, easy)
-        pw = await ux_input_numbers(cls.pp_sofar)
+        from ux_mk4 import ux_input_digits
+
+        pw = await ux_input_digits(cls.pp_sofar)
         if pw is not None:
             cls.pp_sofar = pw
             cls.check_length()
@@ -1287,7 +1416,7 @@ async def apply_pass_value(new_pp):
         return
 
     await set_ephemeral_seed(nv, summarize_ux=False, bip39pw=new_pp,
-                             meta="BIP-39 Passphrase on [%s]" % parent_xfp_str)
+                             origin="BIP-39 Passphrase on [%s]" % parent_xfp_str)
 
     if ch == '1':
         try:

@@ -2,762 +2,12 @@
 #
 # Copyright (c) 2020 Stepan Snigirev MIT License embit/miniscript.py
 #
-import ngu, ujson, uio, chains, ure, version
-from ucollections import OrderedDict
+import ngu
 from binascii import unhexlify as a2b_hex
 from binascii import hexlify as b2a_hex
-from serializations import ser_compact_size, ser_string
-from desc_utils import Key, read_until, fill_policy, append_checksum
+from serializations import ser_compact_size
+from desc_utils import Key, read_until
 from public_constants import MAX_TR_SIGNERS
-from wallet import BaseStorageWallet
-from menu import MenuSystem, MenuItem
-from ux import ux_show_story, ux_confirm, ux_dramatic_pause
-from files import CardSlot, CardMissingError, needs_microsd
-from utils import problem_file_line, xfp2str, to_ascii_printable, swab32, show_single_address
-from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC, KEY_ENTER
-
-
-class MiniscriptException(ValueError):
-    pass
-
-
-class MiniScriptWallet(BaseStorageWallet):
-    key_name = "miniscript"
-
-    def __init__(self, desc=None, policy=None, keys=None, key=None,
-                 af=None, name=None, taproot=False, sh=False, wsh=False,
-                 wpkh=False, chain_type=None):
-        super().__init__(chain_type=chain_type)
-        self._policy = policy
-        self._keys = keys
-        self._key = key
-        self._af = af
-        self._taproot = taproot
-        self._sh = sh
-        self._wsh = wsh
-        self._wpkh = wpkh
-        self._desc = desc
-        self.name = name
-
-    @property
-    def policy(self):
-        if not self._policy:
-            self._policy = self.desc.storage_policy()
-        return self._policy
-
-    @property
-    def keys(self):
-        if not self._keys:
-            self._keys = self.desc.keys
-            if self._keys is not None:
-                self._keys = [k.to_string() for k in self._keys]
-        return self._keys
-
-    @property
-    def key(self):
-        if not self._key:
-            self._key = self.desc.key
-            if self._key is not None:
-                self._key = self._key.to_string()
-        return self._key
-
-    @property
-    def addr_fmt(self):
-        if not self._af:
-            self._af = self.desc.addr_fmt
-        return self._af
-
-    @property
-    def taproot(self):
-        if not self._taproot:
-            self._taproot = self.desc.taproot
-        return self._taproot
-
-    @property
-    def sh(self):
-        if not self._sh:
-            self._sh = self.desc.sh
-        return self._sh
-
-    @property
-    def wsh(self):
-        if not self._wsh:
-            self._wsh = self.desc.wsh
-        return self._wsh
-
-    @property
-    def wpkh(self):
-        if not self._wpkh:
-            self._wpkh = self.desc.wpkh
-        return self._wpkh
-
-    @property
-    def desc(self):
-        if self._desc is None:
-            from descriptor import Descriptor, Tapscript
-
-            ts = None
-            ms = None
-            key = None
-            if self._key:
-                key = Key.from_string(self._key)
-
-            filled_policy = fill_policy(self.policy, self.keys)
-            if self._taproot and self._policy:
-                # tapscript
-                ts = Tapscript.read_from(uio.BytesIO(filled_policy))
-            elif self._policy:
-                # miniscript
-                ms = Miniscript.read_from(uio.BytesIO(filled_policy))
-            self._desc = Descriptor(key=key, tapscript=ts, miniscript=ms,
-                                    taproot=self._taproot, sh=self._sh,
-                                    wsh=self._wsh, wpkh=self._wpkh)
-            self._desc.set_from_addr_fmt(self._af)
-        return self._desc
-
-    def to_descriptor(self):
-        return self.desc
-
-    def serialize(self):
-        policy = None
-        key = None
-        if self.desc.key:
-            key = self.desc.key.to_string()
-
-        keys = [k.to_string() for k in self.desc.keys]
-        if self.desc.tapscript or self.desc.miniscript:
-            policy = self.desc.storage_policy()
-
-        sh = self.desc.sh
-        wsh = self.desc.wsh
-        wpkh = self.desc.wpkh
-        taproot = self.desc.taproot
-        return (
-            self.name,
-            self.chain_type,
-            self.desc.addr_fmt,
-            key,
-            keys,
-            policy,
-            sh, wsh, wpkh, taproot
-        )
-
-    @classmethod
-    def deserialize(cls, c, idx=-1):
-        name, ct, af, key, keys, policy, sh, wsh, wpkh, taproot = c
-        rv = cls(name=name, key=key, keys=keys, policy=policy, af=af,
-                 taproot=taproot, sh=sh, wsh=wsh, wpkh=wpkh,
-                 chain_type=ct)
-        rv.storage_idx = idx
-        return rv
-
-    def xfp_paths(self):
-        if self._desc is None:
-            res = []
-            if self._key:
-                ik = Key.from_string(self.key)
-                if ik.origin:
-                    res.append(ik.origin.psbt_derivation())
-                elif ik.is_provably_unspendable:
-                    res.append([swab32(ik.node.my_fp())])
-
-            for k in self.keys:
-                k = Key.from_string(k)
-                if k.origin:
-                    res.append(k.origin.psbt_derivation())
-            return res
-        return self.desc.xfp_paths()
-
-    @classmethod
-    def find_match(cls, xfp_paths, addr_fmt=None):
-        for rv in cls.iter_wallets():
-            if addr_fmt is not None:
-                if rv.addr_fmt != addr_fmt:
-                    continue
-            if rv.matching_subpaths(xfp_paths):
-                return rv
-        return None
-
-    def matching_subpaths(self, xfp_paths):
-        my_xfp_paths = self.xfp_paths()
-        if len(xfp_paths) != len(my_xfp_paths):
-            return False
-        for x in my_xfp_paths:
-            prefix_len = len(x)
-            for y in xfp_paths:
-                if x == y[:prefix_len]:
-                    break
-            else:
-                return False
-        return True
-
-    def subderivation_indexes(self, xfp_paths):
-        # we already know that they do match
-        my_xfp_paths = self.desc.xfp_paths()
-        res = set()
-        for x in my_xfp_paths:
-            prefix_len = len(x)
-            for y in xfp_paths:
-                if x == y[:prefix_len]:
-                    to_derive = tuple(y[prefix_len:])
-                    res.add(to_derive)
-
-        assert res
-        if len(res) == 1:
-            branch, idx = list(res)[0]
-        else:
-            branch = [i[0] for i in res]
-            indexes = set([i[1] for i in res])
-            assert len(indexes) == 1
-            idx = list(indexes)[0]
-
-        return branch, idx
-
-    def derive_desc(self, xfp_paths):
-        branch, idx = self.subderivation_indexes(xfp_paths)
-        derived_desc = self.desc.derive(branch).derive(idx)
-        return derived_desc
-
-    def validate_script(self, redeem_script, xfp_paths, script_pubkey=None):
-        derived_desc = self.derive_desc(xfp_paths)
-        assert derived_desc.miniscript.compile() == redeem_script, "script mismatch"
-        if script_pubkey:
-            assert script_pubkey == derived_desc.script_pubkey(), "spk mismatch"
-        return derived_desc
-
-    def validate_script_pubkey(self, script_pubkey, xfp_paths, merkle_root=None):
-        derived_desc = self.derive_desc(xfp_paths)
-        derived_spk = derived_desc.script_pubkey()
-        assert derived_spk == script_pubkey, "spk mismatch"
-        if merkle_root:
-            assert derived_desc.tapscript.merkle_root == merkle_root, "psbt merkle root"
-        return derived_desc
-
-    def ux_policy(self):
-        if self.taproot and self.policy:
-            return "Tapscript:\n\n" + self.policy
-        return self.policy
-
-    async def _detail(self, new_wallet=False, is_duplicate=False, short=False):
-
-        s = chains.addr_fmt_label(self.addr_fmt) + "\n\n"
-        if self.taproot:
-            s += self.taproot_internal_key_detail(short=short)
-
-        s += self.ux_policy()
-
-        story = s + "\n\nPress (1) to see extended public keys"
-        if new_wallet and not is_duplicate:
-            story += ", OK to approve, X to cancel."
-        return story
-
-    async def show_detail(self, new_wallet=False, duplicates=None, short=False):
-        title = self.name
-        story = ""
-        if duplicates:
-            title = None
-            story += "This wallet is a duplicate of already saved wallet %s\n\n" % duplicates[0].name
-        elif new_wallet:
-            title = None
-            story += "Create new miniscript wallet?\n\nWallet Name:\n  %s\n\n" % self.name
-        story += await self._detail(new_wallet, is_duplicate=duplicates, short=short)
-        while True:
-            ch = await ux_show_story(story, title=title, escape="1")
-            if ch == "1":
-                await self.show_keys()
-
-            elif ch != "y":
-                return None
-            else:
-                return True
-
-    def taproot_internal_key_detail(self, short=False):
-        if self.taproot:
-            key = Key.from_string(self.key)
-            s = "Taproot internal key:\n\n"
-            if key.is_provably_unspendable:
-                note = "provably unspendable"
-                if short:
-                    s += note
-                else:
-                    s += self.key
-                    if type(key) is Key:
-                        # it is unspendable, BUT not unspend(
-                        s += "\n (%s)" % note
-                s += "\n\n"
-            else:
-                xfp, deriv, xpub = key.to_cc_data()
-                s += '%s:\n  %s\n\n%s/%s\n\n' % (xfp2str(xfp), deriv, xpub,
-                                                 key.derivation.to_string())
-            return s
-
-    async def show_keys(self):
-        msg = ""
-        if self.taproot:
-            msg = self.taproot_internal_key_detail()
-            msg += "Taproot tree keys:\n\n"
-
-        orig_keys = OrderedDict()
-        for k in self.keys:
-            if isinstance(k, str):
-                k = Key.from_string(k)
-            if k.origin not in orig_keys:
-                orig_keys[k.origin] = []
-            orig_keys[k.origin].append(k)
-
-        for idx, k_lst in enumerate(orig_keys.values()):
-            subderiv = True if len(k_lst) == 1 else False
-            if idx:
-                msg += '\n---===---\n\n'
-
-            msg += '@%s:\n  %s\n\n' % (idx, k_lst[0].to_string(subderiv=subderiv))
-
-        await ux_show_story(msg)
-
-    @classmethod
-    def from_file(cls, config, name=None):
-        from descriptor import Descriptor
-        if name is None:
-            desc_obj, cs = Descriptor.from_string(config.strip(), checksum=True)
-            name = cs
-        else:
-            name = to_ascii_printable(name)
-            desc_obj = Descriptor.from_string(config.strip())
-        assert not desc_obj.is_basic_multisig, "Use Settings -> Multisig Wallets"
-        wal = cls(desc_obj, name=name, chain_type=desc_obj.keys[0].chain_type)
-        return wal
-
-    def find_duplicates(self):
-        matches = []
-        name_unique = True
-        for rv in self.iter_wallets():
-            if self.name == rv.name:
-                name_unique = False
-            if self.key != rv.key:
-                continue
-            if self.policy != rv.policy:
-                continue
-            if len(self.keys) != len(rv.keys):
-                continue
-            if self.keys != rv.keys:
-                continue
-
-            matches.append(rv)
-
-        return matches, name_unique
-
-    async def confirm_import(self):
-        nope, yes = (KEY_CANCEL, KEY_ENTER) if version.has_qwerty else ("x", "y")
-        dups, name_unique = self.find_duplicates()
-        if not name_unique:
-            await ux_show_story(title="FAILED", msg=("Miniscript wallet with name '%s'"
-                                                     " already exists. All wallets MUST"
-                                                     " have unique names.") % self.name)
-            return nope
-        to_save = await self.show_detail(new_wallet=True, duplicates=dups)
-
-        ch = yes if to_save else nope
-        if to_save and not dups:
-            assert self.storage_idx == -1
-            self.commit()
-            await ux_dramatic_pause("Saved.", 2)
-
-        return ch
-
-    def yield_addresses(self, start_idx, count, change=False, scripts=True, change_idx=0):
-        ch = chains.current_chain()
-        dd = self.desc.derive(None, change=change)
-        idx = start_idx
-        while count:
-            # make the redeem script, convert into address
-            d = dd.derive(idx)
-            addr = ch.render_address(d.script_pubkey())
-
-            script = ""
-            if scripts:
-                if d.tapscript:
-                    script = d.tapscript.script_tree(d.tapscript.tree)
-                else:
-                    script = b2a_hex(ser_string(d.miniscript.compile())).decode()
-
-            if d.tapscript:
-                yield (idx,
-                       addr,
-                       ["[%s]" % str(k.origin) for k in d.keys],
-                       script,
-                       d.key.serialize(),
-                       str(d.key.origin) if d.key.origin else "")
-            else:
-                yield (idx,
-                       addr,
-                       ["[%s]" % str(k.origin) for k in d.keys],
-                       script,
-                       None,
-                       None)
-
-            idx += 1
-            count -= 1
-
-    def make_addresses_msg(self, msg, start, n, change=0):
-        from glob import dis
-
-        addrs = []
-
-        for idx, addr, paths, _, ik, _ in self.yield_addresses(start, n,
-                                                             change=bool(change),
-                                                             scripts=False):
-            if idx == 0 and len(paths) <= 4 and not ik:
-                msg += '\n'.join(paths) + '\n =>\n'
-            else:
-                change_idx = set([int(p.split("/")[-2]) for p in paths])
-                if len(change_idx) == 1:
-                    msg += '.../%d/%d =>\n' % (list(change_idx)[0], idx)
-                else:
-                    msg += '.../%d =>\n' % idx
-
-            addrs.append(addr)
-            msg += show_single_address(addr) + '\n\n'
-            dis.progress_sofar(idx - start + 1, n)
-
-        return msg, addrs
-
-    def generate_address_csv(self, start, n, change):
-        part = []
-        if self.taproot:
-            scr_h = "Taptree"
-            if self.desc.key.is_provably_unspendable:
-                part = ["Unspendable Internal Key"]
-            else:
-                part = ["Internal Key"]
-
-        else:
-            scr_h = "Script"
-
-        yield '"' + '","'.join(
-            ['Index', 'Payment Address', scr_h] + ['Derivation'] * len(self.keys)
-            + part
-        ) + '"\n'
-        for (idx, addr, derivs, script, ik, ikp) in self.yield_addresses(start, n,
-                                                                         change=bool(change)):
-            ln = '%d,"%s","%s","' % (idx, addr, script)
-            ln += '","'.join(derivs)
-            if ik:
-                # internal xonly key with its derivation (if any)
-                if ikp:
-                    ln += '","[%s]%s' % (ikp, b2a_hex(ik).decode())
-                else:
-                    ln += '","%s' % (b2a_hex(ik).decode())
-            ln += '"\n'
-
-            yield ln
-
-    def bitcoin_core_serialize(self):
-        # this will become legacy one day
-        # instead use <0;1> descriptor format
-        res = []
-        for external in (True, False):
-            desc_obj = {
-                "desc": self.to_string(external, not external, unspend_compat=True),
-                "active": True,
-                "timestamp": "now",
-                "internal": not external,
-                "range": [0, 100],
-            }
-            res.append(desc_obj)
-        return res
-
-    def to_string(self, external=True, internal=True, checksum=True, unspend_compat=False):
-        if self._key:
-            key = self._key
-            if "unspend(" in key and unspend_compat:
-                # for bitcoin core that does not support 'unspend(' descriptor notation
-                # serialize 'unspend(' as classic extended key
-                k = Key.from_string(self.key)
-                key = k.extended_public_key()
-                if k.derivation:
-                    key += "/" + k.derivation.to_string(external, internal)
-
-            multipath_rgx = ure.compile(r"<\d+;\d+>")
-            match = multipath_rgx.search(key)
-            if match:
-                mp = match.group(0)
-                ext, int = mp[1:-1].split(";")
-                if internal != external:
-                    to_replace = ext if external else int
-                    key = self._key.replace(mp, to_replace)
-        if self._taproot:
-            desc = "tr(%s" % key
-            if self.policy:
-                desc += ","
-                tree = fill_policy(self._policy, self._keys,
-                                   external, internal)
-                desc += tree
-
-            res = desc + ")"
-
-        elif self._policy:
-            res = fill_policy(self._policy, self._keys,
-                              external, internal)
-            if self._wsh:
-                res = "wsh(%s)" % res
-        else:
-            if self._wpkh:
-                res = "wpkh(%s)" % self._key
-            else:
-                res = "pkh(%s)" % self._key
-
-        if self._sh:
-            res = "sh(%s)" % res
-
-        if checksum:
-            res = append_checksum(res)
-        return res
-
-    async def export_wallet_file(self, mode="exported from", extra_msg=None, descriptor=False,
-                                 core=False, desc_pretty=True):
-        from glob import NFC, dis
-        from ux import import_export_prompt
-
-        if core:
-            name = "Bitcoin Core miniscript"
-            fname_pattern = 'bitcoin-core-%s' % self.name
-        else:
-            name = "Miniscript"
-            fname_pattern = 'minsc-%s' % self.name
-
-        fname_pattern = fname_pattern + ".txt"
-
-        if core:
-            msg = "importdescriptors cmd"
-            dis.fullscreen('Wait...')
-            core_obj = self.bitcoin_core_serialize()
-            core_str = ujson.dumps(core_obj)
-            res = "importdescriptors '%s'\n" % core_str
-        # elif desc_pretty:
-        #     pass TODO
-        else:
-            msg = self.name
-            int_ext = True
-            ch = await ux_show_story(
-                "To export receiving and change descriptors in one descriptor (<0;1> notation) press OK, "
-                "press (1) to export receiving and change descriptors separately.", escape='1')
-            if ch == "1":
-                int_ext = False
-            elif ch != "y":
-                return
-
-            dis.fullscreen('Wait...')
-            if int_ext:
-                res = self.to_string()
-            else:
-                res = "%s\n%s" % (
-                    self.to_string(internal=False),
-                    self.to_string(external=False),
-                )
-
-        ch = await import_export_prompt("%s file" % name)
-        if isinstance(ch, str):
-            if ch in "3"+KEY_NFC:
-                await NFC.share_text(res)
-            elif ch == KEY_QR:
-                try:
-                    from ux import show_qr_code
-                    await show_qr_code(res, msg=msg)
-                except:
-                    if version.has_qwerty:
-                        from ux_q1 import show_bbqr_codes
-                        await show_bbqr_codes('U', res, msg)
-            return
-
-        try:
-            with CardSlot(**ch) as card:
-                fname, nice = card.pick_filename(fname_pattern)
-
-                # do actual write
-                with open(fname, 'w+') as fp:
-                    fp.write(res)
-                #     fp.seek(0)
-                #     contents = fp.read()
-                # TODO re-enable once we know how to proceed with regards to with which key to sign
-                # from auth import write_sig_file
-                # h = ngu.hash.sha256s(contents.encode())
-                # sig_nice = write_sig_file([(h, fname)])
-
-            msg = '%s file written:\n\n%s' % (name, nice)
-            # msg += '\n\nColdcard multisig signature file written:\n\n%s' % sig_nice
-            if extra_msg:
-                msg += extra_msg
-
-            await ux_show_story(msg)
-
-        except CardMissingError:
-            await needs_microsd()
-            return
-        except Exception as e:
-            await ux_show_story('Failed to write!\n\n%s\n%s' % (e, problem_file_line(e)))
-            return
-
-async def no_miniscript_yet(*a):
-    await ux_show_story("You don't have any miniscript wallets yet.")
-
-async def miniscript_delete(msc):
-    if not await ux_confirm("Delete miniscript wallet '%s'?\n\nFunds may be impacted." % msc.name):
-        await ux_dramatic_pause('Aborted.', 3)
-        return
-
-    msc.delete()
-    await ux_dramatic_pause('Deleted.', 3)
-
-async def miniscript_wallet_delete(menu, label, item):
-    msc = item.arg
-
-    await miniscript_delete(msc)
-
-    from ux import the_ux
-    # pop stack
-    the_ux.pop()
-
-    m = the_ux.top_of_stack()
-    m.update_contents()
-
-async def miniscript_wallet_detail(menu, label, item):
-    # show details of single multisig wallet
-
-    msc = item.arg
-
-    return await msc.show_detail(short=True)
-
-async def import_miniscript(*a):
-    # pick text file from SD card, import as multisig setup file
-    from actions import file_picker
-    from glob import dis
-    from ux import import_export_prompt
-
-    ch = await import_export_prompt("miniscript wallet file", is_import=True)
-    if isinstance(ch, str):
-        if ch == KEY_QR:
-            await import_miniscript_qr()
-        elif ch == KEY_NFC:
-            await import_miniscript_nfc()
-        return
-
-    def possible(filename):
-        with open(filename, 'rt') as fd:
-            for ln in fd:
-                if "sh(" in ln or "wsh(" in ln or "tr(" in ln:
-                    # descriptor import
-                    return True
-
-    fn = await file_picker(suffix=['.txt', '.json'], min_size=100,
-                           taster=possible, **ch)
-    if not fn: return
-
-    try:
-        with CardSlot(**ch) as card:
-            with open(fn, 'rt') as fp:
-                data = fp.read()
-    except CardMissingError:
-        await needs_microsd()
-        return
-
-    from auth import maybe_enroll_xpub
-    try:
-        possible_name = (fn.split('/')[-1].split('.'))[0] if fn else None
-        maybe_enroll_xpub(config=data, name=possible_name, miniscript=True)
-    except BaseException as e:
-        await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
-
-async def import_miniscript_nfc(*a):
-    from glob import NFC
-    try:
-        return await NFC.import_miniscript_nfc()
-    except Exception as e:
-        await ux_show_story(title="ERROR", msg="Failed to import miniscript. %s" % str(e))
-
-async def import_miniscript_qr(*a):
-    from auth import maybe_enroll_xpub
-    from ux_q1 import QRScannerInteraction
-    data = await QRScannerInteraction().scan_text('Scan Miniscript from a QR code')
-    if not data:
-        # press pressed CANCEL
-        return
-
-    try:
-        maybe_enroll_xpub(config=data, miniscript=True)
-    except Exception as e:
-        await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
-
-async def miniscript_wallet_export(menu, label, item):
-    # create a text file with the details; ready for import to next Coldcard
-    msc = item.arg[0]
-    kwargs = item.arg[1]
-    await msc.export_wallet_file(**kwargs)
-
-async def make_miniscript_wallet_descriptor_menu(menu, label, item):
-    # descriptor menu
-    msc = item.arg
-    if not msc:
-        return
-
-    rv = [
-        MenuItem('Export', f=miniscript_wallet_export, arg=(msc, {"core": False})),
-        MenuItem('Bitcoin Core', f=miniscript_wallet_export, arg=(msc, {"core": True})),
-    ]
-    return rv
-
-async def make_miniscript_wallet_menu(menu, label, item):
-    # details, actions on single multisig wallet
-    msc = MiniScriptWallet.get_by_idx(item.arg)
-    if not msc: return
-
-    rv = [
-        MenuItem('"%s"' % msc.name, f=miniscript_wallet_detail, arg=msc),
-        MenuItem('View Details', f=miniscript_wallet_detail, arg=msc),
-        MenuItem('Delete', f=miniscript_wallet_delete, arg=msc),
-        MenuItem('Descriptors', menu=make_miniscript_wallet_descriptor_menu, arg=msc),
-    ]
-    return rv
-
-
-class MiniscriptMenu(MenuSystem):
-    @classmethod
-    def construct(cls):
-        import version
-        from menu import ShortcutItem
-
-        exists, exists_other_chain = MiniScriptWallet.exists()
-        if not exists:
-            rv = [MenuItem(MiniScriptWallet.none_setup_yet(exists_other_chain), f=no_miniscript_yet)]
-        else:
-            rv = []
-            for msc in MiniScriptWallet.get_all():
-                rv.append(MenuItem('%s' % msc.name,
-                                   menu=make_miniscript_wallet_menu,
-                                   arg=msc.storage_idx))
-        from glob import NFC
-        rv.append(MenuItem('Import', f=import_miniscript))
-        rv.append(ShortcutItem(KEY_NFC, predicate=lambda: NFC is not None,
-                               f=import_miniscript_nfc))
-        rv.append(ShortcutItem(KEY_QR, predicate=lambda: version.has_qwerty,
-                               f=import_miniscript_qr))
-        return rv
-
-    def update_contents(self):
-        # Reconstruct the list of wallets on this dynamic menu, because
-        # we added or changed them and are showing that same menu again.
-        tmp = self.construct()
-        self.replace_items(tmp)
-
-async def make_miniscript_menu(*a):
-    # list of all multisig wallets, and high-level settings/actions
-    from pincodes import pa
-
-    if pa.is_secret_blank():
-        await ux_show_story("You must have wallet seed before creating miniscript wallets.")
-        return
-
-    rv = MiniscriptMenu.construct()
-    return MiniscriptMenu(rv)
 
 
 class Number:
@@ -802,9 +52,8 @@ class KeyHash(Key):
         return super().parse_key(k, *args, **kwargs)
 
     def serialize(self, *args, **kwargs):
-        if self.taproot:
-            return ngu.hash.hash160(self.node.pubkey()[1:33])
-        return ngu.hash.hash160(self.node.pubkey())
+        start = 1 if self.taproot else 0
+        return ngu.hash.hash160(self.node.pubkey()[start:33])
 
     def __len__(self):
         return 21 # <20:pkh>
@@ -861,22 +110,17 @@ class Miniscript:
 
     @property
     def keys(self):
-        return sum(
-            [arg.keys for arg in self.args if isinstance(arg, Miniscript)],
-            [k for k in self.args if isinstance(k, Key) or isinstance(k, KeyHash)],
-        )
+        res = []
+        for arg in self.args:
+            if isinstance(arg, Miniscript):
+                res += arg.keys
+            elif isinstance(arg, Key):  # KeyHash is subclass of Key
+                res.append(arg)
+        return res
 
     def is_sane(self, taproot=False):
         err = "multi mixin"
-        # cannot have same keys in single miniscript
-        forbiden = (Sortedmulti_a, Multi_a)
-        keys = self.keys
-        # provably unspendable taproot internal key is not covered here
-        # all other keys (miniscript,tapscript) require key origin info
-        assert len(keys) == len(set(keys)), "Insane"
-        if taproot:
-            forbiden = (Sortedmulti, Multi)
-
+        forbiden = (Sortedmulti, Multi) if taproot else (Sortedmulti_a, Multi_a)
         assert type(self) not in forbiden, err
 
         for arg in self.args:
@@ -895,11 +139,10 @@ class Miniscript:
     def derive(self, idx, key_map=None, change=False):
         args = []
         for arg in self.args:
-            if hasattr(arg, "derive"):
-                if isinstance(arg, Key) or isinstance(arg, KeyHash):
-                    arg = self.key_derive(arg, idx, key_map, change=change)
-                else:
-                    arg = arg.derive(idx, change=change)
+            if isinstance(arg, Key):  # KeyHash is subclass of Key
+                arg = self.key_derive(arg, idx, key_map, change=change)
+            elif hasattr(arg, "derive"):
+                arg = arg.derive(idx, key_map, change)
 
             args.append(arg)
         return type(self)(*args)
@@ -920,16 +163,16 @@ class Miniscript:
         if ":" in op:
             wrappers, op = op.split(":")
         if char != b"(":
-            raise MiniscriptException("Missing operator")
+            raise ValueError("Missing operator")
         if op not in OPERATOR_NAMES:
-            raise MiniscriptException("Unknown operator '%s'" % op)
+            raise ValueError("Unknown operator '%s'" % op)
         # number of arguments, classes of arguments, compile function, type, validity checker
         MiniscriptCls = OPERATORS[OPERATOR_NAMES.index(op)]
         args = MiniscriptCls.read_arguments(s, taproot=taproot)
         miniscript = MiniscriptCls(*args, taproot=taproot)
         for w in reversed(wrappers):
             if w not in WRAPPER_NAMES:
-                raise MiniscriptException("Unknown wrapper %s" % w)
+                raise ValueError("Unknown wrapper %s" % w)
             WrapperCls = WRAPPERS[WRAPPER_NAMES.index(w)]
             miniscript = WrapperCls(miniscript, taproot=taproot)
         return miniscript
@@ -951,7 +194,7 @@ class Miniscript:
                 elif char == b")":
                     break
                 else:
-                    raise MiniscriptException(
+                    raise ValueError(
                         "Expected , or ), got: %s" % (char + s.read())
                     )
         else:
@@ -960,10 +203,10 @@ class Miniscript:
                 if i < cls.NARGS - 1:
                     char = s.read(1)
                     if char != b",":
-                        raise MiniscriptException("Missing arguments, %s" % char)
+                        raise ValueError("Missing arguments, %s" % char)
             char = s.read(1)
             if char != b")":
-                raise MiniscriptException("Expected ) got %s" % (char + s.read()))
+                raise ValueError("Expected ) got %s" % (char + s.read()))
         return args
 
     def to_string(self, external=True, internal=True):
@@ -1025,6 +268,23 @@ class PkH(OneArg):
     def __len__(self):
         return self.len_args() + 3
 
+class After(OneArg):
+    # <n> CHECKLOCKTIMEVERIFY
+    NAME = "after"
+    ARGCLS = Number
+    TYPE = "B"
+    PROPS = "z"
+
+    def inner_compile(self):
+        return self.carg + b"\xb1"
+
+    def verify(self):
+        super().verify()
+        assert 0 < self.arg.num < 0x80000000, "%s out of range [1, 2147483647]" % self.NAME
+
+    def __len__(self):
+        return self.len_args() + 1
+
 class Older(OneArg):
     # <n> CHECKSEQUENCEVERIFY
     NAME = "older"
@@ -1037,21 +297,17 @@ class Older(OneArg):
 
     def verify(self):
         super().verify()
-        if (self.arg.num < 1) or (self.arg.num >= 0x80000000):
-            raise MiniscriptException(
-                "%s should have an argument in range [1, 0x80000000)" % self.NAME
-            )
+        # not consensus valid
+        # https://github.com/bitcoin/bitcoin/pull/33135 older(65536) is equivalent to older(1)
+        if self.arg.num & (1 << 22):
+            # time-based
+            assert 0x400000 < self.arg.num < 0x410000, "Time-based %s out of range [4194305, 4259839]" % self.NAME
+        else:
+            # block-based
+            assert 0 < self.arg.num < 0x10000, "Block-based %s out of range [1, 65535]" % self.NAME
 
     def __len__(self):
         return self.len_args() + 1
-
-class After(Older):
-    # <n> CHECKLOCKTIMEVERIFY
-    NAME = "after"
-
-    def inner_compile(self):
-        return self.carg + b"\xb1"
-
 
 class Sha256(OneArg):
     # SIZE <32> EQUALVERIFY SHA256 <h> EQUAL
@@ -1106,14 +362,14 @@ class AndOr(Miniscript):
         # requires: X is Bdu; Y and Z are both B, K, or V
         super().verify()
         if self.args[0].type != "B":
-            raise MiniscriptException("andor: X should be 'B'")
+            raise ValueError("andor: X should be 'B'")
         px = self.args[0].properties
         if "d" not in px and "u" not in px:
-            raise MiniscriptException("andor: X should be 'du'")
+            raise ValueError("andor: X should be 'du'")
         if self.args[1].type != self.args[2].type:
-            raise MiniscriptException("andor: Y and Z should have the same types")
+            raise ValueError("andor: Y and Z should have the same types")
         if self.args[1].type not in "BKV":
-            raise MiniscriptException("andor: Y and Z should be B K or V")
+            raise ValueError("andor: Y and Z should be B K or V")
 
     @property
     def properties(self):
@@ -1161,9 +417,9 @@ class AndV(Miniscript):
         # X is V; Y is B, K, or V
         super().verify()
         if self.args[0].type != "V":
-            raise MiniscriptException("and_v: X should be 'V'")
+            raise ValueError("and_v: X should be 'V'")
         if self.args[1].type not in "BKV":
-            raise MiniscriptException("and_v: Y should be B K or V")
+            raise ValueError("and_v: Y should be B K or V")
 
     @property
     def type(self):
@@ -1203,9 +459,9 @@ class AndB(Miniscript):
         # X is B; Y is W
         super().verify()
         if self.args[0].type != "B":
-            raise MiniscriptException("and_b: X should be B")
+            raise ValueError("and_b: X should be B")
         if self.args[1].type != "W":
-            raise MiniscriptException("and_b: Y should be W")
+            raise ValueError("and_b: Y should be W")
 
     @property
     def properties(self):
@@ -1253,12 +509,12 @@ class AndN(Miniscript):
         # requires: X is Bdu; Y and Z are both B, K, or V
         super().verify()
         if self.args[0].type != "B":
-            raise MiniscriptException("and_n: X should be 'B'")
+            raise ValueError("and_n: X should be 'B'")
         px = self.args[0].properties
         if "d" not in px and "u" not in px:
-            raise MiniscriptException("and_n: X should be 'du'")
+            raise ValueError("and_n: X should be 'du'")
         if self.args[1].type != "B":
-            raise MiniscriptException("and_n: Y should be B")
+            raise ValueError("and_n: Y should be B")
 
     @property
     def properties(self):
@@ -1296,13 +552,13 @@ class OrB(Miniscript):
         # X is Bd; Z is Wd
         super().verify()
         if self.args[0].type != "B":
-            raise MiniscriptException("or_b: X should be B")
+            raise ValueError("or_b: X should be B")
         if "d" not in self.args[0].properties:
-            raise MiniscriptException("or_b: X should be d")
+            raise ValueError("or_b: X should be d")
         if self.args[1].type != "W":
-            raise MiniscriptException("or_b: Z should be W")
+            raise ValueError("or_b: Z should be W")
         if "d" not in self.args[1].properties:
-            raise MiniscriptException("or_b: Z should be d")
+            raise ValueError("or_b: Z should be d")
 
     @property
     def properties(self):
@@ -1334,12 +590,12 @@ class OrC(Miniscript):
         # X is Bdu; Z is V
         super().verify()
         if self.args[0].type != "B":
-            raise MiniscriptException("or_c: X should be B")
+            raise ValueError("or_c: X should be B")
         if self.args[1].type != "V":
-            raise MiniscriptException("or_c: Z should be V")
+            raise ValueError("or_c: Z should be V")
         px = self.args[0].properties
         if "d" not in px or "u" not in px:
-            raise MiniscriptException("or_c: X should be du")
+            raise ValueError("or_c: X should be du")
 
     @property
     def properties(self):
@@ -1370,12 +626,12 @@ class OrD(Miniscript):
         # X is Bdu; Z is B
         super().verify()
         if self.args[0].type != "B":
-            raise MiniscriptException("or_d: X should be B")
+            raise ValueError("or_d: X should be B")
         if self.args[1].type != "B":
-            raise MiniscriptException("or_d: Z should be B")
+            raise ValueError("or_d: Z should be B")
         px = self.args[0].properties
         if "d" not in px or "u" not in px:
-            raise MiniscriptException("or_d: X should be du")
+            raise ValueError("or_d: X should be du")
 
     @property
     def properties(self):
@@ -1415,9 +671,9 @@ class OrI(Miniscript):
         # both are B, K, or V
         super().verify()
         if self.args[0].type != self.args[1].type:
-            raise MiniscriptException("or_i: X and Z should be the same type")
+            raise ValueError("or_i: X and Z should be the same type")
         if self.args[0].type not in "BKV":
-            raise MiniscriptException("or_i: X and Z should be B K or V")
+            raise ValueError("or_i: X and Z should be B K or V")
 
     @property
     def type(self):
@@ -1459,21 +715,21 @@ class Thresh(Miniscript):
         # 1 <= k <= n; X1 is Bdu; others are Wdu
         super().verify()
         if self.args[0].num < 1 or self.args[0].num >= len(self.args):
-            raise MiniscriptException(
+            raise ValueError(
                 "thresh: Invalid k! Should be 1 <= k <= %d, got %d"
                 % (len(self.args) - 1, self.args[0].num)
             )
         if self.args[1].type != "B":
-            raise MiniscriptException("thresh: X1 should be B")
+            raise ValueError("thresh: X1 should be B")
         px = self.args[1].properties
         if "d" not in px or "u" not in px:
-            raise MiniscriptException("thresh: X1 should be du")
+            raise ValueError("thresh: X1 should be du")
         for i, arg in enumerate(self.args[2:]):
             if arg.type != "W":
-                raise MiniscriptException("thresh: X%d should be W" % (i + 1))
+                raise ValueError("thresh: X%d should be W" % (i + 1))
             p = arg.properties
             if "d" not in p or "u" not in p:
-                raise MiniscriptException("thresh: X%d should be du" % (i + 1))
+                raise ValueError("thresh: X%d should be du" % (i + 1))
 
     @property
     def properties(self):
@@ -1500,8 +756,14 @@ class Multi(Miniscript):
     N_MAX = 20
 
     def inner_compile(self):
+        # scr = [arg.compile() for arg in self.args[1:]]
+        # optimization - it is all keys with known length (xonly keys not allowed here)
+        scr = [b'\x21' + arg.key_bytes() for arg in self.args[1:]]
+        if self.NAME == "sortedmulti":
+            scr.sort()
         return (
-            b"".join([arg.compile() for arg in self.args])
+            self.args[0].compile()
+            + b"".join(scr)
             + Number(len(self.args) - 1).compile()
             + b"\xae"
         )
@@ -1527,13 +789,6 @@ class Sortedmulti(Multi):
     # <k> <key1> ... <keyn> <n> CHECKMULTISIG
     NAME = "sortedmulti"
 
-    def inner_compile(self):
-        return (
-            self.args[0].compile()
-            + b"".join(sorted([arg.compile() for arg in self.args[1:]]))
-            + Number(len(self.args) - 1).compile()
-            + b"\xae"
-        )
 
 class Multi_a(Multi):
     # <key1> CHECKSIG <key> CHECKSIGADD ... <keyn> CHECKSIGADD EQUALVERIFY
@@ -1544,12 +799,19 @@ class Multi_a(Multi):
     def inner_compile(self):
         from opcodes import OP_CHECKSIGADD, OP_NUMEQUAL, OP_CHECKSIG
         script = b""
-        for i, key in enumerate(self.args[1:]):
-            script += key.compile()
+        # scr = [arg.compile() for arg in self.args[1:]]
+        # optimization - it is all keys with known length (only xonly keys allowed here)
+        scr = [b"\x20" + arg.key_bytes() for arg in self.args[1:]]
+        if self.NAME == "sortedmulti_a":
+            scr.sort()
+
+        for i, key in enumerate(scr):
+            script += key
             if i == 0:
                 script += bytes([OP_CHECKSIG])
             else:
                 script += bytes([OP_CHECKSIGADD])
+
         script += self.args[0].compile()  # M (threshold)
         script += bytes([OP_NUMEQUAL])
         return script
@@ -1562,19 +824,6 @@ class Multi_a(Multi):
 class Sortedmulti_a(Multi_a):
     # <key1> CHECKSIG <key> CHECKSIGADD ... <keyn> CHECKSIGADD EQUALVERIFY
     NAME = "sortedmulti_a"
-
-    def inner_compile(self):
-        from opcodes import OP_CHECKSIGADD, OP_NUMEQUAL, OP_CHECKSIG
-        script = b""
-        for i, key in enumerate(sorted([arg.compile() for arg in self.args[1:]])):
-            script += key
-            if i == 0:
-                script += bytes([OP_CHECKSIG])
-            else:
-                script += bytes([OP_CHECKSIGADD])
-        script += self.args[0].compile()  # M (threshold)
-        script += bytes([OP_NUMEQUAL])
-        return script
 
 
 class Pk(OneArg):
@@ -1661,7 +910,7 @@ class A(Wrapper):
     def verify(self):
         super().verify()
         if self.arg.type != "B":
-            raise MiniscriptException("a: X should be B")
+            raise ValueError("a: X should be B")
 
     @property
     def properties(self):
@@ -1687,9 +936,9 @@ class S(Wrapper):
     def verify(self):
         super().verify()
         if self.arg.type != "B":
-            raise MiniscriptException("s: X should be B")
+            raise ValueError("s: X should be B")
         if "o" not in self.arg.properties:
-            raise MiniscriptException("s: X should be o")
+            raise ValueError("s: X should be o")
 
     @property
     def properties(self):
@@ -1715,7 +964,7 @@ class C(Wrapper):
     def verify(self):
         super().verify()
         if self.arg.type != "K":
-            raise MiniscriptException("c: X should be K")
+            raise ValueError("c: X should be K")
 
     @property
     def properties(self):
@@ -1737,6 +986,11 @@ class T(Wrapper):
 
     def __len__(self):
         return len(self.arg) + 1
+
+    def verify(self):
+        super().verify()
+        if self.arg.type != "V":
+            raise ValueError("t: X must be of type V")
 
     @property
     def properties(self):
@@ -1768,9 +1022,9 @@ class D(Wrapper):
     def verify(self):
         super().verify()
         if self.arg.type != "V":
-            raise MiniscriptException("d: X should be V")
+            raise ValueError("d: X should be V")
         if "z" not in self.arg.properties:
-            raise MiniscriptException("d: X should be z")
+            raise ValueError("d: X should be z")
 
     @property
     def properties(self):
@@ -1798,7 +1052,7 @@ class V(Wrapper):
     def verify(self):
         super().verify()
         if self.arg.type != "B":
-            raise MiniscriptException("v: X should be B")
+            raise ValueError("v: X should be B")
 
     @property
     def properties(self):
@@ -1820,9 +1074,9 @@ class J(Wrapper):
     def verify(self):
         super().verify()
         if self.arg.type != "B":
-            raise MiniscriptException("j: X should be B")
+            raise ValueError("j: X should be B")
         if "n" not in self.arg.properties:
-            raise MiniscriptException("j: X should be n")
+            raise ValueError("j: X should be n")
 
     @property
     def properties(self):
@@ -1847,7 +1101,7 @@ class N(Wrapper):
     def verify(self):
         super().verify()
         if self.arg.type != "B":
-            raise MiniscriptException("n: X should be B")
+            raise ValueError("n: X should be B")
 
     @property
     def properties(self):
@@ -1873,7 +1127,7 @@ class L(Wrapper):
         # both are B, K, or V
         super().verify()
         if self.arg.type != "B":
-            raise MiniscriptException("or_i: X and Z should be the same type")
+            raise ValueError("or_i: X and Z should be the same type")
 
     @property
     def properties(self):

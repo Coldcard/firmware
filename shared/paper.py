@@ -5,13 +5,12 @@
 #
 import ujson, ngu, chains
 from ubinascii import hexlify as b2a_hex
-from utils import imported
+from utils import imported, problem_file_line
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2TR
 from ux import ux_show_story, ux_dramatic_pause
 from files import CardSlot, CardMissingError, needs_microsd
 from actions import file_picker
 from menu import MenuSystem, MenuItem
-from stash import blank_object
 
 background_msg = '''\
 Coldcard will pick a random private key (which has no relation to your seed words), \
@@ -85,6 +84,12 @@ class PaperWalletMaker:
         from glob import dis, VD
 
         try:
+            import ngu
+            from msgsign import write_sig_file
+            from chains import current_chain
+            from serializations import hash160
+            from stash import blank_object
+
             if not have_key:
                 # get some random bytes
                 await ux_dramatic_pause("Picking key...", 2)
@@ -167,7 +172,6 @@ class PaperWalletMaker:
 
                 nice_sig = None
                 if af != AF_P2TR:
-                    from auth import write_sig_file
                     nice_sig = write_sig_file(sig_cont, pk=privkey, sig_name=basename,
                                               addr_fmt=AF_P2WPKH if self.is_segwit else AF_CLASSIC)
 
@@ -182,8 +186,7 @@ class PaperWalletMaker:
             await needs_microsd()
             return
         except Exception as e:
-            from utils import problem_file_line
-            await ux_show_story('Failed to write!\n\n\n'+problem_file_line(e))
+            await ux_show_story('Failed to write!\n\n'+problem_file_line(e))
             return
 
         story = "Done! Created file(s):\n\n%s" % nice_txt

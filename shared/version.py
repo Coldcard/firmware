@@ -4,7 +4,8 @@
 #
 # REMINDER: update simulator version of this file if API changes are made.
 #
-from public_constants import MAX_TXN_LEN, MAX_UPLOAD_LEN
+from public_constants import MAX_TXN_LEN_MK4 as MAX_TXN_LEN
+from public_constants import MAX_UPLOAD_LEN_MK4 as MAX_UPLOAD_LEN
 
 def decode_firmware_header(hdr):
     from sigheader import FWH_PY_FORMAT
@@ -76,7 +77,6 @@ def probe_system():
     # run-once code to determine what hardware we are running on
     global hw_label, has_608, is_factory_mode, is_devmode, has_psram, is_edge
     global has_se2, mk_num, has_nfc, has_qr, num_sd_slots, has_qwerty, has_battery, supports_hsm
-    global MAX_UPLOAD_LEN, MAX_TXN_LEN
 
     from sigheader import RAM_BOOT_FLAGS, RBF_FACTORY_MODE
     import ckcc, callgate, machine
@@ -123,11 +123,6 @@ def probe_system():
 
     # newer, edge code in effect?
     is_edge = (get_mpy_version()[1][-1] == 'X')
-
-    # increase size limits for mk4
-    from public_constants import MAX_TXN_LEN_MK4, MAX_UPLOAD_LEN_MK4
-    MAX_UPLOAD_LEN = MAX_UPLOAD_LEN_MK4
-    MAX_TXN_LEN = MAX_TXN_LEN_MK4
 
 probe_system()
 

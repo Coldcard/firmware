@@ -198,7 +198,7 @@ class SectionHeader(namedtuple('SectionHeader', ['offset', 'size', 'crc' ])):
         # read only next one; ftell has to be on first byte already
         rv = cls.read(f)
 
-        if expect_crc != None:
+        if expect_crc is not None:
             assert rv           # read past end
             assert masked_crc(rv.bits) == expect_crc
 
@@ -315,7 +315,7 @@ class Builder(object):
 
         padded_len = (here + 15) & ~15
         if padded_len != here:
-            if self.padding != None:
+            if self.padding is not None:
                 raise ValueError()          # "can't do less than a block except at end"
             self.padding =  (padded_len - here)
             raw += bytes(self.padding)

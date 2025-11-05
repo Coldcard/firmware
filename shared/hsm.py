@@ -6,12 +6,12 @@
 #
 import ustruct, chains, sys, gc, uio, ujson, uos, utime, ckcc, ngu
 from utils import problem_file_line, cleanup_deriv_path, match_deriv_path
+from utils import cleanup_payment_address
 from pincodes import AE_LONG_SECRET_LEN
 from stash import blank_object
 from users import Users, MAX_NUMBER_USERS, calc_local_pincode
 from public_constants import MAX_USERNAME_LEN
-from multisig import MultisigWallet
-from miniscript import MiniScriptWallet
+from wallet import MiniScriptWallet
 from ubinascii import hexlify as b2a_hex
 from uhashlib import sha256
 from ucollections import OrderedDict
@@ -69,9 +69,9 @@ def restore_backup(s):
 
         with open(POLICY_FNAME, 'wt') as f:
             f.write(s)
-    except BaseException as exc:
+    except:
         # keep going, we don't want to brick
-        sys.print_exception(exc)
+        # sys.print_exception(exc)
         pass
 
 def pop_list(j, fld_name, cleanup_fcn=None):
@@ -148,22 +148,6 @@ def assert_empty_dict(j):
     if extra:
         raise ValueError("Unknown item: " + ', '.join(extra))
 
-def cleanup_whitelist_value(s):
-    # one element in a list of addresses or paths or descriptors?
-    # - later matching is string-based, so just doing basic syntax check here
-    # - must be checksumed-base58 or bech32
-    try:
-        ngu.codecs.b58_decode(s)
-        return s
-    except: pass
-
-    try:
-        ngu.codecs.segwit_decode(s)
-        return s
-    except: pass
-
-    raise ValueError('bad whitelist value: ' + s)
-
 
 class WhitelistOpts:
     # contains various options related to whitelisting
@@ -194,7 +178,7 @@ class ApprovalRule:
     # - users: list of authorized users
     # - min_users: how many of those are needed to approve
     # - local_conf: local user must also confirm w/ code
-    # - wallet: which multisig/miniscript wallet to restrict to, or '1' for single signer only
+    # - wallet: which miniscript wallet to restrict to, or '1' for single signer only
     # - min_pct_self_transfer: minimum percentage of own input value that must go back to self
     # - patterns: list of transaction patterns to check for. Valid values:
     #       * EQ_NUM_INS_OUTS:      the number of inputs and outputs must be equal
@@ -211,11 +195,10 @@ class ApprovalRule:
             return u
 
         self.index = idx+1
-        self.ms_type = "multisig"
         self.per_period = pop_int(j, 'per_period', 0, MAX_SATS)
         self.max_amount = pop_int(j, 'max_amount', 0, MAX_SATS)
         self.users = pop_list(j, 'users', check_user)
-        self.whitelist = pop_list(j, 'whitelist', cleanup_whitelist_value)
+        self.whitelist = pop_list(j, 'whitelist', cleanup_payment_address)
         self.whitelist_opts = pop_dict(j, 'whitelist_opts', False, WhitelistOpts)
         self.min_users = pop_int(j, 'min_users', 1, len(self.users))
         self.local_conf = pop_bool(j, 'local_conf')
@@ -236,13 +219,10 @@ class ApprovalRule:
             # redundant w/ code in pop_int() above
             assert 1 <= self.min_users <= len(self.users), "range"
 
-        # if specified, 'wallet' must be an existing multisig wallet's name
+        # if specified, 'wallet' must be an existing miniscript wallet's name
         if self.wallet and self.wallet != '1':
-            ms_names = [ms.name for ms in MultisigWallet.get_all()]
-            msc_names = [msc.name for msc in MiniScriptWallet.get_all()]
-            assert self.wallet in (ms_names+msc_names), "unknown wallet: "+self.wallet
-            if self.wallet in msc_names:
-                self.ms_type = "miniscript"
+            msc_names = [msc.name for msc in MiniScriptWallet.iter_wallets()]
+            assert self.wallet in msc_names, "unknown wallet: " + self.wallet
 
         # patterns must be valid
         for p in self.patterns:
@@ -288,7 +268,7 @@ class ApprovalRule:
         if self.wallet == '1':
             rv += ' (singlesig only)'
         elif self.wallet:
-            rv += ' from %s wallet "%s"' % (self.ms_type, self.wallet)
+            rv += ' from miniscript wallet "%s"' % self.wallet
 
         if self.users:
             rv += ' may be authorized by '
@@ -329,13 +309,10 @@ class ApprovalRule:
         # Does this rule apply to this PSBT file? 
         if self.wallet:
             # rule limited to one wallet
-            if psbt.active_multisig:
-                # if multisig signing, might need to match specific wallet name
-                assert self.wallet == psbt.active_multisig.name, 'wrong multisig wallet'
-            elif psbt.active_miniscript:
+            if psbt.active_miniscript:
                 assert self.wallet == psbt.active_miniscript.name, 'wrong miniscript wallet'
             else:
-                # non multisig, but does this rule apply to all wallets or single-singers
+                # not miniscript, but does this rule apply to all wallets or single-singers
                 assert self.wallet == '1', 'singlesig only'
 
         if self.max_amount is not None:
@@ -372,7 +349,7 @@ class ApprovalRule:
                 # we are verifying the whole consensus-encoded txout
                 txo_bytes = CTxOut(txo.nValue, txo.scriptPubKey).serialize()
                 digest = chain.hash_message(txo_bytes)
-                addr_fmt, pubkey = chains.verify_recover_pubkey(o.attestation, digest)
+                addr_fmt, pubkey = chains.verify_recover_pubkey(psbt.get(o.attestation), digest)
                 # we have extracted a valid pubkey from the sig, but is it
                 # a whitelisted pubkey or something else?
                 ver_addr = chain.pubkey_to_address(pubkey, addr_fmt)
@@ -395,11 +372,11 @@ class ApprovalRule:
 
         # check the self-transfer percentage
         if self.min_pct_self_transfer:
-            own_in_value = sum([i.amount for i in psbt.inputs if i.num_our_keys])
+            own_in_value = sum([i.amount for i in psbt.inputs if i.sp_idxs])
             own_out_value = 0
             for idx, txo in psbt.output_iter():
                 o = psbt.outputs[idx]
-                if o.num_our_keys:
+                if o.sp_idxs:
                     own_out_value += txo.nValue
             percentage = (float(own_out_value) / own_in_value) * 100.0
             assert percentage >= self.min_pct_self_transfer, 'does not meet self transfer threshold, expected: %.2f, actual: %.2f' % (self.min_pct_self_transfer, percentage)
@@ -410,8 +387,8 @@ class ApprovalRule:
             assert len(psbt.inputs) == len(psbt.outputs), 'unequal number of inputs and outputs'
 
         if "EQ_NUM_OWN_INS_OUTS" in self.patterns:
-            own_ins = sum([1 for i in psbt.inputs if i.num_our_keys])
-            own_outs = sum([1 for o in psbt.outputs if o.num_our_keys])
+            own_ins = sum([1 for i in psbt.inputs if i.sp_idxs])
+            own_outs = sum([1 for o in psbt.outputs if o.sp_idxs])
             assert own_ins == own_outs, 'unequal number of own inputs and outputs'
 
         if "EQ_OUT_AMOUNTS" in self.patterns:
@@ -511,7 +488,7 @@ class HSMPolicy:
         # a list of paths we can accept for signing
         self.msg_paths = pop_deriv_list(j, 'msg_paths', ['any'])
         self.share_xpubs = pop_deriv_list(j, 'share_xpubs', ['any'])
-        self.share_addrs = pop_deriv_list(j, 'share_addrs', ['p2sh', 'any', 'msas'])
+        self.share_addrs = pop_deriv_list(j, 'share_addrs', ['any', 'msas'])
 
         # free text shown at top
         self.notes = pop_string(j, 'notes', 1, 80)
@@ -596,7 +573,7 @@ class HSMPolicy:
             fd.write('\n')
 
         def plist(pl):
-            remap = {'any': '(any path)', 'p2sh': '(any P2SH)' }
+            remap = {'any': '(any path)', 'msas': '(any miniscript)' }
             return ' OR '.join(remap.get(i, i) for i in pl)
 
         fd.write('\nMessage signing:\n')
@@ -626,7 +603,7 @@ class HSMPolicy:
             fd.write('- XPUB values will be shared, if path matches: m OR %s.\n' 
                                 % plist(self.share_xpubs))
         if self.share_addrs:
-            fd.write('- Address values values will be shared, if path matches: %s.\n' 
+            fd.write('- Address values will be shared, if path matches: %s.\n'
                                 % plist(self.share_addrs))
         if self.priv_over_ux:
             fd.write('- Status responses optimized for privacy.\n')
@@ -819,7 +796,7 @@ class HSMPolicy:
 
         return match_deriv_path(self.share_xpubs, subpath)
 
-    def approve_address_share(self, subpath=None, is_p2sh=False, miniscript=False):
+    def approve_address_share(self, subpath=None, miniscript=False):
         # Are we allowing "show address" requests over USB?
 
         if not self.share_addrs:
@@ -827,9 +804,6 @@ class HSMPolicy:
 
         if miniscript:
             return ('msas' in self.share_addrs)
-
-        if is_p2sh:
-            return ('p2sh' in self.share_addrs)
 
         return match_deriv_path(self.share_addrs, subpath)
 
@@ -960,7 +934,7 @@ class HSMPolicy:
 
                 return 'y'
             except BaseException as exc:
-                sys.print_exception(exc)
+                # sys.print_exception(exc)
                 err = "Rejected: " + (str(exc) or problem_file_line(exc))
                 self.refuse(log, err)
 
@@ -1003,8 +977,7 @@ def hsm_status_report():
             rv['approval_wait'] = True
 
         rv['users'] = Users.list()
-        rv['wallets'] = [ms.name for ms in MultisigWallet.get_all()] \
-                        + [msc.name for msc in MiniScriptWallet.get_all()]
+        rv['wallets'] = [msc.name for msc in MiniScriptWallet.iter_wallets()]
 
     rv['chain'] = settings.get('chain', 'BTC')
 

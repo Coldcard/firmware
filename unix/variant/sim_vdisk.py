@@ -75,9 +75,12 @@ class SimulatedVirtDisk(vdisk.VirtDisk):
     def import_file(self, filename, sz):
         # copy file into another area of PSRAM where rest of system can use it
         print("sim-virtdisk: read %s" % filename)
-        contents = open(SIMDIR_PATH+filename, 'rb').read(sz)
+        with open(filename, 'rb') as f:
+            contents = f.read(sz)
         from glob import PSRAM
-        PSRAM.write_at(0, sz)[:] = contents
+        runt = (4 - sz % 4)
+        sz = sz + runt
+        PSRAM.write_at(0, sz)[:] = contents + bytes(runt)
         return sz
 
 vdisk.VirtDisk = SimulatedVirtDisk

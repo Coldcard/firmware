@@ -2,9 +2,10 @@
 #
 import utime as time
 import uerrno as errno
-import sys
+import usocket as socket
+import sys, struct, os
 
-from machine import Pin
+SOCKET_FILE_PATH = None
 
 class USB_VCP:
     @staticmethod
@@ -28,22 +29,16 @@ def usb_mode(nm=UNSET, **kws):
     return _umode
 
 class USB_HID:
-    fn = b'/tmp/ckcc-simulator.sock'
-
     def __init__(self):
         self.pipe = None
         self.last_from = None
         self._open()
 
     def _open(self):
-        import sys
-        import usocket as socket
+
+        assert SOCKET_FILE_PATH  # has to be set in sim_boot.py by caller
         self.pipe = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-        # If on linux, try commenting the following line
-        addr = bytes([len(self.fn)+2, socket.AF_UNIX] + list(self.fn))
-        # If on linux, try uncommenting the following two lines
-        #import struct
-        #addr = struct.pack('H108s', socket.AF_UNIX, self.fn)
+        addr = struct.pack('H108s', socket.AF_UNIX, SOCKET_FILE_PATH.encode())
         while 1:
             try:
                 self.pipe.bind(addr)
@@ -51,8 +46,7 @@ class USB_HID:
             except OSError as exc:
                 if exc.args[0] == errno.EADDRINUSE:
                     # handle restart after first run
-                    import os
-                    os.remove(self.fn)
+                    os.remove(SOCKET_FILE_PATH)
                     continue
         
     def recv(self, buf, timeout=0):
