@@ -755,6 +755,10 @@ async def version_migration():
     # version 5.0.6 is installed
     settings.remove_key('vdsk')
 
+    # 6.4.0 multisig migration
+    from wallet import do_640_multisig_migration
+    await do_640_multisig_migration()
+
 async def version_migration_prelogin():
     # same, but for setting before login
     # these have moved into SE2 for Mk4 and so can be removed

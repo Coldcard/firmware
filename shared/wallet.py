@@ -468,7 +468,7 @@ class MiniScriptWallet(WalletABC):
                 # loaded descriptor from cache
                 self.desc = DESC_CACHE[self.name]
             else:
-                #print("loading... policy --> descriptor !!!")
+                # print("loading... policy --> descriptor !!!")
                 # no need to validate already saved descriptor - was validated upon enroll
                 self.desc = self._from_bip388_wallet_policy(self.desc_tmplt, self.keys_info,
                                                             validate=False)
@@ -1094,17 +1094,10 @@ async def make_miniscript_menu(*a):
         await ux_show_story("You must have wallet seed before creating miniscript wallets.")
         return
 
-    ms = settings.get("multisig")
-    if ms:
-        # in version 6.4.0 EDGE
-        # MultisigWallet was removed & multisigs are now part of miniscript
-        # upon entry to Miniscript menu - multisig migration if performed
-        migrated = await multisig_640_migration(ms)
-        msc = settings.get("miniscript", [])
-        settings.set("miniscript", msc + migrated)
-        settings.remove_key("multisig")
-        settings.save()
-
+    # 6.4.0 multisig migration is done in login_sequence
+    # this is duplicate for users that have multisig wallets stored in tmp seed settings
+    # executes upon entry to "Multisig/Miniscript" menu
+    await do_640_multisig_migration()
 
     rv = MiniscriptMenu.construct()
     return MiniscriptMenu(rv)
@@ -1432,5 +1425,18 @@ async def multisig_640_migration(multisig_wallets):
         dis.progress_sofar(i+1, total)
 
     return migrated_multi
+
+async def do_640_multisig_migration():
+    if not settings.get("multi_mig", 0):
+        ms = settings.get("multisig")
+        if ms:
+            # in version 6.4.0 EDGE
+            # MultisigWallet was removed & multisigs are now part of miniscript
+            migrated = await multisig_640_migration(ms)
+            msc = settings.get("miniscript", [])
+            settings.set("miniscript", msc + migrated)
+            # settings.remove_key("multisig")
+            settings.set("multi_mig", 1)
+            settings.save()
 
 # EOF
