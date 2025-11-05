@@ -275,28 +275,6 @@ msc20 = ('msc20',
          True)
 psbt20 = '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'
 
-# MULTISIGS
-ms0 = ['ms0', (2, 2), [(1130956047, 1, 'tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP'), (4118082990, 0, 'tpubDDX85PzueTZjod816TDBdJPk8vWhqyZkSAXJ5xUjvSd1PyuEKnjt5UxiinKJSZzTTFVGSsSEm57LtpxQGdmSjQJtBmz1KUKtA9H63EzZmbA')], {'d': ['m/44h/1h/0h', 'm/48h/1h/0h/2h'], 'ch': 'XTN', 'ft': 14}, 0]
-ms_psbt0 = 'cHNidP8BAgQCAAAAAQMEAAAAAAEEAQEBBQEBAfsEAgAAAAABAJACAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wMBZgD/////AgDyBSoBAAAAIgAgmpn9BiIVcQF8SNxOBdxHZnr4zV50wqEfgao3H2nXwQYAAAAAAAAAACZqJKohqe3i9hw/cdHe/T+pmd+jaVN1XGkGiXmZYrSL69g2l06M+QAAAAABASsA8gUqAQAAACIAIJqZ/QYiFXEBfEjcTgXcR2Z6+M1edMKhH4GqNx9p18EGAQVHUiEDpu0LHSZwTffTfIc4jmXAz2wEHnpdj8wqeEmXnjhsLmQhA2TIP6eApQSJp8iL+LUKERNbAllqpwd359L99FBGOPdtUq4iAgNkyD+ngKUEiafIi/i1ChETWwJZaqcHd+fS/fRQRjj3bUcwRAIgWd1qBvLJ3w7BCnKnf/lqC2NWx+k2ZckyogR7jvIa6Z0CIEGD4eI8QB34FHub2MqS6+V4pKbAVPW9Yb2f3e+3u6uhAQEDBAEAAAAiBgNkyD+ngKUEiafIi/i1ChETWwJZaqcHd+fS/fRQRjj3bRiu9XT1LAAAgAEAAIAAAACAAAAAAAAAAAAiBgOm7QsdJnBN99N8hziOZcDPbAQeel2PzCp4SZeeOGwuZBwPBWlDMAAAgAEAAIAAAACAAgAAgAAAAAAAAAAAAQ4g4ufuvyFOaMtZDSxF3z96nMBVdUModjxZLZnWC+AJdMwBDwQAAAAAARAE/f///wABAUdSIQOjp2xvvj06HYuo4Nu5+DDkWJK2g6Nw3I4z0U645qLW+iEDHguZsfImfX5ke8u+ZPYHqIQ2OchLKxSdQ9O+uL1qfSZSriICAx4LmbHyJn1+ZHvLvmT2B6iENjnISysUnUPTvri9an0mGK71dPUsAACAAQAAgAAAAIAAAAAAAQAAACICA6OnbG++PTodi6jg27n4MORYkraDo3DcjjPRTrjmotb6HA8FaUMwAACAAQAAgAAAAIACAACAAAAAAAEAAAABBCIAIA6r03dk/6wErujg+YtRD4AykJKKhjg6az38chGPiG2OAQMISOYFKgEAAAAA'
-
-ms1 = ['ms1', (2, 2), [(1130956047, 1, 'tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP'), (642592534, 0, 'tpubDCRchFK4N5fkmpD19kfdVBTPcRbcG321XpZc9EF5y9uH2d6DZdiYsVWvuZ6mTQpfqNuTVjqgb4ye33bFGHdhdS1eNwqrdbVQAwSwsftTCGZ')], {'d': ['m/44h/1h/0h', 'm/48h/1h/0h/2h'], 'ch': 'XTN', 'ft': 14}]
-ms_psbt1 = 'cHNidP8BAgQCAAAAAQMEAAAAAAEEAQEBBQEBAfsEAgAAAAABAJACAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wMBZgD/////AgDyBSoBAAAAIgAgO7Et1Pc0tJ02+BhzSyIaAyUnI0+XDeJSG1+9yVYYKhQAAAAAAAAAACZqJKohqe3i9hw/cdHe/T+pmd+jaVN1XGkGiXmZYrSL69g2l06M+QAAAAABASsA8gUqAQAAACIAIDuxLdT3NLSdNvgYc0siGgMlJyNPlw3iUhtfvclWGCoUAQVHUiEDgwkO0ZNeLYTc0jARk0ubSvJSVLUeWXbOJI5gspAixFghA6btCx0mcE3303yHOI5lwM9sBB56XY/MKnhJl544bC5kUq4iAgODCQ7Rk14thNzSMBGTS5tK8lJUtR5Zds4kjmCykCLEWEcwRAIgI2cs69L4CIcU83erd/vww+0gfITnEDGSVTfCl55d33ICIDujRu9l8AUSkHUaz7syn5mJwnP81D3pxUYIBvoVmX30AQEDBAEAAAAiBgODCQ7Rk14thNzSMBGTS5tK8lJUtR5Zds4kjmCykCLEWBgWL00mLAAAgAEAAIAAAACAAAAAAAAAAAAiBgOm7QsdJnBN99N8hziOZcDPbAQeel2PzCp4SZeeOGwuZBwPBWlDMAAAgAEAAIAAAACAAgAAgAAAAAAAAAAAAQ4g1dxbBflVNuLZ2Ul1HWuYv3YvB+1WVb8try3mMtNWnpEBDwQAAAAAARAE/f///wABAUdSIQI1DhBwGxC7cQhnJ80CPFsg5dA/8ZVi447B1hj12FYq8yEDo6dsb749Oh2LqODbufgw5FiStoOjcNyOM9FOuOai1vpSriICAjUOEHAbELtxCGcnzQI8WyDl0D/xlWLjjsHWGPXYVirzGBYvTSYsAACAAQAAgAAAAIAAAAAAAQAAACICA6OnbG++PTodi6jg27n4MORYkraDo3DcjjPRTrjmotb6HA8FaUMwAACAAQAAgAAAAIACAACAAAAAAAEAAAABBCIAIBzbGbUkOtQUlU758Be6etJ319rIzQhJ2CMnsdGC4PFQAQMISOYFKgEAAAAA'
-
-ms2 = ['ms2', (2, 2), [(1130956047, 1, 'tpubDF2rnouQaaYrUEy2JM1YD3RFzew4onawGM4X2Re67gguTf5CbHonBRiFGe3Xjz7DK88dxBFGf2i7K1hef3PM4cFKyUjcbJXddaY9F5tJBoP'), (2783214288, 0, 'tpubDCqWSUR4xtNPhMrVjQ2h5rdN2BACCHfviVnUrAynei9WaqvuykcjGyvGcbY9hJfpeovM4xVy5E3jMPw1tUc19PeqpVT9LxiTvgS9bZT5ceE')], {'d': ['m/44h/1h/0h', 'm/48h/1h/0h/1h'], 'ch': 'XTN', 'ft': 26}]
-ms_psbt2 = 'cHNidP8BAgQCAAAAAQMEAAAAAAEEAQEBBQEBAfsEAgAAAAABAIUCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wMBZgD/////AgDyBSoBAAAAF6kUb91OzriEjIgsWsSckPDC0Q+Jg6SHAAAAAAAAAAAmaiSqIant4vYcP3HR3v0/qZnfo2lTdVxpBol5mWK0i+vYNpdOjPkAAAAAAQEgAPIFKgEAAAAXqRRv3U7OuISMiCxaxJyQ8MLRD4mDpIcBBCIAIAtFYt0+m5ogPeAsF0wFYNUBTIr8zh9b3qyzA/GacXm0AQVHUiECOW8/hX0o1kO8nwuxBxbuW4vBfkcUSC7HQfJzbz2kUU0hA0AM5GQodaOUjCy0igI+AveDhgmkPzUR7Uq5tMXXqdTRUq4iAgI5bz+FfSjWQ7yfC7EHFu5bi8F+RxRILsdB8nNvPaRRTUcwRAIgYAx0HVnw1ptPsDxwA8LO/btP44LaPvKneUUYHY7hyG8CIEk1IDl6R5zJDHqGYkXoBwmLamUuHQ0XR814wPo1JYjUAQEDBAEAAAAiBgI5bz+FfSjWQ7yfC7EHFu5bi8F+RxRILsdB8nNvPaRRTRjQeuSlLAAAgAEAAIAAAACAAAAAAAAAAAAiBgNADORkKHWjlIwstIoCPgL3g4YJpD81Ee1KubTF16nU0RwPBWlDMAAAgAEAAIAAAACAAQAAgAAAAAAAAAAAAQ4gui/D81PS/KT/SauPldOYn71xRmcYZ0Kj2dxDPpRW0ZABDwQAAAAAARAE/f///wABACIAIEB0TJfmwXDzSb/VIr0lxfWIilZ4/9NxxZIw1ckjnQuxAQFHUiEDSK842mj16CcwA8Oxafwy+HR4T9vgB3S6eLdqeeAcetchA4mgQByfozPkgmIIhTWOPBs3dPU0X6FoXoJSvAM0VIHJUq4iAgNIrzjaaPXoJzADw7Fp/DL4dHhP2+AHdLp4t2p54Bx61xjQeuSlLAAAgAEAAIAAAACAAAAAAAEAAAAiAgOJoEAcn6Mz5IJiCIU1jjwbN3T1NF+haF6CUrwDNFSByRwPBWlDMAAAgAEAAIAAAACAAQAAgAAAAAABAAAAAQQXqRSPvHXlyB6V3gbZGQNf3pn0ajFr2IcBAwho5AUqAQAAAAA='
-
-# originless key
-ms3 = ['ms3', (2, 2), [(1130956047, 1, 'tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r'), (2267113793, 0, 'tpubDCGx6bNmE4zRFgfeV2PbGfcuhg6aeqtLYgNEGZ2pghgFiarh8j2yVruetVWUd6ykfkxaGgB8GhEkaGva1jXvqJrLXC3LboxsQTHqqCZD5Jj')], {'ch': 'XTN', 'd': ['m', 'm/84h/1h/0h'], 'ft': 14}]
-ms_psbt3 = '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'
-
-
-@pytest.fixture
-def settings_append(sim_exec):
-    def doit(key, val):
-        x = sim_exec("x=settings.get('%s',[])\nx.append(%r)\nsettings.set('%s', x)" % (key, val, key))
-        assert x == ''
-    return doit
-
 
 def test_miniscript(settings_get, settings_set, clear_miniscript, goto_home, pick_menu_item,
                     cap_menu, try_sign):
@@ -322,94 +300,6 @@ def test_miniscript(settings_get, settings_set, clear_miniscript, goto_home, pic
         assert len(res[0]) == 4  # new format (name, policy, keys, opts)
         assert res[0][0] == name
         try_sign(base64.b64decode(psbt))
-
-
-def test_multisig(settings_set, settings_get, try_sign, goto_home, pick_menu_item, cap_menu,
-                  clear_miniscript):
-    # try one by one
-    for ms, psbt in [(ms0, ms_psbt0), (ms1, ms_psbt1), (ms2, ms_psbt2), (ms3, ms_psbt3)]:
-        clear_miniscript()
-        name = ms[0]
-        settings_set("multisig", [ms])
-        goto_home()
-        pick_menu_item("Settings")
-        pick_menu_item("Multisig/Miniscript")  # migration happens here
-        time.sleep(.1)
-        assert name in cap_menu()
-        assert settings_get("multisig", None) is None
-        msc = settings_get("miniscript")
-        assert len(msc) == 1
-        assert len(msc[0]) == 4  # new format (name, policy, keys, opts)
-        assert msc[0][0] == name
-        try_sign(base64.b64decode(psbt))
-
-    # now try bulk migration
-    clear_miniscript()
-    settings_set("multisig", [ms0, ms1, ms2, ms3])
-    goto_home()
-    pick_menu_item("Settings")
-    pick_menu_item("Multisig/Miniscript")  # migration happens here
-    menu = cap_menu()
-    for name in ["ms0", "ms1", "ms2", "ms3"]:
-        assert name in menu
-
-    assert settings_get("multisig", None) is None
-    msc = settings_get("miniscript")
-    assert len(msc) == 4
-    for x in msc:
-        assert len(x) == 4  # new format (name, policy, keys, opts)
-
-    for i, psbt in enumerate([ms_psbt0, ms_psbt1, ms_psbt2, ms_psbt3]):
-        try_sign(base64.b64decode(psbt), miniscript="ms%d" % i)
-
-
-def test_multisig_derivation_path_migration(start_sign, end_sign, settings_set, goto_home, clear_miniscript,
-                                            pick_menu_item, cap_story, cap_menu, press_cancel, settings_get):
-    clear_miniscript()
-    multisigs = [
-        ['ms1', (2, 3), [(2718032886, 0, 'tpubDGThxU1AibvJnWta5ghydVz3WDMAKFEe2mAP8vtoYfUXkgoYisuk5heGfrqgrE18RUPvEVhUWfZHCH3EVi2sBEQyLFMx9JVyNvWa7zQtRaC'), (3913158354, 1, 'tpubDGauoqnAp5SEYQHYrasWkfWNoh1SD3izdfPtHRXQXp2YWhnJ5pPQEFsxe696c6iuuqA9SfaJcenv4ZLmXFfRavQDAnKKky7QTPxznp3vUUQ'), (1130956047, 2, 'tpubDH8ECUKZYchtZF1RmJ3oBGWKtroMxyUyd6iQKJx2JWoezuethw6PHSewUgbC3vWkihaFuKUVmLAYMVdxq3iMo9AV7beRceQGQzHYq9UhgBR')], {'d': ["m/48'/1'/0'/2'/0", "m/48'/1'/0'/2'/1", "m/48'/1'/0'/2'/2"], 'ch': 'XTN', 'ft': 14}],
-        ['ms2', (3, 5), [(2044885442, 'tpubD9h2yEghZWRp4Mvi4MPhyP7ZN8GDqYVRMk6rNf5omds7WTjmRZiok8xgwEP3uXLVbpxVrqnjm4bNXL6tLwHtYF9J7uVSG9u95Yid38fX9dT'), (3035660899, 'tpubD8zYsexbkYEiCbTso12bUsE8Y1CUn3WHjLER3fWqc8mcP7FhDK1Rc6Tixr6v3SQ4XBi5d4bbTskUCxe4eZujkL2cQ3enCDENtBYJYzYuUaR'), (3343279201, 'tpubD8yeTfF4L8aCEaQbuPjjzNeyPs2WGJPNWcBMDuDP7NP2VjLBCB5afvfhAg3oTytxvnLXZbMBWyEhs2nt3wmduwSCMotB8RHcxxkvMRtZHrq'), (1010565321, 'tpubD9jpJX26AjUzTjCuZb9PfWmKjrSjFzXfNjBFwMY6ckt9qw3m9rpYw3NGD2yZut6UbFuQZm2xttchgchzGjJn26Fu1uZp1tveV1WcmUaXpay'), (1130956047, 'tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n')], {'pp': "m/45'", 'ch': 'XTN', 'ft': 26}],
-        ('ms', (2, 2), [(2285969762, 0, 'tpubDEy2hd2VTrqbBS8cS2svq12UmjGM2j7FHmocjHzAXfVhmJdhBFVVbmAi13humi49esaAuSmz36NEJ6GL3u58RzNuUkExP9vL4d81PM3s8u6'), (1130956047, 1, 'tpubDEFX3QojMWh7x4vSAHN17wpsywpP78aSs2t6nyELHuq1k34gub9mQ7QiaHNCBAYjSQ4UCMMpfBkf5np1cTQaStrvvRCxwxZ7kZaGHqYxUv3')], {'ch': 'XTN', 'ft': 14, 'd': ["m/48'/0'/99'/2'", "m/48'/0'/33'/2'"]})
-    ]
-
-    settings_set("multisig", multisigs)
-
-    # psbt from nunchuk, with global xpubs belonging to above ms wallet
-    b64_psbt = "cHNidP8BAF4CAAAAAfkDjXlS32gzOjVhSRArKxvkAecMTnp1g8wwMJTtq74/AAAAAAD9////AekaAAAAAAAAIgAgzs2e4h4vctbFvvauK+QVFAPzCFnMi1H9hTacH7498P8AAAAATwEENYfPBC7g3O2AAAACLvzTgnL7V0DNOnISJdvOgq/6Pw6DAtkPflmZ+Hc04qwC5CShG0rDIlh8gu7gH2NMBLfrIzYSzoSomnVHeMxtxVQUDwVpQzAAAIAAAACAIQAAgAIAAIBPAQQ1h88EkEB8moAAAALv/1L+Cfeg2EPc01pS00f18DIdU5BOeExlGsXyEFOKGwL71tcAiRuL4Bs+uT1JJjU6AbR3j3X60/rI+rTMJmnOgRRiIUGIMAAAgAAAAIBjAACAAgAAgAABAIkCAAAAAZ5Im3CxbYDyByyrr4luss5vr+s0r7Vt8pK+OvicPLO7AAAAAAD9////AnM2AAAAAAAAIgAgvZi0zfKCeBasTet1hNKm73GA4MEkwiSVwCB9cN0/EnTmvqUXAAAAACJRIJF/VcIeZ3E4f+ZEjwiUl5AUUxBJgoaEaPaHHJecq18lq+4qAAEBK3M2AAAAAAAAIgAgvZi0zfKCeBasTet1hNKm73GA4MEkwiSVwCB9cN0/EnQiAgNRdmGxEwsP88xu9rl/tGAXq7kPm/730yTyQ6XHQL/D3kcwRAIgHNmbk4J9wu4ljq6UouY132eX1i/2jWvJjuuWWyLRFScCIBPyPCuZ/Hmd06h9KtVkSropBonIuqIc/BK8JZ50YKp/AQEDBAEAAAABBUdSIQMBr34TVHrqSk8K6505//5YTOkHmHqF83J8iUURtL/ptCEDUXZhsRMLD/PMbva5f7RgF6u5D5v+99Mk8kOlx0C/w95SriIGAwGvfhNUeupKTwrrnTn//lhM6QeYeoXzcnyJRRG0v+m0HA8FaUMwAACAAAAAgCEAAIACAACAAAAAAAAAAAAiBgNRdmGxEwsP88xu9rl/tGAXq7kPm/730yTyQ6XHQL/D3hxiIUGIMAAAgAAAAIBjAACAAgAAgAAAAAAAAAAAAAEBR1IhAscIZVvBcy3Q0GKO4UqR3gDB3pm/tWas8siH3Ej8MmuCIQN8lTj0MMTpT+Dlk2MbMdAaL93hezzNP3WDsRn/gwlVQlKuIgICxwhlW8FzLdDQYo7hSpHeAMHemb+1ZqzyyIfcSPwya4IcYiFBiDAAAIAAAACAYwAAgAIAAIAAAAAAAQAAACICA3yVOPQwxOlP4OWTYxsx0Bov3eF7PM0/dYOxGf+DCVVCHA8FaUMwAACAAAAAgCEAAIACAACAAAAAAAEAAAAA"
-
-    goto_home()
-    pick_menu_item("Settings")
-    pick_menu_item("Multisig/Miniscript")  # migration happens here
-    time.sleep(.1)
-
-    names = ["ms", "ms1", "ms2"]
-    menu = cap_menu()
-    for n in names:
-        assert n in menu
-
-    assert settings_get("multisig", None) is None
-    msc = settings_get("miniscript")
-    assert len(msc) == 3
-    for w in msc:
-        assert len(w) == 4  # new format (name, policy, keys, opts)
-
-    # in time of creatin of PSBT, lopp was making testnet3 unusable...
-    settings_set("fee_limit", -1)
-    start_sign(base64.b64decode(b64_psbt))
-    title, story = cap_story()
-    assert title == "OK TO SEND?"
-    end_sign()
-    settings_set("fee_limit", 10)  # rollback
-    pick_menu_item("Settings")
-    pick_menu_item("Multisig/Miniscript")
-    for msi in names:  # three wallets imported
-        pick_menu_item(msi)
-        pick_menu_item("View Details")
-        time.sleep(.1)
-        _, story = cap_story()
-        assert "'" not in story
-        press_cancel()
-        press_cancel()
 
 
 def test_big_guys(microsd_path, src_root_dir, goto_home, pick_menu_item, need_keypress,
@@ -484,62 +374,5 @@ def test_anchor_bug(goto_home, pick_menu_item, microsd_path, src_root_dir, press
     m = cap_menu()
     assert len(m) == 17
     assert all(len(name) <= 30 for name in m)
-
-
-def test_multisig_miniscript_migration(settings_append, clear_miniscript, settings_get,
-                                       settings_remove, settings_set, goto_home, pick_menu_item):
-
-    clear_miniscript()
-    settings_remove("multisig")
-
-    for msc in [msc0, msc1, msc2, msc3, msc4, msc5, msc6, msc7, msc8, msc9, msc10,
-                msc11, msc12, msc14, msc15, msc16, msc17, msc18, msc19, msc20]:
-        settings_append("miniscript", msc)
-
-    settings_set("multisig", [ms0, ms1, ms2, ms3])
-
-    goto_home()
-    pick_menu_item("Settings")
-    pick_menu_item("Multisig/Miniscript")  # migration happened here
-
-    miniscripts = settings_get("miniscript")
-    assert len(miniscripts) == 24  # 20 miniscript wallets & 4 multisigs
-    for m in miniscripts:
-        assert len(m) == 4
-
-    assert settings_get("multisig", None) is None
-
-
-def test_name_clash(settings_set, clear_miniscript, settings_remove, goto_home, pick_menu_item,
-                    settings_get):
-    # names need to be unique per miniscript/multisig
-    # but now we are merging them together - check and resolve
-    # miniscript names are preserved, multisig names can be altered of needed
-    clear_miniscript()
-    settings_remove("multisig")
-
-    new_msc6 = list(msc6)
-    new_msc6[0] = "ms0"  # same name as ms0
-
-    # length issue, name cannot be longer than 20 chars
-    # but adding '1' would cause length failure - need some replacing
-    new_ms2 = list(ms2)
-    new_ms2[0] = 35*"a"
-
-    new_msc16 = list(msc16)
-    new_msc16[0] = 31*"a"
-
-    settings_set("miniscript", [new_msc6, msc11, new_msc16])
-    settings_set("multisig", [ms0, ms1, new_ms2, ms3])
-
-    goto_home()
-    pick_menu_item("Settings")
-    pick_menu_item("Multisig/Miniscript")
-
-    assert settings_get("multisig", None) is None
-    miniscripts = settings_get("miniscript")
-
-    assert all([len(m[0]) <= 30 for m in miniscripts])
-    assert len(set([m[0] for m in miniscripts])) == 7
 
 # EOF

@@ -1032,6 +1032,13 @@ def settings_set(sim_exec):
     return doit
 
 @pytest.fixture
+def settings_append(sim_exec):
+    def doit(key, val):
+        x = sim_exec("x=settings.get('%s',[])\nx.append(%r)\nsettings.set('%s', x)" % (key, val, key))
+        assert x == ''
+    return doit
+
+@pytest.fixture
 def settings_get(sim_exec):
 
     def doit(key, def_val=None, prelogin=False):

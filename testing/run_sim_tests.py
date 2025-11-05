@@ -360,7 +360,11 @@ def main():
     # test_rng.py not needed when using simulator
     # test_rolls.py should be run alone as it does not need simulator
     # set diff
-    test_modules = set(test_modules) - {"test_rng.py", "test_pincodes.py", "test_rolls.py"}
+    test_modules = set(test_modules) - {"test_rng.py", "test_pincodes.py", "test_rolls.py",
+                                        "test_640_der_pth_migration.py",
+                                        "test_640_migration_name_clash.py",
+                                        "test_640_miniscript_migration.py",
+                                        "test_640_multisig_migration.py"}
 
     module_args = []
     for test_module in sorted(list(test_modules)):

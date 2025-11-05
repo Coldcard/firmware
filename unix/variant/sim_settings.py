@@ -74,6 +74,48 @@ if '--ms' in sys.argv:
         sim_defaults['miniscript'] = [['MeMyself', 'sh(sortedmulti(2,@0/**,@1/**))', ['[6ba6cfd0/45h]tpubD9429UXFGCTKJ9NdiNK4rC5ygqSUkginycYHccqSg5gkmyQ7PZRHNjk99M6a6Y3NY8ctEUUJvCu6iCCui8Ju3xrHRu3Ez1CKB4ZFoRZDdP9', '[747b698e/45h]tpubD97nVL37v5tWyMf9ofh5rznwhh1593WMRg6FT4o6MRJkKWANtwAMHYLrcJFsFmPfYbY1TE1LLQ4KBb84LBPt1ubvFwoosvMkcWJtMwvXgSc', '[7bb026be/45h]tpubD9ArfXowvGHnuECKdGXVKDMfZVGdephVWg8fWGWStH3VKHzT4ph3A4ZcgXWqFu1F5xGTfxncmrnf3sLC86dup2a8Kx7z3xQ3AgeNTQeFxPa', '[0f056943/45h]tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n'], {'af': 8, 'm_n': (2, 4), 'b67': 1, 'ct': 'XTN'}]]
     sim_defaults['fee_limit'] = -1
 
+ms_mig = [['ms0', (2, 2), [(1130956047, 1, 'tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP'), (4118082990, 0, 'tpubDDX85PzueTZjod816TDBdJPk8vWhqyZkSAXJ5xUjvSd1PyuEKnjt5UxiinKJSZzTTFVGSsSEm57LtpxQGdmSjQJtBmz1KUKtA9H63EzZmbA')], {'d': ['m/44h/1h/0h', 'm/48h/1h/0h/2h'], 'ch': 'XTN', 'ft': 14}, 0],['ms1', (2, 2), [(1130956047, 1, 'tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP'), (642592534, 0, 'tpubDCRchFK4N5fkmpD19kfdVBTPcRbcG321XpZc9EF5y9uH2d6DZdiYsVWvuZ6mTQpfqNuTVjqgb4ye33bFGHdhdS1eNwqrdbVQAwSwsftTCGZ')], {'d': ['m/44h/1h/0h', 'm/48h/1h/0h/2h'], 'ch': 'XTN', 'ft': 14}],['ms2', (2, 2), [(1130956047, 1, 'tpubDF2rnouQaaYrUEy2JM1YD3RFzew4onawGM4X2Re67gguTf5CbHonBRiFGe3Xjz7DK88dxBFGf2i7K1hef3PM4cFKyUjcbJXddaY9F5tJBoP'), (2783214288, 0, 'tpubDCqWSUR4xtNPhMrVjQ2h5rdN2BACCHfviVnUrAynei9WaqvuykcjGyvGcbY9hJfpeovM4xVy5E3jMPw1tUc19PeqpVT9LxiTvgS9bZT5ceE')], {'d': ['m/44h/1h/0h', 'm/48h/1h/0h/1h'], 'ch': 'XTN', 'ft': 26}],['ms3', (2, 2), [(1130956047, 1, 'tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r'), (2267113793, 0, 'tpubDCGx6bNmE4zRFgfeV2PbGfcuhg6aeqtLYgNEGZ2pghgFiarh8j2yVruetVWUd6ykfkxaGgB8GhEkaGva1jXvqJrLXC3LboxsQTHqqCZD5Jj')], {'ch': 'XTN', 'd': ['m', 'm/84h/1h/0h'], 'ft': 14}]]
+
+if '--multi-mig' in sys.argv:
+    sim_defaults['multisig'] = ms_mig
+
+if '--name-clash-mig' in sys.argv:
+    mscs = [['msc11', 'XTN', 14, None, ['[0f056943/84h/1h/0h]tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*', '[0f056943/84h/1h/9h]tpubDC7jGaaSE66QBAcX8TUD3JKWari1zmGH4gNyKZcrfq6NwCofKujNF2kyeVXgKshotxw5Yib8UxLrmmCmWd8NVPVTAL8rGfMdc7TsAKqsy6y/<0;1>/*'], 'or_d(pk(@0/<0;1>/*),and_v(v:pkh(@1/<0;1>/*),older(5)))', False, True, False, False],['msc16', 'XTN', 14, None, ['[0f056943/99h/0h/0h]tpubDDjN26baDEVS3st3MXRhPod1jGchwFby8WKR84V3TVj1WhXEA6kVUPDWcbG65HTZhaxecuNZJZ7wP7mXZyFrZfnqGWKuuaTPc32g7Nuhf65/<0;1>/*'], 'and_v(v:pk(@0/<0;1>/*),older(10))', False, True, False, False],['msc6', 'XTN', 14, None, ['[22da0343/44h/1h/0h]tpubDDTfrYcgqkLoq79TNkVThZ9nqW4VWJRY3zCWkQnNkXzoraF5GMENKPJM1dMQascfTBNJstMLkmJLJ3k4b1k9rAjf3dgNMhYMfHJSUcM4hgL/<0;1>/*', '[0f056943/84h/0h/0h]tpubDCx8y86cKonoPyTtj3f9NZLpBYoBNkbAzUdafMHhggjxkhF8Dny2aekWfDafywEMZEQaQjkK9Gxn7aN7usLRUQdYbvDgcnmYRf72khPEouL/<0;1>/*'], 'or_d(pk(@0/<0;1>/*),and_v(v:pkh(@1/<0;1>/*),older(5)))', False, True, False, False]]
+    mscs[0][0] = "ms0"  # same as ms_mig[0]
+    mscs[1][0] = 32 * "a"
+    mscs[2][0] = 29 * "a"
+    ms_mig[2][0] = 35 * "a"
+    sim_defaults['multisig'] = ms_mig
+    sim_defaults['miniscript'] = mscs
+
+if '--der-pth-mig' in sys.argv:
+    multisigs = [
+        ['ms1', (2, 3), [(2718032886, 0,
+                          'tpubDGThxU1AibvJnWta5ghydVz3WDMAKFEe2mAP8vtoYfUXkgoYisuk5heGfrqgrE18RUPvEVhUWfZHCH3EVi2sBEQyLFMx9JVyNvWa7zQtRaC'),
+                         (3913158354, 1,
+                          'tpubDGauoqnAp5SEYQHYrasWkfWNoh1SD3izdfPtHRXQXp2YWhnJ5pPQEFsxe696c6iuuqA9SfaJcenv4ZLmXFfRavQDAnKKky7QTPxznp3vUUQ'),
+                         (1130956047, 2,
+                          'tpubDH8ECUKZYchtZF1RmJ3oBGWKtroMxyUyd6iQKJx2JWoezuethw6PHSewUgbC3vWkihaFuKUVmLAYMVdxq3iMo9AV7beRceQGQzHYq9UhgBR')],
+         {'d': ["m/48'/1'/0'/2'/0", "m/48'/1'/0'/2'/1", "m/48'/1'/0'/2'/2"], 'ch': 'XTN', 'ft': 14}],
+        ['ms2', (3, 5), [(2044885442,
+                          'tpubD9h2yEghZWRp4Mvi4MPhyP7ZN8GDqYVRMk6rNf5omds7WTjmRZiok8xgwEP3uXLVbpxVrqnjm4bNXL6tLwHtYF9J7uVSG9u95Yid38fX9dT'),
+                         (3035660899,
+                          'tpubD8zYsexbkYEiCbTso12bUsE8Y1CUn3WHjLER3fWqc8mcP7FhDK1Rc6Tixr6v3SQ4XBi5d4bbTskUCxe4eZujkL2cQ3enCDENtBYJYzYuUaR'),
+                         (3343279201,
+                          'tpubD8yeTfF4L8aCEaQbuPjjzNeyPs2WGJPNWcBMDuDP7NP2VjLBCB5afvfhAg3oTytxvnLXZbMBWyEhs2nt3wmduwSCMotB8RHcxxkvMRtZHrq'),
+                         (1010565321,
+                          'tpubD9jpJX26AjUzTjCuZb9PfWmKjrSjFzXfNjBFwMY6ckt9qw3m9rpYw3NGD2yZut6UbFuQZm2xttchgchzGjJn26Fu1uZp1tveV1WcmUaXpay'),
+                         (1130956047,
+                          'tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n')],
+         {'pp': "m/45'", 'ch': 'XTN', 'ft': 26}],
+        ('ms', (2, 2), [(2285969762, 0,
+                         'tpubDEy2hd2VTrqbBS8cS2svq12UmjGM2j7FHmocjHzAXfVhmJdhBFVVbmAi13humi49esaAuSmz36NEJ6GL3u58RzNuUkExP9vL4d81PM3s8u6'),
+                        (1130956047, 1,
+                         'tpubDEFX3QojMWh7x4vSAHN17wpsywpP78aSs2t6nyELHuq1k34gub9mQ7QiaHNCBAYjSQ4UCMMpfBkf5np1cTQaStrvvRCxwxZ7kZaGHqYxUv3')],
+         {'ch': 'XTN', 'ft': 14, 'd': ["m/48'/0'/99'/2'", "m/48'/0'/33'/2'"]})
+    ]
+    sim_defaults['multisig'] = multisigs
+
 if '--xfp' in sys.argv:
     # --xfp aabbccdd   => pretend we know that key (won't be able to sign)
     from ustruct import unpack
