@@ -540,7 +540,11 @@ async def verify_backup_file(fname):
                 # might be already closed on vdisk case due to filesystem unmount/mount
                 pass
 
-    await ux_show_story("Backup file CRC checks out okay.\n\nPlease note this is only a check against accidental truncation and similar. Targeted modifications can still pass this test.")
+    await ux_show_story("Backup file CRC checks out okay.\n\n"
+                        "Please note this is only a check against accidental truncation and similar."
+                        " Targeted modifications can still pass this test. You may further verify"
+                        " this backup file by starting the normal restore process (Restore Backup)"
+                        " and aborting it once decryption has been achieved.")
 
 
 async def restore_complete(fname_or_fd, temporary=False, words=True, usb=False):
