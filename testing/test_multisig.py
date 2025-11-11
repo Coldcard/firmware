@@ -162,7 +162,7 @@ def import_ms_wallet(dev, make_multisig, offer_minsc_import, press_select,
 
         title, story = import_miniscript(data=config, way=way)
 
-        assert 'Create new miniscript wallet' in story \
+        assert 'Create new multisig wallet' in story \
                 or 'Update existing multisig wallet' in story \
                 or 'new wallet is similar to' in story
 
@@ -468,15 +468,15 @@ def test_zero_depth(dev, clear_miniscript, use_regtest, addr_fmt, offer_minsc_im
 
 
     title, story = offer_minsc_import(json.dumps({"desc": desc_w_checksum, "name": ms_name}))
-    assert "Create new miniscript wallet?" in story
+    assert "Create new multisig wallet?" in story
     press_select()
 
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     pick_menu_item(ms_name)
     pick_menu_item("Descriptors")
     pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False)
+    text = load_export("sd", label="Bitcoin Core Multisig", is_json=False)
     text = text.replace("importdescriptors ", "").strip()
     # remove junk
     r1 = text.find("[")
@@ -589,7 +589,7 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
 
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Miniscript')
+    pick_menu_item("Multisig/Miniscript")
     pick_menu_item('Export XPUB')
 
     time.sleep(.1)
@@ -669,7 +669,7 @@ def test_import_ux(N, vdisk, goto_home, cap_story, pick_menu_item,
     try:
         goto_home()
         pick_menu_item('Settings')
-        pick_menu_item('Miniscript')
+        pick_menu_item("Multisig/Miniscript")
         pick_menu_item('Import')
         time.sleep(0.1)
         _, story = cap_story()
@@ -688,7 +688,7 @@ def test_import_ux(N, vdisk, goto_home, cap_story, pick_menu_item,
         time.sleep(.1)
         _, story = cap_story()
 
-        assert 'Create new miniscript' in story
+        assert 'Create new multisig' in story
         assert name in story, 'didnt infer wallet name from filename'
         assert f'Policy: {M} of {N}\n' in story
 
@@ -747,7 +747,7 @@ def test_import_dup_safe(N, clear_miniscript, make_multisig, offer_minsc_import,
         # check worked: look in menu for name
         goto_home()
         pick_menu_item('Settings')
-        pick_menu_item('Miniscript')
+        pick_menu_item("Multisig/Miniscript")
 
         menu = cap_menu()
         assert name in menu
@@ -755,7 +755,7 @@ def test_import_dup_safe(N, clear_miniscript, make_multisig, offer_minsc_import,
 
     orig_name = "xxx-orig"
     title, story = offer_minsc_import(make_named(orig_name))
-    assert 'Create new miniscript wallet' in story
+    assert 'Create new multisig wallet' in story
     assert orig_name in story
     assert 'P2SH' in story
     press_select()
@@ -842,7 +842,7 @@ def test_import_dup_xfp_fails(m_of_n, use_regtest, addr_fmt, clear_miniscript,
 
 @pytest.fixture
 def make_myself_wallet(dev, set_bip39_pw, offer_minsc_import, press_select, clear_miniscript,
-                       reset_seed_words, is_q1):
+                       reset_seed_words, is_q1, cap_story, press_cancel):
 
     # construct a wallet (M of 4) using different bip39 passwords, and default sim
     def doit(M, addr_fmt="p2wsh", do_import=True, desc="sortedmulti"):
@@ -893,7 +893,7 @@ def make_myself_wallet(dev, set_bip39_pw, offer_minsc_import, press_select, clea
             msc["desc"] = d
             config = json.dumps(msc)
             title, story = offer_minsc_import(config)
-            assert "Create new miniscript wallet" in story
+            assert "Create new multisig wallet" in story
 
             # don't care if update or create; accept it.
             time.sleep(.1)
@@ -906,7 +906,11 @@ def make_myself_wallet(dev, set_bip39_pw, offer_minsc_import, press_select, clea
             if do_import and not no_import:
                 offer_minsc_import(config)
                 time.sleep(.1)
-                press_select()
+                title, story = cap_story()
+                if ("Duplicate" in story) or ("MUST have unique names" in story):
+                    press_cancel()
+                else:
+                    press_select()
             assert xfp == keys[idx][0]
             return xfp
 
@@ -1228,7 +1232,7 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
         goto_home()
         time.sleep(0.1)
         pick_menu_item('Settings')
-        pick_menu_item('Miniscript')
+        pick_menu_item("Multisig/Miniscript")
         pick_menu_item('Export XPUB')
         time.sleep(.05)
         press_select()
@@ -1252,7 +1256,7 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
 
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Miniscript')
+    pick_menu_item("Multisig/Miniscript")
     pick_menu_item('Create Airgapped')
     if is_q1:
         time.sleep(.1)
@@ -1316,14 +1320,14 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
     title, story = cap_story()
 
     if incl_self is not False:
-        assert "Create new miniscript" in story
+        assert "Create new multisig" in story
         press_select()
         # we use clear_miniscript fixture at the begining of each test
         # new multisig wallet is first menu item
         press_select()
         pick_menu_item("Descriptors")
         pick_menu_item("Export")
-        impf, fname = load_export("sd", label="Miniscript", is_json=False,
+        impf, fname = load_export("sd", label="Multisig", is_json=False,
                                   ret_fname=True)
         cc_fname = microsd_path(fname)
         strt = "wsh(sortedmulti" if addr_fmt == 'p2wsh' else "sh(wsh(sortedmulti("
@@ -1337,7 +1341,7 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
         # test re-importing the wallet from export file
         goto_home()
         pick_menu_item('Settings')
-        pick_menu_item('Miniscript')
+        pick_menu_item("Multisig/Miniscript")
         pick_menu_item('Import')
         time.sleep(0.5)
         _, story = cap_story()
@@ -1349,7 +1353,7 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
 
         time.sleep(.05)
         title, story = cap_story()
-        assert "Create new miniscript" in story
+        assert "Create new multisig" in story
         assert f"Policy: {M} of {N}" in story
 
         need_keypress('1')
@@ -1359,7 +1363,7 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
 
     else:
         # own wallet not included in the mix, can only export resulting descriptor
-        desc = load_export(way, label="Miniscript", is_json=False, sig_check=False)
+        desc = load_export(way, label="Multisig", is_json=False, sig_check=False)
         desc = desc.strip()
         do = MultisigDescriptor.parse(desc)
         assert do.M == M
@@ -1501,7 +1505,7 @@ def test_danger_warning(request, clear_miniscript, import_ms_wallet, cap_story, 
                         need_keypress):
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     pick_menu_item("Skip Checks?")
     need_keypress("4")
     pick_menu_item("Skip Checks")
@@ -1525,7 +1529,7 @@ def test_danger_warning(request, clear_miniscript, import_ms_wallet, cap_story, 
 
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     pick_menu_item("Skip Checks?")
     pick_menu_item("Normal")
 
@@ -1653,7 +1657,7 @@ def test_dup_ms_wallet_bug(goto_home, pick_menu_item, press_select, import_ms_wa
 
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Miniscript')
+    pick_menu_item("Multisig/Miniscript")
 
     # drill down to second one
     time.sleep(.1)
@@ -1709,7 +1713,7 @@ def test_import_descriptor(M_N, addr_fmt, int_ext_desc, way, import_ms_wallet, g
 
     pick_menu_item('Descriptors')
     pick_menu_item('Export')
-    contents = load_export(way, label="Miniscript", is_json=False)
+    contents = load_export(way, label="Multisig", is_json=False)
     desc_export = contents.strip()
 
     normalized = parse_desc_str(desc_export)
@@ -1797,16 +1801,16 @@ def test_bitcoind_ms_address(change, M_N, addr_fmt, clear_miniscript, goto_home,
     addr_cont = contents.strip()
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Miniscript')
+    pick_menu_item("Multisig/Miniscript")
     press_select()  # only one enrolled multisig - choose it
     pick_menu_item('Descriptors')
     pick_menu_item("Bitcoin Core")
     if way != "nfc":
-        contents, exp_fname = load_export(way, label="Bitcoin Core miniscript", is_json=False,
+        contents, exp_fname = load_export(way, label="Bitcoin Core Multisig", is_json=False,
                                           ret_fname=True)
         garbage_collector.append(path_f(exp_fname))
     else:
-        contents = load_export(way, label="Bitcoin Core miniscript", is_json=False)
+        contents = load_export(way, label="Bitcoin Core Multisig", is_json=False)
     text = contents.replace("importdescriptors ", "").strip()
     # remove junk
     r1 = text.find("[")
@@ -1860,7 +1864,7 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_minis
     )
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Miniscript')
+    pick_menu_item("Multisig/Miniscript")
     pick_menu_item('Export XPUB')
     time.sleep(0.5)
     title, story = cap_story()
@@ -1887,7 +1891,7 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_minis
         f.write(desc_w_checksum + "\n")
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Miniscript')
+    pick_menu_item("Multisig/Miniscript")
     pick_menu_item('Import')
     time.sleep(0.3)
     _, story = cap_story()
@@ -1898,19 +1902,19 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_minis
     time.sleep(0.5)
     pick_menu_item(name)
     _, story = cap_story()
-    assert "Create new miniscript wallet?" in story
+    assert "Create new multisig wallet?" in story
     assert name.split(".")[0] in story
     assert f"{M} of {N}" in story
     assert "P2SH" in story
     press_select()  # approve multisig import
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Miniscript')
+    pick_menu_item("Multisig/Miniscript")
     menu = cap_menu()
     pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
     pick_menu_item("Descriptors")
     pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False)
+    text = load_export("sd", label="Bitcoin Core Multisig", is_json=False)
     text = text.replace("importdescriptors ", "").strip()
     # remove junk
     r1 = text.find("[")
@@ -2025,7 +2029,7 @@ def bitcoind_multisig(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story, 
 
         title, story = import_miniscript(way=way, data=res)
 
-        assert "Create new miniscript wallet?" in story
+        assert "Create new multisig wallet?" in story
         assert f"{M} of {N}" in story
         # TODO this UX lost
         # if M == N:
@@ -2043,12 +2047,12 @@ def bitcoind_multisig(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story, 
         press_select()  # approve multisig import
         goto_home()
         pick_menu_item('Settings')
-        pick_menu_item('Miniscript')
+        pick_menu_item("Multisig/Miniscript")
         menu = cap_menu()
         pick_menu_item(menu[0])  # pick imported descriptor multisig wallet
         pick_menu_item("Descriptors")
         pick_menu_item("Bitcoin Core")
-        text = load_export("sd", label="Bitcoin Core miniscript", is_json=False)
+        text = load_export("sd", label="Bitcoin Core Multisig", is_json=False)
         text = text.replace("importdescriptors ", "").strip()
         # remove junk
         r1 = text.find("[")
@@ -2377,7 +2381,7 @@ def test_exotic_descriptors(desc, clear_miniscript, goto_home, need_keypress, pi
         f.write(desc + "\n")
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Miniscript')
+    pick_menu_item("Multisig/Miniscript")
     pick_menu_item('Import')
     time.sleep(0.1)
     _, story = cap_story()
@@ -2450,7 +2454,7 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
     def choose_multisig_wallet():
         goto_home()
         pick_menu_item('Settings')
-        pick_menu_item('Miniscript')
+        pick_menu_item("Multisig/Miniscript")
         menu = cap_menu()
         pick_menu_item(menu[0])
 
@@ -2474,14 +2478,14 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
     choose_multisig_wallet()
     pick_menu_item("Descriptors")
     pick_menu_item("Export")
-    contents = load_export(way, label="Miniscript", is_json=False)
+    contents = load_export(way, label="Multisig", is_json=False)
     bare_desc = contents.strip()
 
     # get core descriptor json
     choose_multisig_wallet()
     pick_menu_item("Descriptors")
     pick_menu_item("Bitcoin Core")
-    core_desc_text = load_export(way, label="Bitcoin Core miniscript", is_json=False)
+    core_desc_text = load_export(way, label="Bitcoin Core Multisig", is_json=False)
 
     # remove junk
     text = core_desc_text.replace("importdescriptors ", "").strip()
@@ -2515,7 +2519,7 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
 
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     time.sleep(0.1)
     m = cap_menu()
     assert "(none setup yet)" not in m
@@ -2523,7 +2527,7 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
     goto_home()
     settings_set("chain", "BTC")
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     time.sleep(0.1)
     m = cap_menu()
     assert "(none setup yet)" in m
@@ -2531,7 +2535,7 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
     import_ms_wallet(3, 3, addr_fmt="p2wsh", accept=True, chain="BTC", name=on_mainnet)
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     time.sleep(0.1)
     m = cap_menu()
     assert on_mainnet == m[0]
@@ -2541,7 +2545,7 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
     settings_set("chain", "XTN")
     import_ms_wallet(4, 4, addr_fmt="p2wsh", accept=True, chain="XTN", name="xtn1")
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     time.sleep(0.1)
     m = cap_menu()
     assert "(none setup yet)" not in m
@@ -2566,7 +2570,7 @@ def test_same_key_account_based_multisig(goto_home, need_keypress, pick_menu_ite
     clear_miniscript()
     _, story = offer_minsc_import(desc)
     # this is allowed now
-    assert "Create new miniscript wallet" in story
+    assert "Create new multisig wallet" in story
 
 
 def test_multisig_name_validation(microsd_path, offer_minsc_import):
@@ -2672,7 +2676,7 @@ def test_scan_any_qr(fpath, is_q1, scan_a_qr, clear_miniscript, goto_home,
 
     time.sleep(.1)
     title, story = cap_story()
-    assert "Create new miniscript wallet?" in story
+    assert "Create new multisig wallet?" in story
     press_cancel()
 
 
@@ -2805,13 +2809,13 @@ def test_import_multisig_usb_json(use_regtest, cs, way, cap_menu, clear_miniscri
 
         title, story = import_miniscript(fname=fname, way=way, data=data)
 
-    assert "Create new miniscript wallet?" in story
+    assert "Create new multisig wallet?" in story
     assert name in story
     need_keypress("y")
     time.sleep(.2)
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     m = cap_menu()
     assert name in m[0]
 
@@ -2890,19 +2894,19 @@ def test_cc_root_key(import_ms_wallet, bitcoind, use_regtest, clear_miniscript, 
     name = "cc_root_key"
     title, story = offer_minsc_import(json.dumps({"name": name, "desc": desc_w_checksum}))
 
-    assert "Create new miniscript wallet?" in story
+    assert "Create new multisig wallet?" in story
     assert name in story
     # assert f"All {N} co-signers must approve spends" in story
     assert "P2WSH" in story
     press_select()  # approve multisig import
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Miniscript')
+    pick_menu_item("Multisig/Miniscript")
     menu = cap_menu()
     pick_menu_item(menu[0])  # pick imported descriptor multisig wallet
     pick_menu_item("Descriptors")
     pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False)
+    text = load_export("sd", label="Bitcoin Core Multisig", is_json=False)
     text = text.replace("importdescriptors ", "").strip()
     # remove junk
     r1 = text.find("[")
@@ -3033,11 +3037,11 @@ def test_originless_keys(get_cc_key, bitcoin_core_signer, bitcoind, offer_minsc_
 
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     pick_menu_item(name)  # pick imported descriptor miniscript wallet
     pick_menu_item("Descriptors")
     pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False)
+    text = load_export("sd", label="Bitcoin Core Multisig", is_json=False)
     text = text.replace("importdescriptors ", "").strip()
     # remove junk
     r1 = text.find("[")
@@ -3299,7 +3303,7 @@ def test_psbt_xpubs_slip132(pms, clear_miniscript, settings_set, start_sign, end
         assert "XPUBs in PSBT do not match any existing wallet"
         press_select()
         title, story = offer_minsc_import("sh(wsh(sortedmulti(2,[cdf24066/49/1/0]Upub5QWbdFzCKPujKUZWDF9mST5iE4VJpaqAqXiS85jYUEaSBtwbFcJwswU2DeWGC6rNBnoKs8rQC9oKGdNTSqKwseHDeaE68YAx2QbgcqX84z6/<0;1>/*,[12d56d35/49/1/0]Upub5QaiwZWYcoJwBw26hGguMiUgmKvqpnzrBR92uVEmmwdAtS5LnpBEUPPavjQgxdakT8MKb96FE2Pn61ogKFT3r6obPZiH8q9Y3NPCFRswq6F/<0;1>/*,[5db182e6/49/1/0]Upub5RiNwTn4EVpghGJx1CWjbt9jfL5d792JRyccZxgtWVhbPDwf1o6A4vK9AyTY4VgGBMvEgM3qHM3mhAKxCiF4idL3nMjdskZNP1hQXD8XPq3/<0;1>/*)))")
-        assert "Create new miniscript wallet" in story
+        assert "Create new multisig wallet" in story
         assert "P2SH-P2WSH"
         press_select()
         start_sign(bpsbt)
@@ -3308,7 +3312,7 @@ def test_psbt_xpubs_slip132(pms, clear_miniscript, settings_set, start_sign, end
 
     elif pms == 1:
         # offer import
-        assert "Create new miniscript wallet" in story
+        assert "Create new multisig wallet" in story
         assert "P2SH-P2WSH"
         press_select()
         start_sign(bpsbt)

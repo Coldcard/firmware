@@ -570,7 +570,7 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, num_ins, dev, clea
     assert got_txn
 
 
-def test_teleport_big_ms(make_myself_wallet, clear_miniscript, fake_ms_txn, try_sign, cap_story,
+def test_teleport_big_ms(clear_miniscript, fake_ms_txn, try_sign, cap_story,
                          need_keypress, cap_menu, pick_menu_item, grab_payload, rx_complete,
                          press_select, ndef_parse_txn_psbt, set_master_key, goto_home, press_nfc,
                          nfc_read, open_microsd, import_ms_wallet, press_cancel):
@@ -591,7 +591,7 @@ def test_teleport_big_ms(make_myself_wallet, clear_miniscript, fake_ms_txn, try_
     goto_home()
     pick_menu_item('Advanced/Tools')
     pick_menu_item('File Management')
-    pick_menu_item('Teleport Miniscript PSBT')
+    pick_menu_item('Teleport Multisig/Miniscript PSBT')
 
     need_keypress('1')      # top slot
 
@@ -839,11 +839,11 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
     time.sleep(.2)
 
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     pick_menu_item(name)
     pick_menu_item("Descriptors")
     pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False)
+    text = load_export("sd", label="Bitcoin Core Miniscript", is_json=False)
     text = text.replace("importdescriptors ", "").strip()
     # remove junk
     r1 = text.find("[")

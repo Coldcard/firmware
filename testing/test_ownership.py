@@ -58,7 +58,7 @@ def test_negative(addr_fmt, testnet, sim_exec):
 @pytest.mark.parametrize('change_idx', [ 0, 1] )
 @pytest.mark.parametrize('from_empty', [ True, False] )
 def test_positive(addr_fmt, offset, subaccount, chain, from_empty, change_idx,
-    sim_exec, wipe_cache, make_myself_wallet, use_testnet, goto_home, pick_menu_item,
+    sim_exec, wipe_cache, use_testnet, goto_home, pick_menu_item,
     enter_number, press_cancel, settings_set, import_ms_wallet, clear_miniscript, is_q1,
 ):
 
@@ -187,7 +187,7 @@ def test_positive(addr_fmt, offset, subaccount, chain, from_empty, change_idx,
 @pytest.mark.parametrize('method', [ 'qr', 'nfc'] )
 @pytest.mark.parametrize('multisig', [ True, False] )
 def test_ux(valid, netcode, method,
-    sim_exec, wipe_cache, make_myself_wallet, use_testnet, goto_home, pick_menu_item,
+    sim_exec, wipe_cache, use_testnet, goto_home, pick_menu_item,
     press_cancel, press_select, settings_set, is_q1, nfc_write, need_keypress,
     cap_screen, cap_story, load_shared_mod, scan_a_qr, skip_if_useless_way,
     sign_msg_from_address, multisig, import_ms_wallet, clear_miniscript, verify_qr_address,

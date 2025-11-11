@@ -316,4 +316,5 @@ Default is P2WSH addresses (segwit) or press (1) for P2SH-P2WSH.''', escape='1')
         # sys.print_exception(e)
         await ux_show_story('Failed to create multisig.\n\n%s\n%s' % (e, problem_file_line(e)),
                             title="ERROR")
+
 # EOF

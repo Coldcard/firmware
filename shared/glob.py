@@ -29,8 +29,8 @@ NFC = None
 # QR scanner (Q1 only)
 SCAN = None
 
-# Miniscript descriptor cache
-# mapping from unique miniscript wallet name to Descriptor object
+# Multisig/Miniscript descriptor cache
+# mapping from unique wallet name to Descriptor object
 # cache size = 1
 DESC_CACHE = {}
 

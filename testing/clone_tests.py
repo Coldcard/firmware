@@ -91,7 +91,7 @@ def _clone(source, target):
     sim_target.start(start_wait=6)
     device = ColdcardDevice(is_simulator=True)
     _pick_menu_item(device, target_is_Q, "Settings")
-    _pick_menu_item(device, target_is_Q, "Miniscript")
+    _pick_menu_item(device, target_is_Q, "Multisig/Miniscript")
     time.sleep(.1)
     m = _cap_menu(device)
     assert "P2WSH--2-of-4" in m
