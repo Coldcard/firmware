@@ -415,7 +415,7 @@ class PinAttempt:
         stash.SensitiveValues.clear_cache()
 
         # invalidate descriptor cache - upon new secret load
-        glob.DESC_CACHE = {}
+        glob.DESC_CACHE.clear()
 
         bypass_tmp = False
         stash.bip39_passphrase = bool(bip39pw)

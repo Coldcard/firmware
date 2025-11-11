@@ -314,7 +314,7 @@ def test_miniscript(settings_get, settings_set, clear_miniscript, goto_home, pic
         settings_set("miniscript", [msc])
         goto_home()
         pick_menu_item("Settings")
-        pick_menu_item("Miniscript")  # migration happens here as we start deserializing the wallets
+        pick_menu_item("Multisig/Miniscript")  # migration happens here as we start deserializing the wallets
         time.sleep(.1)
         assert name in cap_menu()
         res = settings_get("miniscript")
@@ -333,7 +333,7 @@ def test_multisig(settings_set, settings_get, try_sign, goto_home, pick_menu_ite
         settings_set("multisig", [ms])
         goto_home()
         pick_menu_item("Settings")
-        pick_menu_item("Miniscript")  # migration happens here
+        pick_menu_item("Multisig/Miniscript")  # migration happens here
         time.sleep(.1)
         assert name in cap_menu()
         assert settings_get("multisig", None) is None
@@ -348,7 +348,7 @@ def test_multisig(settings_set, settings_get, try_sign, goto_home, pick_menu_ite
     settings_set("multisig", [ms0, ms1, ms2, ms3])
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")  # migration happens here
+    pick_menu_item("Multisig/Miniscript")  # migration happens here
     menu = cap_menu()
     for name in ["ms0", "ms1", "ms2", "ms3"]:
         assert name in menu
@@ -379,7 +379,7 @@ def test_multisig_derivation_path_migration(start_sign, end_sign, settings_set, 
 
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")  # migration happens here
+    pick_menu_item("Multisig/Miniscript")  # migration happens here
     time.sleep(.1)
 
     names = ["ms", "ms1", "ms2"]
@@ -401,7 +401,7 @@ def test_multisig_derivation_path_migration(start_sign, end_sign, settings_set, 
     end_sign()
     settings_set("fee_limit", 10)  # rollback
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     for msi in names:  # three wallets imported
         pick_menu_item(msi)
         pick_menu_item("View Details")
@@ -479,7 +479,7 @@ def test_anchor_bug(goto_home, pick_menu_item, microsd_path, src_root_dir, press
 
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     time.sleep(2)
     m = cap_menu()
     assert len(m) == 17
@@ -500,7 +500,7 @@ def test_multisig_miniscript_migration(settings_append, clear_miniscript, settin
 
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")  # migration happened here
+    pick_menu_item("Multisig/Miniscript")  # migration happened here
 
     miniscripts = settings_get("miniscript")
     assert len(miniscripts) == 24  # 20 miniscript wallets & 4 multisigs
@@ -534,7 +534,7 @@ def test_name_clash(settings_set, clear_miniscript, settings_remove, goto_home, 
 
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
 
     assert settings_get("multisig", None) is None
     miniscripts = settings_get("miniscript")

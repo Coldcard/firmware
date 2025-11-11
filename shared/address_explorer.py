@@ -203,7 +203,7 @@ class AddressListMenu(MenuSystem):
                 items.append(ToggleMenuItem('MS Scripts/Derivs', 'aemscsv',
                                             ['Default Off', 'Enable'], story=(
                     "Enable this option to add script(s) and derivations to the CSV export"
-                    " of Miniscript wallets. Default is to only export addresses.")))
+                    " of Multisig/Miniscript wallets. Default is to only export addresses.")))
 
                 for msc in MiniScriptWallet.iter_wallets():
                     items.append(MenuItem(msc.name, f=self.pick_miniscript, arg=msc))

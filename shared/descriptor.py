@@ -165,8 +165,10 @@ class Descriptor:
         assert has_mine > 0, 'My key %s missing in descriptor.' % xfp2str(my_xfp).upper()
 
     def bip388_wallet_policy(self):
-        # only same origin keys
+        # Return compact descriptor (BIP-388 style) template and key info
+        # - only same origin keys
         keys_info = OrderedDict()
+
         for k in self.keys:
             pk = k.node.pubkey()
             if pk not in keys_info:
@@ -176,7 +178,7 @@ class Descriptor:
 
         keys_info = list(keys_info.values())
         for i, k_str in enumerate(keys_info):
-            desc_tmplt = desc_tmplt.replace(k_str, chr(64) + str(i))
+            desc_tmplt = desc_tmplt.replace(k_str, '@%d' % i)
 
         return desc_tmplt, keys_info
 
@@ -459,3 +461,5 @@ class Descriptor:
             res.append(desc_obj)
 
         return res
+
+# EOF

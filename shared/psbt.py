@@ -1477,8 +1477,8 @@ class psbtObject(psbtProxy):
                 if hsm_active:
                     raise FatalPSBTIssue("MS enroll not allowed in HSM mode")
 
-                ch = await proposed.confirm_import()
-                if ch not in 'y'+KEY_ENTER:
+                approved = await proposed.confirm_import()
+                if not approved:
                     raise FatalPSBTIssue("Refused to import new wallet")
 
             self.active_miniscript = proposed

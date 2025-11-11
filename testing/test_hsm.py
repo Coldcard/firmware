@@ -583,7 +583,7 @@ def test_named_wallets(dev, start_hsm, tweak_rule, import_ms_wallet, hsm_status,
     attempt_psbt(psbt, 'wrong miniscript wallet')
 
 @pytest.mark.bitcoind
-def test_named_wallets_miniscript(dev, start_hsm, tweak_rule, make_myself_wallet,
+def test_named_wallets_miniscript(dev, start_hsm, tweak_rule,
                                   hsm_status, attempt_psbt, fake_txn, bitcoind,
                                   offer_minsc_import, need_keypress, pick_menu_item,
                                   load_export, goto_home):
@@ -607,11 +607,11 @@ def test_named_wallets_miniscript(dev, start_hsm, tweak_rule, make_myself_wallet
                                     passphrase=None, avoid_reuse=False, descriptors=True)
         goto_home()
         pick_menu_item("Settings")
-        pick_menu_item("Miniscript")
+        pick_menu_item("Multisig/Miniscript")
         pick_menu_item(name)
         pick_menu_item("Descriptors")
         pick_menu_item("Bitcoin Core")
-        text = load_export("sd", label="Bitcoin Core miniscript", is_json=False)
+        text = load_export("sd", label="Bitcoin Core Miniscript", is_json=False)
         text = text.replace("importdescriptors ", "").strip()
         # remove junk
         r1 = text.find("[")

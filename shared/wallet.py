@@ -13,7 +13,7 @@ from ux import ux_show_story, ux_confirm, ux_dramatic_pause, OK, X, ux_enter_bip
 from files import CardSlot, CardMissingError, needs_microsd
 from utils import problem_file_line, xfp2str, to_ascii_printable, swab32, show_single_address
 from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC, KEY_ENTER
-from glob import settings
+from glob import settings, DESC_CACHE
 
 # Arbitrary value, not 0 or 1, used to derive a pubkey from preshared xpub in Key Teleport
 KT_RXPUBKEY_DERIV = const(20250317)
@@ -167,12 +167,13 @@ class MiniScriptWallet(WalletABC):
         self.keys_info = keys_info
         self.desc = desc
         self.addr_fmt = af
-        # internal key unspendable (taproot only)
-        self.ik_u = ik_u
+        self.ik_u = ik_u            # internal key unspendable (taproot only)
+
         # below are basic multisig meta
         # if m_n is not None, we are dealing with basic multisig
         self.m_n = m_n
         self.bip67 = bip67
+
         # at this point all the keys are already validated
         self.chain_type = chain_type or chains.current_chain().ctype
 
@@ -236,7 +237,7 @@ class MiniScriptWallet(WalletABC):
                     dis.fullscreen("Migrating...")
 
                 lst[idx] = w.serialize()
-                settings.set("miniscript", lst)
+                settings.set(cls.skey, lst)
                 settings.save()
 
             if w.key_chain.ctype != chains.current_key_chain().ctype:
@@ -426,11 +427,11 @@ class MiniScriptWallet(WalletABC):
         s += "\n\n" + self.desc_tmplt
         return s
 
-    async def show_detail(self, story="", allow_import=False):
+    async def show_detail(self, story="", offer_import=False):
         story += self.detail()
         story += "\n\nPress (1) to see extended public keys"
 
-        if allow_import:
+        if offer_import:
             story += ", OK to approve, X to cancel."
 
         while True:
@@ -438,10 +439,10 @@ class MiniScriptWallet(WalletABC):
             if ch == "1":
                 await self.show_keys()
 
-            elif ch != "y":
-                return None
-            else:
+            elif (ch == "y") and offer_import:
                 return True
+            elif ch == "x":
+                return False
 
     async def show_keys(self):
         msg = ""
@@ -462,19 +463,18 @@ class MiniScriptWallet(WalletABC):
         if self.desc is None:
             # actual descriptor is not loaded, but was asked for
             # fill policy - aka storage format - to actual descriptor
-            import glob
 
-            if self.name in glob.DESC_CACHE:
+            if self.name in DESC_CACHE:
                 # loaded descriptor from cache
-                self.desc = glob.DESC_CACHE[self.name]
+                self.desc = DESC_CACHE[self.name]
             else:
-                print("loading... policy --> descriptor !!!")
+                #print("loading... policy --> descriptor !!!")
                 # no need to validate already saved descriptor - was validated upon enroll
                 self.desc = self._from_bip388_wallet_policy(self.desc_tmplt, self.keys_info,
                                                             validate=False)
                 # cache len always 1
-                glob.DESC_CACHE = {}
-                glob.DESC_CACHE[self.name] = self.desc
+                DESC_CACHE.clear()
+                DESC_CACHE[self.name] = self.desc
 
         return self.desc
 
@@ -581,9 +581,8 @@ class MiniScriptWallet(WalletABC):
             assert set(self.to_descriptor().keys) == keys
 
     def ux_unique_name_msg(self, name=None):
-        return ("Miniscript wallet with name '%s'"
-                " already exists. All wallets MUST"
-                " have unique names.\n\n" % (name or self.name))
+        return ("%s wallet with name '%s' already exists. All wallets MUST"
+                " have unique names.\n\n" % ("Multisig" if self.m_n else "Miniscript", name or self.name))
 
     def find_duplicates(self):
         for rv in self.iter_wallets():
@@ -608,30 +607,34 @@ class MiniScriptWallet(WalletABC):
                     assert False, err + "\n\n"
 
     async def confirm_import(self):
-        nope, yes = (KEY_CANCEL, KEY_ENTER) if version.has_qwerty else ("x", "y")
+        # Return T if the user approves of this new wallet
         try:
+            allow_import = True
             self.find_duplicates()
-            story, allow_import = "Create new miniscript wallet?\n\n", True
+            story = "Create new %s wallet?\n\n" % ('multisig' if self.m_n else 'miniscript')
             if self.m_n and not self.bip67:
                 story += ("WARNING: BIP-67 disabled! Unsorted multisig - "
                           "order of keys in descriptor/backup is crucial\n\n")
+
         except AssertionError as e:
             story, allow_import = str(e), False
 
-        to_save = await self.show_detail(story, allow_import=allow_import)
+        if not await self.show_detail(story, offer_import=allow_import):
+            # user didn't like it, stop
+            return False
 
-        ch = yes if to_save else nope
-        if to_save and allow_import:
-            assert self.storage_idx == -1
-            self.commit()
-            import glob
-            # new wallet was imported - cache descriptor
-            glob.DESC_CACHE = {}
-            assert self.desc
-            glob.DESC_CACHE[self.name] = self.desc
-            await ux_dramatic_pause("Saved.", 2)
+        # save new record
+        assert self.storage_idx == -1
+        self.commit()
 
-        return ch
+        # new wallet was imported, so cache its descriptor
+        assert self.desc
+        DESC_CACHE.clear()
+        DESC_CACHE[self.name] = self.desc
+
+        await ux_dramatic_pause("Saved.", 2)
+
+        return True
 
     def yield_addresses(self, start_idx, count, change_idx=0, scripts=False):
         ch = chains.current_chain()
@@ -723,8 +726,10 @@ class MiniScriptWallet(WalletABC):
 
         dis.fullscreen('Wait...')
 
+        t = "Multisig" if self.m_n else "Miniscript"
+
         if core:
-            name = "Bitcoin Core miniscript"
+            name = "Bitcoin Core %s" % t
             fname_pattern = 'bitcoin-core-%s.txt' % self.name
             msg = "importdescriptors cmd"
             core_obj = self.bitcoin_core_serialize()
@@ -739,8 +744,8 @@ class MiniScriptWallet(WalletABC):
                                "desc_template": self.desc_tmplt,
                                "keys_info": self.keys_info})
         else:
-            name = "Miniscript"
-            fname_pattern = 'minsc-%s.txt' % self.name
+            name = t
+            fname_pattern = '%s-%s.txt' % ("multi" if self.m_n else "minsc", self.name)
             msg = self.name
             res = self.to_string()
 
@@ -997,7 +1002,7 @@ async def import_miniscript_nfc(*a):
 async def import_miniscript_qr(*a):
     from auth import maybe_enroll_xpub
     from ux_q1 import QRScannerInteraction
-    data = await QRScannerInteraction().scan_text('Scan Miniscript from a QR code')
+    data = await QRScannerInteraction().scan_text('Scan Multisig/Miniscript from a QR code')
     if not data:
         # press pressed CANCEL
         return
@@ -1327,6 +1332,7 @@ def miniscript_640_migrate(old_serialization):
         keys_info.insert(0, res_key)
 
     new_opts = {"af": af}
+
     # policy in old version lacks script type
     if af == AF_P2TR:
         # handle internal key

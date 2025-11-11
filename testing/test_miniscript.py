@@ -84,7 +84,7 @@ def import_miniscript(request, is_q1, need_keypress, offer_minsc_import, press_c
 
             goto_home()
             pick_menu_item("Settings")
-            pick_menu_item("Miniscript")
+            pick_menu_item("Multisig/Miniscript")
             time.sleep(.1)
 
             pick_menu_item('Import')
@@ -203,7 +203,7 @@ def miniscript_descriptors(goto_home, pick_menu_item, need_keypress, cap_story,
         qr_data = None
         goto_home()
         pick_menu_item("Settings")
-        pick_menu_item("Miniscript")
+        pick_menu_item("Multisig/Miniscript")
         pick_menu_item(minsc_name)
         pick_menu_item("Descriptors")
         pick_menu_item("Export")
@@ -465,12 +465,12 @@ def create_core_wallet(goto_home, pick_menu_item, load_export, bitcoind):
             # probably not in Miniscript
             goto_home()
             pick_menu_item('Settings')
-            pick_menu_item('Miniscript')
+            pick_menu_item("Multisig/Miniscript")
             pick_menu_item(name)
 
         pick_menu_item("Descriptors")
         pick_menu_item("Bitcoin Core")
-        text = load_export(way, label="Bitcoin Core miniscript", is_json=False)
+        text = load_export(way, label="Bitcoin Core Miniscript", is_json=False)
         text = text.replace("importdescriptors ", "").strip()
         # remove junk
         r1 = text.find("[")
@@ -1140,7 +1140,7 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
 
     goto_home()
     pick_menu_item('Settings')
-    pick_menu_item('Miniscript')
+    pick_menu_item("Multisig/Miniscript")
     menu = cap_menu()
 
     ts = create_core_wallet(menu[0], "bech32m", "sd", True)
@@ -1982,7 +1982,7 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
 
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     time.sleep(0.1)
     m = cap_menu()
     assert "(none setup yet)" not in m
@@ -1990,7 +1990,7 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
     goto_home()
     settings_set("chain", "BTC")
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     time.sleep(0.1)
     m = cap_menu()
     # but not on current active chain
@@ -1999,7 +1999,7 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
     press_select()
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     time.sleep(0.1)
     m = cap_menu()
     assert fname_btc.split(".")[0] in m[0]
@@ -2015,7 +2015,7 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
     press_select()
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     time.sleep(0.1)
     m = cap_menu()
     assert "(none setup yet)" not in m
@@ -2161,7 +2161,7 @@ def test_json_import_failures(config, offer_minsc_import):
 def test_unique_name(clear_miniscript, use_regtest, offer_minsc_import,
                      pick_menu_item, cap_menu, way, goto_home,
                      microsd_path, virtdisk_path, is_json,
-                     import_miniscript, press_select):
+                     import_miniscript, press_select, press_cancel):
     clear_miniscript()
     use_regtest()
 
@@ -2176,7 +2176,7 @@ def test_unique_name(clear_miniscript, use_regtest, offer_minsc_import,
     press_select()
     time.sleep(.2)
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     m = cap_menu()
     assert m[0] == name
     assert m[1] == "Import"
@@ -2186,10 +2186,10 @@ def test_unique_name(clear_miniscript, use_regtest, offer_minsc_import,
     title, story = offer_minsc_import(yd)
     assert ("'%s' already exists" % name) in story
     assert "MUST have unique names" in story
-    press_select()
+    press_cancel()
     # nothing imported
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     m = cap_menu()
     assert m[0] == name
     assert m[1] == "Import"
@@ -2202,6 +2202,7 @@ def test_unique_name(clear_miniscript, use_regtest, offer_minsc_import,
             pytest.xfail("impossible")
 
         nfc_data = yd
+        fname = None
     else:
         if way == "sd":
             fpath = microsd_path(fname)
@@ -2376,7 +2377,7 @@ aA+bduIqWCMpBW2K5F0FuxfY4ofjfGWLKDMAAAgAEAAIAAAACAAgAAgAEAAAADAAAAAA=="""
 
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     pick_menu_item("Import")
     need_keypress("1")
     pick_menu_item(desc_fname)
@@ -3091,7 +3092,7 @@ def test_same_key_set_miniscript(get_cc_key, bitcoin_core_signer, create_core_wa
 
         # now correct way via miniscript wallet
         pick_menu_item("Settings")
-        pick_menu_item("Miniscript")
+        pick_menu_item("Multisig/Miniscript")
         pick_menu_item("msc2")
         pick_menu_item("Sign PSBT")
         title, story = cap_story()
@@ -3180,7 +3181,7 @@ def test_bip388_policies(desc, way, offer_minsc_import, press_select, pick_menu_
 
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     pick_menu_item("msc1")
     pick_menu_item("Descriptors")
     pick_menu_item("BIP-388 Policy")
@@ -3309,7 +3310,7 @@ def test_miniscript_rename(offer_minsc_import, clear_miniscript, press_select, g
 
     goto_home()
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     pick_menu_item(name)
     pick_menu_item("Rename")
     if is_q1:

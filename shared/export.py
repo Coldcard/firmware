@@ -192,7 +192,7 @@ be needed for different systems.
 
     from wallet import MiniScriptWallet
     if MiniScriptWallet.exists():
-        yield '\n# Your Miniscript Wallets\n\n'
+        yield '\n# Your Multisig/Miniscript Wallets\n\n'
 
         for msc in MiniScriptWallet.iter_wallets():
             yield msc.to_string() + "\n---\n"

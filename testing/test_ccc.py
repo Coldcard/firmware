@@ -520,7 +520,7 @@ def ccc_ms_setup(microsd_path, virtdisk_path, scan_a_qr, is_q1, cap_menu, pick_m
         for _ in range(5):
             time.sleep(.1)
             title, story = cap_story()
-            if  "Create new miniscript wallet" in story:
+            if  "Create new multisig wallet" in story:
                 break
         else:
             press_cancel()
@@ -553,7 +553,7 @@ def bitcoind_create_watch_only_wallet(pick_menu_item, need_keypress, microsd_pat
         pick_menu_item("Descriptors")
         pick_menu_item("Bitcoin Core")
 
-        res = load_export("sd", label="Bitcoin Core miniscript", is_json=False)
+        res = load_export("sd", label="Bitcoin Core Multisig", is_json=False)
 
         res = res.replace("importdescriptors ", "").strip()
         r1 = res.find("[")
@@ -877,7 +877,7 @@ def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim
     pick_menu_item(target_mi)  # choose already created multisig
     pick_menu_item("Descriptors")
     pick_menu_item("Export")
-    ms_conf = load_export("sd", "Miniscript", is_json=False)
+    ms_conf = load_export("sd", "Multisig", is_json=False)
     press_cancel()
 
     # fund CCC multisig
@@ -928,7 +928,7 @@ def test_load_and_sign_key_C(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_
     pick_menu_item(target_mi)  # choose already created multisig
     pick_menu_item("Descriptors")
     pick_menu_item("Export")
-    ms_conf = load_export("sd", "Miniscript", is_json=False)
+    ms_conf = load_export("sd", "Multisig", is_json=False)
     press_cancel()
 
     # fund CCC multisig
@@ -1040,7 +1040,7 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
                                    bitcoind_create_watch_only_wallet, cap_story, bitcoind,
                                    policy_sign, settings_get, cap_menu, pick_menu_item,
                                    press_select, load_export, offer_minsc_import, goto_home,
-                                   need_keypress, is_q1, enter_text, enter_complex):
+                                   need_keypress, is_q1, enter_text, enter_complex, press_cancel):
     # - 'build 2-of-N' path
     goto_home()
     settings_set("ccc", None)
@@ -1110,16 +1110,16 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
     pick_menu_item(ami)  # just another ms wallet
     pick_menu_item("Descriptors")
     pick_menu_item("Export")
-    ms_conf = load_export("sd", "Miniscript", is_json=False)
+    ms_conf = load_export("sd", "Multisig", is_json=False)
 
     # try importing duplicate does not work
     _, story = offer_minsc_import(ms_conf)
     assert "Duplicate wallet" in story
-    press_select()  # not importable - dupe
+    press_cancel()  # not importable - dupe
 
     # try rename
     pick_menu_item("Settings")
-    pick_menu_item("Miniscript")
+    pick_menu_item("Multisig/Miniscript")
     pick_menu_item(w_name)
     pick_menu_item("Rename")
     for i in range(len(w_name) if is_q1 else len(w_name)-1):
@@ -1259,7 +1259,7 @@ def test_ms_setup_cosigner_import(way, ftype, is_bbqr, N, goto_home, settings_se
     pick_menu_item(target_mi)
     pick_menu_item("Descriptors")
     pick_menu_item("Export")
-    desc = load_export("sd", "Miniscript", is_json=False)
+    desc = load_export("sd", "Multisig", is_json=False)
 
     for _, obj in keys:
         assert f"[{obj['xfp'].lower()}/{obj['p2wsh_deriv'].replace('m/', '')}]{obj['p2wsh']}" in desc
