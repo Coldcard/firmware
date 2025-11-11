@@ -1,6 +1,6 @@
-# (c) Copyright 2023 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+# (c) Copyright 2020 by Stepan Snigirev, see <https://github.com/diybitcoinhardware/embit/blob/master/LICENSE>
 #
-# Copyright (c) 2020 Stepan Snigirev MIT License embit/arguments.py
+# Changes (c) Copyright 2023 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 import ngu, chains, ustruct, stash
 from io import BytesIO
