@@ -317,7 +317,8 @@ class Sha256(OneArg):
     PROPS = "ondu"
 
     def inner_compile(self):
-        return b"\x82" + Number(32).compile() + b"\x88\xa8" + self.carg + b"\x87"
+        # Number(32).compile() --> b"\x01\x20"
+        return b"\x82\x01\x20\x88\xa8" + self.carg + b"\x87"
 
     def __len__(self):
         return self.len_args() + 6
@@ -327,7 +328,8 @@ class Hash256(Sha256):
     NAME = "hash256"
 
     def inner_compile(self):
-        return b"\x82" + Number(32).compile() + b"\x88\xaa" + self.carg + b"\x87"
+        # Number(32).compile() --> b"\x01\x20"
+        return b"\x82\x01\x20\x88\xaa" + self.carg + b"\x87"
 
 
 class Ripemd160(Sha256):
@@ -336,7 +338,8 @@ class Ripemd160(Sha256):
     ARGCLS = Raw20
 
     def inner_compile(self):
-        return b"\x82" + Number(32).compile() + b"\x88\xa6" + self.carg + b"\x87"
+        # Number(32).compile() --> b"\x01\x20"
+        return b"\x82\x01\x20\x88\xa6" + self.carg + b"\x87"
 
 
 class Hash160(Ripemd160):
@@ -344,7 +347,8 @@ class Hash160(Ripemd160):
     NAME = "hash160"
 
     def inner_compile(self):
-        return b"\x82" + Number(32).compile() + b"\x88\xa9" + self.carg + b"\x87"
+        # Number(32).compile() --> b"\x01\x20"
+        return b"\x82\x01\x20\x88\xa9" + self.carg + b"\x87"
 
 
 class AndOr(Miniscript):
@@ -490,9 +494,7 @@ class AndN(Miniscript):
     def inner_compile(self):
         return (
             self.args[0].compile()
-            + b"\x64"
-            + Number(0).compile()
-            + b"\x67"
+            + b"\x64\x00\x67"
             + self.args[1].compile()
             + b"\x68"
         )
@@ -982,7 +984,7 @@ class T(Wrapper):
     TYPE = "B"
 
     def inner_compile(self):
-        return self.carg + Number(1).compile()
+        return self.carg + b"\x51"  # Number(1).compile() --> b"\x51"
 
     def __len__(self):
         return len(self.arg) + 1
@@ -1118,7 +1120,7 @@ class L(Wrapper):
     TYPE = "B"
 
     def inner_compile(self):
-        return b"\x63" + Number(0).compile() + b"\x67" + self.carg + b"\x68"
+        return b"\x63\x00\x67" + self.carg + b"\x68"
 
     def __len__(self):
         return len(self.arg) + 4
@@ -1144,7 +1146,7 @@ class L(Wrapper):
 class U(L):
     # IF [X] ELSE 0 ENDIF
     def inner_compile(self):
-        return b"\x63" + self.carg + b"\x67" + Number(0).compile() + b"\x68"
+        return b"\x63" + self.carg + b"\x67\x00\x68"
 
     def __len__(self):
         return len(self.arg) + 4
