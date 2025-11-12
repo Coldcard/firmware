@@ -471,7 +471,7 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
     dis.fullscreen('Generating...')
     chain = chains.current_chain()
 
-    xfp = settings.get('xfp')
+    xfp = settings.get('xfp', 0)
     dis.progress_bar_show(0.1)
     if mode is None:
         mode = chains.af_to_bip44_purpose(addr_type)
@@ -502,6 +502,19 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
     dis.progress_bar_show(1)
     await export_contents("Descriptor", body, fname_pattern, derive + "/0/0",
                           addr_type, force_prompt=True, direct_way=direct_way)
+
+
+async def make_key_expression_export(orig_der, fname_pattern="key_expr.txt"):
+
+    xfp = xfp2str(settings.get('xfp', 0)).lower()
+
+    with stash.SensitiveValues() as sv:
+        ek = chains.current_chain().serialize_public(sv.derive_path(orig_der))
+
+    body = "[%s/%s]%s" % (xfp, orig_der.replace("m/", ""), ek)
+
+    await export_contents("Key Expression", body, fname_pattern,
+                          None, None, force_prompt=True)
 
 # EOF
 

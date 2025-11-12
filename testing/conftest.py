@@ -2568,8 +2568,8 @@ def skip_if_useless_way(is_q1, nfc_disabled, vdisk_disabled):
     # when NFC is disabled, no point trying to do a PSBT via NFC
     # - important: run_sim_tests.py will enable NFC for complete testing
     # - similarly: the Mk4 and earlier had no QR scanner, so cannot use that as input
-    def doit(way):
-        if way == "qr" and not is_q1:
+    def doit(way, allow_mk4_qr=False):
+        if way == "qr" and (not is_q1 and not allow_mk4_qr):
             raise pytest.skip("mk4 QR not supported")
         elif way == 'nfc' and nfc_disabled():
             # runner will test these cases, but fail faster otherwise
