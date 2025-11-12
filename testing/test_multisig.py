@@ -169,6 +169,16 @@ def import_ms_wallet(dev, make_multisig, offer_minsc_import, press_select,
         story_name = None
         assert addr_fmt.upper() in story
         assert f'Policy: {M} of {N}\n' in story
+
+        if M == N == 1:
+            assert "The one signer must approve spends." in story
+        elif M == N:
+            assert f"All {N} co-signers must approve spends" in story
+        elif M == 1:
+            assert f"Any signature from {N} co-signers will approve spends"
+        else:
+            assert f"{M} signatures, from {N} possible co-signers, will be required to approve spends" in story
+
         for ll in story.split("\n\n"):
             if ll.startswith("Wallet Name"):
                 story_name = ll.split("\n")[-1].strip()
