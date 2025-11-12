@@ -20,8 +20,10 @@ from utils import show_single_address, problem_file_line, truncate_address
 
 
 class KeypathMenu(MenuSystem):
-    def __init__(self, path=None, nl=0):
+    def __init__(self, path=None, nl=0, ranged=True, done_fn=None):
         self.prefix = None
+        self.done_fn = done_fn
+        self.ranged = ranged
 
         if path is None:
             # Top level menu; useful shortcuts, and special case just "m"
@@ -31,10 +33,13 @@ class KeypathMenu(MenuSystem):
                 MenuItem("m/49h/⋯", f=self.deeper),
                 MenuItem("m/84h/⋯", f=self.deeper),
                 MenuItem("m/86h/⋯", f=self.deeper),
-                MenuItem("m/0/{idx}", menu=self.done),
-                MenuItem("m/{idx}", menu=self.done),
                 MenuItem("m", f=self.done),
             ]
+            if self.ranged:
+                items += [
+                    MenuItem("m/0/{idx}", menu=self.done),
+                    MenuItem("m/{idx}", menu=self.done),
+                ]
         else:
             # drill down one layer: (nl) is the current leaf
             # - hardened choice first
@@ -44,11 +49,14 @@ class KeypathMenu(MenuSystem):
                 MenuItem(p+"/⋯",  menu=self.deeper),
                 MenuItem(p+"h", menu=self.done),
                 MenuItem(p, menu=self.done),
-                MenuItem(p+"h/0/{idx}", menu=self.done),
-                MenuItem(p+"/0/{idx}", menu=self.done),      #useful shortcut?
-                MenuItem(p+"h/{idx}", menu=self.done),
-                MenuItem(p+"/{idx}", menu=self.done),
             ]
+            if self.ranged:
+                items += [
+                    MenuItem(p + "h/0/{idx}", menu=self.done),
+                    MenuItem(p + "/0/{idx}", menu=self.done),  # useful shortcut?
+                    MenuItem(p + "h/{idx}", menu=self.done),
+                    MenuItem(p + "/{idx}", menu=self.done),
+                ]
 
         # simple consistent truncation when needed
         max_wide = max(len(mi.label) for mi in items)
@@ -86,8 +94,11 @@ class KeypathMenu(MenuSystem):
             if isinstance(top, KeypathMenu):
                 the_ux.pop()
                 continue
-            assert isinstance(top, AddressListMenu)
+            # assert isinstance(top, AddressListMenu), type(top)
             break
+
+        if self.done_fn:
+            return await self.done_fn(final_path)
 
         return PickAddrFmtMenu(final_path, top)
 
@@ -96,7 +107,7 @@ class KeypathMenu(MenuSystem):
         assert val.endswith('/⋯')
         cpath = val[:-2]
         nl = await ux_enter_bip32_index('%s/' % cpath, unlimited=True)
-        return KeypathMenu(cpath, nl)
+        return KeypathMenu(cpath, nl, ranged=self.ranged, done_fn=self.done_fn)
 
 class PickAddrFmtMenu(MenuSystem):
     def __init__(self, path, parent):
