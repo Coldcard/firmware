@@ -423,6 +423,17 @@ class MiniScriptWallet(WalletABC):
             M, N = self.m_n
             s += "Policy: %d of %d\n\n" % (M, N)
 
+            if M == N == 1:
+                s += 'The one signer must approve spends.'
+            elif M == N:
+                s += 'All %d co-signers must approve spends.' % N
+            elif M == 1:
+                s += 'Any signature from %d co-signers will approve spends.' % N
+            else:
+                s += '%d signatures, from %d possible co-signers, will be required to approve spends.' % (M, N)
+
+            s += "\n\n"
+
         s += chains.addr_fmt_label(self.addr_fmt)
         s += "\n\n" + self.desc_tmplt
         return s
