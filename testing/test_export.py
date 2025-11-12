@@ -11,7 +11,6 @@ from mnemonic import Mnemonic
 from ckcc_protocol.constants import *
 from helpers import xfp2str, slip132undo
 from conftest import simulator_fixed_xfp, simulator_fixed_tprv, simulator_fixed_words, simulator_fixed_xprv
-from ckcc_protocol.constants import AF_CLASSIC, AF_P2WPKH
 from pprint import pprint
 from charcodes import KEY_NFC, KEY_QR
 
@@ -927,5 +926,132 @@ def test_samourai_vs_generic(chain, account, settings_set, pick_menu_item, goto_
     press_select()
     file_desc = load_export("sd", label="Descriptor", is_json=False, addr_fmt=AF_P2WPKH)
     assert file_desc.strip() == file_desc_generic.strip()
+
+
+@pytest.mark.parametrize("chain", ["BTC", "XTN"])
+@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc", "qr"])
+@pytest.mark.parametrize("addr_fmt", [AF_P2WPKH, AF_P2WPKH_P2SH, AF_CLASSIC, AF_P2WSH, AF_P2WSH_P2SH])
+@pytest.mark.parametrize("acct_num", [None, (2 ** 31) - 1])
+def test_key_expression_export(chain, addr_fmt, acct_num, goto_home, settings_set, need_keypress,
+                               pick_menu_item, way, cap_story, cap_menu, virtdisk_path, dev,
+                               load_export, press_select, skip_if_useless_way):
+
+    skip_if_useless_way(way, allow_mk4_qr=True)
+
+    settings_set('chain', chain)
+    chain_num = 1 if chain in ["XTN", "XRT"] else 0
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Export Wallet")
+    pick_menu_item("Key Expression")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "This saves a extended key expression" in story
+    assert "Press (1) to enter a non-zero account number" in story
+    assert "sensitive--in terms of privacy" in story
+    assert "not compromise your funds directly" in story
+
+    if isinstance(acct_num, int):
+        need_keypress("1")        # chosse account number
+        for ch in str(acct_num):
+            need_keypress(ch)     # input num
+        press_select()        # confirm selection
+    else:
+        press_select()  # confirm story
+        acct_num = 0
+
+    menu = cap_menu()
+    if addr_fmt == AF_P2WPKH:
+        menu_item = "Segwit P2WPKH"
+        derive = f"m/84h/{chain_num}h/{acct_num}h"
+    elif addr_fmt == AF_P2WPKH_P2SH:
+        menu_item = "P2SH-Segwit"
+        derive = f"m/49h/{chain_num}h/{acct_num}h"
+    elif addr_fmt == AF_CLASSIC:
+        menu_item = "Classic P2PKH"
+        derive = f"m/44h/{chain_num}h/{acct_num}h"
+    elif addr_fmt == AF_P2WSH:
+        menu_item = "Multi P2WSH"
+        derive = f"m/48h/{chain_num}h/{acct_num}h/2h"
+    else:
+        assert addr_fmt == AF_P2WSH_P2SH
+        menu_item = "Multi P2SH-P2WSH"
+        derive = f"m/48h/{chain_num}h/{acct_num}h/1h"
+
+    assert menu_item in menu
+    pick_menu_item(menu_item)
+
+    contents = load_export(way, label="Key Expression", is_json=False, sig_check=False)
+    key_exp = contents.strip()
+
+    xfp = dev.master_fingerprint
+    xfp = xfp2str(xfp).lower()
+
+    seed = Mnemonic.to_seed(simulator_fixed_words)
+    node = BIP32Node.from_master_secret(
+        seed, netcode="BTC" if chain == "BTC" else "XTN"
+    ).subkey_for_path(derive)
+
+    target = f"[{xfp}/{derive.replace('m/', '')}]{node.hwif()}"
+    assert key_exp == target
+
+
+@pytest.mark.parametrize('path', [
+    # NOTE: (2**31)-1 = 0x7fff_ffff = 2147483647
+    "m/2147483647/2147483647/2147483647/2147483647/2147483647/2147483647/2147483647/2147483647",
+    "m/1/2/3/4/5",
+    "m/1h/2h/3h/4h/5h",
+    "m/45h",
+])
+def test_custom_key_expression_export(path, goto_home, pick_menu_item, cap_menu, need_keypress,
+                                      press_select, load_export, use_testnet, dev):
+    use_testnet()
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Export Wallet")
+    pick_menu_item("Key Expression")
+    press_select() # story
+    pick_menu_item("Custom Path")
+
+    # blind entry, using only first 2 menu items
+    deeper = path.split("/")[1:]
+    for depth, part in enumerate(deeper):
+        time.sleep(.01)
+        m = cap_menu()
+        for mi in m:
+            assert "{idx}" not in mi  # ranged values not allowed here
+        if depth == 0:
+            assert m[0] == 'm/⋯'
+            pick_menu_item(m[0])
+        else:
+            assert m[0].endswith("h/⋯")
+            assert m[1].endswith("/⋯")
+            assert m[0] != m[1]
+
+            pick_menu_item(m[0 if last_part[-1] == "h" else 1])
+
+        # enter path component
+        for d in part:
+            if d == "h": break
+            need_keypress(d)
+        press_select()
+
+        last_part = part
+
+    time.sleep(.01)
+    m = cap_menu()
+    pick_menu_item(m[2 if part[-1] == "h" else 3])
+
+    contents = load_export("sd", label="Key Expression", is_json=False, sig_check=False)
+    key_exp = contents.strip()
+
+    xfp = dev.master_fingerprint
+    xfp = xfp2str(xfp).lower()
+
+    seed = Mnemonic.to_seed(simulator_fixed_words)
+    node = BIP32Node.from_master_secret(seed, netcode="XTN").subkey_for_path(path)
+
+    target = f"[{xfp}/{path.replace('m/', '')}]{node.hwif()}"
+    assert key_exp == target
 
 # EOF

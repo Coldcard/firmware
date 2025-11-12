@@ -14,7 +14,7 @@ from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
 from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt, OK, X, ux_render_words
 from export import export_contents, make_summary_file, make_descriptor_wallet_export
 from export import make_bitcoin_core_wallet, generate_wasabi_wallet, generate_generic_export
-from export import generate_unchained_export, generate_electrum_wallet
+from export import generate_unchained_export, generate_electrum_wallet, make_key_expression_export
 from files import CardSlot, CardMissingError, needs_microsd
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2TR
 from glob import settings
@@ -1202,6 +1202,46 @@ async def ss_descriptor_skeleton(_0, _1, item):
             for af in allowed_af
         ]
         the_ux.push(MenuSystem(rv))
+
+
+async def key_expression_skeleton_step2(_1, _2, item):
+    # pick a semi-random file name, render and save it.
+    orig_path = item.arg
+    await make_key_expression_export(orig_path)
+
+async def key_expression_skeleton(_0, _1, item):
+    # Export key expression -> [xfp/d/e/r]xpub
+
+    acct_num = 0
+    ch = await ux_show_story("This saves a extended key expression."
+                             + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape='1')
+    if ch == '1':
+        acct_num = await ux_enter_bip32_index('Account Number:', unlimited=True) or 0
+    elif ch != 'y':
+        return
+
+    todo = [
+        ("Segwit P2WPKH", "m/84h/%dh/%dh"),
+        ("Classic P2PKH", "m/44h/%dh/%dh"),
+        ("P2SH-Segwit", "m/49h/%dh/%dh"),
+        ("Multi P2WSH", "m/48h/%dh/%dh/2h"),
+        ("Multi P2SH-P2WSH", "m/48h/%dh/%dh/1h"),
+    ]
+
+    from address_explorer import KeypathMenu
+
+    async def doit(*a):
+        return KeypathMenu(ranged=False, done_fn=make_key_expression_export)
+
+    ct = chains.current_chain().b44_cointype
+
+    rv = [
+        MenuItem(label, f=key_expression_skeleton_step2, arg=orig_der % (ct, acct_num))
+        for label, orig_der in todo
+    ]
+    rv += [MenuItem("Custom Path", menu=doit)]
+
+    the_ux.push(MenuSystem(rv))
 
 async def samourai_post_mix_descriptor_export(*a):
     name = "POST-MIX"

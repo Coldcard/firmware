@@ -237,6 +237,7 @@ WalletExportMenu = [
     MenuItem("Descriptor", f=ss_descriptor_skeleton),
     MenuItem("Generic JSON", f=generic_skeleton),
     MenuItem("Export XPUB", menu=XpubExportMenu),
+    MenuItem("Key Expression", f=key_expression_skeleton),
     MenuItem("Dump Summary", predicate=has_secrets, f=dump_summary),
 ]
 
