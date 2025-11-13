@@ -1467,7 +1467,8 @@ class psbtObject(psbtProxy):
         else:
             trust_mode = MiniScriptWallet.get_trust_policy()
             # already checked for existing import and wasn't found, so fail
-            assert trust_mode != TRUST_VERIFY, "XPUBs in PSBT do not match any existing wallet"
+            if trust_mode == TRUST_VERIFY:
+                raise FatalPSBTIssue("XPUBs in PSBT do not match any existing wallet")
 
             # Maybe create wallet, for today, forever, or fail, etc.
             proposed = MiniScriptWallet.import_from_psbt(af, M, N, parsed_xpubs)
