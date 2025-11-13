@@ -930,7 +930,8 @@ def test_samourai_vs_generic(chain, account, settings_set, pick_menu_item, goto_
 
 @pytest.mark.parametrize("chain", ["BTC", "XTN"])
 @pytest.mark.parametrize("way", ["sd", "vdisk", "nfc", "qr"])
-@pytest.mark.parametrize("addr_fmt", [AF_P2WPKH, AF_P2WPKH_P2SH, AF_CLASSIC, AF_P2WSH, AF_P2WSH_P2SH])
+@pytest.mark.parametrize("addr_fmt", [AF_P2WPKH, AF_P2TR, AF_P2WPKH_P2SH, AF_CLASSIC,
+                                      AF_P2WSH, AF_P2WSH_P2SH, 1000])  # using 1000 as P2TR multisig
 @pytest.mark.parametrize("acct_num", [None, (2 ** 31) - 1])
 def test_key_expression_export(chain, addr_fmt, acct_num, goto_home, settings_set, need_keypress,
                                pick_menu_item, way, cap_story, cap_menu, virtdisk_path, dev,
@@ -964,6 +965,9 @@ def test_key_expression_export(chain, addr_fmt, acct_num, goto_home, settings_se
     if addr_fmt == AF_P2WPKH:
         menu_item = "Segwit P2WPKH"
         derive = f"m/84h/{chain_num}h/{acct_num}h"
+    elif addr_fmt == AF_P2TR:
+        menu_item = "Taproot P2TR"
+        derive = f"m/86h/{chain_num}h/{acct_num}h"
     elif addr_fmt == AF_P2WPKH_P2SH:
         menu_item = "P2SH-Segwit"
         derive = f"m/49h/{chain_num}h/{acct_num}h"
@@ -973,10 +977,13 @@ def test_key_expression_export(chain, addr_fmt, acct_num, goto_home, settings_se
     elif addr_fmt == AF_P2WSH:
         menu_item = "Multi P2WSH"
         derive = f"m/48h/{chain_num}h/{acct_num}h/2h"
-    else:
-        assert addr_fmt == AF_P2WSH_P2SH
+    elif addr_fmt == AF_P2WSH_P2SH:
         menu_item = "Multi P2SH-P2WSH"
         derive = f"m/48h/{chain_num}h/{acct_num}h/1h"
+    else:
+        assert addr_fmt == 1000
+        menu_item = "Multi P2TR"
+        derive = f"m/48h/{chain_num}h/{acct_num}h/3h"
 
     assert menu_item in menu
     pick_menu_item(menu_item)

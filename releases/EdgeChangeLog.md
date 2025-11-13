@@ -26,6 +26,8 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 - New Feature: Sign with specific miniscript wallet. `Settings -> Miniscript -> <name> -> Sign PSBT`
 - New Feature: Miniscript wallet name can be specified for `sign` USB command
 - New Feature: Rename Miniscript wallet via UX. `Settings -> Miniscript -> <wallet> -> Rename`.
+- New Feature: Export [BIP-380](https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki) extended key expression.
+  Navigate to `Advanced/Tools -> Export Wallet -> Key Expression`
 - Enhancement: Slightly faster HW accelerated tagged hash
 - Enhancement: PSBT class optimizations. Ability to sign bigger txn.
 - Enhancement: Signing TXN UI shows Miniscript wallet name.

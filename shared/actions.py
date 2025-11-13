@@ -1222,9 +1222,11 @@ async def key_expression_skeleton(_0, _1, item):
 
     todo = [
         ("Segwit P2WPKH", "m/84h/%dh/%dh"),
+        ("Taproot P2TR", "m/86h/%dh/%dh"),
         ("Classic P2PKH", "m/44h/%dh/%dh"),
         ("P2SH-Segwit", "m/49h/%dh/%dh"),
         ("Multi P2WSH", "m/48h/%dh/%dh/2h"),
+        ("Multi P2TR", "m/48h/%dh/%dh/3h"),
         ("Multi P2SH-P2WSH", "m/48h/%dh/%dh/1h"),
     ]
 
