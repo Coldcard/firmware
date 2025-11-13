@@ -3416,4 +3416,73 @@ def test_timelocks_without_consesnsus_meaning(lock, clear_miniscript, goto_home,
     assert f"{what}{lock[0]} out of range [{x}, {y}]" in e.value.args[0]
     press_select()
 
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("taproot", [True, False])
+def test_thresh_with_multiple_rel_locks(taproot, get_cc_key, create_core_wallet, offer_minsc_import,
+                                        cap_story, press_select, clear_miniscript, start_sign,
+                                        end_sign, bitcoind):
+
+    clear_miniscript()
+    # we do not know private keys to our co-signer keys
+    # but that is the whole, we let both locks expire & then we can sign alone
+    tmplt = (f"thresh("
+             f"3,"
+             f"pk({get_cc_key('m/48h/1h/0h/3h')}),"
+             f"s:pk([30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*),"
+             f"s:pk([b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*),"
+             f"snl:older(10),"
+             f"snl:older(20))")
+
+    if taproot:
+        ik = ranged_unspendable_internal_key()
+        desc = f"tr({ik},{tmplt})"
+        af = "bech32m"
+    else:
+        af = "bech32"
+        desc = f"wsh({tmplt})"
+
+    wname = "double_lock"
+    title, story = offer_minsc_import(json.dumps(dict(name=wname, desc=desc)))
+    assert "Create new miniscript wallet?" in story
+    press_select()
+    time.sleep(.2)
+
+    wo = create_core_wallet(wname, af)
+
+    unspent = wo.listunspent()
+    inp = {"txid": unspent[0]["txid"], "vout": unspent[0]["vout"], "sequence": 20}
+    psbt = wo.walletcreatefundedpsbt([inp], [{bitcoind.supply_wallet.getnewaddress(): 1.0}],
+                                     0, {"fee_rate": 2})["psbt"]
+
+    start_sign(base64.b64decode(psbt), miniscript=wname)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "Consolidating" not in story  # not consolidation tx
+    assert wname in story
+    final_psbt = end_sign(accept=True)
+
+    fin_res = wo.finalizepsbt(base64.b64encode(final_psbt).decode())
+    assert fin_res["complete"]
+
+    tx_hex = fin_res["hex"]
+    res = wo.testmempoolaccept([tx_hex])
+    # timelocked
+    assert not res[0]["allowed"]
+    assert res[0]["reject-reason"] == 'non-BIP68-final'
+
+    # 20 is the highest of the 2 locks - release by minig
+    bitcoind.supply_wallet.generatetoaddress(20, bitcoind.supply_wallet.getnewaddress())  # mine above
+
+    fin_res = wo.finalizepsbt(base64.b64encode(final_psbt).decode())
+    assert fin_res["complete"]
+
+    tx_hex = fin_res["hex"]
+    res = wo.testmempoolaccept([tx_hex])
+    assert res[0]["allowed"]
+
+    res = wo.sendrawtransaction(tx_hex)
+    assert len(res) == 64
+
 # EOF
