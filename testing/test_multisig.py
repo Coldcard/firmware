@@ -1114,15 +1114,11 @@ def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_miniscript, import_ms
     num_outs = num_ins-1
     bip67 = False if desc == "multi" else True
 
-    # TODO
-    # # trust PSBT if we're doing "no-import" case
-    settings_set('pms', 2 if (incl_xpubs == 'no-import') else 0)
-
     clear_miniscript()
 
-    if addr_fmt == AF_P2SH:
+    if addr_fmt == "p2sh":
         dd = "m/45h"
-    elif addr_fmt == AF_P2WSH:
+    elif addr_fmt == "p2wsh":
         dd = "m/48h/1h/0h/2h"
     else:
         dd = "m/48h/1h/0h/1h"
@@ -1131,23 +1127,28 @@ def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_miniscript, import_ms
         kk = str_to_path(dd)
         return kk + [0,0]
 
+    def include_xpubs(idx, xfp, m, sk):
+        kk = str_to_path(dd)
+        bp = pack('<%dI' % (dd.count("/") + 1), xfp, *kk)
+        return sk.node.serialize_public(), bp
+
     if incl_xpubs:
         # test enrolling xpubs form PSBT
         do_import = False
-
-        def incl_xpubs(idx, xfp, m, sk):
-            kk = str_to_path(dd)
-            bp = pack('<%dI' % (dd.count("/")+1), xfp, *kk)
-            return sk.node.serialize_public(), bp
+        incl_xpubs = include_xpubs
 
         if not bip67:
             raise pytest.skip("cannot import unsorted multisig from PSBT")
     elif incl_xpubs is None:
         # test verification of PSBT xpubs against our enrolled wallet
         do_import = True
-        incl_xpubs = True
+        incl_xpubs = include_xpubs
     else:
         do_import = True
+        incl_xpubs = None
+
+    # trust PSBT if we're doing "no-import" case
+    settings_set('pms', 2 if not do_import else 0)
 
     keys = import_ms_wallet(M, N, name='ms-sign-simple', accept=True, addr_fmt=addr_fmt,
                             do_import=do_import, bip67=bip67, common=dd)
@@ -1157,7 +1158,7 @@ def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_miniscript, import_ms
 
     psbt = fake_ms_txn(num_ins, num_outs, M, keys, inp_addr_fmt=addr_fmt, incl_xpubs=incl_xpubs,
                        outstyles=[addr_fmt], change_outputs=[1] if has_change else [],
-                       bip67=bip67, netcode="XRT")
+                       bip67=bip67, netcode="XRT", path_mapper=path_mapper)
 
     with open(f'{sim_root_dir}/debug/last.psbt', 'wb') as f:
         f.write(psbt)
