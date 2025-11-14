@@ -3425,7 +3425,7 @@ def test_thresh_with_multiple_rel_locks(taproot, get_cc_key, create_core_wallet,
 
     clear_miniscript()
     # we do not know private keys to our co-signer keys
-    # but that is the whole, we let both locks expire & then we can sign alone
+    # but that is the whole point, we let both locks expire & then we can sign alone
     tmplt = (f"thresh("
              f"3,"
              f"pk({get_cc_key('m/48h/1h/0h/3h')}),"
