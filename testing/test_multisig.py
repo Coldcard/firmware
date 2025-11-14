@@ -3310,7 +3310,7 @@ def test_psbt_xpubs_slip132(pms, clear_miniscript, settings_set, start_sign, end
     title, story = cap_story()
     if pms == 0:
         # verify only
-        assert "Invalid PSBT" in story
+        assert "Failure" in title
         assert "XPUBs in PSBT do not match any existing wallet"
         press_select()
         title, story = offer_minsc_import("sh(wsh(sortedmulti(2,[cdf24066/49/1/0]Upub5QWbdFzCKPujKUZWDF9mST5iE4VJpaqAqXiS85jYUEaSBtwbFcJwswU2DeWGC6rNBnoKs8rQC9oKGdNTSqKwseHDeaE68YAx2QbgcqX84z6/<0;1>/*,[12d56d35/49/1/0]Upub5QaiwZWYcoJwBw26hGguMiUgmKvqpnzrBR92uVEmmwdAtS5LnpBEUPPavjQgxdakT8MKb96FE2Pn61ogKFT3r6obPZiH8q9Y3NPCFRswq6F/<0;1>/*,[5db182e6/49/1/0]Upub5RiNwTn4EVpghGJx1CWjbt9jfL5d792JRyccZxgtWVhbPDwf1o6A4vK9AyTY4VgGBMvEgM3qHM3mhAKxCiF4idL3nMjdskZNP1hQXD8XPq3/<0;1>/*)))")
