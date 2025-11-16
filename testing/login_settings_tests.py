@@ -146,6 +146,7 @@ def test_set_nickname(nick, request):
     _set_nickname(device, is_Q, nick)
     time.sleep(1)
     sim.stop()  # power off
+    device.close()
     # new simulator instance - but should get us directly to the last used settings
     sim = ColdcardSimulator(args= ["--q1" if is_Q else "", "--early-usb"])
 
@@ -160,6 +161,7 @@ def test_set_nickname(nick, request):
         nick = nick.replace(" " * 4, " " * 2)  # max two spaces in sequence (Mk4)
     assert nick == target
     sim.stop()
+    device.close()
 
 
 def test_randomize_pin_keys(request):
@@ -175,6 +177,7 @@ def test_randomize_pin_keys(request):
 
     time.sleep(1)
     sim.stop()  # power off
+    device.close()
     sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"])
     sim.start(start_wait=6)
     device = ColdcardDevice(is_simulator=True)
@@ -183,6 +186,7 @@ def test_randomize_pin_keys(request):
     m = _cap_menu(device)
     assert "Ready To Sign" in m
     sim.stop()
+    device.close()
 
 @pytest.mark.parametrize("lcdwn", [" 5 minutes", "15 minutes"])
 def test_login_countdown(lcdwn, request):
@@ -198,6 +202,7 @@ def test_login_countdown(lcdwn, request):
 
     time.sleep(1)
     sim.stop()  # power off
+    device.close()
     sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"])
     sim.start(start_wait=6)
     device = ColdcardDevice(is_simulator=True)
@@ -214,6 +219,7 @@ def test_login_countdown(lcdwn, request):
     m = _cap_menu(device)
     assert "Ready To Sign" in m
     sim.stop()
+    device.close()
 
 @pytest.mark.parametrize("kbtn", [("A", "1"), ("/", "9")])
 @pytest.mark.parametrize("when", [True, False])
@@ -231,6 +237,7 @@ def test_kill_key(kbtn, when, request):
 
     time.sleep(1)
     sim.stop()  # power off
+    device.close()
     sim = ColdcardSimulator(args= ["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"])
     sim.start(start_wait=6)
     device = ColdcardDevice(is_simulator=True)
@@ -271,6 +278,7 @@ def test_kill_key(kbtn, when, request):
     with pytest.raises(Exception):
         _press_select(device, is_Q, timeout=1000)
     sim.stop()
+    device.close()
 
 
 def test_terms_ok(request):
@@ -315,6 +323,7 @@ def test_terms_ok(request):
     _login(device, is_Q, "22-22")
     time.sleep(1)
     sim.stop()  # power off
+    device.close()
     sim = ColdcardSimulator(args=["-l", "--q1" if is_Q else "", "--early-usb", "--pin", "22-22"])
     sim.start(start_wait=6)
     device = ColdcardDevice(is_simulator=True)
@@ -323,6 +332,7 @@ def test_terms_ok(request):
     m = _cap_menu(device)
     assert "New Seed Words" in m
     sim.stop()
+    device.close()
 
 
 @pytest.mark.parametrize("brick", [True, False])
@@ -368,7 +378,10 @@ def test_wrong_pin_input(request, brick):
         assert "After 13 failed PIN attempts this Coldcard is locked forever" in story
         assert "no way to reset or recover the secure element" in story
         assert "forever inaccessible" in story
-        assert "Restore your seed words onto a new Coldcard" in story
+        if is_Q:
+            assert "Calculator mode starts now." in story
+        else:
+            assert "Restore your seed words onto a new Coldcard" in story
     else:
         _login(device, is_Q, "22-22", num_failed=12)
         time.sleep(.5)
@@ -380,6 +393,7 @@ def test_wrong_pin_input(request, brick):
         assert "Ready To Sign" in m
 
     sim.stop()
+    device.close()
 
 
 @pytest.mark.parametrize("nick", [None, "In trust we trust NOT"])
@@ -414,6 +428,7 @@ def test_login_integration(request, nick, randomize, login_ctdwn, kill_btn, kill
     # at this point all is set - reboot and test
     time.sleep(1)
     sim.stop()  # power off
+    device.close()
     sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"])
     sim.start(start_wait=6)
     device = ColdcardDevice(is_simulator=True)
@@ -429,6 +444,7 @@ def test_login_integration(request, nick, randomize, login_ctdwn, kill_btn, kill
             with pytest.raises(Exception):
                 _press_select(device, is_Q, timeout=1000)
             sim.stop()
+            device.close()
             return  # done here
         else:
             # move on, nick there, continue to login
@@ -441,12 +457,14 @@ def test_login_integration(request, nick, randomize, login_ctdwn, kill_btn, kill
         with pytest.raises(Exception):
             _press_select(device, is_Q, timeout=1000)
         sim.stop()
+        device.close()
         return  # done here
 
     was_killed = _login(device, is_Q, "22-22", scrambled=randomize,
                         mk4_kbtn=kill_btn if kill_when else None)
     if was_killed:
         sim.stop()
+        device.close()
         return
 
     if login_ctdwn:
@@ -463,6 +481,7 @@ def test_login_integration(request, nick, randomize, login_ctdwn, kill_btn, kill
             with pytest.raises(Exception):
                 _press_select(device, is_Q, timeout=1000)
             sim.stop()
+            device.close()
             return  # done here
 
         # second login after countdown is done
@@ -470,12 +489,14 @@ def test_login_integration(request, nick, randomize, login_ctdwn, kill_btn, kill
                             mk4_kbtn=None if kill_when else kill_btn)
         if was_killed:
             sim.stop()
+            device.close()
             return
 
     time.sleep(3)
     m = _cap_menu(device)
     assert "Ready To Sign" in m
     sim.stop()
+    device.close()
 
 def test_calc_login(request):
     is_Q = request.config.getoption('--Q')
@@ -492,6 +513,7 @@ def test_calc_login(request):
 
     time.sleep(1)
     sim.stop()  # power off
+    device.close()
     sim = ColdcardSimulator(args=["--q1", "--pin", "22-22", "--early-usb"])
     sim.start(start_wait=6)
     device = ColdcardDevice(is_simulator=True)
@@ -529,6 +551,7 @@ def test_calc_login(request):
 
     assert "Ready To Sign" in m
     sim.stop()
+    device.close()
 
 @pytest.mark.parametrize("word_check", [True, False])
 @pytest.mark.parametrize("randomize", [True, False])
@@ -571,6 +594,7 @@ def test_sssp_bypass_pin(request, word_check, randomize):
 
     time.sleep(2)  # needed here to actually save to settings
     sim.stop()
+    device.close()
 
     sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", main_pin, "--early-usb"])
     sim.start(start_wait=6)
@@ -583,6 +607,7 @@ def test_sssp_bypass_pin(request, word_check, randomize):
     assert "Settings" not in menu
 
     sim.stop()
+    device.close()
 
     sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", main_pin, "--early-usb"])
     sim.start(start_wait=6)
@@ -672,6 +697,7 @@ def test_sssp_bypass_pin(request, word_check, randomize):
     assert "Settings" in menu  # not in SSSP
 
     sim.stop()
+    device.close()
 
 
 def test_sssp_login_countdown(request):
@@ -704,6 +730,7 @@ def test_sssp_login_countdown(request):
 
     time.sleep(2)
     sim.stop()  # power off
+    device.close()
 
     sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"])
     sim.start(start_wait=6)
@@ -729,6 +756,7 @@ def test_sssp_login_countdown(request):
     m = _cap_menu(device)
     assert "Ready To Sign" in m
     sim.stop()
+    device.close()
 
 
 def test_sssp_trick_pins(request):
@@ -796,6 +824,7 @@ def test_sssp_trick_pins(request):
 
     time.sleep(2)
     sim.stop()
+    device.close()
 
     sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"])
     sim.start(start_wait=6)
@@ -818,5 +847,6 @@ def test_sssp_trick_pins(request):
     time.sleep(6)
 
     sim.stop()
+    device.close()
 
 # EOF
