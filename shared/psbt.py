@@ -2007,9 +2007,10 @@ class psbtObject(psbtProxy):
             for n,inp in enumerate(self.inputs)
             if (not inp.sp_idxs) and (not inp.fully_signed)
         )
-        if len(no_keys) == self.num_inputs:
-            # nothing to sign for us
-            raise FatalPSBTIssue("Nothing to sign here")
+        # HWI blocker
+        # if len(no_keys) == self.num_inputs:
+        #     # nothing to sign for us
+        #     raise FatalPSBTIssue("Nothing to sign here")
 
         if no_keys:
             # This is seen when you re-sign same signed file by accident (multisig)
