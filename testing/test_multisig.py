@@ -3110,12 +3110,22 @@ def test_input_script_type(clear_miniscript, import_ms_wallet, start_sign, end_s
         # it does not in current master
         start_sign(psbt)
         _, story = cap_story()
-        try:
-            end_sign()
-            assert False, story
-        except Exception as e:
-            assert e.args[0] == 'Coldcard Error: Nothing to sign here'
-            return
+        # HWI blocker
+        # try:
+        #     end_sign()
+        #     assert False, story
+        # except Exception as e:
+        #     assert e.args[0] == 'Coldcard Error: Nothing to sign here'
+        #     return
+
+        assert "(1 warning below)" in story
+        assert "WARNING" in story
+        assert "Limited Signing: We are not signing these inputs" in story
+        res = end_sign()
+        po = BasicPSBT().parse(res)
+        for inp in po.inputs:
+            assert not inp.part_sigs  # no signatures added
+
 
     clear_miniscript()
     M, N = 2, 3
