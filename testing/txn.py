@@ -25,7 +25,11 @@ def fake_txn(dev, pytestconfig):
              outstyles=['p2pkh'],  psbt_hacker=None, change_outputs=[],
              capture_scripts=None, add_xpub=None, op_return=None, taproot_in=False,
              psbt_v2=None, input_amount=1E8, unknown_out_script=None, lock_time=0,
-             sequences=None, sighashes=None):
+             sequences=None, sighashes=None, dupe_ins=[]):
+
+        # dupe_ins cannot contain zero, as that will be the duplicated input
+        if dupe_ins:
+            assert 0 not in dupe_ins
 
         psbt = BasicPSBT()
 
@@ -58,12 +62,17 @@ def fake_txn(dev, pytestconfig):
             # - each input is 1BTC
 
             # addr where the fake money will be stored.
-            subkey = mk.subkey_for_path(subpath % i)
+            if i in dupe_ins:
+                # always duplicate zeroth input
+                subkey = mk.subkey_for_path(subpath % 0)
+            else:
+                subkey = mk.subkey_for_path(subpath % i)
             sec = subkey.sec()
             assert len(sec) == 33, "expect compressed"
             assert subpath[0:2] == '0/'
 
-            psbt.inputs[i].bip32_paths[sec] = xfp + struct.pack('<II', 0, i)
+            idx = 0 if i in dupe_ins else i
+            psbt.inputs[i].bip32_paths[sec] = xfp + struct.pack('<II', 0, idx)
 
             # UTXO that provides the funding for to-be-signed txn
             supply = CTransaction()
@@ -93,7 +102,7 @@ def fake_txn(dev, pytestconfig):
 
             if segwit_in:
                 # just utxo for segwit
-                psbt.inputs[i].witness_utxo = supply.vout[-1].serialize()
+                psbt.inputs[i].witness_utxo = supply.vout[0 if i in dupe_ins else -1].serialize()
             else:
                 # whole tx for pre-segwit
                 psbt.inputs[i].utxo = supply.serialize_with_witness()
