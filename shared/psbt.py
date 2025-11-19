@@ -5,6 +5,7 @@
 import stash, gc, history, sys, ngu, ckcc, chains
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
+from ucollections import OrderedDict
 from utils import xfp2str, B2A, keypath_to_str
 from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str
 from chains import NLOCK_IS_TIME
@@ -1761,7 +1762,21 @@ class psbtObject(psbtProxy):
         foreign = []
         total_in = 0
 
+        prevouts_max_len = 50
+        prevouts = OrderedDict()
+
         for i, txi in self.input_iter():
+            # check for duplicate inputs
+            if len(prevouts) >= prevouts_max_len:
+                first = next(iter(prevouts))  # O(1) in mpy
+                del prevouts[first]
+
+            k = txi.prevout.n, txi.prevout.hash
+            if k in prevouts:  # O(1)
+                raise FatalPSBTIssue("Duplicate inputs!")
+
+            prevouts[k] = True
+
             inp = self.inputs[i]
             if inp.fully_signed:
                 self.presigned_inputs.add(i)
