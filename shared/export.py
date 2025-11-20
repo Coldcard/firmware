@@ -533,6 +533,9 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
 
 
 async def make_key_expression_export(orig_der, fname_pattern="key_expr.txt"):
+    from glob import dis
+
+    dis.fullscreen('Generating...')
 
     xfp = xfp2str(settings.get('xfp', 0)).lower()
 
