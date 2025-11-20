@@ -44,7 +44,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Mk4 Specific Changes
 
-## 6.4.0X - 2025-XX-XX
+## 6.4.0X - 2025-11-20
 
 - synced with master up to `5.4.5`
 - Enhancement: Show QR of XOR-split seeds
@@ -52,7 +52,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Q Specific Changes
 
-## 6.4.0QX - 2025-XX-XX
+## 6.4.0QX - 2025-11-20
 
 - synced with master up to `1.3.5Q`
 
