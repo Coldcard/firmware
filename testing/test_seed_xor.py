@@ -253,7 +253,8 @@ def test_xor_split(num_words, qty, trng, goto_home, pick_menu_item, cap_story, n
     time.sleep(.01)
     title, body = cap_story()
 
-    assert f'Record these {qty} lists of {num_words}-words' in body
+    assert "Record these" in title
+    assert f'{qty} lists of {num_words}-words' in body
     assert all((f'Part {chr(n+65)}:' in body) for n in range(qty))
 
     if is_q1:

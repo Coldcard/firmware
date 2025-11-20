@@ -99,7 +99,8 @@ Otherwise, press {ok} to continue.'''.format(n=num_parts, ok=OK), escape='2')
             if await ux_confirm("Stop and forget those words?"):
                 return
             continue
-        if ch == KEY_QR:
+
+        if ch in "4"+KEY_QR:
             qrs = []
             for wl in word_parts:
                 qrs.append(encode_seed_qr(wl))
@@ -221,7 +222,7 @@ class XORWordNestMenu(WordNestMenu):
 async def show_n_parts(parts, chk_word):
     num_parts = len(parts)
     seed_len = len(parts[0])
-    msg = 'Record these %d lists of %d-words each:' % (num_parts, seed_len)
+    msg = '%d lists of %d-words each:' % (num_parts, seed_len)
 
     for n,words in enumerate(parts):
         msg += '\n\nPart %s:\n' % chr(65+n)
@@ -231,8 +232,12 @@ async def show_n_parts(parts, chk_word):
             ' which we recommend recording:\n\n%d: %s\n\n' % (seed_len, chk_word))
 
     msg += 'Please check and double check your notes. There will be a test! '
+    if not version.has_qwerty:
+        msg += 'Press (4) to view QR Codes. '
 
-    return await ux_show_story(msg, sensitive=True)
+    # allow QR codes on both Mk4 & Q
+    return await ux_show_story(msg, title="Record these:", sensitive=True, escape="4",
+                               hint_icons=KEY_QR)
 
 async def xor_restore_start(*a):
     # shown on import menu when no seed of any kind yet
