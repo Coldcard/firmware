@@ -430,6 +430,12 @@ class ApproveTransaction(UserAuthorizedAction):
 
             ccc_c_xfp = CCCFeature.get_xfp()  # can be None
             args = self.psbt.consider_inputs(cosign_xfp=ccc_c_xfp)
+
+            # Silent Payments: Validate and pre-process Silent Payments outputs to make preview useful
+            if self.psbt.has_silent_payment_outputs():
+                with stash.SensitiveValues() as sv:
+                    self.psbt.process_silent_payments(sv)
+
             self.psbt.consider_outputs(*args, cosign_xfp=ccc_c_xfp)
             del args  # not needed anymore
             # we can properly assess sighash only after we know
@@ -700,6 +706,8 @@ class ApproveTransaction(UserAuthorizedAction):
         total_change = 0
         has_change = False
 
+        # TODO: Test pay to silent payment change address
+
         for idx, tx_out in self.psbt.output_iter():
             outp = self.psbt.outputs[idx]
             if outp.is_change:
@@ -714,6 +722,8 @@ class ApproveTransaction(UserAuthorizedAction):
             else:
                 if len(largest_outs) < MAX_VISIBLE_OUTPUTS:
                     rendered, _ = self.render_output(tx_out)
+                    if outp.sp_v0_info:
+                        rendered += self.psbt.render_silent_payment_output_string(outp)
                     largest_outs.append((tx_out.nValue, rendered))
                     if len(largest_outs) == MAX_VISIBLE_OUTPUTS:
                         # descending sort from the biggest value to lowest (sort on out.nValue)
@@ -1733,6 +1743,8 @@ class TXOutExplorer(TXExplorer):
             outp = self.user_auth_action.psbt.outputs[idx]
             item = "Output %d%s:\n\n" % (idx, " (change)" if outp.is_change else "")
             msg, addr_or_script = self.user_auth_action.render_output(out)
+            if outp.sp_v0_info:
+                msg += self.user_auth_action.psbt.render_silent_payment_output_string(outp)
             item += msg
             qr_items.append(addr_or_script)
             if outp.is_change:

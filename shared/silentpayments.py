@@ -19,6 +19,28 @@ NUMS_H = a2b_hex("50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803a
 SECP256K1_ORDER = ngu.secp256k1.curve_order_int()
 
 
+def encode_silent_payment_address(scan_key, spend_key, version=0):
+    """
+    Encode a human-readable silent payment address
+
+    Uses current chain's HRP for encoding
+
+    Args:
+        scan_key: Scan private key (32-byte scalar) or public key (33-byte compressed)
+        spend_key: Spend public key (33-byte compressed)
+        version: Silent payment address version (int, default: 0)
+
+    Returns:
+        str: silent payment address (bech32m-encoded)
+    """
+    hrp = chains.current_chain().sp_hrp
+    # if passed a scan private key append "scan" for watch-only address export
+    # Note: not supporting spend private key export at this time "spend"
+    if len(scan_key) == 32:
+        hrp += "scan"
+    return ngu.codecs.bip352_encode(hrp, scan_key, spend_key, version)
+
+
 # -----------------------------------------------------------------------------
 # Silent Payments Cryptographic Primitives
 # -----------------------------------------------------------------------------
@@ -236,26 +258,51 @@ class SilentPaymentsMixin:
     This class assumes it is mixed into psbtObject and has access to psbt as self
     """
 
-    def _process_silent_payments(self, sv):
+    def process_silent_payments(self, sv):
         """
         Core SP workflow: validate, compute shares, compute scripts
 
+        Notes:
+        - This function is intended to be called during the preview phase, before signing
+        - Single-signer should be able to generate output and preview immediately
+        - Multi-signer should generate shares and prompt user to collect all shares if not complete
+
         Returns:
-            bool: True if output scripts were computed
+            bool: True if output scripts were computed and are ready for preview/signing
+                  False if we generated shares but are waiting on others, or if we don't have necessary info to proceed
         """
         if not self.has_silent_payment_outputs():
-            return
+            return False
         self._validate_psbt_structure()
         self._validate_input_eligibility()
         self._validate_ecdh_coverage()
 
-        if not self._compute_and_store_ecdh_shares(sv):
-            return False
+        # Compute and store shares in PSBT fields for signing phase
+        self._compute_and_store_ecdh_shares(sv)
 
         if self._is_ecdh_coverage_complete():
+            # Computes scripts, or validates existing ones against recomputed values
             self._compute_silent_payment_output_scripts()
             return True
         return False
+
+    def render_silent_payment_output_string(self, output):
+        """
+        Render a human-readable Silent Payments output string for displaying on screen
+
+        Args:
+            output: Output object from self.outputs
+
+        Returns:
+            str: Human-readable Silent Payments output string
+        """
+        if not output.sp_v0_info:
+            raise ValueError("Output is not a silent payments output")
+
+        scan_key = output.sp_v0_info[:33]
+        spend_key = output.sp_v0_info[33:66]
+
+        return " - silent payments address -\n%s\n" % encode_silent_payment_address(scan_key, spend_key)
 
     # -----------------------------------------------------------------------------
     # Input Helper Functions
@@ -592,6 +639,7 @@ class SilentPaymentsMixin:
                     ecdh_share = _compute_ecdh_share(input_sk, scan_key)
                     dleq_proof = generate_dleq_proof(input_sk, scan_key)
 
+                    # TODO: when previewing shares should we update input fields in-place before user consent?
                     inp.sp_ecdh_shares = inp.sp_ecdh_shares or {}
                     inp.sp_dleq_proofs = inp.sp_dleq_proofs or {}
                     inp.sp_ecdh_shares[scan_key] = ecdh_share
