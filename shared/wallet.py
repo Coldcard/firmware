@@ -1409,7 +1409,7 @@ async def multisig_640_migration(multisig_wallets):
             desc_tmplt = "sh(" + ms_type + "(%s))"
 
         M, N = m_of_n
-        inner = "%d,%s" % (M, ",".join(["@%d/**" % i for i in range(M)]))
+        inner = "%d,%s" % (M, ",".join(["@%d/**" % i for i in range(N)]))
         desc_tmplt = desc_tmplt % inner
 
         new_opts = {
