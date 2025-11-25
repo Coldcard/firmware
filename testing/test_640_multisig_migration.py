@@ -1,6 +1,6 @@
 # needs to run against simulator with "--multi-mig" flag as multisigs need to be there before login sequence executes
 
-import base64, pytest
+import base64, pytest, time
 from test_640_miniscript_migration import (msc0, msc1, msc2, msc3, msc4, msc5, msc6, msc7, msc8, msc9, msc10,
                                            msc11, msc12, msc14, msc15, msc16, msc17, msc18, msc19, msc20)
 
@@ -18,9 +18,15 @@ ms_psbt2 = 'cHNidP8BAgQCAAAAAQMEAAAAAAEEAQEBBQEBAfsEAgAAAAABAIUCAAAAAQAAAAAAAAAA
 ms3 = ['ms3', (2, 2), [(1130956047, 1, 'tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r'), (2267113793, 0, 'tpubDCGx6bNmE4zRFgfeV2PbGfcuhg6aeqtLYgNEGZ2pghgFiarh8j2yVruetVWUd6ykfkxaGgB8GhEkaGva1jXvqJrLXC3LboxsQTHqqCZD5Jj')], {'ch': 'XTN', 'd': ['m', 'm/84h/1h/0h'], 'ft': 14}]
 ms_psbt3 = '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'
 
+ms4 = ["ms4", [3, 5], [[1130956047, 1, "tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP"], [4061361782, 0, "tpubDCmGdTYoJo9JwhbqhsFKu9V4CZpUNUq5girUxkhqhk1GzgNRawhoqLBAntdYahF9vhkib1zjQSQPiV61ZJ6J2tpa28Vt5kgvY7RuhBSE8Hm"], [109302970, 0, "tpubDDgf715teaqpZnc6uBnFc5Sz5WAh3595Avp1Nw9wqFmHCFSxhuv2zY6oB6JJidjB8qVMeGMpsAGBw1KjDy5uhvJ9zmvMpDz2w3Zk8UJCay8"], [2963526823, 0, "tpubDCLbYkfCtNo2XbFuwNJC3fQ2UBxhJJNpDVdtEBL87nxCRXYoynBabhzkCz94xFe84GtYS6hNxqh34X8SfdXFkg7E7CHDXfjiATp8EQT1DFK"], [17824383, 0, "tpubDCRBBeN8XiDyNDazsGvcWUQ6rUkbp86tkFzHckdXGPyVP8oaHm9DWt4CGQk79ZQj6JTTFmQGCQeFJbk3ULknu8mqyyaVP1guAAh9ocBzNdP"]], {"d": ["m/44h/1h/0h", "m/48h/1h/0h/2h"], "ch": "XTN", "ft": 14}, 0]
+ms_psbt4 = "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"
 
-def test_multisig(settings_set, settings_get, try_sign, goto_home, pick_menu_item, cap_menu,
-                  clear_miniscript):
+ms5 = ["ms5", [1, 3], [[1130956047, 1, "tpubDF2rnouQaaYrUEy2JM1YD3RFzew4onawGM4X2Re67gguTf5CbHonBRiFGe3Xjz7DK88dxBFGf2i7K1hef3PM4cFKyUjcbJXddaY9F5tJBoP"], [3076116849, 0, "tpubDDfYkhLwRFaZp9qehqfKPnjbMVocdce5q8jyiAvsYiaFS6HRrZqE4TxmHsyVWfeusEHzNek8TKdFKaDchqsFeAp8wHZ1gvbr7PMbXT3QDez"], [4057283835, 0, "tpubDCrCiPgNd1hjLCeWotuJpQiSvHUcx963NdKxrw8N2wbGDq7xPq22Y4DGQfvCooQGCari283o4yhbai5aZ4nD1XNtSxokEeYuoj917uiw2Jz"]], {"d": ["m/44h/1h/0h", "m/48h/1h/0h/1h"], "ch": "XTN", "ft": 26}]
+ms_psbt5 = "cHNidP8BAFMCAAAAAZrwrOkKpAXy9iUj9xULyepsJxoIXwRzLu8Xjw0xIDyYAAAAAAD9////ATDlBSoBAAAAF6kUkGsKfiJzpROlytLiiMkWHArEJreHAAAAAAABAIUCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wMBZgD/////AgDyBSoBAAAAF6kUSEoY05xgMEx4Qeojh+5caxR4IhuHAAAAAAAAAAAmaiSqIant4vYcP3HR3v0/qZnfo2lTdVxpBol5mWK0i+vYNpdOjPkAAAAAAQEgAPIFKgEAAAAXqRRIShjTnGAwTHhB6iOH7lxrFHgiG4ciAgO/bCvdFl2QiiIj+QeGRk94rZYQPi0HObodsh36/j4dWUcwRAIgCZff8yp9uqVKeP8qxoPTfdaEUhlv+AO48YFWt1BCjKoCIERZLXt+Nr7gBuSvdRReKtBREcp3WqQVpflAQpEw/fHkASICAjkh884h6pEkRlslvD3RWm8cuGhPuaEY1+Wdj2cflGlpRzBEAiBacxpyssxeXM+mzLaQwUB4cLx0hcrpNTkJhXsREydAdwIgAjHhHGYVZoI9hzWqKBuUZ1aY3LmLtoBXYw0Tdk1TO40BAQMEAQAAAAEEIgAgXSTqDYGBrLWqZ40PS2zObS4W8rZcTTTuY1KDD0Ymc+IBBWlRIQI5IfPOIeqRJEZbJbw90VpvHLhoT7mhGNflnY9nH5RpaSEDQAzkZCh1o5SMLLSKAj4C94OGCaQ/NRHtSrm0xdep1NEhA79sK90WXZCKIiP5B4ZGT3itlhA+LQc5uh2yHfr+Ph1ZU64iBgI5IfPOIeqRJEZbJbw90VpvHLhoT7mhGNflnY9nH5RpaRhx0Vm3LAAAgAEAAIAAAACAAAAAAAAAAAAiBgNADORkKHWjlIwstIoCPgL3g4YJpD81Ee1KubTF16nU0RwPBWlDMAAAgAEAAIAAAACAAQAAgAAAAAAAAAAAIgYDv2wr3RZdkIoiI/kHhkZPeK2WED4tBzm6HbId+v4+HVkY+zzV8SwAAIABAACAAAAAgAAAAAAAAAAAAAEAIgAgGRsELUF4c3z6lfN0TBxMdtdIcfY3RmVLUFgdSOiGkw8BAWlRIQJRPpoNbvU/xmH/V7O+MoeYusljQuoK+lo2AQlq0fxBMyEC/Qc6zjeVbsNxejwzmxsKDAFaFFSaroUnhXNgToKTjuUhA4mgQByfozPkgmIIhTWOPBs3dPU0X6FoXoJSvAM0VIHJU64iAgJRPpoNbvU/xmH/V7O+MoeYusljQuoK+lo2AQlq0fxBMxj7PNXxLAAAgAEAAIAAAACAAAAAAAEAAAAiAgL9BzrON5Vuw3F6PDObGwoMAVoUVJquhSeFc2BOgpOO5Rhx0Vm3LAAAgAEAAIAAAACAAAAAAAEAAAAiAgOJoEAcn6Mz5IJiCIU1jjwbN3T1NF+haF6CUrwDNFSByRwPBWlDMAAAgAEAAIAAAACAAQAAgAAAAAABAAAAAA=="
+
+
+def test_multisig(settings_set, settings_get, start_sign, end_sign, goto_home, pick_menu_item, cap_menu,
+                  clear_miniscript, cap_story):
     # # try one by one
     # for ms, psbt in [(ms0, ms_psbt0), (ms1, ms_psbt1), (ms2, ms_psbt2), (ms3, ms_psbt3)]:
     #     clear_miniscript()
@@ -45,17 +51,23 @@ def test_multisig(settings_set, settings_get, try_sign, goto_home, pick_menu_ite
     pick_menu_item("Settings")
     pick_menu_item("Multisig/Miniscript")  # migration happens here
     menu = cap_menu()
-    for name in ["ms0", "ms1", "ms2", "ms3"]:
+    for name in ["ms0", "ms1", "ms2", "ms3", "ms4", "ms5"]:
         assert name in menu
 
-    assert len(settings_get("multisig")) == 4  # preserved
+    assert len(settings_get("multisig")) == 6  # preserved
     msc = settings_get("miniscript")
-    assert len(msc) == 4
+    assert len(msc) == 6
     for x in msc:
         assert len(x) == 4  # new format (name, policy, keys, opts)
 
-    for i, psbt in enumerate([ms_psbt0, ms_psbt1, ms_psbt2, ms_psbt3]):
-        try_sign(base64.b64decode(psbt), miniscript="ms%d" % i)
+    for i, psbt in enumerate([ms_psbt0, ms_psbt1, ms_psbt2, ms_psbt3, ms_psbt4, ms_psbt5]):
+        start_sign(base64.b64decode(psbt), miniscript="ms%d" % i)
+        time.sleep(.1)
+        title, story = cap_story()
+        assert title == "OK TO SEND?"
+        assert "WARNING" not in story
+        assert "Limited Signing" not in story
+        end_sign()
 
 
 def test_multisig_miniscript_migration(settings_append, clear_miniscript, settings_get,
@@ -75,8 +87,35 @@ def test_multisig_miniscript_migration(settings_append, clear_miniscript, settin
     pick_menu_item("Multisig/Miniscript")  # migration happened here
 
     miniscripts = settings_get("miniscript")
-    assert len(miniscripts) == 24  # 20 miniscript wallets & 4 multisigs
+    assert len(miniscripts) == 26  # 20 miniscript wallets & 6 multisigs
     for m in miniscripts:
         assert len(m) == 4
 
-    assert len(settings_get("multisig")) == 4
+    assert len(settings_get("multisig")) == 6
+
+
+def test_nunchuk_bug_report(settings_set, goto_home, pick_menu_item, need_keypress, cap_story,
+                            microsd_path, settings_remove):
+    name = "Off chain"
+    settings_remove("multisig")
+    settings_remove("multi_mig")
+    ms = [["Off chain", [2, 4], [[1073312282, 1, "xpub6DnZdnMX95n19Lu5oDJmC15k8f18FDzinf4NthgUXQpEaEN2jcdWJz8vkSF1NWBAEfxHzTHxZimH8d4pjJ1Uy6AxhpSku1Ro1trJk6RwARa"], [4082991556, 0, "xpub6FF8WuaE5MX5XAv4whPmDVdTtoGs1CMczszwSRM93ELySmy5KYWbwSBevsaBTmdrABrgQvSdKnwKVi9b9oFxidxbJechpuu3TvhCiJ5c1Rb"], [254963148, 0, "xpub6ErsS8s6zHjePcQ679sSqdfQaXSQ2GbSkUxDRjsKkwLViB39zG4ubgeQYSVM8Qkq3Y7A9qTjQifinUJYHM3XbSoP4dJoU2DsUHvj8rFaZpG"], [173494037, 0, "xpub6E7H774dkWsVLxGuzXmiqi5UwbzKD4BSYfymczKEZNUGft5ZXhoNVcEpCA7RRiSALbdec6fSS5DCke6yH8U96JdLmBq9YwJDDwce5k5VDNZ"]], {"d": ["m/48h/0h/0h/2h", "m/48h/0h/1h/2h"], "ft": 14}]]
+    target_desc = "wsh(sortedmulti(2,[1a72f93f/48h/0h/1h/2h]xpub6DnZdnMX95n19Lu5oDJmC15k8f18FDzinf4NthgUXQpEaEN2jcdWJz8vkSF1NWBAEfxHzTHxZimH8d4pjJ1Uy6AxhpSku1Ro1trJk6RwARa/0/*,[c4815df3/48h/0h/0h/2h]xpub6FF8WuaE5MX5XAv4whPmDVdTtoGs1CMczszwSRM93ELySmy5KYWbwSBevsaBTmdrABrgQvSdKnwKVi9b9oFxidxbJechpuu3TvhCiJ5c1Rb/0/*,[cc6d320f/48h/0h/0h/2h]xpub6ErsS8s6zHjePcQ679sSqdfQaXSQ2GbSkUxDRjsKkwLViB39zG4ubgeQYSVM8Qkq3Y7A9qTjQifinUJYHM3XbSoP4dJoU2DsUHvj8rFaZpG/0/*,[154f570a/48h/0h/0h/2h]xpub6E7H774dkWsVLxGuzXmiqi5UwbzKD4BSYfymczKEZNUGft5ZXhoNVcEpCA7RRiSALbdec6fSS5DCke6yH8U96JdLmBq9YwJDDwce5k5VDNZ/0/*))"
+    settings_set("multisig", ms)
+    settings_set("chain", "BTC")
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Multisig/Miniscript")  # migration happen here
+    pick_menu_item(name)
+    pick_menu_item("Descriptors")
+    pick_menu_item("Export")
+    need_keypress("1")
+    time.sleep(.1)
+    _, story = cap_story()
+    split_story = story.split("\n\n")
+    fname = split_story[1]
+    with open(microsd_path(fname), "r") as f:
+        desc_w_csum = f.read().strip()
+
+    desc = desc_w_csum.split("#")[0]
+    assert desc == target_desc.replace("/0/*", "/<0;1>/*")

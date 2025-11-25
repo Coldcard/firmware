@@ -33,8 +33,8 @@ def test_name_clash(settings_append, clear_miniscript, settings_remove, goto_hom
     pick_menu_item("Multisig/Miniscript")
 
     # multisig key preserved in settings
-    assert len(settings_get("multisig")) == 4
+    assert len(settings_get("multisig")) == 6
     miniscripts = settings_get("miniscript")
 
     assert all([len(m[0]) <= 30 for m in miniscripts])
-    assert len(set([m[0] for m in miniscripts])) == 7
+    assert len(set([m[0] for m in miniscripts])) == 9

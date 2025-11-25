@@ -11,6 +11,11 @@
 
 This lists the changes in the most recent EDGE firmware, for each hardware platform.
 
+## 6.4.1X & 6.4.1QX
+
+-Bugfix: Multisig migration only worked for K of K multisig wallets (those where M is the same as N)
+
+
 # Shared Improvements - Both Mk4 and Q
 
 ### WARNING: 6.4.0X is not backwards-compatible with previous EDGE firmware versions.
