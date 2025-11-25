@@ -41,9 +41,13 @@ from public_constants import (
     PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, MAX_SIGNERS,
     PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS, PSBT_IN_MUSIG2_PUB_NONCE, PSBT_IN_MUSIG2_PARTIAL_SIG,
     PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS,
+    PSBT_OUT_SP_V0_INFO, PSBT_OUT_SP_V0_LABEL,
+    PSBT_IN_SP_DLEQ, PSBT_IN_SP_ECDH_SHARE,
+    PSBT_GLOBAL_SP_DLEQ, PSBT_GLOBAL_SP_ECDH_SHARE,
     AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH,
     AFC_SEGWIT, AF_BARE_PK
 )
+from silentpayments import SilentPaymentsMixin
 
 psbt_tmp256 = bytearray(256)
 
@@ -402,12 +406,15 @@ class psbtProxy:
 # Track details of each output of PSBT
 #
 class psbtOutputProxy(psbtProxy):
-    no_keys = { PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT, PSBT_OUT_TAP_INTERNAL_KEY, PSBT_OUT_TAP_TREE }
+    no_keys = { PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT, PSBT_OUT_TAP_INTERNAL_KEY, PSBT_OUT_TAP_TREE,
+                 PSBT_OUT_SP_V0_INFO, PSBT_OUT_SP_V0_LABEL }
+    short_values = { PSBT_OUT_SP_V0_INFO, PSBT_OUT_SP_V0_LABEL }
 
     blank_flds = ('unknown', 'subpaths', 'redeem_script', 'witness_script', 'sp_idxs',
                   'is_change', 'amount', 'script', 'attestation', 'proprietary',
                   'taproot_internal_key', 'taproot_subpaths', 'taproot_tree', 'ik_idx',
-                  'musig_pubkeys')
+                  'musig_pubkeys', 'sp_v0_info', 'sp_v0_label',
+                  )
 
     def __init__(self, fd, idx):
         super().__init__()
@@ -423,6 +430,8 @@ class psbtOutputProxy(psbtProxy):
         #self.script = None
         #self.amount = None
         #self.musig_pubkeys = None
+        #self.sp_v0_info = None       # used to identify silent payment outputs - 66-byte (scan-pub || spend-pub)
+        #self.sp_v0_label = None
 
         # this flag is set when we are assuming output will be change (same wallet)
         #self.is_change = False
@@ -473,6 +482,10 @@ class psbtOutputProxy(psbtProxy):
         elif kt == PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS:
             self.musig_pubkeys = self.musig_pubkeys or []
             self.musig_pubkeys.append((key, val))
+        elif kt == PSBT_OUT_SP_V0_INFO:
+            self.sp_v0_info = val
+        elif kt == PSBT_OUT_SP_V0_LABEL:
+            self.sp_v0_label = val
         else:
             self.unknown = self.unknown or []
             pos, length = key
@@ -510,6 +523,12 @@ class psbtOutputProxy(psbtProxy):
             if self.script is not None:
                 wr(PSBT_OUT_SCRIPT, self.script)
             wr(PSBT_OUT_AMOUNT, self.amount)
+
+            if self.sp_v0_info:
+                wr(PSBT_OUT_SP_V0_INFO, self.sp_v0_info)
+
+            if self.sp_v0_label:
+                wr(PSBT_OUT_SP_V0_LABEL, self.sp_v0_label)
 
         if self.proprietary:
             for k, v in self.proprietary:
@@ -644,7 +663,9 @@ class psbtOutputProxy(psbtProxy):
 class psbtInputProxy(psbtProxy):
 
     # just need to store a simple number for these
-    short_values = { PSBT_IN_SIGHASH_TYPE }
+    # Silent Payments (shares/dleq): bytes (not proxied) so scan-pub can be used as dict key
+    # and dict can be mutated in place
+    short_values = { PSBT_IN_SIGHASH_TYPE, PSBT_IN_SP_ECDH_SHARE, PSBT_IN_SP_DLEQ }
 
     # only part-sigs have a key to be stored.
     no_keys = {PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO, PSBT_IN_SIGHASH_TYPE,
@@ -660,7 +681,8 @@ class psbtInputProxy(psbtProxy):
         'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts',
         'taproot_subpaths', 'taproot_internal_key', 'taproot_key_sig', 'tr_added_sigs',
         'ik_idx', 'musig_pubkeys', 'musig_pubnonces', 'musig_part_sigs', 'musig_agg_idx',
-        'musig_added_pubnonces', 'musig_added_sigs'
+        'musig_added_pubnonces', 'musig_added_sigs',
+        'sp_ecdh_shares', 'sp_dleq_proofs',
     )
 
     def __init__(self, fd, idx):
@@ -707,6 +729,10 @@ class psbtInputProxy(psbtProxy):
         #self.musig_pubkeys = None
         #self.musig_pubnonces = None
         #self.musig_part_sigs = None
+
+        # === silent payments ===
+        #self.sp_ecdh_shares = None              # dict[scan-pub] = ecdh_share
+        #self.sp_dleq_proofs = None              # dict[scan-pub] = dleq_proof
 
         self.parse(fd)
 
@@ -1165,6 +1191,12 @@ class psbtInputProxy(psbtProxy):
         elif kt == PSBT_IN_MUSIG2_PARTIAL_SIG:
             self.musig_part_sigs = self.musig_part_sigs or []
             self.musig_part_sigs.append((key, val))
+        elif kt == PSBT_IN_SP_ECDH_SHARE:
+            self.sp_ecdh_shares = self.sp_ecdh_shares or {}
+            self.sp_ecdh_shares[key] = val
+        elif kt == PSBT_IN_SP_DLEQ:
+            self.sp_dleq_proofs = self.sp_dleq_proofs or {}
+            self.sp_dleq_proofs[key] = val
         else:
             # including: PSBT_IN_FINAL_SCRIPTSIG, PSBT_IN_FINAL_SCRIPTWITNESS
             self.unknown = self.unknown or []
@@ -1261,17 +1293,27 @@ class psbtInputProxy(psbtProxy):
             if self.req_height_locktime is not None:
                 wr(PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, pack("<I", self.req_height_locktime))
 
+            if self.sp_ecdh_shares:
+                for k, v in self.sp_ecdh_shares.items():
+                    wr(PSBT_IN_SP_ECDH_SHARE, v, k)
+
+            if self.sp_dleq_proofs:
+                for k, v in self.sp_dleq_proofs.items():
+                    wr(PSBT_IN_SP_DLEQ, v, k)
+
         if self.unknown:
             for k, v in self.unknown:
                 wr(None, v, k)
 
 
-class psbtObject(psbtProxy):
+class psbtObject(psbtProxy, SilentPaymentsMixin):
     "Just? parse and store"
-    short_values = { PSBT_GLOBAL_TX_MODIFIABLE }
+    # Silent Payments (shares/dleq): bytes (not proxied) so scan-pub can be used as dict key
+    # and dict can be mutated in place
+    short_values = { PSBT_GLOBAL_TX_MODIFIABLE, PSBT_GLOBAL_SP_ECDH_SHARE, PSBT_GLOBAL_SP_DLEQ }
     no_keys = { PSBT_GLOBAL_UNSIGNED_TX }
     blank_flds = ("hashPrevouts", "hashSequence", "hashOutputs", "hashValues", "hashScriptPubKeys",
-                  "my_tr_in", "unknown")
+                  "my_tr_in", "sp_global_ecdh_shares", "sp_global_dleq_proofs", "unknown")
 
     def __init__(self):
         super().__init__()
@@ -1331,6 +1373,9 @@ class psbtObject(psbtProxy):
         self.has_gic = False  # global input count
         self.has_goc = False  # global output count
         self.has_gtv = False  # global txn version
+
+        self.sp_global_ecdh_shares = None  # dict[scan-pub] = ecdh_share
+        self.sp_global_dleq_proofs = None  # dict[scan-pub] = dleq_proof
 
         # musig related
         self.session = None
@@ -1392,6 +1437,12 @@ class psbtObject(psbtProxy):
             # bytes of length 1 (tx modifiable in short_values)
             assert len(val) == 1
             self.txn_modifiable = val[0]
+        elif kt == PSBT_GLOBAL_SP_ECDH_SHARE:
+            self.sp_global_ecdh_shares = self.sp_global_ecdh_shares or {}
+            self.sp_global_ecdh_shares[key] = val
+        elif kt == PSBT_GLOBAL_SP_DLEQ:
+            self.sp_global_dleq_proofs = self.sp_global_dleq_proofs or {}
+            self.sp_global_dleq_proofs[key] = val
         else:
             self.unknown = self.unknown or []
             pos, length = key
@@ -1406,7 +1457,12 @@ class psbtObject(psbtProxy):
             for idx in range(start, stop):
                 out = self.outputs[idx]
                 amount = unpack("<q", self.get(out.amount))[0]
-                tx_out = CTxOut(nValue=amount, scriptPubKey=self.get(out.script))
+                # Silent Payments: scriptPubKey is byte representation after computation
+                if out.sp_v0_info:
+                    spk = out.script # TODO: should this be more defensive?
+                else:
+                    spk = self.get(out.script)
+                tx_out = CTxOut(nValue=amount, scriptPubKey=spk)
                 yield idx, tx_out
         else:
             assert self.vout_start is not None     # must call input_iter/validate first
@@ -2459,6 +2515,14 @@ class psbtObject(psbtProxy):
             for k, v in self.xpubs:
                 wr(PSBT_GLOBAL_XPUB, v, k)
 
+        if self.sp_global_ecdh_shares:
+            for k, v in self.sp_global_ecdh_shares.items():
+                wr(PSBT_GLOBAL_SP_ECDH_SHARE, v, k)
+
+        if self.sp_global_dleq_proofs:
+            for k, v in self.sp_global_dleq_proofs.items():
+                wr(PSBT_GLOBAL_SP_DLEQ, v, k)
+
         if self.unknown:
             for k, v in self.unknown:
                 wr(None, v, k)
@@ -2751,6 +2815,16 @@ class psbtObject(psbtProxy):
                         raise FraudulentChangeOutput(out_idx, 
                               "Deception regarding change output. "
                               "BIP-32 path doesn't match actual address.")
+
+            # Silent Payment Processing
+            if self.has_silent_payment_outputs():
+                sp_ready = self.process_silent_payments(sv)
+                if not sp_ready:
+                    # Silent Payments: must not sign if output scripts not set 
+                    # TODO: is this still necessary? if so needs test
+                    self.ux_notes.append(("Silent Payments",
+                        "ECDH shares added. Signatures withheld until all signers contribute."))
+                    return
 
             # progress
             dis.fullscreen('Signing...')
