@@ -38,9 +38,13 @@ from public_constants import (
     PSBT_GLOBAL_FALLBACK_LOCKTIME, PSBT_GLOBAL_TX_VERSION, PSBT_IN_PREVIOUS_TXID,
     PSBT_IN_OUTPUT_INDEX, PSBT_IN_SEQUENCE, PSBT_IN_REQUIRED_TIME_LOCKTIME,
     PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, MAX_SIGNERS,
+    PSBT_OUT_SP_V0_INFO, PSBT_OUT_SP_V0_LABEL, 
+    PSBT_IN_SP_DLEQ, PSBT_IN_SP_ECDH_SHARE,
+    PSBT_GLOBAL_SP_DLEQ, PSBT_GLOBAL_SP_ECDH_SHARE,
     AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH,
     AFC_SEGWIT, AF_BARE_PK
 )
+from silentpayments import SilentPaymentMixin
 
 psbt_tmp256 = bytearray(256)
 
@@ -290,6 +294,9 @@ class psbtProxy:
 
     def get(self, val):
         # get the raw bytes for a value.
+        ## Handle both in-memory values (bytes) and file coordinates (offset, length)
+        if isinstance(val, (bytes, bytearray)):
+            return val
         pos, ll = val
         self.fd.seek(pos)
         return self.fd.read(ll)
@@ -392,7 +399,9 @@ class psbtOutputProxy(psbtProxy):
 
     blank_flds = ('unknown', 'subpaths', 'redeem_script', 'witness_script', 'sp_idxs',
                   'is_change', 'amount', 'script', 'attestation', 'proprietary',
-                  'taproot_internal_key', 'taproot_subpaths', 'taproot_tree', 'ik_idx')
+                  'taproot_internal_key', 'taproot_subpaths', 'taproot_tree', 'ik_idx',
+                  'sp_v0_info', 'sp_v0_label',  # BIP-375 Silent Payments
+                  )
 
     def __init__(self, fd, idx):
         super().__init__()
@@ -454,6 +463,14 @@ class psbtOutputProxy(psbtProxy):
             self.taproot_subpaths.append((key, val))
         elif kt == PSBT_OUT_TAP_TREE:
             self.taproot_tree = val
+        elif kt == PSBT_OUT_SP_V0_INFO:
+            # BIP-375: Silent payment address (scan_key + spend_key)
+            # val contains 66 bytes: scan_key (33) + spend_key (33)
+            self.sp_v0_info = val
+        elif kt == PSBT_OUT_SP_V0_LABEL:
+            # BIP-375: Optional label for silent payment output
+            # val contains 4-byte little-endian integer
+            self.sp_v0_label = val
         else:
             self.unknown = self.unknown or []
             pos, length = key
@@ -487,6 +504,13 @@ class psbtOutputProxy(psbtProxy):
             wr(PSBT_OUT_SCRIPT, self.script)
             wr(PSBT_OUT_AMOUNT, self.amount)
 
+        # BIP-375 Silent Payment fields
+        if self.sp_v0_info:
+            wr(PSBT_OUT_SP_V0_INFO, self.sp_v0_info)
+        
+        if self.sp_v0_label:
+            wr(PSBT_OUT_SP_V0_LABEL, self.sp_v0_label)
+
         if self.proprietary:
             for k, v in self.proprietary:
                 wr(PSBT_PROPRIETARY, v, k)
@@ -494,6 +518,7 @@ class psbtOutputProxy(psbtProxy):
         if self.unknown:
             for k, v in self.unknown:
                 wr(None, v, k)
+
 
     def determine_my_change(self, out_idx, txo, parsed_subpaths, parent):
         # Do things make sense for this output?
@@ -636,6 +661,7 @@ class psbtInputProxy(psbtProxy):
         'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts', 'use_keypath',
         'taproot_subpaths', 'taproot_internal_key', 'taproot_key_sig', 'tr_added_sigs',
         'ik_idx',
+        'sp_ecdh_shares', 'sp_dleq_proofs',  # BIP-375 Silent Payments
     )
 
     def __init__(self, fd, idx):
@@ -1058,6 +1084,18 @@ class psbtInputProxy(psbtProxy):
             self.req_time_locktime = unpack("<I", self.get(val))[0]
         elif kt == PSBT_IN_REQUIRED_HEIGHT_LOCKTIME:
             self.req_height_locktime = unpack("<I", self.get(val))[0]
+        elif kt == PSBT_IN_SP_ECDH_SHARE:
+            # BIP-375: Per-input ECDH share
+            # key contains scan_key (33 bytes), val contains ECDH share (33 bytes)
+            if self.sp_ecdh_shares is None:
+                self.sp_ecdh_shares = []
+            self.sp_ecdh_shares.append((key, val))
+        elif kt == PSBT_IN_SP_DLEQ:
+            # BIP-375: Per-input DLEQ proof
+            # key contains scan_key (33 bytes), val contains DLEQ proof (64 bytes)
+            if self.sp_dleq_proofs is None:
+                self.sp_dleq_proofs = []
+            self.sp_dleq_proofs.append((key, val))
         else:
             # including: PSBT_IN_FINAL_SCRIPTSIG, PSBT_IN_FINAL_SCRIPTWITNESS
             self.unknown = self.unknown or []
@@ -1134,12 +1172,21 @@ class psbtInputProxy(psbtProxy):
             if self.req_height_locktime is not None:
                 wr(PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, pack("<I", self.req_height_locktime))
 
+        # BIP-375 Silent Payment fields
+        if self.sp_ecdh_shares:
+            for k, v in self.sp_ecdh_shares:
+                wr(PSBT_IN_SP_ECDH_SHARE, v, k)
+        
+        if self.sp_dleq_proofs:
+            for k, v in self.sp_dleq_proofs:
+                wr(PSBT_IN_SP_DLEQ, v, k)
+
         if self.unknown:
             for k, v in self.unknown:
                 wr(None, v, k)
 
 
-class psbtObject(psbtProxy):
+class psbtObject(psbtProxy, SilentPaymentMixin):
     "Just? parse and store"
     short_values = { PSBT_GLOBAL_TX_MODIFIABLE }
     no_keys = { PSBT_GLOBAL_UNSIGNED_TX }
@@ -1203,6 +1250,11 @@ class psbtObject(psbtProxy):
         self.has_gic = False  # global input count
         self.has_goc = False  # global output count
         self.has_gtv = False  # global txn version
+        
+        # BIP-375 Silent Payments: Global ECDH shares and DLEQ proofs
+        # Used when single signer owns all inputs
+        self.sp_global_ecdh_shares = None  # List of (scan_key, ecdh_share) tuples
+        self.sp_global_dleq_proofs = None  # List of (scan_key, dleq_proof) tuples
 
     @property
     def lock_time(self):
@@ -1232,8 +1284,19 @@ class psbtObject(psbtProxy):
             self.has_goc = True
         elif kt == PSBT_GLOBAL_TX_MODIFIABLE:
             # bytes of length 1 (tx modifiable in short_values)
-            assert len(val) == 1
-            self.txn_modifiable = val[0]
+            self.txn_modifiable = self.get(val)[0]
+        elif kt == PSBT_GLOBAL_SP_ECDH_SHARE:
+            # BIP-375: Global ECDH share
+            # key contains scan_key (33 bytes), val contains ECDH share (33 bytes)
+            if self.sp_global_ecdh_shares is None:
+                self.sp_global_ecdh_shares = []
+            self.sp_global_ecdh_shares.append((key, val))
+        elif kt == PSBT_GLOBAL_SP_DLEQ:
+            # BIP-375: Global DLEQ proof
+            # key contains scan_key (33 bytes), val contains DLEQ proof (64 bytes)
+            if self.sp_global_dleq_proofs is None:
+                self.sp_global_dleq_proofs = []
+            self.sp_global_dleq_proofs.append((key, val))
         else:
             self.unknown = self.unknown or []
             pos, length = key
@@ -1660,7 +1723,12 @@ class psbtObject(psbtProxy):
             if self.is_v2:
                 # v2 requires inclusion
                 assert o.amount
-                assert o.script
+                # BIP-375: Silent payment outputs don't have scripts until ECDH computation
+                # Scripts are derived during signing after ECDH shares are computed
+                if o.sp_v0_info:
+                    o.script = o.sp_v0_info
+                else:
+                    assert o.script, "PSBTv2 output missing script (not a silent payment)"
             else:
                 # v0 requires exclusion
                 assert o.amount is None
@@ -2058,8 +2126,28 @@ class psbtObject(psbtProxy):
 
         dis.progress_bar_show(1)
 
+        # BIP-375: Validate Segwit version restrictions for silent payments
+        # Silent payment outputs cannot be mixed with inputs spending Segwit v>1
+        if self.has_silent_payment_outputs():
+            for i, inp in enumerate(self.inputs):
+                if not inp.utxo_spk:
+                    continue
+                
+                # Determine Segwit version from scriptPubKey
+                spk = inp.utxo_spk
+                if len(spk) >= 2 and spk[0] >= 0x51 and spk[0] <= 0x60:
+                    # Witness version is OP_N where N = version
+                    witness_version = spk[0] - 0x50
+                    
+                    if witness_version > 1:
+                        raise FatalPSBTIssue(
+                            "BIP-375 violation: Input #%d spends Segwit v%d output. "
+                            "Silent payment outputs cannot be mixed with Segwit v>1 inputs." %
+                            (i, witness_version))
+
         # useful info from all our parsed paths - will be validated against change outputs
         return length_p, hard_pattern, prefix_p, idx_max
+
 
     def consider_dangerous_sighash(self):
         # Check sighash flags are legal, useful, and safe. Warn about
@@ -2163,6 +2251,15 @@ class psbtObject(psbtProxy):
         if self.xpubs:
             for k, v in self.xpubs:
                 wr(PSBT_GLOBAL_XPUB, v, k)
+
+        # BIP-375: Global Silent Payment fields
+        if self.sp_global_ecdh_shares:
+            for k, v in self.sp_global_ecdh_shares:
+                wr(PSBT_GLOBAL_SP_ECDH_SHARE, v, k)
+        
+        if self.sp_global_dleq_proofs:
+            for k, v in self.sp_global_dleq_proofs:
+                wr(PSBT_GLOBAL_SP_DLEQ, v, k)
 
         if self.unknown:
             for k, v in self.unknown:
@@ -2282,6 +2379,13 @@ class psbtObject(psbtProxy):
                         raise FraudulentChangeOutput(out_idx, 
                               "Deception regarding change output. "
                               "BIP-32 path doesn't match actual address.")
+
+
+            # BIP-375 Silent Payment Processing
+            # Process silent payment outputs before signing inputs
+            if self.has_silent_payment_outputs():
+                ux_note = self.process_silent_payments_for_signing(sv, dis)
+                self.ux_notes.append(ux_note)
 
             # progress
             dis.fullscreen('Signing...')

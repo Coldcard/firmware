@@ -238,10 +238,58 @@ except Exception as e:
         return bytes.fromhex(result_hex)
 
 
+class NGU_Codecs:
+    """Wrapper for ngu.codecs module using coldcard-mpy"""
+    
+    @staticmethod
+    def bip352_encode(hrp, scan_key, spend_key, version=0):
+        """
+        Encode a BIP-352 Silent Payment address
+        
+        Args:
+            hrp: Human-readable part (e.g., 'sp' for mainnet, 'tsp' for testnet)
+            scan_key: 33-byte compressed scan public key
+            spend_key: 33-byte compressed spend public key
+            version: Version byte (0-31, default 0)
+        
+        Returns:
+            Bech32m-encoded Silent Payment address string
+        """
+        if not isinstance(scan_key, bytes) or len(scan_key) != 33:
+            raise ValueError("scan_key must be 33 bytes")
+        if not isinstance(spend_key, bytes) or len(spend_key) != 33:
+            raise ValueError("spend_key must be 33 bytes")
+        if not isinstance(hrp, str):
+            raise TypeError("hrp must be a string")
+        if not (0 <= version <= 31):
+            raise ValueError("version must be 0-31")
+        
+        code = f"""
+import ngu
+from ubinascii import unhexlify
+hrp = {hrp!r}
+scan_key_hex = {scan_key.hex()!r}
+spend_key_hex = {spend_key.hex()!r}
+version = {version}
+scan_key = unhexlify(scan_key_hex)
+spend_key = unhexlify(spend_key_hex)
+try:
+    result = ngu.codecs.bip352_encode(hrp, scan_key, spend_key, version)
+    print(result)
+except Exception as e:
+    import sys
+    sys.stderr.write(str(e))
+    sys.exit(1)
+"""
+        result = _exec_mpy(code).decode().strip()
+        return result
+
+
 class NGU:
-    """Mock ngu module with secp256k1 and hash submodules"""
+    """Mock ngu module with secp256k1, hash, and codecs submodules"""
     secp256k1 = NGU_Secp256k1()
     hash = NGU_Hash()
+    codecs = NGU_Codecs()
 
 
 # Singleton instance

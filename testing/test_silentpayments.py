@@ -444,6 +444,137 @@ class TestMultiSigSilentPayments:
         assert not verify_dleq_proof(pubkey2, scan_pubkey, ecdh_share1, proof1)
 
 
+class TestBIP352AddressEncoding:
+    """Test BIP-352 Silent Payment address encoding using ngu.codecs.bip352_encode"""
+    
+    def test_basic_encoding(self):
+        """Test basic Silent Payment address encoding"""
+        import ngu
+        
+        # Create test keys (33-byte compressed pubkeys)
+        scan_key = unhexlify('0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798')
+        spend_key = unhexlify('02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5')
+        
+        # Encode with default version (0) and mainnet HRP
+        address = ngu.codecs.bip352_encode('sp', scan_key, spend_key)
+        
+        # Verify address format
+        assert isinstance(address, str)
+        assert address.startswith('sp1q')  # sp + 1 + q (version 0 in bech32m)
+        # Length: hrp(2) + separator(1) + version+data(107) + checksum(6) = 116
+        assert len(address) == 116
+    
+    def test_testnet_encoding(self):
+        """Test testnet Silent Payment address encoding"""
+        import ngu
+        
+        scan_key = unhexlify('0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798')
+        spend_key = unhexlify('02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5')
+        
+        # Encode for testnet
+        address = ngu.codecs.bip352_encode('tsp', scan_key, spend_key)
+        
+        assert address.startswith('tsp1q')
+        # Length: hrp(3) + separator(1) + version+data(107) + checksum(6) = 117
+        assert len(address) == 117
+    
+    def test_version_parameter(self):
+        """Test version parameter encoding and boundaries"""
+        import ngu
+
+        scan_key = unhexlify('0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798')
+        spend_key = unhexlify('02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5')
+
+        # Default version should match explicit v0
+        address_default = ngu.codecs.bip352_encode('sp', scan_key, spend_key)
+        address_v0 = ngu.codecs.bip352_encode('sp', scan_key, spend_key, 0)
+        assert address_v0 == address_default
+
+        # Version 0 should have 'q' character (0 in bech32 charset)
+        assert address_v0[3] == 'q'
+
+        # Test valid version boundaries (0-31 per BIP-352)
+        version_addresses = {}
+        for version in [0, 1, 15, 30, 31]:
+            addr = ngu.codecs.bip352_encode('sp', scan_key, spend_key, version)
+            assert isinstance(addr, str)
+            assert addr.startswith('sp1')
+            version_addresses[version] = addr
+
+        # Different versions should produce different addresses
+        assert version_addresses[0] != version_addresses[1]
+        assert version_addresses[1] != version_addresses[31]
+
+        # Test invalid versions (boundary violations)
+        invalid_versions = [32, 33, 100, -1, -10]
+        for invalid_version in invalid_versions:
+            try:
+                ngu.codecs.bip352_encode('sp', scan_key, spend_key, invalid_version)
+                assert False, f"Should have raised ValueError for version {invalid_version}"
+            except ValueError as e:
+                assert 'version must be 0-31' in str(e)
+    
+    def test_different_keys_produce_different_addresses(self):
+        """Test that different keys produce different addresses"""
+        import ngu
+        
+        scan_key1 = unhexlify('0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798')
+        scan_key2 = unhexlify('02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5')
+        spend_key = unhexlify('021b8c93100d35bd448f4646cc4678f278351b439b52b303ea31ec97b6eda4116f')
+        
+        address1 = ngu.codecs.bip352_encode('sp', scan_key1, spend_key)
+        address2 = ngu.codecs.bip352_encode('sp', scan_key2, spend_key)
+        
+        assert address1 != address2
+        
+        # Also test different spend keys
+        spend_key2 = unhexlify('03fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556')
+        address3 = ngu.codecs.bip352_encode('sp', scan_key1, spend_key2)
+        
+        assert address1 != address3
+        assert address2 != address3
+    
+    def test_invalid_key_sizes(self):
+        """Test that invalid key sizes are rejected"""
+        import ngu
+
+        scan_key = unhexlify('0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798')
+
+        # Test cases: (key_hex, description)
+        invalid_keys = [
+            ('79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798', '32-byte key'),  # Missing compression byte
+            ('0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ff', '34-byte key'),  # Too long
+            ('79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16', '28-byte key'),  # Too short
+            ('', '0-byte key'),  # Empty
+        ]
+
+        for key_hex, description in invalid_keys:
+            try:
+                invalid_key = unhexlify(key_hex) if key_hex else b''
+                ngu.codecs.bip352_encode('sp', scan_key, invalid_key)
+                assert False, f"Should have raised ValueError for {description}"
+            except ValueError as e:
+                assert '33 bytes' in str(e), f"Expected '33 bytes' in error for {description}, got: {e}"
+    
+    def test_uncompressed_key_rejection(self):
+        """Test that uncompressed pubkeys are rejected"""
+        import ngu
+
+        scan_key = unhexlify('0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798')
+
+        # 65-byte uncompressed key (04 prefix + 64 bytes)
+        uncompressed_key = unhexlify(
+            '04c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5'
+            '1ae168fea63dc339a3c58419466ceaeef7f632653266d0e1236431a950cfe52a'
+        )
+
+        try:
+            ngu.codecs.bip352_encode('sp', scan_key, uncompressed_key)
+            assert False, "Should have raised ValueError for 65-byte uncompressed key"
+        except ValueError as e:
+            assert '33 bytes' in str(e)
+
+
 if __name__ == '__main__':
     # Run tests manually
     import sys
@@ -455,6 +586,7 @@ if __name__ == '__main__':
         TestPSBTFieldConstants(),
         TestBIP352Fixes(),
         TestMultiSigSilentPayments(),
+        TestBIP352AddressEncoding(),
     ]
     
     failed = 0

@@ -268,6 +268,49 @@ class SilentPaymentMixin:
     - self.sp_global_dleq_proofs
     """
 
+    def render_silent_payment_output_string(self, output, tx_out):
+        """
+        Render a human-readable Silent Payment output string for displaying on screen
+
+        Args:
+            output: Output object from self.outputs
+            tx_out: Transaction output object
+
+        Returns:
+            str: Human-readable Silent Payment output string
+        """
+        if not output.sp_v0_info:
+            raise ValueError("Output is not a silent payment output")
+
+        import chains
+        val = ' '.join(chains.current_chain().render_value(tx_out.nValue))
+        rendered = '%s\n - to silent payment address -\n%s\n' % (val, self.encode_silent_payment_address(output))
+
+        return rendered
+
+
+    def encode_silent_payment_address(self, output):
+        """
+        Encode a human-readable Silent Payment address
+        
+        Args:
+            output: Output object from self.outputs
+        
+        Returns:
+            str: bech32m-encoded Silent Payment address (e.g., "sp1...")
+        """
+        if not output.sp_v0_info:
+            raise ValueError("Output is not a silent payment output")
+
+        scan_key = self.get(output.sp_v0_info)[:33]
+        spend_key = self.get(output.sp_v0_info)[33:]
+
+        # Get Silent Payment HRP from current chain
+        import chains
+        hrp = chains.current_chain().sp_hrp
+        return self._encode_silent_payment_address(scan_key, spend_key, hrp=hrp)
+
+
     def finalize_silent_payment_outputs(self):
         """
         Final step: combine all ECDH shares and compute output scripts
@@ -821,6 +864,34 @@ class SilentPaymentMixin:
         
         if DEBUG:
             print("Combined Silent Payment shares from another signer")
+
+    def _encode_silent_payment_address(self, scan_pubkey, spend_pubkey, hrp="sp", version=0):
+        """
+        Encode a Silent Payment address using bech32m
+        
+        Uses ngu.codecs.bip352_encode which implements BIP-352 encoding in C.
+        
+        Args:
+            scan_pubkey: 33-byte compressed scan public key (bytes)
+            spend_pubkey: 33-byte compressed spend public key (bytes)
+            hrp: Human-readable part (default "sp" for mainnet, "tsp" for testnet)
+            version: Version byte (0-31 per BIP-352)
+                     v0-v30: backward compatible
+                     v31: reserved for backward-incompatible changes
+        
+        Returns:
+            str: bech32m-encoded Silent Payment address (117 chars for v0)
+        """
+        # Ensure we have bytes, not tuples
+        if not isinstance(scan_pubkey, (bytes, bytearray)):
+            scan_pubkey = self.get(scan_pubkey)
+        if not isinstance(spend_pubkey, (bytes, bytearray)):
+            spend_pubkey = self.get(spend_pubkey)
+
+        # Use the C implementation for encoding with version support
+        address = ngu.codecs.bip352_encode(hrp, scan_pubkey, spend_pubkey, version)
+        
+        return address
 
 
     def _get_silent_payment_scan_keys(self):
