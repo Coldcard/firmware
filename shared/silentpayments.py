@@ -202,6 +202,97 @@ class SilentPaymentsMixin:
     - self.parse_xfp_path()
     """
 
+    def encode_silent_payment_address(self, output):
+        """
+        Encode a human-readable Silent Payment address
+
+        Uses current chain's HRP for encoding
+
+        Args:
+            output: Output object from self.outputs
+
+        Returns:
+            str: bech32m-encoded Silent Payment address (e.g., "sp1...")
+        """
+        if not output.sp_v0_info:
+            raise ValueError("Output is not a silent payment output")
+
+        scan_key = output.sp_v0_info[:33]
+        spend_key = output.sp_v0_info[33:]
+
+        # Get Silent Payment HRP from current chain
+        import chains
+
+        hrp = chains.current_chain().sp_hrp
+        version = 0  # Currently only v0 supported
+        return ngu.codecs.bip352_encode(hrp, scan_key, spend_key, version)
+
+    def preview_silent_payment_outputs(self):
+        """
+        Computes ECDH shares and output scripts for silent payment outputs if we have the necessary information.
+
+        Notes:
+        - This function is intended to be called during the preview phase, before signing.
+        - Single signer should be able to generate output and preview immediately.
+        - Multi-signer should generate shares and prompt user to collect all shares if not complete.
+
+        Returns:
+            bool: True if output scripts were computed and are ready for preview
+                  False if we generated shares but are waiting on others, or if we don't have necessary info to proceed
+        """
+        try:
+            import stash
+
+            with stash.SensitiveValues() as sv:
+                result = self._process_silent_payments(sv) # TODO: should False raise an exception instead?
+                self.sp_processed = result
+                return result
+
+        except FatalPSBTIssue:
+            raise
+        except Exception as e:
+            print("SP preview failed: %s" % e)
+            return False
+
+    def process_silent_payments_for_signing(self, sv, dis):
+        """
+        Reference notes for preview_silent_payment_outputs
+
+        Notes:
+        - This function should skip share generation but checks for completeness before attempting to sign.
+
+        Returns:
+            bool: True if coverage is complete
+                  False if we generated shares but are waiting on others, or if we don't have necessary info to proceed
+        """
+        dis.fullscreen("Silent Payment...")
+
+        if not self.sp_processed:
+            self._process_silent_payments(sv)
+
+        if self._is_ecdh_coverage_complete():
+            dis.fullscreen("Computing Outputs...")
+            self._compute_silent_payment_output_scripts()
+            return True
+
+        return False
+
+    def render_silent_payment_output_string(self, output):
+        """
+        Render a human-readable Silent Payment output string for displaying on screen
+
+        Args:
+            output: Output object from self.outputs
+
+        Returns:
+            str: Human-readable Silent Payment output string
+        """
+        if not output.sp_v0_info:
+            raise ValueError("Output is not a silent payment output")
+
+        return " - silent payment address -\n%s\n" % self.encode_silent_payment_address(output)
+
+
     # -----------------------------------------------------------------------------
     # Input Helper Functions
     # -----------------------------------------------------------------------------
@@ -267,7 +358,7 @@ class SilentPaymentsMixin:
         Returns True if output scripts were computed (ready to sign).
         """
         if not self.has_silent_payment_outputs():
-            return
+            return False
         self._validate_psbt_structure()
         self._validate_input_eligibility()
         self._validate_ecdh_coverage()
@@ -425,8 +516,6 @@ class SilentPaymentsMixin:
                 # Sum all eligible input pubkeys
                 pubkeys = []
                 for inp in self.inputs:
-                    if not self._is_input_eligible(inp):
-                        continue
                     pk = self._pubkey_from_input(inp)
                     if pk:
                         pubkeys.append(pk)
@@ -536,7 +625,8 @@ class SilentPaymentsMixin:
             elif inp.taproot_subpaths or inp.subpaths:
                 has_foreign = True
 
-        # Detect foreign eligible inputs (different XFP, no sp_idxs)
+        # FIXME: is this the right approach?
+        # Detect foreign eligible inputs (different XFP, no sp_idxs) 
         if not has_foreign:
             for inp in self.inputs:
                 if inp.sp_idxs:
@@ -563,9 +653,7 @@ class SilentPaymentsMixin:
                     combined_sk = (combined_sk + privkey_int) % SECP256K1_ORDER
 
                 ecdh_share = _compute_ecdh_share(combined_sk, scan_key)
-                aux_rand = bytearray(32)
-                ckcc.rng_bytes(aux_rand)
-                dleq_proof = generate_dleq_proof(combined_sk, scan_key, bytes(aux_rand))
+                dleq_proof = generate_dleq_proof(combined_sk, scan_key)
 
                 if self.sp_global_ecdh_shares is None:
                     self.sp_global_ecdh_shares = {}
@@ -577,9 +665,7 @@ class SilentPaymentsMixin:
                 # Multi-signer: per-input ECDH shares and DLEQ proofs for owned inputs
                 for inp, privkey_int in input_privkeys:
                     ecdh_share = _compute_ecdh_share(privkey_int, scan_key)
-                    aux_rand = bytearray(32)
-                    ckcc.rng_bytes(aux_rand)
-                    dleq_proof = generate_dleq_proof(privkey_int, scan_key, bytes(aux_rand))
+                    dleq_proof = generate_dleq_proof(privkey_int, scan_key)
 
                     if inp.sp_ecdh_shares is None:
                         inp.sp_ecdh_shares = {}
@@ -689,10 +775,16 @@ class SilentPaymentsMixin:
             if not ecdh_share or not summed_pubkey:
                 raise FatalPSBTIssue("Missing ECDH share for output #%d" % out_idx)
 
-            outp.script = _compute_silent_payment_output_script(
+            computed = _compute_silent_payment_output_script(
                 outpoints, summed_pubkey, ecdh_share, B_spend, k
             )
 
+            if outp.script:
+                existing = self.get(outp.script) if isinstance(outp.script, tuple) else outp.script
+                if existing != computed:
+                    raise FatalPSBTIssue("SP output #%d: output script mismatch" % out_idx)
+
+            outp.script = computed
             scan_key_k[scan_key] = k + 1
 
     def _get_ecdh_and_pubkey(self, scan_key):
@@ -714,23 +806,25 @@ class SilentPaymentsMixin:
                         pubkeys.append(pk)
             if pubkeys:
                 return ecdh_share, _combine_pubkeys(pubkeys)
+            return None, None
 
-        # Check per-input ECDH shares — combine via EC point addition
-        summed_ecdh = None
+        # Per-input shares: combine shares and pubkeys from eligible inputs
+        combined_ecdh = None
         pubkeys = []
         for inp in self.inputs:
             if inp.sp_ecdh_shares and scan_key in inp.sp_ecdh_shares:
-                share = inp.sp_ecdh_shares[scan_key]
-                if summed_ecdh is None:
-                    summed_ecdh = share
+                ecdh_share = inp.sp_ecdh_shares[scan_key]
+                if combined_ecdh is None:
+                    combined_ecdh = ecdh_share
                 else:
-                    summed_ecdh = ngu.secp256k1.ec_pubkey_combine(summed_ecdh, share)
-                pk = self._pubkey_from_input(inp)
-                if pk:
-                    pubkeys.append(pk)
+                    combined_ecdh = ngu.secp256k1.ec_pubkey_combine(combined_ecdh, ecdh_share)
+                if self._is_input_eligible(inp):
+                    pk = self._pubkey_from_input(inp)
+                    if pk:
+                        pubkeys.append(pk)
 
-        if summed_ecdh and pubkeys:
-            return summed_ecdh, _combine_pubkeys(pubkeys)
+        if combined_ecdh and pubkeys:
+            return combined_ecdh, _combine_pubkeys(pubkeys)
 
         return None, None
 
