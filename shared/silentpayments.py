@@ -4,6 +4,7 @@
 #
 # Consolidates cryptographic primitives and PSBT handling logic for Silent Payments
 #
+import chains
 import ngu
 from dleq import generate_dleq_proof, verify_dleq_proof
 from exceptions import FatalPSBTIssue
@@ -16,6 +17,7 @@ G = ngu.secp256k1.generator()
 # BIP-341 NUMS point (Nothing Up My Sleeve) - x-only (32-byte)
 NUMS_H = a2b_hex("50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0")
 SECP256K1_ORDER = ngu.secp256k1.curve_order_int()
+
 
 # -----------------------------------------------------------------------------
 # Silent Payments Cryptographic Primitives
@@ -115,11 +117,84 @@ def _compute_silent_payment_output_script(outpoints, A_sum_bytes, ecdh_share_byt
     input_hash_bytes = _compute_input_hash(outpoints, A_sum_bytes)
     shared_secret_bytes = ngu.secp256k1.ec_pubkey_tweak_mul(ecdh_share_bytes, input_hash_bytes)
     tweak_bytes = _compute_shared_secret_tweak(shared_secret_bytes, k)
-    # Derive output pubkey: P_k = B_spend + t_k * G
-    tweak_point = ngu.secp256k1.ec_pubkey_tweak_mul(G, tweak_bytes)
-    output_pubkey = ngu.secp256k1.ec_pubkey_combine([B_spend_bytes, tweak_point])
-    x_only = output_pubkey[1:]
+    x_only = _compute_silent_payment_spending_xonly(B_spend_bytes, tweak_bytes)
     return b"\x51\x20" + x_only
+
+
+def _compute_silent_payment_spending_privkey(b_spend_bytes, sp_tweak_bytes):
+    """
+    Compute private key for spending a silent payment output
+
+    Formula: d_k = (b_spend + sp_tweak) mod n
+
+    Note: sp_tweak = combined tweak (shared secret + label if applicable)
+
+    Args:
+        b_spend_bytes: Base spend private key (32-byte scalar)
+        sp_tweak_bytes: Tweak from PSBT_IN_SP_TWEAK (32-byte scalar)
+
+    Returns:
+        bytes: Tweaked spending private key normalized to even Y (32-byte scalar)
+
+    Raises:
+        ValueError: If sp_tweak or spending_privkey is invalid
+    """
+    sp_tweak_int = int.from_bytes(sp_tweak_bytes, "big")
+    b_spend_int = int.from_bytes(b_spend_bytes, "big")
+    if not (0 < b_spend_int < SECP256K1_ORDER):
+        raise ValueError("Invalid spend private key: not in valid scalar range")
+    if not (0 < sp_tweak_int < SECP256K1_ORDER):
+        raise ValueError("Invalid tweak: not in valid scalar range")
+    spending_sk = (b_spend_int + sp_tweak_int) % SECP256K1_ORDER
+    if spending_sk == 0:
+        raise ValueError("Invalid computed spend key: result is zero")
+    return _negate_if_odd_y(spending_sk.to_bytes(32, "big"))
+
+
+def _compute_silent_payment_spending_xonly(B_spend_bytes, sp_tweak_bytes):
+    """
+    Compute x-only pubkey for spending a silent payment output
+
+    Formula: P_k = B_spend + sp_tweak * G
+
+    Args:
+        B_spend_bytes: Recipient spend public key (33-byte compressed)
+        sp_tweak_bytes: SP tweak (32-byte scalar)
+
+    Returns:
+        bytes: x-only public key (32-byte)
+    """
+    tweak_point = ngu.secp256k1.ec_pubkey_tweak_mul(G, sp_tweak_bytes)
+    output_pubkey = ngu.secp256k1.ec_pubkey_combine([B_spend_bytes, tweak_point])
+    return output_pubkey[1:]
+
+
+def _negate_if_odd_y(privkey):
+    """
+    Normalize a private key so its corresponding public key has even Y (0x02 prefix)
+
+    Returns:
+        bytes: normalized private key (32-byte scalar)
+    """
+    pubkey = ngu.secp256k1.ec_pubkey_tweak_mul(G, privkey)
+    if pubkey[0] == 0x03:
+        privkey = (SECP256K1_ORDER - int.from_bytes(privkey, "big")).to_bytes(32, "big")
+    return privkey
+
+
+def _sum_privkeys(privkeys):
+    """
+    Sum list of private key (32-byte scalars)
+
+    Returns:
+        bytes: summed private key (32-byte scalar)
+    """
+    total = 0
+    for sk in privkeys:
+        total = (total + int.from_bytes(sk, "big")) % SECP256K1_ORDER
+    if total == 0:
+        raise ValueError("Invalid private key sum: result is zero")
+    return total.to_bytes(32, "big")
 
 
 # -----------------------------------------------------------------------------
@@ -204,8 +279,9 @@ class SilentPaymentsMixin:
                         pubkeys.append(pk)
             if pubkeys:
                 return ecdh_share, _combine_pubkeys(pubkeys)
+            return None, None
 
-        # Per-input shares: combine EDCH shares and sum all eligible input pubkeys
+        # Per-input shares: combine shares and pubkeys from eligible inputs
         combined_ecdh = None
         pubkeys = []
         for inp in self.inputs:
@@ -215,9 +291,10 @@ class SilentPaymentsMixin:
                     combined_ecdh = share
                 else:
                     combined_ecdh = ngu.secp256k1.ec_pubkey_combine([combined_ecdh, share])
-                pk = self._pubkey_from_input(inp)
-                if pk:
-                    pubkeys.append(pk)
+                if self._is_input_eligible(inp):
+                    pk = self._pubkey_from_input(inp)
+                    if pk:
+                        pubkeys.append(pk)
 
         if combined_ecdh and pubkeys:
             return combined_ecdh, _combine_pubkeys(pubkeys)
@@ -258,6 +335,9 @@ class SilentPaymentsMixin:
         Returns:
             bytes: Input public key (33-byte compressed) or None if not found
         """
+        if not self._is_input_eligible(input):
+            return None
+
         spk = input.utxo_spk
         if spk and _is_p2tr(spk):
             return b"\x02" + spk[2:34]
@@ -411,8 +491,6 @@ class SilentPaymentsMixin:
                 # Sum all eligible input pubkeys
                 pubkeys = []
                 for inp in self.inputs:
-                    if not self._is_input_eligible(inp):
-                        continue
                     pk = self._pubkey_from_input(inp)
                     if pk:
                         pubkeys.append(pk)
@@ -477,6 +555,7 @@ class SilentPaymentsMixin:
             elif inp.taproot_subpaths or inp.subpaths:
                 has_foreign = True
 
+        # FIXME: is this the right approach? cosign_xfp?
         # Detect foreign eligible inputs (different XFP, no sp_idxs)
         if not has_foreign:
             for inp in self.inputs:
@@ -499,13 +578,9 @@ class SilentPaymentsMixin:
         for scan_key in scan_keys:
             if all_inputs_ours:
                 # Single-signer: combine all input private keys, one global ECDH share and DLEQ proofs
-                combined_sk = 0
-                for _, input_sk in input_material:
-                    input_sk_int = int.from_bytes(input_sk, "big")
-                    combined_sk = (combined_sk + input_sk_int) % SECP256K1_ORDER
-
-                ecdh_share = _compute_ecdh_share(combined_sk.to_bytes(32, "big"), scan_key)
-                dleq_proof = generate_dleq_proof(combined_sk.to_bytes(32, "big"), scan_key)
+                combined_sk = _sum_privkeys(sk for _, sk in input_material)
+                ecdh_share = _compute_ecdh_share(combined_sk, scan_key)
+                dleq_proof = generate_dleq_proof(combined_sk, scan_key)
 
                 self.sp_global_ecdh_shares = self.sp_global_ecdh_shares or {}
                 self.sp_global_dleq_proofs = self.sp_global_dleq_proofs or {}
@@ -548,7 +623,14 @@ class SilentPaymentsMixin:
             if not ecdh_share or not summed_pubkey:
                 raise FatalPSBTIssue("Missing ECDH share for output #%d" % out_idx)
 
-            outp.script = _compute_silent_payment_output_script(outpoints, summed_pubkey, ecdh_share, B_spend, k)
+            computed = _compute_silent_payment_output_script(outpoints, summed_pubkey, ecdh_share, B_spend, k)
+
+            if outp.script:
+                existing = self.get(outp.script) if isinstance(outp.script, tuple) else outp.script
+                if existing != computed:
+                    raise FatalPSBTIssue("SP output #%d: output script mismatch" % out_idx)
+
+            outp.script = computed
             scan_key_k[scan_key] = k + 1
 
     # -----------------------------------------------------------------------------
