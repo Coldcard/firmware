@@ -126,9 +126,6 @@ if '--xfp' in sys.argv:
     sim_defaults['xfp'] = unpack("<I", a2b_hex(xfp))[0]
     print("Override XFP: " + xfp2str(sim_defaults['xfp']))
 
-if '--mainnet' in sys.argv:
-    sim_defaults['chain'] = 'BTC'
-
 if '--seed' in sys.argv:
     # --seed "word1 word2 ... word24" => import that seed phrase at start
     import bip39
@@ -158,7 +155,6 @@ if '--seed' in sys.argv:
     sim_defaults.pop('xpub')
     print("Using seed phrase from argv!")
 
-    
 
 if '--secret' in sys.argv:
     # --secret 01a1a1a....   Set SE master secret directly. See SecretStash.encode
@@ -181,6 +177,8 @@ if '--secret' in sys.argv:
     sim_defaults.pop('xfp')
     sim_defaults.pop('xpub')
 
+if '--mainnet' in sys.argv:
+    sim_defaults['chain'] = 'BTC'
 
 if '-g' in sys.argv:
     # do login.. but does not work if _skip_pin got saved into settings already

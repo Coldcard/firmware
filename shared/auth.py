@@ -296,6 +296,7 @@ class ApproveTransaction(UserAuthorizedAction):
         # 
         val = ' '.join(self.chain.render_value(o.nValue))
         try:
+            # TODO: handle Silent Payment outputs
             dest = self.chain.render_address(o.scriptPubKey)
             # known script types are short enough that we can display QR on both hw versions
             return '%s\n - to address -\n%s\n' % (val, show_single_address(dest)), dest
@@ -369,6 +370,12 @@ class ApproveTransaction(UserAuthorizedAction):
 
             ccc_c_xfp = CCCFeature.get_xfp()  # can be None
             args = self.psbt.consider_inputs(cosign_xfp=ccc_c_xfp)
+            
+            # BIP-375: Preview Silent Payment outputs if possible
+            # This computes real addresses for single-signer scenarios
+            if self.psbt.has_silent_payment_outputs():
+                self.psbt.preview_silent_payment_outputs()
+            
             self.psbt.consider_outputs(*args, cosign_xfp=ccc_c_xfp)
             del args  # not needed anymore
             # we can properly assess sighash only after we know
@@ -687,6 +694,10 @@ class ApproveTransaction(UserAuthorizedAction):
         largest_change = []
         total_change = 0
         has_change = False
+
+        # TODO: handle Silent Payment outputs - display appropiate message
+        # Pay to silent payment address
+        # Pay to silent payment address with change
 
         for idx, tx_out in self.psbt.output_iter():
             outp = self.psbt.outputs[idx]
