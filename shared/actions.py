@@ -2452,7 +2452,7 @@ async def pushtx_setup_menu(*a):
             "transaction will be immediately broadcast on the public network.\n\n"
             "You must choose a provider by URL here, or give your own URL. "
             "\n\nYour phone's IP address vs. transaction details could be linked by the service. "
-            "Requires NFC.",
+            "Make sure your phone is not in airplane mode. Requires NFC.",
             title="PUSH TX",
         )
         if ch != "y":
