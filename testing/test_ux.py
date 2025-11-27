@@ -7,6 +7,9 @@ from constants import AF_CLASSIC, simulator_fixed_words, simulator_fixed_xfp
 from mnemonic import Mnemonic
 from bip32 import BIP32Node
 
+mnem = Mnemonic('english')
+wordlist = mnem.wordlist
+
 
 @pytest.fixture
 def enable_hw_ux(pick_menu_item, cap_story, press_select, goto_home):
@@ -215,10 +218,14 @@ def pass_word_quiz(need_keypress, cap_story, press_select):
     ( 'abandon ' * 23 + 'art', 0x24d73654 ),
     ( simulator_fixed_words, simulator_fixed_xfp),
     ])
-def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_test,
-                     cap_menu, word_menu_entry, seed_words, xfp, get_secrets, is_q1,
+@pytest.mark.parametrize("way", ["input", "qr", "seedqr"])
+def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_test, is_q1,
+                     cap_menu, word_menu_entry, seed_words, xfp, get_secrets, press_select,
                      reset_seed_words, cap_screen_qr, qr_quality_check, expect_ftux,
-                     is_headless, get_identity_story):
+                     is_headless, get_identity_story, way, scan_a_qr, cap_screen):
+
+    if "qr" in way and not is_q1:
+        raise pytest.skip("Mk4 QR")
     
     unit_test('devtest/clear_seed.py')
 
@@ -229,7 +236,22 @@ def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_t
     sw = seed_words.split(' ')
     pick_menu_item('%d Words' % len(sw))
 
-    word_menu_entry(sw)
+    if way == "input":
+        word_menu_entry(sw)
+
+    else:
+        assert "qr" in way
+        need_keypress(KEY_QR)
+        if way == "qr":
+            qr = ' '.join(w[:4] for w in sw)
+        else:
+            qr = ''.join('%04d' % wordlist.index(w) for w in sw)
+
+        scan_a_qr(qr)
+        time.sleep(1)
+        scr = cap_screen()
+        assert "Valid words!" in scr
+        press_select()
 
     expect_ftux()
 
@@ -254,9 +276,6 @@ def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_t
 def test_all_bip39_words(pos, goto_home, pick_menu_item, cap_story, unit_test,
                          cap_menu, word_menu_entry, get_secrets, reset_seed_words,
                          expect_ftux, is_q1):
-    from mnemonic import Mnemonic
-    mnem = Mnemonic('english')
-    wordlist = mnem.wordlist
 
     # try every single word! In 23-word batches (89 of them)
     unit_test('devtest/clear_seed.py')
@@ -425,20 +444,21 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, expect_ftux,
     reset_seed_words()
 
 
-@pytest.mark.parametrize('multiple_runs', range(3))
-@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize('testnet', [True, False])
 def test_import_prv(way, testnet, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu,
-                    word_menu_entry, get_secrets, microsd_path, multiple_runs, reset_seed_words,
-                    nfc_write_text, settings_set, virtdisk_path, expect_ftux, press_select,
-                    press_nfc, is_q1, enable_hw_ux):
+                    get_secrets, microsd_path, reset_seed_words, scan_a_qr, is_q1, press_nfc,
+                    nfc_write_text, settings_set, virtdisk_path, expect_ftux, garbage_collector,
+                    enable_hw_ux, skip_if_useless_way):
 
     unit_test('devtest/clear_seed.py')
     netcode = "XTN" if testnet else "BTC"
     settings_set('chain', netcode)
 
-    if way != "sd":
+    if way in ["nfc", "vdisk"]:
         enable_hw_ux(way)
+
+    skip_if_useless_way(way)
 
     node = BIP32Node.from_master_secret(os.urandom(32), netcode=netcode)
     prv = node.hwif(as_private=True)+'\n'
@@ -447,12 +467,11 @@ def test_import_prv(way, testnet, pick_menu_item, cap_story, need_keypress, unit
     else:
         assert "xprv" in prv
 
-    fname = 'test-%d.txt' % os.getpid()
-    if way =="sd":
-        fpath = microsd_path(fname)
-    elif way == "vdisk":
-        fpath = virtdisk_path(fname)
-    if way != "nfc":
+    if way in ["sd", "vdisk"]:
+        fname = 'test-%d.txt' % os.getpid()
+        path_f = microsd_path if way == "sd" else virtdisk_path
+        fpath = path_f(fname)
+        garbage_collector.append(fpath)
         with open(fpath, "w") as f:
             f.write(prv)
 
@@ -473,6 +492,10 @@ def test_import_prv(way, testnet, pick_menu_item, cap_story, need_keypress, unit
             time.sleep(0.2)
             nfc_write_text(prv)
             time.sleep(0.3)
+    elif way == "qr":
+        need_keypress(KEY_QR)
+        scan_a_qr(prv)
+        time.sleep(1)
     else:
         # virtual disk
         if "(2) to import from Virtual Disk" not in story:
@@ -480,7 +503,7 @@ def test_import_prv(way, testnet, pick_menu_item, cap_story, need_keypress, unit
         else:
             need_keypress("2")
 
-    if way != "nfc":
+    if way in ["sd", "vdisk"]:
         time.sleep(0.1)
         pick_menu_item(fname)
 
@@ -494,19 +517,22 @@ def test_import_prv(way, testnet, pick_menu_item, cap_story, need_keypress, unit
     reset_seed_words()
 
 
-@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
-@pytest.mark.parametrize('retry', range(3))
+@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize("testnet", [True, False])
-def test_seed_import_tapsigner(way, retry, testnet, cap_menu, pick_menu_item, goto_home, cap_story,
+def test_seed_import_tapsigner(way, testnet, cap_menu, pick_menu_item, goto_home, cap_story,
                                need_keypress, reset_seed_words, dev, try_sign, enter_hex, unit_test,
                                settings_set, get_secrets, tapsigner_encrypted_backup, nfc_write_text,
-                               press_nfc, press_select, is_q1, enable_hw_ux):
+                               press_nfc, press_select, is_q1, enable_hw_ux, skip_if_useless_way,
+                               scan_a_qr):
+
     unit_test('devtest/clear_seed.py')
     netcode = "XTN" if testnet else "BTC"
     settings_set('chain', netcode)
 
-    if way != "sd":
+    if way in ["nfc", "vdisk"]:
         enable_hw_ux(way)
+
+    skip_if_useless_way(way)
 
     fname, backup_key_hex, node = tapsigner_encrypted_backup(way, testnet=testnet)
 
@@ -525,8 +551,12 @@ def test_seed_import_tapsigner(way, retry, testnet, cap_menu, pick_menu_item, go
         else:
             press_nfc()
             time.sleep(0.2)
-            nfc_write_text(fname)
+            nfc_write_text(fname)  # fname is b64 encoded backup itself
             time.sleep(0.3)
+    elif way == "qr":
+        need_keypress(KEY_QR)
+        scan_a_qr(fname)  # fname is b64 encoded backup itself
+        time.sleep(1)
     else:
         # virtual disk
         if "(2) to import from Virtual Disk" not in story:
@@ -534,7 +564,7 @@ def test_seed_import_tapsigner(way, retry, testnet, cap_menu, pick_menu_item, go
         else:
             need_keypress("2")
 
-    if way != "nfc":
+    if way in ["sd", "vdisk"]:
         time.sleep(0.1)
         pick_menu_item(fname)
 
