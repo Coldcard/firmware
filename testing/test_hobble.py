@@ -139,8 +139,8 @@ def test_menu_contents(set_hobble, pick_menu_item, cap_menu, en_okeys, en_notes,
     assert set(m) == fm_expect, "File Mgmt menu wrong"
 
 
-def test_h_notes(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set, need_some_notes,
-                 sim_exec, settings_remove):
+def test_h_notes(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set,
+                 need_some_notes, sim_exec, settings_remove, press_cancel):
     '''
         * load a secure note/pw; check readonly once hobbled
             * cannot export
@@ -160,6 +160,12 @@ def test_h_notes(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set, ne
 
     m = cap_menu()
     assert m == [ '"Title Here"', 'View Note', 'Sign Note Text' ]
+
+    set_hobble(True, {'notes', 'okeys'})
+
+    pick_menu_item('Secure Notes & Passwords')
+    pick_menu_item('1: Title Here')
+    assert cap_menu() == ['"Title Here"', 'View Note', 'Sign Note Text', 'Apply as BIP-39 Passphrase']
 
     # clear notes, should not be offered
     settings_remove('notes')

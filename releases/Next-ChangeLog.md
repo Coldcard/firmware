@@ -60,6 +60,7 @@ This lists the new changes that have not yet been published in a normal release.
 ## 1.4.xQ - 2065-04-xx
 
 - New Feature: Secure Notes & Passwords UX groups
+- New Feature: Apply Secure Note text, or Secure Note password as BIP-39 passphrase
 - Bugfix: Teleporting a multisig PSBT file (without signing it first) sent stale data instead of the selected file
 - Bugfix: Fix export UX message after teleport PSBT import & sign
 - Bugfix: BIP-21 QR `amount` rendered with wrong decimal scaling on the Payment Address screen (e.g. `amount=1.1` was shown as `1.00000001 BTC`)

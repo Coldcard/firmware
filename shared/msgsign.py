@@ -262,13 +262,13 @@ def write_sig_file(content_list, derive=None, addr_fmt=AF_CLASSIC, pk=None, sig_
 
     return sig_nice
 
-def validate_text_for_signing(text, only_printable=True):
+def validate_text_for_signing(text, allow_tab_nl=False):
     # Check for some UX/UI traps in the message itself.
     # - messages must be short and ascii only. Our charset is limited
     # - too many spaces, leading/trailing can be an issue
     # MSG_MAX_SPACES = 4      # impt. compared to -=- positioning
     text = str(text, "ascii")  # handle memoryview coming from USB
-    result = to_ascii_printable(text, only_printable=only_printable)
+    result = to_ascii_printable(text, allow_tab_nl=allow_tab_nl)
 
     length = len(result)
     assert length >= 2, "msg too short (min. 2)"
@@ -416,7 +416,7 @@ async def ux_sign_msg(txt, approved_cb=None, kill_menu=True):
         if subpath is None: return
 
         await approve_msg_sign(text, subpath, af, approved_cb=approved_cb,
-                               kill_menu=kill_menu, only_printable=False)
+                               kill_menu=kill_menu, allow_tab_nl=True)
 
     # pick address format
     rv = [

@@ -131,7 +131,7 @@ Press %s to continue, otherwise %s to cancel.''' % (OK, X)
 
 class ApproveMessageSign(UserAuthorizedAction):
     def __init__(self, text, subpath, addr_fmt, approved_cb=None,
-                 msg_sign_request=None, only_printable=True, privkey=None):
+                 msg_sign_request=None, allow_tab_nl=False, privkey=None):
         super().__init__()
         is_json = False
 
@@ -141,7 +141,7 @@ class ApproveMessageSign(UserAuthorizedAction):
             text, subpath, addr_fmt, is_json = parse_msg_sign_request(msg_sign_request)
 
         self.text = validate_text_for_signing(
-            text, only_printable=not is_json and only_printable
+            text, allow_tab_nl=is_json and allow_tab_nl
         )
         self.subpath = cleanup_deriv_path(subpath)
         self.addr_fmt = chains.parse_addr_fmt_str(addr_fmt)
@@ -203,7 +203,7 @@ def sign_msg(text, subpath, addr_fmt):
 
 async def approve_msg_sign(text, subpath, addr_fmt, approved_cb=None,
                            msg_sign_request=None, kill_menu=False,
-                           only_printable=True, privkey=None):
+                           allow_tab_nl=False, privkey=None):
 
     # Ask user if they want to sign some short text message.
     UserAuthorizedAction.cleanup()
@@ -213,7 +213,7 @@ async def approve_msg_sign(text, subpath, addr_fmt, approved_cb=None,
             text, subpath, addr_fmt,
             approved_cb=approved_cb,
             msg_sign_request=msg_sign_request,
-            only_printable=only_printable,
+            allow_tab_nl=allow_tab_nl,
             privkey=privkey
         )
 

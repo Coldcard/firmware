@@ -33,6 +33,9 @@ from ucollections import namedtuple
 # seed words lengths we support: 24=>256 bits, and recommended
 VALID_LENGTHS = (24, 18, 12)
 
+# maximum length for BIP-39 passphrase
+MAX_PASS_LEN = 100
+
 # bit flag that means "also include bare prefix as a valid word"
 _PREFIX_MARKER = const(1<<26)
 
@@ -1235,10 +1238,10 @@ the passphrase as well, it's okay to put them together.) There is no way for \
 the Coldcard to know if your entry is correct, and if you have it wrong, \
 you will be looking at an empty wallet.
 
-Limitations: 100 characters max length, ASCII characters 32-126 (0x20-0x7e) only.
+Limitations: %d characters max length, ASCII characters 32-126 (0x20-0x7e) only.
 
 %s to continue or press (2) to hide this message forever.
-''' % (howto if not version.has_qwerty else '', OK)
+''' % (howto if not version.has_qwerty else '', MAX_PASS_LEN, OK)
 
         ch = await ux_show_story(msg, escape='2')
         if ch == '2':
@@ -1248,8 +1251,8 @@ Limitations: 100 characters max length, ASCII characters 32-126 (0x20-0x7e) only
 
     if version.has_qwerty and not PassphraseSaver.has_file():
         # no need for any menus if Q and no card present
-        pp = await ux_input_text('', prompt="Your BIP-39 Passphrase",
-                                 b39_complete=True, scan_ok=True, max_len=100)
+        pp = await ux_input_text('', prompt="Your BIP-39 Passphrase", b39_complete=True,
+                                 scan_ok=True, max_len=MAX_PASS_LEN)
         if not pp: return
         
         await apply_pass_value(pp)
@@ -1259,7 +1262,7 @@ Limitations: 100 characters max length, ASCII characters 32-126 (0x20-0x7e) only
 
 
 class PassphraseMenu(MenuSystem):
-    # Collect up to 100 chars as a BIP-39 passphrase
+    # Collect up to MAX_PASS_LEN chars as a BIP-39 passphrase
 
     # singleton (cls level) vars
     done_cb = None
@@ -1348,7 +1351,7 @@ class PassphraseMenu(MenuSystem):
     async def view_edit_phrase(cls, *a):
         # let them control each character
         pw = await ux_input_text(cls.pp_sofar, prompt="Your BIP-39 Passphrase",
-                                 b39_complete=True, scan_ok=True, max_len=100)
+                                 b39_complete=True, scan_ok=True, max_len=MAX_PASS_LEN)
         if pw is not None:
             cls.pp_sofar = pw
             cls.check_length()
@@ -1359,8 +1362,8 @@ class PassphraseMenu(MenuSystem):
 
     @classmethod
     def check_length(cls):
-        # enforce a limit of 100 chars
-        cls.pp_sofar = cls.pp_sofar[0:100]
+        # enforce a limit of MAX_PASS_LEN chars
+        cls.pp_sofar = cls.pp_sofar[0:MAX_PASS_LEN]
 
     @classmethod
     async def add_text(cls, _1, _2, item):
