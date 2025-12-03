@@ -14,7 +14,7 @@ from public_constants import MSG_SIGNING_MAX_LENGTH
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 from charcodes import KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6
 from lcd_display import CHARS_W
-from utils import problem_file_line, url_unquote, wipe_if_deltamode
+from utils import problem_file_line, url_unquote, wipe_if_deltamode, is_printable
 
 # title, username and such are limited that they fit on the one line both in
 # text entry (W-2) and also in menu display (W-3)
@@ -426,6 +426,23 @@ class NoteContentBase:
         return MenuItem("Sign Note Text", f=self.sign_txt_msg, arg=self.misc,
                         predicate=2 <= len(self.misc) <= MSG_SIGNING_MAX_LENGTH)
 
+    @staticmethod
+    def is_b39pass_applicable(data, read_only):
+        from seed import MAX_PASS_LEN
+        from ccc import sssp_spending_policy
+        if read_only and not sssp_spending_policy('okeys'):
+            return False
+        return (len(data) <= MAX_PASS_LEN) and is_printable(data) and settings.get("words", True)
+
+    async def apply_as_b39_pass(self, a, b, item):
+        data, readonly = item.arg
+        # rstrip just trailing whitespaces/tabs/newlines
+        data = data.rstrip()
+        # do not allow any more tabs/newlines
+        assert self.is_b39pass_applicable(data, readonly)
+        from seed import apply_pass_value
+        await apply_pass_value(data)
+
 
 class NoteGroupMenu(MenuSystem):
     def __init__(self, group, readonly=False):
@@ -519,6 +536,12 @@ class PasswordContent(NoteContentBase):
             ShortcutItem(KEY_QR, f=self.view_qr_menu, arg=self.type_label),
             ShortcutItem(KEY_NFC, f=self.share_nfc, arg=self.type_label),
         ]
+
+        # if password is less than MAX_PASS_LEN and only consist of printable ASCII characters
+        # and current seed (master or tmp) is word based - offer to apply pwd text as BIP-39 passphrase
+        if self.is_b39pass_applicable(self.password, readonly):
+            rv += [MenuItem('Apply as BIP-39 Passphrase',
+                            f=self.apply_as_b39_pass, arg=(self.password, readonly))]
 
         return rv
 
@@ -647,6 +670,7 @@ class NoteContent(NoteContentBase):
 
     async def _make_menu(self, readonly=False):
         # Details and actions for this Note
+
         rv = [
             MenuItem('"%s"' % self.title, f=self.view),
             MenuItem('View Note', f=self.view),
@@ -657,11 +681,19 @@ class NoteContent(NoteContentBase):
                 MenuItem('Delete', f=self.delete),
                 MenuItem('Export', f=self.export),
             ]
+
         rv += [
             self.sign_misc_menu_item(),
             ShortcutItem(KEY_QR, f=self.view_qr_menu, arg="misc"),
             ShortcutItem(KEY_NFC, f=self.share_nfc, arg='misc'),
         ]
+
+        # if misc is less than MAX_PASS_LEN and only consist of printable ASCII characters
+        # and current seed (master or tmp) is word based - offer to apply note text as BIP-39 passphrase
+        if self.is_b39pass_applicable(self.misc, readonly):
+            rv += [MenuItem('Apply as BIP-39 Passphrase',
+                            f=self.apply_as_b39_pass, arg=(self.misc, readonly))]
+
         return rv
 
     async def make_menu(self, a, b, item):

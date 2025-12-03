@@ -5,8 +5,11 @@
 import pytest, time, json, random, os, pdb
 from helpers import prandom
 from charcodes import *
-from constants import AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2WPKH
+from constants import AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2WPKH, simulator_fixed_words
 from bbqr import split_qrs
+from ckcc.protocol import CCProtocolPacker
+from bip32 import BIP32Node
+from mnemonic import Mnemonic
 
 
 # All tests in this file are exclusively meant for Q
@@ -987,5 +990,147 @@ def test_sign_misc_length(length, settings_set, cap_menu, goto_notes,
     press_cancel()
     pick_menu_item(f"2: AB")
     assert "Sign Note Text" not in cap_menu()
+
+
+@pytest.mark.parametrize("pw", [
+    "My secret BIP-39 passphrase!!",
+    "a" * 100,
+    "secret\n\t",  # newline+tab will be stripped
+    "secret1 ",    # space will be stripped
+    # below, not allowed
+    "a" * 101,  # too long
+    "aaaaaaa\nbbbbbbbbb",  # non-printable ASCII
+])
+@pytest.mark.parametrize("sv", [True, False])  # Seed Vault
+@pytest.mark.parametrize("pwd", [True, False])  # whether note or password
+def test_bip39_passphrase_from_note(dev, need_some_notes, settings_set, goto_notes, pick_menu_item,
+                                    cap_story, press_select, cap_menu, reset_seed_words, pw, sv, pwd,
+                                    seed_vault_enable, need_keypress, settings_remove):
+    reset_seed_words()
+
+    settings_remove("seeds")  # clear
+    seed_vault_enable(enable=sv)
+
+    settings_set('notes', [])  # clear
+    title = "A1"
+    if pwd:
+        settings_set('notes', [
+            {'misc': "some\nrandom\nnote",
+             'password': pw,
+             'site': 'https://a.com',
+             'title': title,
+             'user': 'AAA'}
+        ])
+        mi = "Apply as BIP-39 Passphrase"
+    else:
+        need_some_notes(title=title, body=pw)
+        mi = "Apply as BIP-39 Passphrase"
+
+    goto_notes()
+    pick_menu_item(f"1: {title}")
+    time.sleep(.1)
+
+    if len(pw) > 100 or "\n" in pw:
+        # not allowed - must be ASCII 32-127 and length <= 100
+        assert mi not in cap_menu()
+        return  # done
+
+    pick_menu_item(mi)
+
+    # firmware rstrips any note before using it
+    pw = pw.rstrip()
+    # what it should be
+    seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=pw)
+    expect = BIP32Node.from_master_secret(seed)
+
+    time.sleep(.1)
+    title, story = cap_story()
+    title_xfp = title[1:-1]
+
+    assert "created by adding passphrase to master seed [0F056943]" in story
+    assert expect.fingerprint().hex().upper() == title_xfp
+
+    press_select()
+    time.sleep(.2)
+
+    if sv:
+        title, story = cap_story()
+        assert "Press (1) to store temporary seed into Seed Vault" in story
+        time.sleep(.1)
+        need_keypress("1")  # store it
+        time.sleep(.1)
+        title, story = cap_story()
+        assert "Saved to Seed Vault" in story
+        assert title_xfp in story
+        press_select()
+
+    assert title_xfp in cap_menu()[0]
+
+    xpub = dev.send_recv(CCProtocolPacker.get_xpub("m"), timeout=None)
+    got = BIP32Node.from_wallet_key(xpub)
+    assert got.sec() == expect.sec()
+
+
+@pytest.mark.parametrize("words", [True, False])
+@pytest.mark.parametrize("pwd", [True, False])
+def test_b39_from_note_eph_seed(words, pwd, generate_ephemeral_words, set_bip39_pw, settings_remove,
+                                reset_seed_words, settings_set, need_some_notes, goto_notes,
+                                pick_menu_item, cap_menu, cap_story, press_select, dev):
+    reset_seed_words()
+    settings_remove("seeds")
+    settings_remove("seedvault")
+    if words:
+        e_seed_words = generate_ephemeral_words(num_words=12, seed_vault=False)
+        e_seed_words = " ".join(e_seed_words)
+    else:
+        set_bip39_pw('bdfhjkds', seed_vault=False, reset=False)
+
+    # enabling notes & pwds in temporary settings
+    settings_set('notes', [])  # clear
+    title = "A1"
+    pw = "abcdefg"  # allowed
+    if pwd:
+        settings_set('notes', [
+            {'misc': "some\nrandom\nnote",
+             'password': pw,
+             'site': 'https://a.com',
+             'title': title,
+             'user': 'AAA'}
+        ])
+        mi = "Apply as BIP-39 Passphrase"
+    else:
+        need_some_notes(title=title, body=pw)
+        mi = "Apply as BIP-39 Passphrase"
+
+    goto_notes()
+    pick_menu_item(f"1: {title}")
+    time.sleep(.1)
+
+    if not words:
+        # no way to apply passphrase on secret that is not word-based
+        assert mi not in cap_menu()
+        return  # done
+
+    pick_menu_item(mi)
+
+    # what it should be
+    e_xfp = BIP32Node.from_master_secret(Mnemonic.to_seed(e_seed_words)).fingerprint().hex().upper()
+    seed = Mnemonic.to_seed(e_seed_words, passphrase=pw)
+    expect = BIP32Node.from_master_secret(seed)
+
+    time.sleep(.1)
+    title, story = cap_story()
+    title_xfp = title[1:-1]
+
+    assert f"created by adding passphrase to current active temporary seed [{e_xfp}]" in story
+    assert expect.fingerprint().hex().upper() == title_xfp
+
+    press_select()
+    time.sleep(.2)
+
+    assert title_xfp in cap_menu()[0]
+    xpub = dev.send_recv(CCProtocolPacker.get_xpub("m"), timeout=None)
+    got = BIP32Node.from_wallet_key(xpub)
+    assert got.sec() == expect.sec()
 
 # EOF

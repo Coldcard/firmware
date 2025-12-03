@@ -193,19 +193,27 @@ def str2xfp(txt):
     # Inverse of xfp2str
     return ustruct.unpack('<I', a2b_hex(txt))[0]
 
+def is_printable(s):
+    for ch in s:
+        o = ord(ch)
+        if o < 32 or o > 126:
+            return False
+    return True
 
-def to_ascii_printable(s, only_printable=True):
+def to_ascii_printable(s, allow_tab_nl=False):
     try:
         # s must be a string!
-        # in relaxed mode allow \n and \t; reject other C0 controls / DEL
-        extra = b'' if only_printable else b'\t\n'
-        for o in s.encode('ascii'):
-            assert 32 <= o <= 126 or (o in extra)
+        assert len(s) == len(s.encode())
+        if not allow_tab_nl:
+            assert is_printable(s)
+        else:
+            for ch in s:
+                o = ord(ch)
+                assert 32 <= o <= 126 or o == 9 or o == 10
         return s
     except:
-        err = "must be ascii printable" + ("" if only_printable else ", tab, or newline")
+        err = "must be ascii printable" + (", tab, or newline" if allow_tab_nl else "")
         raise AssertionError(err)
-
 
 def problem_file_line(exc):
     # return a string of just the filename.py and line number where
