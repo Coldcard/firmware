@@ -1532,7 +1532,7 @@ class psbtObject(psbtProxy):
             self.por322 = bool(self.por322_msg)
 
         if self.por322:
-            if not all(ord(ch) < 128 for ch in self.por322_msg):
+            if len(self.por322_msg) != len(self.por322_msg.encode()):
                 self.warnings.append((
                     "Message",
                     "Message contains non-ASCII characters that may not be readable on this screen."
