@@ -168,7 +168,6 @@ def build_note(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
         assert 'to save note to SD' in story
         assert 'to show QR' in story
         assert 'WARNING' in story
-        assert 'will be cleartext' in story
 
         need_keypress(KEY_QR)
         file_type, data = readback_bbqr()
@@ -460,30 +459,117 @@ def test_password_change_title(build_password, change_password):
     change_password(id_title="old_title", new_title="new_title")
 
 
-def test_top_export(goto_notes, pick_menu_item, cap_story, need_keypress, settings_get,
-                    readback_bbqr, need_some_notes):
+@pytest.fixture
+def backup_notes(goto_notes, pick_menu_item, cap_story, need_keypress, readback_bbqr, virtdisk_path,
+                 microsd_path, seed_story_to_words, press_select, pass_word_quiz, garbage_collector,
+                 check_and_decrypt_backup):
 
-    notes = settings_get('notes', [])
-    if not len(notes):
-        notes = need_some_notes()
+    def doit(way, encrypted=False, bkpw=None):
+        pth = words = None
+        goto_notes()
+        pick_menu_item('Export All')
 
-    goto_notes()
-    pick_menu_item('Export All')
+        title, story = cap_story()
+        assert 'Export' in title
+        assert 'to SD Card' in story
+        assert 'to show QR' in story
+        assert 'WARNING' in story
+        assert "QR exports are NOT encrypted!" in story
 
-    title, story = cap_story()
-    assert 'Export' in title
-    assert 'to SD Card' in story
-    assert 'to show QR' in story
-    assert 'WARNING' in story
-    assert 'will be cleartext' in story
+        if way == "qr":
+            need_keypress(KEY_QR)
+            file_type, data = readback_bbqr()
+            assert file_type == 'J'
 
-    need_keypress(KEY_QR)
-    file_type, data = readback_bbqr()
-    assert file_type == 'J'
+        else:
+            if way == "vdisk":
+                if "(2) to save to Virtual Disk" not in story:
+                    raise pytest.skip("vdisk disabled")
+                need_keypress("2")
+                path_f = virtdisk_path
+            else:
+                need_keypress("1")
+                path_f = microsd_path
+
+            if encrypted:
+                time.sleep(.1)
+                title, story = cap_story()
+                if bkpw:
+                    assert "Use same backup file password as last time?" in story
+                    assert f"{bkpw[0]}...{bkpw[-1]}" in story
+                    press_select()
+                    words = [bkpw]
+
+                else:
+                    assert 'Record this (12 word)' in story
+                    assert 'password:' in story
+                    assert "Press (6) for cleartext backup" in story
+
+                    words = seed_story_to_words(story)
+                    count, title, body = pass_word_quiz(words)
+                    assert count >= 4
+                    assert len(words) == 12
+
+                time.sleep(.1)
+                title, story = cap_story()
+                assert "Encrypted export file written" in story
+                fname = story.split("\n\n")[-1]
+                pth = path_f(fname)
+                data = check_and_decrypt_backup(fname, words, vdisk=(way == "vdisk"), notes=True)
+
+            else:
+                # unencrypted export
+                need_keypress("6")
+                time.sleep(.1)
+                title, story = cap_story()
+                assert "file will **NOT** be encrypted" in story
+                assert "anyone who finds the file will get all of your notes & passwords" in story
+                press_select()
+
+                time.sleep(.1)
+                title, story = cap_story()
+                split_story = story.split("\n\n")
+                pth = path_f(split_story[1])
+                garbage_collector.append(path_f(split_story[-1]))
+                with open(pth, "r") as f:
+                    data = f.read()
+
+        return data, pth, words
+
+    return doit
+
+
+@pytest.mark.parametrize('way', ["qr", "sd", "vdisk"])
+@pytest.mark.parametrize('encrypted', [True, False, "x"*32])
+def test_top_export(way, encrypted, settings_set, settings_remove, need_some_passwords, press_select,
+                    need_some_notes, backup_notes, garbage_collector):
+
+    if encrypted and (way == "qr"):
+        raise pytest.skip("QR export is not encrypted")
+
+
+    if isinstance(encrypted, str):
+        bkpw = encrypted
+        encrypted = True
+        settings_set('bkpw', bkpw)
+    else:
+        bkpw = None
+        settings_remove('bkpw')
+
+    #clear
+    settings_set('notes', [])
+    need_some_notes()
+    notes = need_some_passwords()
+
+    data, path, _ = backup_notes(way, encrypted, bkpw)
+    if path:
+        garbage_collector.append(path)
+
+    press_select()
     obj = json.loads(data)
     assert obj.keys() == {'coldcard_notes'}
     assert obj['coldcard_notes'] == notes
-    need_keypress(KEY_ENTER)
+
 
 def test_sort_by_title(goto_notes, pick_menu_item, cap_story, need_keypress, settings_get,
                     settings_set, build_note, cap_menu, build_password):
@@ -674,10 +760,31 @@ def test_old_records_without_group(settings_set, settings_get, goto_notes, cap_m
     assert settings_get('notes')[0].get('group', '') == ''
 
 
-def test_top_import(goto_notes, cap_menu, cap_story, need_keypress, settings_get,
-                    settings_set, scan_a_qr, need_some_notes):
+@pytest.mark.parametrize('way', ["qr", "sd", "vdisk"])
+@pytest.mark.parametrize('encrypted', [True, False, "x"*32])
+def test_top_import(way, encrypted, goto_notes, cap_menu, cap_story, need_keypress, settings_get,
+                    settings_set, scan_a_qr, need_some_notes, backup_notes, need_some_passwords,
+                    garbage_collector, settings_remove, pick_menu_item, press_select,
+                    word_menu_entry, enter_complex):
+
+    if encrypted and (way == "qr"):
+        raise pytest.skip("QR import is not encrypted")
+
     # make some
-    notes = need_some_notes()
+    need_some_notes()
+    notes = need_some_passwords()
+
+    if isinstance(encrypted, str):
+        bkpw = encrypted
+        encrypted = True
+        settings_set('bkpw', bkpw)
+    else:
+        bkpw = None
+        settings_remove('bkpw')
+
+    data, path, words = backup_notes(way, encrypted, bkpw)
+    if path:
+        garbage_collector.append(path)
 
     # wipe them
     settings_set('notes', [])
@@ -689,17 +796,40 @@ def test_top_import(goto_notes, cap_menu, cap_story, need_keypress, settings_get
     assert 'to scan QR' in story
     assert 'WARNING' not in story
 
-    jj = json.dumps(dict(coldcard_notes=notes))
+    if way == "qr":
+        need_keypress(KEY_QR)
+        _, parts = split_qrs(data, 'J', max_version=20)
+        random.shuffle(parts)
 
-    need_keypress(KEY_QR)
+        for p in parts:
+            scan_a_qr(p)
 
-    _, parts = split_qrs(jj, 'J', max_version=20)
-    random.shuffle(parts)
+        time.sleep(.5)  # decompression time in some cases
 
-    for p in parts:
-        scan_a_qr(p)
+    else:
+        if way == "vdisk":
+            if "(2) to import from Virtual Disk" not in story:
+                raise pytest.skip("vdisk disabled")
+            need_keypress("2")
+        else:
+            need_keypress("1")
 
-    time.sleep(.5)  # decompression time in some cases
+        fname = os.path.basename(path)
+        pick_menu_item(fname)
+        if encrypted:
+            time.sleep(.1)
+            title, story = cap_story()
+            assert title == "Custom PWD?"
+            assert "Press (1) if your password is custom string" in story
+            assert "press ENTER for 12 word password" in story
+            if bkpw:
+                need_keypress("1")
+                enter_complex(bkpw, b39pass=False)
+            else:
+                press_select()
+                # looking at word entry right now
+                word_menu_entry(words, has_checksum=False)
+
     m = cap_menu()
     for _ in range(3):
         if "1:" in m[0]:
@@ -738,6 +868,113 @@ def test_top_import_u_typed_json(goto_notes, cap_menu, cap_story, need_keypress,
 
     assert settings_get('notes') == notes["coldcard_notes"]
     goto_notes()
+
+
+@pytest.mark.parametrize('bkpw', [True, False])
+def test_top_import_wrong_pw(bkpw, goto_notes, cap_menu, cap_story, need_keypress,
+                             settings_set, need_some_notes, backup_notes, press_select,
+                             garbage_collector, settings_remove, pick_menu_item,
+                             word_menu_entry, enter_complex, need_some_passwords):
+
+    # make some
+    need_some_notes()
+    need_some_passwords()
+
+    if bkpw:
+        bkpw = 32*"g"
+        settings_set('bkpw', bkpw)
+    else:
+        settings_remove('bkpw')
+        bkpw = None
+
+    data, path, words = backup_notes("sd", True, bkpw)
+    if path:
+        garbage_collector.append(path)
+
+    # wipe them
+    settings_set('notes', [])
+
+    goto_notes('Import')
+    title, story = cap_story()
+    assert 'Import' in title
+    assert 'from SD Card' in story
+    assert 'to scan QR' in story
+    assert 'WARNING' not in story
+
+    need_keypress("1")
+    fname = os.path.basename(path)
+    pick_menu_item(fname)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Custom PWD?"
+    assert "Press (1) if your password is custom string" in story
+    assert "press ENTER for 12 word password" in story
+
+    # provide wrong password
+    if bkpw:
+        invalid_pwd = 32*"H"
+        need_keypress("1")
+        enter_complex(invalid_pwd, b39pass=False)
+    else:
+        invalid_pwd = 12 * ["abandon"]
+        press_select()
+        # looking at word entry right now
+        word_menu_entry(invalid_pwd, has_checksum=False)
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "FAILED"
+    assert "Unable to decrypt backup file. Incorrect password?" in story
+    if isinstance(invalid_pwd, list):
+        invalid_pwd = " ".join(invalid_pwd)
+    assert invalid_pwd in story
+
+    press_select()
+    assert len(cap_menu()) == 4  # nothing has been added
+
+
+def test_top_import_seed_backup_fails(goto_notes, cap_menu, cap_story, need_keypress,
+                                      settings_set, backup_system, press_select,
+                                      garbage_collector, microsd_path, pick_menu_item,
+                                      word_menu_entry, press_cancel, goto_home):
+    goto_home()
+    settings_set('notes', [])
+
+    words = backup_system()
+    time.sleep(.1)
+    title, story = cap_story()
+    assert 'written:' in story
+
+    fname = [ln.strip() for ln in story.split('\n') if ln.strip().endswith('.7z')][0]
+    garbage_collector.append(microsd_path(fname))
+
+    press_cancel()
+    time.sleep(.1)
+
+    goto_notes('Import')
+    title, story = cap_story()
+    assert 'Import' in title
+    assert 'from SD Card' in story
+    assert 'to scan QR' in story
+    assert 'WARNING' not in story
+
+    need_keypress("1")
+    pick_menu_item(fname)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Custom PWD?"
+    assert "Press (1) if your password is custom string" in story
+    assert "press ENTER for 12 word password" in story
+
+    press_select()
+    word_menu_entry(words, has_checksum=False)
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "FAILED"
+
+    press_select()
+    assert len(cap_menu()) == 4  # nothing has been added
 
 
 @pytest.mark.parametrize('qr,title', [
