@@ -2,10 +2,10 @@
 #
 # notes.py - Store some short notes, securely.
 #
-import ngu, bip39
+import ngu, bip39, ujson
 from menu import MenuItem, MenuSystem, ShortcutItem
 from ux import ux_show_story, ux_dramatic_pause, ux_confirm, the_ux
-from ux import ux_input_text, show_qr_code, import_export_prompt
+from ux import ux_input_text, show_qr_code, import_export_prompt, OK
 from ux_q1 import QRScannerInteraction
 from actions import goto_top_menu
 from glob import settings, dis
@@ -751,40 +751,69 @@ class NoteContent(NoteContentBase):
 
 async def start_export(notes):
     # Save out notes/passwords
-    from glob import NFC
+    import seed
     from msgsign import write_sig_file
-    import ujson as json
     from ux_q1 import show_bbqr_codes
+    from backups import encrypt_7z_data, bkpw_workflow, pick_backup_password
 
     singular = (len(notes) == 1)
 
     item = notes[0].type_label if singular else  'all notes & passwords'
+
     choice = await import_export_prompt(item, title="Data Export", no_nfc=True,
-                                        footnotes="WARNING: No encryption happens here."
-                                                  " Your secrets will be cleartext.")
+                                        footnotes="WARNING: QR exports are NOT encrypted!")
     if choice == KEY_CANCEL:
         return
 
     # render it
-    data = json.dumps(dict(coldcard_notes=[i.serialize() for i in notes]))
+    data = ujson.dumps(dict(coldcard_notes=[i.serialize() for i in notes]))
 
     if choice == KEY_QR:
         # Always do BBRq.
         await show_bbqr_codes('J', data, 'Notes & Passwords Export')
         return
 
+    pwd = None
+    stored_pwd, skip_quiz = await bkpw_workflow()
+    if skip_quiz:
+        pwd = stored_pwd
+
+    if not pwd:
+        pwd, abort = await pick_backup_password(secret_opt=True, what="notes & passwords")
+        if abort: return
+
+    if pwd and not skip_quiz:
+        # quiz them, but be nice and do a shorter test.
+        words = pwd.split(" ")
+        ch = await seed.word_quiz(words, limited=(len(words) // 3))
+        if ch == 'x': return
+
     # ideally, we'd use the title to make a filename, but meh...
     fname_pattern = 'cc-notes.json' if not singular else ('cc-%s.json' % notes[0].type_label)
+
+    zz = None
+    if pwd:
+        dis.fullscreen("Encrypting...")
+        fname_pattern = fname_pattern.replace(".json", ".7z")
+        zz, hdr, footer = encrypt_7z_data(pwd, data.encode(), "json")
 
     try:
         with CardSlot(**choice) as card:
             fname, nice = card.pick_filename(fname_pattern)
 
-            with open(fname, 'w+') as fp:
-                fp.write(data)
+            with open(fname, 'wb' if zz else 'w+') as fp:
+                if zz:
+                    fp.write(hdr)
+                    fp.write(zz.body)
+                    fp.write(footer)
+                else:
+                    fp.write(data)
 
-            h = ngu.hash.sha256s(data)
-            sig_nice = write_sig_file([(h, fname)])
+            sig_nice = None
+            if not zz:
+                # only unencrypted produces a signature file
+                h = ngu.hash.sha256s(data)
+                sig_nice = write_sig_file([(h, fname)])
 
     except CardMissingError:
         await needs_microsd()
@@ -793,9 +822,9 @@ async def start_export(notes):
         await ux_show_story('Failed to write!\n\n'+str(e))
         return
 
-    msg = 'Export file written:\n\n%s\n\nSignature file written:\n\n%s' % (
-        nice, sig_nice
-    )
+    msg = '%sxport file written:\n\n%s' % ("Encrypted e" if zz else "E", nice)
+    if sig_nice:
+        msg += "\n\nSignature file written:\n\n%s" % sig_nice
     await ux_show_story(msg)
 
 
@@ -803,38 +832,88 @@ async def import_from_other(menu, *a):
     # Suck in a bunch of notes/passwords. Has to be coming from a Coldcard
     # - but it's also just simple JSON
     from actions import file_picker
-    import json
+    from backups import bkpw_min_len, check_and_decrypt
 
     choice = await import_export_prompt('secure notes and/or passwords', no_nfc=True,
-                                            is_import=True, title='Data Import')
+                                        is_import=True, title='Data Import')
     if choice == KEY_CANCEL:
         return
 
     elif choice == KEY_QR:
         # Always do BBRq.
-        zz = QRScannerInteraction()
-        records = await zz.scan_json('Scan BBQr from other COLDCARD.')
+        qr = QRScannerInteraction()
+        records = await qr.scan_json('Scan BBQr from other COLDCARD.')
         if records is None: return
+        ok = await import_from_json(records)
+        if not ok: return
 
     else:
-        def contains_json(fname):
+        def suitable(fname):
+            if fname.endswith('.7z'): return True  # encrypted
             if not fname.endswith('.json'): return False
             try:
-                obj = json.load(open(fname, 'rt'))
+                obj = ujson.load(open(fname, 'rt'))
                 assert 'coldcard_notes' in obj
                 return True
             except: pass
 
-        fn = await file_picker(min_size=8, max_size=100000, taster=contains_json, **choice)
+        fn = await file_picker(min_size=8, max_size=100000, taster=suitable, **choice)
         if not fn: return
 
-        with CardSlot(readonly=True, **choice) as card:
-            records = json.load(open(fn, 'rt'))
+        if fn.endswith('.7z'):  # encrypted version
+            import seed, version
+            from backups import num_pw_words
 
-    # We have some JSON, parsed now.
-    ok = await import_from_json(records)
-    if not ok: return
+            ch = await ux_show_story("Press (1) if your password is custom string, press %s for"
+                                     " 12 word password." % OK, title="Custom PWD?",
+                                     escape="1")
+            if ch == "x": return
+            custom_pwd = (ch == "1")
 
+            # need password
+            async def enc_done(words):
+                # remove all pw-picking from menu stack
+                seed.WordNestMenu.pop_all()
+                password = ' '.join(words)
+
+                try:
+                    with CardSlot(readonly=True, **choice):
+                        with open(fn, "rb") as fd:
+                            contents = check_and_decrypt(fd, password, inner_ext=".json")
+                            ok = await import_from_json(ujson.loads(contents))
+                            if not ok: return False
+
+                except CardMissingError:
+                    await needs_microsd()
+                    return False
+                except Exception as e:
+                    await ux_show_story(str(e), title='FAILED')
+                    return False
+
+                return True
+
+            if custom_pwd:
+                ipw = await ux_input_text("", prompt="Your Backup Password",
+                                          min_len=bkpw_min_len, max_len=128)
+                if not ipw: return
+                if not await enc_done([ipw]): return
+
+            else:
+                from ux_q1 import seed_word_entry
+                words = await seed_word_entry('Enter Password:', num_pw_words,
+                                              has_checksum=False)
+                if not words: return
+                if not await enc_done(words): return
+
+        else:
+            with CardSlot(readonly=True, **choice) as card:
+                with open(fn, 'rt') as f:
+                    records = ujson.loads(f.read())
+
+            # We have some JSON, parsed now.
+            ok = await import_from_json(records)
+            if not ok: return
+        
     await ux_dramatic_pause('Saved.', 3)
     menu.update_contents()
     

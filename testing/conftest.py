@@ -2257,12 +2257,13 @@ def verify_backup_file(goto_home, pick_menu_item, cap_story, need_keypress):
 
 
 @pytest.fixture
-def check_and_decrypt_backup(microsd_path):
-    def doit(fn, passphrase):
+def check_and_decrypt_backup(request, microsd_path):
+    def doit(fn, passphrase, vdisk=False, notes=False):
         # List contents using unix tools
-        pn = microsd_path(fn)
+        path_f = request.getfixturevalue('virtdisk_path') if vdisk else microsd_path
+        pn = path_f(fn)
         out = check_output(['7z', 'l', pn], encoding='utf8')
-        xfname, = re.findall('[a-z0-9]{4,30}.txt', out)
+        xfname, = re.findall('[a-z0-9]{4,30}.%s' % ("json" if notes else "txt"), out)
         print(f"Filename inside 7z: {xfname}")
         assert xfname in out
         assert 'Method = 7zAES' in out

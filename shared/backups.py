@@ -329,31 +329,42 @@ async def restore_from_dict(vals, raw):
     reset()
 
 
-async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
-    from stash import bip39_passphrase
+async def pick_backup_password(write_sflash=False, secret_opt=False, what="money for free"):
+    # Pick a password: like bip39 but no checksum word
+    #
+    b = bytearray(32)
+    while 1:
+        ckcc.rng_bytes(b)
+        # b2a_words(32 bytes) gives 24 BIP39 words. Keep the leading 12 by dropping the tail,
+        # which includes checksum bits; this is a wordlist password, not a valid BIP39 mnemonic.
+        # * keep pwd as a string for the encryption/settings paths
+        # * use rsplit to avoid split+join churn (2x slower)
+        assert num_pw_words == 12
+        pwd = bip39.b2a_words(b).rsplit(' ', num_pw_words)[0]
 
-    pwd = None
-    skip_quiz = False
-    bypass_tmp = False
+        ch = await seed.show_words(
+            prompt="Record this (%d word) backup file password:\n" % num_pw_words,
+            words=pwd.split(" "), escape='6',
+            extra="Press (6) for cleartext backup. " if secret_opt else ""
+        )
 
-    if bip39_passphrase and pa.tmp_value:
-        # this is a BIP39 password ephemeral wallet
-        msg = ("BIP39 passphrase is in effect. Backup ignores passphrases "
-               "and produces backup of main seed. Press %s to back-up main wallet,"
-               " press (2) to back-up BIP39 passphrase wallet "
-               "(extended private key created via seed + pass)" % OK)
-        ch = await ux_show_story(msg, escape="2")
-        if ch == "x": return
-        if ch == "y":
-            bypass_tmp = True
+        if (ch == "6") and not write_sflash:
+            # Secret feature: plaintext mode
+            # - only safe for people living in faraday cages inside locked vaults.
+            if await ux_confirm("The file will **NOT** be encrypted and anyone who finds"
+                                " the file will get all of your %s!" % what):
+                pwd = []
+                break
+            continue
 
-    elif pa.tmp_value:
-        if not await ux_confirm("A temporary seed is in effect, "
-                                "so backup will be of that seed."):
-            return
+        break
 
-    # first check if bkpw already defined on tmp seed settings
+    return pwd, ch == "x"
+
+async def bkpw_workflow():
     stored_pwd = None
+    skip_quiz = False
+
     master_pwd = settings.master_get("bkpw", None)
     if pa.tmp_value:
         stored_pwd = settings.get('bkpw', None)
@@ -373,36 +384,58 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
                                  sensitive=True)
 
         if ch == 'y':
-            pwd = stored_pwd  # string, not list
             skip_quiz = True
 
+    return stored_pwd, skip_quiz
+
+
+def encrypt_7z_data(password, body, ext="txt"):
+    from glob import dis
+
+    zz = compat7z.Builder(password=password, progress_fcn=dis.progress_bar_show)
+    zz.add_data(body)
+
+    # pick random filename, but ending in 'ext'
+    word = bip39.wordlist_en[ngu.random.uniform(2048)]
+    num = ngu.random.uniform(1000)
+    fname = '%s%d.%s' % (word, num, ext)
+
+    hdr, footer = zz.save(fname)
+    return zz, hdr, footer
+
+
+async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
+    from stash import bip39_passphrase
+
+    pwd = None
+    bypass_tmp = False
+
+    if bip39_passphrase and pa.tmp_value:
+        # this is a BIP39 password ephemeral wallet
+        msg = ("BIP39 passphrase is in effect. Backup ignores passphrases "
+               "and produces backup of main seed. Press %s to back-up main wallet,"
+               " press (2) to back-up BIP39 passphrase wallet "
+               "(extended private key created via seed + pass)" % OK)
+        ch = await ux_show_story(msg, escape="2")
+        if ch == "x": return
+        if ch == "y":
+            bypass_tmp = True
+
+    elif pa.tmp_value:
+        if not await ux_confirm("A temporary seed is in effect, "
+                                "so backup will be of that seed."):
+            return
+
+    # first check if bkpw already defined on tmp seed settings
+    stored_pwd, skip_quiz = await bkpw_workflow()
+    if skip_quiz:
+        pwd = stored_pwd
+
     if not pwd:
-        # Pick a password: like bip39 but no checksum word
-        #
-        b = bytearray(32)
-        while 1:
-            ckcc.rng_bytes(b)
-            pwd = bip39.b2a_words(b).rsplit(' ', num_pw_words)[0]
-
-            ch = await seed.show_words(
-                prompt="Record this (%d word) backup file password:\n" % num_pw_words,
-                words=pwd.split(" "), escape='6'
-            )
-
-            if (ch == '6') and not write_sflash:
-                # Secret feature: plaintext mode
-                # - only safe for people living in faraday cages inside locked vaults.
-                if await ux_confirm("The file will **NOT** be encrypted and "
-                                    "anyone who finds the file will get all of your money for free!"):
-                    pwd = []
-                    fname_pattern = 'backup.txt'
-                    break
-                continue
-
-            if ch == 'x':
-                return
-
-            break
+        pwd, abort = await pick_backup_password(write_sflash=write_sflash)
+        if abort: return
+        if not pwd:
+            fname_pattern = 'backup.txt'
 
     if pwd and not skip_quiz:
         # quiz them, but be nice and do a shorter test.
@@ -416,10 +449,6 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
         if ch == '1':
             settings.set('bkpw', pwd)  # if on tmp save to tmp, do not update master
             settings.save()
-        # stop droping bkpw just because someone decided to use differrent password
-        # elif stored_words:
-        #     settings.remove_key('bkpw')
-        #     settings.save()
 
     return await write_complete_backup(pwd, fname_pattern, write_sflash=write_sflash,
                                        bypass_tmp=bypass_tmp)
@@ -440,15 +469,7 @@ async def write_complete_backup(pwd, fname_pattern, write_sflash=False,
         # NOTE: Takes a few seconds to do the key-streching, but little actual
         # time to do the encryption.
 
-        zz = compat7z.Builder(password=pwd, progress_fcn=dis.progress_bar_show)
-        zz.add_data(body)
-
-        # pick random filename, but ending in .txt
-        word = bip39.wordlist_en[ngu.random.uniform(2048)]
-        num = ngu.random.uniform(1000)
-        fname = '%s%d.txt' % (word, num)
-
-        hdr, footer = zz.save(fname)
+        zz, hdr, footer = encrypt_7z_data(pwd, body)
 
         del body
 
@@ -610,7 +631,7 @@ async def restore_complete(fname_or_fd, temporary=False, words=True, usb=False):
         await done(pwd)
 
 
-def check_and_decrypt(fd, password):
+def check_and_decrypt(fd, password, inner_ext=".txt"):
     try:
         compat7z.check_file_headers(fd)
     except Exception as e:
@@ -625,11 +646,15 @@ def check_and_decrypt(fd, password):
                                        progress_fcn=dis.progress_bar_show)
 
         # simple quick sanity checks
-        assert fname.endswith('.txt')  # was == 'ckcc-backup.txt'
-        assert contents[0:1] == b'#' and contents[-1:] == b'\n'
+        assert fname.endswith(inner_ext), "not %s" % inner_ext
+        if inner_ext == ".txt":
+            assert contents[0:1] == b'#' and contents[-1:] == b'\n',"malformed"
         return contents
 
-    except Exception as e:
+    except AssertionError as e:
+        raise RuntimeError('Invalid backup file: %s'% str(e))
+
+    except Exception:
         # assume everything here is "password wrong" errors
         raise RuntimeError('Unable to decrypt backup file. Incorrect password?'
                            '\n\nTried:\n\n' + password)
