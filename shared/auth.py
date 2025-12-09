@@ -141,7 +141,7 @@ class ApproveMessageSign(UserAuthorizedAction):
             text, subpath, addr_fmt, is_json = parse_msg_sign_request(msg_sign_request)
 
         self.text = validate_text_for_signing(
-            text, allow_tab_nl=is_json and allow_tab_nl
+            text, allow_tab_nl=is_json or allow_tab_nl
         )
         self.subpath = cleanup_deriv_path(subpath)
         self.addr_fmt = chains.parse_addr_fmt_str(addr_fmt)
