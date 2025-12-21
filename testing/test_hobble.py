@@ -481,5 +481,19 @@ def test_h_seedxor(set_hobble, need_keypress, press_cancel, cap_screen,
 
     press_cancel()
 
+
+def test_empty_notes_bug(set_hobble, goto_notes, cap_menu, pick_menu_item, is_q1):
+    if not is_q1:
+        raise pytest.skip("No notes on Mk4")
+
+    goto_notes()  # enable notes - but do not add any
+    set_hobble(True, {"notes"})
+
+    pick_menu_item("Secure Notes & Passwords")
+    # here yikes would follow
+    time.sleep(.1)
+    m = cap_menu()
+    assert len(m) == 1
+    assert m[0] == "(none saved yet)"
         
 # EOF
