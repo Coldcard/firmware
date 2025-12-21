@@ -22,6 +22,6 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 1.3.6Q - 2025-12-xx
 
-- tbd
+- Bugfix: Empty notes in hobbled mode caused yikes upon menu entry
 
 

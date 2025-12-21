@@ -2675,7 +2675,7 @@ from test_ephemeral import verify_ephemeral_secret_ui, get_identity_story, get_s
 from test_msg import verify_msg_sign_story, sign_msg_from_text, msg_sign_export, sign_msg_from_address
 from test_multisig import import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn
 from test_multisig import make_ms_address, clear_ms, make_myself_wallet, import_multisig
-from test_notes import need_some_notes, need_some_passwords
+from test_notes import need_some_notes, need_some_passwords, goto_notes
 from test_nfc import try_sign_nfc, ndef_parse_txn_psbt
 from test_se2 import goto_trick_menu, clear_all_tricks, new_trick_pin, se2_gate, new_pin_confirmed
 from test_seed_xor import restore_seed_xor
