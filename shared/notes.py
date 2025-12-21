@@ -27,7 +27,6 @@ async def make_notes_menu(*a):
         # Read only version of menu system
         # - used when spending policy in effect
         # - must have some notes already, or unreachable
-        assert NoteContent.count()
         rv = NotesMenu(NotesMenu.construct_readonly())
         rv.readonly = True
         return rv
@@ -155,6 +154,9 @@ class NotesMenu(MenuSystem):
         for note in NoteContent.get_all():
             rv.append(MenuItem('%d: %s' % (note.idx+1, note.title),
                                menu=note.make_menu, arg=True))  # readonly=True
+
+        if not rv:
+            rv.append(MenuItem('(none saved yet)'))
 
         return rv
 
