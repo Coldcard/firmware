@@ -44,10 +44,11 @@ from public_constants import (
     PSBT_OUT_SP_V0_INFO, PSBT_OUT_SP_V0_LABEL, 
     PSBT_IN_SP_DLEQ, PSBT_IN_SP_ECDH_SHARE,
     PSBT_GLOBAL_SP_DLEQ, PSBT_GLOBAL_SP_ECDH_SHARE,
+    PSBT_IN_SP_TWEAK, PSBT_IN_SP_SPEND_BIP32_DERIVATION,
     AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH,
     AFC_SEGWIT, AF_BARE_PK
 )
-from silentpayments import SilentPaymentsMixin
+from silentpayments import SilentPaymentsMixin, _compute_silent_payment_spending_privkey
 
 psbt_tmp256 = bytearray(256)
 
@@ -686,7 +687,7 @@ class psbtInputProxy(psbtProxy):
         'taproot_subpaths', 'taproot_internal_key', 'taproot_key_sig', 'tr_added_sigs',
         'ik_idx', 'musig_pubkeys', 'musig_pubnonces', 'musig_part_sigs', 'musig_agg_idx',
         'musig_added_pubnonces', 'musig_added_sigs',
-        'sp_ecdh_shares', 'sp_dleq_proofs',
+        'sp_ecdh_shares', 'sp_dleq_proofs', 'sp_tweak', 'sp_spend_bip32_derivation',
     )
 
     def __init__(self, fd, idx):
@@ -1030,7 +1031,9 @@ class psbtInputProxy(psbtProxy):
                 lhs, path = lhs_path[0], lhs_path[1:]
                 assert not lhs, "LeafHashes have to be empty for internal key"
                 assert self.sp_idxs[0] == 0
-                assert taptweak(xonly_pubkey) == addr_or_pubkey
+                # Silent Payments (BIP-376): sp_tweak replaces taptweak
+                if not self.sp_tweak:
+                    assert taptweak(xonly_pubkey) == addr_or_pubkey
             else:
                 self.is_miniscript = True
 
@@ -1201,6 +1204,10 @@ class psbtInputProxy(psbtProxy):
             if self.sp_dleq_proofs is None:
                 self.sp_dleq_proofs = {}
             self.sp_dleq_proofs[key] = val
+        elif kt == PSBT_IN_SP_TWEAK:
+            self.sp_tweak = self.get(val)
+        elif kt == PSBT_IN_SP_SPEND_BIP32_DERIVATION:
+            self.sp_spend_bip32_derivation = (key, val)
         else:
             # including: PSBT_IN_FINAL_SCRIPTSIG, PSBT_IN_FINAL_SCRIPTWITNESS
             self.unknown = self.unknown or []
@@ -1305,7 +1312,14 @@ class psbtInputProxy(psbtProxy):
             if self.sp_dleq_proofs:
                 for k, v in self.sp_dleq_proofs.items():
                     wr(PSBT_IN_SP_DLEQ, v, k)
-        
+
+            if self.sp_tweak:
+                wr(PSBT_IN_SP_TWEAK, self.sp_tweak)
+
+            if self.sp_spend_bip32_derivation:
+                k, v = self.sp_spend_bip32_derivation
+                wr(PSBT_IN_SP_SPEND_BIP32_DERIVATION, v, k)
+
         if self.unknown:
             for k, v in self.unknown:
                 wr(None, v, k)
@@ -2797,6 +2811,9 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
 
                     oup = self.outputs[out_idx]
 
+                    if oup.sp_v0_info:
+                        continue  # SP change already verified in _detect_sp_change_outputs
+
                     good = 0
                     for i in oup.sp_idxs:
                         # for multisig, will be N paths, and exactly one will
@@ -3032,24 +3049,34 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
                         if xonly_pk == internal_key:
                             # internal key is our key -> easy
 
-                            # BIP 341 states: "If the spending conditions do not require a script path,
-                            # the output key should commit to an unspendable script path instead of having no script path.
-                            # This can be achieved by computing the output key point as Q = P + int(hashTapTweak(bytes(P)))G."
-                            tweak = xonly_pk
-                            if inp.taproot_merkle_root:
-                                # we have a script path but internal key is spendable by us
-                                # merkle root needs to be added to tweak with internal key
-                                # merkle root was already verified against registered script in determine_my_signing_key
-                                tweak += self.get(inp.taproot_merkle_root)
-
-                            tweak = ngu.hash.sha256t(TAP_TWEAK_H, tweak, True)
-                            kpt = kp.xonly_tweak_add(tweak)
-
                             digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash)
                             if sv.deltamode:
                                 digest = ngu.hash.sha256d(digest)
 
-                            sig = ngu.secp256k1.sign_schnorr(kpt, digest, ngu.random.bytes(32))
+                            if inp.sp_tweak:
+                                # BIP-376: spending a silent payment output
+                                # sp_tweak already encodes the full output key derivation,
+                                # so we skip the normal taproot internal key tweaking
+                                tweaked_sk_int = _compute_silent_payment_spending_privkey(sk, inp.sp_tweak)
+                                tweaked_sk = tweaked_sk_int.to_bytes(32, 'big')
+                                sig = ngu.secp256k1.sign_schnorr(tweaked_sk, digest, ngu.random.bytes(32))
+                                stash.blank_object(tweaked_sk)
+                            else:
+                                # BIP 341 states: "If the spending conditions do not require a script path,
+                                # the output key should commit to an unspendable script path instead of having no script path.
+                                # This can be achieved by computing the output key point as Q = P + int(hashTapTweak(bytes(P)))G."
+                                tweak = xonly_pk
+                                if inp.taproot_merkle_root:
+                                    # we have a script path but internal key is spendable by us
+                                    # merkle root needs to be added to tweak with internal key
+                                    # merkle root was already verified against registered script in determine_my_signing_key
+                                    tweak += self.get(inp.taproot_merkle_root)
+
+                                tweak = ngu.hash.sha256t(TAP_TWEAK_H, tweak, True)
+                                kpt = kp.xonly_tweak_add(tweak)
+                                sig = ngu.secp256k1.sign_schnorr(kpt, digest, ngu.random.bytes(32))
+                                del kpt
+
                             if inp.sighash != SIGHASH_DEFAULT:
                                 sig += bytes([inp.sighash])
 
@@ -3057,13 +3084,10 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
                             # 'omitting' the sighash byte, resulting in a 64-byte signature with SIGHASH_DEFAULT assumed
                             inp.taproot_key_sig = sig
                             self.sig_added = True
-                            # debug
-                            # ngu.secp256k1.verify_schnorr(sig, digest, kpt.xonly_pubkey())
-
-                            del kpt
 
                         elif isinstance(self.active_miniscript.to_descriptor().key, MusigKey):
                             # internal key is musig
+                            assert not inp.sp_tweak, "MuSig2 + SP tweak spending not yet supported"
                             agg_k = self.active_miniscript.to_descriptor().key.node.pubkey()
 
                             digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash)

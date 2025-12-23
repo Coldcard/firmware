@@ -157,6 +157,45 @@ def _compute_silent_payment_output_script(
 
     return b"\x51\x20" + x_only
 
+def _compute_silent_payment_spending_privkey(b_spend_bytes, sp_tweak_bytes):
+    """
+    Compute private key for spending a silent payment output
+    
+    BIP-352 formula for spending: d_k = (b_spend + t_k) mod n
+    where:
+    - b_spend is the base spend private key
+    - t_k is the combined tweak (shared secret + label if applicable) from PSBT_IN_SP_TWEAK
+    - n is the secp256k1 curve order
+    
+    Args:
+        b_spend_bytes: Base spend private key
+        sp_tweak_bytes: 32-byte scalar tweak from PSBT_IN_SP_TWEAK
+    
+    Returns:
+        int: Tweaked spending private key
+    
+    Raises:
+        ValueError: If sp_tweak or spending_privkey is invalid
+    """
+    if len(sp_tweak_bytes) != 32:
+        raise ValueError("SP tweak must be 32 bytes")
+
+    sp_tweak_int = int.from_bytes(sp_tweak_bytes, 'big')
+    b_spend_int = int.from_bytes(b_spend_bytes, 'big')
+
+    if b_spend_int == 0 or b_spend_int >= SECP256K1_ORDER:
+        raise ValueError("Spend private key is out of valid range")
+    if sp_tweak_int >= SECP256K1_ORDER:
+        raise ValueError("SP tweak is out of valid range")
+
+    # Compute tweaked key: d_k = (d_spend + t_k) mod n
+    spending_sk = (b_spend_int + sp_tweak_int) % SECP256K1_ORDER
+
+    if spending_sk == 0:
+        raise ValueError("Resulting spending key is zero (invalid)")
+    
+    return spending_sk
+
 
 # -----------------------------------------------------------------------------
 # Input Eligibility (BIP-352)
@@ -325,16 +364,27 @@ class SilentPaymentsMixin:
 
     def _pubkey_from_input(self, inp):
         """
-        Extract the BIP-352 contributing public key from an input.
+        Extract the BIP-352 contributing public key from an input
 
         Note:
+            Spending SP: use PSBT_IN_SPEND_BIP32_DERIVATION
             P2TR: use PSBT_IN_WITNESS_UTXO to fetch (x-only -> compressed with 0x02)
             non-taproot: use BIP32 derivation pubkey (first 33-byte key)
 
         Returns 33-byte compressed pubkey or None.
         """
-        # TODO: BIP-376 use sp_spend_derivation when available
+        if not self._is_input_eligible(inp):
+            return None
+
         spk = inp.utxo_spk
+        if inp.sp_spend_bip32_derivation:
+            _, val_coords = inp.sp_spend_bip32_derivation
+            xfp_path = self.parse_xfp_path(val_coords)
+            if xfp_path[0] == self.my_xfp:
+                pk = self.get(val_coords)
+                if len(pk) == 33:
+                    return pk
+
         if spk and _is_p2tr(spk):
             return b"\x02" + spk[2:34]
         else:
@@ -709,25 +759,43 @@ class SilentPaymentsMixin:
         Derive the BIP-352 contributing private key for an eligible input
 
         Note:
+            If inp.sp_tweak is set (BIP-376), derives from sp_spend_bip32_derivation
+                and applies the tweak: d_k = d_spend + t_k (mod n)
             For taproot inputs, uses the internal key's derivation path (ik_idx), XFP-checked
             For non-taproot inputs, uses the first matching BIP32 derivation path
 
         Returns:
             int | None: The derived private key as an integer, or None if not eligible
         """
-        # TODO: BIP-376 sp_spend_derivation should go here
-        spk = inp.utxo_spk
-        if spk and _is_p2tr(spk):
-            if inp.ik_idx is not None and inp.taproot_subpaths:
-                _, path_coords = inp.taproot_subpaths[inp.ik_idx]
-                xfp_path = self.parse_xfp_path(path_coords[2])
-                if xfp_path[0] == self.my_xfp:
-                    return self._path_to_privkey(xfp_path, sv)
+        privkey_int = None
+
+        if inp.sp_tweak and inp.sp_spend_bip32_derivation:
+            _, val_coords = inp.sp_spend_bip32_derivation
+            xfp_path = self.parse_xfp_path(val_coords)
+            if xfp_path[0] == self.my_xfp:
+                privkey_int = self._path_to_privkey(xfp_path, sv)
+                privkey_int = _compute_silent_payment_spending_privkey(
+                    privkey_int.to_bytes(32, 'big'), inp.sp_tweak
+                )
         else:
-            for xfp_path in self._iter_input_xfp_paths(inp):
-                if xfp_path[0] == self.my_xfp:
-                    return self._path_to_privkey(xfp_path, sv)
-        return None
+            spk = inp.utxo_spk
+            if spk and _is_p2tr(spk):
+                if inp.ik_idx is not None and inp.taproot_subpaths:
+                    _, path_coords = inp.taproot_subpaths[inp.ik_idx[0]]
+                    xfp_path = self.parse_xfp_path(path_coords[2])
+                    if xfp_path[0] == self.my_xfp:
+                        privkey_int = self._path_to_privkey(xfp_path, sv)
+                        if inp.taproot_internal_key:
+                            privkey_int = self._normalize_p2tr_privkey(
+                                privkey_int, self.get(inp.taproot_internal_key)
+                            )
+            else:
+                for xfp_path in self._iter_input_xfp_paths(inp):
+                    if xfp_path[0] == self.my_xfp:
+                        privkey_int = self._path_to_privkey(xfp_path, sv)
+                        break
+
+        return privkey_int
 
     def _get_outpoints(self):
         """
