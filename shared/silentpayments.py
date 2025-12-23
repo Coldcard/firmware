@@ -125,6 +125,45 @@ def compute_shared_secret_tweak(ecdh_share_bytes, k):
     return tweak_scalar
 
 
+def compute_silent_payment_spending_privkey(spend_privkey_bytes, sp_tweak_bytes):
+    """
+    Compute private key for spending a silent payment output
+    
+    BIP-352 formula for spending: d_k = d_spend + t_k (mod n)
+    where:
+    - d_spend is the base spend private key
+    - t_k is the shared secret tweak from PSBT_IN_SP_TWEAK
+    - n is the secp256k1 curve order
+    
+    Args:
+        spend_privkey_bytes: Base spend private key
+        sp_tweak_bytes: 32-byte scalar tweak from PSBT_IN_SP_TWEAK
+    
+    Returns:
+        int: Tweaked spending private key
+    
+    Raises:
+        ValueError: If tweak is invalid
+    """
+    if len(sp_tweak_bytes) != 32:
+        raise ValueError("SP tweak must be 32 bytes")
+    
+    tweak_int = int.from_bytes(sp_tweak_bytes, 'big')
+    spend_privkey_int = int.from_bytes(spend_privkey_bytes, 'big')
+    SECP256K1_ORDER = ngu.secp256k1.curve_order_int()
+    if tweak_int == 0 or tweak_int >= SECP256K1_ORDER:
+        raise ValueError("SP tweak is out of valid range")
+    
+    
+    # Compute tweaked key: d_k = (d_spend + t_k) mod n
+    spending_privkey = (spend_privkey_int + tweak_int) % SECP256K1_ORDER
+    
+    if spending_privkey == 0:
+        raise ValueError("Resulting spending key is zero (invalid)")
+    
+    return spending_privkey
+
+
 def compute_input_hash(outpoints, summed_pubkey_bytes):
     """
     Compute BIP-352 input hash
@@ -311,29 +350,6 @@ class SilentPaymentMixin:
         return self._encode_silent_payment_address(scan_key, spend_key, hrp=hrp)
 
 
-    def finalize_silent_payment_outputs(self):
-        """
-        Final step: combine all ECDH shares and compute output scripts
-        
-        This should be called by the final signer or a coordinator after
-        all partial signatures have been collected and combined.
-        
-        Raises:
-            FatalPSBTIssue: If not ready to finalize
-        """
-        if not self._is_silent_payment_ready_to_finalize():
-            raise FatalPSBTIssue(
-                "Cannot finalize Silent Payment outputs: "
-                "missing ECDH shares or invalid DLEQ proofs"
-            )
-        
-        # Compute final output scripts
-        self._compute_silent_payment_output_scripts()
-        
-        if DEBUG:
-            print("Silent Payment outputs finalized")
-
-
     def has_silent_payment_outputs(self):
         """
         Check if PSBT contains any silent payment outputs
@@ -389,13 +405,13 @@ class SilentPaymentMixin:
                 self._store_silent_payment_ecdh_shares(ecdh_results)
                 
                 # Verify DLEQ proofs
-                if not self._verify_silent_payment_dleq_proofs():
+                if not self._verify_silent_payment_dleq_proofs(sv):
                     if DEBUG:
                         print("SP preview: DLEQ proof verification failed")
-                    return False
+                    return False # TODO: propagate to user?
                 
                 # Compute output scripts (this updates outp.script)
-                self._compute_silent_payment_output_scripts()
+                self._compute_silent_payment_output_scripts(sv)
                 
                 if DEBUG:
                     print("Silent Payment outputs previewed successfully")
@@ -459,7 +475,7 @@ class SilentPaymentMixin:
         
         # Verify all DLEQ proofs (including from other signers if multi-party)
         dis.fullscreen('Verifying Proofs...')
-        if not self._verify_silent_payment_dleq_proofs():
+        if not self._verify_silent_payment_dleq_proofs(sv):
             raise FatalPSBTIssue("Silent payment DLEQ proof verification failed")
         
         # Determine if we should finalize outputs now or wait for other signers
@@ -476,7 +492,7 @@ class SilentPaymentMixin:
                 # Single signer - finalize now
                 dis.fullscreen('Computing Outputs...')
                 try:
-                    self.finalize_silent_payment_outputs()
+                    self._compute_silent_payment_output_scripts(sv)
                     if DEBUG:
                         print("Silent payment output scripts computed successfully")
                 except Exception as e:
@@ -511,7 +527,8 @@ class SilentPaymentMixin:
             if inp.sp_idxs:
                 # Check if this input belongs to a different signer
                 if inp.taproot_subpaths:
-                    for _, path_coords in inp.taproot_subpaths:
+                    for _, val_tuple in inp.taproot_subpaths:
+                        path_coords = val_tuple[2]  # Extract coords from 3-tuple
                         xfp_path = self.parse_xfp_path(path_coords)
                         xfp = xfp_path[0]
                         if xfp != self.my_xfp and xfp != 0:
@@ -529,7 +546,83 @@ class SilentPaymentMixin:
         return all_inputs_ours
 
 
-    def _compute_ecdh_shares_internal(self, scan_keys, sv):
+    def _compute_combined_pubkey(self, sv=None, collect_outpoints=False):
+        """
+        Compute combined public key from all inputs we control
+
+        When an input has sp_tweak (spending a SP output), the public key
+        must be tweaked: P' = P + t*G where t is the SP tweak.
+
+        For taproot inputs, we derive the public key from the private key
+        since PSBT stores x-only keys.
+
+        Args:
+            sv: SensitiveValues context (optional, required for taproot with sp_tweak)
+            collect_outpoints: If True, also collect outpoints and return (pubkeys, outpoints)
+
+        Returns:
+            If collect_outpoints=False: bytes (combined public key, 33 bytes compressed)
+            If collect_outpoints=True: tuple (list of pubkeys, list of outpoints)
+
+        Raises:
+            FatalPSBTIssue: If no public keys found or missing outpoint information
+        """
+        pubkeys = []
+        outpoints = [] if collect_outpoints else None
+
+        for inp in self.inputs:
+            if not inp.sp_idxs:
+                continue
+
+            # Collect outpoint if requested
+            if collect_outpoints:
+                if inp.previous_txid and inp.prevout_idx is not None:
+                    outpoints.append((self.get(inp.previous_txid), self.get(inp.prevout_idx)))
+                else:
+                    raise FatalPSBTIssue("Missing outpoint information for silent payment input")
+
+            pubkey = None
+
+            # For taproot inputs, always derive pubkey from private key if sv available
+            # (PSBT stores x-only keys which can't be used for EC operations)
+            if sv is not None:
+                try:
+                    privkey_int = self._derive_input_privkey(inp, sv)
+
+                    if privkey_int is not None:
+                        # Derive public key from (possibly tweaked) private key
+                        privkey_bytes_final = privkey_int.to_bytes(32, 'big')
+                        G_bytes = ngu.secp256k1.generator()
+                        pubkey = ngu.secp256k1.ec_pubkey_tweak_mul(G_bytes, privkey_bytes_final)
+                except Exception as e:
+                    if DEBUG:
+                        print("Failed to derive pubkey:", e)
+            else:
+                # No sv context - try to use stored public key (non-taproot only)
+                if inp.subpaths:
+                    for pk_coords, path_coords in inp.subpaths:
+                        xfp_path = self.parse_xfp_path(path_coords)
+                        xfp_path = self.handle_zero_xfp(xfp_path, self.my_xfp, None)
+                        xfp = xfp_path[0]
+                        if xfp == self.my_xfp:
+                            pubkey = self.get(pk_coords)
+                            break
+
+            if pubkey:
+                pubkeys.append(pubkey)
+
+        if not pubkeys:
+            raise FatalPSBTIssue("No public keys found for DLEQ verification")
+
+        # Return based on mode
+        if collect_outpoints:
+            return (pubkeys, outpoints)
+        else:
+            # Combine using helper
+            return combine_pubkeys(pubkeys)
+
+
+    def _compute_silent_payment_ecdh_shares(self, scan_keys, sv):
         """
         Internal function to compute ECDH shares for silent payment outputs
         
@@ -559,47 +652,16 @@ class SilentPaymentMixin:
             for inp in self.inputs:
                 if not inp.sp_idxs:
                     continue  # Not our input
-                
-                # Get the private key for this input
-                # This requires access to the wallet's master key
-                try:
-                    # Get the derivation path for this input
-                    if inp.taproot_subpaths:
-                        # Taproot input
-                        for key_coords, path_coords in inp.taproot_subpaths:
-                            pubkey = self.get(key_coords)
-                            xfp_path = self.parse_xfp_path(path_coords)
-                            xfp = xfp_path[0]
-                            
-                            if xfp == self.my_xfp:
-                                # Derive private key for this path
-                                from utils import keypath_to_str
-                                path_str = keypath_to_str(xfp_path, skip=1)
-                                node = sv.derive_path(path_str, register=False)
-                                privkey_bytes = node.privkey()
-                                privkey_int = int.from_bytes(privkey_bytes, 'big')
-                                combined_privkey = (combined_privkey + privkey_int) % SECP256K1_ORDER
-                                break
-                    elif inp.subpaths:
 
-                        # Non-taproot input
-                        for key_coords, path_coords in inp.subpaths:
-                            pubkey = self.get(key_coords)
-                            xfp_path = self.parse_xfp_path(path_coords)
-                            xfp = xfp_path[0]
-                            
-                            if xfp == self.my_xfp:
-                                # Derive private key for this path
-                                from utils import keypath_to_str
-                                path_str = keypath_to_str(xfp_path, skip=1)
-                                node = sv.derive_path(path_str, register=False)
-                                privkey_bytes = node.privkey()
-                                privkey_int = int.from_bytes(privkey_bytes, 'big')
-                                combined_privkey = (combined_privkey + privkey_int) % SECP256K1_ORDER
-                                break
+                try:
+                    privkey_int = self._derive_input_privkey(inp, sv)
+
+                    if privkey_int is None:
+                        continue
+
+                    combined_privkey = (combined_privkey + privkey_int) % SECP256K1_ORDER
 
                 except Exception as e:
-
                     # Unable to derive private key for this input
                     if DEBUG:
                         print("Warning: Unable to derive privkey for input: %s" % e)
@@ -623,64 +685,7 @@ class SilentPaymentMixin:
         return results
 
 
-    def _compute_silent_payment_ecdh_shares(self, scan_keys, sv):
-        """
-        Compute ECDH shares for silent payment outputs (without storing)
-        
-        This is a pure computation function that does not modify PSBT state.
-        Use store_silent_payment_ecdh_shares() to persist results.
-        
-        Args:
-            scan_keys: List of scan public keys (33 bytes each)
-            sv: SensitiveValues context (already open from sign_it)
-        
-        Returns:
-            dict: Mapping of scan_key -> (ecdh_share_bytes, dleq_proof_bytes)
-        
-        Raises:
-            FatalPSBTIssue: If unable to compute ECDH shares
-        """
-        return self._compute_ecdh_shares_internal(scan_keys, sv)
-
-
-    def _compute_combined_pubkey(self):
-        """
-        Compute combined public key from all inputs we control
-        
-        Returns:
-            bytes: Combined public key (33 bytes compressed)
-        
-        Raises:
-            FatalPSBTIssue: If no public keys found
-        """
-        pubkeys = []
-        
-        for inp in self.inputs:
-            if not inp.sp_idxs:
-                continue
-            
-            # Get public key from this input
-            if inp.taproot_subpaths:
-                for pk_coords, path_coords in inp.taproot_subpaths:
-                    xfp_path = self.parse_xfp_path(path_coords)
-                    if xfp_path[0] == self.my_xfp or xfp_path[0] == 0:
-                        pubkeys.append(self.get(pk_coords))
-                        break
-            elif inp.subpaths:
-                for pk_coords, path_coords in inp.subpaths:
-                    xfp_path = self.parse_xfp_path(path_coords)
-                    if xfp_path[0] == self.my_xfp or xfp_path[0] == 0:
-                        pubkeys.append(self.get(pk_coords))
-                        break
-        
-        if not pubkeys:
-            raise FatalPSBTIssue("No public keys found for DLEQ verification")
-        
-        # Combine using helper
-        return combine_pubkeys(pubkeys)
-
-
-    def _compute_silent_payment_output_scripts(self):
+    def _compute_silent_payment_output_scripts(self, sv=None):
         """
         Compute final output scripts for silent payment outputs
         
@@ -688,44 +693,23 @@ class SilentPaymentMixin:
         This should only be called after all ECDH shares have been computed
         and verified. It derives the final P2TR output scripts.
         
+        Args:
+            sv: SensitiveValues context (optional, required when inputs have sp_tweak)
+        
         Raises:
             FatalPSBTIssue: If ECDH shares are missing or output derivation fails
         """
-        
-        # Collect outpoints and public keys for input hash computation
-        outpoints = []
-        pubkeys = []
-        
-        for inp in self.inputs:
-            if not inp.sp_idxs:
-                continue  # Not eligible for silent payments
-            
-            # Get outpoint (txid, vout)
-            if inp.previous_txid and inp.prevout_idx is not None:
-                outpoints.append((self.get(inp.previous_txid), self.get(inp.prevout_idx)))
-            else:
-                raise FatalPSBTIssue("Missing outpoint information for silent payment input")
-            
-            # Get public key from this input
-            if inp.taproot_subpaths:
-                for pk_coords, path_coords in inp.taproot_subpaths:
-                    xfp_path = self.parse_xfp_path(path_coords)
-                    if xfp_path[0] == self.my_xfp or xfp_path[0] == 0:
-                        pubkeys.append(self.get(pk_coords))
-                        break
-            elif inp.subpaths:
-                for pk_coords, path_coords in inp.subpaths:
-                    xfp_path = self.parse_xfp_path(path_coords)
-                    if xfp_path[0] == self.my_xfp or xfp_path[0] == 0:
-                        pubkeys.append(self.get(pk_coords))
-                        break
-        
+        SECP256K1_ORDER = ngu.secp256k1.curve_order_int()
+
+        # Collect outpoints and public keys using consolidated helper
+        pubkeys, outpoints = self._compute_combined_pubkey(sv, collect_outpoints=True)
+
         if not outpoints:
             raise FatalPSBTIssue("No eligible inputs found for silent payment output computation")
-        
+
         if not pubkeys:
             raise FatalPSBTIssue("No public keys found for silent payment inputs")
-        
+
         # Compute summed public key
         summed_pubkey = combine_pubkeys(pubkeys)
         
@@ -865,6 +849,64 @@ class SilentPaymentMixin:
         if DEBUG:
             print("Combined Silent Payment shares from another signer")
 
+
+    def _derive_input_privkey(self, inp, sv):
+        """
+        Derive private key for a single input, applying SP tweak if present
+
+        Args:
+            inp: PSBTInput object
+            sv: SensitiveValues context (required)
+
+        Returns:
+            int: Private key as integer, or None if input not owned by this signer
+        """
+        from utils import keypath_to_str
+
+        # Try taproot path first
+        if inp.taproot_subpaths:
+            for _, val_tuple in inp.taproot_subpaths:
+                path_coords = val_tuple[2]
+                xfp_path = self.parse_xfp_path(path_coords)
+                xfp_path = self.handle_zero_xfp(xfp_path, self.my_xfp, None)
+                xfp = xfp_path[0]
+
+                if xfp == self.my_xfp:
+                    path_str = keypath_to_str(xfp_path, skip=1)
+                    node = sv.derive_path(path_str, register=False)
+                    privkey_bytes = node.privkey()
+                    privkey_int = int.from_bytes(privkey_bytes, 'big')
+
+                    if inp.sp_tweak:
+                        sp_tweak_bytes = self.get(inp.sp_tweak)
+                        privkey_int = compute_silent_payment_spending_privkey(
+                            privkey_bytes, sp_tweak_bytes)
+
+                    return privkey_int
+
+        # Try non-taproot path
+        elif inp.subpaths:
+            for _, path_coords in inp.subpaths:
+                xfp_path = self.parse_xfp_path(path_coords)
+                xfp_path = self.handle_zero_xfp(xfp_path, self.my_xfp, None)
+                xfp = xfp_path[0]
+
+                if xfp == self.my_xfp:
+                    path_str = keypath_to_str(xfp_path, skip=1)
+                    node = sv.derive_path(path_str, register=False)
+                    privkey_bytes = node.privkey()
+                    privkey_int = int.from_bytes(privkey_bytes, 'big')
+
+                    if inp.sp_tweak:
+                        sp_tweak_bytes = self.get(inp.sp_tweak)
+                        privkey_int = compute_silent_payment_spending_privkey(
+                            privkey_bytes, sp_tweak_bytes)
+
+                    return privkey_int
+
+        return None
+
+
     def _encode_silent_payment_address(self, scan_pubkey, spend_pubkey, hrp="sp", version=0):
         """
         Encode a Silent Payment address using bech32m
@@ -910,51 +952,6 @@ class SilentPaymentMixin:
                 scan_keys.add(scan_key)
         
         return list(scan_keys)
-
-
-    def _is_silent_payment_ready_to_finalize(self):
-        """
-        Check if all required ECDH shares are present for finalization
-        
-        Returns:
-            bool: True if ready to compute final output scripts
-        """
-        if not self.has_silent_payment_outputs():
-            return True  # No SP outputs
-        
-        # Get all scan keys from outputs
-        scan_keys = self._get_silent_payment_scan_keys()
-        
-        # Check if we have shares for all scan keys
-        for scan_key in scan_keys:
-            has_share = False
-            
-            # Check global shares
-            if self.sp_global_ecdh_shares:
-                for key_coords, _ in self.sp_global_ecdh_shares:
-                    if self.get(key_coords) == scan_key:
-                        has_share = True
-                        break
-            
-            # Check per-input shares
-            if not has_share:
-                for inp in self.inputs:
-                    if inp.sp_ecdh_shares:
-                        for key_coords, _ in inp.sp_ecdh_shares:
-                            if self.get(key_coords) == scan_key:
-                                has_share = True
-                                break
-                    if has_share:
-                        break
-            
-            if not has_share:
-                return False  # Missing share for this scan key
-        
-        # Verify all DLEQ proofs
-        if not self._verify_silent_payment_dleq_proofs():
-            return False
-        
-        return True
 
 
     def _store_silent_payment_ecdh_shares(self, ecdh_results):
@@ -1024,9 +1021,12 @@ class SilentPaymentMixin:
                             inp.sp_dleq_proofs.append((scan_key, dleq_proof))
 
 
-    def _verify_silent_payment_dleq_proofs(self):
+    def _verify_silent_payment_dleq_proofs(self, sv=None):
         """
         Verify all DLEQ proofs in the PSBT (global or per-input)
+        
+        Args:
+            sv: SensitiveValues context (optional, required when inputs have sp_tweak)
         
         Priority:
         1. Check global proofs first (if present)
@@ -1042,7 +1042,7 @@ class SilentPaymentMixin:
             
             # Compute combined public key for verification
             try:
-                combined_pubkey = self._compute_combined_pubkey()
+                combined_pubkey = self._compute_combined_pubkey(sv)
             except FatalPSBTIssue as e:
                 if DEBUG:
                     print("Failed to compute combined pubkey:", e)
