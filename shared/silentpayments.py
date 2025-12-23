@@ -1,6 +1,6 @@
 # (c) Copyright 2024 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# silentpayments.py - BIP-352/BIP-375
+# silentpayments.py - BIP-352/BIP-375/BIP-376
 #
 # Consolidates cryptographic primitives and PSBT handling logic for Silent Payments
 #
@@ -39,6 +39,37 @@ def encode_silent_payment_address(scan_key, spend_key, version=0):
     if len(scan_key) == 32:
         hrp += "scan"
     return ngu.codecs.bip352_encode(hrp, scan_key, spend_key, version)
+
+
+def validate_bip376_spend(input, output_xonly, my_xfp=None, parent=None):
+    """Validate silent payment spend using PSBT input data
+
+    TODO: replace with test vectors once available
+    
+    Raises FatalPSBTIssue if any SP spend validation checks fail
+    """
+    B_spend_coords, val_coords = input.sp_spend_bip32_derivation
+    xfp_path = input.parse_xfp_path(val_coords)
+    if my_xfp is not None:
+        xfp_path = input.handle_zero_xfp(xfp_path, my_xfp, parent)
+
+    sp_path = xfp_path[1:]
+    if len(sp_path) != 5:
+        raise FatalPSBTIssue("SP spend path must have 5 components")
+    if sp_path[0] != (352 | 0x80000000):
+        raise FatalPSBTIssue("SP spend key purpose must use 352h path")
+
+    expected_coin = chains.current_chain().b44_cointype | 0x80000000
+    if sp_path[1] != expected_coin:
+        raise FatalPSBTIssue("SP spend path coin type does not match network")
+    if not (sp_path[2] & 0x80000000):
+        raise FatalPSBTIssue("SP spend path account must be hardened")
+    if sp_path[3] != 0x80000000:
+        raise FatalPSBTIssue("SP spend path key type must be 0h")
+
+    B_spend = input.get(B_spend_coords)
+    if _compute_silent_payment_spending_xonly(B_spend, input.sp_tweak) != output_xonly:
+        raise FatalPSBTIssue("SP_TWEAK does not match UTXO output key")
 
 
 # -----------------------------------------------------------------------------
@@ -737,25 +768,36 @@ class SilentPaymentsMixin:
         Derive the contributing private key for an eligible input
 
         Note:
+            For silent payment inputs, derives from sp_spend_bip32_derivation and sp_tweak
             For taproot inputs, uses the internal key's derivation path (ik_idx), XFP-checked
             For non-taproot inputs, uses the first matching BIP32 derivation path
 
         Returns:
             bytes: Derived private key as (32-byte scalar) or None if not eligible
         """
-        # TODO: BIP-376 sp_spend_derivation should go here
-        spk = input.utxo_spk
-        if spk and _is_p2tr(spk):
-            if input.ik_idx is not None and input.taproot_subpaths:
-                _, path_coords = input.taproot_subpaths[input.ik_idx]
-                xfp_path = self.parse_xfp_path(path_coords[2])
-                if xfp_path[0] == self.my_xfp:
-                    return self._path_to_privkey(xfp_path, sv)
+        privkey = None
+
+        if input.sp_tweak and input.sp_spend_bip32_derivation:
+            _, val_coords = input.sp_spend_bip32_derivation
+            xfp_path = self.parse_xfp_path(val_coords)
+            if xfp_path[0] == self.my_xfp:
+                privkey = _compute_silent_payment_spending_privkey(self._path_to_privkey(xfp_path, sv), input.sp_tweak)
         else:
-            for xfp_path in self._iter_input_xfp_paths(input):
-                if xfp_path[0] == self.my_xfp:
-                    return self._path_to_privkey(xfp_path, sv)
-        return None
+            spk = input.utxo_spk
+            if spk and _is_p2tr(spk):
+                if input.ik_idx is not None and input.taproot_subpaths:
+                    _, path_coords = input.taproot_subpaths[input.ik_idx[0]]
+                    xfp_path = self.parse_xfp_path(path_coords[2])
+                    if xfp_path[0] == self.my_xfp:
+                        privkey = self._path_to_privkey(xfp_path, sv)
+                        if input.taproot_internal_key:
+                            privkey = self._normalize_p2tr_privkey(privkey, self.get(input.taproot_internal_key))
+            else:
+                for xfp_path in self._iter_input_xfp_paths(input):
+                    if xfp_path[0] == self.my_xfp:
+                        privkey = self._path_to_privkey(xfp_path, sv)
+                        break
+        return privkey
 
     def _iter_input_xfp_paths(self, input):
         """
