@@ -44,6 +44,7 @@ from public_constants import (
     PSBT_OUT_SP_V0_INFO, PSBT_OUT_SP_V0_LABEL,
     PSBT_IN_SP_DLEQ, PSBT_IN_SP_ECDH_SHARE,
     PSBT_GLOBAL_SP_DLEQ, PSBT_GLOBAL_SP_ECDH_SHARE,
+    PSBT_IN_SP_TWEAK, PSBT_IN_SP_SPEND_BIP32_DERIVATION,
     AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH,
     AFC_SEGWIT, AF_BARE_PK
 )
@@ -670,7 +671,7 @@ class psbtInputProxy(psbtProxy):
     # only part-sigs have a key to be stored.
     no_keys = {PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO, PSBT_IN_SIGHASH_TYPE,
                PSBT_IN_REDEEM_SCRIPT, PSBT_IN_WITNESS_SCRIPT, PSBT_IN_FINAL_SCRIPTSIG,
-               PSBT_IN_FINAL_SCRIPTWITNESS,PSBT_IN_TAP_KEY_SIG,
+               PSBT_IN_FINAL_SCRIPTWITNESS, PSBT_IN_SP_TWEAK, PSBT_IN_TAP_KEY_SIG,
                PSBT_IN_TAP_INTERNAL_KEY, PSBT_IN_TAP_MERKLE_ROOT}
 
     blank_flds = (
@@ -682,7 +683,7 @@ class psbtInputProxy(psbtProxy):
         'taproot_subpaths', 'taproot_internal_key', 'taproot_key_sig', 'tr_added_sigs',
         'ik_idx', 'musig_pubkeys', 'musig_pubnonces', 'musig_part_sigs', 'musig_agg_idx',
         'musig_added_pubnonces', 'musig_added_sigs',
-        'sp_ecdh_shares', 'sp_dleq_proofs',
+        'sp_ecdh_shares', 'sp_dleq_proofs', 'sp_tweak', 'sp_spend_bip32_derivation',
     )
 
     def __init__(self, fd, idx):
@@ -733,6 +734,8 @@ class psbtInputProxy(psbtProxy):
         # === silent payments ===
         #self.sp_ecdh_shares = None              # dict[scan-pub] = ecdh_share
         #self.sp_dleq_proofs = None              # dict[scan-pub] = dleq_proof
+        #self.sp_tweak = None
+        #self.sp_spend_bip32_derivation = None   # (spend-pub, xfp || path)
 
         self.parse(fd)
 
@@ -1197,6 +1200,10 @@ class psbtInputProxy(psbtProxy):
         elif kt == PSBT_IN_SP_DLEQ:
             self.sp_dleq_proofs = self.sp_dleq_proofs or {}
             self.sp_dleq_proofs[key] = val
+        elif kt == PSBT_IN_SP_TWEAK:
+            self.sp_tweak = self.get(val)
+        elif kt == PSBT_IN_SP_SPEND_BIP32_DERIVATION:
+            self.sp_spend_bip32_derivation = (key, val)
         else:
             # including: PSBT_IN_FINAL_SCRIPTSIG, PSBT_IN_FINAL_SCRIPTWITNESS
             self.unknown = self.unknown or []
@@ -1300,6 +1307,13 @@ class psbtInputProxy(psbtProxy):
             if self.sp_dleq_proofs:
                 for k, v in self.sp_dleq_proofs.items():
                     wr(PSBT_IN_SP_DLEQ, v, k)
+
+            if self.sp_tweak:
+                wr(PSBT_IN_SP_TWEAK, self.sp_tweak)
+
+            if self.sp_spend_bip32_derivation:
+                k, v = self.sp_spend_bip32_derivation
+                wr(PSBT_IN_SP_SPEND_BIP32_DERIVATION, v, k)
 
         if self.unknown:
             for k, v in self.unknown:

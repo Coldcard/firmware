@@ -53,6 +53,8 @@ class MockInput:
         self.sp_dleq_proofs = {}
         self.subpaths = []
         self.taproot_subpaths = []
+        self.sp_tweak = None
+        self.sp_spend_bip32_derivation = {}
         self.sp_idxs = None
         self.ik_idx = None
 
