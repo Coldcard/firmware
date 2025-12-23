@@ -64,6 +64,9 @@ PSBT_IN_MUSIG2_PARTIAL_SIG          = 0x1c
 # BIP-375 Silent Payments
 PSBT_IN_SP_ECDH_SHARE               = 0x1d
 PSBT_IN_SP_DLEQ                     = 0x1e
+# BIP-376 Silent Payments
+PSBT_IN_SP_SPEND_BIP32_DERIVATION   = 0x1f
+PSBT_IN_SP_TWEAK                    = 0x20
 
 # OUTPUTS ===
 PSBT_OUT_REDEEM_SCRIPT 	            = 0x00
@@ -152,6 +155,8 @@ class BasicPSBTInput(PSBTSection):
         self.musig_part_sigs = {}
         self.sp_ecdh_shares = {}
         self.sp_dleq_proofs = {}
+        self.sp_tweak = None
+        self.sp_spend_bip32_derivation = {}
         self.others = {}
         self.unknown = {}
 
@@ -184,6 +189,8 @@ class BasicPSBTInput(PSBTSection):
              a.musig_part_sigs == b.musig_part_sigs and \
              a.sp_ecdh_shares == b.sp_ecdh_shares and \
              a.sp_dleq_proofs == b.sp_dleq_proofs and \
+             a.sp_tweak == b.sp_tweak and \
+             a.sp_spend_bip32_derivation == b.sp_spend_bip32_derivation and \
              a.unknown == b.unknown
         if rv:
             # NOTE: equality test on signatures requires parsing DER stupidness
@@ -277,6 +284,10 @@ class BasicPSBTInput(PSBTSection):
             self.sp_ecdh_shares[key] = val
         elif kt == PSBT_IN_SP_DLEQ:
             self.sp_dleq_proofs[key] = val
+        elif kt == PSBT_IN_SP_TWEAK:
+            self.sp_tweak = val
+        elif kt == PSBT_IN_SP_SPEND_BIP32_DERIVATION:
+            self.sp_spend_bip32_derivation[key] = val
         else:
             self.unknown[bytes([kt]) + key] = val
 
@@ -341,6 +352,11 @@ class BasicPSBTInput(PSBTSection):
         if self.sp_dleq_proofs:
             for k, v in self.sp_dleq_proofs.items():
                 wr(PSBT_IN_SP_DLEQ, v, k)
+        if self.sp_tweak is not None:
+            wr(PSBT_IN_SP_TWEAK, self.sp_tweak)
+        if self.sp_spend_bip32_derivation:
+            for k, v in self.sp_spend_bip32_derivation.items():
+                wr(PSBT_IN_SP_SPEND_BIP32_DERIVATION, v, k)
 
         if self.musig_pubnonces:
             for (pk, ak, lh), pubnonce in self.musig_pubnonces.items():
