@@ -865,7 +865,8 @@ class MultisigWallet(WalletABC):
 
     def make_fname(self, prefix, suffix='txt'):
         rv = '%s-%s.%s' % (prefix, self.name, suffix)
-        return rv.replace(' ', '_')
+        rv = rv.replace(' ', '_')
+        return rv.replace('/', '-')
 
     async def export_electrum(self):
         # Generate and save an Electrum JSON file.
