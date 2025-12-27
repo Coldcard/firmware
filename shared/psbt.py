@@ -1412,8 +1412,6 @@ class psbtObject(psbtProxy):
         # Lookup correct wallet based on xpubs in globals
         # - only happens if they volunteered this 'extra' data
         # - do not assume multisig
-        assert not self.active_miniscript
-
         has_mine = 0
         parsed_xpubs = []
         for k,v in self.xpubs:
@@ -1427,6 +1425,13 @@ class psbtObject(psbtProxy):
 
         if not has_mine:
             raise FatalPSBTIssue('My XFP not involved')
+
+        if self.active_miniscript:
+            # user is going via wallet->Sign PSBT
+            # check XPUBs are correct
+            if not self.active_miniscript.disable_checks:
+                self.active_miniscript.validate_psbt_xpubs(parsed_xpubs)
+            return
 
         # don't want to guess M if not needed, but we need it
         af, M, N = self.guess_M_of_N()
@@ -1452,11 +1457,6 @@ class psbtObject(psbtProxy):
         if wal:
             # exact match (by xfp+deriv set) .. normal case
             self.active_miniscript = wal
-            # now proper check should follow - matching actual master pubkeys
-            # but is it needed?, we just matched the wallet
-            # and are going to use our own data for verification anyway
-            if not self.active_miniscript.disable_checks:
-                self.active_miniscript.validate_psbt_xpubs(parsed_xpubs)
 
         else:
             trust_mode = MiniScriptWallet.get_trust_policy()

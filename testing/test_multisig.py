@@ -3481,4 +3481,57 @@ def test_af_matching_convoluted_case(af, psbt_v2, clear_miniscript, fake_ms_txn,
     assert len(po.inputs[0].part_sigs) == 0  # considered not ours
     assert len(po.inputs[1].part_sigs) == 1  # signature added
 
+
+@pytest.mark.parametrize("fail", [0, 1, 2])
+@pytest.mark.parametrize("der", ["m", "m/48h/1h/0h/2h"])
+def test_specific_wallet_signing_xpubs(der, fail, clear_miniscript, import_ms_wallet, fake_ms_txn,
+                                       try_sign, try_sign_microsd, start_sign, end_sign, cap_story):
+    M, N = 2, 3
+    addr_fmt = "p2wsh"
+
+    clear_miniscript()
+
+    def path_mapper(idx):
+        kk = str_to_path(der)
+        return kk + [0,0]
+
+    def include_xpubs(idx, xfp, m, sk):
+        kk = str_to_path(der)
+        bp = pack('<%dI' % (der.count("/") + 1), xfp, *kk)
+        return sk.node.serialize_public(), bp
+
+    name = "ms01"
+    keys = import_ms_wallet(M, N, name=name, accept=True, addr_fmt=addr_fmt, do_import=True, common=der)
+
+    psbt = fake_ms_txn(2, 1, M, keys, inp_addr_fmt=addr_fmt, incl_xpubs=include_xpubs,
+                       outstyles=[addr_fmt], change_outputs=[0], netcode="XRT", path_mapper=path_mapper)
+
+    if fail:
+        po = BasicPSBT().parse(psbt)
+        item = po.xpubs[0]
+        if fail == 1:
+            # wrong key
+            key_wrong = item[0][:-1] + b"\x10"
+            po.xpubs[0] = (key_wrong, item[1])
+
+        elif fail == 2:
+            # wrong derivation path
+            pth_wrong = item[1][:-1] + b"\x10"
+            po.xpubs[0] = (item[0], pth_wrong)
+
+        psbt = po.as_bytes()
+
+    start_sign(psbt, miniscript=name)
+    if fail:
+        title, story = cap_story()
+        assert "Failure" in title
+        if der == "m":
+            # more thorough checks on root keys
+            # error messages differ, but always failure
+            pass
+        else:
+            assert "PSBT xpubs mismatch" in story
+    else:
+        end_sign(accept=True)
+
 # EOF
