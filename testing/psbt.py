@@ -432,7 +432,7 @@ class BasicPSBT:
                 assert self.txn, 'v0: missing reqd section - PSBT_GLOBAL_UNSIGNED_TX'
             elif self.version == 2:
                 # tx version needs to be at least 2 because locktimes
-                assert self.txn_version == 2, 'v2: missing reqd section - PSBT_GLOBAL_TX_VERSION'
+                assert self.txn_version in {2, 3}, 'v2: missing reqd section - PSBT_GLOBAL_TX_VERSION'
                 assert self.input_count is not None, 'v2: missing reqd section - PSBT_GLOBAL_INPUT_COUNT'
                 assert self.output_count is not None, 'v2: missing reqd section - PSBT_GLOBAL_OUTPUT_COUNT'
 
