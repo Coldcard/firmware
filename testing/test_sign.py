@@ -3401,6 +3401,88 @@ def test_finalize_with_foreign_inputs(bitcoind, bitcoind_d_sim_watch, start_sign
     assert title == "PSBT Signed"
     assert "Finalized transaction (ready for broadcast)" in story
 
+
+@pytest.mark.parametrize("psbt_v2", [False, True])
+def test_txn_v3(psbt_v2, fake_txn, start_sign, end_sign, cap_story):
+
+    psbt = fake_txn([["p2wpkh"],["p2tr"]], [["p2tr", None, True],["p2wpkh"]], psbt_v2=psbt_v2)
+
+    po = BasicPSBT().parse(psbt)
+    if psbt_v2:
+        po.txn_version = 3
+    else:
+        txo = CTransaction()
+        txo.deserialize(BytesIO(po.txn))
+        txo.nVersion = 3
+        po.txn = txo.serialize()
+
+    start_sign(po.as_bytes())
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "Consolidating" not in story
+    assert "Change back" in story
+    assert "to script" not in story
+
+    signed = end_sign(accept=True, finalize=False)
+    assert signed
+
+    po_signed = BasicPSBT().parse(signed)
+    if psbt_v2:
+        assert po_signed.version == 2
+        assert po_signed.txn is None
+        assert po_signed.txn_version == 3
+    else:
+        assert po_signed.txn
+        assert po_signed.version == 0
+        assert po_signed.txn_version is None
+        txo0 = CTransaction()
+        txo0.deserialize(BytesIO(po_signed.txn))
+        assert txo0.nVersion == 3
+
+
+@pytest.mark.parametrize("finalize", [False, True])
+def test_txn_v3_eph_anchor(finalize, set_seed_words, start_sign, end_sign, cap_story):
+    # https://github.com/portlandhodl/jade-docker-web-server/blob/main/example_tools/test_vectors.py
+    TEST_PSBT_V3 = "cHNidP8BAFIDAAAAAdqopVcNAsr10z7dkzqG6J+3/vd10vriIDDe4O7u8GwfAQAAAAD9////AYOtdgAAAAAAFgAUlOv8+jtC6QYYNWgtA5ekaOGSfHH6WAQATwEENYfPA2elg8CAAAAA+dpuPB69NWUcEs/VfnCtrdxTyQG8xphTtTK6VDbgWHICWD2jKQxipNxf2bJk+0aHxEjn0N6nZD7MFrR/4o5QKZIQgLjDfFQAAIABAACAAAAAgAABAHECAAAAAU4xPHhslj2Nik1d9YVWuCSWLCjsI7ZTbACg4uOEtiJTAAAAAAD9////AqCKBgAAAAAAFgAUIzpZyckZ7FOvLecQynCBNbFwTf3xrXYAAAAAABYAFDpfSBYMJlSC2MY0FF4NUiMpxeZI8VgEAAEBH/GtdgAAAAAAFgAUOl9IFgwmVILYxjQUXg1SIynF5kgBAwQBAAAAIgYDz3o9vHG3Vkh9MjjDMaWr+SiQQZDs8AgzFTBs+xUnQkEYgLjDfFQAAIABAACAAAAAgAAAAAAAAAAAACICApGbj0iZaA6IAmws63XtQbV6hfJAxMKojI6QwWSIRflDGIC4w3xUAACAAQAAgAAAAIAAAAAAAQAAAAA="
+    TEST_PSBT_V3_EPHEMERAL_ANCHOR = "cHNidP8BAHEDAAAAAdqopVcNAsr10z7dkzqG6J+3/vd10vriIDDe4O7u8GwfAQAAAAD9////AoOtdgAAAAAAFgAUlOv8+jtC6QYYNWgtA5ekaOGSfHEAAAAAAAAAABYAFJTr/Po7QukGGDVoLQOXpGjhknxx+lgEAE8BBDWHzwNnpYPAgAAAAPnabjwevTVlHBLP1X5wra3cU8kBvMaYU7UyulQ24FhyAlg9oykMYqTcX9myZPtGh8RI59Dep2Q+zBa0f+KOUCmSEIC4w3xUAACAAQAAgAAAAIAAAQBxAgAAAAFOMTx4bJY9jYpNXfWFVrgkliwo7CO2U2wAoOLjhLYiUwAAAAAA/f///wKgigYAAAAAABYAFCM6WcnJGexTry3nEMpwgTWxcE398a12AAAAAAAWABQ6X0gWDCZUgtjGNBReDVIjKcXmSPFYBAABAR/xrXYAAAAAABYAFDpfSBYMJlSC2MY0FF4NUiMpxeZIAQMEAQAAACIGA896Pbxxt1ZIfTI4wzGlq/kokEGQ7PAIMxUwbPsVJ0JBGIC4w3xUAACAAQAAgAAAAIAAAAAAAAAAAAAiAgKRm49ImWgOiAJsLOt17UG1eoXyQMTCqIyOkMFkiEX5QxiAuMN8VAAAgAEAAIAAAACAAAAAAAEAAAAAIgICkZuPSJloDogCbCzrde1BtXqF8kDEwqiMjpDBZIhF+UMYgLjDfFQAAIABAACAAAAAgAAAAAABAAAAAA=="
+    TEST_MNEMONIC = "tobacco tobacco tobacco tobacco tobacco tobacco tobacco tobacco tobacco tobacco tobacco tobacco"
+    set_seed_words(TEST_MNEMONIC)
+
+    v3 = base64.b64decode(TEST_PSBT_V3)
+    po = BasicPSBT().parse(v3)
+    assert po.version == 0
+    start_sign(v3, finalize=finalize)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "warning" not in story
+    res = end_sign(finalize=finalize)
+    if not finalize:
+        po_signed = BasicPSBT().parse(res)
+        assert po_signed.txn_version is None
+        res = po_signed.txn
+
+    txo = CTransaction()
+    txo.deserialize(BytesIO(res))
+    assert txo.nVersion == 3
+
+    v3_eph_anchor = base64.b64decode(TEST_PSBT_V3_EPHEMERAL_ANCHOR)
+    po = BasicPSBT().parse(v3)
+    assert po.version == 0
+    start_sign(v3_eph_anchor, finalize=finalize)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "1 warning below" in story
+    assert "Non-standard zero value output(s)" in story
+    res = end_sign(finalize=finalize)
+    if not finalize:
+        po_signed = BasicPSBT().parse(res)
+        assert po_signed.txn_version is None
+        res = po_signed.txn
+
+    txo = CTransaction()
+    txo.deserialize(BytesIO(res))
+    assert txo.nVersion == 3
+
 # EOF
 
 @pytest.mark.bitcoind

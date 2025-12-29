@@ -1494,7 +1494,7 @@ def end_sign(dev, need_keypress, press_cancel):
             assert res[0:4] != b'psbt', 'still a PSBT, but asked for finalize'
             t = CTransaction()
             t.deserialize(io.BytesIO(res))
-            assert t.nVersion in [1, 2]
+            assert t.nVersion in [1, 2, 3]
 
             # TODO: pull out signatures from signed txn
                     

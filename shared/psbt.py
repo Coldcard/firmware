@@ -1289,7 +1289,7 @@ class psbtObject(psbtProxy):
         self.txn_version, marker, flags = unpack("<iBB", fd.read(6))
         self.had_witness = (marker == 0 and flags != 0x0)
 
-        assert self.txn_version in {1,2}, "bad txn version"
+        assert self.txn_version in {1,2,3}, "bad txn version"
 
         if not self.had_witness:
             # rewind back over marker+flags
