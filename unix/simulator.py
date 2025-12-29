@@ -903,8 +903,14 @@ Q1 specials:
         child.kill()
         return
 
+    logfile = '/tmp/cc_simulator.log'
+
+    # truncate logfile and set correct permissions before starting xterm
+    open(logfile, 'w').close()
+    os.chmod(logfile, 0o644)
+
     xterm = subprocess.Popen(['xterm', '-title', 'Coldcard Simulator REPL',
-                                '-geom', '132x40+650+40', '-e'] + cc_cmd,
+                                '-geom', '132x40+650+40', '-l', '-lf', logfile, '-e'] + cc_cmd,
                                 env=env,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                 pass_fds=pass_fds, shell=False)
