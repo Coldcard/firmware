@@ -91,6 +91,25 @@ so at the top level, do this command:
 pip install -r requirements.txt
 ```
 
+### Using Docker to build simulator
+Install [Docker Desktop or Docker Engine](https://docs.docker.com/desktop/) (don't forget to add your user to the docker group `sudo usermod -aG docker $USER` than logout and login again)
+
+```
+# Build simulator
+docker build -t coldcard-simulator .
+docker create --name cc coldcard-simulator
+docker cp cc:/build/firmware ./firmware
+docker rm cc
+
+# Install specific libffi7 (as new Ubuntu versions ship with libffi8 only)
+wget http://archive.ubuntu.com/ubuntu/pool/main/libf/libffi/libffi7_3.3-4_amd64.deb
+sudo dpkg -i libffi7_3.3-4_amd64.deb   
+
+# Run simulator (remember to follow the OS specific instructions detailed below to install python and its dependencies)
+cd firmware/unix
+./simulator.py
+```
+
 ### macOS
 
 [Python 3.5 or higher](https://www.python.org) and [Homebrew](https://brew.sh) is required.
@@ -179,7 +198,13 @@ All steps you need to install and run the Coldcard simulator on Ubuntu 20.04:
 apt install build-essential git python3 python3-pip libudev-dev gcc-arm-none-eabi libffi-dev xterm swig libpcsclite-dev python-is-python3 autoconf libtool python3-venv
 
 # Get sources, this takes a long time (because of external libraries), then open
+
+# Recommended (fast, minimal download; sufficient for building and running the simulator):
+git clone --depth 1 --recursive https://github.com/Coldcard/firmware.git
+
+# Full clone (developers only; required for history, bisecting, or contributing):
 git clone --recursive https://github.com/Coldcard/firmware.git
+
 cd firmware
 
 # Apply address patch
