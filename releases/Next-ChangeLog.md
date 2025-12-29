@@ -6,6 +6,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 - New Feature: Export [BIP-380](https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki) extended key expression.
   Navigate to `Advanced/Tools -> Export Wallet -> Key Expression`
+- New Feature: Support for v3 transactions
 
 # Mk4 Specific Changes
 
