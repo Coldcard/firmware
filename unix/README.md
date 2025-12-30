@@ -63,6 +63,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--segregate` => scroll down to `Running simulators in parallel` section
 - `--bricked` => simulate a system w/ bricked SE1: no more pin tries, etc.
 - `--fails N` => simulate N wrong PIN attempts before login, where (1 <= N <= 13)
+- `--log` => enable logging to `/tmp/cc-simulators/<pid>/cc_simulator.log`
 
 See `variant/sim_settings.py` for the details of settings-related options.
 
