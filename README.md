@@ -179,13 +179,7 @@ All steps you need to install and run the Coldcard simulator on Ubuntu 20.04:
 apt install build-essential git python3 python3-pip libudev-dev gcc-arm-none-eabi libffi-dev xterm swig libpcsclite-dev python-is-python3 autoconf libtool python3-venv
 
 # Get sources, this takes a long time (because of external libraries), then open
-
-# Recommended (fast, minimal download; sufficient for building and running the simulator):
-git clone --depth 1 --shallow-submodules --recursive https://github.com/Coldcard/firmware.git
-
-# Full clone (developers only; required for history, bisecting, or contributing):
 git clone --recursive https://github.com/Coldcard/firmware.git
-
 cd firmware
 
 # Apply address patch
