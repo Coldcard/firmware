@@ -915,11 +915,9 @@ Q1 specials:
         file_desc = os.open(logfile, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
         os.close(file_desc)
 
-        xterm_args.extend(['-l', '-lf', logfile, '-e'])
-    else:
-        xterm_args.extend(['-e'])
+        xterm_args.extend(['-l', '-lf', logfile])
 
-    xterm = subprocess.Popen(xterm_args + cc_cmd,
+    xterm = subprocess.Popen(xterm_args + ['-e'] + cc_cmd,
                                 env=env,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                 pass_fds=pass_fds, shell=False)
