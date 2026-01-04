@@ -10,7 +10,7 @@ from ckcc.protocol import CCProtocolPacker
 from txn import fake_txn
 from bip32 import BIP32Node
 from helpers import xfp2str, a2b_hex
-from charcodes import KEY_CLEAR, KEY_NFC
+from charcodes import KEY_CLEAR, KEY_NFC, KEY_QR
 
 
 WORDLISTS = {
@@ -412,7 +412,7 @@ def generate_ephemeral_words(goto_eph_seed_menu, pick_menu_item, press_select,
 def import_ephemeral_xprv(microsd_path, virtdisk_path, goto_eph_seed_menu,
                           pick_menu_item, need_keypress, cap_story, settings_set,
                           nfc_write_text, ephemeral_seed_disabled_ui, confirm_tmp_seed,
-                          press_nfc, press_select, is_q1):
+                          press_nfc, press_select, is_q1, scan_a_qr):
     def doit(way, extended_key=None, testnet=True, seed_vault=False, from_main=False):
         if testnet:
             netcode = "XTN"
@@ -430,11 +430,13 @@ def import_ephemeral_xprv(microsd_path, virtdisk_path, goto_eph_seed_menu,
             assert extended_key == node.hwif(as_private=True)
             ek = extended_key
 
-        if way == "sd":
-            fpath = microsd_path(fname)
-        elif way == "vdisk":
-            fpath = virtdisk_path(fname)
-        if way != "nfc":
+        if way in ["sd", "vdisk"]:
+            if way == "sd":
+                fpath = microsd_path(fname)
+            else:
+                assert way == "vdisk"
+                fpath = virtdisk_path(fname)
+
             with open(fpath, "w") as f:
                 f.write(ek)
 
@@ -461,6 +463,14 @@ def import_ephemeral_xprv(microsd_path, virtdisk_path, goto_eph_seed_menu,
                 time.sleep(0.2)
                 nfc_write_text(ek)
                 time.sleep(0.3)
+        elif way == "qr":
+            if not is_q1:
+                raise pytest.xfail("Mk4 no QR")
+
+            assert f"{KEY_QR} to scan QR code" in story
+            need_keypress(KEY_QR)
+            scan_a_qr(ek)
+            time.sleep(1)
         else:
             # virtual disk
             if "press (2) to import from Virtual Disk" not in story:
@@ -468,7 +478,7 @@ def import_ephemeral_xprv(microsd_path, virtdisk_path, goto_eph_seed_menu,
             else:
                 need_keypress("2")
 
-        if way != "nfc":
+        if way in ["sd", "vdisk"]:
             time.sleep(0.1)
             pick_menu_item(fname)
 
@@ -503,17 +513,19 @@ def test_ephemeral_seed_generate(num_words, generate_ephemeral_words, dice,
 
 
 @pytest.mark.parametrize("num_words", [12, 18, 24])
-@pytest.mark.parametrize("nfc", [False, True])
+@pytest.mark.parametrize("way", ["input", "nfc", "qr"])
 @pytest.mark.parametrize("truncated", [False, True])
 @pytest.mark.parametrize("preserve_settings", [False, True])
 @pytest.mark.parametrize("seed_vault", [False, True])
-def test_ephemeral_seed_import_words(nfc, truncated, num_words, cap_menu, pick_menu_item,
-                                     reset_seed_words, goto_eph_seed_menu,
+def test_ephemeral_seed_import_words(way, truncated, num_words, cap_menu, pick_menu_item,
+                                     reset_seed_words, goto_eph_seed_menu, skip_if_useless_way,
                                      word_menu_entry, nfc_write_text, verify_ephemeral_secret_ui,
                                      ephemeral_seed_disabled, get_seed_value_ux, seed_vault,
                                      settings_set, cap_story, preserve_settings, seed_vault_enable,
-                                     seed_vault_delete, restore_main_seed, confirm_tmp_seed):
-    if truncated and not nfc: return
+                                     seed_vault_delete, restore_main_seed, confirm_tmp_seed,
+                                     scan_a_qr, nfc_disabled):
+    skip_if_useless_way(way)
+    if truncated and (way == "input"): return
 
     words, expect_xfp = WORDLISTS[num_words]
 
@@ -522,34 +534,40 @@ def test_ephemeral_seed_import_words(nfc, truncated, num_words, cap_menu, pick_m
     goto_eph_seed_menu()
 
     ephemeral_seed_disabled()
-    pick_menu_item("Import Words")
 
-    if not nfc:
+    if way == "input":
+        pick_menu_item("Import Words")
         pick_menu_item(f"{num_words} Words")
         time.sleep(0.1)
 
         word_menu_entry(words.split())
-    else:
+    elif way == "nfc":
+        pick_menu_item("Import Words")
         menu = cap_menu()
         if 'Import via NFC' not in menu:
             raise pytest.xfail("NFC not enabled")
         pick_menu_item('Import via NFC')
 
-        if truncated:
-            truncated_words = truncate_seed_words(words)
-            nfc_write_text(truncated_words)
-        else:
-            nfc_write_text(words)
+        nfc_write_text(truncate_seed_words(words) if truncated else words)
         time.sleep(.5)
+    elif way == "qr":
+        menu = cap_menu()
+        if 'Import from QR Scan' not in menu:
+            raise pytest.xfail("QR not available")
+
+        pick_menu_item('Import from QR Scan')
+        scan_a_qr(truncate_seed_words(words) if truncated else words)
+        time.sleep(1)
 
     confirm_tmp_seed(seedvault=seed_vault)
 
     xfp = verify_ephemeral_secret_ui(mnemonic=words.split(" "), expected_xfp=expect_xfp,
                                      seed_vault=seed_vault)
 
-    nfc_seed = get_seed_value_ux(nfc=True)  # export seed via NFC (always truncated)
-    seed_words = get_seed_value_ux()
-    assert " ".join(nfc_seed) == truncate_seed_words(seed_words)
+    if not nfc_disabled():
+        nfc_seed = get_seed_value_ux(nfc=True)  # export seed via NFC (always truncated)
+        seed_words = get_seed_value_ux()
+        assert " ".join(nfc_seed) == truncate_seed_words(seed_words)
 
     if seed_vault:
         seed_vault_delete(xfp, not preserve_settings)
@@ -557,7 +575,7 @@ def test_ephemeral_seed_import_words(nfc, truncated, num_words, cap_menu, pick_m
         restore_main_seed(preserve_settings)
 
 
-@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize("testnet", [True, False])
 @pytest.mark.parametrize("preserve_settings", [False, True])
 @pytest.mark.parametrize("seed_vault", [False, True])
@@ -567,8 +585,9 @@ def test_ephemeral_seed_import_tapsigner(way, testnet, pick_menu_item, cap_story
                                          nfc_write_text, tapsigner_encrypted_backup, seed_vault,
                                          preserve_settings, seed_vault_enable, settings_set,
                                          seed_vault_delete, restore_main_seed, confirm_tmp_seed,
-                                         is_q1, press_select, press_nfc):
-    
+                                         is_q1, press_select, press_nfc, scan_a_qr,
+                                         skip_if_useless_way):
+    skip_if_useless_way(way)
     reset_seed_words()
     if testnet:
         netcode = "XTN"
@@ -598,6 +617,13 @@ def test_ephemeral_seed_import_tapsigner(way, testnet, pick_menu_item, cap_story
             time.sleep(0.2)
             nfc_write_text(fname)
             time.sleep(0.3)
+    elif way == "qr":
+        if not is_q1:
+            raise pytest.xfail("Mk4 no QR")
+
+        need_keypress(KEY_QR)
+        scan_a_qr(fname)  # fname is b64 encoded backup itself
+        time.sleep(1)
     else:
         # virtual disk
         if "press (2) to import from Virtual Disk" not in story:
@@ -605,7 +631,7 @@ def test_ephemeral_seed_import_tapsigner(way, testnet, pick_menu_item, cap_story
         else:
             need_keypress("2")
 
-    if way != "nfc":
+    if way in ["sd", "vdisk"]:
         time.sleep(0.1)
         pick_menu_item(fname)
 
@@ -729,15 +755,16 @@ def test_ephemeral_seed_import_tapsigner_real(data, pick_menu_item, cap_story, m
     restore_main_seed(False)
 
 
-@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize("testnet", [True, False])
 @pytest.mark.parametrize("preserve_settings", [False, True])
 @pytest.mark.parametrize("seed_vault", [False, True])
-def test_ephemeral_seed_import_xprv(way, testnet, reset_seed_words,
-                                    goto_eph_seed_menu, verify_ephemeral_secret_ui,
-                                    ephemeral_seed_disabled, import_ephemeral_xprv,
-                                    preserve_settings, seed_vault, seed_vault_enable,
-                                    seed_vault_delete, restore_main_seed, confirm_tmp_seed):
+def test_ephemeral_seed_import_xprv(way, testnet, reset_seed_words, goto_eph_seed_menu,
+                                    verify_ephemeral_secret_ui, ephemeral_seed_disabled,
+                                    import_ephemeral_xprv, preserve_settings, seed_vault,
+                                    seed_vault_enable, seed_vault_delete, restore_main_seed,
+                                    confirm_tmp_seed, skip_if_useless_way):
+    skip_if_useless_way(way)
     reset_seed_words()
     goto_eph_seed_menu()
     seed_vault_enable(seed_vault)
