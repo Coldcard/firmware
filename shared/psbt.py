@@ -1067,7 +1067,7 @@ class psbtObject(psbtProxy):
         elif kt == PSBT_GLOBAL_VERSION:
             self.version = unpack("<I", self.get(val))[0]
         elif kt == PSBT_GLOBAL_TX_VERSION:
-            self.txn_version = unpack("<I", self.get(val))[0]
+            self.txn_version = unpack("<i", self.get(val))[0]
             self.has_gtv = True
         elif kt == PSBT_GLOBAL_FALLBACK_LOCKTIME:
             self.fallback_locktime = unpack("<I", self.get(val))[0]
@@ -1875,7 +1875,7 @@ class psbtObject(psbtProxy):
                 wr(PSBT_GLOBAL_UNSIGNED_TX, self.txn)
 
         if self.is_v2:
-            wr(PSBT_GLOBAL_TX_VERSION, pack('<I', self.txn_version))
+            wr(PSBT_GLOBAL_TX_VERSION, pack('<i', self.txn_version))
             if self.fallback_locktime is not None:
                 wr(PSBT_GLOBAL_FALLBACK_LOCKTIME, pack('<I', self.fallback_locktime))
             wr(PSBT_GLOBAL_INPUT_COUNT, ser_compact_size(self.num_inputs))
