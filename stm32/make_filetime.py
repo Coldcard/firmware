@@ -5,14 +5,14 @@
 # Capture build time and version number into a number used as the timestamp on
 # all created files for that Coldcard version.
 #
-import os, sys, time, datetime
+import os, sys, datetime
 
 out_fname, version = sys.argv[1:]
 
 assert out_fname.endswith('.c'), out_fname
 
 if os.path.exists(out_fname):
-    # to help deterministic builds, don't replace the file from git if verison # is right
+    # to help deterministic builds, don't replace the file from git if version # is right
     with open(out_fname, 'rt') as fd:
         if ('// version: %s\n' % version) in fd.read():
             print("==> %s already version %s; not changing it" % (out_fname, version))
@@ -22,7 +22,7 @@ if os.path.exists(out_fname):
 today = datetime.date.today()
 value = ((today.year - 1980) << 25) | (today.month << 21) | (today.day << 16) 
 
-# only 2second resolution for times, so can only support minor verion up to x.x.5 and hard to see
+# only 2second resolution for times, so can only support minor version up to x.x.5 and hard to see
 # anyway, let's omit ... worst case, use the date instead
 ver = ''.join(v for v in version if v in '0123456789.')     # strip letter codes from end
 h, m, _ = [int(x) for x in ver.split('b')[0].split('.')]

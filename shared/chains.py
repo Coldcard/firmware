@@ -9,6 +9,7 @@ from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2TR, AF_BARE_PK
 from public_constants import AF_P2SH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH
 from public_constants import AFC_PUBKEY, AFC_BECH32, AFC_SCRIPT
 from public_constants import TAPROOT_LEAF_TAPSCRIPT, TAPROOT_LEAF_MASK
+from block_height import BLOCK_HEIGHT
 from serializations import hash160, ser_compact_size, disassemble, ser_string
 from ucollections import namedtuple
 from opcodes import OP_RETURN, OP_1, OP_16
@@ -291,7 +292,7 @@ class BitcoinMain(ChainsBase):
     # see <https://github.com/bitcoin/bitcoin/blob/master/src/chainparams.cpp#L140>
     ctype = 'BTC'
     name = 'Bitcoin Mainnet'
-    ccc_min_block = 939464          # Mar 5/2026
+    ccc_min_block = BLOCK_HEIGHT
 
     slip132 = {
         AF_CLASSIC:     Slip132Version(0x0488B21E, 0x0488ADE4, 'x'),
