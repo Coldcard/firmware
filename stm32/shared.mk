@@ -82,6 +82,18 @@ $(BOARD)/file_time.c: make_filetime.py *-Makefile shared.mk
 	./make_filetime.py $(BOARD)/file_time.c $(VERSION_STRING)
 	cp $(BOARD)/file_time.c .
 
+
+.PHONY: block_height
+
+block_height:
+	@python3 make_block_height.py; \
+	if [ $$? -eq 0 ]; then \
+		echo "Block Height file already up-to-date."; \
+	else \
+		echo "Block Height file updated."; \
+		git commit -m "update block height" ../shared/block_height.py; \
+	fi
+
 # Make a factory release: using key #1
 # - when executed in a repro w/o the required key, it defaults to key zero
 # - and that's what happens inside the Docker build
@@ -91,7 +103,7 @@ production.bin: firmware-signed.bin Makefile
 SUBMAKE = $(MAKE) -f $(PARENT_MKFILE)
 
 .PHONY: release
-release: submods-match code-committed
+release: submods-match code-committed block_height
 	$(SUBMAKE) clean
 	$(SUBMAKE) repro
 	test -f built/production.bin
@@ -118,7 +130,7 @@ rc1:
 rc2: RC2_TIMESTAMP = $(shell date "+%F_%H%M")
 rc2: RC2_FNAME = ./RC2-$(RC2_TIMESTAMP)-$(HW_MODEL)-coldcard.dfu
 rc2: RC2_FNAME_FACT = ./RC2-$(RC2_TIMESTAMP)-$(HW_MODEL)-factory.dfu
-rc2: submods-match code-committed
+rc2: submods-match code-committed block_height
 	$(SUBMAKE) clean
 	$(SUBMAKE) repro
 	test -f built/production.bin
