@@ -3485,4 +3485,14 @@ def test_thresh_with_multiple_rel_locks(taproot, get_cc_key, create_core_wallet,
     res = wo.sendrawtransaction(tx_hex)
     assert len(res) == 64
 
+
+def test_operatorless_num(get_cc_key, offer_minsc_import, press_select):
+    # we do not support stupidities like this
+    desc = "wsh(and_b(pk(%s),a:1))" % get_cc_key("84h/1h/0h")
+    wname = "and_b"
+    with pytest.raises(Exception) as err:
+        offer_minsc_import(json.dumps(dict(name=wname, desc=desc)))
+    assert err.value.args[0] == "Coldcard Error: Missing operator"
+
+
 # EOF
