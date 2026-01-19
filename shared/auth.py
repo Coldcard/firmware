@@ -871,7 +871,8 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
             # In that case this would just return dict and keep producing signed
             # files on SD infinitely (would never actually prompt).
             ch = await import_export_prompt(noun, intro="\n\n".join(intro), offer_kt=offer_kt,
-                                            txid=txid, title=title, force_prompt=not first_time,
+                                            key6="for QR Code of TXID", title=title,
+                                            force_prompt=not first_time,
                                             no_qr=not version.has_qwerty)
         if ch == KEY_CANCEL:
             UserAuthorizedAction.cleanup()
