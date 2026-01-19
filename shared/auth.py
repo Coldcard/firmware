@@ -548,8 +548,9 @@ class ApproveTransaction(UserAuthorizedAction):
                 dis.fullscreen('Co-Signing...')
                 gc.collect()
                 CCCFeature.sign_psbt(self.psbt)
-            else:
-                # maybe capture new min-height for velocity limit
+
+            if SSSPFeature.is_enabled():
+                # capture new min-height for velocity limit
                 SSSPFeature.update_last_signed(self.psbt)
 
         except FraudulentChangeOutput as exc:
@@ -883,7 +884,8 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
             # In that case this would just return dict and keep producing signed
             # files on SD infinitely (would never actually prompt).
             ch = await import_export_prompt(noun, intro="\n\n".join(intro), offer_kt=offer_kt,
-                                            txid=txid, title=title, force_prompt=not first_time,
+                                            key6="for QR Code of TXID", title=title,
+                                            force_prompt=not first_time,
                                             no_qr=not version.has_qwerty or not allow_qr)
         if ch == KEY_CANCEL:
             UserAuthorizedAction.cleanup()
@@ -964,7 +966,7 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
 
     del_after = settings.get('del', 0)
 
-    def _chunk_write(file_d, ofs, chunk=2048):
+    def _chunk_write(file_d, ofs, chunk=4096):
         written = 0
         while written < data_len:
             if (written + chunk) > data_len:
