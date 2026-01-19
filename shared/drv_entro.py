@@ -205,14 +205,12 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
     if new_secret:
         msg += '\n\nRaw Entropy:\n' + str(b2a_hex(new_secret), 'ascii')
 
-    # Add the standard export prompt at the end, with extra (5) option sometimes.
-
+    key6 = 'to type %s over USB' % s_mode
     key0 = None
     if encoded is not None:
         key0 = 'to switch to derived secret'
-    elif s_mode == 'pw':
-        key0 = 'to type password over USB'
-    prompt, escape = export_prompt_builder('data', key0=key0,
+
+    prompt, escape = export_prompt_builder('data', key0=key0, key6=key6,
                                            no_qr=(not qr), force_prompt=True)
     title = None
     if node:
@@ -224,7 +222,9 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
         ch = await ux_show_story(msg+'\n\n'+prompt, title=title, escape=escape,
                                  strict_escape=True, sensitive=True)
         choice = import_export_prompt_decode(ch)
-        if isinstance(choice, dict):
+        if choice == KEY_CANCEL:
+            break
+        elif isinstance(choice, dict):
             # write to SD card or Virtual Disk: simple text file
             dis.fullscreen("Saving...")
             try:
@@ -247,27 +247,27 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
             story = "Filename is:\n\n%s" % out_fn
             story += "\n\nSignature filename is:\n\n%s" % sig_nice
             await ux_show_story(story, title='Saved')
-        elif choice == KEY_CANCEL:
-            break
+
         elif choice == KEY_QR:
             from ux import show_qr_code
             await show_qr_code(qr, qr_alnum, is_secret=True)
-        elif choice == '0':
-            if s_mode == 'pw':
-                # gets confirmation then types it
-                await single_send_keystrokes(qr, path)
-            elif encoded is not None:
-                # switch over to new secret!
-                dis.fullscreen("Applying...")
-                from actions import goto_top_menu
-                from glob import settings
-                xfp_str = xfp2str(settings.get("xfp", 0))
-                await seed.set_ephemeral_seed(
-                    encoded,
-                    origin='BIP85 Derived from [%s], index=%d' % (xfp_str, index)
-                )
-                goto_top_menu()
-                break
+
+        elif (choice == '0') and (encoded is not None):
+            # switch over to new secret!
+            dis.fullscreen("Applying...")
+            from actions import goto_top_menu
+            from glob import settings
+            xfp_str = xfp2str(settings.get("xfp", 0))
+            await seed.set_ephemeral_seed(
+                encoded,
+                origin='BIP85 Derived from [%s], index=%d' % (xfp_str, index)
+            )
+            goto_top_menu()
+            break
+
+        elif choice == "6":
+            # gets confirmation then types it
+            await single_send_keystrokes(qr, path)
 
         elif NFC and choice == KEY_NFC:
             # Share any of these over NFC

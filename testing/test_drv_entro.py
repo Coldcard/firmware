@@ -77,6 +77,7 @@ def derive_bip85_secret(goto_home, press_select, pick_menu_item, cap_story, ente
             seed = Mnemonic.to_seed(' '.join(got))
             node = BIP32Node.from_master_secret(seed)
             assert node.fingerprint().hex().upper() in title
+            assert "(6) to type words over USB" in story
 
         elif 'XPRV' in mode:
             assert 'Derived XPRV:' in story
@@ -87,12 +88,14 @@ def derive_bip85_secret(goto_home, press_select, pick_menu_item, cap_story, ente
 
             node = BIP32Node.from_hwif(story.split("\n\n")[0].split("\n")[-1])
             assert node.fingerprint().hex().upper() in title
+            assert "(6) to type xprv over USB" in story
 
         elif 'WIF' in mode:
             assert 'WIF (privkey)' in story
             assert f"m/83696968h/2h/{index}h" in story
             if expect:
                 assert expect in story
+            assert "(6) to type wif over USB" in story
 
         elif 'bytes hex' in mode:
             width = int(mode.split('-')[0])
@@ -101,13 +104,14 @@ def derive_bip85_secret(goto_home, press_select, pick_menu_item, cap_story, ente
             assert f"m/83696968h/128169h/{width}h/{index}h" in story
             if expect:
                 assert expect in story
+            assert "(6) to type hex over USB" in story
 
         elif 'Passwords' == mode:
             assert "Password:" in story
             assert f"m/83696968h/707764h/21h/{index}h" in story
             if expect:
                 assert expect in story
-            assert "(0) to type password over USB" in story
+            assert "(6) to type pw over USB" in story
 
         else:
             raise ValueError(mode)
