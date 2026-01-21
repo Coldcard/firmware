@@ -44,6 +44,9 @@ from public_constants import (
 
 psbt_tmp256 = bytearray(256)
 
+# transaction version error
+TX_VER_ERR = "bad txn version"
+
 # PSBT proprietary keytype
 PSBT_PROPRIETARY = const(0xFC)
 
@@ -1213,6 +1216,11 @@ class psbtObject(psbtProxy):
         self.has_goc = False  # global output count
         self.has_gtv = False  # global txn version
 
+        # Proof of Reserves
+        self.por322 = False
+        self.por322_msg_hash = None
+        self.por322_msg_challenge = None
+
     @property
     def lock_time(self):
         return (self._lock_time or self.fallback_locktime) or 0
@@ -1292,7 +1300,7 @@ class psbtObject(psbtProxy):
         self.txn_version, marker, flags = unpack("<iBB", fd.read(6))
         self.had_witness = (marker == 0 and flags != 0x0)
 
-        assert self.txn_version in {1,2,3}, "bad txn version"
+        assert self.txn_version in {0,1,2,3}, TX_VER_ERR
 
         if not self.had_witness:
             # rewind back over marker+flags
@@ -1591,7 +1599,8 @@ class psbtObject(psbtProxy):
             assert not self.has_goc, "v0 requires exclusion of global output count"
             assert not self.has_gtv, "v0 requires exclusion of global txn version"
             assert self.txn, "v0 requires inclusion of global unsigned tx"
-            assert self.txn[1] > 61, 'txn too short'
+            # smallest possible Proof of Reserves transaction has 61 bytes
+            assert self.txn[1] > 60, 'txn too short'
             assert self.fallback_locktime is None, "v0 requires exclusion of global fallback locktime"
             assert self.txn_modifiable is None, "v0 requires exclusion of global txn modifiable"
 
@@ -1660,11 +1669,14 @@ class psbtObject(psbtProxy):
 
             self.validate_unkonwn(i, "input")
 
+        null_data_op_return = False
         for o in self.outputs:
             if self.is_v2:
                 # v2 requires inclusion
                 assert o.amount
                 assert o.script
+                if o.amount == 0 and o.script == b'\x6a':
+                    null_data_op_return = True
             else:
                 # v0 requires exclusion
                 assert o.amount is None
@@ -1674,6 +1686,18 @@ class psbtObject(psbtProxy):
                 assert o.taproot_internal_key[1] == 32  # "PSBT_OUT_TAP_INTERNAL_KEY length != 32"
 
             self.validate_unkonwn(o, "output")
+
+        if not self.is_v2 and (self.num_outputs == 1):
+            for idx, txo in self.output_iter():
+                if txo.nValue == 0 and txo.scriptPubKey == b'\x6a':
+                    null_data_op_return = True
+
+        if null_data_op_return and (len(self.outputs) == 1):
+            self.por322 = True
+
+        if self.txn_version == 0:
+            # only allow txn version 0 for Proof of Reserves txn (BIP-322)
+            assert self.por322, TX_VER_ERR
 
         if not inp_have_subpath:
             # Can happen w/ Electrum in watch-mode on XPUB. It doesn't know XFP and
@@ -1801,6 +1825,11 @@ class psbtObject(psbtProxy):
 
         # check fee is reasonable
         the_fee = self.calculate_fee()
+
+        if self.por322:
+            # Proof of Reserves - nothing more to check - txn is invalid anyways
+            return
+
         if the_fee is None:
             return
         if the_fee < 0:
@@ -1974,7 +2003,8 @@ class psbtObject(psbtProxy):
 
                 # iff to UTXO is segwit, then check it's value, and also
                 # capture that value, since it's supposed to be immutable
-                if inp.af and inp.is_segwit:
+                # Proof of Reserves PSBT must not modify history
+                if inp.af and inp.is_segwitand and not self.por322:
                     history.verify_amount(txi.prevout, inp.amount, i)
 
                 if inp.af == AF_P2TR:
@@ -1982,17 +2012,62 @@ class psbtObject(psbtProxy):
                     # attribute after creating sighash
                     self.my_tr_in = True
 
+            if self.por322 and (i == 0):
+                # Proof of Reserves 'to_spend' validation
+                try:
+                    assert inp.utxo, "utxo"
+                    fd = self.fd
+                    old_pos = fd.tell()
+                    fd.seek(inp.utxo[0])
+
+                    txn_version, marker, flags = unpack("<iBB", fd.read(6))
+                    assert txn_version == 0, TX_VER_ERR
+                    wit_format = (marker == 0 and flags != 0x0)
+                    if not wit_format:
+                        fd.seek(-2, 1)
+
+                    num_in = deser_compact_size(fd)
+                    assert num_in == 1, "num ins"
+                    tx_inp = CTxIn()
+                    tx_inp.deserialize(fd)
+                    try:
+                        assert len(tx_inp.scriptSig) == 34
+                        assert tx_inp.scriptSig[0] == 0
+                        assert tx_inp.scriptSig[1] == 32
+                    except:
+                        assert False, "scriptSig"
+                    self.por322_msg_hash = tx_inp.scriptSig[2:]
+                    try:
+                        assert tx_inp.prevout.hash == 0
+                        assert tx_inp.prevout.n == 0xffffffff
+                    except:
+                        assert False, "prevout"
+
+                    num_out = deser_compact_size(fd)
+                    assert num_out == 1, "num outs"
+                    tx_out = CTxOut()
+                    tx_out.deserialize(fd)
+                    self.por322_msg_challenge = tx_out.scriptPubKey
+                    assert tx_out.nValue == 0, "nVal"
+
+                    fd.seek(old_pos)
+                except Exception as e:
+                    raise FatalPSBTIssue("i0: invalid BIP-322 'to_spend': %s" % e)
+
+            del utxo
+
         if not my_cnt:
             raise FatalPSBTIssue('None of the keys involved in this transaction '
                                  'belong to this Coldcard (need %s).' % xfp2str(self.my_xfp))
 
         if not foreign:
             # no foreign inputs, we can calculate the total input value
-            assert total_in > 0, "zero value txn"
             self.total_value_in = total_in
+            assert total_in > 0 or self.por322, "zero value txn"
         else:
             # 1+ inputs don't belong to us, we can't calculate the total input value
             # OK for multi-party transactions (coinjoin etc.)
+            assert not self.por322  # cannot have foreign inputs in POR txn
             self.total_value_in = None
             self.warnings.append(
                 ("Unable to calculate fee", "Some input(s) haven't provided UTXO(s): " + seq_to_str(foreign))
@@ -2311,6 +2386,9 @@ class psbtObject(psbtProxy):
                     continue
 
                 inp.handle_none_sighash()
+                if self.por322:
+                    assert inp.sighash in [SIGHASH_ALL, SIGHASH_DEFAULT], "POR sighash not ALL/DEFAULT"
+
                 # decide if it is appropriate to drop sighash from PSBT
                 if inp.taproot_subpaths:
                     drop_sighash = (inp.sighash == SIGHASH_DEFAULT)
