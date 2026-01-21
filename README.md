@@ -171,6 +171,8 @@ See <https://bugs.python.org/issue32909>
 
 ### Linux
 
+To run the desktop simulator using Docker, see this [external repository](https://github.com/tadeubas/coldcard-docker).
+
 All steps you need to install and run the Coldcard simulator on Ubuntu 20.04:
 
 
