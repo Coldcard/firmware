@@ -429,17 +429,23 @@ class ApproveTransaction(UserAuthorizedAction):
             elif wl >= 2:
                 msg.write('(%d warnings below)\n\n' % wl)
 
-            if self.psbt.consolidation_tx:
-                # consolidating txn that doesn't change balance of account.
-                msg.write("Consolidating %s %s\nwithin wallet.\n\n" %
-                          self.chain.render_value(self.psbt.total_value_out))
+            if self.psbt.por322:
+                msg.write("Proof of Reserves\n\n")
+                msg.write("Amount %s %s\n\n" % self.chain.render_value(self.psbt.total_value_in))
+                msg.write("Message Hash:\n%s\n\n" % b2a_hex(self.psbt.por322_msg_hash).decode())
+                msg.write("Message Challenge:\n%s\n\n" % b2a_hex(self.psbt.por322_msg_challenge).decode())
             else:
-                msg.write("Sending %s %s\n" % self.chain.render_value(
-                    self.psbt.total_value_out - self.psbt.total_change_value))
+                if self.psbt.consolidation_tx:
+                    # consolidating txn that doesn't change balance of account.
+                    msg.write("Consolidating %s %s\nwithin wallet.\n\n" %
+                              self.chain.render_value(self.psbt.total_value_out))
+                else:
+                    msg.write("Sending %s %s\n" % self.chain.render_value(
+                        self.psbt.total_value_out - self.psbt.total_change_value))
 
-            fee = self.psbt.calculate_fee()
-            if fee is not None:
-                msg.write("Network fee %s %s\n\n" % self.chain.render_value(fee))
+                fee = self.psbt.calculate_fee()
+                if fee is not None:
+                    msg.write("Network fee %s %s\n\n" % self.chain.render_value(fee))
 
             msg.write(" %d %s\n %d %s\n\n" % (
                 self.psbt.num_inputs,
@@ -484,8 +490,9 @@ class ApproveTransaction(UserAuthorizedAction):
                     msg.write(" (B) to write to lower SD slot.")
                 msg.write(" %s to abort." % X)
 
+                title = "OK TO %s?" % ("SIGN" if self.psbt.por322 else "SEND")
                 while True:
-                    ch = await ux_show_story(msg, title="OK TO SEND?", escape=esc)
+                    ch = await ux_show_story(msg, title=title, escape=esc)
                     if ch == "2":
                         await TXExplorer.start(self)
                         continue

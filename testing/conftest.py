@@ -1481,7 +1481,7 @@ def end_sign(dev, need_keypress, press_cancel):
             assert res[0:4] != b'psbt', 'still a PSBT, but asked for finalize'
             t = CTransaction()
             t.deserialize(io.BytesIO(res))
-            assert t.nVersion in [1, 2, 3]
+            assert t.nVersion in [0, 1, 2, 3]
 
             # TODO: pull out signatures from signed txn
                     
@@ -2927,5 +2927,6 @@ from test_seed_xor import restore_seed_xor
 from test_sign import txid_from_export_prompt
 from test_ux import pass_word_quiz, word_menu_entry, enable_hw_ux
 from txn import fake_txn
+from bip322 import bip322_txn, bip322_ms_txn
 
 # EOF

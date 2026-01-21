@@ -21,6 +21,7 @@ from txn import *
 from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint
 from ckcc_protocol.constants import STXN_VISUALIZE, STXN_SIGNED
 from charcodes import KEY_QR, KEY_RIGHT, KEY_LEFT
+from bip322 import bip322_msg_hash
 
 
 SEQUENCE_LOCKTIME_TYPE_FLAG = (1 << 22)
@@ -3624,5 +3625,22 @@ def test_tx_explorer_goto_idx(fake_txn, start_sign, cap_story, use_testnet, need
     num = num_outs - 1
     assert title == f"{num}-{num}"
 
+
+@pytest.mark.parametrize("segwit", [True, False])
+def test_txn_nVersion_zero(segwit, fake_txn, start_sign, cap_story, goto_home):
+    goto_home()
+
+    def hack(psbt):
+        t = CTransaction()
+        t.deserialize(BytesIO(psbt.txn))
+        t.nVersion = 0
+        psbt.txn = t.serialize()
+
+    psbt = fake_txn(1, 2, segwit_in=segwit, change_outputs=[0], psbt_hacker=hack)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "txn version" in story
 
 # EOF
