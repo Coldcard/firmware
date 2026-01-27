@@ -1244,13 +1244,11 @@ class psbtObject(psbtProxy):
         if stop is None:
             stop = self.num_outputs
 
-        total_out = 0
         if self.is_v2:
             for idx in range(start, stop):
                 out = self.outputs[idx]
                 amount = unpack("<q", self.get(out.amount))[0]
                 tx_out = CTxOut(nValue=amount, scriptPubKey=self.get(out.script))
-                total_out += amount
                 yield idx, tx_out
         else:
             assert self.vout_start is not None     # must call input_iter/validate first
@@ -1263,11 +1261,7 @@ class psbtObject(psbtProxy):
 
             tx_out = CTxOut()
             for idx in range(start, stop):
-
                 tx_out.deserialize(fd)
-
-                total_out += tx_out.nValue
-
                 cont = fd.tell()
                 yield idx, tx_out
 
