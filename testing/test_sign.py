@@ -21,6 +21,7 @@ from txn import *
 from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint
 from ckcc_protocol.constants import STXN_VISUALIZE, STXN_SIGNED
 from charcodes import KEY_QR, KEY_RIGHT
+from bip322 import bip322_msg_hash
 
 
 SEQUENCE_LOCKTIME_TYPE_FLAG = (1 << 22)
