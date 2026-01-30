@@ -705,7 +705,9 @@ def test_ccc_whitelist(whitelist_ok, setup_ccc, ccc_ms_setup,
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("velocity_mi", ['6 blocks (hour)', '48 blocks (8h)'])
 def test_ccc_velocity(velocity_mi, setup_ccc, ccc_ms_setup, bitcoind, settings_set,
-                      policy_sign, settings_get, bitcoind_create_watch_only_wallet):
+                      policy_sign, settings_get, bitcoind_create_watch_only_wallet,
+                      enter_enabled_ccc, pick_menu_item, cap_story, need_keypress,
+                      press_select, press_cancel):
 
     settings_set("ccc", None)
     settings_set("chain", "XRT")
@@ -713,7 +715,7 @@ def test_ccc_velocity(velocity_mi, setup_ccc, ccc_ms_setup, bitcoind, settings_s
 
     blocks = int(velocity_mi.split()[0])
 
-    setup_ccc(vel=velocity_mi)
+    c_words = setup_ccc(vel=velocity_mi)
     _, target_mi = ccc_ms_setup()
 
     assert settings_get("ccc")["pol"]["block_h"] == 0
@@ -785,6 +787,26 @@ def test_ccc_velocity(velocity_mi, setup_ccc, ccc_ms_setup, bitcoind, settings_s
         )["psbt"],
         violation="nLockTime not height"
     )
+
+    enter_enabled_ccc(c_words)
+    pick_menu_item("Last Violation")
+    time.sleep(.1)
+    title, story = cap_story()
+    assert 'Press (1) to clear block height' in story
+    assert int(story.split("\n\n")[1]) == block_height
+    need_keypress("1")
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Reset block height to default value 0 for Bitcoin Regtest?" in story
+    press_select()
+    time.sleep(.1)
+    pick_menu_item("Last Violation")
+    time.sleep(.1)
+    title, story = cap_story()
+    assert 'Press (1) to clear block height' not in story  # not in story when default
+    assert int(story.split("\n\n")[1]) == 0
+    press_cancel()  # go back to CCC menu
+    press_cancel()  # got home
 
 
 @pytest.mark.bitcoind
