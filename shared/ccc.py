@@ -285,7 +285,7 @@ class CCCFeature:
         # a very basic and permissive policy, but non-zero too.
         # - 1BTC per day
         chain = chains.current_chain()
-        return SpendingPolicy('ccc', dict(mag=1, vel=144, 
+        return SpendingPolicy('ccc', dict(mag=1, vel=144,
                                         block_h=chain.ccc_min_block, web2fa='', addrs=[]))
 
     @classmethod
@@ -402,20 +402,32 @@ class CCCConfigMenu(MenuSystem):
 
     async def debug_last_fail(self, *a):
         # debug for customers: why did we reject that last txn?
+        c = chains.current_chain()
+        def_bh = c.ccc_min_block
         pol = CCCFeature.get_policy()
         bh = pol.get('block_h', None)
+        bh_clear = ''
         msg = ''
-        if bh:
-            msg += "CCC height:\n\n%s\n\n" % bh
+        escape = "4"
+        if bh is not None:
+            msg += 'CCC height:\n\n%s\n\n' % bh
+            if bh != def_bh:
+                bh_clear = 'Press (1) to clear block height. '
+                escape += "1"
 
         lfr = LastFailReason.get()
-        msg += 'The most recent policy check failed because of:\n\n%s\n\nPress (4) to clear.' \
-                    % lfr
-        ch = await ux_show_story(msg, escape='4')
+        msg += ('The most recent policy check failed because of:\n\n%s\n\n'
+                '%sPress (4) to clear last fail reason.' % (lfr, bh_clear))
+        ch = await ux_show_story(msg, escape=escape)
 
         if ch == '4':
             LastFailReason.clear()
             self.update_contents()
+        elif ch == '1':
+            if await ux_confirm("Reset block height to default value %d for %s?" % (def_bh, c.name)):
+                pol.update_policy_key(_quiet=True, _master_only=False, block_h=def_bh)
+
+
 
     async def remove_ccc(self, *a):
         # disable and remove feature
