@@ -1958,7 +1958,7 @@ def file_tx_signing_done(virtdisk_path, microsd_path):
 
         txid = None
         for l in _split:
-            if "TXID" in l:
+            if "TXID:" in l:
                 txid = l.split("\n")[-1].strip()
                 assert len(txid) == 64, "wrong txid"
                 break

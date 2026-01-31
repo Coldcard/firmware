@@ -10,7 +10,7 @@ from ux import ux_enter_bip32_index, ux_enter_number, OK, X
 from files import CardSlot, CardMissingError, needs_microsd
 from descriptor import MultisigDescriptor, multisig_descriptor_template
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS, AF_CLASSIC
-from menu import MenuSystem, MenuItem, NonDefaultMenuItem, start_chooser, ToggleMenuItem
+from menu import MenuSystem, MenuItem, NonDefaultMenuItem, start_chooser, ToggleMenuItem, ShortcutItem
 from opcodes import OP_CHECKMULTISIG
 from exceptions import FatalPSBTIssue
 from glob import settings
@@ -1380,7 +1380,7 @@ class MultisigMenu(MenuSystem):
     @classmethod
     def construct(cls):
         # Dynamic menu with user-defined names of wallets shown
-        from glob import NFC
+        from flow import nfc_enabled
 
         if not MultisigWallet.exists():
             rv = [MenuItem('(none setup yet)', f=no_ms_yet)]
@@ -1390,11 +1390,7 @@ class MultisigMenu(MenuSystem):
                 rv.append(MenuItem('%d/%d: %s' % (ms.M, ms.N, ms.name),
                             menu=make_ms_wallet_menu, arg=ms.storage_idx))
 
-        rv.append(MenuItem('Import from File', f=import_multisig))
-        rv.append(MenuItem('Import from QR', f=import_multisig_qr,
-                           predicate=version.has_qwerty, shortcut=KEY_QR))
-        rv.append(MenuItem('Import via NFC', f=import_multisig_nfc,
-                           predicate=bool(NFC), shortcut=KEY_NFC))
+        rv.append(MenuItem('Import', f=import_multisig))
         rv.append(MenuItem('Export XPUB', f=export_multisig_xpubs))
         rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
         rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
@@ -1408,6 +1404,9 @@ class MultisigMenu(MenuSystem):
         rv.append(NonDefaultMenuItem(
                          'Unsorted Multisig?' if version.has_qwerty else 'Unsorted Multi?',
                          'unsort_ms', f=unsorted_ms_menu))
+
+        rv.append(ShortcutItem(KEY_NFC, predicate=nfc_enabled, f=import_multisig_nfc))
+        rv.append(ShortcutItem(KEY_QR, predicate=version.has_qwerty, f=import_multisig_qr))
         return rv
 
     def update_contents(self):
@@ -1913,26 +1912,19 @@ async def import_multisig_qr(*a):
     except Exception as e:
         await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
+
 async def import_multisig(*a):
     # pick text file from SD card, import as multisig setup file
     from actions import file_picker
-    from glob import VD
+    from ux import import_export_prompt
 
-    force_vdisk = False
-    if VD:
-        prompt = "Press (1) to import multisig wallet file from SD Card"
-        escape = "1"
-        if VD is not None:
-            prompt += ", press (2) to import from Virtual Disk"
-            escape += "2"
-        prompt += "."
-        ch = await ux_show_story(prompt, escape=escape)
-        if ch == "1":
-            force_vdisk=False
-        elif ch == "2":
-            force_vdisk = True
-        else:
-            return
+    ch = await import_export_prompt("multisig wallet file", is_import=True)
+    if isinstance(ch, str):
+        if ch == KEY_QR:
+            await import_multisig_qr()
+        elif ch == KEY_NFC:
+            await import_multisig_nfc()
+        return
 
     def possible(filename):
         with open(filename, 'rt') as fd:
@@ -1944,11 +1936,11 @@ async def import_multisig(*a):
                     return True
 
     fn = await file_picker(suffix=['.txt', '.json'], min_size=100, max_size=20*200,
-                           taster=possible, force_vdisk=force_vdisk)
+                           taster=possible, **ch)
     if not fn: return
 
     try:
-        with CardSlot(force_vdisk=force_vdisk) as card:
+        with CardSlot(**ch) as card:
             with open(fn, 'rt') as fp:
                 data = fp.read()
     except CardMissingError:
@@ -1959,8 +1951,8 @@ async def import_multisig(*a):
     try:
         possible_name = (fn.split('/')[-1].split('.'))[0]
         maybe_enroll_xpub(config=data, name=possible_name)
-    except Exception as e:
-        #import sys; sys.print_exception(e)
-        await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
+    except BaseException as e:
+        # import sys; sys.print_exception(e)
+        await ux_show_story('Failed to import multisig.\n\n%s\n%s' % (e, problem_file_line(e)))
 
 # EOF
