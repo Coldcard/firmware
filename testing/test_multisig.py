@@ -161,7 +161,7 @@ def offer_ms_import(cap_story, dev, sim_root_dir):
     return doit
 
 @pytest.fixture
-def import_multisig(request, is_q1, need_keypress, offer_ms_import):
+def import_multisig(request, is_q1, need_keypress, offer_ms_import, press_nfc):
     def doit(fname=None, way="sd", data=None, name=None):
         assert fname or data
         if fname:
@@ -192,13 +192,15 @@ def import_multisig(request, is_q1, need_keypress, offer_ms_import):
                 pick_menu_item("Multisig Wallets")
                 time.sleep(.1)
 
-            ms_menu = cap_menu()
+            pick_menu_item("Import")
+            time.sleep(.1)
+            title, story = cap_story()
             if way == "qr":
-                if "Import from QR" not in ms_menu and not is_q1:
+                if "to scan QR code" not in story and not is_q1:
                     pytest.skip("No QR support")
 
                 scan_a_qr = request.getfixturevalue('scan_a_qr')
-                pick_menu_item("Import from QR")
+                need_keypress(KEY_QR)
 
                 actual_vers, parts = split_qrs(config, 'U', max_version=20)
                 random.shuffle(parts)
@@ -208,11 +210,11 @@ def import_multisig(request, is_q1, need_keypress, offer_ms_import):
                     time.sleep(2.0 / len(parts))
 
             elif way == "nfc":
-                if "Import via NFC" not in ms_menu:
+                if "import via NFC" not in story:
                     pytest.skip("NFC disabled")
 
                 nfc_write_text = request.getfixturevalue('nfc_write_text')
-                pick_menu_item("Import via NFC")
+                press_nfc()
                 nfc_write_text(config)
                 time.sleep(0.5)
 
@@ -228,9 +230,6 @@ def import_multisig(request, is_q1, need_keypress, offer_ms_import):
                     with open(path_f(fname), "w") as f:
                         f.write(config)
 
-                pick_menu_item("Import from File")
-                time.sleep(.1)
-                _, story = cap_story()
                 if way == "vdisk":
                     if "(2) to import from Virtual Disk" not in story:
                         pytest.skip("VDisk disabled")
@@ -862,7 +861,7 @@ def test_import_ux(N, vdisk, goto_home, cap_story, pick_menu_item,
         goto_home()
         pick_menu_item('Settings')
         pick_menu_item('Multisig Wallets')
-        pick_menu_item('Import from File')
+        pick_menu_item('Import')
         time.sleep(0.5)
         _, story = cap_story()
         if vdisk:
@@ -1735,7 +1734,7 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
         goto_home()
         pick_menu_item('Settings')
         pick_menu_item('Multisig Wallets')
-        pick_menu_item('Import from File')
+        pick_menu_item('Import')
         time.sleep(0.5)
         _, story = cap_story()
         if "Press (1) to import multisig wallet file from SD Card" in story:
@@ -2573,7 +2572,7 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, m
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Multisig Wallets')
-    pick_menu_item('Import from File')
+    pick_menu_item('Import')
     time.sleep(0.3)
     _, story = cap_story()
     if "Press (1) to import multisig wallet file from SD Card" in story:
@@ -3065,7 +3064,7 @@ def test_exotic_descriptors(desc, clear_ms, goto_home, need_keypress, pick_menu_
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Multisig Wallets')
-    pick_menu_item('Import from File')
+    pick_menu_item('Import')
     time.sleep(0.1)
     _, story = cap_story()
     if "Press (1) to import multisig wallet file from SD Card" in story:
@@ -3336,7 +3335,8 @@ def test_scan_any_qr(fpath, is_q1, scan_a_qr, clear_ms, goto_home,
 
 @pytest.mark.parametrize("N", [3, 15])
 def test_bare_cc_ms_qr_import(N, make_multisig, scan_a_qr, clear_ms, goto_home,
-                              pick_menu_item, cap_story, press_cancel, is_q1):
+                              pick_menu_item, cap_story, press_cancel, is_q1,
+                              need_keypress):
     # bare:
     # - no fingerprints
     # - no xfps
@@ -3368,7 +3368,9 @@ def test_bare_cc_ms_qr_import(N, make_multisig, scan_a_qr, clear_ms, goto_home,
     # multisig import path needs to be used
     pick_menu_item("Settings")
     pick_menu_item("Multisig Wallets")
-    pick_menu_item("Import from QR")
+    pick_menu_item("Import")
+    need_keypress(KEY_QR)
+
     for p in parts:
         scan_a_qr(p)
         time.sleep(2.0 / len(parts))
