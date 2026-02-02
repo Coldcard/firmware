@@ -1421,6 +1421,7 @@ class psbtObject(psbtProxy):
             assert not self.has_goc, "v0 requires exclusion of global output count"
             assert not self.has_gtv, "v0 requires exclusion of global txn version"
             assert self.txn, "v0 requires inclusion of global unsigned tx"
+            # smallest possible Proof of Reserves transaction has 61 bytes
             assert self.txn[1] > 60, 'txn too short'
             assert self.fallback_locktime is None, "v0 requires exclusion of global fallback locktime"
             assert self.txn_modifiable is None, "v0 requires exclusion of global txn modifiable"

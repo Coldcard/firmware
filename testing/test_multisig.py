@@ -19,14 +19,12 @@ from helpers import B2A, fake_dest_addr, xfp2str, addr_from_display_format
 from helpers import path_to_str, str_to_path, slip132undo, swab32, hash160, bitcoind_addr_fmt
 from struct import unpack, pack
 from constants import *
-from decimal import Decimal
 from bip32 import BIP32Node
 from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint, uint256_from_str
 from io import BytesIO
 from hashlib import sha256
 from bbqr import split_qrs
 from charcodes import KEY_QR
-from bip322 import bip322_msg_hash
 
 
 def HARD(n=0):
