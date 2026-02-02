@@ -1052,9 +1052,9 @@ class psbtObject(psbtProxy):
         self.has_gtv = False  # global txn version
 
         # Proof of Reserves
-        self.PofR322 = False
-        self.PofR322_msg_hash = None
-        self.PofR322_msg_challenge = None
+        self.por322 = False
+        self.por322_msg_hash = None
+        self.por322_msg_challenge = None
 
     @property
     def lock_time(self):
@@ -1445,7 +1445,7 @@ class psbtObject(psbtProxy):
                     null_data_op_return = True
 
         if null_data_op_return and (num_outs == 1):
-            self.PofR322 = True
+            self.por322 = True
 
         # time based relative locks
         tb_rel_locks = []
@@ -1572,7 +1572,7 @@ class psbtObject(psbtProxy):
         # check fee is reasonable
         the_fee = self.calculate_fee()
 
-        if self.PofR322:
+        if self.por322:
             # Proof of Reserves - nothing more to check - txn is invalid anyways
             return
 
@@ -1770,10 +1770,10 @@ class psbtObject(psbtProxy):
             # iff to UTXO is segwit, then check it's value, and also
             # capture that value, since it's supposed to be immutable
             # Proof of Reserves PSBT must not modify history
-            if inp.is_segwit and not self.PofR322:
+            if inp.is_segwit and not self.por322:
                 history.verify_amount(txi.prevout, inp.amount, i)
 
-            if self.PofR322 and (i == 0):
+            if self.por322 and (i == 0):
                 # Proof of Reserves 'to_spend' validation
                 try:
                     assert inp.utxo, "utxo"
@@ -1796,7 +1796,7 @@ class psbtObject(psbtProxy):
                         assert tx_inp.scriptSig[1] == 32
                     except:
                         assert False, "scriptSig"
-                    self.PofR322_msg_hash = tx_inp.scriptSig[2:]
+                    self.por322_msg_hash = tx_inp.scriptSig[2:]
                     try:
                         assert tx_inp.prevout.hash == 0
                         assert tx_inp.prevout.n == 0xffffffff
@@ -1807,7 +1807,7 @@ class psbtObject(psbtProxy):
                     assert num_out == 1, "num outs"
                     tx_out = CTxOut()
                     tx_out.deserialize(fd)
-                    self.PofR322_msg_challenge = tx_out.scriptPubKey
+                    self.por322_msg_challenge = tx_out.scriptPubKey
                     assert tx_out.nValue == 0, "nVal"
 
                     fd.seek(old_pos)
@@ -1821,11 +1821,11 @@ class psbtObject(psbtProxy):
         if not foreign:
             # no foreign inputs, we can calculate the total input value
             self.total_value_in = total_in
-            assert total_in > 0 or self.PofR322, "zero value txn"
+            assert total_in > 0 or self.por322, "zero value txn"
         else:
             # 1+ inputs don't belong to us, we can't calculate the total input value
             # OK for multi-party transactions (coinjoin etc.)
-            assert not self.PofR322  # cannot have foreign inputs in POR txn
+            assert not self.por322  # cannot have foreign inputs in POR txn
             self.total_value_in = None
             self.warnings.append(
                 ("Unable to calculate fee", "Some input(s) haven't provided UTXO(s): " + seq_to_str(foreign))
@@ -2079,7 +2079,7 @@ class psbtObject(psbtProxy):
                 assert txi.scriptSig, "no scriptsig?"
 
                 inp.handle_none_sighash()
-                if self.PofR322:
+                if self.por322:
                     assert inp.sighash in [SIGHASH_ALL], "POR not SIGHASH_ALL"  # add DEFAULT for taproot
 
                 if inp.is_multisig:

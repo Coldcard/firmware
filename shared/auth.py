@@ -426,11 +426,11 @@ class ApproveTransaction(UserAuthorizedAction):
             elif wl >= 2:
                 msg.write('(%d warnings below)\n\n' % wl)
 
-            if self.psbt.PofR322:
+            if self.psbt.por322:
                 msg.write("Proof of Reserves\n\n")
                 msg.write("Amount %s %s\n\n" % self.chain.render_value(self.psbt.total_value_in))
-                msg.write("Message Hash:\n%s\n\n" % b2a_hex(self.psbt.PofR322_msg_hash).decode())
-                msg.write("Message Challenge:\n%s\n\n" % b2a_hex(self.psbt.PofR322_msg_challenge).decode())
+                msg.write("Message Hash:\n%s\n\n" % b2a_hex(self.psbt.por322_msg_hash).decode())
+                msg.write("Message Challenge:\n%s\n\n" % b2a_hex(self.psbt.por322_msg_challenge).decode())
             else:
                 if self.psbt.consolidation_tx:
                     # consolidating txn that doesn't change balance of account.
@@ -487,7 +487,7 @@ class ApproveTransaction(UserAuthorizedAction):
                     msg.write(" (B) to write to lower SD slot.")
                 msg.write(" %s to abort." % X)
 
-                title = "OK TO %s?" % ("SIGN" if self.psbt.PofR322 else "SEND")
+                title = "OK TO %s?" % ("SIGN" if self.psbt.por322 else "SEND")
                 while True:
                     ch = await ux_show_story(msg, title=title, escape=esc)
                     if ch == "2":
