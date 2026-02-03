@@ -9,12 +9,15 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from uhashlib import sha256
 from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, SUPPORTED_ADDR_FORMATS
-from public_constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
+from public_constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED, AF_P2SH, AF_P2WPKH_P2SH
 from sffile import SFFile
+from menu import MenuSystem, MenuItem
+from serializations import ser_uint256, SIGHASH_ALL
 from ux import ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys, ux_confirm
-from ux import show_qr_code, OK, X, abort_and_push, AbortInteraction
+from ux import show_qr_code, OK, X, abort_and_push, AbortInteraction, the_ux
 from usb import CCBusyError
-from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A, show_single_address
+from utils import (HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A,
+                   show_single_address, keypath_to_str, seconds2human_readable)
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from files import CardSlot, CardMissingError
 from exceptions import HSMDenied, QRTooBigError
@@ -475,7 +478,7 @@ class ApproveTransaction(UserAuthorizedAction):
             if not hsm_active:
                 esc = "2"
                 msg.write("Press %s to approve and sign transaction."
-                          " Press (2) to explore txn outputs." % OK)
+                          " Press (2) to explore transaction." % OK)
                 if (self.input_method == "sd") and CardSlot.both_inserted():
                     esc += "b"
                     msg.write(" (B) to write to lower SD slot.")
@@ -484,7 +487,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 while True:
                     ch = await ux_show_story(msg, title="OK TO SEND?", escape=esc)
                     if ch == "2":
-                        await self.txn_explorer()
+                        await TXExplorer.start(self)
                         continue
                     else:
                         msg.close()
@@ -568,76 +571,6 @@ class ApproveTransaction(UserAuthorizedAction):
         except BaseException as exc:
             # sys.print_exception(exc)
             return await self.failure("PSBT output failed", exc)
-
-
-    async def txn_explorer(self):
-        # Page through unlimited-sized transaction details
-        # - shows all outputs (including change): their address and amounts.
-        from glob import dis
-
-        def make_msg(offset, count):
-            dis.fullscreen('Wait...')
-            rv = ""
-            end = min(offset + count, self.psbt.num_outputs)
-            addrs = []
-            change = []
-            for i, (idx, out) in enumerate(self.psbt.output_iter(offset, end)):
-                outp = self.psbt.outputs[idx]
-                item = "Output %d%s:\n\n" % (idx, " (change)" if outp.is_change else "")
-                msg, addr_or_script = self.render_output(out)
-                item += msg
-                addrs.append(addr_or_script)
-                if outp.is_change:
-                    change.append(i)
-                item += "\n"
-                rv += item
-                dis.progress_sofar(idx-offset+1, count)
-
-            rv += 'Press RIGHT to see next group'
-            if offset:
-                rv += ', LEFT to go back'
-
-            if not version.has_qwerty:
-                # Q has hint key
-                rv += ", (4) to show QR code"
-            rv += ('. %s to quit.' % X)
-
-            return rv, addrs, change, end
-
-        start = 0
-        n = 10
-        msg, addrs, change, end = make_msg(start, n)
-        while True:
-            ch = await ux_show_story(msg, title="%d-%d" % (start, end-1),
-                                     escape='479'+KEY_RIGHT+KEY_LEFT+KEY_QR,
-                                     hint_icons=KEY_QR)
-            if ch == 'x':
-                del msg
-                return
-            elif ch in "4"+KEY_QR:
-                from ux import show_qr_codes
-                # showing addresses from PSBT, no idea what is in there
-                # handle QR code failures gracefully
-                await show_qr_codes(addrs, False, start, is_addrs=True,
-                                    change_idxs=change, can_raise=False)
-                continue
-            elif (ch in KEY_LEFT+"7"):
-                if (start - n) < 0:
-                    continue
-                else:
-                    # go backwards in explorer
-                    start -= n
-            elif (ch in KEY_RIGHT+"9"):
-                if (start + n) >= self.psbt.num_outputs:
-                    continue
-                else:
-                    # go forwards
-                    start += n
-            else:
-                # nothing changed - do not recalc msg
-                continue
-
-            msg, addrs, change, end = make_msg(start, n)
 
     async def save_visualization(self, msg, sign_text=False):
         # write story text out, maybe signing it as we go
@@ -1579,5 +1512,202 @@ def authorize_upgrade(hdr, length, **kws):
     # kill any menu stack, and put our thing at the top
     abort_and_goto(UserAuthorizedAction.active_request)
 
+
+class TXExplorer:
+    def __init__(self, n, user_auth_action, max_items):
+        self.n = n
+        self.user_auth_action = user_auth_action
+        self.max_items = max_items
+        self.chain = chains.current_chain()
+        self.qr_msgs = []
+        self.title = None
+
+    @classmethod
+    async def start(cls, user_auth_action):
+        rv = [
+            MenuItem("Inputs", f=TXInpExplorer(user_auth_action).explore),
+            MenuItem("Outputs", f=TXOutExplorer(user_auth_action).explore),
+        ]
+        the_ux.push(MenuSystem(rv))
+        await the_ux.interact()
+
+    def make_ux_msg(self, offset, count):
+        from glob import dis
+        dis.fullscreen('Wait...')
+        rv = ""
+        qrs = []
+        change = []
+        end = min(offset + count, self.max_items)
+        for idx, item in self.yield_item(offset, end, qrs, change):
+            rv += item
+            dis.progress_sofar(idx-offset+1, count)
+
+        rv += 'Press RIGHT to see next group'
+        if offset:
+            rv += ', LEFT to go back'
+
+        if not version.has_qwerty:
+            # Q has hint key
+            rv += ", (4) to show QR code"
+        rv += ('. %s to quit.' % X)
+
+        return rv, qrs, change, end
+
+
+    async def explore(self, *a):
+        # Page through unlimited-sized transaction details
+        # - shows all outputs (including change): their address and amounts.
+        # - shows all inputs: utxo amount and address, txid & tx index.
+
+        start = 0
+        msg, addrs, change, end = self.make_ux_msg(start, self.n)
+
+        while True:
+            ch = await ux_show_story(msg, title=self.title, escape='479'+KEY_RIGHT+KEY_LEFT+KEY_QR,
+                                     hint_icons=KEY_QR)
+            if ch == 'x':
+                del msg
+                return
+            elif (ch in "4"+KEY_QR) and addrs:
+                from ux import show_qr_codes
+                # showing addresses from PSBT, no idea what is in there
+                # handle QR code failures gracefully
+                await show_qr_codes(addrs, False, start, is_addrs=True,
+                                    change_idxs=change, can_raise=False,
+                                    qr_msgs=self.qr_msgs, no_index=bool(self.qr_msgs))
+                continue
+            elif ch in (KEY_LEFT+"7"):
+                if (start - self.n) < 0:
+                    continue
+                else:
+                    # go backwards in explorer
+                    start -= self.n
+            elif ch in (KEY_RIGHT+"9"):
+                if (start + self.n) >= self.max_items:
+                    continue
+                else:
+                    # go forwards
+                    start += self.n
+            else:
+                # nothing changed - do not recalc msg
+                continue
+
+            msg, addrs, change, end = self.make_ux_msg(start, self.n)
+
+
+class TXOutExplorer(TXExplorer):
+    def __init__(self, user_auth_action):
+        super().__init__(10, user_auth_action, user_auth_action.psbt.num_outputs)
+
+    def yield_item(self, offset, end, qr_items, change_idxs):
+        # showing 10 outputs per UX page (just address/script + whether change)
+        self.title = "%d-%d" % (offset, end - 1)
+        for i, (idx, out) in enumerate(self.user_auth_action.psbt.output_iter(offset, end)):
+            outp = self.user_auth_action.psbt.outputs[idx]
+            item = "Output %d%s:\n\n" % (idx, " (change)" if outp.is_change else "")
+            msg, addr_or_script = self.user_auth_action.render_output(out)
+            item += msg
+            qr_items.append(addr_or_script)
+            if outp.is_change:
+                change_idxs.append(i)
+            item += "\n"
+            yield idx, item
+
+
+class TXInpExplorer(TXExplorer):
+    def __init__(self, user_auth_action):
+        super().__init__(1, user_auth_action, user_auth_action.psbt.num_inputs)
+        self.qr_msgs = ["TXID", "UTXO ADDR"]
+
+    def yield_item(self, offset, end, qr_items, change_idxs):
+        # showing just one input per UX page
+        i, (idx, txin) = next(enumerate(self.user_auth_action.psbt.input_iter(offset, offset+1)))
+        self.title = "Input %d" % idx
+        inp = self.user_auth_action.psbt.inputs[idx]
+
+        txid = b2a_hex(ser_uint256(txin.prevout.hash)).decode()
+        qr_items.append(txid)
+        item = "%s:%d\n\n" % (txid, txin.prevout.n)
+
+        has_utxo = inp.has_utxo()
+        if has_utxo:
+            utxo = inp.get_utxo(txin.prevout.n)
+            spk = b2a_hex(utxo.scriptPubKey).decode()
+            try:
+                addr = self.chain.render_address(utxo.scriptPubKey)
+            except:
+                # some script we do not understand
+                addr = None
+
+            val, unit = self.chain.render_value(utxo.nValue)
+            item += "=== UTXO ===\n\n%s %s\n\n%s\n\n" % (val, unit, spk)
+            if addr:
+                item += show_single_address(addr) + "\n\n"
+                item += "Address Format: %s\n\n" % chains.addr_fmt_str(inp.addr_fmt)
+                qr_items.append(addr)
+
+        if self.user_auth_action.psbt.txn_version >= 2:
+            has_rtl = inp.has_relative_timelock(txin)
+            if has_rtl:
+                if has_rtl[0]:
+                    val = seconds2human_readable(has_rtl[1])
+                    msg = "time-based timelock of:\n %s" % val
+                else:
+                    msg = "block height timelock of %d blocks" % (has_rtl[1])
+
+                item += "Input has relative %s\n\n" % msg
+
+
+        psbt_item = ""
+        if inp.required_key:
+            our = [inp.required_key] if isinstance(inp.required_key, bytes) else inp.required_key
+            psbt_item += "Our key%s:\n\n" % ("s" if len(our) > 1 else "")
+            for k in our:
+                pth = inp.subpaths[k]
+                psbt_item += "%s:\n%s\n\n" % (keypath_to_str(pth, prefix="%s/" % xfp2str(pth[0])),
+                                         b2a_hex(k).decode())
+
+        M = None
+        if inp.is_multisig:
+            ks_coord = inp.witness_script or inp.redeem_script
+            if ks_coord:
+                ks = self.user_auth_action.psbt.get(ks_coord)
+
+                from multisig import disassemble_multisig_mn
+                try:
+                    M, N = disassemble_multisig_mn(ks)
+                    psbt_item += "Multisig: %dof%d\n\n" % (M, N)
+                except: pass
+
+        if inp.part_sigs:
+            # do not show XFPs in case input is fully signed --> elif
+            # only part_sig should be available, as we haven't signed yet so added_sigs empty
+            done = []
+            for pk, pth in inp.subpaths.items():
+                if pk in inp.part_sigs:
+                    done.append(xfp2str(pth[0]))
+
+            if inp.fully_signed or (M and (len(done) >= M)):
+                psbt_item += "Input fully signed.\n\n"
+            else:
+                psbt_item += "Already signed:\n"
+                for xfp in done:
+                    psbt_item += "  %s\n" % xfp
+                psbt_item += "\n"
+
+        if inp.sighash and (inp.sighash != SIGHASH_ALL):
+            # only show sighash value to the user if it is non-standard
+            psbt_item += "sighash: %s\n\n" % {
+                1: "ALL", 2: "NONE", 3: "SINGLE",
+                1 | 0x80: "ALL|ANYONECANPAY",
+                2 | 0x80: "NONE|ANYONECANPAY",
+                3 | 0x80: "SINGLE|ANYONECANPAY",
+            }[inp.sighash]
+
+        if psbt_item:
+            psbt_item = "=== PSBT ===\n\n" + psbt_item
+            item += psbt_item
+
+        yield idx, item
 
 # EOF

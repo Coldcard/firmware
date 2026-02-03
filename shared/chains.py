@@ -481,6 +481,7 @@ def addr_fmt_str(addr_fmt):
     # Short string codes used for address format (industry standard)
     return {AF_CLASSIC: "p2pkh",
             AF_P2SH: "p2sh",
+            AF_P2TR: "p2tr",
             AF_P2WPKH: "p2wpkh",
             AF_P2WSH: "p2wsh",
             AF_P2WPKH_P2SH: "p2sh-p2wpkh",

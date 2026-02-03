@@ -571,7 +571,7 @@ class psbtInputProxy(psbtProxy):
         'unknown', 'utxo', 'witness_utxo', 'sighash', 'redeem_script', 'witness_script',
         'fully_signed', 'is_segwit', 'is_multisig', 'is_p2sh', 'num_our_keys',
         'required_key', 'scriptSig', 'amount', 'scriptCode', 'previous_txid',
-        'prevout_idx', 'sequence', 'req_time_locktime', 'req_height_locktime'
+        'prevout_idx', 'sequence', 'req_time_locktime', 'req_height_locktime', 'addr_fmt'
     )
 
     def __init__(self, fd, idx):
@@ -609,6 +609,8 @@ class psbtInputProxy(psbtProxy):
         #self.sequence = None
         #self.req_time_locktime = None
         #self.req_height_locktime = None
+
+        #self.addr_fmt = None  address format as decided by determine_my signing key
 
         self.parse(fd)
 
@@ -684,6 +686,15 @@ class psbtInputProxy(psbtProxy):
         # do we have a copy of the corresponding UTXO?
         return bool(self.utxo) or bool(self.witness_utxo)
 
+    def guess_multisig_addr_fmt(self):
+        # based on provided input scripts (witness/redeem)
+        if self.witness_script and not self.redeem_script:
+            return AF_P2WSH
+        elif self.witness_script and self.redeem_script:
+            return AF_P2WSH_P2SH
+        else:
+            return AF_P2SH
+
     def get_utxo(self, idx):
         # Load up the TxOut for specific output of the input txn associated with this in PSBT
         # Aka. the "spendable" for this input #.
@@ -744,6 +755,7 @@ class psbtInputProxy(psbtProxy):
         # - also validates redeem_script when present
 
         self.amount = utxo.nValue
+        self.addr_fmt, addr_or_pubkey, addr_is_segwit = utxo.get_address()
 
         if not self.subpaths or self.fully_signed:
             # without xfp+path we will not be able to sign this input
@@ -756,13 +768,12 @@ class psbtInputProxy(psbtProxy):
         self.is_p2sh = False
         which_key = None
 
-        addr_type, addr_or_pubkey, addr_is_segwit = utxo.get_address()
-        if addr_type == OP_RETURN:
+        if self.addr_fmt == OP_RETURN:
             self.required_key = None
             return
-        if addr_type == AF_P2TR:
+        if self.addr_fmt == AF_P2TR:
             raise FatalPSBTIssue("Install EDGE firmware to spend taproot.")
-        if addr_type is None:
+        if self.addr_fmt is None:
             # If this is reached, we do not understand the output well
             # enough to allow the user to authorize the spend, so fail hard.
             raise FatalPSBTIssue('Unhandled scriptPubKey: ' + b2a_hex(addr_or_pubkey).decode())
@@ -770,7 +781,7 @@ class psbtInputProxy(psbtProxy):
         if addr_is_segwit and not self.is_segwit:
             self.is_segwit = True
 
-        if addr_type in [AF_P2SH, AF_P2WSH]:
+        if self.addr_fmt in [AF_P2SH, AF_P2WSH]:
             # multisig input
             self.is_p2sh = True
 
@@ -806,7 +817,7 @@ class psbtInputProxy(psbtProxy):
                     len(redeem_script) == 22 and \
                     redeem_script[0] == 0 and redeem_script[1] == 20:
                 # it's actually segwit p2pkh inside p2sh
-                addr_type = AF_P2WPKH_P2SH
+                self.addr_fmt = AF_P2WPKH_P2SH
                 addr = redeem_script[2:22]
                 self.is_segwit = True
             else:
@@ -815,10 +826,10 @@ class psbtInputProxy(psbtProxy):
 
             if self.witness_script and not self.is_segwit and self.is_multisig:
                 # bugfix
-                addr_type = AF_P2WSH_P2SH
+                self.addr_fmt = AF_P2WSH_P2SH
                 self.is_segwit = True
 
-        elif addr_type in [AF_CLASSIC, AF_P2WPKH]:
+        elif self.addr_fmt in [AF_CLASSIC, AF_P2WPKH]:
             # input is hash160 of a single public key
             self.scriptSig = utxo.scriptPubKey
             addr = addr_or_pubkey
@@ -831,7 +842,7 @@ class psbtInputProxy(psbtProxy):
                 # none of the pubkeys provided hashes to that address
                 raise FatalPSBTIssue('Input #%d: pubkey vs. address wrong' % my_idx)
 
-        elif addr_type == AF_BARE_PK:
+        elif self.addr_fmt == AF_BARE_PK:
             # input is single public key (less common)
             self.scriptSig = utxo.scriptPubKey
             assert len(addr_or_pubkey) == 33
@@ -860,19 +871,20 @@ class psbtInputProxy(psbtProxy):
             # only search wallets with correct script type (aka address format)
             if not psbt.active_multisig:
                 # search for multisig wallet
-                wal = MultisigWallet.find_match(M, N, xfp_paths, [addr_type])
+                wal = MultisigWallet.find_match(M, N, xfp_paths, [self.addr_fmt])
                 if not wal:
                     raise FatalPSBTIssue('Unknown multisig wallet')
 
                 psbt.active_multisig = wal
             else:
                 # check consistent w/ already selected wallet
-                psbt.active_multisig.assert_matching(M, N, xfp_paths, addr_type)
+                psbt.active_multisig.assert_matching(M, N, xfp_paths, self.addr_fmt)
 
             # validate redeem script, by disassembling it and checking all pubkeys
             try:
                 psbt.active_multisig.validate_script(redeem_script, subpaths=self.subpaths)
-                target_spk, _ = chains.current_chain().script_pubkey(addr_type, script=redeem_script)
+                target_spk, _ = chains.current_chain().script_pubkey(self.addr_fmt,
+                                                                     script=redeem_script)
                 assert target_spk == utxo.scriptPubKey, "spk mismatch"
             except BaseException as exc:
                 # sys.print_exception(exc)
@@ -880,13 +892,13 @@ class psbtInputProxy(psbtProxy):
 
         if not which_key and DEBUG:
             print("no key: input #%d: type=%s segwit=%d a_or_pk=%s scriptPubKey=%s" % (
-                    my_idx, chains.addr_fmt_str(addr_type), self.is_segwit or 0,
+                    my_idx, chains.addr_fmt_str(self.addr_fmt), self.is_segwit or 0,
                     b2a_hex(addr_or_pubkey), b2a_hex(utxo.scriptPubKey)))
 
         self.required_key = which_key
 
         if self.is_segwit:
-            if addr_type in [AF_P2WPKH, AF_P2WPKH_P2SH]:
+            if self.addr_fmt in [AF_P2WPKH, AF_P2WPKH_P2SH]:
                 # This comment from <https://bitcoincore.org/en/segwit_wallet_dev/>:
                 #
                 #   Please note that for a P2SH-P2WPKH, the scriptCode is always 26
@@ -1167,15 +1179,18 @@ class psbtObject(psbtProxy):
 
         fd.seek(old_pos)
 
-    def input_iter(self):
+    def input_iter(self, start=0, stop=None):
         # Yield each of the txn's inputs, as a tuple:
         #
         #   (index, CTxIn)
         #
         # - we also capture much data about the txn on the first pass thru here
         #
+        if stop is None:
+            stop = self.num_inputs
+
         if self.is_v2:
-            for idx in range(self.num_inputs):
+            for idx in range(start, stop):
                 inp = self.inputs[idx]
                 prevout = COutPoint(uint256_from_str(self.get(inp.previous_txid)),
                                     unpack("<I", self.get(inp.prevout_idx))[0])
@@ -1189,8 +1204,11 @@ class psbtObject(psbtProxy):
             # stream out the inputs
             fd.seek(self.vin_start)
 
+            if start != 0:
+                _skip_n_objs(fd, start, 'CTxIn')
+
             txin = CTxIn()
-            for idx in range(self.num_inputs):
+            for idx in range(start, stop):
                 txin.deserialize(fd)
 
                 cont = fd.tell()
@@ -1237,12 +1255,7 @@ class psbtObject(psbtProxy):
             assert 1 <= M <= N <= MAX_SIGNERS
 
             # guess address format also - based on scripts provided by PSBT provider
-            if i.witness_script and not i.redeem_script:
-                af = AF_P2WSH
-            elif i.witness_script and i.redeem_script:
-                af = AF_P2WSH_P2SH
-            else:
-                af = AF_P2SH
+            af = i.guess_multisig_addr_fmt()
 
             return af, M, N
 
