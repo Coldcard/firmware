@@ -9,7 +9,7 @@ from io import BytesIO
 from helpers import fake_dest_addr, make_change_addr, hash160, taptweak, str_to_path
 from base58 import decode_base58
 from bip32 import BIP32Node
-from constants import simulator_fixed_tprv
+from constants import simulator_fixed_tprv, SIGHASH_MAP
 from serialize import uint256_from_str
 from ctransaction import CTransaction, COutPoint, CTxIn, CTxOut
 
@@ -22,7 +22,8 @@ def fake_txn(dev, pytestconfig):
 
     def doit(inputs, outputs, master_xpub=None, psbt_hacker=None, add_xpub=None, psbt_v2=None,
              fee=200, addr_fmt="p2wpkh", input_amount=100_000_000, capture_scripts=None,
-             force_full_tx_utxo=False, supply_num_ins=1, supply_num_outs=1): # input_amount in sats
+             force_full_tx_utxo=False, supply_num_ins=1, supply_num_outs=1, lock_time=0,
+             sequences=None, sighashes=None): # input_amount in sats
 
         psbt = BasicPSBT()
 
@@ -52,6 +53,7 @@ def fake_txn(dev, pytestconfig):
             psbt.output_count = num_outs
 
         txn = CTransaction()
+        txn.nLockTime = lock_time
         txn.nVersion = 2
         master_xpub = master_xpub or dev.master_xpub or simulator_fixed_tprv
         
@@ -146,15 +148,36 @@ def fake_txn(dev, pytestconfig):
 
             supply.calc_sha256()
 
+            if sighashes:
+                try:
+                    sh = sighashes[i]
+                except IndexError:
+                    sh = sighashes[0]
+
+                psbt.inputs[i].sighash = SIGHASH_MAP[sh]
+
+
+            if lock_time and not i:
+                seq = 0xfffffffd
+            else:
+                seq = 0xffffffff
+
+            if sequences:
+                # sequences parameter overrides what locktime sets for 0th input nSequence - if defined
+                try:
+                    seq = sequences[i]
+                except IndexError:
+                    seq = sequences[0]
+
+            spendable = CTxIn(COutPoint(supply.sha256, 0), nSequence=seq)
+            txn.vin.append(spendable)
+
             if psbt_v2:
                 psbt.inputs[i].previous_txid = supply.hash
                 psbt.inputs[i].prevout_idx = 0
-                # TODO sequence
-                # TODO height timelock
-                # TODO time timelock
-            else:
-                spendable = CTxIn(COutPoint(supply.sha256, 0), nSequence=0xffffffff)
-                txn.vin.append(spendable)
+                psbt.inputs[i].sequence = seq
+                # psbt.inputs[i].req_time_locktime = None
+                # psbt.inputs[i].req_height_locktime = None
 
         # calculate fee
         if num_outs:
@@ -238,8 +261,6 @@ def fake_txn(dev, pytestconfig):
 
         rv = BytesIO()
         psbt.serialize(rv)
-        pos = rv.tell()
-        # assert pos <= MAX_TXN_LEN, 'too fat %d' % pos
 
         return rv.getvalue()
 

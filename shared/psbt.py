@@ -657,7 +657,7 @@ class psbtInputProxy(psbtProxy):
         #self.fully_signed = False
 
         # we can't really learn this until we take apart the UTXO's scriptPubKey
-        #self.af = None  # string representation of address format aka. script type
+        #self.af = None  # address format aka. script type
 
         #self.amount = None
         #self.utxo_spk = None             # scriptPubKey for input utxo
@@ -739,6 +739,15 @@ class psbtInputProxy(psbtProxy):
     def has_utxo(self):
         # do we have a copy of the corresponding UTXO?
         return bool(self.utxo) or bool(self.witness_utxo)
+
+    def guess_multisig_addr_fmt(self):
+        # based on provided input scripts (witness/redeem)
+        if self.witness_script and not self.redeem_script:
+            return AF_P2WSH
+        elif self.witness_script and self.redeem_script:
+            return AF_P2WSH_P2SH
+        else:
+            return AF_P2SH
 
     def get_utxo(self, idx):
         # Load up the TxOut for specific output of the input txn associated with this in PSBT
@@ -1318,15 +1327,18 @@ class psbtObject(psbtProxy):
 
         fd.seek(old_pos)
 
-    def input_iter(self):
+    def input_iter(self, start=0, stop=None):
         # Yield each of the txn's inputs, as a tuple:
         #
         #   (index, CTxIn)
         #
         # - we also capture much data about the txn on the first pass thru here
         #
+        if stop is None:
+            stop = self.num_inputs
+
         if self.is_v2:
-            for idx in range(self.num_inputs):
+            for idx in range(start, stop):
                 inp = self.inputs[idx]
                 prevout = COutPoint(uint256_from_str(self.get(inp.previous_txid)),
                                     unpack("<I", self.get(inp.prevout_idx))[0])
@@ -1340,8 +1352,11 @@ class psbtObject(psbtProxy):
             # stream out the inputs
             fd.seek(self.vin_start)
 
+            if start != 0:
+                _skip_n_objs(fd, start, 'CTxIn')
+
             txin = CTxIn()
-            for idx in range(self.num_inputs):
+            for idx in range(start, stop):
                 txin.deserialize(fd)
 
                 cont = fd.tell()
@@ -1396,12 +1411,7 @@ class psbtObject(psbtProxy):
             assert 1 <= M <= N <= MAX_SIGNERS
 
             # guess address format also - based on scripts provided by PSBT provider
-            if i.witness_script and not i.redeem_script:
-                af = AF_P2WSH
-            elif i.witness_script and i.redeem_script:
-                af = AF_P2WSH_P2SH
-            else:
-                af = AF_P2SH
+            af = i.guess_multisig_addr_fmt()
 
             return af, M, N
 
