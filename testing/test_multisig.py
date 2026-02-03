@@ -4204,4 +4204,75 @@ def test_fwd_slash_in_name(import_ms_wallet, clear_ms, pick_menu_item, need_keyp
     press_cancel()
     press_cancel()
 
+
+@pytest.mark.parametrize("chain", ["BTC", "XTN"])
+@pytest.mark.parametrize("M_N", [(3, 5)])#, (14, 15)])
+@pytest.mark.parametrize("complete", [True, False, None])
+@pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh", "p2sh-p2wsh"])
+def test_txin_explorer(dev, chain, M_N, addr_fmt, fake_ms_txn, start_sign, settings_set, txin_explorer,
+                       cap_story, pytestconfig, import_ms_wallet, complete, clear_ms):
+    # TODO This test MUST be run with --psbt2 flag on and off
+    clear_ms()
+    settings_set("chain", chain)
+    inp_amount = 100000000
+    num_ins = 2
+    M, N = M_N
+
+    keys = import_ms_wallet(M, N, name='txin_expl', accept=True, netcode=chain,
+                            descriptor=True, addr_fmt=addr_fmt)
+
+    all_xfps = [xfp2str(k[0]) for k in keys][:-1] # remove myself
+    if complete:
+        target_xfps = all_xfps[:M]
+    elif complete is False:
+        target_xfps = all_xfps[:M-1]
+    else:
+        target_xfps = []
+
+
+    def hack(psbt):
+        for inp in psbt.inputs:
+            for i, (pk, pth) in enumerate(inp.bip32_paths.items()):
+                xfp = pth[:4].hex().upper()
+                if xfp in target_xfps:
+                    inp.part_sigs[pk] = os.urandom(71)
+
+
+    psbt = fake_ms_txn(num_ins, 1, M, keys, inp_af=unmap_addr_fmt[addr_fmt],
+                       input_amount=inp_amount, psbt_v2=pytestconfig.getoption('psbt2'),
+                       hack_psbt=hack)
+
+    start_sign(psbt)
+    txin_explorer(num_ins, [(addr_fmt, inp_amount, 1, chain, (M,N), None, None, complete, target_xfps)])
+
+
+def test_txin_explorer_our_sig(dev, fake_ms_txn, start_sign, settings_set, clear_ms,
+                               txin_explorer, cap_story, pytestconfig, import_ms_wallet):
+    # TODO This test MUST be run with --psbt2 flag on and off
+    clear_ms()
+    inp_amount = 100000000
+    num_ins = 3
+    M, N = 5,7
+    af = "p2wsh"
+
+    keys = import_ms_wallet(M, N, name='txin_expl', accept=True, netcode="XTN",
+                            descriptor=True, addr_fmt="p2wsh")
+
+    my_xfp = xfp2str(keys[-1][0])
+
+    def hack(psbt):
+        for inp in psbt.inputs:
+            for i, (pk, pth) in enumerate(inp.bip32_paths.items()):
+                xfp = pth[:4].hex().upper()
+                if xfp in my_xfp:
+                    inp.part_sigs[pk] = os.urandom(71)
+
+
+    psbt = fake_ms_txn(num_ins, 1, M, keys, inp_af=unmap_addr_fmt[af],
+                       input_amount=inp_amount, psbt_v2=pytestconfig.getoption('psbt2'),
+                       hack_psbt=hack)
+
+    start_sign(psbt)
+    txin_explorer(num_ins, [(af, inp_amount, 0, "XTN", (M,N), None, None, False, [my_xfp])])
+
 # EOF

@@ -19,7 +19,7 @@ class QRDisplaySingle(UserInteraction):
 
     def __init__(self, addrs, is_alnum, start_n=0, sidebar=None, msg=None,
                  is_addrs=False, force_msg=False, allow_nfc=True, is_secret=False,
-                 change_idxs=None, can_raise=True):
+                 change_idxs=None, can_raise=True, qr_msgs=None, no_index=None):
         self.is_alnum = is_alnum
         self.idx = 0             # start with first address
         self.invert = False      # looks better, but neither mode is ideal
@@ -35,6 +35,8 @@ class QRDisplaySingle(UserInteraction):
         self.is_secret = is_secret
         self.change_idxs = change_idxs or []
         self.can_raise = can_raise
+        self.qr_msgs = qr_msgs
+        self.no_index = no_index
 
     def calc_qr(self, msg):
         # Version 2 would be nice, but can't hold what we need, even at min error correction,
@@ -63,12 +65,20 @@ class QRDisplaySingle(UserInteraction):
         # draw_qr_display takes this and renders hint in the top right corner
         # this member function decides what type of hint will be shown
         # numbers, letters, etc.
+        if self.no_index:
+            return None
         return str(self.start_n + self.idx) if len(self.addrs) > 1 else None
 
-    def is_change(self):
+    def side_msg(self):
         if self.idx in self.change_idxs:
-            return True
-        return False
+            return "CHANGE BACK"
+
+        elif self.qr_msgs:
+            try:
+                return self.qr_msgs[self.idx]
+            except IndexError: pass
+
+        return None
 
     def redraw(self):
         # Redraw screen.
@@ -106,7 +116,7 @@ class QRDisplaySingle(UserInteraction):
         dis.draw_qr_display(self.qr_data, msg, self.is_alnum,
                             self.sidebar, idx_hint, self.invert,
                             is_addr=self.is_addrs, force_msg=self.force_msg,
-                            is_change=self.is_change())
+                            side_msg=self.side_msg())
 
     async def interact_bare(self):
         from glob import NFC, dis

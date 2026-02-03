@@ -9,7 +9,7 @@ from io import BytesIO
 from helpers import fake_dest_addr, make_change_addr, hash160, taptweak
 from base58 import decode_base58
 from bip32 import BIP32Node
-from constants import ADDR_STYLES, simulator_fixed_tprv
+from constants import ADDR_STYLES, simulator_fixed_tprv, SIGHASH_MAP
 from serialize import uint256_from_str
 from ctransaction import CTransaction, COutPoint, CTxIn, CTxOut
 
@@ -24,7 +24,8 @@ def fake_txn(dev, pytestconfig):
              invals=None, outvals=None, segwit_in=False, wrapped=False,
              outstyles=['p2pkh'],  psbt_hacker=None, change_outputs=[],
              capture_scripts=None, add_xpub=None, op_return=None, taproot_in=False,
-             psbt_v2=None, input_amount=1E8, unknown_out_script=None, lock_time=0):
+             psbt_v2=None, input_amount=1E8, unknown_out_script=None, lock_time=0,
+             sequences=None, sighashes=None):
 
         psbt = BasicPSBT()
 
@@ -99,20 +100,36 @@ def fake_txn(dev, pytestconfig):
 
             supply.calc_sha256()
 
-            if psbt_v2:
-                psbt.inputs[i].previous_txid = supply.hash
-                psbt.inputs[i].prevout_idx = 0
-                # TODO sequence
-                # TODO height timelock
-                # TODO time timelock
+            if sighashes:
+                try:
+                    sh = sighashes[i]
+                except IndexError:
+                    sh = sighashes[0]
+
+                psbt.inputs[i].sighash = SIGHASH_MAP[sh]
+
 
             if lock_time and not i:
                 seq = 0xfffffffd
             else:
                 seq = 0xffffffff
 
+            if sequences:
+                # sequences parameter overrides what locktime sets for 0th input nSequence - if defined
+                try:
+                    seq = sequences[i]
+                except IndexError:
+                    seq = sequences[0]
+
             spendable = CTxIn(COutPoint(supply.sha256, 0), nSequence=seq)
             txn.vin.append(spendable)
+
+            if psbt_v2:
+                psbt.inputs[i].previous_txid = supply.hash
+                psbt.inputs[i].prevout_idx = 0
+                psbt.inputs[i].sequence = seq
+                # psbt.inputs[i].req_time_locktime = None
+                # psbt.inputs[i].req_height_locktime = None
 
         for i in range(num_outs):
             # random P2PKH

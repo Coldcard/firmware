@@ -694,6 +694,34 @@ class Display:
         else:
             self.text(-1, 0, str_idx)
 
+    def draw_side_msg(self, msg, has_idx):
+        right_sub = 2 if has_idx else 0
+        start_right = right_msg = None
+        if len(msg) <= CHARS_H:
+            # we only need left side
+            start_left = CHARS_H - len(msg)
+            left_msg = msg
+        else:
+            split_msg = msg.split()
+            if len(split_msg) == 1 or len(split_msg) > 2:
+                return  # not possible
+
+            left_msg, right_msg = split_msg
+            if len(left_msg) > CHARS_H:
+                return
+            if len(right_msg) > (CHARS_H - right_sub):
+                return
+
+            start_left = CHARS_H - len(left_msg)
+            start_right = CHARS_H  - len(right_msg)
+
+        for i, c in enumerate(left_msg, start=start_left):
+            self.text(1, i, c)
+
+        if start_right:
+            for i, c in enumerate(right_msg, start=start_right):
+                self.text(-1, i, c)
+
     def draw_qr_error(self, idx_hint, msg=None):
         x = 85
         y = 30
@@ -710,7 +738,7 @@ class Display:
         self.show()
 
     def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, partial_bar=None,
-                        is_addr=False, force_msg=False, is_change=False):
+                        is_addr=False, force_msg=False, side_msg=None):
         # Show a QR code on screen w/ some text under it
         # - invert not supported on Q1
         # - sidebar not supported here (see users.py)
@@ -804,12 +832,8 @@ class Display:
             if idx_hint:
                 self.draw_qr_idx_hint(idx_hint)
 
-            if is_addr and is_change:
-                for i, c in enumerate("CHANGE", start=4):
-                    self.text(1, i, c)
-
-                for i, c in enumerate("BACK", start=6):
-                    self.text(-1, i, c)
+            if side_msg:
+                self.draw_side_msg(side_msg, idx_hint)
 
             # pass a max brightness flag here, which will be cleared after next show
             self.show(max_bright=True)

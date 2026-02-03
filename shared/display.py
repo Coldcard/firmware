@@ -346,7 +346,7 @@ class Display:
         self._draw_qr_display(bw, lm, msg, False, None, idx_hint, False)
 
     def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert,
-                        is_addr=False, force_msg=False, is_change=False):
+                        is_addr=False, force_msg=False, side_msg=None):
         # 'sidebar' is a pre-formated obj to show to right of QR -- oled life
         # - 'msg' will appear to right if very short, else under in tiny
         # - ignores "is_addr" because exactly zero space to do anything special
@@ -390,19 +390,19 @@ class Display:
             gly = framebuf.FrameBuffer(bytearray(packed), w, w, framebuf.MONO_HLSB)
             self.dis.blit(gly, XO, YO, 1)
 
-        self._draw_qr_display(bw, lm, msg, is_alnum, sidebar, idx_hint, invert, is_addr, is_change)
+        self._draw_qr_display(bw, lm, msg, is_alnum, sidebar, idx_hint, invert, is_addr, side_msg)
 
     def _draw_qr_display(self, bw, lm, msg, is_alnum, sidebar, idx_hint, invert,
-                        is_addr=False, is_change=False):
+                        is_addr=False, side_msg=None):
         # does not draw actual QR, but all other things in the screen
         from utils import word_wrap
 
         if not sidebar and not msg:
             pass
-        elif not sidebar and ((len(msg) > (5*7)) or is_change):
+        elif not sidebar and ((len(msg) > (5*7)) or side_msg):
             # use FontTiny and word wrap (will just split if no spaces)
             # native segwit addresses and taproot
-            # if is_change=True also p2pkh and p2sh fall into this category as space is needed for "CHANGE"
+            # if 'side_msg' also p2pkh and p2sh fall into this category as space is needed for "CHANGE BACK" text
             x = bw + lm + 4
             ww = ((128 - x)//4) - 1        # char width avail
             y = 1
@@ -418,8 +418,11 @@ class Display:
                 self.text(x, y, line, FontTiny)
                 y += 8
 
-            if is_addr and is_change:
-                self.text(x+4, y+8, "CHANGE BACK", FontTiny)
+            if side_msg and (len(side_msg) < 15):
+                y_pos = y + 8
+                # only render if there is space
+                if (self.HEIGHT - y_pos) >= FontTiny.height:
+                    self.text(x+4, y+8, side_msg, FontTiny)
         else:
             # hand-positioned for known cases
             # - sidebar = (text, #of char per line)

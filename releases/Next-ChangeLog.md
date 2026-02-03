@@ -6,6 +6,8 @@ This lists the new changes that have not yet been published in a normal release.
 
 - New Feature: Export [BIP-380](https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki) extended key expression.
   Navigate to `Advanced/Tools -> Export Wallet -> Key Expression`
+- New Feature: Transaction Input Explorer. Shows data about UTXO(s) being spent. Press (2) before approving 
+  transaction to enter Transaction Explorer.
 - New Feature: Support for v3 transactions
 - New Feature: Send keystrokes with all derived BIP-85 secrets
 - Enhancement: CCC allow to reset block height

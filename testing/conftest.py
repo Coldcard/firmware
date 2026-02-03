@@ -3,7 +3,7 @@
 import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, io, math, pdb, base64
 from subprocess import check_output
 from ckcc.protocol import CCProtocolPacker
-from helpers import B2A, U2SAT, hash160, addr_from_display_format
+from helpers import B2A, U2SAT, hash160, addr_from_display_format, seconds2human_readable
 from base58 import decode_base58_checksum
 from bip32 import BIP32Node
 from msg import verify_message
@@ -15,6 +15,7 @@ from constants import *
 from charcodes import *
 from core_fixtures import _need_keypress, _sim_exec, _cap_story, _cap_menu, _cap_screen, _sim_eval
 from core_fixtures import _press_select, _pick_menu_item, _enter_complex, _dev_hw_label
+from txn import render_address
 
 
 # lock down randomness
@@ -597,14 +598,17 @@ def verify_qr_address(cap_screen_qr, cap_screen, is_q1):
     # plus text version of address, if any, is right.
     from ckcc_protocol.constants import AFC_BECH32
 
-    def doit(addr_fmt, expect_addr=None, is_change=None):
+    def doit(addr_fmt, expect_addr=None, is_change=None, txt_check=True):
         qr = cap_screen_qr().decode('ascii')
 
         if isinstance(addr_fmt, str):
-            try:
-                addr_fmt = unmap_addr_fmt[addr_fmt]
-            except KeyError:
-                addr_fmt = msg_sign_unmap_addr_fmt[addr_fmt]
+            if addr_fmt == "p2tr":
+                addr_fmt = AF_P2TR
+            else:
+                try:
+                    addr_fmt = unmap_addr_fmt[addr_fmt]
+                except KeyError:
+                    addr_fmt = msg_sign_unmap_addr_fmt[addr_fmt]
 
         if addr_fmt & AFC_BECH32:
             qr = qr.lower()
@@ -646,7 +650,7 @@ def verify_qr_address(cap_screen_qr, cap_screen, is_q1):
 
             txt = ''.join(full_split).replace('CHANGE BACK', '')
 
-        if txt:
+        if txt_check and txt:
             assert txt == qr
             if is_q1:
                 # addr is not spaced out on Mk4, but check it was on Q
@@ -2461,15 +2465,251 @@ def goto_address_explorer(goto_home, pick_menu_item, need_keypress,
 
     return doit
 
+
 @pytest.fixture
-def txout_explorer(cap_story, press_cancel, need_keypress, is_q1, verify_qr_address):
+def explorer_input_check(cap_story, press_cancel, need_keypress, is_q1, verify_qr_address, cap_menu,
+                         cap_screen_qr, cap_screen):
+    def doit(idx, title, story, af, in_amt=100000000, num_our_keys=1, chain="XTN", is_multi=False,
+             sighash=None, sequence=None, fully_signed=False, already_signed=None):
+        # collect QR codes first
+        need_keypress(KEY_QR if is_q1 else "4")
+
+        if af is None:
+            assert "=== UTXO" not in story
+
+        txid_qr = addr_qr = None
+        qrs = ["TXID"]
+        if "=== UTXO" in story and af != "unknown":
+            qrs += ["UTXO ADDR"]
+        for what in qrs:
+            if "TXID" == what:
+                txid_qr = cap_screen_qr().decode('ascii').lower()
+            else:
+                addr_qr = verify_qr_address(af, txt_check=False)
+
+            scr = cap_screen()
+
+            scr_txt = scr.replace("~", "").replace("\n", "").replace(" ", "")
+            target_txt = what.replace(" ", "")
+            assert target_txt in scr_txt
+
+            need_keypress(KEY_RIGHT if is_q1 else "9")
+            time.sleep(.5)
+
+        press_cancel()  # QR code on screen - exit
+
+        # header and txin info always present
+        assert title == f"Input {idx}"
+        ss = story.split("\n\n")
+        txid_n = ss[0]
+        txid, n = txid_n.split(":")
+        assert txid_qr == txid
+        assert len(txid) == 64
+        int(n)
+        idx = 1
+        if "=== UTXO ===" == ss[idx]:
+            idx += 1
+            txt_amount = ss[idx]
+            assert txt_amount == f'{in_amt / 100000000:.8f} {chain}'
+            idx += 1
+            spk = ss[idx]
+            if af != "unknown":
+                calc_addr = render_address(bytes.fromhex(spk), testnet=False if chain == "BTC" else True)
+                idx += 1
+                addr = addr_from_display_format(ss[idx])
+                assert addr == calc_addr
+                assert addr_qr == addr
+                idx += 1
+                addr_fmt = ss[idx].split(" ")[-1]
+                if af == "p2wpkh-p2sh":
+                    assert addr_fmt == "p2sh-p2wpkh"
+                else:
+                    assert addr_fmt == af
+
+            idx += 1
+
+        parsed_sequence = None
+        if ss[idx].startswith("Input has relative"):  # time-lock
+            parsed_sequence = ss[idx]
+            idx += 1
+
+        parsed_multisig = None
+        parsed_signed_xfps = None
+        parsed_sighash = None
+        parsed_our_keys = {}
+        parsed_fully_signed = False
+        if "=== PSBT ===" == ss[idx]:
+            idx += 1
+            if ss[idx].startswith("Our key"):
+                idx += 1
+                while ":\n" in ss[idx]:
+                    der, pk = ss[idx].split(":\n")
+                    parsed_our_keys[pk] = der
+                    idx += 1
+
+            if "Multisig:" in ss[idx]:
+                parsed_multisig = ss[idx]
+                idx += 1
+
+
+            if "Input fully signed." in ss[idx]:
+                parsed_fully_signed = True
+                idx += 1
+
+            if "Already signed:" in ss[idx]:
+                parsed_signed_xfps = ss[idx].split("\n  ")[1:]
+                idx += 1
+
+            if "sighash" in ss[idx]:
+                parsed_sighash = ss[idx].split(" ")[-1]
+                idx += 1
+
+        # SEQUENCE
+        if parsed_sequence is None:
+            # without consensus meaning
+            # 0 --> no lock
+            assert (not sequence) or (sequence & (1 << 31))
+        else:
+            is_timebased = False
+            if sequence & (1 << 22):
+                # Time-based relative lock-time
+                is_timebased = True
+                res = (sequence & 0x0000ffff) << 9
+            else:
+                # Block height relative lock-time
+                res = sequence & 0x0000ffff
+
+            if is_timebased:
+                val = seconds2human_readable(res)
+                msg = "time-based timelock of:\n %s" % val
+            else:
+                msg = "block height timelock of %d blocks" % res
+
+            assert msg in parsed_sequence
+
+        # OUR KEYS
+        if not parsed_our_keys:
+            assert not num_our_keys
+        else:
+            if num_our_keys is not None:
+                assert len(parsed_our_keys) == num_our_keys
+
+            n = BIP32Node.from_wallet_key(simulator_fixed_xprv if chain == "BTC" else simulator_fixed_tprv)
+            for pk, der in parsed_our_keys.items():
+                assert bytes.fromhex(pk) == n.subkey_for_path(der.split("/", 1)[-1]).sec()
+
+        # MULTISIG
+        if parsed_multisig is None:
+            assert not is_multi
+        else:
+            assert is_multi
+            ms_txt = parsed_multisig
+            msg, m_n = ms_txt.split(" ")
+            assert msg == "Multisig:"
+            M, N = m_n.split("of")
+            assert is_multi[0] == int(M)
+            assert is_multi[1] == int(N)
+            if parsed_signed_xfps is None:
+                assert (not already_signed) or fully_signed
+            else:
+                assert set(parsed_signed_xfps) == set(already_signed)
+
+        # SIGHASH
+        if parsed_sighash is None:
+            assert sighash in [None, "ALL"]
+        else:
+            assert sighash == parsed_sighash
+
+        # IS FULLY SIGNED
+        assert bool(fully_signed) == parsed_fully_signed
+
+    return doit
+
+
+@pytest.fixture
+def txin_explorer(cap_story, press_cancel, need_keypress, is_q1, cap_menu,
+                  pick_menu_item, explorer_input_check):
+    def doit(num_inputs, inputs):
+
+        time.sleep(.1)
+        title, story = cap_story()
+        assert title == 'OK TO SEND?'
+        assert "Press (2) to explore transaction" in story
+        need_keypress("2")
+        time.sleep(.1)
+        pick_menu_item("Inputs")
+
+        for i in range(num_inputs):
+            time.sleep(.1)
+            title, story = cap_story()
+            ss = story.split("\n\n")
+            assert "Press RIGHT to see next group" in ss[-1]
+            if i:
+                assert " LEFT to go back" in ss[-1]
+            else:
+                assert "LEFT" not in ss[-1]
+
+            if not is_q1:
+                assert "(4) to show QR code" in ss[-1]
+
+            try:
+                inp = inputs[i]
+            except IndexError:
+                inp = inputs[0]
+
+            explorer_input_check(i, title, story, *inp)
+
+            need_keypress(KEY_RIGHT if is_q1 else "9")
+
+        # currently sitting at the last story in explorer
+        # try to go further (must not work and story is unchanged)
+        for _ in range(2):
+            need_keypress(KEY_RIGHT if is_q1 else "9")
+            time.sleep(.1)
+            _, xstory = cap_story()
+            assert story == xstory
+
+        # go back to first explorer story
+        for _ in range(num_inputs):
+            need_keypress(KEY_LEFT if is_q1 else "7")
+            time.sleep(.1)
+
+        title, story = cap_story()
+        assert "Input 0" == title
+
+        # currently sitting at the first story in explorer
+        # try to go further (must not work and story is unchanged)
+        for _ in range(2):
+            need_keypress(KEY_LEFT if is_q1 else "7")
+            time.sleep(.1)
+            _, xstory = cap_story()
+            assert story == xstory
+
+        # leave explorer - will return back to sign story
+        press_cancel()
+        time.sleep(.1)
+        m = cap_menu()
+        assert "Outputs" in m
+        assert "Inputs" in m
+        press_cancel()
+        time.sleep(.1)
+        title, _ = cap_story()
+        assert title == 'OK TO SEND?'
+        press_cancel()
+
+    return doit
+
+@pytest.fixture
+def txout_explorer(cap_story, press_cancel, need_keypress, is_q1, verify_qr_address, cap_menu,
+                   pick_menu_item):
     def doit(data, chain="XTN"):
         time.sleep(.1)
         title, story = cap_story()
         assert title == 'OK TO SEND?'
-        assert "Press (2) to explore txn" in story
+        assert "Press (2) to explore transaction" in story
         need_keypress("2")
         time.sleep(.1)
+        pick_menu_item("Outputs")
 
         n = 10
         for i in range(0, len(data), n):
@@ -2554,6 +2794,11 @@ def txout_explorer(cap_story, press_cancel, need_keypress, is_q1, verify_qr_addr
             assert story == xstory
 
         # leave explorer - will return back to sign story
+        press_cancel()
+        time.sleep(.1)
+        m = cap_menu()
+        assert "Outputs" in m
+        assert "Inputs" in m
         press_cancel()
         time.sleep(.1)
         title, _ = cap_story()
