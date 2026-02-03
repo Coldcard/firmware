@@ -135,9 +135,9 @@ def test_psbt_proxy_parsing(fn, sim_execfile, sim_exec, src_root_dir, sim_root_d
 @pytest.mark.unfinalized
 @pytest.mark.parametrize("addr_fmt", ["p2tr", "p2wpkh"])
 def test_speed_test(dev, addr_fmt, fake_txn, is_mark3, is_mark4, start_sign, end_sign,
-                    press_select, press_cancel, sim_root_dir):
+                    press_select, press_cancel, sim_root_dir, is_q1):
     # measure time to sign a larger txn
-    if is_mark4:
+    if is_mark4 or is_q1:
         # Mk4: expect 
         #       20/250 => 15.5s (or 10.0 if seed is cached)
         #       200/500 => 96.3s 
@@ -230,7 +230,7 @@ def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn,
     except:
         cap_story = None
 
-    signed = end_sign(True, finalize=True)
+    signed = end_sign(accept=True, finalize=True)
 
     with open(f'{sim_root_dir}/debug/signed.txn', 'wb') as f:
         f.write(signed)
@@ -1418,7 +1418,7 @@ def test_payjoin_signing(num_ins, num_outs, fake_txn, try_sign, start_sign, end_
     with open(f'{sim_root_dir}/debug/payjoin.psbt', 'wb') as f:
         f.write(psbt)
 
-    ip = start_sign(psbt, finalize=False)
+    start_sign(psbt, finalize=False)
     time.sleep(.1)
     _, story = cap_story()
 
@@ -1428,7 +1428,7 @@ def test_payjoin_signing(num_ins, num_outs, fake_txn, try_sign, start_sign, end_
     assert "different wallet" in story
     assert ': %s' % (num_ins-1) in story
 
-    txn = end_sign(True, finalize=False)
+    end_sign(True, finalize=False)
 
 @pytest.mark.parametrize('addr_fmt', ["p2wpkh", "p2tr"])
 def test_fully_unsigned(fake_txn, try_sign, addr_fmt):
@@ -1752,6 +1752,7 @@ def test_foreign_utxo_missing(addr_fmt, num_not_ours, dev, fake_txn, start_sign,
     start_sign(psbt)
     time.sleep(.1)
     _, story = cap_story()
+
     no = ", ".join(str(i) for i in list(range(num_not_ours)))
     assert "warnings" in story
     assert f"Limited Signing:" in story
@@ -2802,7 +2803,6 @@ def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind
     assert txid == story_txid
 
 
-@pytest.mark.veryslow
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("abs_lock", [True, False])
 @pytest.mark.parametrize("num_rtl", [(2,3),(4,7),(6,7)])
@@ -3111,6 +3111,38 @@ def test_txout_explorer(chain, data, fake_txn, start_sign, settings_set, txout_e
     start_sign(psbt)
     txout_explorer(data, chain)
 
+@pytest.mark.parametrize("chain", ["BTC", "XTN"])
+@pytest.mark.parametrize("addr_fmt", ["p2wpkh", "p2pkh", "p2wpkh-p2sh"])
+def test_txin_explorer(chain, addr_fmt, fake_txn, start_sign, settings_set, txin_explorer,
+                       cap_story, pytestconfig):
+    # TODO This test MUST be run with --psbt2 flag on and off
+    settings_set("chain", chain)
+    inp_amount = 1000000
+    num_ins = 3
+
+    if addr_fmt == "p2wpkh":
+        segwit = True
+        wrapped = False
+        sh = "SINGLE"
+        seq = 1100
+    elif addr_fmt == "p2pkh":
+        segwit = False
+        wrapped = False
+        sh = "ALL|ANYONECANPAY"
+        seq = SEQUENCE_LOCKTIME_TYPE_FLAG | (512 >> 9)
+    else:
+        segwit = True
+        wrapped = True
+        sh = "SINGLE|ANYONECANPAY"
+        seq = 1
+
+    psbt = fake_txn(num_ins, 1, segwit_in=segwit, wrapped=wrapped,
+                    psbt_v2=pytestconfig.getoption('psbt2'), input_amount=inp_amount,
+                    sequences=[seq], sighashes=[sh])
+
+    start_sign(psbt)
+    txin_explorer(num_ins, [(addr_fmt, inp_amount, 1, chain, False, sh, seq)])
+
 @pytest.mark.parametrize("finalize", [True, False])
 @pytest.mark.parametrize("data", [
     [(1, b"Coinkite"), (0, b"Mk1 Mk2 Mk3 Mk4 Q"), (100, b"binarywatch.org"), (100, b"a" * 75)],
@@ -3121,7 +3153,7 @@ def test_txout_explorer(chain, data, fake_txn, start_sign, settings_set, txout_e
 ])
 def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_story, is_q1,
                                   need_keypress, press_cancel, press_select, end_sign,
-                                  cap_screen_qr, cap_screen):
+                                  cap_screen_qr, cap_screen, pick_menu_item):
     outputs = [["p2tr", 50000, not i] for i in range(20)]
     outputs += [["op_return", am, None, d] for am, d in data]
     out_val = sum(o[1] for o in outputs)
@@ -3141,8 +3173,9 @@ def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_stor
     else:
         assert "OP_RETURN > 80 bytes" not in story
 
-    assert "Press (2) to explore txn" in story
+    assert "Press (2) to explore transaction" in story
     need_keypress("2")
+    pick_menu_item("Outputs")
     time.sleep(.1)
     # OP_RETURN is put at the end of output list (fake_txn)
     # 20 normal outputs, all OP_RETURN on last page
@@ -3213,6 +3246,7 @@ def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_stor
             assert s == dd0
             assert e == dd1
 
+    press_cancel()  # exit output explorer
     press_cancel()  # exit txn out explorer
     end_sign(finalize=finalize)
 
@@ -3482,6 +3516,38 @@ def test_txn_v3_eph_anchor(finalize, set_seed_words, start_sign, end_sign, cap_s
     txo = CTransaction()
     txo.deserialize(BytesIO(res))
     assert txo.nVersion == 3
+
+
+@pytest.mark.parametrize("stype", ["p2tr", "unknown", "no_utxo"])
+def test_unknown_input_script(stype, fake_txn , start_sign, cap_story, use_testnet,
+                              txin_explorer):
+    use_testnet()
+
+    def hack(psbt):
+        psbt.inputs[0].bip32_paths = None
+        psbt.inputs[0].utxo = None
+        psbt.inputs[0].witness_utxo = None
+        if stype != "no_utxo":
+            if stype == "p2tr":
+                scr = bytes([81, 32]) + os.urandom(32)
+            else:
+                scr = bytes([90, 45]) + os.urandom(45)
+
+            psbt.inputs[0].witness_utxo = CTxOut(100000000, scr).serialize()
+
+    # second input is always ours
+    if stype == "no_utxo":
+        af = None
+    else:
+        af = stype
+
+    ins = [(af, 100000000, 0), ("p2wpkh", 100000000, 1)]
+
+    psbt = fake_txn(2, 2, segwit_in=True, change_outputs=[0], psbt_hacker=hack)
+    start_sign(psbt)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    txin_explorer(len(ins), ins)
 
 # EOF
 
