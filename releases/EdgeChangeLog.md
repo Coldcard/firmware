@@ -14,6 +14,8 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 # Shared Improvements - Both Mk4 and Q
 
 - New Feature: Support for v3 transactions
+- New Feature: Send keystrokes with all derived BIP-85 secrets
+- Enhancement: CCC allow to reset block height
 
 # Mk4 Specific Changes
 
