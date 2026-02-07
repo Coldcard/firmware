@@ -9,6 +9,7 @@ from psbt import BasicPSBT
 from charcodes import KEY_QR, KEY_RIGHT, KEY_CANCEL, KEY_DELETE
 from bbqr import split_qrs
 from bip32 import BIP32Node
+from helpers import str_to_path
 
 
 H = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"  # BIP-0341
@@ -3162,6 +3163,93 @@ def test_same_key_set_miniscript(get_cc_key, bitcoin_core_signer, create_core_wa
             time.sleep(0.1)
             title, story = cap_story()
             assert title == 'PSBT Signed'
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("orig_der", [False, True])
+def test_specific_wallet_signing_xpubs(orig_der, get_cc_key, bitcoin_core_signer, create_core_wallet,
+                                       offer_minsc_import, press_select, bitcoind, start_sign,
+                                       cap_story, end_sign, clear_miniscript, goto_home):
+    goto_home()
+    clear_miniscript()
+
+    msc = "wsh(or_d(pk(@D),and_v(v:multi(2,@A,@B,@C),older(65535))))"
+
+    ak = get_cc_key("m/48h/1h/0h/2h")
+    bs, bk = bitcoin_core_signer("bb")
+    cs, ck = bitcoin_core_signer("cc")
+    ds, dk = bitcoin_core_signer("dd")
+
+    bk = bk.replace("/0/*", "/<0;1>/*")
+    ck = ck.replace("/0/*", "/<0;1>/*")
+    dk = dk.replace("/0/*", "/<0;1>/*")
+
+    if not orig_der:
+        bk = bk.split("]")[-1]
+        ck = ck.split("]")[-1]
+        dk = dk.split("]")[-1]
+
+    msc = msc.replace("@A", ak)
+    msc = msc.replace("@B", bk)
+    msc = msc.replace("@C", ck)
+    msc = msc.replace("@D", dk)
+
+    title, story = offer_minsc_import(json.dumps(dict(name="msc", desc=msc)))
+    assert "msc" in story
+    assert "Create new miniscript wallet?" in story
+    press_select()
+
+    wo = create_core_wallet("msc", "bech32")
+
+    psbt = wo.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 1.0}],
+                                     0, {"fee_rate": 2})["psbt"]
+
+    po = BasicPSBT().parse(base64.b64decode(psbt))
+    for ke in [bk, ck, dk, ak]:
+        if "]" in ke:
+            a, b = ke.split("]")
+            ext_key = b.split("/")[0]
+            der = a[1:]
+            xfp_str = der.split("/")[0]
+            der = der.replace(xfp_str, "m")
+            path_lst = str_to_path(der)
+            n = BIP32Node.from_wallet_key(ext_key)
+            po.xpubs.append(
+                (
+                    n.node.serialize_public(),
+                    bytes.fromhex(xfp_str) + struct.pack(f'<{"I"*len(path_lst)}', *path_lst)
+                )
+            )
+        else:
+            ext_key = ke.split("/")[0]
+            n = BIP32Node.from_wallet_key(ext_key)
+            po.xpubs.append((n.node.serialize_public(), n.fingerprint()))
+
+    # success case
+    start_sign(po.as_bytes(), miniscript="msc")
+    end_sign(accept=True)
+
+    item = po.xpubs[0]
+    # wrong key
+    key_wrong = item[0][:-1] + b"\x10"
+    po.xpubs[0] = (key_wrong, item[1])
+
+    start_sign(po.as_bytes(), miniscript="msc")
+    title, story = cap_story()
+    assert "Failure" in title
+    if orig_der:
+        assert "PSBT xpubs mismatch" in story
+
+    if orig_der:
+        # wrong derivation path
+        # do not check if we only have xfp as derivation, because blinded keys allowed
+        pth_wrong = item[1][:-1] + b"\x10"
+        po.xpubs[0] = (item[0], pth_wrong)
+
+        start_sign(po.as_bytes(), miniscript="msc")
+        title, story = cap_story()
+        assert "Failure" in title
+        assert "PSBT xpubs mismatch" in story
 
 
 @pytest.mark.parametrize("desc", CHANGE_BASED_DESCS)

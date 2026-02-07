@@ -582,14 +582,16 @@ class MiniScriptWallet(WalletABC):
         return cls.from_descriptor_obj(name, desc_obj)
 
     def validate_psbt_xpubs(self, psbt_xpubs):
+        # validate via set equality on string representation of the key(s)
+        # using __hash__ of the key object ignores origin derivation
         keys = set()
         for ek, xfp_pth in psbt_xpubs:
             key = Key.from_psbt_xpub(ek, xfp_pth)
             key.validate(settings.get('xfp', 0), self.disable_checks)
-            keys.add(key)
+            keys.add(key.to_string(external=False, internal=False))
 
         if not self.disable_checks:
-            assert set(self.to_descriptor().keys) == keys
+            assert set(self.keys_info) == keys, "PSBT xpubs mismatch"
 
     def ux_unique_name_msg(self, name=None):
         return ("%s wallet with name '%s' already exists. All wallets MUST"
