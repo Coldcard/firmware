@@ -8,7 +8,7 @@ index 971f2f81a..0c25a11e0 100644
  # compiler settings
 -CWARN = -Wall -Werror
 +CWARN = -Wall -Werror -Wno-error=unused-but-set-variable -Wno-error=array-bounds
-+CWARN += -Wno-error=unknown-warning-option
++CWARN += -Wno-error=unknown-warning-option -Wno-error=gnu-folding-constant
  CWARN += -Wextra -Wno-unused-parameter -Wpointer-arith
  CFLAGS = $(INC) $(CWARN) -std=gnu99 $(CFLAGS_MOD) $(COPT) $(CFLAGS_EXTRA)
  CFLAGS += -fdata-sections -ffunction-sections -fno-asynchronous-unwind-tables
@@ -22,7 +22,7 @@ index 6a936a242..43e6bf02a 100644
  # compiler settings
 -CWARN = -Wall -Werror
 +CWARN = -Wall -Werror -Wno-error=unused-but-set-variable -Wno-error=array-bounds
-+CWARN += -Wno-error=unknown-warning-option -Wno-error=deprecated-non-prototype -Wno-error=bitwise-instead-of-logical
++CWARN += -Wno-error=unknown-warning-option -Wno-error=deprecated-non-prototype -Wno-error=bitwise-instead-of-logical -Wno-error=gnu-folding-constant
  CWARN += -Wextra -Wno-unused-parameter -Wpointer-arith -Wdouble-promotion -Wfloat-conversion
  CFLAGS += $(INC) $(CWARN) -std=gnu99 -DUNIX $(CFLAGS_MOD) $(COPT) -I$(VARIANT_DIR) $(CFLAGS_EXTRA)
  

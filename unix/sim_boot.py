@@ -20,7 +20,7 @@ if '--metal' in sys.argv:
 
 if '--sflash' not in sys.argv:
     import nvstore
-    from sim_settings import sim_defaults
+    from variant.sim_settings import sim_defaults
     nvstore.SettingsObject.default_values = lambda _: dict(sim_defaults)
 
     # not best place for this
