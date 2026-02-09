@@ -369,6 +369,12 @@ class ApproveTransaction(UserAuthorizedAction):
 
             ccc_c_xfp = CCCFeature.get_xfp()  # can be None
             args = self.psbt.consider_inputs(cosign_xfp=ccc_c_xfp)
+            
+            # BIP-375: Preview Silent Payment outputs if possible
+            # This computes real addresses for single-signer scenarios
+            if self.psbt.has_silent_payment_outputs():
+                self.psbt.preview_silent_payment_outputs()
+            
             self.psbt.consider_outputs(*args, cosign_xfp=ccc_c_xfp)
             del args  # not needed anymore
             # we can properly assess sighash only after we know
@@ -589,7 +595,12 @@ class ApproveTransaction(UserAuthorizedAction):
             for i, (idx, out) in enumerate(self.psbt.output_iter(offset, end)):
                 outp = self.psbt.outputs[idx]
                 item = "Output %d%s:\n\n" % (idx, " (change)" if outp.is_change else "")
-                msg, addr_or_script = self.render_output(out)
+                # render silent payment address
+                if outp.sp_v0_info:
+                    msg = self.psbt.render_silent_payment_output_string(outp, out)
+                    addr_or_script = self.psbt.encode_silent_payment_address(outp)
+                else:
+                    msg, addr_or_script = self.render_output(out)
                 item += msg
                 addrs.append(addr_or_script)
                 if outp.is_change:
@@ -689,6 +700,8 @@ class ApproveTransaction(UserAuthorizedAction):
         total_change = 0
         has_change = False
 
+        # TODO: Test pay to silent payment change address
+
         for idx, tx_out in self.psbt.output_iter():
             outp = self.psbt.outputs[idx]
             if outp.is_change:
@@ -702,7 +715,11 @@ class ApproveTransaction(UserAuthorizedAction):
 
             else:
                 if len(largest_outs) < MAX_VISIBLE_OUTPUTS:
-                    rendered, _ = self.render_output(tx_out)
+                    # render the silent payment address
+                    if outp.sp_v0_info:
+                        rendered = self.psbt.render_silent_payment_output_string(outp, tx_out)
+                    else:
+                        rendered, _ = self.render_output(tx_out)
                     largest_outs.append((tx_out.nValue, rendered))
                     if len(largest_outs) == MAX_VISIBLE_OUTPUTS:
                         # descending sort from the biggest value to lowest (sort on out.nValue)

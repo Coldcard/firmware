@@ -94,7 +94,7 @@ class SEState:
 
         elif submethod == 2:
             # Login
-            from sim_se2 import SE2
+            from variant.sim_se2 import SE2
             ts = None
 
             expect = SECRETS.get(kk, '')
