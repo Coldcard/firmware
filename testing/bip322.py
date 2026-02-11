@@ -21,7 +21,7 @@ def bip322_msg_hash(msg):
 def bip322_txn(dev, pytestconfig):
 
     def doit(inputs, msg=b"POR", addr_fmt="p2wpkh", input_amount=1E8, to_sign_lock_time=0,
-             sighash=None, psbt_hacker=None, witness_utxo=[]):
+             sighash=None, psbt_hacker=None, witness_utxo=[], to_sign_nVersion=0):
 
         msg_challenge = None
 
@@ -31,7 +31,8 @@ def bip322_txn(dev, pytestconfig):
 
         to_sign = CTransaction()
         to_sign.nLockTime = to_sign_lock_time
-        to_sign.nVersion = 2
+        # must be set to 2 if BIP-68 is used (relative tx level lock)
+        to_sign.nVersion = to_sign_nVersion
         master_xpub = dev.master_xpub or simulator_fixed_tprv
 
         # we have a key; use it to provide "plausible" value inputs
@@ -93,7 +94,7 @@ def bip322_txn(dev, pytestconfig):
             else:
                 # other outputs that we want to prove ownership
                 to_spend = CTransaction()
-                to_spend.nVersion = 2
+                to_spend.nVersion = 0
                 out_point = COutPoint(
                     uint256_from_str(struct.pack('4Q', 0xdead, 0xbeef, 0, 0)),
                     73
@@ -147,14 +148,14 @@ def bip322_ms_txn(pytestconfig):
     from test_multisig import make_ms_address
 
     def doit(num_ins, M, keys, msg=b"POR", inp_af=AF_P2WSH, input_amount=1E8, path_mapper=None,
-             lock_time=0, with_sigs=False, sighash=None, hack_psbt=None):
+             lock_time=0, with_sigs=False, sighash=None, hack_psbt=None, to_sign_nVersion=0):
 
         msg_challenge = None
 
         psbt = BasicPSBT()
 
         txn = CTransaction()
-        txn.nVersion = 2
+        txn.nVersion = to_sign_nVersion
         txn.nLockTime = lock_time
 
         psbt.inputs = [BasicPSBTInput(idx=i) for i in range(num_ins)]
@@ -193,7 +194,7 @@ def bip322_ms_txn(pytestconfig):
             else:
                 # other outputs that we want to prove ownership
                 to_spend = CTransaction()
-                to_spend.nVersion = 2
+                to_spend.nVersion = 0
                 out_point = COutPoint(
                     uint256_from_str(struct.pack('4Q', 0xdead, 0xbeef, 0, 0)),
                     73

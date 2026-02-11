@@ -34,6 +34,9 @@ from public_constants import (
     AF_P2WSH_P2SH, AF_P2TR, AF_P2WSH, AF_P2SH, AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2WPKH, AF_BARE_PK
 )
 
+# transaction version error
+TX_VER_ERR = "bad txn version"
+
 # PSBT proprietary keytype
 PSBT_PROPRIETARY = const(0xFC)
 
@@ -1137,7 +1140,7 @@ class psbtObject(psbtProxy):
         self.txn_version, marker, flags = unpack("<iBB", fd.read(6))
         self.had_witness = (marker == 0 and flags != 0x0)
 
-        assert self.txn_version in {1,2,3}, "bad txn version"
+        assert self.txn_version in {0,1,2,3}, TX_VER_ERR
 
         if not self.had_witness:
             # rewind back over marker+flags
@@ -1446,6 +1449,10 @@ class psbtObject(psbtProxy):
 
         if null_data_op_return and (num_outs == 1):
             self.por322 = True
+
+        if self.txn_version == 0:
+            # only allow txn version 0 for Proof of Reserves txn (BIP-322)
+            assert self.por322, TX_VER_ERR
 
         # time based relative locks
         tb_rel_locks = []
