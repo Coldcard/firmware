@@ -1788,7 +1788,8 @@ class psbtObject(psbtProxy):
                     old_pos = fd.tell()
                     fd.seek(inp.utxo[0])
 
-                    _, marker, flags = unpack("<iBB", fd.read(6))
+                    txn_version, marker, flags = unpack("<iBB", fd.read(6))
+                    assert txn_version == 0, TX_VER_ERR
                     wit_format = (marker == 0 and flags != 0x0)
                     if not wit_format:
                         fd.seek(-2, 1)
