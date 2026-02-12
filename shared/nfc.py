@@ -759,6 +759,10 @@ class NFCHandler:
         f = lambda x: a2b_base64(x.decode()) if 150 <= len(x) <= 280 else None
         return await self._nfc_reader(f, 'Unable to find base64 encoded TAPSIGNER backup.')
 
+    async def read_bip322_msg(self):
+        f = lambda x: x.decode()
+        return await self._nfc_reader(f, 'Unable to find BIP-322 message.')
+
     async def _nfc_reader(self, func, fail_msg):
         data = await self.start_nfc_rx()
         if not data: return
