@@ -18,7 +18,20 @@ def bip322_msg_hash(msg):
 
 
 @pytest.fixture
-def bip322_txn(dev, pytestconfig):
+def create_msg_file(sim_root_dir, garbage_collector):
+
+    def doit(msg, msg_hash):
+        # carelessly overwrites
+        fpath = f"{sim_root_dir}/MicroSD/{msg_hash.hex()}.txt"
+        with open(fpath, "w") as f:
+            f.write(msg.decode())
+        garbage_collector.append(fpath)
+
+    return doit
+
+
+@pytest.fixture
+def bip322_txn(dev, pytestconfig, create_msg_file):
 
     def doit(inputs, msg=b"POR", addr_fmt="p2wpkh", input_amount=1E8, to_sign_lock_time=0,
              sighash=None, psbt_hacker=None, witness_utxo=[], to_sign_nVersion=0):
@@ -88,7 +101,9 @@ def bip322_txn(dev, pytestconfig):
                 to_spend = CTransaction()
                 to_spend.nVersion = 0
                 out_point = COutPoint(hash=0, n=0xffffffff)
-                to_spend.vin = [CTxIn(out_point, scriptSig=b'\x00\x20' + bip322_msg_hash(msg))]
+                msg_hash = bip322_msg_hash(msg)
+                create_msg_file(msg, msg_hash)
+                to_spend.vin = [CTxIn(out_point, scriptSig=b'\x00\x20' + msg_hash)]
                 to_spend.vout = [CTxOut(0, scr)]  # always zero val
                 msg_challenge = scr
             else:
@@ -144,7 +159,7 @@ def bip322_txn(dev, pytestconfig):
 
 
 @pytest.fixture
-def bip322_ms_txn(pytestconfig):
+def bip322_ms_txn(pytestconfig, create_msg_file):
     from test_multisig import make_ms_address
 
     def doit(num_ins, M, keys, msg=b"POR", inp_af=AF_P2WSH, input_amount=1E8, path_mapper=None,
@@ -188,7 +203,9 @@ def bip322_ms_txn(pytestconfig):
                 to_spend = CTransaction()
                 to_spend.nVersion = 0
                 out_point = COutPoint(hash=0, n=0xffffffff)
-                to_spend.vin = [CTxIn(out_point, scriptSig=b'\x00\x20' + bip322_msg_hash(msg))]
+                msg_hash = bip322_msg_hash(msg)
+                create_msg_file(msg, msg_hash)
+                to_spend.vin = [CTxIn(out_point, scriptSig=b'\x00\x20' + msg_hash)]
                 to_spend.vout.append(CTxOut(0, scriptPubKey))
                 msg_challenge = scriptPubKey
             else:
