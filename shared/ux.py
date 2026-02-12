@@ -357,12 +357,12 @@ async def ux_enter_bip32_index(prompt, can_cancel=False, unlimited=False):
 
     return await ux_enter_number(prompt=prompt, max_value=max_value, can_cancel=can_cancel)
 
-def _import_prompt_builder(title, no_qr, no_nfc, slot_b_only=False):
+def _import_prompt_builder(title, no_qr, no_nfc, slot_b_only=False, key0=None, key6=None):
     from glob import NFC, VD
 
     prompt, escape = None, KEY_CANCEL+"x"
 
-    if (NFC or VD) or num_sd_slots>1:
+    if (NFC or VD) or (num_sd_slots > 1) or key0 or key6:
         if slot_b_only and (num_sd_slots>1):
             prompt = "Press (B) to import %s from lower slot SD Card" % title
             escape += "b"
@@ -387,6 +387,14 @@ def _import_prompt_builder(title, no_qr, no_nfc, slot_b_only=False):
         if has_qwerty and not no_qr:
             prompt += ", " + KEY_QR + " to scan QR code"
             escape += KEY_QR
+
+        if key6:
+            prompt += ', (6) ' + key6
+            escape += '6'
+
+        if key0:
+            prompt += ', (0) ' + key0
+            escape += '0'
 
         prompt += "."
 
@@ -492,7 +500,8 @@ async def import_export_prompt(what_it_is, is_import=False, no_qr=False,
     from glob import NFC
 
     if is_import:
-        prompt, escape = _import_prompt_builder(what_it_is, no_qr, no_nfc, slot_b_only)
+        prompt, escape = _import_prompt_builder(what_it_is, no_qr, no_nfc, slot_b_only,
+                                                key0=key0, key6=key6)
     else:
         prompt, escape = export_prompt_builder(what_it_is, no_qr, no_nfc, key6=key6, key0=key0,
                                                force_prompt=force_prompt, offer_kt=offer_kt)
