@@ -2927,6 +2927,6 @@ from test_seed_xor import restore_seed_xor
 from test_sign import txid_from_export_prompt
 from test_ux import pass_word_quiz, word_menu_entry, enable_hw_ux
 from txn import fake_txn
-from bip322 import bip322_txn, bip322_ms_txn
+from bip322 import bip322_txn, bip322_ms_txn, create_msg_file
 
 # EOF

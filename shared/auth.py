@@ -13,8 +13,8 @@ from public_constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED, AF_P2SH
 from sffile import SFFile
 from menu import MenuSystem, MenuItem
 from serializations import ser_uint256, SIGHASH_ALL
-from ux import ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys, ux_confirm
-from ux import show_qr_code, OK, X, abort_and_push, AbortInteraction, the_ux, ux_enter_number
+from ux import ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys, ux_confirm, the_ux
+from ux import show_qr_code, OK, X, abort_and_push, AbortInteraction, ux_input_text, ux_enter_number
 from usb import CCBusyError
 from utils import (HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A,
                    show_single_address, keypath_to_str, seconds2human_readable)
@@ -286,6 +286,56 @@ class ApproveTransaction(UserAuthorizedAction):
         self.result = None      # will be (len, sha256) of the resulting PSBT
         self.chain = chains.current_chain()
 
+    async def por322_msg_verify(self):
+        # https://gist.github.com/orangesurf/0c1d0a31d3ebe7e48335a34d56788d4c
+        from glob import NFC
+        from ux import import_export_prompt
+        from actions import file_picker
+        ch = await import_export_prompt("message", is_import=True, force_prompt=True,
+                                        intro="Import msg that hashes to 'to_spend' msg hash.",
+                                        key0="to input message manually", title="BIP-322 MSG",
+                                        no_qr=not version.has_qwerty)
+
+        # TODO move elswhere
+        bip322_tag_hash = b'te\x84\xa1\x87/\xa1\x00AUN\xff\xa08\xd6\x12IB\xddy\xb4\xe5\x8aL\xda\x18N\x13\xdb\xe6,I'
+
+        if ch == KEY_CANCEL:
+            return
+        elif ch == "0":
+            msg = await ux_input_text("")
+        elif ch == KEY_NFC:
+            msg = await NFC.read_bip322_msg()
+        elif ch == KEY_QR:
+            from ux_q1 import QRScannerInteraction
+            msg = await QRScannerInteraction().scan_text('Scan MSG from a QR code')
+        else:
+            choices = await file_picker(suffix='.txt', ux=False)
+            target = "%s.txt" % b2a_hex(self.psbt.por322_msg_hash).decode()
+
+            for fname, dir, _ in choices:
+                if target == fname:
+                    fn = dir + "/" + fname
+                    break
+            else:
+                fn = await file_picker(choices=choices)
+
+            if not fn: return
+
+            with CardSlot(readonly=True, **ch) as card:
+                with open(fn, 'rt') as fd:
+                    msg = fd.read()
+
+        # TODO needs newer libngu with sha256t
+        assert msg, "need msg"
+        msg_hash = ngu.hash.sha256s(bip322_tag_hash+bip322_tag_hash+msg)
+        assert msg_hash == self.psbt.por322_msg_hash, "hash verification failed"
+        ch = await ux_show_story(
+            msg+"\n\nPress %s to approve message, otherwise %s to exit." % (OK, X),
+            title="MSG:"
+        )
+        return True if ch == "y" else False
+
+
     def render_output(self, o):
         # Pretty-print a transactions output. 
         # - expects CTxOut object
@@ -430,6 +480,16 @@ class ApproveTransaction(UserAuthorizedAction):
                 msg.write('(%d warnings below)\n\n' % wl)
 
             if self.psbt.por322:
+
+                try:
+                    if not await self.por322_msg_verify():
+                        self.refused = True
+                        await ux_dramatic_pause("Refused.", 1)
+                        self.done()
+                        return
+                except Exception as exc:
+                    return await self.failure("Msg verification failed.", exc)
+
                 msg.write("Proof of Reserves\n\n")
                 msg.write("Amount %s %s\n\n" % self.chain.render_value(self.psbt.total_value_in))
                 msg.write("Message Hash:\n%s\n\n" % b2a_hex(self.psbt.por322_msg_hash).decode())
