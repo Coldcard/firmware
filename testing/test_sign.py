@@ -20,7 +20,7 @@ from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP, simulator_fi
 from txn import *
 from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint
 from ckcc_protocol.constants import STXN_VISUALIZE, STXN_SIGNED
-from charcodes import KEY_QR, KEY_RIGHT
+from charcodes import KEY_QR, KEY_RIGHT, KEY_LEFT
 
 
 SEQUENCE_LOCKTIME_TYPE_FLAG = (1 << 22)
@@ -3560,5 +3560,69 @@ def test_unknown_input_script(stype, fake_txn , start_sign, cap_story, use_testn
     title, story = cap_story()
     assert title == "OK TO SEND?"
     txin_explorer(len(ins), ins)
+
+
+def test_tx_explorer_goto_idx(fake_txn, start_sign, cap_story, use_testnet, need_keypress,
+                              pick_menu_item, cap_screen, enter_number, press_cancel, is_q1):
+    use_testnet()
+    num_ins = 27
+    num_outs = 32
+
+    psbt = fake_txn(num_ins, num_outs, segwit_in=True, change_outputs=[0])
+    start_sign(psbt)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    need_keypress("2")
+    pick_menu_item("Inputs")
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "(2)" in story
+
+    need_keypress("2")
+    time.sleep(.1)
+    scr = cap_screen()
+    assert f"0-{num_ins - 1}" in scr
+    enter_number(15)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Input 15"
+
+    need_keypress("2")
+    enter_number(1)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Input 1"
+
+    need_keypress("2")
+    enter_number(59)  # over max
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == f"Input {num_ins - 1}"
+    press_cancel()
+
+    pick_menu_item("Outputs")
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "(2)" in story
+    need_keypress("2")
+    enter_number(4)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == f"4-{4 + 10 - 1}"
+
+    # try to move left
+    need_keypress(KEY_LEFT if is_q1 else "7")
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == f"0-9"
+
+    need_keypress("2")
+    enter_number(59)
+    time.sleep(.1)
+    title, story = cap_story()
+    num = num_outs - 1
+    assert title == f"{num}-{num}"
+
 
 # EOF

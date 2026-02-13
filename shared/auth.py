@@ -14,7 +14,7 @@ from sffile import SFFile
 from menu import MenuSystem, MenuItem
 from serializations import ser_uint256, SIGHASH_ALL
 from ux import ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys, ux_confirm
-from ux import show_qr_code, OK, X, abort_and_push, AbortInteraction, the_ux
+from ux import show_qr_code, OK, X, abort_and_push, AbortInteraction, the_ux, ux_enter_number
 from usb import CCBusyError
 from utils import (HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A,
                    show_single_address, keypath_to_str, seconds2human_readable)
@@ -1546,6 +1546,8 @@ class TXExplorer:
         if offset:
             rv += ', LEFT to go back'
 
+        rv += ", (2) to go to index"
+
         if not version.has_qwerty:
             # Q has hint key
             rv += ", (4) to show QR code"
@@ -1563,7 +1565,7 @@ class TXExplorer:
         msg, addrs, change, end = self.make_ux_msg(start, self.n)
 
         while True:
-            ch = await ux_show_story(msg, title=self.title, escape='479'+KEY_RIGHT+KEY_LEFT+KEY_QR,
+            ch = await ux_show_story(msg, title=self.title, escape='2479'+KEY_RIGHT+KEY_LEFT+KEY_QR,
                                      hint_icons=KEY_QR)
             if ch == 'x':
                 del msg
@@ -1577,17 +1579,20 @@ class TXExplorer:
                                     qr_msgs=self.qr_msgs, no_index=bool(self.qr_msgs))
                 continue
             elif ch in (KEY_LEFT+"7"):
-                if (start - self.n) < 0:
-                    continue
-                else:
-                    # go backwards in explorer
-                    start -= self.n
+                if not start: continue # 0
+                start = max(start - self.n, 0)
+
             elif ch in (KEY_RIGHT+"9"):
                 if (start + self.n) >= self.max_items:
                     continue
                 else:
                     # go forwards
                     start += self.n
+            elif ch == "2":
+                max_v = self.max_items - 1
+                res = await ux_enter_number("Start Idx (0-%d):" % max_v, max_value=max_v)
+                if res is None: continue
+                start = res
             else:
                 # nothing changed - do not recalc msg
                 continue
