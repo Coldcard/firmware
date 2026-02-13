@@ -1590,7 +1590,8 @@ class TXExplorer:
                     start += self.n
             elif ch == "2":
                 max_v = self.max_items - 1
-                res = await ux_enter_number("Start Idx (0-%d):" % max_v, max_value=max_v)
+                res = await ux_enter_number("Start Idx (0-%d):" % max_v, max_value=max_v,
+                                            can_cancel=True)
                 if res is None: continue
                 start = res
             else:
