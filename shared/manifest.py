@@ -63,6 +63,7 @@ freeze_as_mpy('', [
 	'version.py',
 	'wallet.py',
 	'web2fa.py',
+	'wif.py',
 	'xor_seed.py'
 ], opt=0)
 

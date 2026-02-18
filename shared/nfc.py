@@ -740,6 +740,11 @@ class NFCHandler:
         f = lambda x: x.decode()
         return await self._nfc_reader(f, 'Unable to find BIP-322 message.')
 
+    async def read_wif(self):
+        # only compressed WIFs allowed
+        f = lambda x: x.decode() if len(x) >= 51 else None
+        return await self._nfc_reader(f, 'Unable to find WIF key(s).')
+
     async def _nfc_reader(self, func, fail_msg):
         data = await self.start_nfc_rx()
         if not data: return

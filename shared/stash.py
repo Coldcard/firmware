@@ -12,7 +12,7 @@
 #
 import ngu, uctypes, gc, bip39, utime
 from uhashlib import sha256
-from utils import swab32, call_later_ms, B2A
+from utils import swab32, call_later_ms, B2A, node_from_privkey
 
 
 SEED_LEN_OPTS = [12, 18, 24]
@@ -104,7 +104,7 @@ class SecretStash:
             ch, pk = secret[1:33], secret[33:65]
             assert not _bip39pw
 
-            hd.from_chaincode_privkey(ch, pk)
+            hd = node_from_privkey(pk, ch)
             return 'xprv', ch+pk, hd
 
         elif marker & 0x80:
@@ -403,8 +403,7 @@ class SensitiveValues:
         self.register(cc)
         self.register(pk)
 
-        rv = ngu.hdnode.HDNode()
-        rv.from_chaincode_privkey(cc, pk)
+        rv = node_from_privkey(pk, cc)
         self.register(rv)
 
         return rv, p

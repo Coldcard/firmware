@@ -16,6 +16,7 @@ from charcodes import *
 from core_fixtures import _need_keypress, _sim_exec, _cap_story, _cap_menu, _cap_screen, _sim_eval
 from core_fixtures import _press_select, _pick_menu_item, _enter_complex, _dev_hw_label
 from txn import render_address
+from bbqr import split_qrs
 
 
 # lock down randomness
@@ -2960,6 +2961,113 @@ def set_deltamode(sim_exec):
 
     doit(False)
 
+@pytest.fixture
+def import_wif_to_store(goto_home, pick_menu_item, cap_story, press_select, cap_menu,
+                        microsd_path, virtdisk_path, is_q1, scan_a_qr, need_keypress,
+                        garbage_collector, press_nfc, nfc_write_text, enter_complex):
+    def doit(wif_lst, way="sd", sep="\n", early_exit=False):
+        home = True
+        try:
+            m = cap_menu()
+            if m[0] == "Import WIF":
+                home = False
+        except: pass
+
+        if home:
+            goto_home()
+            pick_menu_item("Advanced/Tools")
+            pick_menu_item("WIF Store")
+            time.sleep(.1)
+            title, story = cap_story()
+            if title == "WIF Store":
+                press_select()
+
+        menu = cap_menu()
+        assert menu[0] == "Import WIF"
+        num_items = sum(1 for i in menu if "⋯" in i)
+        pick_menu_item("Import WIF")
+        time.sleep(.1)
+        title, story = cap_story()
+
+        conts = sep.join(wif_lst)
+
+        if way == "nfc":
+            if f"press {KEY_NFC if is_q1 else '(3)'} to import via NFC" not in story:
+                pytest.xfail("NFC disabled")
+            else:
+                press_nfc()
+                time.sleep(0.2)
+                nfc_write_text(conts)
+                time.sleep(0.3)
+        elif way == "qr":
+            if not is_q1:
+                raise pytest.xfail("Mk4 no QR")
+
+            assert f"{KEY_QR} to scan QR code" in story
+            need_keypress(KEY_QR)
+
+            if sep == "\n" or len(wif_lst) > 3:
+                # use BBQr
+                actual_vers, parts = split_qrs(conts, 'U', max_version=10)
+                random.shuffle(parts)
+
+                for p in parts:
+                    scan_a_qr(p)
+                    time.sleep(2.0 / len(parts))
+            else:
+                scan_a_qr(conts)
+                time.sleep(1)
+        elif way == "input":
+            assert "(0) to input WIF manually" in story
+            need_keypress("0")
+            enter_complex(conts, apply=False, b39pass=False)
+        else:
+            if way == "sd":
+                assert "Press (1) to import WIF private key from SD Card" in story
+                to_press = "1"
+                path_f = microsd_path
+            else:
+                if "press (2) to import from Virtual Disk" not in story:
+                    raise pytest.xfail("Vdisk disabled")
+                else:
+                    to_press = "2"
+                    path_f = virtdisk_path
+
+            fname = "wif.txt"
+            fpath = path_f(fname)
+            with open(fpath, "w") as f:
+                f.write(conts)
+
+            need_keypress(to_press)
+
+            try:
+                pick_menu_item(fname)
+            except: pass
+
+        if early_exit:
+            return
+
+        time.sleep(.2)
+        new_menu = cap_menu()
+        # assert new_menu[0] == "Import WIF"
+        new_num_items = sum(1 for i in new_menu if "⋯" in i)
+        assert new_num_items == (num_items + len(wif_lst))
+
+        if "Clear All" in new_menu[-1]:
+            new_menu = new_menu[:-1]
+
+        if "Export All" in new_menu[-1]:
+            new_menu = new_menu[:-1]
+
+        len_added = len(wif_lst)
+        for i, mi in enumerate(new_menu[-len_added:]):
+            left, right = mi.split("⋯")
+            left = left.split(" ")[-1]  # ignore numbering
+
+            assert wif_lst[i].startswith(left)
+            assert wif_lst[i].endswith(right)
+
+    return doit
 
 # useful fixtures
 from test_backup import backup_system

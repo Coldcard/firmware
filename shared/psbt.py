@@ -6,7 +6,7 @@ import stash, gc, history, sys, ngu, ckcc, version, chains
 from ucollections import OrderedDict
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, B2A, keypath_to_str, validate_derivation_path_length, problem_file_line
+from utils import xfp2str, B2A, keypath_to_str, validate_derivation_path_length, problem_file_line, node_from_privkey
 from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str
 from uhashlib import sha256
 from uio import BytesIO
@@ -23,6 +23,7 @@ from serializations import ALL_SIGHASH_FLAGS, SIGHASH_DEFAULT
 from opcodes import OP_CHECKMULTISIG, OP_RETURN
 from glob import settings
 from precomp_tag_hash import TAP_TWEAK_H, TAP_SIGHASH_H
+from wif import init_wif_store
 
 from public_constants import (
     PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_XPUB, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
@@ -301,20 +302,20 @@ class psbtProxy:
         # coords are expected to be value from subpaths or taproot subpaths
         return list(unpack_from('<%dI' % (coords[1] // 4), self.get(coords)))
 
-    def handle_zero_xfp(self, xfp_path, my_xfp, warnings=None):
+    def handle_zero_xfp(self, xfp_path, my_xfp, parent=None):
         # Tricky & Useful: if xfp of zero is observed in file, assume that's a
         # placeholder for my XFP value. Replace on the fly. Great when master
         # XFP is unknown because PSBT built from derived XPUB only. Also privacy.
         if xfp_path[0] == 0:
             xfp_path[0] = my_xfp
 
-            if warnings is not None:
-                if not any(True for k, _ in warnings if 'XFP' in k):
-                    warnings.append(('Zero XFP',
+            if parent is not None:
+                if not any(True for k, _ in parent.warnings if 'XFP' in k):
+                    parent.warnings.append(('Zero XFP',
                                      'Assuming XFP of zero should be replaced by correct XFP'))
         return xfp_path
 
-    def parse_taproot_subpaths(self, my_xfp, warnings, cosign_xfp=None):
+    def parse_taproot_subpaths(self, my_xfp, parent, cosign_xfp=None):
         my_sp_idxs = []
         parsed_subpaths = OrderedDict()
         for i in range(len(self.taproot_subpaths)):
@@ -341,9 +342,9 @@ class psbtProxy:
             validate_derivation_path_length(to_read, allow_master=allow_master)
             v = self.fd.read(to_read)
             here = list(unpack_from('<%dI' % (to_read // 4), v))
-            here = self.handle_zero_xfp(here, my_xfp, warnings)
+            here = self.handle_zero_xfp(here, my_xfp, parent)
             parsed_subpaths[xonly_pk] = [leaf_hash_len] + here
-            if (here[0] == my_xfp) or (cosign_xfp and (here[0] == cosign_xfp)):
+            if (here[0] == my_xfp) or (cosign_xfp and (here[0] == cosign_xfp)) or (xonly_pk in parent.wif_store):
                 my_sp_idxs.append(i)
 
         if my_sp_idxs:
@@ -351,7 +352,7 @@ class psbtProxy:
 
         return parsed_subpaths
 
-    def parse_non_taproot_subpaths(self, my_xfp, warnings, cosign_xfp=None):
+    def parse_non_taproot_subpaths(self, my_xfp, parent, cosign_xfp=None):
         parsed_subpaths = OrderedDict()
         my_sp_idxs = []
         for i, (key, val) in enumerate(self.subpaths):
@@ -364,10 +365,10 @@ class psbtProxy:
             validate_derivation_path_length(val[1])
             # promote to a list of ints
             here = self.parse_xfp_path(val)
-            here = self.handle_zero_xfp(here, my_xfp, warnings)
+            here = self.handle_zero_xfp(here, my_xfp, parent)
 
             parsed_subpaths[pk] = here
-            if (here[0] == my_xfp) or (cosign_xfp and (here[0] == cosign_xfp)):
+            if (here[0] == my_xfp) or (cosign_xfp and (here[0] == cosign_xfp)) or (pk in parent.wif_store):
                 my_sp_idxs.append(i)
 
             # else:
@@ -379,13 +380,13 @@ class psbtProxy:
 
         return parsed_subpaths
 
-    def parse_subpaths(self, my_xfp, warnings, cosign_xfp=None):
+    def parse_subpaths(self, my_xfp, parent, cosign_xfp=None):
         # - creates dictionary: pubkey => [xfp, *path] (self.subpaths)
         # - creates dictionary: pubkey => [leaf_hash_list, xfp, *path] (self.taproot_subpaths)
         if self.taproot_subpaths:
-            return self.parse_taproot_subpaths(my_xfp, warnings, cosign_xfp)
+            return self.parse_taproot_subpaths(my_xfp, parent, cosign_xfp)
         elif self.subpaths:
-            return self.parse_non_taproot_subpaths(my_xfp, warnings, cosign_xfp)
+            return self.parse_non_taproot_subpaths(my_xfp, parent, cosign_xfp)
         #return None in/output does not have any key-path info
 
 # Track details of each output of PSBT
@@ -892,7 +893,7 @@ class psbtInputProxy(psbtProxy):
                             # remove from sp_idxs so we do not attempt to sign again
                             self.sp_idxs.remove(i)
 
-                    elif path[0] == my_xfp:
+                    elif (path[0] == my_xfp) or (pubkey in psbt.wif_store):
                         # slight chance of dup xfps, so handle
                         assert i in self.sp_idxs
 
@@ -927,6 +928,9 @@ class psbtInputProxy(psbtProxy):
                     if i not in self.sp_idxs:
                         # # ignore keys that does not have correct xfp specified in PSBT
                         continue
+
+                    if xonly_pubkey in psbt.wif_store:
+                        assert i in self.sp_idxs
 
                     lhs, path = lhs_path[0], lhs_path[1:]
                     assert path[0] == my_xfp
@@ -1167,6 +1171,7 @@ class psbtObject(psbtProxy):
         self.xpubs = []         # tuples(xfp_path, xpub)
 
         self.my_xfp = settings.get('xfp', 0)
+        self.wif_store = init_wif_store()
 
         # details that we discover as we go
         self.inputs = None
@@ -1395,8 +1400,7 @@ class psbtObject(psbtProxy):
         # Peek at the inputs to see if we can guess M/N value. Just takes
         # first one it finds.
         #
-        for idx, inp in self.input_iter():
-            i = self.inputs[idx]
+        for i in self.inputs:
             ks = i.witness_script or i.redeem_script
             if not ks: continue
 
@@ -1746,7 +1750,7 @@ class psbtObject(psbtProxy):
             dis.progress_sofar(idx, self.num_outputs)
             output = self.outputs[idx]
 
-            parsed_subpaths = output.parse_subpaths(self.my_xfp, self.warnings, cosign_xfp)
+            parsed_subpaths = output.parse_subpaths(self.my_xfp, self, cosign_xfp)
 
             # perform output validation
             af = output.determine_my_change(idx, txo, parsed_subpaths, self)
@@ -1903,6 +1907,7 @@ class psbtObject(psbtProxy):
         idx_max = 0
         my_cnt = 0
         prevouts = set()
+        from_wif_store = []
 
         dis.fullscreen("Validating...", line2="Inputs")
 
@@ -1954,7 +1959,7 @@ class psbtObject(psbtProxy):
             if txi.nSequence < smallest_nsequence:
                 smallest_nsequence = txi.nSequence
 
-            parsed_subpaths = inp.parse_subpaths(self.my_xfp, self.warnings, cosign_xfp)
+            parsed_subpaths = inp.parse_subpaths(self.my_xfp, self, cosign_xfp)
 
             if not inp.has_utxo():
                 if inp.sp_idxs and not inp.fully_signed:
@@ -1999,7 +2004,8 @@ class psbtObject(psbtProxy):
                     continue
 
                 # parsed subpaths are OrderedDict - matches sp_idxs
-                for ii, xpath in enumerate(parsed_subpaths.values()):
+                in_wif_store = False
+                for ii, (key, xpath) in enumerate(parsed_subpaths.items()):
                     if ii not in inp.sp_idxs: continue
                     p = xpath[2:] if inp.taproot_subpaths else xpath[1:]
                     length_p.add(len(p))  # ignore xfp
@@ -2009,6 +2015,12 @@ class psbtObject(psbtProxy):
                     index = p[-1] & 0x7fffffff
                     if index > idx_max:
                         idx_max = index
+
+                    if key in self.wif_store:
+                        in_wif_store = True
+
+                if in_wif_store:
+                    from_wif_store.append(i)
 
                 # iff to UTXO is segwit, then check it's value, and also
                 # capture that value, since it's supposed to be immutable
@@ -2112,6 +2124,10 @@ class psbtObject(psbtProxy):
             self.warnings.append(('Partly Signed Already',
                 'Some input(s) provided were already completely signed by other parties: ' +
                         seq_to_str(presigned_inputs)))
+
+        if from_wif_store:
+            self.warnings.append(("WIF Store", "Some input(s) use key from the WIF store: " +
+                                  seq_to_str(from_wif_store)))
 
         if isinstance(self.lock_time, int) and self.lock_time > 0:
             if smallest_nsequence == 0xffffffff:
@@ -2418,18 +2434,20 @@ class psbtObject(psbtProxy):
                             pubk = inp.subpaths[i][0]
                             sp = inp.subpaths[i][1]
 
-                        # xfp can be zero - substitute with self.my_xfp (not my_xfp as it can be CCC)
-                        sp = self.handle_zero_xfp(self.parse_xfp_path(sp), self.my_xfp, None)
-                        if sp[0] != my_xfp:
-                            # this can happen with CCC, where we have sp_idxs set for both
-                            # CCC key and main xfp
-                            continue
-
                         which_key = self.get(pubk)
                         is_xonly = len(which_key) == 32
+                        if which_key in self.wif_store:
+                            node = node_from_privkey(self.wif_store[which_key])
+                        else:
+                            # xfp can be zero - substitute with self.my_xfp (not my_xfp as it can be CCC)
+                            sp = self.handle_zero_xfp(self.parse_xfp_path(sp), self.my_xfp, None)
+                            if sp[0] != my_xfp:
+                                # this can happen with CCC, where we have sp_idxs set for both
+                                # CCC key and main xfp
+                                continue
 
-                        # expensive test, but works... and important
-                        node = self.check_pubkey_at_path(sv, sp, which_key, is_xonly=is_xonly)
+                            # expensive test, but works... and important
+                            node = self.check_pubkey_at_path(sv, sp, which_key, is_xonly=is_xonly)
 
                         if not node:
                             continue
@@ -2476,22 +2494,28 @@ class psbtObject(psbtProxy):
                         pubk = inp.subpaths[sp_idx][0]
                         sp = inp.subpaths[sp_idx][1]
 
-                    int_pth = self.handle_zero_xfp(self.parse_xfp_path(sp), self.my_xfp, None)
-                    skp = keypath_to_str(int_pth)
-                    # get node required
-                    node = sv.derive_path(skp, register=False)
-                    # expensive test, but works... and important
-                    pu = node.pubkey()
-                    if schnorrsig:
-                        pu = pu[1:]
+                    pk = self.get(pubk)
+                    int_pth = None
+                    if pk in self.wif_store:
+                        node = node_from_privkey(self.wif_store[pk])
+                    else:
+                        int_pth = self.handle_zero_xfp(self.parse_xfp_path(sp), self.my_xfp, None)
+                        skp = keypath_to_str(int_pth)
+                        # get node required
+                        node = sv.derive_path(skp, register=False)
+                        # expensive test, but works... and important
+                        pu = node.pubkey()
+                        if schnorrsig:
+                            pu = pu[1:]
 
-                    assert pu == self.get(pubk), \
+                    assert pu == pk, \
                         "Path (%s) led to wrong pubkey for input#%d"%(skp, in_idx)
 
                     to_sign.append((node, pubk))
 
-                    # track wallet usage
-                    OWNERSHIP.note_subpath_used(int_pth)
+                    if int_pth:
+                        # track wallet usage
+                        OWNERSHIP.note_subpath_used(int_pth)
 
                 # normal operation with valid sighash
                 if not inp.is_segwit:

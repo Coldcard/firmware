@@ -16,7 +16,7 @@ from serializations import ser_uint256, SIGHASH_ALL
 from ux import ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys, ux_confirm, the_ux
 from ux import show_qr_code, OK, X, abort_and_push, AbortInteraction, ux_input_text, ux_enter_number
 from usb import CCBusyError
-from utils import (HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A,
+from utils import (HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A, node_from_privkey,
                    show_single_address, keypath_to_str, seconds2human_readable)
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from files import CardSlot, CardMissingError
@@ -131,7 +131,7 @@ Press %s to continue, otherwise %s to cancel.''' % (OK, X)
 
 class ApproveMessageSign(UserAuthorizedAction):
     def __init__(self, text, subpath, addr_fmt, approved_cb=None,
-                 msg_sign_request=None, only_printable=True):
+                 msg_sign_request=None, only_printable=True, privkey=None):
         super().__init__()
         is_json = False
 
@@ -146,6 +146,7 @@ class ApproveMessageSign(UserAuthorizedAction):
         self.subpath = cleanup_deriv_path(subpath)
         self.addr_fmt = chains.parse_addr_fmt_str(addr_fmt)
         self.approved_cb = approved_cb
+        self.privkey = privkey
 
         # temporary - no p2tr support
         if self.addr_fmt == AF_P2TR:
@@ -154,9 +155,13 @@ class ApproveMessageSign(UserAuthorizedAction):
         from glob import dis
         dis.fullscreen('Wait...')
 
-        with stash.SensitiveValues() as sv:
-            node = sv.derive_path(self.subpath)
-            self.address = sv.chain.address(node, self.addr_fmt)
+        if self.privkey:
+            node = node_from_privkey(self.privkey)
+            self.address = chains.current_chain().address(node, self.addr_fmt)
+        else:
+            with stash.SensitiveValues() as sv:
+                node = sv.derive_path(self.subpath)
+                self.address = sv.chain.address(node, self.addr_fmt)
 
         dis.progress_bar_show(1)
 
@@ -177,7 +182,8 @@ class ApproveMessageSign(UserAuthorizedAction):
         else:
             # perform signing (progress bar shown)
             digest = chains.current_chain().hash_message(self.text.encode())
-            self.result, _ = sign_message_digest(digest, self.subpath, "Signing...", self.addr_fmt)
+            self.result, _ = sign_message_digest(digest, self.subpath, "Signing...",
+                                                 self.addr_fmt, pk=self.privkey)
 
             if self.approved_cb:
                 # for micro sd case
@@ -201,7 +207,7 @@ def sign_msg(text, subpath, addr_fmt):
 
 async def approve_msg_sign(text, subpath, addr_fmt, approved_cb=None,
                            msg_sign_request=None, kill_menu=False,
-                           only_printable=True):
+                           only_printable=True, privkey=None):
 
     # Ask user if they want to sign some short text message.
     UserAuthorizedAction.cleanup()
@@ -212,6 +218,7 @@ async def approve_msg_sign(text, subpath, addr_fmt, approved_cb=None,
             approved_cb=approved_cb,
             msg_sign_request=msg_sign_request,
             only_printable=only_printable,
+            privkey=privkey
         )
 
         if kill_menu:
@@ -232,8 +239,6 @@ async def sign_txt_file(filename):
 
     async def done(signature, address, text):
         # complete. write out result
-        from glob import dis
-
         orig_path, basename = filename.rsplit('/', 1)
         orig_path += '/'
         base = basename.rsplit('.', 1)[0]
@@ -436,7 +441,7 @@ class ApproveTransaction(UserAuthorizedAction):
             #print('FatalPSBTIssue: ' + exc.args[0])
             return await self.failure(exc.args[0])
         except BaseException as exc:
-            sys.print_exception(exc)
+            # sys.print_exception(exc)
             del self.psbt
             gc.collect()
 
@@ -860,9 +865,8 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
         ch = None
         if first_time:
             # first time, assume they want to send out same way it came in -- don't prompt
-            if input_method == "qr":
-                if allow_qr:
-                    ch = KEY_QR
+            if (input_method == "qr") and allow_qr:
+                ch = KEY_QR
             elif input_method == "nfc":
                 ch = KEY_NFC
             elif input_method == "kt":
@@ -1773,6 +1777,7 @@ class TXInpExplorer(TXExplorer):
 
         psbt_item = ""
         if inp.sp_idxs:
+            ws = self.user_auth_action.psbt.wif_store
             psbt_item += "Our key%s:\n\n" % ("s" if len(inp.sp_idxs) > 1 else "")
             for i in inp.sp_idxs:
                 # get node required
@@ -1785,8 +1790,9 @@ class TXInpExplorer(TXExplorer):
 
                 pth = inp.parse_xfp_path(sp)
                 k = inp.get(pubk)
-                psbt_item += "%s:\n%s\n\n" % (keypath_to_str(pth, prefix="%s/" % xfp2str(pth[0])),
-                                         b2a_hex(k).decode())
+                ws_note = "\n(WIF Store)" if (ws and k in ws) else ""
+                psbt_item += "%s:\n%s%s\n\n" % (keypath_to_str(pth, prefix="%s/" % xfp2str(pth[0])),
+                                         b2a_hex(k).decode(), ws_note)
 
         M = None
         if inp.is_miniscript:
