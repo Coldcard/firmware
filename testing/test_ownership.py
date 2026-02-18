@@ -2,7 +2,7 @@
 #
 # Address ownership tests.
 #
-import pytest, time, io, csv, json
+import pytest, time, io, csv, os, json
 from txn import fake_address
 from base58 import encode_base58_checksum
 from helpers import hash160, taptweak, addr_from_display_format
@@ -720,5 +720,59 @@ def test_named_wallet_search(wname, valid, method, clear_miniscript, import_ms_w
         assert 'Searched 1528' in story  # max
         assert "1 wallet(s)" in story
         assert 'without finding a match' in story
+
+
+@pytest.mark.parametrize("addr_fmt", ["p2wpkh", "p2sh-p2wpkh", "p2pkh"])
+@pytest.mark.parametrize("idx", [1, 3])
+def test_wif_store(addr_fmt, idx, is_q1, goto_home, pick_menu_item, scan_a_qr, cap_story, need_keypress,
+                   src_root_dir, sim_root_dir, nfc_write, settings_remove, import_wif_to_store,
+                   load_shared_mod):
+
+    settings_remove("wifs")
+
+    n = BIP32Node.from_master_secret(os.urandom(32))
+    privkey = n.node.private_key
+    addr = n.address(addr_fmt=addr_fmt)
+    wif = encode_base58_checksum(bytes([239]) + bytes(privkey) + b'\x01')
+    wif1 = encode_base58_checksum(bytes([239]) + os.urandom(32) + b'\x01')
+    wif2 = encode_base58_checksum(bytes([239]) + os.urandom(32) + b'\x01')
+
+    if idx == 1:
+        wif_list = [wif, wif1, wif2]
+    else:
+        wif_list = [wif1, wif2, wif]
+
+    import_wif_to_store(wif_list)
+
+    goto_home()
+
+    if is_q1:
+        pick_menu_item('Scan Any QR Code')
+        scan_a_qr(addr)
+        time.sleep(1)
+
+        title, story = cap_story()
+
+        assert addr == addr_from_display_format(story.split("\n\n")[0])
+        assert '(1) to verify ownership' in story
+        need_keypress('1')
+
+    else:
+        cc_ndef = load_shared_mod('cc_ndef', f'{src_root_dir}/shared/ndef.py')
+        n = cc_ndef.ndefMaker()
+        n.add_text(addr)
+        ccfile = n.bytes()
+
+        pick_menu_item('Advanced/Tools')
+        pick_menu_item('NFC Tools')
+        pick_menu_item('Verify Address')
+        with open(f'{sim_root_dir}/debug/nfc-addr.ndef', 'wb') as f:
+            f.write(ccfile)
+        nfc_write(ccfile)
+
+    time.sleep(1)
+    title, story = cap_story()
+    assert addr == addr_from_display_format(story.split("\n\n")[0])
+    assert f"Found in WIF store at index {idx}" in story
 
 # EOF

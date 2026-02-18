@@ -3630,7 +3630,6 @@ def test_txn_nVersion_zero(segwit, fake_txn, start_sign, cap_story, goto_home):
     assert title == "Failure"
     assert "txn version" in story
 
-# EOF
 
 @pytest.mark.bitcoind
 def test_taproot_keyspend(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign, microsd_path,
@@ -3999,5 +3998,153 @@ def test_txid_qr(fake_txn, start_sign, cap_story, press_cancel, press_select):
     title, story = cap_story()
     assert "(6) for QR Code of TXID" in story
     press_cancel()
+
+@pytest.mark.parametrize("num_ins", [1, 5])
+@pytest.mark.parametrize("addr_fmt", ["p2pkh", "p2wpkh", "p2sh-p2wpkh"])
+def test_wif_store_signing(num_ins, addr_fmt, fake_txn, goto_home, pick_menu_item, need_keypress,
+                           start_sign, end_sign, cap_menu, cap_story, press_cancel, settings_remove,
+                           press_select, import_wif_to_store):
+
+    settings_remove("wifs")
+
+    wrap = False
+    if addr_fmt == "p2pkh":
+        sw = False
+    elif addr_fmt == "p2wpkh":
+        sw = True
+    elif addr_fmt == "p2sh-p2wpkh":
+        wrap = True
+        sw = True
+    else:
+        raise ValueError
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    psbt = fake_txn(num_ins, 1, segwit_in=sw, wrapped=wrap, master_xpub=node.hwif())
+
+    wifs = []
+    privkeys = []
+    for i in range(num_ins):
+        n = node.subkey_for_path("0/%d" % i)
+        sk = n.node.private_key
+        privkeys.append(sk)
+        wifs.append(n.node.private_key.wif(testnet=True))
+
+    import_wif_to_store(wifs)
+
+    menu = cap_menu()
+    assert menu[0] == "Import WIF"
+
+    start_sign(psbt, finalize=True)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "warning" in story
+    if num_ins == 1:
+        assert "WIF store: 0" in story
+    else:
+        assert f"WIF store: {', '.join([str(i) for i in range(num_ins)])}" in story
+    end_sign(finalize=True)
+
+
+@pytest.mark.parametrize("der_paths", [True, False])
+@pytest.mark.parametrize("complete", [True, False])
+def test_wif_store_multi(der_paths, complete, fake_txn, start_sign, end_sign, cap_story, settings_set):
+    wifs = []
+
+    hack = None
+    if der_paths:
+        def hack(psbt):
+            new_paths = {}
+            for k, v in psbt.inputs[0].bip32_paths.items():
+                new_paths[k] = b"\x01" * 8  # garbage (do not use zero xfp here)
+
+            psbt.inputs[0].bip32_paths = new_paths
+
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    psbt = fake_txn(1, 1, segwit_in=True, master_xpub=node.hwif(), psbt_v2=True, outvals=[1E8*3],
+                    psbt_hacker=hack)
+    po = BasicPSBT().parse(psbt)
+    n = node.subkey_for_path("0/0")
+    sk = bytes(n.node.private_key).hex()
+    pk = n.node.private_key.K.sec().hex()
+    wifs.append((pk, sk))
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    psbt = fake_txn(1, 1, segwit_in=False, master_xpub=node.hwif(), psbt_v2=True, psbt_hacker=hack)
+    tmp = BasicPSBT().parse(psbt)
+    po.inputs += tmp.inputs
+    po.input_count += 1
+    n = node.subkey_for_path("0/0")
+    sk = bytes(n.node.private_key).hex()
+    pk = n.node.private_key.K.sec().hex()
+    wifs.append((pk, sk))
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    psbt = fake_txn(1, 1, segwit_in=True, wrapped=True, master_xpub=node.hwif(), psbt_v2=True,
+                    psbt_hacker=hack)
+    tmp = BasicPSBT().parse(psbt)
+    po.inputs += tmp.inputs
+    po.input_count += 1
+    n = node.subkey_for_path("0/0")
+    sk = bytes(n.node.private_key).hex()
+    pk = n.node.private_key.K.sec().hex()
+    wifs.append((pk, sk))
+
+    # pretend we have those imported
+    if not complete:
+        wifs = wifs[:-1]
+
+    settings_set("wifs", wifs)
+
+    start_sign(po.as_bytes(), finalize=complete)
+    title, story = cap_story()
+    assert "warning" in story
+    if complete:
+        assert "WIF store: 0, 1, 2" in story
+    else:
+        assert "WIF store: 0, 1" in story
+        assert "Limited Signing" in story
+
+    end_sign(finalize=complete)
+
+
+def test_wif_store_with_master(fake_txn, start_sign, end_sign, cap_story, settings_set):
+    # signs both master key and keys from WIF store
+    wifs = []
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    psbt = fake_txn(1, 1, segwit_in=True, master_xpub=node.hwif(), psbt_v2=True, outvals=[1E8*3])
+    po = BasicPSBT().parse(psbt)
+    n = node.subkey_for_path("0/0")
+    sk = bytes(n.node.private_key).hex()
+    pk = n.node.private_key.K.sec().hex()
+    wifs.append((pk, sk))
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    psbt = fake_txn(1, 1, segwit_in=False, master_xpub=node.hwif(), psbt_v2=True)
+    tmp = BasicPSBT().parse(psbt)
+    po.inputs += tmp.inputs
+    po.input_count += 1
+    n = node.subkey_for_path("0/0")
+    sk = bytes(n.node.private_key).hex()
+    pk = n.node.private_key.K.sec().hex()
+    wifs.append((pk, sk))
+
+    # add simulator input
+    psbt = fake_txn(1, 1, segwit_in=True, psbt_v2=True)
+    tmp = BasicPSBT().parse(psbt)
+    po.inputs += tmp.inputs
+    po.input_count += 1
+
+
+    settings_set("wifs", wifs)
+
+    # convert to v0 PSBT just for fun
+    start_sign(po.to_v0(), finalize=True)
+    title, story = cap_story()
+    assert "warning" in story
+    assert "WIF store: 0, 1" in story
+
+    end_sign(finalize=True)
 
 # EOF

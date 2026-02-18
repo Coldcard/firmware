@@ -742,4 +742,37 @@ def xor(*args):
 
     return rv
 
+def extract_cosigner(data, af_str):
+    # decodes any text, looking for key expression [xfp/p/a/t/h]xpub123
+    # BIP-380 https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki#key-expressions
+    # only first key expression will be parsed from the data
+    # key origin info is required
+    # failure to find "proper" key expression results in None being returned
+    pub = "%spub" % chains.current_chain().slip132[AF_CLASSIC].hint
+    if pub not in data:
+        return
+
+    o_start = data.find("[")
+    o_end = data.find("]")
+    if 0 <= o_start < o_end:
+        key_orig_info = data[o_start+1:o_end]
+        ss = key_orig_info.split("/")
+        xfp = ss[0]
+        if (len(xfp) == 8) and (data[o_end+1:o_end+1+len(pub)] == pub):
+            deriv = "m"
+            der_nums = "/".join(ss[1:])
+            if der_nums:
+                deriv += ("/" + der_nums)
+            ek = data[o_end+1:o_end+1+112]
+            key_deriv = "%s_deriv" %  af_str
+            # emulate coldcard export xpubs
+            return {"xfp": xfp, af_str: ek, key_deriv: deriv}
+
+
+def node_from_privkey(privkey, chain_code=bytes(32)):
+    return  ngu.hdnode.HDNode().from_chaincode_privkey(chain_code, privkey)
+
+def node_from_pubkey(pubkey, chain_code=bytes(32)):
+    return  ngu.hdnode.HDNode().from_chaincode_pubkey(chain_code, pubkey)
+
 # EOF

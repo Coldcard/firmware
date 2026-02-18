@@ -12,7 +12,7 @@ from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 from ux import (ux_show_story, OK, ux_enter_bip32_index, ux_input_text, the_ux,
                 import_export_prompt, ux_aborted)
-from utils import problem_file_line, to_ascii_printable, show_single_address
+from utils import problem_file_line, to_ascii_printable, show_single_address, node_from_privkey
 from files import CardSlot, CardMissingError, needs_microsd
 
 def rfc_signature_template(msg, addr, sig):
@@ -381,7 +381,7 @@ def sign_message_digest(digest, subpath, prompt, addr_fmt=AF_CLASSIC, pk=None):
     else:
         # if private key is provided, derivation subpath is ignored
         # and given private key is used for signing.
-        node = ngu.hdnode.HDNode().from_chaincode_privkey(bytes(32), pk)
+        node = node_from_privkey(pk)
         dis.progress_sofar(50, 100)
         addr = ch.address(node, addr_fmt)
 

@@ -14,6 +14,7 @@ from stash import SecretStash
 from drv_entro import bip85_derive
 from glob import settings
 
+from utils import node_from_privkey
 
 # see from mk4-bootloader/se2.h
 NUM_TRICKS      = const(14)
@@ -891,9 +892,8 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
 
             assert s.tc_flags == flags
             if flags & TC_XPRV_WALLET:
-                node = ngu.hdnode.HDNode()
                 ch, pk = s.xdata[0:32], s.xdata[32:64]
-                node.from_chaincode_privkey(ch, pk)
+                node = node_from_privkey(pk, ch)
 
                 title, msg, *_ = render_master_secrets('xprv', None, node)
             elif flags & TC_WORD_WALLET:

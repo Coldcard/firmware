@@ -20,6 +20,7 @@ from paper import make_paper_wallet
 from trick_pins import TrickPinMenu
 from tapsigner import import_tapsigner_backup_file
 from ccc import toggle_ccc_feature, sssp_spending_policy, sssp_feature_menu
+from wif import WIFStore
 
 # useful shortcut keys
 from charcodes import KEY_QR, KEY_NFC
@@ -424,6 +425,7 @@ AdvancedNormalMenu = [
     MenuItem("Key Teleport (start)", f=kt_start_rx, predicate=version.has_qr),
     MenuItem("Spending Policy", menu=SpendingPolicySubMenu,shortcut='s',predicate=has_real_secret),
     MenuItem('Paper Wallets', f=make_paper_wallet),
+    MenuItem('WIF Store', menu=WIFStore.make_menu),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu, shortcut=KEY_NFC),
     MenuItem("Danger Zone", menu=DangerZoneMenu, shortcut='z'),
 ]
@@ -550,6 +552,7 @@ HobbledAdvancedMenu = [
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu, predicate=sssp_related_keys),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=HobbledNFCToolsMenu, shortcut=KEY_NFC),
+    MenuItem('WIF Store', menu=WIFStore.make_menu, predicate=sssp_related_keys),
     MenuItem('Show %s Version' % ("Firmware" if version.has_qwerty else "FW"), f=show_version),
     MenuItem("Destroy Seed", f=clear_seed, predicate=has_real_secret),
 ]
