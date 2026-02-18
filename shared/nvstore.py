@@ -69,6 +69,7 @@ from utils import call_later_ms
 #   ktrx = (privkey) Key teleport Rx has been started, this will be our keypair
 #   sssp = (complex) If present, a (single signer) spending-policy is defined (maybe disabled)
 #   lfr = (string) If present, the reason why Spending Policy blocked last transaction
+#   wifs = (list) List of tuples (public/private key)
 
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)

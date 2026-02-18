@@ -788,4 +788,11 @@ def extract_cosigner(data, af_str):
             # emulate coldcard export xpubs
             return {"xfp": xfp, af_str: ek, key_deriv: deriv}
 
+
+def node_from_privkey(privkey, chain_code=bytes(32)):
+    return  ngu.hdnode.HDNode().from_chaincode_privkey(chain_code, privkey)
+
+def node_from_pubkey(pubkey, chain_code=bytes(32)):
+    return  ngu.hdnode.HDNode().from_chaincode_pubkey(chain_code, pubkey)
+
 # EOF

@@ -18,6 +18,7 @@
 #
 import pytest, time, os, pdb
 from bip32 import BIP32Node
+from base58 import encode_base58_checksum
 from constants import simulator_fixed_words, simulator_fixed_xprv
 from test_ephemeral import SEEDVAULT_TEST_DATA, WORDLISTS
 from test_ephemeral import confirm_tmp_seed, verify_ephemeral_secret_ui 
@@ -111,6 +112,7 @@ def test_menu_contents(set_hobble, pick_menu_item, cap_menu, en_okeys, en_notes,
 
     if en_okeys:
         adv_expect.add('Temporary Seed')
+        adv_expect.add('WIF Store')
 
     m = cap_menu()
     assert set(m) == adv_expect, "Adv menu wrong"
@@ -392,6 +394,38 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
 
     pick_menu_item("Restore Master")
     press_select()
+
+
+@pytest.mark.parametrize('en_okeys', [ True, False])
+def test_h_wif_store(en_okeys, set_hobble, settings_remove, import_wif_to_store, goto_home,
+                     cap_menu, pick_menu_item):
+
+    settings_remove("wifs")
+
+    wif_list = [
+        encode_base58_checksum(bytes([239]) + os.urandom(32) + b'\x01')
+        for _ in range(3)
+    ]
+
+    import_wif_to_store(wif_list)
+    goto_home()
+
+    set_hobble(True, {'okeys'} if en_okeys else {})
+    pick_menu_item("Advanced/Tools")
+
+    if en_okeys:
+        pick_menu_item("WIF Store")
+        time.sleep(.1)
+        menu = cap_menu()
+        # check it is read-only
+        assert "Import WIF" not in menu
+        assert "Clear All" not in menu
+        pick_menu_item(menu[0])
+        time.sleep(.1)
+        menu = cap_menu()
+        assert "Delete" not in menu
+    else:
+        assert "WIF Store" not in cap_menu()
 
 
 @pytest.mark.parametrize('en_okeys', [ True, False])

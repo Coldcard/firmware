@@ -59,17 +59,9 @@ def decode_secret(got):
 
     if len(got) in (51, 52):
         try:
-            raw = ngu.codecs.b58_decode(got)
-            if raw[0] in (0xef, 0x80):
-                testnet = True if raw[0] == 0xef else False
-                if len(raw) in (33, 34):  # uncompressed pubkey
-                    compressed = False
-                    if len(raw) == 34:  # compressed pubkey
-                        assert raw[33] == 0x01
-                        compressed = True
-                    sk = raw[1:33]
-                    kp = ngu.secp256k1.keypair(sk)
-                    return 'wif', (got, kp, compressed, testnet)
+            from wif import decode_wif
+            kp, testnet, compressed = decode_wif(got)
+            return 'wif', (got, kp, compressed, testnet)
         except: pass
     
     taste = got.strip().lower()
