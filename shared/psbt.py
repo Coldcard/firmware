@@ -6,7 +6,7 @@ import stash, gc, history, sys, ngu, ckcc, chains
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, B2A, keypath_to_str
-from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str
+from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str, node_from_privkey
 from chains import NLOCK_IS_TIME
 from uhashlib import sha256
 from uio import BytesIO
@@ -20,6 +20,7 @@ from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_AN
 from serializations import ALL_SIGHASH_FLAGS
 from opcodes import OP_CHECKMULTISIG, OP_RETURN
 from glob import settings
+from wif import init_wif_store
 
 from public_constants import (
     PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_XPUB, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
@@ -259,7 +260,7 @@ class psbtProxy:
         self.fd.seek(pos)
         return self.fd.read(ll)
 
-    def parse_subpaths(self, my_xfp, warnings):
+    def parse_subpaths(self, my_xfp, parent):
         # Reformat self.subpaths into a more useful form for us; return # of them
         # that are ours (and track that as self.num_our_keys)
         # - works in-place, on self.subpaths
@@ -295,14 +296,16 @@ class psbtProxy:
             # XFP is unknown because PSBT built from derived XPUB only. Also privacy.
             if here[0] == 0:
                 here[0] = my_xfp
-                if not any(True for k,_ in warnings if 'XFP' in k):
-                    warnings.append(('Zero XFP',
+                if not any(True for k,_ in parent.warnings if 'XFP' in k):
+                    parent.warnings.append(('Zero XFP',
                             'Assuming XFP of zero should be replaced by correct XFP'))
 
             # update in place
             self.subpaths[pk] = here
 
             if here[0] == my_xfp:
+                num_ours += 1
+            elif pk in parent.wif_store:
                 num_ours += 1
             else:
                 # Address that isn't based on my seed; might be another leg in a p2sh,
@@ -402,7 +405,7 @@ class psbtOutputProxy(psbtProxy):
         # - full key derivation and validation is done during signing, and critical.
         # - we raise fraud alarms, since these are not innocent errors
         #
-        num_ours = self.parse_subpaths(my_xfp, parent.warnings)
+        num_ours = self.parse_subpaths(my_xfp, parent)
 
         # - must match expected address for this output, coming from unsigned txn
         af, addr_or_pubkey, is_segwit = txo.get_address()
@@ -574,7 +577,7 @@ class psbtInputProxy(psbtProxy):
         'unknown', 'utxo', 'witness_utxo', 'sighash', 'redeem_script', 'witness_script',
         'fully_signed', 'is_segwit', 'is_multisig', 'is_p2sh', 'num_our_keys',
         'required_key', 'scriptSig', 'amount', 'scriptCode', 'previous_txid',
-        'prevout_idx', 'sequence', 'req_time_locktime', 'req_height_locktime', 'addr_fmt'
+        'prevout_idx', 'sequence', 'req_time_locktime', 'req_height_locktime', 'addr_fmt',
     )
 
     def __init__(self, fd, idx):
@@ -655,7 +658,7 @@ class psbtInputProxy(psbtProxy):
         # require path for each addr, check some are ours
 
         # rework the pubkey => subpath mapping
-        self.parse_subpaths(my_xfp, parent.warnings)
+        self.parse_subpaths(my_xfp, parent)
 
         if self.part_sigs:
             # How complete is the set of signatures so far?
@@ -760,7 +763,7 @@ class psbtInputProxy(psbtProxy):
         self.amount = utxo.nValue
         self.addr_fmt, addr_or_pubkey, addr_is_segwit = utxo.get_address()
 
-        if not self.subpaths or self.fully_signed:
+        if not self.subpaths or self.fully_signed or (not self.num_our_keys):
             # without xfp+path we will not be able to sign this input
             # - okay if fully signed
             # - okay if payjoin or other multi-signer (not multisig) txn
@@ -814,6 +817,10 @@ class psbtInputProxy(psbtProxy):
 
                     if path[0] in (my_xfp, cosign_xfp):
                         # slight chance of dup xfps, so handle
+                        which_key.add(pubkey)
+
+                    elif pubkey in psbt.wif_store:
+                        # maybe sset some input value
                         which_key.add(pubkey)
 
             if not addr_is_segwit and \
@@ -1022,6 +1029,7 @@ class psbtObject(psbtProxy):
         self.xpubs = []         # tuples(xfp_path, xpub)
 
         self.my_xfp = settings.get('xfp', 0)
+        self.wif_store = init_wif_store()
 
         # details that we discover as we go
         self.inputs = None
@@ -1760,13 +1768,13 @@ class psbtObject(psbtProxy):
         # Important: parse incoming UTXO to build total input value
         foreign = []
         total_in = 0
-
+        from_wif_store = []
         prevouts = set()
 
         for i, txi in self.input_iter():
             # check for duplicate inputs
             k = (txi.prevout.hash, txi.prevout.n)
-            if k in prevouts: 
+            if k in prevouts:
                 raise FatalPSBTIssue("Duplicate inputs")
 
             if len(prevouts) < 100:
@@ -1796,6 +1804,14 @@ class psbtObject(psbtProxy):
             # - also validates redeem_script when present
             # - also finds appropriate multisig wallet to be used
             inp.determine_my_signing_key(i, utxo, self.my_xfp, self, cosign_xfp)
+            if inp.required_key and self.wif_store:
+                is_in = False
+                for pk in inp.required_key if isinstance(inp.required_key, set) else [inp.required_key]:
+                    if pk in self.wif_store:
+                        is_in = True
+
+                if is_in:
+                    from_wif_store.append(i)
 
             # iff to UTXO is segwit, then check it's value, and also
             # capture that value, since it's supposed to be immutable
@@ -1887,6 +1903,10 @@ class psbtObject(psbtProxy):
             self.warnings.append(('Partly Signed Already',
                 'Some input(s) provided were already completely signed by other parties: ' +
                         seq_to_str(self.presigned_inputs)))
+
+        if from_wif_store:
+            self.warnings.append(("WIF Store", "Some input(s) use key from the WIF store: " +
+                                  seq_to_str(from_wif_store)))
 
         if MultisigWallet.disable_checks:
             self.warnings.append(('Danger', 'Some multisig checks are disabled.'))
@@ -2117,7 +2137,11 @@ class psbtObject(psbtProxy):
                     # need to consider a set of possible keys, since xfp may not be unique
                     for which_key in inp.required_key:
                         # get node required
-                        node = self.check_pubkey_at_path(sv, inp.subpaths[which_key], which_key)
+                        if which_key in self.wif_store:
+                            node = node_from_privkey(self.wif_store[which_key])
+                        else:
+                            node = self.check_pubkey_at_path(sv, inp.subpaths[which_key], which_key)
+
                         if node:
                             break
                     else:
@@ -2126,27 +2150,27 @@ class psbtObject(psbtProxy):
                 else:
                     # single pubkey <=> single key
                     which_key = inp.required_key
-
     
                     assert not inp.added_sigs, "already done??"
                     assert which_key in inp.subpaths, 'unk key'
 
-                    if inp.subpaths[which_key][0] != my_xfp:
-                        # we don't have the key for this subkey
-                        # (redundant, required_key wouldn't be set)
-                        continue
 
-                    # get node required
-                    skp = keypath_to_str(inp.subpaths[which_key])
-                    node = sv.derive_path(skp, register=False)
+                    if which_key in self.wif_store:
+                        node = node_from_privkey(self.wif_store[which_key])
+                    else:
+                        # get node required
+                        skp = keypath_to_str(inp.subpaths[which_key])
+                        node = sv.derive_path(skp, register=False)
 
-                    # expensive test, but works... and important
-                    pu = node.pubkey()
-                    assert pu == which_key, \
-                        "Path (%s) led to wrong pubkey for input#%d"%(skp, in_idx)
+                        # expensive test, but works... and important
+                        pu = node.pubkey()
 
-                    # track wallet usage
-                    OWNERSHIP.note_subpath_used(inp.subpaths[which_key])
+                        assert pu == which_key, \
+                            "Path (%s) led to wrong pubkey for input#%d"%(skp, in_idx)
+
+                        # track wallet usage
+
+                        OWNERSHIP.note_subpath_used(inp.subpaths[which_key])
 
                 if not inp.is_segwit:
                     # Hash by serializing/blanking various subparts of the transaction

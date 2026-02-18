@@ -12,7 +12,7 @@ from menu import MenuItem, MenuSystem
 from ubinascii import hexlify as b2a_hex
 from ubinascii import b2a_base64
 from msgsign import write_sig_file
-from utils import xfp2str, swab32
+from utils import xfp2str, swab32, node_from_privkey
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 
 BIP85_PWD_LEN = 21
@@ -180,7 +180,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
     elif s_mode == 'xprv':
         # Raw XPRV value.
         ch, pk = new_secret[0:32], new_secret[32:64]
-        master_node = ngu.hdnode.HDNode().from_chaincode_privkey(ch, pk)
+        master_node = node_from_privkey(pk, ch)
         node = master_node
 
         encoded = stash.SecretStash.encode(xprv=master_node)

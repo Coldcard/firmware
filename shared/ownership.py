@@ -6,8 +6,10 @@ import os, chains, ngu, struct, version
 from glob import settings
 from ucollections import namedtuple
 from ubinascii import hexlify as b2a_hex
+from ubinascii import unhexlify as a2b_hex
 from exceptions import UnknownAddressExplained
 from utils import problem_file_line, show_single_address
+from public_constants import AFC_SCRIPT, AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH_P2SH, AF_P2TR, AF_P2WSH
 
 # Track many addresses, but in compressed form
 # - map from random Bech32/Base58 payment address to (wallet) + keypath
@@ -212,19 +214,12 @@ class OwnershipCache:
         return doit
 
     @classmethod
-    def filter(cls, addr, args):
+    def filter(cls, addr_fmt, args):
         # Filter possible candidates!
         # - if you start w/ testnet, we'll follow that
         from multisig import MultisigWallet
-        from public_constants import AFC_SCRIPT, AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH_P2SH
 
-        ch = chains.current_chain()
         args = args or {}
-
-        addr_fmt = ch.possible_address_fmt(addr)
-        if not addr_fmt:
-            # might be valid address over on testnet vs mainnet
-            raise UnknownAddressExplained('That address is not valid on ' + ch.name)
 
         # user has specified specific (named) wallet
         named_wal = args.get("wallet", None)
@@ -309,7 +304,13 @@ class OwnershipCache:
 
         dis.fullscreen("Wait...")
 
-        matches = OWNERSHIP.filter(addr, args)
+        ch = chains.current_chain()
+        addr_fmt = ch.possible_address_fmt(addr)
+        if not addr_fmt:
+            # might be valid address over on testnet vs mainnet
+            raise UnknownAddressExplained('That address is not valid on ' + ch.name)
+
+        matches = OWNERSHIP.filter(addr_fmt, args)
 
         # build cache files for both external & internal chain
         cachefs = []
@@ -336,9 +337,17 @@ class OwnershipCache:
                 # first arg from_cache=False
                 return False, wallet, subpath
 
-        else:
-            raise UnknownAddressExplained('Searched %d candidate addresses in %d wallet(s)'
-                                          ' without finding a match.' % (c, len(matches)))
+        # nothing found among singlesig & registered multisig wallets
+        # check WIF store (single sig only)
+        if addr_fmt not in [AF_P2TR, AF_P2WSH]:
+            from wif import iter_wif_store_addresses
+            target_af = AF_P2WPKH_P2SH if addr_fmt == AF_P2SH else addr_fmt
+            for i, store_addr in iter_wif_store_addresses(ch, target_af):
+                if store_addr == addr:
+                    return False, "wif", i+1
+
+        raise UnknownAddressExplained('Searched %d candidate addresses in %d wallet(s)'
+                                      ' without finding a match.' % (c, len(matches)))
 
     @classmethod
     async def search_ux(cls, addr, args):
@@ -351,23 +360,24 @@ class OwnershipCache:
         try:
             _, wallet, subpath = cls.search(addr, args)
             is_ms = isinstance(wallet, MultisigWallet)
-            sp = wallet.render_path(*subpath)
-
             msg = show_single_address(addr)
-            msg += '\n\nFound in wallet:\n  ' + wallet.name
-            msg += '\nDerivation path:\n  ' + sp
-            if is_ms:
-                esc = ""
+            esc = ""
+            if wallet == "wif":
+                msg += '\n\nFound in WIF store at index %d' % subpath
             else:
-                esc = "0"
-                msg += "\n\nPress (0) to sign message with this key."
+                sp = wallet.render_path(*subpath)
+                msg += '\n\nFound in wallet:\n  ' + wallet.name
+                msg += '\nDerivation path:\n  ' + sp
+                if not is_ms:
+                    esc = "0"
+                    msg += "\n\nPress (0) to sign message with this key."
 
             title = "Verified"
             if version.has_qwerty:
                 esc += KEY_QR
                 title += " Address"
             else:
-                msg += ' (1) for address QR'
+                msg += ' Press (1) for address QR.'
                 esc += '1'
                 title += "!"
 
