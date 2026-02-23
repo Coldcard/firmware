@@ -3534,4 +3534,35 @@ def test_specific_wallet_signing_xpubs(der, fail, clear_miniscript, import_ms_wa
     else:
         end_sign(accept=True)
 
+
+def test_fwd_slash_in_name(import_ms_wallet, clear_miniscript, pick_menu_item, need_keypress, cap_story,
+                           press_cancel, garbage_collector, microsd_path):
+    clear_miniscript()
+    name = "2/3 me/her/it"
+    import_ms_wallet(2,3, "p2wsh", name=name, accept=True)
+    pick_menu_item("Settings")
+    pick_menu_item("Multisig/Miniscript")
+    pick_menu_item(f"{name}")
+    pick_menu_item("Descriptors")
+    pick_menu_item("Export")
+    need_keypress("1")  # SD
+    time.sleep(.1)
+    title, story = cap_story()
+    fname = story.split("\n\n")[1]
+    garbage_collector.append(microsd_path(fname))
+    assert fname.strip().startswith("multi-2-3_me-her-it")
+    press_cancel()
+    press_cancel()
+
+    # classic multisig so electrum wallet export is available
+    pick_menu_item("Electrum Wallet")
+    need_keypress("1")  # SD
+    time.sleep(.1)
+    title, story = cap_story()
+    fname = story.split("\n\n")[1]
+    garbage_collector.append(microsd_path(fname))
+    assert fname.strip().startswith("el-2-3_me-her-it")
+    press_cancel()
+    press_cancel()
+
 # EOF
