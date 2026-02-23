@@ -2,20 +2,20 @@
 #
 # Build micropython for stm32 (an ARM processor). Also handles signing of resulting firmware images.
 #
-# MARK 4 with different chip and layout
+# COLDCARD Mk4 and Mk5 -- OLED display, calculator style.
 #
 
 BOARD = COLDCARD_MK4
 FIRMWARE_BASE   = 0x08020000
 BOOTLOADER_BASE = 0x08000000
-HW_MODEL = mk4
-PARENT_MKFILE = MK4-Makefile
+HW_MODEL = mk
+PARENT_MKFILE = MK-Makefile
 
 # This is release of the bootloader that will be built into the factory.dfu
 BOOTLOADER_VERSION = 3.2.1
 BOOTLOADER_DIR = mk4-bootloader
 
-LATEST_RELEASE = $(shell ls -t1 ../releases/*-mk4-*.dfu | head -1)
+LATEST_RELEASE = $(shell ls -t1 ../releases/*-mk-*.dfu ../releases/*-mk4-*.dfu | head -1) 
 
 # Our version for this release.
 # - caution, the bootrom will not accept version < 3.0.0

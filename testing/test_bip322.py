@@ -91,10 +91,13 @@ def verify_msg_bip322_por(cap_story, need_keypress, press_select, press_cancel, 
     [["p2pkh", None, None]] + ([["p2wpkh", None, 1000000]] * 5) + ([["p2sh-p2wpkh", None, 10000000]] * 5),
 ])
 def test_bip322_por(msg, ins, bip322_txn, start_sign, end_sign, cap_story, need_keypress,
-                    press_select, verify_msg_bip322_por):
+                    press_select, verify_msg_bip322_por, sim_root_dir):
     num_ins = len(ins)
     amt = sum([i[2] or 0 for i in ins])
     psbt, msg_challenge = bip322_txn(ins, msg=msg)
+    with open(f'{sim_root_dir}/debug/last-b322-por.psbt', 'wb') as f:
+        f.write(psbt)
+
     start_sign(psbt, finalize=True)
 
     verify_msg_bip322_por(msg.decode(), way="sd")

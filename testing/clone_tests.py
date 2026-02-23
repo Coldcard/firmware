@@ -9,10 +9,23 @@ from ckcc_protocol.client import ColdcardDevice
 
 
 def _clone(source, target):
-    assert source in ["Q", "Mk4"]
-    assert target in ["Q", "Mk4"]
-    source_sim_arg, source_is_Q = ("--q1", True) if source == "Q" else ("", False)
-    target_sim_arg, target_is_Q = ("--q1", True) if target == "Q" else ("", False)
+    allowed_devices = ["Q", "Mk4", "Mk5"]
+    assert source in allowed_devices
+    assert target in allowed_devices
+
+    source_is_Q = False
+    source_sim_arg = ""
+    if source == "Q":
+        source_sim_arg, source_is_Q = "--q1", True
+    elif source == "Mk4":
+        source_sim_arg, source_is_Q = "--mk4", False
+
+    target_is_Q = False
+    target_sim_arg = ""
+    if target == "Q":
+        target_sim_arg, target_is_Q = "--q1", True
+    elif target == "Mk4":
+        target_sim_arg, target_is_Q = "--mk4", False
 
     # first the TARGET
     clean_sim_data()  # remove all from previous
@@ -105,7 +118,7 @@ def _clone(source, target):
     sim_target.stop()
 
 
-@pytest.mark.parametrize("source,target", list(itertools.product(["Q", "Mk4"], repeat=2)))
+@pytest.mark.parametrize("source,target", list(itertools.product(["Q", "Mk4", "Mk5"], repeat=2)))
 def test_clone(source, target):
     _clone(source, target)
     time.sleep(1)

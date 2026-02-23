@@ -298,7 +298,8 @@ def main():
                         help="Choose how much to sleep after simulator is started")
     parser.add_argument("-m", "--module", action="append", help="Choose only n modules to run")
     parser.add_argument("--pdb", action="store_true", help="Go to debugger on failure")
-    parser.add_argument("--q1", action="store_true", help="Simulate a Q instead of Mk COLDCARD")
+    parser.add_argument("--q1", action="store_true", help="Simulate a Q instead of Mk5 COLDCARD")
+    parser.add_argument("--mk4", action="store_true", help="Simulate a Mk4 instead of Mk5 COLDCARD")
     parser.add_argument("--psbt2", action="store_true", help="`fake_txn` produces PSBTv2")
     parser.add_argument("--ff", action="store_true", help="Run the last failures first")
     parser.add_argument("--onetime", action="store_true", default=False,
@@ -385,8 +386,11 @@ def main():
             # proper `settings.load` _ virtual disk
             sim_args = ["--set", "nfc=1", "--set", "vidsk=1"]
 
+        # by default Mk5 is run
         if args.q1 and '--q1' not in sim_args:
             sim_args.append('--q1')
+        elif args.mk4 and '--mk4' not in sim_args:
+            sim_args.append("--mk4")
 
         module_args.append((test_module, sim_args, args.pytest_k, args.pdb,
                             args.ff, args.psbt2, args.q1, args.headless))
@@ -427,8 +431,10 @@ def main():
         tmp_dir = "/tmp/cc-simulators"
         clean_directory(tmp_dir)  # clean it
         mk4_log_dir = f"{tmp_dir}/mk4_logs"
+        mk5_log_dir = f"{tmp_dir}/mk5_logs"
         q1_log_dir = f"{tmp_dir}/q1_logs"
         os.makedirs(mk4_log_dir, exist_ok=True)
+        os.makedirs(mk5_log_dir, exist_ok=True)
         os.makedirs(q1_log_dir, exist_ok=True)
 
         q = []  # build priority queue
@@ -466,7 +472,14 @@ def main():
                         break
                     sim = ColdcardSimulator(sim_args, segregate=True)
                     sim.start(start_wait=0)
-                    ld = q1_log_dir if "--q1" in sim_args else mk4_log_dir
+
+                    if "--q1" in sim_args:
+                        ld = q1_log_dir
+                    elif "--mk4" in sim_args:
+                        ld = mk4_log_dir
+                    else:
+                        ld = mk5_log_dir
+
                     q_chunks.append((sim, mn, mod_add, k, ld))
 
                 time.sleep(5)
@@ -479,7 +492,12 @@ def main():
                     if k:
                         cmd_list.extend(["-k", k])
                     p = subprocess.Popen(cmd_list, preexec_fn=os.setsid, stdout=out_fd, stderr=out_fd)
-                    mark = "Q" if "q1" in log_dir else "Mk4"
+                    if "q1" in log_dir:
+                        mark = "Q"
+                    elif "mk5" in log_dir:
+                        mark = "Mk5"
+                    else:
+                        mark = "Mk4"
                     procs.append((mn+mod_add, p, out_fd, sim, mark, time.time()))
                     print(f'started: {mark:<6}{mn+mod_add:<30}{sim.socket.split("-")[-1].split(".")[0]:<10}')
 

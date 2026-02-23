@@ -80,6 +80,7 @@ def probe_system():
 
     from sigheader import RAM_BOOT_FLAGS, RBF_FACTORY_MODE
     import ckcc, callgate, machine
+    from machine import Pin
 
     hw_label = 'mk4'
     has_608 = True
@@ -97,7 +98,7 @@ def probe_system():
 
     # detect Q1 based on pins.csv
     try:
-        machine.Pin('LCD_TEAR')     # only defined on Q1 build, will error otherwise
+        Pin('LCD_TEAR')     # only defined on Q1 build, will error otherwise
         has_qr = True
         num_sd_slots = 2
         hw_label = 'q1'
@@ -105,6 +106,15 @@ def probe_system():
         has_qwerty = True
         supports_hsm = False
         # but, still mk_num = 4
+    except ValueError:
+        pass
+
+    try:
+        # only defined on Mk4/5 build, will error otherwise; was open on Mk1-4, low on Mk5
+        s0 = Pin('STRAP_MK5', mode=Pin.IN, pull=Pin.PULL_UP)
+        if s0() == 0:
+            hw_label = 'mk5'
+            mk_num = 5
     except ValueError:
         pass
 

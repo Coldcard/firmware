@@ -55,8 +55,7 @@ goto_top_menu()
 @pytest.mark.parametrize('en_nfc', [ True, False] )
 @pytest.mark.parametrize('en_miniscript', [ True, False] )
 def test_menu_contents(set_hobble, pick_menu_item, cap_menu, en_okeys, en_notes, settings_set,
-                       need_some_notes, is_q1, is_mark4, en_nfc, sim_exec, en_miniscript,
-                       vdisk_disabled):
+                       need_some_notes, is_q1, en_nfc, sim_exec, en_miniscript, vdisk_disabled):
 
     # just enough to pass/fail the menu predicates!
     settings_set('seedvault', True)

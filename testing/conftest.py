@@ -1533,18 +1533,21 @@ def is_mark4(dev_hw_label):
     return (dev_hw_label == 'mk4')
 
 @pytest.fixture(scope='session')
+def is_mark5(dev_hw_label):
+    return (dev_hw_label == 'mk5')
+
+@pytest.fixture(scope='session')
 def is_q1(dev_hw_label):
     return (dev_hw_label == 'q1')
-
 
 @pytest.fixture(scope="session")
 def is_headless(request):
     return request.config.getoption('--headless')
 
 @pytest.fixture(scope='session')
-def is_mark4plus(is_mark4, is_q1):
-    # mark4 PLUS ... so Q1 and Mk4
-    return is_mark4 or is_q1
+def is_mark4plus(is_mark4, is_q1, is_mark5):
+    # mark4 PLUS ... so Q1, Mk4 and Mk5
+    return is_mark4 or is_q1 or is_mark5
 
 @pytest.fixture(scope='session')
 def mk_num(dev_hw_label):
@@ -1559,34 +1562,28 @@ def mk_num(dev_hw_label):
         raise ValueError(v)
 
 @pytest.fixture(scope='session')
-def only_mk4(is_mark4):
-    # NOTE: avoid this, and try to be more specific! ie. NFC vs. QR etc
-    if not is_mark4:
-        raise pytest.skip("Mk4 only")
-
-@pytest.fixture(scope='session')
 def only_q1(is_q1):
     if not is_q1:
         raise pytest.skip("Q only")
 
 @pytest.fixture(scope='session')
-def needs_nfc(is_mark4, is_q1):
-    if is_mark4 or is_q1:
+def needs_nfc(is_mark4plus):
+    if is_mark4plus:
         return
     raise pytest.skip("Needs NFC support")
 
 @pytest.fixture(scope='session')
-def needs_virtdisk(is_mark4, is_q1):
+def needs_virtdisk(is_mark4plus):
     # TODO/MAYBE: test if feature enabled in settings?
-    if is_mark4 or is_q1:
+    if is_mark4plus:
         return
     raise pytest.skip("Needs VirtDisk support")
 
 @pytest.fixture(scope='session')
 def only_mk4plus(mk_num):
-    # Mk4 and Q1
+    # Mk4, Q1 and Mk5
     if mk_num < 4:
-        raise pytest.skip("Mk4/Q1 only")
+        raise pytest.skip("Mk4/Mk5/Q1 only")
 
 @pytest.fixture(scope='session')
 def only_mk3(mk_num):

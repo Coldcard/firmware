@@ -92,18 +92,12 @@ def upgrade_by_sd(open_microsd, cap_story, pick_menu_item, goto_home, press_sele
 @pytest.mark.parametrize('mode', ['compat', 'incompat'])
 @pytest.mark.parametrize('transport', ['sd', 'usb'])
 def test_hacky_upgrade(mode, cap_story, transport, dev, sim_exec, make_firmware, upload_file,
-                       upgrade_by_sd, press_cancel, is_q1):
+                       upgrade_by_sd, press_cancel, is_q1, is_mark5):
 
     if mode == 'compat':
-        data = make_firmware("q1" if is_q1 else 4)
+        data = make_firmware("q1" if is_q1 else (5 if is_mark5 else 4))
     elif mode == 'incompat':
-        if is_q1:
-            data = make_firmware(4)
-        else:
-            with pytest.raises(RuntimeError) as err:
-                make_firmware(3)
-            assert "too big for our USB upgrades" in str(err)
-            return
+        data = make_firmware(4 if is_q1 else "q1")
 
     hdr = data[FW_HEADER_OFFSET:FW_HEADER_OFFSET+FW_HEADER_SIZE]
 

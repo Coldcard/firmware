@@ -419,7 +419,8 @@ class NFCHandler:
                 dis.text(None, -3, line2)
         else:
             from graphics_mk4 import Graphics
-            frames = [getattr(Graphics, 'mk4_nfc_%d'%i) for i in range(1, 5)]
+            from version import mk_num
+            frames = [getattr(Graphics, 'mk%d_nfc_%d'%(mk_num, i)) for i in range(1, 5)]
 
         aborted = True
         phase = -1

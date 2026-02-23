@@ -26,10 +26,10 @@ SET_CHARGE_PUMP     = const(0x8d)
 # Subclassing FrameBuffer provides support for graphics primitives
 # http://docs.micropython.org/en/latest/pyboard/library/framebuf.html
 class SSD1306(framebuf.FrameBuffer):
-    def __init__(self, width, height, external_vcc):
+    def __init__(self, width, height, is_mk5):
         self.width = width
         self.height = height
-        self.external_vcc = external_vcc
+        self.is_mk5 = is_mk5
         self.pages = self.height // 8
         self.buffer = bytearray(self.pages * self.width)
         super().__init__(self.buffer, self.width, self.height, framebuf.MONO_VLSB)
@@ -72,12 +72,20 @@ class SSD1306(framebuf.FrameBuffer):
         self.write_cmd(self.pages - 1)
         self.write_data(self.buffer)
 
+    
+    def busy_bar(self, enable, pattern):
+        # Render a continuous activity (not progress) bar in lower 8 lines of display
+        if enable:
+            # just show as static pattern
+            t = self.buffer[:-128] + pattern
+            self.write_data(t)
+
 
 class SSD1306_SPI(SSD1306):
-    def __init__(self, width, height, spi, dc, res, cs, external_vcc=False):
+    def __init__(self, width, height, spi, dc, res, cs, is_mk5=False):
         import sys
         self.pipe = open(int(sys.argv[1]), 'wb')
-        super().__init__(width, height, external_vcc)
+        super().__init__(width, height, is_mk5)
 
     def write_cmd(self, cmd):
         pass
