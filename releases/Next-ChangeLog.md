@@ -9,6 +9,7 @@ This lists the new changes that have not yet been published in a normal release.
 - New Feature: Support for v3 transactions
 - New Feature: Send keystrokes with all derived BIP-85 secrets
 - Enhancement: CCC allow to reset block height
+- Bugfix: Replace `/` with `-` in exported file names of multisig wallet export artifacts
 
 # Mk4 Specific Changes
 

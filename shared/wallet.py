@@ -731,6 +731,11 @@ class MiniScriptWallet(WalletABC):
             "range": [0, 100],
         }]
 
+    def make_fname(self, prefix, suffix='txt'):
+        name = self.name.replace(' ', '_')
+        name = name.replace('/', '-')
+        return '%s-%s.%s' % (prefix, name, suffix)
+
     async def export_wallet_file(self, core=False, bip388=False, sign=True):
         # do not load descriptor - just fill policy
         # only with multipath format <0;1>
@@ -743,7 +748,7 @@ class MiniScriptWallet(WalletABC):
 
         if core:
             name = "Bitcoin Core %s" % t
-            fname_pattern = 'bitcoin-core-%s.txt' % self.name
+            fname_pattern = self.make_fname('bitcoin-core')
             msg = "importdescriptors cmd"
             core_obj = self.bitcoin_core_serialize()
             core_str = ujson.dumps(core_obj)
@@ -752,13 +757,13 @@ class MiniScriptWallet(WalletABC):
             # policy as JSON
             msg = self.name
             name = "BIP-388 Wallet Policy"
-            fname_pattern = 'b388-%s.json' % self.name
+            fname_pattern = self.make_fname("b388", "json")
             res = ujson.dumps({"name": self.name,
                                "desc_template": self.desc_tmplt,
                                "keys_info": self.keys_info})
         else:
             name = t
-            fname_pattern = '%s-%s.txt' % ("multi" if self.m_n else "minsc", self.name)
+            fname_pattern = self.make_fname("multi" if self.m_n else "minsc")
             msg = self.name
             res = self.to_string()
 
@@ -903,9 +908,8 @@ class MiniScriptWallet(WalletABC):
             # sign export with first p2pkh key
             return ujson.dumps(rv), self.get_my_deriv() + "/0/0", AF_CLASSIC
 
-        fname = '%s-%s.%s' % ("el", self.name.replace(" ", "_"), "json")
         await export_contents('Electrum multisig wallet', doit,
-                              fname, is_json=True)
+                              self.make_fname("el", "json"), is_json=True)
 
 async def miniscript_delete(msc):
     if not await ux_confirm("Delete miniscript wallet '%s'?\n\nFunds may be impacted." % msc.name):
