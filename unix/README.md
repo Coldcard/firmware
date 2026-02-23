@@ -33,6 +33,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--mk2` => emulate mark2 hardware (older micro, etc), default is current-gen (mark4)
 - `--mk3` => emulate mark3 hardware
 - `--mk4` => emulate mark4 hardware
+- `--mk5` => emulate mark5 hardware (default)
 - `--q1` => emulate Q1 hardware
 - `--addr` => go to the address explorer at startup
 - `--xw` => go to the wallet export submenu

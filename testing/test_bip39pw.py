@@ -165,7 +165,10 @@ def test_b39p_refused(dev, press_cancel, pw='testing 123'):
 @pytest.mark.parametrize('version', range(8))
 def test_bip39_pick_words(target, version, cap_menu, pick_menu_item, cap_story,
                           word_menu_entry, get_pp_sofar, reset_seed_words,
-                          press_select, only_mk4, go_to_passphrase):
+                          press_select, is_q1, go_to_passphrase):
+    if is_q1:
+        raise pytest.skip("not on Q")
+
     # Check we can pick words
     reset_seed_words()
 
@@ -192,12 +195,15 @@ def test_bip39_pick_words(target, version, cap_menu, pick_menu_item, cap_story,
 
 @pytest.mark.parametrize('target', ['123', '1', '4'*32, '12'*8])
 @pytest.mark.parametrize('backspaces', [1, 0, 12])
-def test_bip39_add_nums(target, backspaces, pick_menu_item, cap_story, only_mk4,
+def test_bip39_add_nums(target, backspaces, pick_menu_item, cap_story, is_q1,
                         cap_menu, word_menu_entry, get_pp_sofar, need_keypress,
                         press_select, press_cancel, go_to_passphrase):
 
     # Check we can pick numbers (appended)
     # - also the "clear all" menu item
+
+    if is_q1:
+        raise pytest.skip("not on Q")
 
     go_to_passphrase()
     pick_menu_item('Add Numbers')

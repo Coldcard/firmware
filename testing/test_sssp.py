@@ -11,7 +11,7 @@ from ckcc.protocol import CCProtocolPacker
 
 
 @pytest.fixture
-def goto_sssp_menu(goto_home, pick_menu_item, is_mark4):
+def goto_sssp_menu(goto_home, pick_menu_item):
     def doit():
         goto_home()
         pick_menu_item("Advanced/Tools")

@@ -171,7 +171,7 @@ async def test_secure_element():
 
         dis.clear()
 
-        if version.has_qwerty:
+        if version.has_qwerty or version.mk_num == 5:
             dis.text(0, 0, "^^-- Green?      " if gg else "   ^^-- Red?")
         else:
             if gg:

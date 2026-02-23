@@ -70,8 +70,7 @@ typedef struct {
 #define MK_3_OK                 0x04
 #define MK_4_OK                 0x08
 #define MK_Q1_OK                0x10
-// RFU:
-#define MK_6_OK                 0x20
+#define MK_5_OK                 0x20
 
 // (Mk1-3) There is a copy of the header at this location in RAM, copied by bootloader
 // **after** it has been verified. If you write to this memory area, you will be reset!

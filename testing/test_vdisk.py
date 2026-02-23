@@ -214,7 +214,7 @@ def test_virtdisk_signing(encoding, num_outs, partial, try_sign_virtdisk, fake_t
 
 if 0:
     @pytest.mark.parametrize('num_outs', [ 1, 20, 250])
-    def test_virtdisk_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_story, only_mk4):
+    def test_virtdisk_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_story):
         # Read signing result (transaction) over NFC, decode it.
         psbt = fake_txn(1, num_outs)
         orig, result = try_sign(psbt, accept=True, finalize=True)

@@ -439,15 +439,6 @@ class LCDSimulator(SimulatedScreen):
             self.draw_single_led(spriterenderer, 465, 315)
 
 class OLEDSimulator(SimulatedScreen):
-    # top-left coord of OLED area; size is 1:1 with real pixels... 128x64 pixels
-    OLED_ACTIVE = (46, 85)
-
-    # keypad touch buttons
-    KEYPAD_LEFT = 52
-    KEYPAD_TOP = 216
-    KEYPAD_PITCH = 73
-
-    background_img = 'mk4-images/background.png'
 
     def __init__(self, factory):
         self.movie = None
@@ -462,12 +453,8 @@ class OLEDSimulator(SimulatedScreen):
         sdl2.ext.fill(s, self.bg)
 
         self.mv = sdl2.ext.pixels2d(self.sprite, transpose=False)
-    
-        # for genuine/caution lights and other LED's
-        self.led_red = factory.from_image("mk4-images/led-red.png")
-        self.led_green = factory.from_image("mk4-images/led-green.png")
-        self.led_sdcard = factory.from_image("mk4-images/led-sd.png")
-        self.led_usb = factory.from_image("mk4-images/led-usb.png")
+
+        self.load_leds(factory)
 
     def new_contents(self, readable):
         # got bytes for new update.
@@ -509,12 +496,58 @@ class OLEDSimulator(SimulatedScreen):
         SD_LED = 0x2
         USB_LED = 0x4
 
-        spriterenderer.render(self.led_green if (active_set & GEN_LED) else self.led_red)
+        spriterenderer.render(self.led_genuine if (active_set & GEN_LED) else self.led_unsafe)
 
         if active_set & SD_LED:
             spriterenderer.render(self.led_sdcard)
         if active_set & USB_LED:
             spriterenderer.render(self.led_usb)
+
+class Mk4OLEDSimulator(OLEDSimulator):
+    # top-left coord of OLED area; size is 1:1 with real pixels... 128x64 pixels
+    OLED_ACTIVE = (46, 85)
+
+    # keypad touch buttons
+    KEYPAD_LEFT = 52
+    KEYPAD_TOP = 216
+    KEYPAD_PITCH = 73
+
+    background_img = 'mk4-images/background.png'
+    
+    def load_leds(self, factory):
+        # for genuine/caution lights and other LED's
+        # - these are pre-positioned where they need to end up
+        self.led_unsafe = factory.from_image("mk4-images/led-red.png")
+        self.led_genuine = factory.from_image("mk4-images/led-green.png")
+        self.led_sdcard = factory.from_image("mk4-images/led-sd.png")
+        self.led_usb = factory.from_image("mk4-images/led-usb.png")
+
+class Mk5OLEDSimulator(OLEDSimulator):
+    OLED_ACTIVE = (28, 41)
+
+    # keypad touch buttons
+    KEYPAD_LEFT = 28
+    KEYPAD_TOP = 125
+    KEYPAD_PITCH = 42
+
+    background_img = 'mk5-images/background.png'
+    
+    def load_leds(self, factory):
+        # position each carefully
+        r = factory.from_image("mk5-images/led-red.png")
+        g = factory.from_image("mk5-images/led-green.png")
+
+        self.led_unsafe = r.subsprite(r.area)
+        self.led_genuine = g.subsprite(g.area)
+        self.led_sdcard = g.subsprite(g.area)
+        self.led_usb = g.subsprite(g.area)
+
+        self.led_unsafe.position = (14, -9)
+        self.led_genuine.position = (-1, -9)
+
+        self.led_sdcard.position = (-14, 23)
+        self.led_usb.position = (65, 283)
+
 
 def load_shared_mod(name, path):
     # load indicated file.py as a module
@@ -783,7 +816,15 @@ Q1 specials:
 
         factory = sdl2.ext.SpriteFactory(sdl2.ext.SOFTWARE)
 
-        simdis = (OLEDSimulator if not is_q1 else LCDSimulator)(factory)
+        if is_q1:
+            simdis = LCDSimulator(factory)
+        elif ('--mk4' in sys.argv):
+            # retro look
+            simdis = Mk4OLEDSimulator(factory)
+        else:
+            # default: Mk5
+            simdis = Mk5OLEDSimulator(factory)
+            
         bg = factory.from_image(simdis.background_img)
 
         window = sdl2.ext.Window("Coldcard Simulator", size=bg.size, position=(100, 100))
@@ -951,6 +992,7 @@ Q1 specials:
             pressed.discard(ch)
             if not pressed:
                 numpad_tx.write(b'\0')      # all up signal
+
 
     while running:
         events = sdl2.ext.get_events()

@@ -5,6 +5,7 @@
 #include "delay.h"
 #include "rng.h"
 #include "console.h"
+#include "gpio.h"           // for is_mk5()
 #include "stm32l4xx_hal.h"
 #include <string.h>
 
@@ -14,7 +15,7 @@
 // Reset and config sequence.
 //
 // As measured! No attempt to understand them here.
-static const uint8_t reset_commands[] = {
+static const uint8_t reset_commands_mk4[] = {
     0xae,               // display off
     0x20, 0x00,         // horz addr-ing mode
     0x40,               // ram display start line: 0
@@ -33,6 +34,28 @@ static const uint8_t reset_commands[] = {
     0xaf                // display on
 };
 
+// .. similar but a little different on Mk5
+static const uint8_t reset_commands_mk5[] = {
+    0xae,               // display off
+    0xd5, 0x80,         // set display clock divide ratio
+    0xa8, 0x3f,         // set multiplex ratio: 64
+    0xd3, 0x00,         // display offset (vertical shift): 0
+    0x40,               // ram display start line: 0
+    0xad, 0x8a,         // set charge pump (NEW)
+    0xa0,               // column addr 127 mapped to seg0 (NEW was 0xa1)
+    0xc0,               // remapped mode: scan from COMn to COM0 (NEW was 0xc8)
+    0xda, 0x12,         // seq com pin conf: alt com pin
+    0x81, 0x65,         // Contrast: was max, now 0x65 (NEW)
+    0xd9, 0x22,         // set pre-change period (NEW, was 0xf1)
+    0xdb, 0x40,         // Cvomh deselect level (NEW, was 0x30)
+    0xa6,               // normal not inverted
+
+    0x20, 0x00,         // horz addr-ing mode
+    0xa4,               // display ram contents (not all on)
+    //0x8d, 0x14,         // enable charge pump (not in use, omitted from their sequence)
+    0xaf                // display on (done after VCC enabled)
+};
+
 // Bytes to send before sending the 1024 bytes of pixel data.
 //
 static const uint8_t before_show[] = { 
@@ -49,6 +72,9 @@ static const uint8_t before_show[] = {
 #define CS_PIN          GPIO_PIN_4
 #define SPI_SCK         GPIO_PIN_5
 #define SPI_MOSI        GPIO_PIN_7
+
+// port C, Mk5 only
+#define VCC_EN_PIN       GPIO_PIN_1
 
 
 #ifndef DISABLE_OLED
@@ -177,7 +203,7 @@ oled_setup(void)
     HAL_GPIO_Init(GPIOA, &setup);
 
     // lock the RESET pin so that St's DFU code doesn't clear screen
-    // it might be trying to use it a MISO signal for SPI loading
+    // it might be trying to use it as a MISO signal for SPI loading
     HAL_GPIO_LockPin(GPIOA, RESET_PIN | CS_PIN | DC_PIN);
 
     // 10ms low-going pulse on reset pin
@@ -196,7 +222,14 @@ oled_setup(void)
     //SPI1->CR1 = 0x354;
 
     // write a sequence to reset things
-    oled_write_cmd_sequence(sizeof(reset_commands), reset_commands);
+    if(is_mk5()) {
+        // note: +12v is always on now, this line supports older revs
+        HAL_GPIO_WritePin(GPIOC, VCC_EN_PIN, 1);
+
+        oled_write_cmd_sequence(sizeof(reset_commands_mk5), reset_commands_mk5);
+    } else {
+        oled_write_cmd_sequence(sizeof(reset_commands_mk4), reset_commands_mk4);
+    }
 
     rng_delay();
 }
@@ -429,13 +462,12 @@ oled_factory_busy(void)
     // Render a continuous activity (not progress) bar in lower 8 lines of display
     // - using OLED itself to do the animation, so smooth and CPU free
     // - cannot preserve bottom 8 lines, since we have to destructively write there
-    //oled_spi_setup();
 
     static const uint8_t setup[] = { 
         0x21, 0x00, 0x7f,       // setup column address range (start, end): 0-127
         0x22, 7, 7,             // setup page start/end address: page 7=last 8 lines
     };
-    static const uint8_t animate[] = { 
+    static const uint8_t animate_mk4[] = { 
         0x2e,               // stop animations in progress
         0x26,               // scroll leftwards (stock ticker mode)
             0,              // placeholder
@@ -445,6 +477,21 @@ oled_factory_busy(void)
             0, 0xff,        // placeholders
         0x2f                // start
     };
+    // slightly different on Mk5 display
+    static const uint8_t animate_mk5[] = { 
+        0x2e,               // stop animations in progress
+        0x29,               // Vert+Right horz animation setup
+            1,              // A: enable horz scroll
+            7,              // B: start 'page' (vertical)
+            5,              // C: "speed_code" # scroll speed: 7=fastest, but no order to it
+            7,              // D: end 'page'
+            1,              // E: vert scrolling offset (unused)
+            0, 0x7f,        // F,G: start/end columns
+        0xa3,               // Set Vertical scroll Area
+            0, 0,           // A, B: # of rows in fixed vs. scroll area
+        0x2f                // start animating
+    };
+    
     uint8_t data[128];
 
     for(int x=0; x<128; x++) {
@@ -454,7 +501,11 @@ oled_factory_busy(void)
 
     oled_write_cmd_sequence(sizeof(setup), setup);
     oled_write_data(sizeof(data), data);
-    oled_write_cmd_sequence(sizeof(animate), animate);
+    if(is_mk5()) {
+        oled_write_cmd_sequence(sizeof(animate_mk5), animate_mk5);
+    } else {
+        oled_write_cmd_sequence(sizeof(animate_mk4), animate_mk4);
+    }
 }
 
 // EOF
