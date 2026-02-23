@@ -1,6 +1,6 @@
 # (c) Copyright 2021 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# mk4.py - Mk4 specific code, not needed on earlier devices.
+# mk4.py - Mk4 and Mk5 specific code, not needed on earlier devices.
 #
 #
 import os, sys, pyb, ckcc, version, glob

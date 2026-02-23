@@ -5,23 +5,23 @@
 #
 # Normally you must use:
 #
-#	make -f MK4-Makefile
+#	make -f MK-Makefile
 # or
 #	make -f Q1-Makefile
 #
 
 .DEFAULT_GOAL := all
 .DEFAULT all:
-	$(MAKE) DEBUG_BUILD=1 -f Q1-Makefile $(MAKECMDGOALS)
+	$(MAKE) DEBUG_BUILD=1 -f MK-Makefile $(MAKECMDGOALS)
 
 clean clobber repro:
 	@echo You should do either:
 	@echo
 	@echo "   make" -f Q1-Makefile $(MAKECMDGOALS)
 	@echo "-OR-"
-	@echo "   make" -f MK4-Makefile $(MAKECMDGOALS)
+	@echo "   make" -f MK-Makefile $(MAKECMDGOALS)
 
 rc1 rc2 release:
-	make -f Q1-Makefile $(MAKECMDGOALS) && make -f MK4-Makefile $(MAKECMDGOALS)
+	make -f Q1-Makefile $(MAKECMDGOALS) && make -f MK-Makefile $(MAKECMDGOALS)
 
 # EOF

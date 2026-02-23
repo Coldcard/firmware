@@ -134,21 +134,13 @@ def test_psbt_proxy_parsing(fn, sim_execfile, sim_exec, src_root_dir, sim_root_d
     assert oo == rb
 
 @pytest.mark.unfinalized
-def test_speed_test(dev, fake_txn, is_mark3, is_mark4, start_sign, end_sign,
-                    press_select, press_cancel, sim_root_dir, is_q1):
+def test_speed_test(dev, fake_txn, start_sign, end_sign, press_select, press_cancel, sim_root_dir):
     # measure time to sign a larger txn
-    if is_mark4 or is_q1:
-        # Mk4: expect 
-        #       20/250 => 15.5s (or 10.0 if seed is cached)
-        #       200/500 => 96.3s 
-        num_in = 20
-        num_out = 250
-    elif is_mark3:
-        num_in = 20
-        num_out = 250
-    else:
-        num_in = 9
-        num_out = 100
+    # Mk4: expect
+    #       20/250 => 15.5s (or 10.0 if seed is cached)
+    #       200/500 => 96.3s
+    num_in = 20
+    num_out = 250
 
     psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=True)
 
@@ -179,9 +171,7 @@ if 0:
     # see <https://bitcoin.stackexchange.com/questions/11542>
     # - how big woudl PSBT be?
     # - not a great test case because so slow.
-    def test_mega_txn(fake_txn, is_mark4, start_sign, end_sign, dev):
-        if not is_mark4:
-            raise pytest.xfail('no way')
+    def test_mega_txn(fake_txn, start_sign, end_sign, dev):
 
         psbt = fake_txn(5569, 1, dev.master_xpub)
 
@@ -3634,10 +3624,13 @@ def test_txn_nVersion_zero(segwit, fake_txn, start_sign, cap_story, goto_home):
     goto_home()
 
     def hack(psbt):
-        t = CTransaction()
-        t.deserialize(BytesIO(psbt.txn))
-        t.nVersion = 0
-        psbt.txn = t.serialize()
+        if psbt.is_v2():
+            psbt.txn_version = 0
+        else:
+            t = CTransaction()
+            t.deserialize(BytesIO(psbt.txn))
+            t.nVersion = 0
+            psbt.txn = t.serialize()
 
     psbt = fake_txn(1, 2, segwit_in=segwit, change_outputs=[0], psbt_hacker=hack)
     start_sign(psbt)

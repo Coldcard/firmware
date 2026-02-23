@@ -6,10 +6,12 @@
 // set directions, lock critical ones, etc.
 void gpio_setup(void);
 
-// sample the DFU button
-inline bool dfu_button_pressed(void) { return false; }
-
 #ifdef FOR_Q1_ONLY
 // kill system power; instant
 extern void turn_power_off(void);
 #endif
+
+// sample the strapping pin to know if mk4 or 5
+extern bool is_mk5(void);
+
+// EOF

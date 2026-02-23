@@ -1,6 +1,6 @@
 # (c) Copyright 2021 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# Shared values and target rules for Mk4 and Q.
+# Shared values and target rules for Mk and Q platforms.
 #
 
 # Define these vars to suit board

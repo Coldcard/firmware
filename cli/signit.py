@@ -208,8 +208,9 @@ def readback(fname):
             if v & MK_2_OK: d.append('Mk2')
             if v & MK_3_OK: d.append('Mk3')
             if v & MK_4_OK: d.append('Mk4')
+            if v & MK_5_OK: d.append('Mk5')
             if v & MK_Q1_OK: d.append('Q1')
-            if v & ~(MK_1_OK | MK_2_OK | MK_3_OK | MK_4_OK | MK_Q1_OK):
+            if v & ~(MK_1_OK | MK_2_OK | MK_3_OK | MK_4_OK | MK_5_OK | MK_Q1_OK):
                 d.append('?other?')
             v = nv + '+'.join(d)
         elif fld == 'timestamp':
@@ -245,7 +246,7 @@ def readback(fname):
 @click.option('--pubkey-num', '-k', type=int, help='Which key # to use for signing', default=0)
 @click.option('--high_water', '-h', is_flag=True, help='Mark version as new highwater mark (no downgrades below this version)')
 @click.option('--verbose', '-v', default=False, is_flag=True, help='Show numbers related to signature')
-@click.option('--hw-compat', '-m', type=str, metavar='Mk4', help="Set HW compat field (hw_label value)")
+@click.option('--hw-compat', '-m', type=str, metavar='mk', help="Set HW compat field (hw_label value)")
 @click.option('--backdate', type=int, metavar='DAYS',
                             help='Make downgrade attack test version', default=0)
 @click.option('--build_dir', '-b', default='l-port/build-COLDCARD')
@@ -278,8 +279,9 @@ def doit(keydir, outfn=None, build_dir=None, high_water=False,
         vectors = open(build_dir + '/firmware0.bin', 'rb').read()
         body = open(build_dir + '/firmware1.bin', 'rb').read()
 
-    if hw_compat in { 'mk4', '4'}:
-        hw_compat = MK_4_OK
+    if hw_compat in { 'mk4', '4', 'mk5', '5', 'mk' }:
+        # Mk4 and 5 can run the same firmware, once Mk5 support was added
+        hw_compat = MK_4_OK | MK_5_OK
     elif hw_compat == 'q1':
         hw_compat = MK_Q1_OK
     elif hw_compat in { 'mk3', '3'}:

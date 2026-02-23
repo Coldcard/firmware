@@ -32,8 +32,8 @@ def get_header_value(fld_name):
         return b'\x18\x07\x11\x19S\x08\x00\x00'
     return 0
 
-# default is Mk4 hardware
-hw_label = 'mk4'
+# default is Mk5 hardware
+hw_label = 'mk5'
 has_608 = True
 has_membrane = True
 supports_hsm = True
@@ -47,7 +47,7 @@ has_qwerty = False
 is_edge = False
 
 if  '--mk1' in sys.argv:
-    # doubt this works still
+    # doubt this works anymore
     hw_label = 'mk1'
     has_608 = False
     has_membrane = False
@@ -72,6 +72,9 @@ if  '--mk3' in sys.argv:
     has_nfc = False
     supports_hsm = False
 
+if  '--mk4' in sys.argv:
+    hw_label = 'mk4'
+
 mk_num = int(hw_label[2:])
 
 if '--q1' in sys.argv:
@@ -81,6 +84,7 @@ if '--q1' in sys.argv:
     has_battery = True
     has_qwerty = True
     supports_hsm = False
+    mk_num = 4
 
 from public_constants import MAX_TXN_LEN, MAX_UPLOAD_LEN
 from public_constants import MAX_TXN_LEN_MK4, MAX_UPLOAD_LEN_MK4

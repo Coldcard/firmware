@@ -307,6 +307,8 @@ DebugFunctionsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Keyboard Test", f=keyboard_test),
     MenuItem('BBQr Demo', f=debug_bbqr_test, predicate=version.has_qwerty),
+    MenuItem("NFC Test", f=quick_nfc_test),
+    MenuItem('Clear Tested', f=clear_tested_flag),
     MenuItem('Debug: assert', f=debug_assert),
     MenuItem('Debug: except', f=debug_except),
     MenuItem('Check: BL FW', f=check_firewall_read),

@@ -22,12 +22,12 @@ from psbt import BasicPSBT
 SERVER_PUBKEY = '0231301ec4acec08c1c7d0181f4ffb8be70d693acccc86cccb8f00bf2e00fcabfd'
 
 @pytest.fixture
-def goto_ccc_menu(goto_home, pick_menu_item, is_mark4):
+def goto_ccc_menu(goto_home, pick_menu_item, is_q1):
     def doit():
         goto_home()
         pick_menu_item("Advanced/Tools")
         pick_menu_item("Spending Policy")
-        pick_menu_item("Co-Sign Multi." if is_mark4 else "Co-Sign Multisig (CCC)")
+        pick_menu_item("Co-Sign Multisig (CCC)" if is_q1 else "Co-Sign Multi.")
 
     return doit
 

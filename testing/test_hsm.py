@@ -114,7 +114,10 @@ def compute_policy_hash(policy):
     return b2a_hex(sha256(json_.encode()).digest()).decode()
 
 @pytest.fixture(autouse=True)
-def enable_hsm_commands(dev, sim_exec, only_mk4):
+def enable_hsm_commands(dev, sim_exec, is_q1):
+    if is_q1:
+        raise pytest.skip("Q does not have HSM support")
+
     cmd = 'from glob import settings; settings.set("hsmcmd", 1)'
     sim_exec(cmd)
     yield

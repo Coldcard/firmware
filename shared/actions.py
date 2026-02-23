@@ -2397,9 +2397,23 @@ async def microsd_2fa(*a):
 
 async def keyboard_test(*a):
     # to aid keyboard testing/dev
-    from ux import ux_input_text
-    await ux_input_text('', max_len=128, scan_ok=True, confirm_exit=False,
-                        prompt='Keyboard Test', placeholder='(type whatever)')
+    if version.has_qwerty:
+        await ux_input_text('', max_len=128, scan_ok=True, confirm_exit=False,
+                            prompt='Keyboard Test', placeholder='(type whatever)')
+    else:
+        from ux_mk4 import ux_input_digits
+        await ux_input_digits('')
+
+async def quick_nfc_test(*a):
+    from selftest import test_nfc
+    await test_nfc()
+
+async def clear_tested_flag(*a):
+    # so can re-create first time power up in
+    # factory case (direct to selftest)
+    settings.remove_key('tested')
+    settings.save()
+    await reset_self()
 
 #
 # Q wrappers; these will be present, but are very short on mk4

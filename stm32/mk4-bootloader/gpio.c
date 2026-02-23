@@ -8,7 +8,7 @@
 #include "gpio.h"
 #include "stm32l4xx_hal.h"
 
-// PA0 - onewire bus for 608a
+// PA0 - onewire bus for 608
 #define ONEWIRE_PIN      GPIO_PIN_0
 #define ONEWIRE_PORT     GPIOA
 
@@ -62,15 +62,20 @@ gpio_setup(void)
 
     // SD active LED: PC7
     // USB active LED: PC6
+    // Mk5 (disconnected & unused on Mk4):
+    //   PC0: early experiments, unused
+    //   PC1: +12v en for OLED
+    // - but by rev E, neither being used, but keep support for older revs
     {   GPIO_InitTypeDef setup = {
-            .Pin = GPIO_PIN_7 | GPIO_PIN_6,
+            .Pin = GPIO_PIN_7 | GPIO_PIN_6 | GPIO_PIN_0 | GPIO_PIN_1,
             .Mode = GPIO_MODE_OUTPUT_PP,
             .Pull = GPIO_NOPULL,
             .Speed = GPIO_SPEED_FREQ_LOW,
         };
+
         HAL_GPIO_Init(GPIOC, &setup);
 
-        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7|GPIO_PIN_6, 0);    // turn LEDs off
+        HAL_GPIO_WritePin(GPIOC, setup.Pin, 0);    // turn all off
     }
 
     // SD card detect switch: PC13
@@ -81,6 +86,18 @@ gpio_setup(void)
             .Speed = GPIO_SPEED_FREQ_LOW,
         };
         HAL_GPIO_Init(GPIOC, &setup);
+    }
+
+    // Strapping pins (Mk5, but all disconnected on Mk4): PE0-3
+    // - important to have the internal pull-ups enabled on these
+    // - PE0: low if Mk5
+    {   GPIO_InitTypeDef setup = {
+            .Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3,
+            .Mode = GPIO_MODE_INPUT,
+            .Pull = GPIO_PULLUP,
+            .Speed = GPIO_SPEED_FREQ_LOW,
+        };
+        HAL_GPIO_Init(GPIOE, &setup);
     }
 
 
@@ -123,6 +140,15 @@ gpio_setup(void)
     //HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, 1);
     //HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, 0);
 #endif
+}
+
+// is_mk5()
+//
+    bool
+is_mk5(void)
+{
+    // sample the PE0 strapping pin to know if mk4 or 5
+    return !HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_0);
 }
 
 

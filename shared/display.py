@@ -2,9 +2,8 @@
 #
 # display.py - OLED rendering
 #
-import machine, uzlib, ckcc, utime
+import machine, uzlib, ckcc, utime, version
 from ssd1306 import SSD1306_SPI
-from version import is_devmode
 import framebuf
 from graphics_mk4 import Graphics
 from charcodes import OUT_CTRL_TITLE, OUT_CTRL_ADDRESS
@@ -35,11 +34,14 @@ class Display:
         dc_pin = Pin('PA8', Pin.OUT)
         cs_pin = Pin('PA4', Pin.OUT)
 
-        try:
-            self.dis = SSD1306_SPI(128, 64, spi, dc_pin, reset_pin, cs_pin)
-        except OSError:
-            print("OLED unplugged?")
-            raise
+        if version.mk_num == 5:
+            # Early revs (A-D) needed this pin asserted to enable +12v to OLED
+            # - removed in rev E and later boards, but keep here for dev boards
+            # - remove this in 2027
+            vcc_en = Pin('V12EN', Pin.OUT)      # aka PC1
+            vcc_en(1)
+
+        self.dis = SSD1306_SPI(128, 64, spi, dc_pin, reset_pin, cs_pin, is_mk5=(version.mk_num==5))
 
         self.last_bar_update = 0
         self.clear()
@@ -142,7 +144,7 @@ class Display:
         self.icon(128-3, 1, 'scroll')
         self.dis.fill_rect(128-2, pos, 1, bh, 1)
 
-        if is_devmode and not ckcc.is_simulator():
+        if version.is_devmode and not ckcc.is_simulator():
             self.dis.fill_rect(128-6, 20, 5, 21, 1)
             self.text(-2, 21, 'D', font=FontTiny, invert=1)
             self.text(-2, 28, 'E', font=FontTiny, invert=1)
@@ -204,61 +206,20 @@ class Display:
 
     def busy_bar(self, enable):
         # Render a continuous activity (not progress) bar in lower 8 lines of display
-        # - using OLED itself to do the animation, so smooth and CPU free
-        # - cannot preserve bottom 8 lines, since we have to destructively write there
-        # - assumes normal horz addr mode: 0x20, 0x00
-        # - speed_code=>framedelay: 0=5fr, 1=64fr, 2=128, 3=256, 4=3, 5=4, 6=25, 7=2frames
-        #   unused: assert 0 <= speed_code <= 7
-
-        setup = bytes([
-            0x21, 0x00, 0x7f,       # setup column address range (start, end): 0-127
-            0x22, 7, 7,             # setup page start/end address: page 7=last 8 lines
-        ])
-        animate = bytes([ 
-            0x2e,               # stop animations in progress
-            0x26,               # scroll leftwards (stock ticker mode)
-                0,              # placeholder
-                7,              # start 'page' (vertical)
-                5,              # "speed_code" # scroll speed: 7=fastest, but no order to it
-                7,              # end 'page'
-                0, 0xff,        # placeholders
-            0x2f                # start
-        ])
-
-        cleanup = bytes([
-            0x2e,               # stop animation
-            0x20, 0x00,         # horz addr-ing mode
-            0x21, 0x00, 0x7f,   # setup column address range (start, end): 0-127
-            0x22, 7, 7,         # setup page start/end address: page 7=last 8 lines
-        ])
-
+        #
         if not enable:
-            # stop animation, and redraw old (new) screen
-            self.write_cmds(cleanup)
+            self.dis.busy_bar(False, None)
             self.show()
         else:
-
-            # a pattern that repeats nicely mod 128
+            # Need a pattern that repeats nicely mod 128
             # - each byte here is a vertical column, 8 pixels tall, MSB at bottom
-            data = bytes(0x80 if (x%4)<2 else 0x0 for x in range(128))
+            pat = bytes(0x80 if (x%4)<2 else 0x0 for x in range(128))
 
-            if ckcc.is_simulator():
-                # just show as static pattern
-                t = self.dis.buffer[:-128] + data
-                self.dis.write_data(t)
-            else:
-                self.write_cmds(setup)
-                self.dis.write_data(data)
-                self.write_cmds(animate)
-
-    def write_cmds(self, cmds):
-        for c in cmds:
-            self.dis.write_cmd(c)
+            self.dis.busy_bar(True, pat)
 
     def set_brightness(self, val):
         # normal = 0x7f, brightness=0xff, dim=0x00 (but they are all very similar)
-        self.dis.write_cmd(0x81)        # Set Contrast Control
-        self.dis.write_cmd(val)
+        return self.dis.contrast(val)
 
     def menu_draw(self, ry, msg, is_sel, is_checked, space_indicators):
         # draw a menu item, perhaps selected, checked.
