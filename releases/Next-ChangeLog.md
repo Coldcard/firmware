@@ -13,6 +13,8 @@ This lists the new changes that have not yet been published in a normal release.
 - New Feature: Nuke Device, purges all sesnsitive data and make COLCARD into e-waste.
 - Enhancement: CCC debug menu allows your to reset block height.
 - Bugfix: Replace `/` with `-` in exported file names of multisig wallet export artifacts.
+- Enhancement: Show the BIP-39 passphrase on-screen (must scroll down) once new key is in effect.
+- Enhancement: New "Buried Settings" menu, inside Settings menu, for rarely-applied settings.
 
 # Mk Specific Changes
 
