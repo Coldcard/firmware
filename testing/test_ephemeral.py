@@ -1639,6 +1639,7 @@ def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_m
                        settings_get, goto_eph_seed_menu, need_keypress):
     goto_home()
     pick_menu_item("Settings")
+    pick_menu_item("Buried Settings")
     pick_menu_item("Home Menu XFP")
     time.sleep(.1)
     _, story = cap_story()
@@ -1677,6 +1678,7 @@ def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_m
     assert m[0] == "<" + xfp2str(settings_get("xfp")) + ">"
     # disable now
     pick_menu_item("Settings")
+    pick_menu_item("Buried Settings")
     pick_menu_item("Home Menu XFP")
 
     time.sleep(.1)

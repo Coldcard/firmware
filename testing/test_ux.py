@@ -761,10 +761,12 @@ def test_menu_wrapping(goto_home, pick_menu_item, cap_story, cap_menu,
         press_up()
 
     press_select()
+    pick_menu_item("Buried Settings")
     pick_menu_item("Menu Wrapping")
     press_select()
     pick_menu_item("Always Wrap")
     time.sleep(1)
+    press_cancel()  # back to Settings
     press_cancel()  # back to home menu
     press_cancel()  # at Ready To Sign
 
@@ -773,6 +775,7 @@ def test_menu_wrapping(goto_home, pick_menu_item, cap_story, cap_menu,
         press_up()
     press_select()
 
+    pick_menu_item("Buried Settings")
     pick_menu_item("Menu Wrapping")
     pick_menu_item("Default")
     time.sleep(1)
