@@ -164,6 +164,21 @@ LoginPrefsMenu = [
     MenuItem('Test Login Now', f=login_now, arg=1),
 ]
 
+
+# obscure settings, not more dangerous, just more personal
+BuriedSettingsMenu = [
+    ToggleMenuItem('Home Menu XFP', 'hmx', ['Only Tmp', 'Always Show'],
+                   story=('Forces display of XFP (seed fingerprint) '
+                          'at top of main menu. Normally, XFP is shown only when '
+                          'temporary seed is active.\n\n'
+                          'Master seed is displayed as <XFP>, temporary seeds as [XFP].'),
+                   predicate=has_real_secret,
+                   on_change=goto_home),
+    ToggleMenuItem('Menu Wrapping', 'wa', ['Default', 'Always Wrap'],
+           story='''When enabled, allows scrolling past menu top/bottom \
+(wrap around). By default, this only happens in menus whose length is greater than 10.'''),
+]
+
 SettingsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Login Settings', menu=LoginPrefsMenu),
@@ -186,22 +201,13 @@ The signed transaction will be named <TXID>.txn, so the file name does not leak 
 MS-DOS tools should not be able to find the PSBT data (ie. undelete), but forensic tools \
 which take apart the flash chips of the SDCard may still be able to find the \
 data or filenames.'''),
-    ToggleMenuItem('Menu Wrapping', 'wa', ['Default', 'Always Wrap'],
-           story='''When enabled, allows scrolling past menu top/bottom \
-(wrap around). By default, this only happens in menus whose length is greater than 10.'''),
-    ToggleMenuItem('Home Menu XFP', 'hmx', ['Only Tmp', 'Always Show'],
-                   story=('Forces display of XFP (seed fingerprint) '
-                          'at top of main menu. Normally, XFP is shown only when '
-                          'temporary seed is active.\n\n'
-                          'Master seed is displayed as <XFP>, temporary seeds as [XFP].'),
-                   predicate=has_real_secret,
-                   on_change=goto_home),
     ToggleMenuItem('Keyboard EMU', 'emu', ['Default Off', 'Enable'],
            on_change=usb_keyboard_emulation,
            predicate=has_secrets,  # cannot generate BIP85 passwords without secret
            story='''This mode adds a top-level menu item for typing \
 deterministically-generated passwords (BIP-85), directly into an \
 attached USB computer (as an emulated keyboard).'''),
+    MenuItem('Buried Settings', menu=BuriedSettingsMenu),
 ]
 
 XpubExportMenu = [
