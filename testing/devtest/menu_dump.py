@@ -9,7 +9,7 @@
 async def doit():
     import version
     async def dump_menu(fd, m, label, indent, menu_item=None, menu_idx=0, whs=False):
-        from menu import MenuItem, ToggleMenuItem, MenuSystem, NonDefaultMenuItem
+        from menu import MenuItem, ToggleMenuItem, MenuSystem, NonDefaultMenuItem, ShortcutItem
         from seed import WordNestMenu, EphemeralSeedMenu, SeedVaultMenu, not_hobbled_mode
         from trick_pins import TrickPinMenu
         from users import UsersMenu
@@ -17,8 +17,14 @@ async def doit():
         from flow import hsm_policy_available, is_not_tmp, has_real_secret
         from flow import has_se_secrets, hsm_available, qr_and_has_secrets, has_pushtx_url
         from flow import sssp_related_keys, sssp_allow_passphrase, sssp_allow_notes, sssp_allow_vault
+        from charcodes import KEY_NFC, KEY_QR
 
         print("%s%s"% (indent, label), file=fd)
+
+        KEYMAP = {
+            KEY_NFC: 'NFC',
+            KEY_QR: 'QR',
+        }
 
         if label == 'PIN Options':
             # n/a for mk4
@@ -61,7 +67,11 @@ async def doit():
             if isinstance(mi, str):
                 here = mi
             elif isinstance(mi, MenuItem) or isinstance(mi, NonDefaultMenuItem):
-                here = mi.label
+
+                if isinstance(mi, ShortcutItem):
+                    here = "[%s key shortcut]" % KEYMAP[mi.shortcut_key]
+                else:
+                    here = mi.label
 
                 if here == "Trick PINs" and not whs:
                     # trick pins are not available in EmptyWallet
