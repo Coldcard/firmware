@@ -15,6 +15,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Replace `/` with `-` in exported file names of multisig wallet export artifacts.
 - Enhancement: Show the BIP-39 passphrase on-screen (must scroll down) once new key is in effect.
 - Enhancement: New "Buried Settings" menu, inside Settings menu, for rarely-applied settings.
+- Enhancement: Add `Blue Wallet` option to `Export Wallet`
 
 # Mk Specific Changes
 

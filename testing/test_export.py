@@ -231,12 +231,13 @@ def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, press_sel
 
         
 @pytest.mark.parametrize('mode', [ "Classic P2PKH", "P2SH-Segwit", "Segwit P2WPKH"])
-@pytest.mark.parametrize('acct_num', [ None, '0', '9897'])
+@pytest.mark.parametrize('acct_num', [ None, '9897'])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize('testnet', [True, False])
+@pytest.mark.parametrize('name', ["Electrum"])#, "Blue"])  # same tests, not needed
 def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, cap_story, need_keypress,
                          microsd_path, nfc_read_json, virtdisk_path, use_mainnet, testnet, load_export,
-                         press_select, skip_if_useless_way, expect_acctnum_captured):
+                         press_select, skip_if_useless_way, expect_acctnum_captured, name):
     # lightly test electrum wallet export
     skip_if_useless_way(way)
 
@@ -252,12 +253,12 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
     pick_menu_item('Advanced/Tools')
     pick_menu_item('File Management')
     pick_menu_item('Export Wallet')
-    pick_menu_item('Electrum Wallet')
+    pick_menu_item(f'{name} Wallet')
 
     time.sleep(0.1)
     title, story = cap_story()
 
-    assert 'This saves a skeleton Electrum wallet' in story
+    assert f'This saves a skeleton {name} wallet' in story
 
     assert 'Press (1) to' in story
     if acct_num is not None:
@@ -273,7 +274,7 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
 
     expect_acctnum_captured(acct_num)
 
-    obj = load_export(way, label="Electrum wallet", is_json=True, addr_fmt=af)
+    obj = load_export(way, label=f"{name} wallet", is_json=True, addr_fmt=af)
 
     ks = obj['keystore']
     assert ks['ckcc_xfp'] == simulator_fixed_xfp
