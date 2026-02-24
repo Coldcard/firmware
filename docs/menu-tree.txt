@@ -49,6 +49,7 @@
       Import XPRV
       Tapsigner Backup
       Coldcard Backup
+      Restore Seed XOR
     Upgrade Firmware [IF NOT TMP SEED]
       Show Version
       From MicroSD
@@ -157,12 +158,14 @@
     Delete PSBTs
       Default Keep
       Delete PSBTs
-    Menu Wrapping
-      Default Off
-      Enable
-    Home Menu XFP [IF SECRET AND NOT TMP SEED]
-      Only Tmp
-      Always Show
+    Buried Settings
+      Home Menu XFP [IF SECRET AND NOT TMP SEED]
+        Only Tmp
+        Always Show
+      Menu Wrapping
+        Default
+        Always Wrap
+  [QR key shortcut] [IF QR SCANNER]
 ---
 
 [NORMAL OPERATION]
@@ -173,13 +176,7 @@
         [3A14F788]
         Restore
         Delete
-    Edit Phrase [IF QWERTY]
-    Add Word [IF NOT QWERTY]
-      [SEED WORD MENUS]
-    Add Numbers [IF NOT QWERTY]
-    Clear All [IF NOT QWERTY]
-    APPLY [IF NOT QWERTY]
-    CANCEL [IF NOT QWERTY]
+    Edit Phrase
   Scan Any QR Code [IF QR SCANNER]
   Start HSM Mode [IF HSM POLICY]
   Address Explorer
@@ -267,6 +264,7 @@
         P2WPKH/P2SH (BIP-49)
         Master XPUB
         Current XFP
+      Key Expression
       Dump Summary
     Upgrade Firmware [IF NOT TMP SEED]
       Show Version
@@ -298,6 +296,7 @@
           P2WPKH/P2SH (BIP-49)
           Master XPUB
           Current XFP
+        Key Expression
         Dump Summary
       Sign Text File
       Batch Sign PSBT
@@ -351,8 +350,9 @@
       Import XPRV
       Tapsigner Backup
       Coldcard Backup
+      Restore Seed XOR
     Key Teleport (start)
-    Spending Policy
+    Spending Policy [IF SECRET AND NOT TMP SEED]
       Single-Signer [IF SECRET AND NOT TMP SEED]
       Co-Sign Multisig (CCC) [IF NOT TMP SEED]
       HSM Mode [IF HSM AND SECRET]
@@ -410,6 +410,7 @@
       MCU Key Slots
       Bless Firmware
       Wipe LFS
+      Nuke Device
   Settings
     Login Settings
       Change Main PIN
@@ -484,9 +485,7 @@
           View Descriptor
           Export
           Bitcoin Core
-      Import from File
-      Import from QR [IF QR SCANNER]
-      Import via NFC [IF NFC ENABLED]
+      Import
       Export XPUB
       Create Airgapped
       Trust PSBT?
@@ -541,17 +540,18 @@
     Delete PSBTs
       Default Keep
       Delete PSBTs
-    Menu Wrapping
-      Default Off
-      Enable
-    Home Menu XFP [IF SECRET AND NOT TMP SEED]
-      Only Tmp
-      Always Show
     Keyboard EMU
       Default Off
       Enable
+    Buried Settings
+      Home Menu XFP [IF SECRET AND NOT TMP SEED]
+        Only Tmp
+        Always Show
+      Menu Wrapping
+        Default
+        Always Wrap
   Secure Logout
-  SHORTCUT [IF NFC ENABLED]
+  [NFC key shortcut] [IF NFC ENABLED]
     Sign PSBT
     Show Address
     Sign Message
@@ -647,6 +647,7 @@
           P2WPKH/P2SH (BIP-49)
           Master XPUB
           Current XFP
+        Key Expression
         Dump Summary
       Verify Sig File
       NFC File Share [IF NFC ENABLED]
@@ -677,6 +678,7 @@
         P2WPKH/P2SH (BIP-49)
         Master XPUB
         Current XFP
+      Key Expression
       Dump Summary
     Teleport Multisig PSBT [MAYBE]
     View Identity
@@ -690,6 +692,7 @@
       Import XPRV
       Tapsigner Backup
       Coldcard Backup
+      Restore Seed XOR
     Paper Wallets
     NFC Tools [IF NFC ENABLED]
       Sign PSBT
@@ -699,10 +702,11 @@
       Verify Address
       File Share
       Push Transaction [IF PUSHTX ENABLED]
-    Destroy Seed
+    Show Firmware Version
+    Destroy Seed [IF SECRET AND NOT TMP SEED]
   Secure Logout
   EXIT TEST DRIVE [MAYBE]
-  SHORTCUT [IF NFC ENABLED]
+  [NFC key shortcut] [IF NFC ENABLED]
     Sign PSBT
     Show Address
     Sign Message
