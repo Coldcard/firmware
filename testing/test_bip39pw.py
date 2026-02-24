@@ -367,6 +367,7 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
     assert "created by adding passphrase to" in story
     assert tmp_fp == title_xfp
     assert f"current active temporary seed [{parent_fp}]" in story
+    assert passphrase in story
 
     press_select()
 
