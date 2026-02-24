@@ -554,6 +554,10 @@ async def set_ephemeral_seed(encoded, chain=None, summarize_ux=True, bip39pw='',
 
     applied, err_msg = pa.tmp_secret(encoded, chain=chain, bip39pw=bip39pw)
 
+    # FYI: Might need to bounce the USB connection, because our pubkey has changed,
+    # altho if they have already picked a shared session key, no need, and
+    # would only affect MitM test, which has already been done.
+
     dis.progress_bar_show(1)
 
     if not applied:
@@ -562,7 +566,10 @@ async def set_ephemeral_seed(encoded, chain=None, summarize_ux=True, bip39pw='',
 
     xfp = "[" + xfp2str(settings.get("xfp", 0)) + "]"
     if summarize_ux:
-        await ux_show_story(title=xfp, msg="New temporary master key is in effect now.")
+        msg = "New temporary master key is in effect now."
+        if bip39pw:
+            msg += "\n\nPassphrase: %s" % bip39pw
+        await ux_show_story(title=xfp, msg=msg)
 
     return applied
 
@@ -737,6 +744,7 @@ def set_seed_value(words=None, encoded=None, chain=None):
 
 
 async def calc_bip39_passphrase(pw, bypass_tmp=False):
+    # Returns (new) encoded secret, new xfp, old xfp
     from glob import dis, settings
 
     dis.fullscreen("Working...")
@@ -753,14 +761,13 @@ async def calc_bip39_passphrase(pw, bypass_tmp=False):
 
 async def set_bip39_passphrase(pw, bypass_tmp=False, summarize_ux=True):
     nv, xfp, parent_xfp = await calc_bip39_passphrase(pw, bypass_tmp=bypass_tmp)
+
     ret = await set_ephemeral_seed(nv, summarize_ux=summarize_ux, bip39pw=pw,
                                    origin="BIP-39 Passphrase on [%s]" % xfp2str(parent_xfp))
-    dis.draw_status(bip39=int(bool(pw)), xfp=xfp, tmp=1)
-    return ret
 
-    # Might need to bounce the USB connection, because our pubkey has changed,
-    # altho if they have already picked a shared session key, no need, and
-    # would only affect MitM test, which has already been done.
+    dis.draw_status(bip39=int(bool(pw)), xfp=xfp, tmp=1)
+
+    return ret
 
 async def remember_ephemeral_seed():
     # Compute current xprv and switch to using that as root secret.
@@ -1394,8 +1401,9 @@ async def apply_pass_value(new_pp):
 
     msg = ('Above is the master key fingerprint of the new wallet'
            ' created by adding passphrase to %s.'
+           '\n\nPassphrase: %s'
            '\n\nPress %s to abort, %s to use the new wallet, (1) to apply'
-           ' and save to MicroSD for future.') % (msg, X, OK)
+           ' and save to MicroSD for future.') % (msg, new_pp, X, OK)
 
     ch = await ux_show_story(msg, title="[%s]" % xfp_str, escape='1')
     if ch == 'x':
