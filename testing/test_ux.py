@@ -784,7 +784,7 @@ def test_menu_wrapping(goto_home, pick_menu_item, cap_story, cap_menu,
     press_up()
     press_select()
     menu = cap_menu()
-    assert "Menu Wrapping" not in menu
+    assert "Buried Settings" not in menu
     goto_home()
 
 def test_chain_changes_settings_xpub(pick_menu_item, cap_story, press_select,
