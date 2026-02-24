@@ -1122,19 +1122,21 @@ async def export_xpub(label, _2, item):
             await show_qr_code(xpub, False)
 
 
-def electrum_export_story(background=False):
+def electrum_export_story(noun="Electrum", background=False):
     # saves memory being in a function
     return ('''\
-This saves a skeleton Electrum wallet file. \
-You can then open that file in Electrum without ever connecting this Coldcard to a computer.\n
-'''
+This saves a skeleton %s wallet file. \
+You can then open that file in the wallet without ever connecting this Coldcard to a computer.\n
+''' % noun
         + (background or 'Choose an address type for the wallet on the next screen.'+PICK_ACCOUNT)
         + SENSITIVE_NOT_SECRET)
 
-async def electrum_skeleton(*a):
+async def electrum_skeleton(a, b, item):
     # save xpub, and some other public details into a file: NOT MULTISIG
+    title = item.arg
+    fname_pat = "new-%s.json" % title.lower()
 
-    ch = await ux_show_story(electrum_export_story(), escape='1')
+    ch = await ux_show_story(electrum_export_story(title), escape='1')
 
     account_num = 0
     if ch == '1':
@@ -1144,7 +1146,7 @@ async def electrum_skeleton(*a):
 
     rv = [
         MenuItem(chains.addr_fmt_label(af), f=electrum_skeleton_step2,
-                 arg=(af, account_num))
+                 arg=(af, account_num, title, fname_pat))
         for af in chains.SINGLESIG_AF
     ]
     the_ux.push(MenuSystem(rv))
@@ -1289,10 +1291,10 @@ without ever connecting this Coldcard to a computer.\
 
 async def electrum_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
-    addr_fmt, account_num = item.arg
-    await export_contents('Electrum wallet',
+    addr_fmt, account_num, title, fname_pat = item.arg
+    await export_contents(title + " wallet",
                           lambda: generate_electrum_wallet(addr_fmt, account_num),
-                          "new-electrum.json", is_json=True)
+                          fname_pat, is_json=True)
 
 async def _generic_export(prompt, label, f_pattern):
     # like the Multisig export, make a single JSON file with
