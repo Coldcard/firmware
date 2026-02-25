@@ -4,6 +4,9 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk and Q
 
+- New Feature: Sign [BIP-322](https://github.com/bitcoin/bips/blob/master/bip-0322.mediawiki) Proof of Reserve PSBT files.
+    - requires a carefully crafted PSBT that does not represent a monetary transaction, but instead is demonstrating
+      control over the keys for a list of UTXO, and commits to a short text message.
 - New Feature: Export [BIP-380](https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki) extended key expression.
   Navigate to `Advanced/Tools -> Export Wallet -> Key Expression`
 - New Feature: Transaction Input Explorer. Shows data about UTXO(s) being spent. Press (2) before approving 
