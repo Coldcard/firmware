@@ -1,6 +1,6 @@
 # (c) Copyright 2026 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# BIP-322 message signing & Proof of Reserves
+# BIP-322 Message Signing and Proof of Reserves
 #
 import pytest, time
 from io import BytesIO
@@ -19,7 +19,7 @@ def verify_msg_bip322_por(cap_story, need_keypress, press_select, press_cancel, 
                           enter_complex, pick_menu_item):
     def doit(msg, refuse=False, way="sd", fname=None):
         title, story = cap_story()
-        assert title == "BIP-322 MSG"
+        assert "BIP-322" in title
         # file was already created with bip322_txn fixture above
         if "qr" in way and not is_q1:
             raise pytest.xfail("Mk4 no QR")
@@ -532,7 +532,7 @@ def test_bip322_msg_import_fail(bip322_txn, start_sign, end_sign, cap_story, nee
     start_sign(psbt, finalize=True)
     time.sleep(.1)
     title, story = cap_story()
-    assert title == "BIP-322 MSG"
+    assert 'BIP-322' in title
 
     need_keypress("1")  # SD
     time.sleep(.1)
@@ -545,7 +545,7 @@ def test_bip322_msg_import_fail(bip322_txn, start_sign, end_sign, cap_story, nee
     start_sign(psbt, finalize=True)
     time.sleep(.1)
     title, story = cap_story()
-    assert title == "BIP-322 MSG"
+    assert 'BIP-322' in title
 
     need_keypress("0")  # manual input
     # leave empty
@@ -560,7 +560,7 @@ def test_bip322_msg_import_fail(bip322_txn, start_sign, end_sign, cap_story, nee
     start_sign(psbt, finalize=True)
     time.sleep(.1)
     title, story = cap_story()
-    assert title == "BIP-322 MSG"
+    assert 'BIP-322' in title
 
     need_keypress("0")  # manual input
     enter_complex("AAA", apply=False, b39pass=False)  # msg wrong

@@ -293,7 +293,8 @@ class ApproveTransaction(UserAuthorizedAction):
         from actions import file_picker
         ch = await import_export_prompt("message", is_import=True, force_prompt=True,
                                         intro="Import msg that hashes to 'to_spend' msg hash.",
-                                        key0="to input message manually", title="BIP-322 MSG",
+                                        key0="to input message manually",
+                                        title="BIP-322 Messsage" if version.has_qwerty else 'BIP-322 MSG',
                                         no_qr=not version.has_qwerty)
 
         # single sha256 of b'BIP0322-signed-message'
@@ -307,7 +308,7 @@ class ApproveTransaction(UserAuthorizedAction):
             msg = await NFC.read_bip322_msg()
         elif ch == KEY_QR:
             from ux_q1 import QRScannerInteraction
-            msg = await QRScannerInteraction().scan_text('Scan MSG from a QR code')
+            msg = await QRScannerInteraction().scan_text('Scan message from a QR code')
         else:
             choices = await file_picker(suffix='.txt', ux=False)
             target = "%s.txt" % b2a_hex(self.psbt.por322_msg_hash).decode()
@@ -330,7 +331,7 @@ class ApproveTransaction(UserAuthorizedAction):
         assert msg_hash == self.psbt.por322_msg_hash, "hash verification failed"
         ch = await ux_show_story(
             msg+"\n\nPress %s to approve message, otherwise %s to exit." % (OK, X),
-            title="MSG:"
+            title="Message:"
         )
         return True if ch == "y" else False
 
