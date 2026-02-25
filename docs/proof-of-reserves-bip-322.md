@@ -25,6 +25,10 @@ COLDCARD accepts specially crafted PSBT to sign BIP-322 Proof of Reserves
 
 ### POR Signing UX
 
+After Coldcard recognizes BIP-322 POR PSBT it asks user to import human-readable message that was used to build
+`to_spend` scriptSig. This message must hash exactly to message_hash, otherwise signing is not offered.
+Read more [here](https://gist.github.com/orangesurf/0c1d0a31d3ebe7e48335a34d56788d4c)
+
 ```text
 Proof of Reserves
 

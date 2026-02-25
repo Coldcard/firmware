@@ -302,7 +302,7 @@ class ApproveTransaction(UserAuthorizedAction):
         if ch == KEY_CANCEL:
             return
         elif ch == "0":
-            msg = await ux_input_text("")
+            msg = await ux_input_text("", confirm_exit=False)
         elif ch == KEY_NFC:
             msg = await NFC.read_bip322_msg()
         elif ch == KEY_QR:
