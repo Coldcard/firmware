@@ -523,4 +523,52 @@ def test_bip322_msg_import(msg, ins, way, bip322_txn, start_sign, end_sign, cap_
     assert title == "OK TO SIGN?"
     assert "Proof of Reserves" in story
 
+
+def test_bip322_msg_import_fail(bip322_txn, start_sign, end_sign, cap_story, need_keypress,
+                                press_select, OK, press_cancel, cap_menu, microsd_path, enter_complex):
+
+    msg = b"it's me!"
+    psbt, msg_challenge = bip322_txn([["p2wpkh", None, None]], msg=msg)
+    start_sign(psbt, finalize=True)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "BIP-322 MSG"
+
+    need_keypress("1")  # SD
+    time.sleep(.1)
+    title, story = cap_story()
+    assert f"Press {OK} to approve message" in story
+    press_cancel()  # refuse
+    time.sleep(.1)
+    assert "Ready To Sign" in cap_menu()
+
+    start_sign(psbt, finalize=True)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "BIP-322 MSG"
+
+    need_keypress("0")  # manual input
+    # leave empty
+    press_cancel()
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "need msg" in story
+    assert "Msg verification failed" in story
+    press_cancel()
+
+    start_sign(psbt, finalize=True)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "BIP-322 MSG"
+
+    need_keypress("0")  # manual input
+    enter_complex("AAA", apply=False, b39pass=False)  # msg wrong
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Msg verification failed" in story
+    assert "hash verification failed" in story
+    press_cancel()
+
 # EOF
