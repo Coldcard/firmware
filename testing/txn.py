@@ -27,10 +27,6 @@ def fake_txn(dev, pytestconfig):
              psbt_v2=None, input_amount=1E8, unknown_out_script=None, lock_time=0,
              sequences=None, sighashes=None, dupe_ins=[]):
 
-        # dupe_ins cannot contain zero, as that will be the duplicated input
-        if dupe_ins:
-            assert 0 not in dupe_ins
-
         psbt = BasicPSBT()
 
         if psbt_v2 is None:
@@ -62,17 +58,12 @@ def fake_txn(dev, pytestconfig):
             # - each input is 1BTC
 
             # addr where the fake money will be stored.
-            if i in dupe_ins:
-                # always duplicate zeroth input
-                subkey = mk.subkey_for_path(subpath % 0)
-            else:
-                subkey = mk.subkey_for_path(subpath % i)
+            subkey = mk.subkey_for_path(subpath % i)
             sec = subkey.sec()
             assert len(sec) == 33, "expect compressed"
             assert subpath[0:2] == '0/'
 
-            idx = 0 if i in dupe_ins else i
-            psbt.inputs[i].bip32_paths[sec] = xfp + struct.pack('<II', 0, idx)
+            psbt.inputs[i].bip32_paths[sec] = xfp + struct.pack('<II', 0, i)
 
             # UTXO that provides the funding for to-be-signed txn
             supply = CTransaction()
@@ -102,7 +93,7 @@ def fake_txn(dev, pytestconfig):
 
             if segwit_in:
                 # just utxo for segwit
-                psbt.inputs[i].witness_utxo = supply.vout[0 if i in dupe_ins else -1].serialize()
+                psbt.inputs[i].witness_utxo = supply.vout[-1].serialize()
             else:
                 # whole tx for pre-segwit
                 psbt.inputs[i].utxo = supply.serialize_with_witness()
@@ -131,14 +122,20 @@ def fake_txn(dev, pytestconfig):
                     seq = sequences[0]
 
             spendable = CTxIn(COutPoint(supply.sha256, 0), nSequence=seq)
-            txn.vin.append(spendable)
+            if i not in dupe_ins:
+                txn.vin.append(spendable)
 
-            if psbt_v2:
-                psbt.inputs[i].previous_txid = supply.hash
-                psbt.inputs[i].prevout_idx = 0
-                psbt.inputs[i].sequence = seq
-                # psbt.inputs[i].req_time_locktime = None
-                # psbt.inputs[i].req_height_locktime = None
+                if psbt_v2:
+                    psbt.inputs[i].previous_txid = supply.hash
+                    psbt.inputs[i].prevout_idx = 0
+                    psbt.inputs[i].sequence = seq
+                    # psbt.inputs[i].req_time_locktime = None
+                    # psbt.inputs[i].req_height_locktime = None
+            else:
+                assert i != 0, 'cant dup first input'           
+                txn.vin.append(txn.vin[-1])
+                from copy import deepcopy
+                psbt.inputs[i] = deepcopy(psbt.inputs[i-1])
 
         for i in range(num_outs):
             # random P2PKH
