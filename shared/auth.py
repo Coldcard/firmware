@@ -296,7 +296,7 @@ class ApproveTransaction(UserAuthorizedAction):
                                         key0="to input message manually", title="BIP-322 MSG",
                                         no_qr=not version.has_qwerty)
 
-        # TODO move elswhere
+        # single sha256 of b'BIP0322-signed-message'
         bip322_tag_hash = b'te\x84\xa1\x87/\xa1\x00AUN\xff\xa08\xd6\x12IB\xddy\xb4\xe5\x8aL\xda\x18N\x13\xdb\xe6,I'
 
         if ch == KEY_CANCEL:
@@ -325,9 +325,8 @@ class ApproveTransaction(UserAuthorizedAction):
                 with open(fn, 'rt') as fd:
                     msg = fd.read()
 
-        # TODO needs newer libngu with sha256t
         assert msg, "need msg"
-        msg_hash = ngu.hash.sha256s(bip322_tag_hash+bip322_tag_hash+msg)
+        msg_hash = ngu.hash.sha256t(bip322_tag_hash, msg, True)
         assert msg_hash == self.psbt.por322_msg_hash, "hash verification failed"
         ch = await ux_show_story(
             msg+"\n\nPress %s to approve message, otherwise %s to exit." % (OK, X),
