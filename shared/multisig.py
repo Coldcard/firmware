@@ -1518,7 +1518,7 @@ async def ms_wallet_electrum_export(menu, label, item):
     msg = 'The new wallet will have derivation path:\n  %s\n and use %s addresses.\n' % (
             dsum, MultisigWallet.render_addr_fmt(ms.addr_fmt) )
 
-    if await ux_show_story(electrum_export_story(msg)) != 'y':
+    if await ux_show_story(electrum_export_story("Electrum", msg)) != 'y':
         return
 
     await ms.export_electrum()

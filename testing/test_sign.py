@@ -3625,6 +3625,9 @@ def test_tx_explorer_goto_idx(fake_txn, start_sign, cap_story, use_testnet, need
     num = num_outs - 1
     assert title == f"{num}-{num}"
 
+    for _ in range(3):
+        press_cancel()
+
 
 @pytest.mark.parametrize("segwit", [True, False])
 def test_txn_nVersion_zero(segwit, fake_txn, start_sign, cap_story, goto_home):
