@@ -1,33 +1,45 @@
-# [BIP-322](https://github.com/bitcoin/bips/blob/master/bip-0322.mediawiki) Generic Signed Message Format
+# BIP-322 Generic Signed Message Format
 
-BIP link https://github.com/bitcoin/bips/blob/master/bip-0322.mediawiki
+BIP-322 specification: <https://github.com/bitcoin/bips/blob/master/bip-0322.mediawiki>
 
 ## Proof of Reserves (POR)
 
-### POR PSBT
-COLDCARD accepts specially crafted PSBT to sign BIP-322 Proof of Reserves
-* PSBT requires PSBT_IN_BIP32_DERIVATION for each input
-* p2sh wrapped segwit addresses MUST have proper redeem script in PSBT (PSBT_IN_REDEEM_SCRIPT)
-* p2wsh segwit addresses MUST have proper witness script in PSBT (PSBT_IN_WITNESS_SCRIPT)
-* 0th input in `to_sign` transaction MUST have full (pre-segwit) UTXO (PSBT_IN_NON_WITNESS_UTXO) a.k.a `to_spend`.
-* 0th input in `to_sign` PSBT_IN_NON_WITNESS_UTXO transaction (`to_spend`) is as defined in https://github.com/bitcoin/bips/blob/master/bip-0322.mediawiki#full:
+### PoR PSBT
+
+COLDCARD accepts a specially crafted PSBT file to sign as BIP-322 Proof of Reserves. The PSBT
+must meet all these requirements:
+
+* PSBT requires `PSBT_IN_BIP32_DERIVATION` for each input
+* P2SH wrapped segwit addresses MUST have proper redeem script in PSBT: `PSBT_IN_REDEEM_SCRIPT`
+* P2WSH segwit addresses MUST have proper witness script in PSBT: `PSBT_IN_WITNESS_SCRIPT`
+* First (0th) input in `to_sign` transaction MUST have full (pre-segwit) UTXO (`PSBT_IN_NON_WITNESS_UTXO`) a.k.a `to_spend`.
+* First (0th) input in `to_sign` `PSBT_IN_NON_WITNESS_UTXO` transaction (`to_spend`) is as defined
+  in [BIP-322](https://github.com/bitcoin/bips/blob/master/bip-0322.mediawiki#full):
     * 1 input, 1 output
     * output nValue is 0
     * input prevout hash is 0
     * input prevout n is 0xffffffff
-    * input scriptSig is OP_0 PUSH32 message_hash
+    * input scriptSig is `OP_0 PUSH32 message_hash`
+* PSBT (`to_sign`) MUST have at least one input & first input MUST be `to_spend` full txn
+* PSBT (`to_sign`) MUST only have one output with null-data `OP_RETURN`
+* Optionally inputs can be added to `to_sign` for Proof of Reserve signing.
+* PSBT MUST be version 0.
+* Foreign inputs not allowed in POR PSBT.
 
-* PSBT (`to_sign`) MUST have at least one input & 0th input is MUST be `to_spend` full txn
-* PSBT (`to_sign`) MUST only have one output with null-data OP_RETURN
-* optionally inputs can be added to `to_sign` for Proof of Reserve signing
-* PSBT MUST be version 0
-* foreign inputs not allowed in POR PSBT
+The signatures created by the BIP-322 process will never be suitable
+for a on-chain Bitcoin transaction that could move funds, because
+of these restrictions imposed by BIP-322.
 
-### POR Signing UX
+### Proof of Reserves Signing Experience
 
-After Coldcard recognizes BIP-322 POR PSBT it asks user to import human-readable message that was used to build
-`to_spend` scriptSig. This message must hash exactly to message_hash, otherwise signing is not offered.
-Read more [here](https://gist.github.com/orangesurf/0c1d0a31d3ebe7e48335a34d56788d4c)
+After Coldcard recognizes BIP-322 PoR PSBT it asks the user to
+import a human-readable message that was used to build `to_spend`
+scriptSig. This message must hash exactly the `message_hash` from
+the PSBT, otherwise signing is not offered.
+
+Read more [here.](https://gist.github.com/orangesurf/0c1d0a31d3ebe7e48335a34d56788d4c)
+
+Example screen text:
 
 ```text
 Proof of Reserves
