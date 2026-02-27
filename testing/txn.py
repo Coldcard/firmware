@@ -69,7 +69,7 @@ def fake_txn(dev, pytestconfig):
             supply = CTransaction()
             supply.nVersion = 2
             out_point = COutPoint(
-                uint256_from_str(struct.pack('4Q', 0xdead, 0xbeef, 0, 0)),
+                uint256_from_str(struct.pack('4Q', 0xdead, 0xbeef, 0, i)),
                 73
             )
             supply.vin = [CTxIn(out_point, nSequence=0xffffffff)]
