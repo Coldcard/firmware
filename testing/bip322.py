@@ -111,7 +111,7 @@ def bip322_txn(dev, pytestconfig, create_msg_file):
                 to_spend = CTransaction()
                 to_spend.nVersion = 0
                 out_point = COutPoint(
-                    uint256_from_str(struct.pack('4Q', 0xdead, 0xbeef, 0, 0)),
+                    uint256_from_str(struct.pack('4Q', 0xdead, 0xbeef, 0, i)),
                     73
                 )
                 to_spend.vin = [CTxIn(out_point, nSequence=0xffffffff)]
@@ -213,7 +213,7 @@ def bip322_ms_txn(pytestconfig, create_msg_file):
                 to_spend = CTransaction()
                 to_spend.nVersion = 0
                 out_point = COutPoint(
-                    uint256_from_str(struct.pack('4Q', 0xdead, 0xbeef, 0, 0)),
+                    uint256_from_str(struct.pack('4Q', 0xdead, 0xbeef, 0, i)),
                     73
                 )
                 to_spend.vin = [CTxIn(out_point, nSequence=0xffffffff)]
