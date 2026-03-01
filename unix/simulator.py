@@ -22,10 +22,12 @@ from select import select
 import fcntl
 from bare import BareMetal
 from sdl2.scancode import *     # SDL_SCANCODE_F1.. etc
+import socket
 
 MPY_UNIX = 'l-port/micropython'
 
 UNIX_SOCKET_PATH = '/tmp/ckcc-simulator.sock'
+TCP_SERVER_PORT = 9999
 
 current_led_state = 0x0
 
@@ -766,7 +768,7 @@ def start():
   - ^Z to snapshot screen.
   - ^S/^E to start/end movie recording
   - ^N to capture NFC data (tap it)'''
-)
+              )
         print("  - socket: %s" % socket_path)
         if is_q1:
             print('''\
@@ -815,7 +817,8 @@ Q1 specials:
         display_w = os.open('/dev/null', os.O_RDWR)
         led_w = os.open('/dev/null', os.O_RDWR)
         data_r = os.open('/dev/null', os.O_RDWR)
-        pass_fds = [display_w, "-1", led_w, data_r]
+        numpad_r, numpad_w = os.pipe()  # keys
+        pass_fds = [display_w, numpad_r, led_w, data_r]
     else:
         display_r, display_w = os.pipe()      # fancy OLED display
         led_r, led_w = os.pipe()        # genuine LED
@@ -886,7 +889,6 @@ Q1 specials:
                         + metal_args + scan_args + sys.argv[1:] + [socket_path]
 
     if is_headless:
-        pass_fds.remove("-1")
         args = dict(env=env, pass_fds=pass_fds, shell=False)
 
         if '-i' not in sys.argv:
@@ -895,13 +897,54 @@ Q1 specials:
             # args['stdout'] = subprocess.DEVNULL
 
         child = subprocess.Popen(cc_cmd, **args)
-
         # always prefer to interrupt child, vs. us
         signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+        # TCP server for headless mode device control
+        tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        tcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        tcp_socket.bind(('0.0.0.0', TCP_SERVER_PORT))
+        tcp_socket.listen(1)
+        tcp_socket.setblocking(False)
+        print(f"Headless TCP device control server listening on 127.0.0.1:{TCP_SERVER_PORT}")
+
+        numpad_tx = os.fdopen(numpad_w, 'wb', buffering=0)
+        tcp_client = None
+
+        while child.poll() is None:
+            try:
+                if tcp_client is None:
+                    try:
+                        tcp_client, addr = tcp_socket.accept()
+                        tcp_client.setblocking(False)
+                        print(f"TCP client connected from {addr}")
+                    except (BlockingIOError, socket.error):
+                        pass
+
+                if tcp_client is not None:
+                    try:
+                        data = tcp_client.recv(1)
+                        print(f"device control: received {data}")
+                        if data:
+                            numpad_tx.write(data)
+                        else:
+                            tcp_client.close()
+                            tcp_client = None
+                    except (BlockingIOError, socket.error):
+                        pass
+
+                time.sleep(0.01)
+            except KeyboardInterrupt:
+                break
 
         rv = child.wait()
         if rv:
             print("\r\n<child stopped: %s>\r\n" % rv)
+
+        tcp_socket.close()
+        if tcp_client:
+            tcp_client.close()
+        numpad_tx.close()
 
         child.kill()
         return
