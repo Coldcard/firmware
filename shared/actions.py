@@ -1543,7 +1543,7 @@ Does not affect MicroSD card, if any.''', confirm_key="4"):
 
 async def nuke_device(*a):
     if not await ux_confirm("Wipe Seed & Brick device? This will wipe the seed, purge"
-                            "all related settings, and makes ewaste from this device."):
+                            " all related settings, and makes ewaste from this device."):
         return
 
     if not await ux_confirm("Brick device?\n\nBy design, there is no way to reset or recover"
