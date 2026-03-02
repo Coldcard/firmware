@@ -299,7 +299,7 @@ async def ux_dramatic_pause(msg, seconds):
     # show a full-screen msg, with a dramatic pause + progress bar
     n = seconds * 8
     dis.fullscreen(msg)
-    for i in range(n):
+    for i in range(1, n+1):
         dis.progress_bar_show(i/n)
         await sleep_ms(125)
 
