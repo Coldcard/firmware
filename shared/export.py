@@ -35,7 +35,8 @@ async def export_by_qr(body, label, type_code, force_bbqr=False):
 
 
 async def export_contents(title, contents, fname_pattern, derive=None, addr_fmt=None,
-                          is_json=False, force_bbqr=False, force_prompt=False, direct_way=None):
+                          is_json=False, force_bbqr=False, force_prompt=False, direct_way=None,
+                          intro="", footer="", ux_title=None):
     # export text and json files while offering NFC, QR & Vdisk
     # produces signed export in case of SD/Vdisk (signed with key at deriv and addr_fmt)
     # checks if suitable to offer QR export on Mk4
@@ -59,8 +60,8 @@ async def export_contents(title, contents, fname_pattern, derive=None, addr_fmt=
     ch = direct_way  # set it to direct way only once, outside the loop
     while True:
         if direct_way is None:
-            ch = await import_export_prompt("%s file" % title,
-                                            force_prompt=force_prompt, no_qr=no_qr)
+            ch = await import_export_prompt("%s file" % title, intro=intro, footnotes=footer,
+                                            force_prompt=force_prompt, no_qr=no_qr, title=ux_title)
         if ch == KEY_CANCEL:
             break
         elif ch == KEY_QR:
@@ -500,11 +501,15 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
         )
 
     dis.progress_bar_show(1)
-    await export_contents("Descriptor", body, fname_pattern, derive + "/0/0",
-                          addr_type, force_prompt=True, direct_way=direct_way)
+
+    intro, footer = (body, "") if version.has_qwerty else ("", body)
+    title = "Descriptor"
+    await export_contents(title, body, fname_pattern, derive + "/0/0", addr_type,
+                          force_prompt=True, direct_way=direct_way, intro=intro, footer=footer,
+                          ux_title=title if version.has_qwerty else None)
 
 
-async def make_key_expression_export(orig_der, fname_pattern="key_expr.txt"):
+async def make_key_expression_export(orig_der, addr_fmt=AF_CLASSIC, fname_pattern="key_expr.txt"):
     from glob import dis
 
     dis.fullscreen('Generating...')
@@ -516,8 +521,11 @@ async def make_key_expression_export(orig_der, fname_pattern="key_expr.txt"):
 
     body = "[%s/%s]%s" % (xfp, orig_der.replace("m/", ""), ek)
 
-    await export_contents("Key Expression", body, fname_pattern,
-                          None, None, force_prompt=True)
+    intro, footer = (body, "") if version.has_qwerty else ("", body)
+    title = "Key Expression"
+    await export_contents(title, body, fname_pattern, orig_der + "/0/0", addr_fmt,
+                          force_prompt=True, intro=intro, footer=footer,
+                          ux_title=title if version.has_qwerty else None)
 
 # EOF
 

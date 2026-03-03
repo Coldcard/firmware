@@ -1198,8 +1198,8 @@ async def ss_descriptor_skeleton(_0, _1, item):
 
 async def key_expression_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
-    orig_path = item.arg
-    await make_key_expression_export(orig_path)
+    orig_path, addr_fmt = item.arg
+    await make_key_expression_export(orig_path, addr_fmt)
 
 async def key_expression_skeleton(_0, _1, item):
     # Export key expression -> [xfp/d/e/r]xpub
@@ -1212,12 +1212,14 @@ async def key_expression_skeleton(_0, _1, item):
     elif ch != 'y':
         return
 
+    # element on 2nd index is address format for signed exports
+    # if multisig key use p2pkh
     todo = [
-        ("Segwit P2WPKH", "m/84h/%dh/%dh"),
-        ("Classic P2PKH", "m/44h/%dh/%dh"),
-        ("P2SH-Segwit", "m/49h/%dh/%dh"),
-        ("Multi P2WSH", "m/48h/%dh/%dh/2h"),
-        ("Multi P2SH-P2WSH", "m/48h/%dh/%dh/1h"),
+        ("Segwit P2WPKH", "m/84h/%dh/%dh", AF_P2WPKH),
+        ("Classic P2PKH", "m/44h/%dh/%dh", AF_CLASSIC),
+        ("P2SH-Segwit", "m/49h/%dh/%dh", AF_P2WPKH_P2SH),
+        ("Multi P2WSH", "m/48h/%dh/%dh/2h", AF_CLASSIC),
+        ("Multi P2SH-P2WSH", "m/48h/%dh/%dh/1h", AF_CLASSIC),
     ]
 
     from address_explorer import KeypathMenu
@@ -1228,8 +1230,8 @@ async def key_expression_skeleton(_0, _1, item):
     ct = chains.current_chain().b44_cointype
 
     rv = [
-        MenuItem(label, f=key_expression_skeleton_step2, arg=orig_der % (ct, acct_num))
-        for label, orig_der in todo
+        MenuItem(label, f=key_expression_skeleton_step2, arg=(orig_der % (ct, acct_num), af))
+        for label, orig_der, af in todo
     ]
     rv += [MenuItem("Custom Path", menu=doit)]
 
