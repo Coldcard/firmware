@@ -675,7 +675,7 @@ def test_export_xpub(chain, acct_num, dev, cap_menu, pick_menu_item, goto_home,
 def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home,
             settings_set, need_keypress, expect_acctnum_captured, OK,
             pick_menu_item, way, cap_story, cap_menu, int_ext, settings_get,
-            virtdisk_path, load_export, press_select, skip_if_useless_way):
+            virtdisk_path, load_export, press_select, skip_if_useless_way, is_q1):
 
     skip_if_useless_way(way)
 
@@ -733,12 +733,15 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home,
 
     expect_acctnum_captured(acct_num)
 
-    sig_check = True
-    if addr_fmt == AF_P2TR:
-        sig_check = False
-    contents = load_export(way, label="Descriptor", is_json=False, addr_fmt=addr_fmt,
-                           sig_check=sig_check)
+    time.sleep(.1)
+    title, story = cap_story()
+    idx = 0 if is_q1 else 1
+    story_desc = story.split("\n\n")[idx]
+
+    contents = load_export(way, label="Descriptor", is_json=False, addr_fmt=addr_fmt, sig_check=addr_fmt != AF_P2TR)
     descriptor = contents.strip()
+
+    assert descriptor == story_desc.strip()
 
     if int_ext is False:
         descriptor = descriptor.split("\n")[0]  # external
@@ -811,6 +814,8 @@ def test_zeus_descriptor_export(addr_fmt, acct_num, goto_home, need_keypress, pi
 
     time.sleep(.1)
     title, story = cap_story()
+    idx = 0 if is_q1 else 1
+    story_desc = story.split("\n\n")[idx]
 
     expect_acctnum_captured(acct_num)
 
@@ -828,6 +833,8 @@ def test_zeus_descriptor_export(addr_fmt, acct_num, goto_home, need_keypress, pi
         press_cancel()  # exit NFC animation
 
     descriptor = contents.strip()
+
+    assert descriptor == story_desc.strip()
 
     assert descriptor.startswith(desc_prefix)
     desc_obj = Descriptor.parse(descriptor)
@@ -936,7 +943,7 @@ def test_samourai_vs_generic(chain, account, settings_set, pick_menu_item, goto_
 @pytest.mark.parametrize("acct_num", [None, (2 ** 31) - 1])
 def test_key_expression_export(chain, addr_fmt, acct_num, goto_home, settings_set, need_keypress,
                                pick_menu_item, way, cap_story, cap_menu, virtdisk_path, dev,
-                               load_export, press_select, skip_if_useless_way):
+                               load_export, press_select, skip_if_useless_way, is_q1):
 
     skip_if_useless_way(way, allow_mk4_qr=True)
 
@@ -989,7 +996,12 @@ def test_key_expression_export(chain, addr_fmt, acct_num, goto_home, settings_se
     assert menu_item in menu
     pick_menu_item(menu_item)
 
-    contents = load_export(way, label="Key Expression", is_json=False, sig_check=False)
+    time.sleep(.1)
+    title, story = cap_story()
+    idx = 0 if is_q1 else 1
+    story_key_exp = story.split("\n\n")[idx]
+
+    contents = load_export(way, label="Key Expression", is_json=False,addr_fmt=addr_fmt)
     key_exp = contents.strip()
 
     xfp = dev.master_fingerprint
@@ -1001,7 +1013,7 @@ def test_key_expression_export(chain, addr_fmt, acct_num, goto_home, settings_se
     ).subkey_for_path(derive)
 
     target = f"[{xfp}/{derive.replace('m/', '')}]{node.hwif()}"
-    assert key_exp == target
+    assert key_exp == target == story_key_exp
 
 
 @pytest.mark.parametrize('path', [
@@ -1012,7 +1024,7 @@ def test_key_expression_export(chain, addr_fmt, acct_num, goto_home, settings_se
     "m/45h",
 ])
 def test_custom_key_expression_export(path, goto_home, pick_menu_item, cap_menu, need_keypress,
-                                      press_select, load_export, use_testnet, dev):
+                                      press_select, load_export, use_testnet, dev, cap_story, is_q1):
     use_testnet()
     goto_home()
     pick_menu_item("Advanced/Tools")
@@ -1050,7 +1062,12 @@ def test_custom_key_expression_export(path, goto_home, pick_menu_item, cap_menu,
     m = cap_menu()
     pick_menu_item(m[2 if part[-1] == "h" else 3])
 
-    contents = load_export("sd", label="Key Expression", is_json=False, sig_check=False)
+    time.sleep(.25)
+    title, story = cap_story()
+    idx = 0 if is_q1 else 1
+    story_key_exp = story.split("\n\n")[idx]
+
+    contents = load_export("sd", label="Key Expression", is_json=False)
     key_exp = contents.strip()
 
     xfp = dev.master_fingerprint
@@ -1060,6 +1077,6 @@ def test_custom_key_expression_export(path, goto_home, pick_menu_item, cap_menu,
     node = BIP32Node.from_master_secret(seed, netcode="XTN").subkey_for_path(path)
 
     target = f"[{xfp}/{path.replace('m/', '')}]{node.hwif()}"
-    assert key_exp == target
+    assert key_exp == target == story_key_exp
 
 # EOF
