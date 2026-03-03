@@ -16,7 +16,7 @@ from export import export_contents, make_summary_file, make_descriptor_wallet_ex
 from export import make_bitcoin_core_wallet, generate_wasabi_wallet, generate_generic_export
 from export import generate_unchained_export, generate_electrum_wallet, make_key_expression_export
 from files import CardSlot, CardMissingError, needs_microsd
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2TR
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2TR, AF_P2WPKH_P2SH
 from glob import settings
 from pincodes import pa
 from menu import start_chooser, MenuSystem, MenuItem
@@ -523,6 +523,7 @@ async def new_from_dice(menu, label, item):
 
 async def any_active_duress_ux():
     from trick_pins import tp
+    tp.reload()
     # if TPs are hidden this msg will not be shown
     if any(tp.get_duress_pins()):
         await ux_show_story('You have one or more duress wallets defined '
@@ -1208,8 +1209,8 @@ async def ss_descriptor_skeleton(_0, _1, item):
 
 async def key_expression_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
-    orig_path = item.arg
-    await make_key_expression_export(orig_path)
+    orig_path, addr_fmt = item.arg
+    await make_key_expression_export(orig_path, addr_fmt)
 
 async def key_expression_skeleton(_0, _1, item):
     # Export key expression -> [xfp/d/e/r]xpub
@@ -1222,14 +1223,16 @@ async def key_expression_skeleton(_0, _1, item):
     elif ch != 'y':
         return
 
+    # element on 2nd index is address format for signed exports
+    # if multisig key use p2pkh
     todo = [
-        ("Segwit P2WPKH", "m/84h/%dh/%dh"),
-        ("Taproot P2TR", "m/86h/%dh/%dh"),
-        ("Classic P2PKH", "m/44h/%dh/%dh"),
-        ("P2SH-Segwit", "m/49h/%dh/%dh"),
-        ("Multi P2WSH", "m/48h/%dh/%dh/2h"),
-        ("Multi P2TR", "m/48h/%dh/%dh/3h"),
-        ("Multi P2SH-P2WSH", "m/48h/%dh/%dh/1h"),
+        ("Segwit P2WPKH", "m/84h/%dh/%dh", AF_P2WPKH),
+        ("Taproot P2TR", "m/86h/%dh/%dh", AF_P2TR),
+        ("Classic P2PKH", "m/44h/%dh/%dh", AF_CLASSIC),
+        ("P2SH-Segwit", "m/49h/%dh/%dh", AF_P2WPKH_P2SH),
+        ("Multi P2WSH", "m/48h/%dh/%dh/2h", AF_CLASSIC),
+        ("Multi P2TR", "m/48h/%dh/%dh/3h", AF_CLASSIC),
+        ("Multi P2SH-P2WSH", "m/48h/%dh/%dh/1h", AF_CLASSIC),
     ]
 
     from address_explorer import KeypathMenu
@@ -1240,8 +1243,8 @@ async def key_expression_skeleton(_0, _1, item):
     ct = chains.current_chain().b44_cointype
 
     rv = [
-        MenuItem(label, f=key_expression_skeleton_step2, arg=orig_der % (ct, acct_num))
-        for label, orig_der in todo
+        MenuItem(label, f=key_expression_skeleton_step2, arg=(orig_der % (ct, acct_num), af))
+        for label, orig_der, af in todo
     ]
     rv += [MenuItem("Custom Path", menu=doit)]
 
