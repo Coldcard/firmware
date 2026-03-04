@@ -3657,4 +3657,21 @@ def test_duplicate_inputs(segwit_in, num_ins, fake_txn, start_sign, end_sign, ca
     else:
         assert title == "OK TO SEND?"
 
+
+def test_txid_qr(fake_txn, start_sign, cap_story, press_cancel, press_select):
+    psbt = fake_txn(1, 2, change_outputs=[0])
+    start_sign(psbt, finalize=False)
+    press_select()  # confirm signing
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "(6) for QR Code of TXID" not in story
+    press_cancel()  # refuse
+    time.sleep(.1)
+    start_sign(psbt, finalize=True)
+    press_select()  # confirm signing
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "(6) for QR Code of TXID" in story
+    press_cancel()
+
 # EOF
