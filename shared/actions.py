@@ -1229,11 +1229,9 @@ async def key_expression_skeleton(_0, _1, item):
 
     ct = chains.current_chain().b44_cointype
 
-    rv = [
-        MenuItem(label, f=key_expression_skeleton_step2, arg=(orig_der % (ct, acct_num), af))
-        for label, orig_der, af in todo
-    ]
-    rv += [MenuItem("Custom Path", menu=doit)]
+    rv = [ MenuItem(label, f=key_expression_skeleton_step2, arg=(orig_der % (ct, acct_num), af))
+                    for label, orig_der, af in todo ]
+    rv += [ MenuItem("Custom Path", menu=doit) ]
 
     the_ux.push(MenuSystem(rv))
 
