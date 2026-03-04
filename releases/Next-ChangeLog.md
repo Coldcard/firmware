@@ -13,13 +13,13 @@ This lists the new changes that have not yet been published in a normal release.
 - New Feature: Transaction Input Explorer. Shows data about UTXO(s) being spent. Press (2) before approving 
   transaction to enter Transaction Explorer.
 - New Feature: Support for v3 transactions in PSBT files.
-- New Feature: Option to type-out derived BIP-85 secrets as a USB keyboard.
-- New Feature: Nuke Device, purges all sensitive data and make COLCARD into e-waste.
+- New Feature: Option to type a derived BIP-85 secret as an emulated USB keyboard.
+- New Feature: Nuke Device: purges all sensitive data and makes your COLDCARD e-waste.
 - Enhancement: CCC debug menu allows you to reset block height.
 - Enhancement: Show the BIP-39 passphrase on-screen (must scroll down) once new key is in effect.
 - Enhancement: New "Buried Settings" menu, inside Settings menu, for rarely-applied settings.
 - Enhancement: Add "Blue Wallet" option to "Export Wallet"
-- Bugfix: Detect duplicated inputs in PSBT file.
+- Enhancement: Detect duplicated inputs in PSBT file.
 - Bugfix: Replace `/` with `-` in exported file names of multisig wallet export artifacts.
 
 # Mk Specific Changes
