@@ -8,7 +8,7 @@ This lists the new changes that have not yet been published in a normal release.
     - Requires a carefully crafted PSBT that does not represent a monetary transaction, but instead is demonstrating
       control over the keys for a list of UTXO, and commits to a short text message.
     - Read more [here](https://github.com/Coldcard/firmware/blob/master/docs/proof-of-reserves-bip-322.md).
-- New Feature: WIF Store. Ability to import foreign WIF keys and use them for PSBT signing.
+- New Feature: WIF Store. Ability to import foreign WIF keys (Wallet Import Format) and use them for PSBT signing.
 - New Feature: Export [BIP-380](https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki) extended key expression.
   Navigate to "Advanced/Tools -> Export Wallet -> Key Expression"
 - New Feature: Transaction Input Explorer. Shows data about UTXO(s) being spent. Press (2) before approving 
