@@ -1001,6 +1001,7 @@ class QRScannerInteraction:
         elif what == "wif":
             data, = vals
             wif_str, key_pair, compressed, testnet = data
+            from wif import ux_visualize_wif
             await ux_visualize_wif(wif_str, key_pair, compressed, testnet)
 
         elif what == "vmsg":
@@ -1141,14 +1142,6 @@ async def ux_visualize_bip21(proto, addr, args):
         from ownership import OWNERSHIP
         await OWNERSHIP.search_ux(addr, args)
 
-async def ux_visualize_wif(wif_str, kp, compressed, testnet):
-    # TODO: remove until we support signing w/ WIF keys IMHO
-    from ux import ux_show_story
-    msg = wif_str + "\n\n"
-    msg += "chain: %s\n\n" % ("XTN" if testnet else "BTC")
-    msg += "private key hex:\n" + b2a_hex(kp.privkey()).decode() + "\n\n"
-    msg += "public key sec:\n" + b2a_hex(kp.pubkey().to_bytes(not compressed)).decode() + "\n\n"
-    await ux_show_story(msg, title="WIF")
 
 async def qr_msg_sign_done(signature, address, text):
     from ux import ux_show_story
