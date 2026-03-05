@@ -2962,6 +2962,8 @@ def set_deltamode(sim_exec):
 def import_wif_to_store(goto_home, pick_menu_item, cap_story, press_select, cap_menu,
                         microsd_path, virtdisk_path, is_q1, scan_a_qr, need_keypress,
                         garbage_collector, press_nfc, nfc_write_text, enter_complex):
+
+    # Import a list of WIF keys into the "WIF Store"
     def doit(wif_lst, way="sd", sep="\n", early_exit=False):
         home = True
         try:
@@ -2998,7 +3000,7 @@ def import_wif_to_store(goto_home, pick_menu_item, cap_story, press_select, cap_
                 time.sleep(0.3)
         elif way == "qr":
             if not is_q1:
-                raise pytest.xfail("Mk4 no QR")
+                raise pytest.xfail("needs scanner")
 
             assert f"{KEY_QR} to scan QR code" in story
             need_keypress(KEY_QR)

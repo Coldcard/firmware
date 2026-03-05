@@ -6,7 +6,7 @@ from ubinascii import unhexlify as a2b_hex
 from ux import ux_show_story, ux_confirm, the_ux, import_export_prompt, ux_input_text, show_qr_code
 from menu import MenuSystem, MenuItem
 from utils import problem_file_line, show_single_address, node_from_pubkey
-from files import CardSlot
+from files import CardSlot, CardMissingError, needs_microsd
 from glob import settings
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 from public_constants import AF_P2WPKH
@@ -14,16 +14,22 @@ from msgsign import msg_signing_done
 
 
 def decode_wif(wif):
+    # Decode base58 encoded WIF string, return keypair and metadata
     raw = ngu.codecs.b58_decode(wif)
     assert raw[0] in (0xef, 0x80)
+
     testnet = True if raw[0] == 0xef else False
+
     assert len(raw) in (33, 34)
+
     compressed = False
     if len(raw) == 34:  # compressed pubkey
         assert raw[33] == 0x01
         compressed = True
+
     sk = raw[1:33]
     kp = ngu.secp256k1.keypair(sk)  # catches wrong private keys
+
     return kp, testnet, compressed
 
 
@@ -241,46 +247,47 @@ class WIFStore(MenuSystem):
 
         else:
             # pick a likely-looking file: just looking at size and extension
-            fn = await file_picker(suffix='.txt', min_size=51, max_size=2000,
+            # - kinda big so we can import paper wallet directly
+            fn = await file_picker(suffix=['.csv', '.txt'], min_size=51, max_size=11000,
                                     none_msg="Must contain WIF(s)", **ch)
 
             if not fn: return
 
-            with CardSlot(readonly=True, **ch) as card:
-                with open(fn, 'rt') as fd:
-                    got = fd.read().strip()
+            try:
+                with CardSlot(readonly=True, **ch) as card:
+                    with open(fn, 'rt') as fd:
+                        got = fd.read()
+            except CardMissingError:
+                await needs_microsd()
+                return
+            except Exception as e:
+                await ux_show_story('Failed to read file!\n\n%s' % e)
+                return
 
         if not got:
             return
 
         dis.fullscreen("Wait...")
 
-        # allow both newlines and commas as separators
-        if "\n" in got:
-            wifs = got.split("\n")
-        elif "," in got:
-            wifs = got.split(",")
-        else:
-            # just one wif
-            wifs = [got]
+        # allow commas, spaces, and newlines as separators
+        got = got.replace(',', ' ').split()
 
         saved = settings.get("wifs", [])
-        len_saved = len(saved)
-
-        if (len_saved + len(wifs)) > self.MAX_ITEMS:
-            await ux_show_story("Max %d items allowed in WIF Store.\n\nAttempted to import %d keys,"
-                                " while remaining WIF store capacity is only %d. Please, make room"
-                                " first." % (self.MAX_ITEMS, len(wifs), self.MAX_ITEMS - len_saved),
-                                title="Failure")
-            return
 
         try:
-            for wif in wifs:
+            new_wifs = []
+            dups = 0
+
+            for here in got:
+                here = here.strip()
+                if not here:
+                    continue
+
                 try:
-                    wif = wif.strip()
-                    kp, testnet, compressed = decode_wif(wif)
+                    kp, testnet, compressed = decode_wif(here)
                 except Exception:
-                    raise ValueError("wif decode")
+                    # ignore garbage text, headers, addresses, etc.
+                    continue
 
                 assert compressed, "compressed only"
                 assert testnet == (chains.current_chain().ctype != "BTC"), "chain"
@@ -290,13 +297,25 @@ class WIFStore(MenuSystem):
 
                 item = (pk, sk)
 
-                if item not in saved:  # ignore duplicates
-                    saved.append(item)
+                if item not in saved:       # ignore dups
+                    new_wifs.append(item)
+                else:
+                    dups += 1
 
-            if len_saved < len(saved):
-                settings.set('wifs', saved)
-                settings.save()
-                self.update_contents()
+            assert new_wifs, 'no valid WIF found' if not dups else 'duplicate WIF(s)'
+
+            len_saved = len(saved)
+            if (len_saved + len(new_wifs)) > self.MAX_ITEMS:
+                await ux_show_story("Max %d items allowed in WIF Store.\n\nAttempted to import %d keys,"
+                                    " while remaining WIF store capacity is only %d. Please, make room"
+                                    " first." % (self.MAX_ITEMS, len(new_wifs), self.MAX_ITEMS - len_saved),
+                                    title="Failure")
+                return
+
+            saved.extend(new_wifs)
+            settings.set('wifs', saved)
+            settings.save()
+            self.update_contents()
 
         except Exception as e:
             await ux_show_story('Failed to import WIF.\n\n%s\n%s' % (e, problem_file_line(e)),
