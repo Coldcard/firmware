@@ -1,10 +1,14 @@
 # (c) Copyright 2026 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, os, re, hashlib, shutil
+import pytest, time, os
 from helpers import prandom, addr_from_display_format
-from charcodes import KEY_DOWN, KEY_QR, KEY_NFC, KEY_DELETE, KEY_UP
+from charcodes import KEY_QR, KEY_NFC, KEY_UP
+from constants import unmap_addr_fmt, AF_P2WSH, AF_P2SH
 from bip32 import BIP32Node, PrivateKey
 from base58 import encode_base58_checksum
+from msg import verify_message, parse_signed_message
+from psbt import BasicPSBT
+from helpers import str_to_path
 
 
 def make_fake_wif(prefix=239):
@@ -352,7 +356,7 @@ def test_wif_store_import_duplicate(settings_remove, import_wif_to_store, settin
 
 @pytest.mark.parametrize("way", ["qr", "sd", "nfc"])
 def test_wif_store_export_all(way, goto_home, settings_remove, import_wif_to_store, pick_menu_item,
-                              load_export):
+                              load_export, press_cancel):
     goto_home()
     settings_remove("wifs")
 
@@ -364,5 +368,374 @@ def test_wif_store_export_all(way, goto_home, settings_remove, import_wif_to_sto
     conts = load_export(way, "WIF Store", is_json=False, sig_check=False)
 
     assert wif_list == conts.split("\n")
+    press_cancel()
 
 
+@pytest.mark.parametrize('en_okeys', [ True, False])
+def test_hobbled_wif_store(en_okeys, set_hobble, settings_remove, import_wif_to_store, goto_home,
+                           cap_menu, pick_menu_item):
+    goto_home()
+    settings_remove("wifs")
+
+    wif_list = [
+        encode_base58_checksum(bytes([239]) + os.urandom(32) + b'\x01')
+        for _ in range(3)
+    ]
+
+    import_wif_to_store(wif_list)
+    goto_home()
+
+    set_hobble(True, {'okeys'} if en_okeys else {})
+    pick_menu_item("Advanced/Tools")
+
+    if en_okeys:
+        pick_menu_item("WIF Store")
+        time.sleep(.1)
+        menu = cap_menu()
+        # check it is read-only
+        assert "Import WIF" not in menu
+        assert "Clear All" not in menu
+        pick_menu_item(menu[0])
+        time.sleep(.1)
+        menu = cap_menu()
+        assert "Delete" not in menu
+    else:
+        assert "WIF Store" not in cap_menu()
+
+
+@pytest.mark.parametrize("way,af", [
+    ("sd", "P2SH-Segwit"),
+    ("input", "Segwit P2WPKH"),
+    ("nfc", "Classic P2PKH")
+])
+def test_sign_msg_with_wif_store_key(way, af, settings_remove, import_wif_to_store, cap_menu,
+                                     pick_menu_item, cap_story, need_keypress, press_nfc,
+                                     enter_complex, garbage_collector, microsd_path, nfc_write_text,
+                                     verify_msg_sign_story, msg_sign_export, press_select, goto_home):
+    settings_remove("wifs")
+    msg = "Coinkite"
+
+    n = BIP32Node.from_master_secret(os.urandom(32))
+    privkey = n.node.private_key
+    import_wif_to_store([encode_base58_checksum(bytes([239]) + bytes(privkey) + b'\x01')])
+
+    menu = cap_menu()
+    assert len(menu) == 2
+    pick_menu_item(menu[1])
+    pick_menu_item("Sign MSG")
+    pick_menu_item(af)
+
+    if way == "input":
+        need_keypress("0")
+        enter_complex(msg, apply=False, b39pass=False)
+
+    elif way == "sd":
+        name = "msg_to_sign.txt"
+        pth = microsd_path(name)
+        with open(pth, "w") as f:
+            f.write(msg)
+
+        need_keypress("1")
+        pick_menu_item(name)
+
+    elif way == "nfc":
+        press_nfc()
+        time.sleep(0.2)
+        nfc_write_text(msg)
+        time.sleep(0.3)
+
+    else:
+        raise NotImplementedError
+
+    time.sleep(.1)
+    title, story = cap_story()
+    addr_fmt = {"P2SH-Segwit": "p2sh-p2wpkh",
+                "Segwit P2WPKH": "p2wpkh",
+                "Classic P2PKH": "p2pkh"}[af]
+
+    target_addr = n.address(addr_fmt=addr_fmt)
+    verify_msg_sign_story(story, msg, "m", addr=target_addr)
+    press_select()
+    res = msg_sign_export(way if way != "input" else "sd")
+    assert target_addr in res
+    pmsg, addr, sig = parse_signed_message(res)
+    assert pmsg == msg
+    assert verify_message(addr, sig, msg) is True
+    goto_home()
+
+
+@pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh", "p2sh"])
+def test_multisig_wif_store(addr_fmt, dev, fake_ms_txn, start_sign, settings_set, clear_ms,
+                            cap_story, pytestconfig, import_ms_wallet, end_sign, settings_remove):
+    # TODO This test MUST be run with --psbt2 flag on and off
+    clear_ms()
+    settings_remove("wifs")
+    M, N = 3, 5
+
+    if addr_fmt == AF_P2SH:
+        dd = "m/45h"
+    elif addr_fmt == AF_P2WSH:
+        dd = "m/48h/1h/0h/2h"
+    else:
+        dd = "m/48h/1h/0h/1h"
+
+    def path_mapper(idx):
+        kk = str_to_path(dd)
+        return kk + [0,0]
+
+    keys = import_ms_wallet(M, N, name='wif_store', accept=True, netcode="XTN",
+                            descriptor=True, addr_fmt=addr_fmt, common=dd)
+
+    psbt = fake_ms_txn(1, 1, M, keys, inp_af=unmap_addr_fmt[addr_fmt],
+                       path_mapper=path_mapper, psbt_v2=pytestconfig.getoption('psbt2'))
+
+    # sign with master key first - nothing in WIF store
+    # without warning
+    # one signature from master added
+    start_sign(psbt)
+    title, story = cap_story()
+    assert "warning" not in story
+    signed = end_sign()
+
+    po = BasicPSBT().parse(signed)
+    assert len(po.inputs[0].part_sigs) == 1
+
+    # add privkey from 0th & 1st node to WIF store
+    der_node0 = keys[0][1].subkey_for_path(dd[2:] + "/0/0")
+    sk0 = bytes(der_node0.node.private_key).hex()
+    pk0 = der_node0.node.private_key.K.sec().hex()
+    der_node1 = keys[1][1].subkey_for_path(dd[2:] + "/0/0")
+    sk1 = bytes(der_node1.node.private_key).hex()
+    pk1 = der_node1.node.private_key.K.sec().hex()
+    settings_set("wifs", [(pk0,sk0), (pk1,sk1)])
+
+    # ofe of the private keys will be used for signing
+    # only one as we cannot sign with 2 keys in one sitting
+    start_sign(signed)
+    title, story = cap_story()
+    assert "warning" in story
+    assert "WIF store" in story
+    signed = end_sign()
+    po = BasicPSBT().parse(signed)
+    assert len(po.inputs[0].part_sigs) == 2
+
+    # sign with other key - keys that already have signatures are ignored
+    # that is why we can proceed with this iterative method
+    start_sign(signed, finalize=True)
+    title, story = cap_story()
+    assert "warning" in story
+    assert "WIF store" in story
+    end_sign(finalize=True)
+
+
+@pytest.mark.parametrize("addr_fmt", ["p2wpkh", "p2sh-p2wpkh", "p2pkh"])
+@pytest.mark.parametrize("idx", [1, 3])
+def test_wif_store_ownership(addr_fmt, idx, is_q1, goto_home, pick_menu_item, scan_a_qr, cap_story,
+                             need_keypress, src_root_dir, sim_root_dir, nfc_write, settings_remove,
+                             import_wif_to_store, load_shared_mod, cap_screen_qr, press_cancel):
+
+    settings_remove("wifs")
+
+    n = BIP32Node.from_master_secret(os.urandom(32))
+    privkey = n.node.private_key
+    addr = n.address(addr_fmt=addr_fmt)
+    wif = encode_base58_checksum(bytes([239]) + bytes(privkey) + b'\x01')
+    wif1 = encode_base58_checksum(bytes([239]) + os.urandom(32) + b'\x01')
+    wif2 = encode_base58_checksum(bytes([239]) + os.urandom(32) + b'\x01')
+
+    if idx == 1:
+        wif_list = [wif, wif1, wif2]
+    else:
+        wif_list = [wif1, wif2, wif]
+
+    import_wif_to_store(wif_list)
+
+    goto_home()
+
+    if is_q1:
+        pick_menu_item('Scan Any QR Code')
+        scan_a_qr(addr)
+        time.sleep(1)
+
+        title, story = cap_story()
+
+        assert addr == addr_from_display_format(story.split("\n\n")[0])
+        assert '(1) to verify ownership' in story
+        need_keypress('1')
+
+    else:
+        cc_ndef = load_shared_mod('cc_ndef', f'{src_root_dir}/shared/ndef.py')
+        n = cc_ndef.ndefMaker()
+        n.add_text(addr)
+        ccfile = n.bytes()
+
+        pick_menu_item('Advanced/Tools')
+        pick_menu_item('NFC Tools')
+        pick_menu_item('Verify Address')
+        with open(f'{sim_root_dir}/debug/nfc-addr.ndef', 'wb') as f:
+            f.write(ccfile)
+        nfc_write(ccfile)
+
+    time.sleep(1)
+    title, story = cap_story()
+    assert addr == addr_from_display_format(story.split("\n\n")[0])
+    assert f"Found in WIF store at index {idx}" in story
+    need_keypress(KEY_QR if is_q1 else '1')
+    addr_qr = cap_screen_qr().decode()
+    if addr_fmt == "p2wpkh":
+        addr_qr = addr_qr.lower()
+
+    assert addr == addr_qr
+    press_cancel()
+
+
+@pytest.mark.parametrize("num_ins", [1, 5])
+@pytest.mark.parametrize("addr_fmt", ["p2pkh", "p2wpkh", "p2sh-p2wpkh"])
+def test_wif_store_signing(num_ins, addr_fmt, fake_txn, goto_home, pick_menu_item, need_keypress,
+                           start_sign, end_sign, cap_menu, cap_story, press_cancel, settings_remove,
+                           press_select, import_wif_to_store):
+
+    settings_remove("wifs")
+
+    wrap = False
+    if addr_fmt == "p2pkh":
+        sw = False
+    elif addr_fmt == "p2wpkh":
+        sw = True
+    elif addr_fmt == "p2sh-p2wpkh":
+        wrap = True
+        sw = True
+    else:
+        raise ValueError
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    psbt = fake_txn(num_ins, 1, segwit_in=sw, wrapped=wrap, master_xpub=node.hwif())
+
+    wifs = []
+    privkeys = []
+    for i in range(num_ins):
+        n = node.subkey_for_path("0/%d" % i)
+        sk = n.node.private_key
+        privkeys.append(sk)
+        wifs.append(n.node.private_key.wif(testnet=True))
+
+    import_wif_to_store(wifs)
+
+    menu = cap_menu()
+    assert menu[0] == "Import WIF"
+
+    start_sign(psbt, finalize=True)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "warning" in story
+    if num_ins == 1:
+        assert "WIF store: 0" in story
+    else:
+        assert f"WIF store: {', '.join([str(i) for i in range(num_ins)])}" in story
+    end_sign(finalize=True)
+
+
+@pytest.mark.parametrize("der_paths", [True, False])
+@pytest.mark.parametrize("complete", [True, False])
+def test_wif_store_signing_multi(der_paths, complete, fake_txn, start_sign, end_sign, cap_story,
+                                 settings_set):
+    wifs = []
+
+    hack = None
+    if der_paths:
+        def hack(psbt):
+            new_paths = {}
+            for k, v in psbt.inputs[0].bip32_paths.items():
+                new_paths[k] = b"\x01" * 8  # garbage (do not use zero xfp here)
+
+            psbt.inputs[0].bip32_paths = new_paths
+
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    psbt = fake_txn(1, 1, segwit_in=True, master_xpub=node.hwif(), psbt_v2=True, outvals=[1E8*3],
+                    psbt_hacker=hack)
+    po = BasicPSBT().parse(psbt)
+    n = node.subkey_for_path("0/0")
+    sk = bytes(n.node.private_key).hex()
+    pk = n.node.private_key.K.sec().hex()
+    wifs.append((pk, sk))
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    psbt = fake_txn(1, 1, segwit_in=False, master_xpub=node.hwif(), psbt_v2=True, psbt_hacker=hack)
+    tmp = BasicPSBT().parse(psbt)
+    po.inputs += tmp.inputs
+    po.input_count += 1
+    n = node.subkey_for_path("0/0")
+    sk = bytes(n.node.private_key).hex()
+    pk = n.node.private_key.K.sec().hex()
+    wifs.append((pk, sk))
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    psbt = fake_txn(1, 1, segwit_in=True, wrapped=True, master_xpub=node.hwif(), psbt_v2=True,
+                    psbt_hacker=hack)
+    tmp = BasicPSBT().parse(psbt)
+    po.inputs += tmp.inputs
+    po.input_count += 1
+    n = node.subkey_for_path("0/0")
+    sk = bytes(n.node.private_key).hex()
+    pk = n.node.private_key.K.sec().hex()
+    wifs.append((pk, sk))
+
+    # pretend we have those imported
+    if not complete:
+        wifs = wifs[:-1]
+
+    settings_set("wifs", wifs)
+
+    start_sign(po.as_bytes(), finalize=complete)
+    title, story = cap_story()
+    assert "warning" in story
+    if complete:
+        assert "WIF store: 0, 1, 2" in story
+    else:
+        assert "WIF store: 0, 1" in story
+        assert "Limited Signing" in story
+
+    end_sign(finalize=complete)
+
+
+def test_wif_store_signing_with_master(fake_txn, start_sign, end_sign, cap_story, settings_set):
+    # signs both master key and keys from WIF store
+    wifs = []
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    psbt = fake_txn(1, 1, segwit_in=True, master_xpub=node.hwif(), psbt_v2=True, outvals=[1E8*3])
+    po = BasicPSBT().parse(psbt)
+    n = node.subkey_for_path("0/0")
+    sk = bytes(n.node.private_key).hex()
+    pk = n.node.private_key.K.sec().hex()
+    wifs.append((pk, sk))
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    psbt = fake_txn(1, 1, segwit_in=False, master_xpub=node.hwif(), psbt_v2=True)
+    tmp = BasicPSBT().parse(psbt)
+    po.inputs += tmp.inputs
+    po.input_count += 1
+    n = node.subkey_for_path("0/0")
+    sk = bytes(n.node.private_key).hex()
+    pk = n.node.private_key.K.sec().hex()
+    wifs.append((pk, sk))
+
+    # add simulator input
+    psbt = fake_txn(1, 1, segwit_in=True, psbt_v2=True)
+    tmp = BasicPSBT().parse(psbt)
+    po.inputs += tmp.inputs
+    po.input_count += 1
+
+
+    settings_set("wifs", wifs)
+
+    # convert to v0 PSBT just for fun
+    start_sign(po.to_v0(), finalize=True)
+    title, story = cap_story()
+    assert "warning" in story
+    assert "WIF store: 0, 1" in story
+
+    end_sign(finalize=True)
+
+# EOF
