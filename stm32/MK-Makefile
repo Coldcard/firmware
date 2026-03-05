@@ -12,14 +12,14 @@ HW_MODEL = mk
 PARENT_MKFILE = MK-Makefile
 
 # This is release of the bootloader that will be built into the factory.dfu
-BOOTLOADER_VERSION = 3.2.1
+BOOTLOADER_VERSION = 3.3.0
 BOOTLOADER_DIR = mk4-bootloader
 
 LATEST_RELEASE = $(shell ls -t1 ../releases/*-mk-*.dfu ../releases/*-mk4-*.dfu | head -1) 
 
 # Our version for this release.
 # - caution, the bootrom will not accept version < 3.0.0
-VERSION_STRING = 5.4.5
+VERSION_STRING = 5.5.0
 
 # keep near top, because defined default target (all)
 include shared.mk
