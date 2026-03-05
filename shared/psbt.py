@@ -49,7 +49,7 @@ from public_constants import (
     AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH,
     AFC_SEGWIT, AF_BARE_PK
 )
-from silentpayments import SilentPaymentsMixin
+from silentpayments import SilentPaymentsMixin, compute_silent_payment_spending_privkey, validate_bip376_spend
 
 psbt_tmp256 = bytearray(256)
 
@@ -796,6 +796,10 @@ class psbtInputProxy(psbtProxy):
     def is_musig(self):
         return bool(self.musig_pubkeys or self.musig_pubnonces or self.musig_part_sigs)
 
+    @property
+    def is_sp_spend(self):
+        return bool(self.sp_tweak and self.sp_spend_bip32_derivation)
+
     def get_taproot_script_sigs(self):
         # returns set of (xonly, script) provided via PSBT_IN_TAP_SCRIPT_SIG
         # we do not parse control blocks (k) not needed
@@ -1140,7 +1144,9 @@ class psbtInputProxy(psbtProxy):
                 assert len(parsed_subpaths) != 1 or self.wif_key, "Merkle root not allowed"
                 merkle_root = self.get(self.taproot_merkle_root)
 
-            if len(parsed_subpaths) == 1:
+            if self.is_sp_spend:
+                validate_bip376_spend(self, addr_or_pubkey, my_xfp, psbt)
+            elif len(parsed_subpaths) == 1:
                 # Simple SE-backed key-path spends must not commit to an unknown
                 # script tree. WIF Store is the explicit escape hatch for externally
                 # constructed Taproot outputs.
@@ -1934,7 +1940,7 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
         max_time = 0
         inp_have_subpath = False
         for i in self.inputs:
-            if i.subpaths or i.taproot_subpaths:
+            if i.subpaths or i.taproot_subpaths or i.is_sp_spend:
                 inp_have_subpath = True
 
             if self.is_v2:
@@ -2348,6 +2354,14 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
             parsed_subpaths = inp.parse_subpaths(self.my_xfp, self, cosign_xfp)
             if parsed_subpaths is None:
                 parsed_subpaths = OrderedDict()
+            # Silent Payments: synthesize parsed_subpaths from PSBT_IN_SPEND_BIP32_DERIVATION
+            if inp.is_sp_spend and not parsed_subpaths:
+                k, v = inp.sp_spend_bip32_derivation
+                sp_path = inp.parse_xfp_path(v)
+                sp_path = inp.handle_zero_xfp(sp_path, self.my_xfp, self)
+                parsed_subpaths = {inp.get(k): sp_path}
+                if sp_path[0] in (self.my_xfp, cosign_xfp):
+                    inp.sp_idxs = [0] # mark as owned so downstream checks treat it like any other signable input
 
             if not inp.has_utxo():
                 if inp.sp_idxs and not inp.fully_signed:
@@ -3069,7 +3083,7 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
                     assert inp.sighash in [SIGHASH_ALL, SIGHASH_DEFAULT], "POR sighash not ALL/DEFAULT"
 
                 # decide if it is appropriate to drop sighash from PSBT
-                if inp.af == AF_P2TR:
+                if inp.af == AF_P2TR or inp.is_sp_spend:
                     drop_sighash = (inp.sighash == SIGHASH_DEFAULT)
                 else:
                     drop_sighash = (inp.sighash == SIGHASH_ALL)
@@ -3161,7 +3175,11 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
                             schnorrsig = True
                             pk = self.get(inp.taproot_internal_key)
                     else:
-                        if inp.taproot_subpaths:
+                        if inp.is_sp_spend:
+                            # Silent Payments: Use spend-pub from sp_spend_bip32_derivation
+                            schnorrsig = True
+                            pubk, sp = inp.sp_spend_bip32_derivation
+                        elif inp.taproot_subpaths:
                             schnorrsig = True
                             pubk = inp.taproot_subpaths[sp_idx][0]
                             sp = inp.taproot_subpaths[sp_idx][1][2]
@@ -3182,7 +3200,7 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
 
                     # expensive test, but works... and important
                     pu = node.pubkey()
-                    if schnorrsig:
+                    if schnorrsig and not inp.is_sp_spend:
                         pu = pu[1:]
                     elif len(pk) == 65:
                         pu = ngu.secp256k1.pubkey(pu).to_bytes(True)
@@ -3203,7 +3221,7 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
                     digest = self.make_txn_sighash(in_idx, txi, inp.sighash)
                 else:
                     # Hash the inputs and such in totally new ways, based on BIP-143
-                    if inp.af != AF_P2TR:
+                    if inp.af != AF_P2TR and not inp.is_sp_spend:
                         digest = self.make_txn_segwit_sighash(in_idx, txi, inp.amount,
                                                               inp.segwit_v0_scriptCode(),
                                                               inp.sighash)
@@ -3229,6 +3247,24 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
                     sk = node.privkey()
                     # Do the ACTUAL signature ... finally!!!
                     if schnorrsig:
+                        # Silent Payments: handle signing SP inputs
+                        if inp.is_sp_spend:
+                            digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash)
+                            if sv.deltamode:
+                                digest = ngu.hash.sha256d(digest)
+                            tweaked_sk = compute_silent_payment_spending_privkey(sk, inp.sp_tweak)
+                            sig = ngu.secp256k1.sign_schnorr(tweaked_sk, digest, ngu.random.bytes(32))
+                            stash.blank_object(tweaked_sk)
+
+                            if inp.sighash != SIGHASH_DEFAULT:
+                                sig += bytes([inp.sighash])
+                            inp.taproot_key_sig = sig
+                            self.sig_added = True
+                            self.set_modifiable_flag(inp)
+                            stash.blank_object(sk)
+                            stash.blank_object(node)
+                            del sk, node
+                            continue
                         kp = ngu.secp256k1.keypair(sk)
                         xonly_pk = kp.xonly_pubkey().to_bytes()
 
