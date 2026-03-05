@@ -340,11 +340,12 @@ class OwnershipCache:
         # nothing found among singlesig & registered multisig wallets
         # check WIF store (single sig only)
         if addr_fmt not in [AF_P2TR, AF_P2WSH]:
+            dis.fullscreen("WIF Store...")
             from wif import iter_wif_store_addresses
             target_af = AF_P2WPKH_P2SH if addr_fmt == AF_P2SH else addr_fmt
             for i, store_addr in iter_wif_store_addresses(ch, target_af):
                 if store_addr == addr:
-                    return False, "wif", i+1
+                    return False, ("wif", target_af), i+1
 
         raise UnknownAddressExplained('Searched %d candidate addresses in %d wallet(s)'
                                       ' without finding a match.' % (c, len(matches)))
@@ -362,12 +363,14 @@ class OwnershipCache:
             is_ms = isinstance(wallet, MultisigWallet)
             msg = show_single_address(addr)
             esc = ""
-            if wallet == "wif":
+            if isinstance(wallet, tuple) and (wallet[0] == "wif"):
                 msg += '\n\nFound in WIF store at index %d' % subpath
+                addr_fmt = wallet[1]
             else:
                 sp = wallet.render_path(*subpath)
                 msg += '\n\nFound in wallet:\n  ' + wallet.name
                 msg += '\nDerivation path:\n  ' + sp
+                addr_fmt = wallet.addr_fmt
                 if not is_ms:
                     esc = "0"
                     msg += "\n\nPress (0) to sign message with this key."
@@ -385,10 +388,10 @@ class OwnershipCache:
                 ch = await ux_show_story(msg, title=title, escape=esc, hint_icons=KEY_QR)
                 if ch in ("1"+KEY_QR):
                     await show_qr_code(addr, msg=addr, is_addrs=True,
-                                       is_alnum=(wallet.addr_fmt & (AFC_BECH32 | AFC_BECH32M)))
+                                       is_alnum=(addr_fmt & (AFC_BECH32 | AFC_BECH32M)))
                 elif not is_ms and (ch == "0"):  # only singlesig
                     from msgsign import sign_with_own_address
-                    await sign_with_own_address(sp, wallet.addr_fmt)
+                    await sign_with_own_address(sp, addr_fmt)
                 else:
                     break
 
