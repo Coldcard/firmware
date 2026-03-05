@@ -25,14 +25,14 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Mk Specific Changes
 
-## 5.5.0 - 2065-03-xx
+## 5.5.0 - 2065-03-05
 
 - Enhancement: Show QR of XOR-split seeds.
 
 
 # Q Specific Changes
 
-## 1.4.0Q - 2065-03-xx
+## 1.4.0Q - 2065-03-05
 
 - Bugfix: Empty notes in hobbled mode caused yikes upon menu entry.
 
