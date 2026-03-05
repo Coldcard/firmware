@@ -726,7 +726,7 @@ def test_named_wallet_search(wname, valid, method, clear_miniscript, import_ms_w
 @pytest.mark.parametrize("idx", [1, 3])
 def test_wif_store(addr_fmt, idx, is_q1, goto_home, pick_menu_item, scan_a_qr, cap_story, need_keypress,
                    src_root_dir, sim_root_dir, nfc_write, settings_remove, import_wif_to_store,
-                   load_shared_mod):
+                   load_shared_mod, cap_screen_qr, press_cancel):
 
     settings_remove("wifs")
 
@@ -774,5 +774,12 @@ def test_wif_store(addr_fmt, idx, is_q1, goto_home, pick_menu_item, scan_a_qr, c
     title, story = cap_story()
     assert addr == addr_from_display_format(story.split("\n\n")[0])
     assert f"Found in WIF store at index {idx}" in story
+    need_keypress(KEY_QR if is_q1 else '1')
+    addr_qr = cap_screen_qr().decode()
+    if addr_fmt == "p2wpkh":
+        addr_qr = addr_qr.lower()
+
+    assert addr == addr_qr
+    press_cancel()
 
 # EOF
