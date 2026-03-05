@@ -82,6 +82,7 @@ def test_wif_store_import_paper_wallet(goto_home, pick_menu_item, press_select, 
 
     menu = cap_menu()
     assert "Import WIF" in menu
+    assert len(menu) == 2  # only one WIF imported from paper wallet that contins 2x same WIF
     pick_menu_item(menu[1])
     pick_menu_item("Detail")
     time.sleep(.1)
