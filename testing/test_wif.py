@@ -738,4 +738,70 @@ def test_wif_store_signing_with_master(fake_txn, start_sign, end_sign, cap_story
 
     end_sign(finalize=True)
 
+@pytest.mark.parametrize("wif", [
+    "KwYP78wzyiuShCqppuh1JZQCnKtFdAaY6HcDhRmhDy21vGSiF37N", # mainnet compressed
+    "5JwcuSWKH4PqV1mU8JSK9BBUkLjuAUS3MFHfP1w1qy9HjnXpavk",  # mainnet uncompressed
+    "91cLPdroy4CtRYxWBXxgggqNnZrTz2CoJrLDkjDjcnkMP74gX5S",  # testnet uncompressed
+    "cUR6JLQCmdPPt3op4jEYmFhjHpWC2AoZaWmZqoDaBQYMXN4QeKuc", # testnet compressed
+])
+@pytest.mark.parametrize("testnet", [True, False])
+def test_visualize_wif(wif, testnet, is_q1, goto_home, need_keypress, use_testnet, use_mainnet,
+                       scan_a_qr, cap_story, settings_remove, press_select):
+    if not is_q1:
+        raise pytest.skip("need scanner")
+
+    settings_remove("wifs")
+
+    if testnet:
+        use_testnet()
+    else:
+        use_mainnet()
+
+    goto_home()
+    need_keypress(KEY_QR)
+    scan_a_qr(wif)
+    time.sleep(1)
+    title, story = cap_story()
+    split_story = story.split("\n\n")
+    pubkey = split_story[3].split("\n")[-1]
+    if wif[0] in "59":
+        # uncompressed
+        assert pubkey[0:2] == "04"
+        assert len(pubkey) == 130
+    else:
+        # compressed
+        assert pubkey[0:2] in ["02", "03"]
+        assert len(pubkey) == 66
+
+    if testnet:
+        # we are on testnet, mainnet keys are not importable
+        if wif[0] in "K59":
+            assert "Press (1) to import to WIF Store" not in story
+            return
+    else:
+        # we are on mainnet, testnet keys are not importable
+        if wif[0] in "c59":
+            assert "Press (1) to import to WIF Store" not in story
+            return
+
+    assert "Press (1) to import to WIF Store" in story
+    need_keypress("1")
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Success"
+    assert "Saved to WIF Store" in story
+    press_select()
+
+    # try import same wif
+    goto_home()
+    need_keypress(KEY_QR)
+    scan_a_qr(wif)
+    time.sleep(1)
+    need_keypress("1")
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Already saved in WIF Store" in story
+    press_select()
+
 # EOF
