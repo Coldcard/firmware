@@ -117,12 +117,15 @@ rc1:
 .PHONY: rc2
 rc2: RC2_TIMESTAMP = $(shell date "+%F_%H%M")
 rc2: RC2_FNAME = ./RC2-$(RC2_TIMESTAMP)-$(HW_MODEL)-coldcard.dfu
+rc2: RC2_FNAME_FACT = ./RC2-$(RC2_TIMESTAMP)-$(HW_MODEL)-factory.dfu
 rc2: submods-match code-committed
 	$(SUBMAKE) clean
 	$(SUBMAKE) repro
 	test -f built/production.bin
 	$(SIGNIT) sign -m $(HW_MODEL) $(VERSION_STRING) -r built/production.bin $(PROD_KEYNUM) -o built/rc2.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/rc2.bin $(RC2_FNAME)
+	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/rc2.bin \
+		-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/releases/$(BOOTLOADER_VERSION)/bootloader.bin $(RC2_FNAME_FACT)
 	ls -1 ./RC2-*.dfu
 
 # This target just combines latest version of production firmware with bootrom into a DFU
