@@ -50,12 +50,13 @@ async def ux_visualize_wif(wif_str, kp, compressed, testnet):
     pk = b2a_hex(kp.pubkey().to_bytes(not compressed)).decode()
     msg = "%s\n\nchain: %s\n\nPrivkey:\n%s\n\nPubkey:\n%s" % (wif_str, ch_str, sk, pk)
     esc = ""
+
     if compressed and (testnet == (chains.current_chain().ctype != "BTC")):
         # we only support compressed in WIF store
         msg += "\n\nPress (1) to import to WIF Store."
         esc += "1"
 
-    ch = await ux_show_story(msg, title="WIF", escape=esc)
+    ch = await ux_show_story(msg, title="WIF Key", escape=esc)
     if ch == "1":
         saved = settings.get("wifs", [])
         if (pk, sk) in saved:
@@ -65,6 +66,7 @@ async def ux_visualize_wif(wif_str, kp, compressed, testnet):
         saved.append((pk, sk))
         settings.set('wifs', saved)
         settings.save()
+
         await ux_show_story("Saved to WIF Store.", title="Success")
 
 
