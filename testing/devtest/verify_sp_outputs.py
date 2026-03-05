@@ -21,7 +21,7 @@ from silentpayments import (
     _compute_ecdh_share,
     _compute_input_hash,
     _compute_silent_payment_output_script,
-    _compute_silent_payment_spending_privkey,
+    compute_silent_payment_spending_privkey,
     _negate_if_odd_y,
     _sum_privkeys,
     SilentPaymentsMixin,
@@ -57,6 +57,10 @@ class MockInput:
         self.sp_spend_bip32_derivation = {}
         self.sp_idxs = None
         self.ik_idx = None
+
+    @property
+    def is_sp_spend(self):
+        return bool(self.sp_tweak and self.sp_spend_bip32_derivation)
 
 
 class MockOutput:
@@ -241,7 +245,7 @@ elif mode == "pubkey_from_privkey":
 elif mode == "compute_spending_privkey":
     b_spend = a2b_hex(params["b_spend"])
     tweak = a2b_hex(params["tweak"])
-    result = _compute_silent_payment_spending_privkey(b_spend, tweak)
+    result = compute_silent_payment_spending_privkey(b_spend, tweak)
     RV.write(b2a_hex(result).decode())
 
 elif mode == "negate_if_odd_y":

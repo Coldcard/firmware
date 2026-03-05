@@ -6,9 +6,14 @@
 #
 import chains
 import ngu
+import stash
 from dleq import generate_dleq_proof, verify_dleq_proof
 from exceptions import FatalPSBTIssue
-from precomp_tag_hash import BIP352_SHARED_SECRET_TAG_H, BIP352_INPUTS_TAG_H
+from precomp_tag_hash import (
+    BIP352_SHARED_SECRET_TAG_H,
+    BIP352_INPUTS_TAG_H,
+    TAP_TWEAK_H,
+)
 from serializations import SIGHASH_ALL, SIGHASH_DEFAULT
 from ubinascii import unhexlify as a2b_hex
 from utils import keypath_to_str
@@ -174,7 +179,7 @@ def _compute_silent_payment_output_script(outpoints, A_sum_bytes, ecdh_share_byt
     return b"\x51\x20" + x_only
 
 
-def _compute_silent_payment_spending_privkey(b_spend_bytes, sp_tweak_bytes):
+def compute_silent_payment_spending_privkey(b_spend_bytes, sp_tweak_bytes):
     """
     Compute private key for spending a silent payment output
 
@@ -618,30 +623,24 @@ class SilentPaymentsMixin:
             bool: True if shares were computed
                   False if we have no signable inputs
         """
-        # Collect per-input private keys for eligible inputs we own
-        # Track foreign ownership: if _derive_input_privkey returns None for an input
-        # that has derivation paths, that input belongs to another signer
         has_foreign = False
-        input_material = []  # list of (inp, privkey_int)
+        input_material = []  # list of [(inp, privkey_bytes), ...]
         for inp in self.inputs:
-            if not inp.sp_idxs or not self._is_input_eligible(inp):
+            if not self._is_input_eligible(inp):
                 continue
 
-            input_sk = self._derive_input_privkey(inp, sv)
-            if input_sk:
-                input_material.append((inp, input_sk))
-            elif inp.taproot_subpaths or inp.subpaths:
-                has_foreign = True
-
-        # FIXME: is this the right approach? cosign_xfp?
-        # Detect foreign eligible inputs (different XFP, no sp_idxs)
-        if not has_foreign:
-            for inp in self.inputs:
-                if inp.sp_idxs:
-                    continue
-                if self._is_input_eligible(inp) and self._pubkey_from_input(inp):
+            # Classify each eligible input:
+            #   ours:    sp_idxs set AND _derive_input_privkey yields a key
+            #   foreign: sp_idxs set but derivation returns None (cosigner or WIF-store path)
+            #   foreign: no sp_idxs but a contributing pubkey is identifiable (other signer's input)
+            if inp.sp_idxs:
+                input_sk = self._derive_input_privkey(inp, sv)
+                if input_sk is not None:
+                    input_material.append((inp, input_sk))
+                else:
                     has_foreign = True
-                    break
+            elif self._pubkey_from_input(inp):
+                has_foreign = True
 
         if not input_material:
             return False
@@ -765,57 +764,43 @@ class SilentPaymentsMixin:
 
     def _derive_input_privkey(self, input, sv):
         """
-        Derive the contributing private key for an eligible input
+        Derive the contributing private key for our inputs
 
-        Note:
-            For silent payment inputs, derives from sp_spend_bip32_derivation and sp_tweak
-            For taproot inputs, uses the internal key's derivation path (ik_idx), XFP-checked
-            For non-taproot inputs, uses the first matching BIP32 derivation path
+        Derivation path source depends on input type:
+         - SP-spend:    sp_spend_bip32_derivation
+         - P2TR:        taproot_subpaths[ik_idx[0]]
+         - other:       subpaths[sp_idxs[0]]
 
         Returns:
-            bytes: Derived private key as (32-byte scalar) or None if not eligible
+            bytes: Derived private key (32-byte scalar) or None
         """
-        privkey = None
+        if not input.sp_idxs:
+            return None
 
-        if input.sp_tweak and input.sp_spend_bip32_derivation:
+        if input.is_sp_spend:
             _, val_coords = input.sp_spend_bip32_derivation
             xfp_path = self.parse_xfp_path(val_coords)
-            if xfp_path[0] == self.my_xfp:
-                privkey = _compute_silent_payment_spending_privkey(self._path_to_privkey(xfp_path, sv), input.sp_tweak)
-        else:
-            spk = input.utxo_spk
-            if spk and _is_p2tr(spk):
-                if input.ik_idx is not None and input.taproot_subpaths:
-                    _, path_coords = input.taproot_subpaths[input.ik_idx[0]]
-                    xfp_path = self.parse_xfp_path(path_coords[2])
-                    if xfp_path[0] == self.my_xfp:
-                        privkey = self._path_to_privkey(xfp_path, sv)
-                        if input.taproot_internal_key:
-                            privkey = self._normalize_p2tr_privkey(privkey, self.get(input.taproot_internal_key))
-            else:
-                for xfp_path in self._iter_input_xfp_paths(input):
-                    if xfp_path[0] == self.my_xfp:
-                        privkey = self._path_to_privkey(xfp_path, sv)
-                        break
-        return privkey
+            if xfp_path[0] != self.my_xfp:
+                return None
+            return compute_silent_payment_spending_privkey(self._path_to_privkey(xfp_path, sv), input.sp_tweak)
 
-    def _iter_input_xfp_paths(self, input):
-        """
-        Iterate over all BIP32 derivation paths for an input, yielding parsed xfp_path tuples
+        spk = input.utxo_spk
+        if spk and _is_p2tr(spk):
+            if not input.taproot_subpaths or not input.ik_idx:
+                return None
+            _, path_coords = input.taproot_subpaths[input.ik_idx[0]]
+            xfp_path = self.parse_xfp_path(path_coords[2])
+            if xfp_path[0] != self.my_xfp:
+                return None
+            return self._tweak_p2tr_privkey(self._path_to_privkey(xfp_path, sv), input)
 
-        Note:
-            For taproot inputs, yields paths from taproot_subpaths (path_coords[2])
-            For non-taproot inputs, yields paths from subpaths (path_coords)
-
-        Returns:
-            generator: Parsed xfp_path tuples for all derivation paths in the input
-        """
-        if input.taproot_subpaths:
-            for _, path_coords in input.taproot_subpaths:
-                yield self.parse_xfp_path(path_coords[2])
-        elif input.subpaths:
-            for _, path_coords in input.subpaths:
-                yield self.parse_xfp_path(path_coords)
+        if not input.subpaths:
+            return None
+        _, path_coords = input.subpaths[input.sp_idxs[0]]
+        xfp_path = self.parse_xfp_path(path_coords)
+        if xfp_path[0] != self.my_xfp:
+            return None
+        return self._path_to_privkey(xfp_path, sv)
 
     def _path_to_privkey(self, xfp_path, sv):
         """
@@ -826,3 +811,18 @@ class SilentPaymentsMixin:
         """
         node = sv.derive_path(keypath_to_str(xfp_path, skip=1), register=False)
         return node.privkey()
+
+    def _tweak_p2tr_privkey(self, privkey_bytes, input):
+        """
+        Tweak a P2TR private key per BIP-341, returning the BIP-340-normalized scalar
+
+        Returns:
+            bytes: Tweaked private key (32-byte scalar)
+        """
+        kp = ngu.secp256k1.keypair(privkey_bytes)
+        tweak_data = kp.xonly_pubkey().to_bytes()
+        if input.taproot_merkle_root:
+            tweak_data += self.get(input.taproot_merkle_root)
+        t = ngu.hash.sha256t(TAP_TWEAK_H, tweak_data, True)
+        kpt = kp.xonly_tweak_add(t)
+        return _negate_if_odd_y(kpt.privkey())

@@ -16,7 +16,7 @@ from silentpayments import (
     _combine_pubkeys,
     _compute_shared_secret_tweak,
     _compute_silent_payment_output_script,
-    _compute_silent_payment_spending_privkey,
+    compute_silent_payment_spending_privkey,
     _is_p2pkh,
     _is_p2wpkh,
     _is_p2tr,
@@ -200,16 +200,17 @@ except ValueError as e:
 # Spending Privkey
 # ---------------------------------------------------------------------------
 
-result = _compute_silent_payment_spending_privkey((1).to_bytes(32, "big"), (42).to_bytes(32, "big"))
+result = compute_silent_payment_spending_privkey((1).to_bytes(32, "big"), (42).to_bytes(32, "big"))
 assert isinstance(result, bytes) and len(result) == 32
 assert result != (1).to_bytes(32, "big")
 assert 0 < int.from_bytes(result, "big") < ngu.secp256k1.curve_order_int()
 
 try:
-    _compute_silent_payment_spending_privkey(b"\x00" * 32, b"\x00" * 32)
+    compute_silent_payment_spending_privkey(b"\x00" * 32, b"\x00" * 32)
     assert False, "Should raise"
 except ValueError as e:
     assert "not in valid scalar range" in str(e)
+
 
 # ---------------------------------------------------------------------------
 # Mock Infrastructure
