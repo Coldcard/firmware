@@ -320,7 +320,7 @@ class ApproveTransaction(UserAuthorizedAction):
             from ux_q1 import QRScannerInteraction
             msg = await QRScannerInteraction().scan_text('Scan message from a QR code')
         else:
-            choices = await file_picker(suffix='.txt', ux=False)
+            choices = await file_picker(suffix='.txt', ux=False, **ch)
             target = "%s.txt" % b2a_hex(self.psbt.por322_msg_hash).decode()
 
             for fname, dir, _ in choices:
@@ -328,7 +328,7 @@ class ApproveTransaction(UserAuthorizedAction):
                     fn = dir + "/" + fname
                     break
             else:
-                fn = await file_picker(choices=choices)
+                fn = await file_picker(choices=choices, **ch)
 
             if not fn: return
 
