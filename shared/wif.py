@@ -299,6 +299,7 @@ class WIFStore(MenuSystem):
         got = got.replace(',', ' ').split()
 
         saved = settings.get("wifs", [])
+        len_saved = len(saved)
 
         try:
             new_wifs = []
@@ -322,15 +323,17 @@ class WIFStore(MenuSystem):
                 pk = b2a_hex(kp.pubkey().to_bytes()).decode()
 
                 item = (pk, sk)
+                if item in new_wifs:
+                    # duplicate in import content
+                    continue
 
-                if item not in saved:       # ignore dups
-                    new_wifs.append(item)
-                else:
+                if item in saved:       # ignore dups
                     dups += 1
+                else:
+                    new_wifs.append(item)
 
             assert new_wifs, 'no valid WIF found' if not dups else 'duplicate WIF(s)'
 
-            len_saved = len(saved)
             if (len_saved + len(new_wifs)) > self.MAX_ITEMS:
                 await ux_show_story("Max %d items allowed in WIF Store.\n\nAttempted to import %d keys,"
                                     " while remaining WIF store capacity is only %d. Please, make room"
