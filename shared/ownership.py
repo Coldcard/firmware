@@ -341,11 +341,12 @@ class OwnershipCache:
         # nothing found among singlesig & registered multisig wallets
         # check WIF store (single sig only)
         if addr_fmt not in [AF_P2WSH]:
+            dis.fullscreen("WIF Store...")
             from wif import iter_wif_store_addresses
             target_af = AF_P2WPKH_P2SH if addr_fmt == AF_P2SH else addr_fmt
             for i, store_addr in iter_wif_store_addresses(ch, target_af):
                 if store_addr == addr:
-                    return False, "wif", i+1
+                    return False, ("wif", target_af), i+1
 
         raise UnknownAddressExplained('Searched %d candidate addresses in %d wallet(s)'
                                       ' without finding a match.' % (c, len(matches)))
@@ -364,11 +365,13 @@ class OwnershipCache:
 
             msg = show_single_address(addr)
             esc = ""
-            if wallet == "wif":
+            if isinstance(wallet, tuple) and (wallet[0] == "wif"):
                 msg += '\n\nFound in WIF store at index %d' % subpath
+                addr_fmt = wallet[1]
             else:
                 msg += '\n\nFound in wallet:\n' + wallet.name
                 msg += '\n\nDerivation path:\n'
+                addr_fmt = wallet.addr_fmt
                 if hasattr(wallet, "render_path"):
                     sp = wallet.render_path(*subpath)
                     msg += sp
@@ -394,12 +397,12 @@ class OwnershipCache:
                 if ch in ("1"+KEY_QR):
                     await show_qr_code(
                         addr,
-                        is_alnum=(wallet.addr_fmt & (AFC_BECH32 | AFC_BECH32M)),
+                        is_alnum=(addr_fmt & (AFC_BECH32 | AFC_BECH32M)),
                         msg=addr, is_addrs=True
                     )
                 elif not is_complex and (ch == "0"):  # only singlesig
                     from msgsign import sign_with_own_address
-                    await sign_with_own_address(sp, wallet.addr_fmt)
+                    await sign_with_own_address(sp, addr_fmt)
                 else:
                     break
 
