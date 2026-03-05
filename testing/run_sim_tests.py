@@ -367,7 +367,7 @@ def main():
     for test_module in sorted(list(test_modules)):
         sim_args = DEFAULT_SIMULATOR_ARGS
         if test_module in ["test_bsms.py", "test_address_explorer.py", "test_export.py",
-                           "test_multisig.py", "test_ux.py"]:
+                           "test_multisig.py", "test_ux.py", "test_wif.py"]:
             sim_args = DEFAULT_SIMULATOR_ARGS + ["--set", "vidsk=1"]
         if test_module == "test_vdisk.py":
             sim_args = ["--eject"] + DEFAULT_SIMULATOR_ARGS + ["--set", "vidsk=1"]

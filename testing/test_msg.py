@@ -6,7 +6,6 @@ import pytest, time, os, itertools, hashlib, json
 from bip32 import BIP32Node
 from msg import verify_message, RFC_SIGNATURE_TEMPLATE, sign_message, parse_signed_message
 from base64 import b64encode, b64decode
-from base58 import encode_base58_checksum
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
 from constants import addr_fmt_names, msg_sign_unmap_addr_fmt
@@ -1040,66 +1039,5 @@ def test_verify_scanned_signed_msg(msg, scan_a_qr, need_keypress, goto_home, cap
     assert title == "CORRECT"
     assert "Good signature by address" in story
     assert addr == addr_from_display_format(story.split("\n")[-1])
-
-
-@pytest.mark.parametrize("way,af", [
-    ("sd", "P2SH-Segwit"),
-    ("input", "Segwit P2WPKH"),
-    ("nfc", "Classic P2PKH")
-])
-def test_sign_msg_with_wif_store_key(way, af, settings_remove, import_wif_to_store, cap_menu,
-                                     pick_menu_item, cap_story, need_keypress, press_nfc,
-                                     enter_complex, garbage_collector, microsd_path, nfc_write_text,
-                                     verify_msg_sign_story, msg_sign_export, press_select, goto_home):
-    settings_remove("wifs")
-    msg = "Coinkite"
-
-    n = BIP32Node.from_master_secret(os.urandom(32))
-    privkey = n.node.private_key
-    import_wif_to_store([encode_base58_checksum(bytes([239]) + bytes(privkey) + b'\x01')])
-
-    menu = cap_menu()
-    assert len(menu) == 2
-    pick_menu_item(menu[1])
-    pick_menu_item("Sign MSG")
-    pick_menu_item(af)
-
-    if way == "input":
-        need_keypress("0")
-        enter_complex(msg, apply=False, b39pass=False)
-
-    elif way == "sd":
-        name = "msg_to_sign.txt"
-        pth = microsd_path(name)
-        with open(pth, "w") as f:
-            f.write(msg)
-
-        need_keypress("1")
-        pick_menu_item(name)
-
-    elif way == "nfc":
-        press_nfc()
-        time.sleep(0.2)
-        nfc_write_text(msg)
-        time.sleep(0.3)
-
-    else:
-        raise NotImplementedError
-
-    time.sleep(.1)
-    title, story = cap_story()
-    addr_fmt = {"P2SH-Segwit": "p2sh-p2wpkh",
-                "Segwit P2WPKH": "p2wpkh",
-                "Classic P2PKH": "p2pkh"}[af]
-
-    target_addr = n.address(addr_fmt=addr_fmt)
-    verify_msg_sign_story(story, msg, "m", addr=target_addr)
-    press_select()
-    res = msg_sign_export(way if way != "input" else "sd")
-    assert target_addr in res
-    pmsg, addr, sig = parse_signed_message(res)
-    assert pmsg == msg
-    assert verify_message(addr, sig, msg) is True
-    goto_home()
 
 # EOF
