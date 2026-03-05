@@ -9,7 +9,7 @@ import ckcc
 import ngu
 from dleq import generate_dleq_proof, verify_dleq_proof
 from exceptions import FatalPSBTIssue
-from precomp_tag_hash import BIP352_SHARED_SECRET_TAG_H, BIP352_INPUTS_TAG_H
+from precomp_tag_hash import BIP352_SHARED_SECRET_TAG_H, BIP352_INPUTS_TAG_H, BIP352_LABEL_TAG_H, TAP_TWEAK_H
 from serializations import SIGHASH_ALL, SIGHASH_DEFAULT
 from ubinascii import unhexlify as a2b_hex
 from utils import keypath_to_str
@@ -396,6 +396,38 @@ class SilentPaymentsMixin:
 
         return None
 
+    def _tweak_p2tr_privkey(self, privkey_int, inp):
+        """
+        Tweak a P2TR private key according to BIP-352
+
+        Args:
+            privkey_int (int): The internal private key as an integer
+            inp: The input object containing Taproot information
+
+        Note:
+            keypair.xonly_tweak_add().privkey() returns the tweaked key without normalizing the output to even Y
+
+        Returns:
+            int: The tweaked private key as an integer
+        """
+        G = ngu.secp256k1.generator()
+        # normalize internal key to even Y, extract x-only.
+        internal_pub = ngu.secp256k1.ec_pubkey_tweak_mul(G, privkey_int.to_bytes(32, 'big'))
+        if internal_pub[0] == 0x03:
+            privkey_int = SECP256K1_ORDER - privkey_int
+        internal_xonly = internal_pub[1:]
+        # compute TapTweak hash (with merkle root if script tree present).
+        tweak_data = internal_xonly
+        if inp.taproot_merkle_root:
+            tweak_data = internal_xonly + self.get(inp.taproot_merkle_root)
+        t = ngu.hash.sha256t(TAP_TWEAK_H, tweak_data, True)
+        # add tweak scalar to get output private key.
+        d = (privkey_int + int.from_bytes(t, 'big')) % SECP256K1_ORDER
+        # negate if tweaked pubkey has odd Y (so d*G matches 0x02||x(Q)).
+        output_pub = ngu.secp256k1.ec_pubkey_tweak_mul(G, d.to_bytes(32, 'big'))
+        if output_pub[0] == 0x03:
+            d = SECP256K1_ORDER - d
+        return d
 
     # -----------------------------------------------------------------------------
     # Validation Functions
@@ -777,6 +809,12 @@ class SilentPaymentsMixin:
                 privkey_int = _compute_silent_payment_spending_privkey(
                     privkey_int.to_bytes(32, 'big'), inp.sp_tweak
                 )
+                # BIP-352: normalize to even-Y so contributing privkey matches
+                # 0x02||x(P_k) convention used by _pubkey_from_input
+                G = ngu.secp256k1.generator()
+                P_k = ngu.secp256k1.ec_pubkey_tweak_mul(G, privkey_int.to_bytes(32, 'big'))
+                if P_k[0] == 0x03:
+                    privkey_int = SECP256K1_ORDER - privkey_int
         else:
             spk = inp.utxo_spk
             if spk and _is_p2tr(spk):
@@ -785,10 +823,7 @@ class SilentPaymentsMixin:
                     xfp_path = self.parse_xfp_path(path_coords[2])
                     if xfp_path[0] == self.my_xfp:
                         privkey_int = self._path_to_privkey(xfp_path, sv)
-                        if inp.taproot_internal_key:
-                            privkey_int = self._normalize_p2tr_privkey(
-                                privkey_int, self.get(inp.taproot_internal_key)
-                            )
+                        privkey_int = self._tweak_p2tr_privkey(privkey_int, inp)
             else:
                 for xfp_path in self._iter_input_xfp_paths(inp):
                     if xfp_path[0] == self.my_xfp:

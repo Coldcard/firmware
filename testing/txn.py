@@ -23,7 +23,7 @@ def fake_txn(dev, pytestconfig):
     def doit(inputs, outputs, master_xpub=None, psbt_hacker=None, add_xpub=None, psbt_v2=None,
              fee=200, addr_fmt="p2wpkh", input_amount=100_000_000, capture_scripts=None,
              force_full_tx_utxo=False, supply_num_ins=1, supply_num_outs=1, lock_time=0,
-             sequences=None, sighashes=None, dupe_ins=[]): # input_amount in sats
+             sequences=None, sighashes=None, dupe_ins=[], foreign_seed=None): # input_amount in sats
 
         psbt = BasicPSBT()
 
@@ -61,7 +61,7 @@ def fake_txn(dev, pytestconfig):
         my_mk = BIP32Node.from_wallet_key(master_xpub)
         my_xfp = my_mk.fingerprint()
 
-        foreign_mk = BIP32Node.from_master_secret(os.urandom(32))
+        foreign_mk = BIP32Node.from_master_secret(foreign_seed or os.urandom(32))
         foreign_xfp = foreign_mk.fingerprint()
 
         psbt.inputs = [BasicPSBTInput(idx=i) for i in range(num_ins)]
@@ -110,6 +110,7 @@ def fake_txn(dev, pytestconfig):
                 tweaked_xonly = taptweak(sec[1:])
                 psbt.inputs[i].taproot_bip32_paths[sec[1:]] = b"\x00" + mfp + struct.pack(f'<{"I"*len(int_path)}', *int_path)
                 scr = bytes([81, 32]) + tweaked_xonly
+                psbt.inputs[i].taproot_internal_key = sec[1:]
 
             elif af in ("p2wpkh", "p2sh-p2wpkh", "p2wpkh-p2sh"):
                 psbt.inputs[i].bip32_paths[sec] = mfp + struct.pack(f'<{"I"*len(int_path)}', *int_path)
