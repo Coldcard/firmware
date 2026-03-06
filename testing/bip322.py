@@ -7,7 +7,7 @@ from ckcc_protocol.protocol import MAX_TXN_LEN
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from io import BytesIO
 from helpers import hash160, taptweak, str_to_path
-from bip32 import BIP32Node
+from bip32 import BIP32Node, PublicKey
 from constants import simulator_fixed_tprv, AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH
 from ctransaction import CTransaction, COutPoint, CTxIn, CTxOut, uint256_from_str
 
@@ -59,6 +59,7 @@ def bip322_txn(dev, pytestconfig, create_msg_file):
             sp = f"0/{i}"
             af = addr_fmt
             ia = input_amount
+            pubkey = None  # public key
             try:
                 if inp[0] is not None:
                     af = inp[0]
@@ -66,12 +67,20 @@ def bip322_txn(dev, pytestconfig, create_msg_file):
                     sp = inp[1]
                 if inp[2] is not None:
                     ia = inp[2]
+                if inp[3] is not None:
+                    pubkey = inp[3]
             except:
                 pass
 
-            int_path = str_to_path(sp)
-            subkey = mk.subkey_for_path(sp)
-            sec = subkey.sec()
+            if pubkey:
+                int_path = [0]
+                sec = pubkey
+            else:
+                int_path = str_to_path(sp)
+                sec = mk.subkey_for_path(sp).sec()
+
+            subkey = PublicKey.parse(sec)
+
             assert len(sec) == 33, "expect compressed"
 
             if af == "p2tr":
@@ -82,7 +91,7 @@ def bip322_txn(dev, pytestconfig, create_msg_file):
 
             elif af in ("p2wpkh", "p2sh-p2wpkh", "p2wpkh-p2sh"):
                 psbt.inputs[i].bip32_paths[sec] = mfp + struct.pack(f'<{"I" * len(int_path)}', *int_path)
-                scr = bytes([0x00, 0x14]) + subkey.hash160()
+                scr = bytes([0x00, 0x14]) + subkey.h160()
 
                 if af != "p2wpkh":
                     # use classic p2wpkh (from above) as redeem script
@@ -90,8 +99,8 @@ def bip322_txn(dev, pytestconfig, create_msg_file):
                     scr = bytes([0xa9, 0x14]) + hash160(scr) + bytes([0x87])
 
             elif af == "p2pkh":
-                psbt.inputs[i].bip32_paths[sec] = mfp + struct.pack('<II', 0, i)
-                scr = bytes([0x76, 0xa9, 0x14]) + subkey.hash160() + bytes([0x88, 0xac])
+                psbt.inputs[i].bip32_paths[sec] = mfp + struct.pack(f'<{"I" * len(int_path)}', *int_path)
+                scr = bytes([0x76, 0xa9, 0x14]) + subkey.h160() + bytes([0x88, 0xac])
 
             else:
                 raise ValueError("unknown addr_fmt %s" % af)
