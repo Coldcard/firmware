@@ -613,11 +613,8 @@ def test_wif_store_signing(num_ins, addr_fmt, fake_txn, goto_home, pick_menu_ite
     psbt = fake_txn(num_ins, 1, segwit_in=sw, wrapped=wrap, master_xpub=node.hwif())
 
     wifs = []
-    privkeys = []
     for i in range(num_ins):
         n = node.subkey_for_path("0/%d" % i)
-        sk = n.node.private_key
-        privkeys.append(sk)
         wifs.append(n.node.private_key.wif(testnet=True))
 
     import_wif_to_store(wifs)
