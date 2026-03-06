@@ -44,7 +44,7 @@ Example screen text:
 ```text
 Proof of Reserves
 
- Amount 0.20000000 XTN
+ Amount 0.20000000 BTC
 
  Message Hash:
  11b5fe357842f5c368d2e3884d6a5ba577e3bc7cde132004f39b8c2a43a9cdec
@@ -55,7 +55,7 @@ Proof of Reserves
   21 inputs
   1 output
 
- 0.00000000 XTN
+ 0.00000000 BTC
   - OP_RETURN -
  null-data
 
