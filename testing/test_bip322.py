@@ -2,11 +2,11 @@
 #
 # BIP-322 Message Signing and Proof of Reserves
 #
-import pytest, time
+import pytest, time, os
 from io import BytesIO
 from decimal import Decimal
 from constants import SIGHASH_MAP, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH
-from bip322 import bip322_txn, bip322_ms_txn, bip322_msg_hash
+from bip322 import bip322_txn, bip322_ms_txn, bip322_msg_hash, BIP32Node
 from ctransaction import CTransaction, CTxIn, COutPoint
 from helpers import str_to_path
 from charcodes import KEY_QR, KEY_NFC
@@ -573,5 +573,59 @@ def test_bip322_msg_import_fail(bip322_txn, start_sign, end_sign, cap_story, nee
     assert "Msg verification failed" in story
     assert "hash verification failed" in story
     press_cancel()
+
+
+@pytest.mark.parametrize("num_ins", [1, 12])
+@pytest.mark.parametrize("addr_fmt", ["p2pkh", "p2wpkh", "p2sh-p2wpkh"])
+def test_wif_store_sign_bip322_por(num_ins, addr_fmt, bip322_txn, goto_home, pick_menu_item,
+                                   need_keypress, start_sign, end_sign, cap_menu, cap_story,
+                                   press_cancel, settings_remove, press_select, import_wif_to_store):
+
+    settings_remove("wifs")
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+
+    ins = []
+    wifs = []
+    for i in range(num_ins):
+        n = node.subkey_for_path("0/%d" % i)
+        wifs.append(n.node.private_key.wif(testnet=True))
+        if i == 0:
+            amt = None
+        elif i // 2 == 0:
+            amt = 10000000
+        else:
+            amt = 900000000
+
+        ins.append([addr_fmt, None, amt , n.node.private_key.K.sec()])
+
+    msg = b"Coinkite"
+    psbt, msg_challenge = bip322_txn(ins, msg=b"Coinkite")
+
+    import_wif_to_store(wifs)
+
+    menu = cap_menu()
+    assert menu[0] == "Import WIF"
+
+    start_sign(psbt, finalize=True)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "import message" in story
+    # msg file was auto-gened on SD card
+    need_keypress("1")
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Message:"
+    assert msg.decode() in story
+    press_select()
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Proof of Reserves" in story
+    assert "warning" in story
+    if num_ins == 1:
+        assert "WIF store: 0" in story
+    else:
+        assert f"WIF store: {', '.join([str(i) for i in range(num_ins)])}" in story
+    end_sign(finalize=True)
 
 # EOF
