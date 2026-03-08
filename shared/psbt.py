@@ -295,7 +295,8 @@ class psbtProxy:
             # storing offset and length only! Mostly.
             if kt in self.short_values:
                 actual = fd.read(vs)
-                self.store(kt, bytes(key), actual)
+                # only store key data for short_values
+                self.store(kt, bytes(key[1:]), actual)
             else:
                 # skip actual data for now
                 # TODO: could this be stored more compactly?
@@ -554,7 +555,8 @@ class psbtOutputProxy(psbtProxy):
                 wr(PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS, v, k)
 
         if is_v2:
-            wr(PSBT_OUT_SCRIPT, self.script)
+            if self.script is not None:
+                wr(PSBT_OUT_SCRIPT, self.script)
             wr(PSBT_OUT_AMOUNT, self.amount)
 
         if self.proprietary:
@@ -1955,7 +1957,11 @@ class psbtObject(psbtProxy):
             if self.is_v2:
                 # v2 requires inclusion
                 assert o.amount is not None
-                assert o.script
+                # Silent Payments: if not spending to silent payment then script must be provided
+                if not o.sp_v0_info:
+                    assert o.script, "v2 script required when not silent payment output"
+                if o.amount == 0 and o.script == b'\x6a':
+                    null_data_op_return = True
             else:
                 # v0 requires exclusion
                 assert o.amount is None
