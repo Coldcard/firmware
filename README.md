@@ -8,7 +8,7 @@ with the latest updates and security alerts.
 
 ![coldcard logo](https://coldcard.com/static/images/coldcard-logo-nav.png)
 
-![Mk4 coldcard picture front](https://coldcard.com/static/images/mk4.png)
+![Mk5 coldcard picture front](https://coldcard.com/static/images/mk5-front.png)
 
 ## Quick Links
 
@@ -49,14 +49,15 @@ such as Taproot or Miniscript. Our standards for releasing new Edge
 versions are lower, so we can iterate faster and get these advancements
 out to other developers.
 
-Q and Mk4 share the same code base. Individual files that are added,
+Q and Mk series share the same code base. Individual files that are added,
 or removed, can be see in differences between `shared/manifest_mk4.py`
 and `shared/manifest_q1.py`. Common files are in `shared/manifest.py`.
+Firmware built for Mk5, supports the Mk4 without any functional differences.
 
 
 ## Check-out and Setup
 
-**NOTE** This is the `master` branch and covers the latest hardware (Mk4 and Q).
+**NOTE** This is the `master` branch and covers the latest hardware (Mk and Q).
 See branch `v4-legacy` for firmware which supports only Mk3/Mk2 and earlier.
 
 Do a checkout, recursively, to get all the submodules:
@@ -232,8 +233,8 @@ Top-level dirs:
 
 - shared code between desktop test version and real-deal
 - expected to be largely in python, and higher-level
-- new code found only on the Mk4 will be listed in `manifest_mk4.py` code exclusive
-  to earlier hardware is in `manifest_mk3.py`
+- code exclusive to the Mk4 or Mk5 will be listed in `manifest_mk4.py`, and
+  to the Q will be listed in `manifest_q1.py`
 
 `unix`
 
@@ -265,7 +266,7 @@ Top-level dirs:
 `stm32/mk4-bootloader`
 `stm32/q1-bootloader`
 
-- 128k of factory-set code that you cannot change for Mk4 or Q
+- 128k of factory-set code that you cannot change
 - however, you can inspect what code is on your coldcard and compare to this.
 
 `hardware`
