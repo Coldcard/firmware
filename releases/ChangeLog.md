@@ -27,6 +27,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 
 ## 5.5.0 - 2065-03-05
 
+- This release supports both the newer Mk5 hardware and existing Mk4.
 - Enhancement: Show QR of XOR-split seeds.
 
 
