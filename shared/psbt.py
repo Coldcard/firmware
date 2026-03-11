@@ -1902,11 +1902,20 @@ class psbtObject(psbtProxy):
         prefix_p = set()
         idx_max = 0
         my_cnt = 0
+        prevouts = set()
 
         dis.fullscreen("Validating...", line2="Inputs")
 
         for i, txi in self.input_iter():
             dis.progress_sofar(i, self.num_inputs)
+            # check for duplicate inputs
+            k = (txi.prevout.hash, txi.prevout.n)
+            if k in prevouts:
+                raise FatalPSBTIssue("Duplicate inputs")
+
+            if len(prevouts) < 100:
+                prevouts.add(k)
+
             inp = self.inputs[i]
 
             if inp.part_sigs:
@@ -2004,7 +2013,7 @@ class psbtObject(psbtProxy):
                 # iff to UTXO is segwit, then check it's value, and also
                 # capture that value, since it's supposed to be immutable
                 # Proof of Reserves PSBT must not modify history
-                if inp.af and inp.is_segwitand and not self.por322:
+                if inp.af and inp.is_segwit and not self.por322:
                     history.verify_amount(txi.prevout, inp.amount, i)
 
                 if inp.af == AF_P2TR:

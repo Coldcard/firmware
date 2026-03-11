@@ -3970,3 +3970,17 @@ def test_single_multi_psbt(multi, ss_af, ms_af, dev, fake_txn, fake_ms_txn, impo
         else:
             assert r.inputs[0].part_sigs
         assert not r.inputs[1].part_sigs
+
+
+@pytest.mark.parametrize("addr_fmt", ["p2wpkh", "p2pkh"])
+@pytest.mark.parametrize("num_ins", [2, 110])
+def test_duplicate_inputs(addr_fmt, num_ins, fake_txn, start_sign, end_sign, cap_story):
+    psbt = fake_txn(num_ins, 2, addr_fmt=addr_fmt, dupe_ins=[num_ins-1])
+    start_sign(psbt)
+    title, story = cap_story()
+    if num_ins <= 100:
+        assert "Duplicate input" in story
+    else:
+        assert title == "OK TO SEND?"
+
+# EOF
