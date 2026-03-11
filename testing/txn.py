@@ -23,7 +23,7 @@ def fake_txn(dev, pytestconfig):
     def doit(inputs, outputs, master_xpub=None, psbt_hacker=None, add_xpub=None, psbt_v2=None,
              fee=200, addr_fmt="p2wpkh", input_amount=100_000_000, capture_scripts=None,
              force_full_tx_utxo=False, supply_num_ins=1, supply_num_outs=1, lock_time=0,
-             sequences=None, sighashes=None): # input_amount in sats
+             sequences=None, sighashes=None, dupe_ins=[]): # input_amount in sats
 
         psbt = BasicPSBT()
 
@@ -170,14 +170,21 @@ def fake_txn(dev, pytestconfig):
                     seq = sequences[0]
 
             spendable = CTxIn(COutPoint(supply.sha256, 0), nSequence=seq)
-            txn.vin.append(spendable)
 
-            if psbt_v2:
-                psbt.inputs[i].previous_txid = supply.hash
-                psbt.inputs[i].prevout_idx = 0
-                psbt.inputs[i].sequence = seq
-                # psbt.inputs[i].req_time_locktime = None
-                # psbt.inputs[i].req_height_locktime = None
+            if i not in dupe_ins:
+                txn.vin.append(spendable)
+
+                if psbt_v2:
+                    psbt.inputs[i].previous_txid = supply.hash
+                    psbt.inputs[i].prevout_idx = 0
+                    psbt.inputs[i].sequence = seq
+                    # psbt.inputs[i].req_time_locktime = None
+                    # psbt.inputs[i].req_height_locktime = None
+            else:
+                assert i != 0, 'cant dup first input'
+                txn.vin.append(txn.vin[-1])
+                from copy import deepcopy
+                psbt.inputs[i] = deepcopy(psbt.inputs[i-1])
 
         # calculate fee
         if num_outs:
