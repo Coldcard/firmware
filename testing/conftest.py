@@ -2618,7 +2618,7 @@ def explorer_input_check(cap_story, press_cancel, need_keypress, is_q1, verify_q
 
             n = BIP32Node.from_wallet_key(simulator_fixed_xprv if chain == "BTC" else simulator_fixed_tprv)
             for pk, der in parsed_our_keys.items():
-                assert bytes.fromhex(pk) == n.subkey_for_path(der.split("/", 1)[-1]).sec()
+                assert bytes.fromhex(pk) == n.subkey_for_path(der.split("/", 1)[-1]).sec()[1 if af == "p2tr" else 0:]
 
         # MULTISIG
         if parsed_multisig is None:
@@ -2638,7 +2638,10 @@ def explorer_input_check(cap_story, press_cancel, need_keypress, is_q1, verify_q
 
         # SIGHASH
         if parsed_sighash is None:
-            assert sighash in [None, "ALL"]
+            if af == "p2tr":
+                assert sighash in [None, "DEFAULT"]
+            else:
+                assert sighash in [None, "ALL"]
         else:
             assert sighash == parsed_sighash
 
