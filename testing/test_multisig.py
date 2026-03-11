@@ -3571,16 +3571,16 @@ def test_fwd_slash_in_name(import_ms_wallet, clear_miniscript, pick_menu_item, n
 @pytest.mark.parametrize("complete", [True, False, None])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh", "p2sh-p2wsh"])
 def test_txin_explorer(dev, chain, M_N, addr_fmt, fake_ms_txn, start_sign, settings_set, txin_explorer,
-                       cap_story, pytestconfig, import_ms_wallet, complete, clear_ms):
+                       cap_story, pytestconfig, import_ms_wallet, complete, clear_miniscript):
     # TODO This test MUST be run with --psbt2 flag on and off
-    clear_ms()
+    clear_miniscript()
     settings_set("chain", chain)
     inp_amount = 100000000
     num_ins = 2
     M, N = M_N
 
-    keys = import_ms_wallet(M, N, name='txin_expl', accept=True, netcode=chain,
-                            descriptor=True, addr_fmt=addr_fmt)
+    keys = import_ms_wallet(M, N, name='txin_expl', accept=True, chain=chain,
+                            addr_fmt=addr_fmt)
 
     all_xfps = [xfp2str(k[0]) for k in keys][:-1] # remove myself
     if complete:
@@ -3599,7 +3599,7 @@ def test_txin_explorer(dev, chain, M_N, addr_fmt, fake_ms_txn, start_sign, setti
                     inp.part_sigs[pk] = os.urandom(71)
 
 
-    psbt = fake_ms_txn(num_ins, 1, M, keys, inp_af=unmap_addr_fmt[addr_fmt],
+    psbt = fake_ms_txn(num_ins, 1, M, keys, inp_addr_fmt=addr_fmt,
                        input_amount=inp_amount, psbt_v2=pytestconfig.getoption('psbt2'),
                        hack_psbt=hack)
 
@@ -3607,17 +3607,16 @@ def test_txin_explorer(dev, chain, M_N, addr_fmt, fake_ms_txn, start_sign, setti
     txin_explorer(num_ins, [(addr_fmt, inp_amount, 1, chain, (M,N), None, None, complete, target_xfps)])
 
 
-def test_txin_explorer_our_sig(dev, fake_ms_txn, start_sign, settings_set, clear_ms,
+def test_txin_explorer_our_sig(dev, fake_ms_txn, start_sign, settings_set, clear_miniscript,
                                txin_explorer, cap_story, pytestconfig, import_ms_wallet):
     # TODO This test MUST be run with --psbt2 flag on and off
-    clear_ms()
+    clear_miniscript()
     inp_amount = 100000000
     num_ins = 3
     M, N = 5,7
     af = "p2wsh"
 
-    keys = import_ms_wallet(M, N, name='txin_expl', accept=True, netcode="XTN",
-                            descriptor=True, addr_fmt="p2wsh")
+    keys = import_ms_wallet(M, N, name='txin_expl', accept=True, chain="XTN", addr_fmt="p2wsh")
 
     my_xfp = xfp2str(keys[-1][0])
 
@@ -3629,7 +3628,7 @@ def test_txin_explorer_our_sig(dev, fake_ms_txn, start_sign, settings_set, clear
                     inp.part_sigs[pk] = os.urandom(71)
 
 
-    psbt = fake_ms_txn(num_ins, 1, M, keys, inp_af=unmap_addr_fmt[af],
+    psbt = fake_ms_txn(num_ins, 1, M, keys, inp_addr_fmt=af,
                        input_amount=inp_amount, psbt_v2=pytestconfig.getoption('psbt2'),
                        hack_psbt=hack)
 

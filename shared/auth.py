@@ -1688,7 +1688,7 @@ class TXInpExplorer(TXExplorer):
             item += "=== UTXO ===\n\n%s %s\n\n%s\n\n" % (val, unit, spk)
             if addr:
                 item += show_single_address(addr) + "\n\n"
-                item += "Address Format: %s\n\n" % chains.addr_fmt_str(inp.addr_fmt)
+                item += "Address Format: %s\n\n" % chains.AF_TO_STR_AF[inp.af]
                 qr_items.append(addr)
 
         if self.user_auth_action.psbt.txn_version >= 2:
@@ -1702,35 +1702,49 @@ class TXInpExplorer(TXExplorer):
 
                 item += "Input has relative %s\n\n" % msg
 
-
         psbt_item = ""
-        if inp.required_key:
-            our = [inp.required_key] if isinstance(inp.required_key, bytes) else inp.required_key
-            psbt_item += "Our key%s:\n\n" % ("s" if len(our) > 1 else "")
-            for k in our:
-                pth = inp.subpaths[k]
+        if inp.sp_idxs:
+            psbt_item += "Our key%s:\n\n" % ("s" if len(inp.sp_idxs) > 1 else "")
+            for i in inp.sp_idxs:
+                # get node required
+                if inp.taproot_subpaths:
+                    pubk = inp.taproot_subpaths[i][0]
+                    sp = inp.taproot_subpaths[i][1][2]
+                else:
+                    pubk = inp.subpaths[i][0]
+                    sp = inp.subpaths[i][1]
+
+                pth = inp.parse_xfp_path(sp)
+                k = inp.get(pubk)
                 psbt_item += "%s:\n%s\n\n" % (keypath_to_str(pth, prefix="%s/" % xfp2str(pth[0])),
                                          b2a_hex(k).decode())
 
         M = None
-        if inp.is_multisig:
+        if inp.is_miniscript:
             ks_coord = inp.witness_script or inp.redeem_script
             if ks_coord:
-                ks = self.user_auth_action.psbt.get(ks_coord)
+                ks = inp.get(ks_coord)
 
-                from multisig import disassemble_multisig_mn
+                from psbt import disassemble_multisig_mn
                 try:
                     M, N = disassemble_multisig_mn(ks)
                     psbt_item += "Multisig: %dof%d\n\n" % (M, N)
                 except: pass
 
-        if inp.part_sigs:
-            # do not show XFPs in case input is fully signed --> elif
+        if inp.part_sigs or inp.taproot_script_sigs:
+            # do not show XFPs in case input is fully signed
             # only part_sig should be available, as we haven't signed yet so added_sigs empty
             done = []
-            for pk, pth in inp.subpaths.items():
-                if pk in inp.part_sigs:
-                    done.append(xfp2str(pth[0]))
+            if inp.part_sigs:
+                signed = {inp.get(k) for k, _ in inp.part_sigs}
+                for pk, pth in inp.subpaths:
+                    if inp.get(pk) in signed:
+                        done.append(xfp2str(inp.parse_xfp_path(pth)[0]))
+            else: # inp.taproot_script_sigs
+                signed = {xo for xo, _ in inp.get_taproot_script_sigs()}
+                for pk, val in inp.taproot_subpaths:
+                    if inp.get(pk) in signed:
+                        done.append(xfp2str(inp.parse_xfp_path(val[2])[0]))
 
             if inp.fully_signed or (M and (len(done) >= M)):
                 psbt_item += "Input fully signed.\n\n"
@@ -1740,14 +1754,15 @@ class TXInpExplorer(TXExplorer):
                     psbt_item += "  %s\n" % xfp
                 psbt_item += "\n"
 
-        if inp.sighash and (inp.sighash != SIGHASH_ALL):
-            # only show sighash value to the user if it is non-standard
-            psbt_item += "sighash: %s\n\n" % {
-                1: "ALL", 2: "NONE", 3: "SINGLE",
-                1 | 0x80: "ALL|ANYONECANPAY",
-                2 | 0x80: "NONE|ANYONECANPAY",
-                3 | 0x80: "SINGLE|ANYONECANPAY",
-            }[inp.sighash]
+        if inp.sighash is not None:
+            # only show sighash value to the user if it is non-standard for particular script type
+            if (inp.af == AF_P2TR and inp.sighash != 0) or (inp.af != AF_P2TR and inp.sighash != 1):
+                psbt_item += "sighash: %s\n\n" % {
+                    0: "DEFAULT", 1: "ALL", 2: "NONE", 3: "SINGLE",
+                    1 | 0x80: "ALL|ANYONECANPAY",
+                    2 | 0x80: "NONE|ANYONECANPAY",
+                    3 | 0x80: "SINGLE|ANYONECANPAY",
+                }[inp.sighash]
 
         if psbt_item:
             psbt_item = "=== PSBT ===\n\n" + psbt_item

@@ -3112,36 +3112,32 @@ def test_txout_explorer(chain, data, fake_txn, start_sign, settings_set, txout_e
     txout_explorer(data, chain)
 
 @pytest.mark.parametrize("chain", ["BTC", "XTN"])
-@pytest.mark.parametrize("addr_fmt", ["p2wpkh", "p2pkh", "p2wpkh-p2sh"])
+@pytest.mark.parametrize("addr_fmt", ["p2tr", "p2wpkh", "p2pkh", "p2wpkh-p2sh"])
 def test_txin_explorer(chain, addr_fmt, fake_txn, start_sign, settings_set, txin_explorer,
                        cap_story, pytestconfig):
     # TODO This test MUST be run with --psbt2 flag on and off
     settings_set("chain", chain)
-    inp_amount = 1000000
     num_ins = 3
 
     if addr_fmt == "p2wpkh":
-        segwit = True
-        wrapped = False
-        sh = "SINGLE"
+        sh = "SINGLE" if chain == "BTC" else "ALL"
         seq = 1100
     elif addr_fmt == "p2pkh":
-        segwit = False
-        wrapped = False
         sh = "ALL|ANYONECANPAY"
         seq = SEQUENCE_LOCKTIME_TYPE_FLAG | (512 >> 9)
+    elif addr_fmt == "p2tr":
+        sh = "DEFAULT" if chain == "BTC" else "ALL"
+        seq = 500
     else:
-        segwit = True
-        wrapped = True
         sh = "SINGLE|ANYONECANPAY"
         seq = 1
 
-    psbt = fake_txn(num_ins, 1, segwit_in=segwit, wrapped=wrapped,
-                    psbt_v2=pytestconfig.getoption('psbt2'), input_amount=inp_amount,
+    psbt = fake_txn(num_ins, 1, addr_fmt=addr_fmt,
+                    psbt_v2=pytestconfig.getoption('psbt2'),
                     sequences=[seq], sighashes=[sh])
 
     start_sign(psbt)
-    txin_explorer(num_ins, [(addr_fmt, inp_amount, 1, chain, False, sh, seq)])
+    txin_explorer(num_ins, [(addr_fmt, 100_000_000, 1, chain, False, sh, seq)])
 
 @pytest.mark.parametrize("finalize", [True, False])
 @pytest.mark.parametrize("data", [
@@ -3543,7 +3539,7 @@ def test_unknown_input_script(stype, fake_txn , start_sign, cap_story, use_testn
 
     ins = [(af, 100000000, 0), ("p2wpkh", 100000000, 1)]
 
-    psbt = fake_txn(2, 2, segwit_in=True, change_outputs=[0], psbt_hacker=hack)
+    psbt = fake_txn(2, 2, addr_fmt="p2wpkh", psbt_hacker=hack)
     start_sign(psbt)
     title, story = cap_story()
     assert title == "OK TO SEND?"
