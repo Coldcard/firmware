@@ -2029,7 +2029,7 @@ class psbtObject(psbtProxy):
                     history.verify_amount(txi.prevout, inp.amount, i)
 
                 if inp.af == AF_P2TR:
-                    # based on this we know whether we can drop inp.utxo_xpk
+                    # based on this we know whether we can drop inp.utxo_spk
                     # attribute after creating sighash
                     self.my_tr_in = True
 
@@ -2503,13 +2503,13 @@ class psbtObject(psbtProxy):
                         skp = keypath_to_str(int_pth)
                         # get node required
                         node = sv.derive_path(skp, register=False)
-                        # expensive test, but works... and important
-                        pu = node.pubkey()
-                        if schnorrsig:
-                            pu = pu[1:]
 
-                    assert pu == pk, \
-                        "Path (%s) led to wrong pubkey for input#%d"%(skp, in_idx)
+                    # expensive test, but works... and important
+                    pu = node.pubkey()
+                    if schnorrsig:
+                        pu = pu[1:]
+
+                    assert pu == pk, "Path (%s) led to wrong pubkey for input#%d" % (skp, in_idx)
 
                     to_sign.append((node, pubk))
 

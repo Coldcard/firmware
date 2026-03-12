@@ -2,7 +2,7 @@
 #
 # BIP-322 Message Signing and Proof of Reserves
 #
-import pytest, time, os
+import pytest, time, os, base64
 from io import BytesIO
 from decimal import Decimal
 from constants import SIGHASH_MAP, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH
@@ -132,7 +132,7 @@ def test_bip322_por_invalid_sighash(sighash, bip322_txn, start_sign, cap_story, 
                          sighash=SIGHASH_MAP[sighash])
     start_sign(psbt, finalize=True)
     title, story = cap_story()
-    if "NONE" in sighash:
+    if ("NONE" in sighash) or sighash == "DEFAULT":
         assert title == "Failure"
         return
 
@@ -145,7 +145,7 @@ def test_bip322_por_invalid_sighash(sighash, bip322_txn, start_sign, cap_story, 
         end_sign(accept=True, finalize=True)
 
     title, story = cap_story()
-    assert "POR not SIGHASH_ALL" in story
+    assert "POR sighash not ALL/DEFAULT" in story
 
 
 @pytest.mark.parametrize("ins", [
@@ -203,14 +203,15 @@ def test_bip322_incomplete_psbt_bip32_paths(ins, bip322_txn, start_sign, cap_sto
     title, story = cap_story()
     if len(ins) == 1:
         assert title == "Failure"
-        assert 'PSBT does not contain any key path information.' in story
+        assert 'PSBT inputs do not contain any key path information.' in story
     else:
         verify_msg_bip322_por("POR", way="sd")
         time.sleep(.1)
         title, story = cap_story()
         assert "warning" in story
         assert "Limited Signing" in story
-        assert "because we do not know the key: 0" in story
+        assert "because we either don't know the key" in story
+        assert ": 0" in story
 
 
 @pytest.mark.parametrize("ins", [
@@ -218,7 +219,7 @@ def test_bip322_incomplete_psbt_bip32_paths(ins, bip322_txn, start_sign, cap_sto
     [["p2pkh", None, None], ["p2sh-p2wpkh", None, 10000000], ["p2wpkh", None, 100000000]],
     [["p2sh-p2wpkh", None, None], ["p2sh-p2wpkh", None, 10000000], ["p2pkh", None, 10000000]],
 ])
-def test__bip322_incomplete_psbt_wrapped_redeem(ins, bip322_txn, start_sign, cap_story):
+def test_bip322_incomplete_psbt_wrapped_redeem(ins, bip322_txn, start_sign, cap_story):
 
     def hack(psbt_in):
         for i, inp in enumerate(psbt_in.inputs):
@@ -424,25 +425,28 @@ def test_bip322_invalid_to_spend_out_nVal(ins, bip322_txn, start_sign, cap_story
 @pytest.mark.parametrize("signed", [True, False])
 @pytest.mark.parametrize("num_ins", [1, 7])
 def test_ms_bip322_por(addr_fmt, M_N, signed, bip322_ms_txn, start_sign, end_sign, cap_story,
-                       import_ms_wallet, clear_ms, num_ins, verify_msg_bip322_por):
-    clear_ms()
+                       import_ms_wallet, clear_miniscript, num_ins, verify_msg_bip322_por):
+    clear_miniscript()
 
     M, N = M_N
     inp_amount = 10000000
 
     if addr_fmt == AF_P2SH:
         dd = "m/45h"
+        af = "p2sh"
     elif addr_fmt == AF_P2WSH:
         dd = "m/48h/1h/0h/2h"
+        af = "p2wsh"
     else:
         dd = "m/48h/1h/0h/1h"
+        af = "p2sh-p2wsh"
 
     def path_mapper(idx):
         kk = str_to_path(dd)
         return kk + [0,0]
 
-    keys = import_ms_wallet(M, N, name='bip322_por', accept=True, addr_fmt=addr_fmt, common=dd,
-                            do_import=True, descriptor=True)
+    keys = import_ms_wallet(M, N, name='bip322_por', accept=True, addr_fmt=af, common=dd,
+                            do_import=True)
 
 
     psbt, msg_challenge = bip322_ms_txn(num_ins, M, keys, path_mapper=path_mapper, inp_af=addr_fmt,
@@ -474,7 +478,9 @@ def test_ms_bip322_por(addr_fmt, M_N, signed, bip322_ms_txn, start_sign, end_sig
 
 
 @pytest.mark.parametrize("addr_fmt", [AF_P2WSH, AF_P2SH])
-def test_bip322_invalid_ms_psbt(addr_fmt, bip322_ms_txn, start_sign, cap_story, import_ms_wallet):
+def test_bip322_invalid_ms_psbt(addr_fmt, bip322_ms_txn, start_sign, cap_story, import_ms_wallet,
+                                clear_miniscript):
+    clear_miniscript()
     def hack(psbt_in):
         if addr_fmt in [AF_P2WSH]:
             psbt_in.inputs[0].witness_script = None
@@ -483,17 +489,20 @@ def test_bip322_invalid_ms_psbt(addr_fmt, bip322_ms_txn, start_sign, cap_story, 
 
     if addr_fmt == AF_P2SH:
         dd = "m/45h"
+        af = "p2sh"
     elif addr_fmt == AF_P2WSH:
         dd = "m/48h/1h/0h/2h"
+        af = "p2wsh"
     else:
         dd = "m/48h/1h/0h/1h"
+        af = "p2sh-p2wsh"
 
     def path_mapper(idx):
         kk = str_to_path(dd)
         return kk + [0,0]
 
-    keys = import_ms_wallet(2, 3, name='fail_b322', accept=True, addr_fmt=addr_fmt, common=dd,
-                            do_import=True, descriptor=True)
+    keys = import_ms_wallet(2, 3, name='fail_b322', accept=True, addr_fmt=af, common=dd,
+                            do_import=True)
 
     psbt, msg_challenge = bip322_ms_txn(1, 2, keys, path_mapper=path_mapper, inp_af=addr_fmt,
                                         hack_psbt=hack)
@@ -627,5 +636,106 @@ def test_wif_store_sign_bip322_por(num_ins, addr_fmt, bip322_txn, goto_home, pic
     else:
         assert f"WIF store: {', '.join([str(i) for i in range(num_ins)])}" in story
     end_sign(finalize=True)
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("num_ins", [1, 20])
+@pytest.mark.parametrize("addr_fmt", ["bech32", "bech32m"])
+@pytest.mark.parametrize("minisc", [
+    "or_d(pk(@A),and_v(v:pkh(@B),older(5)))",
+    "or_d(multi_a(2,@A,@C),and_v(v:pkh(@B),older(5)))",
+])
+def test_miniscript_bip322_por(minisc, clear_miniscript, cap_story, microsd_path, use_regtest,
+                               bitcoind, dev, get_cc_key, import_miniscript, bitcoin_core_signer,
+                               press_select, garbage_collector, start_sign, end_sign, num_ins,
+                               create_core_wallet, addr_fmt, bip322_from_classic_tx,
+                               verify_msg_bip322_por):
+    core_keys = []
+    signers = []
+    for i in range(2):
+        # core signers
+        signer, core_key = bitcoin_core_signer(f"co-signer{i}")
+        signer.keypoolrefill(25)
+        core_keys.append(core_key)
+        signers.append(signer)
+
+    # cc device key
+    cc_key = get_cc_key("86h/1h/0h")
+
+    minisc = minisc.replace("@A", cc_key)
+    minisc = minisc.replace("@B", core_keys[0])
+
+    has_c = "@C" in minisc
+    if has_c:
+        minisc = minisc.replace("@C", core_keys[1])
+
+    if addr_fmt == "bech32m":
+        from test_miniscript import ranged_unspendable_internal_key
+        ik = ranged_unspendable_internal_key(os.urandom(32))
+        desc = f"tr({ik},{minisc})"
+    else:
+        desc = f"wsh({minisc})"
+
+    use_regtest()
+    clear_miniscript()
+    name = "minisc_b322"
+    fname = f"{name}.txt"
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
+        f.write(desc)
+
+    garbage_collector.append(fpath)
+    _, story = import_miniscript(fname)
+    assert "Create new miniscript wallet?" in story
+    # do some checks on policy --> helper function to replace keys with letters
+    press_select()
+
+    wo = create_core_wallet(name, addr_fmt, "sd", True)
+
+    unspent = wo.listunspent()
+    assert len(unspent) == 1
+
+    if num_ins == 20:
+        all_of_it = wo.getbalance()
+        num_outs = 20
+        nVal = all_of_it / num_outs
+        conso_addrs = [{wo.getnewaddress("", addr_fmt): nVal} for _ in range(num_outs)]  # self-spend
+    else:
+        conso_addrs = [{bitcoind.supply_wallet.getnewaddress(): 2.333}]
+
+    psbt_resp = wo.walletcreatefundedpsbt([], conso_addrs, 0, {"fee_rate": 2,
+                                                               "change_type": addr_fmt,
+                                                               "subtractFeeFromOutputs": [0]})
+    psbt = psbt_resp.get("psbt")
+    if num_ins == 20:
+        if has_c:
+            psbt_res = signers[1].walletprocesspsbt(psbt, True,
+                                                    "DEFAULT" if addr_fmt == "bech32m" else "ALL")
+            psbt = psbt_res.get("psbt")
+
+        start_sign(base64.b64encode(psbt).decode())
+        res = end_sign(accept=True)
+
+        res = wo.finalizepsbt(base64.b64encode(res).decode())
+        assert res["complete"]
+        tx_hex = res["hex"]
+        res = wo.testmempoolaccept([tx_hex])
+        assert res[0]["allowed"]
+        res = wo.sendrawtransaction(tx_hex)
+        assert len(res) == 64  # tx id
+        bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+        unspent = wo.listunspent()
+        assert len(unspent) == 20
+        dest = [{bitcoind.supply_wallet.getnewaddress(): wo.getbalance()}]
+        psbt_resp = wo.walletcreatefundedpsbt([], dest, 0, {"fee_rate": 2, "change_type": addr_fmt,
+                                                            "subtractFeeFromOutputs": [0]})
+        psbt = psbt_resp.get("psbt")
+
+    por_psbt, _ = bip322_from_classic_tx(psbt.encode())
+    start_sign(por_psbt)
+    verify_msg_bip322_por("POR", way="sd")
+    title, story = cap_story()
+    import pdb;pdb.set_trace()
+    x = 555
 
 # EOF

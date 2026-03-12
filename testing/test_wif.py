@@ -221,7 +221,7 @@ def test_wif_store_addresses(netcode, import_wif_to_store, use_mainnet, cap_menu
             # Q has title as it needs hint keys
             assert title == mi
 
-        target_addr = n.address(addr_fmt=af, netcode=netcode)
+        target_addr = n.address(addr_fmt=af, chain=netcode)
         addr = addr_from_display_format(story.split("\n\n")[0])
         assert addr == target_addr
 
@@ -465,11 +465,13 @@ def test_sign_msg_with_wif_store_key(way, af, settings_remove, import_wif_to_sto
     goto_home()
 
 
+@pytest.mark.parametrize("oneshot", [True, False])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh", "p2sh"])
-def test_multisig_wif_store(addr_fmt, dev, fake_ms_txn, start_sign, settings_set, clear_ms,
-                            cap_story, pytestconfig, import_ms_wallet, end_sign, settings_remove):
+def test_multisig_wif_store(oneshot, addr_fmt, dev, fake_ms_txn, start_sign, settings_set,
+                            clear_miniscript, cap_story, pytestconfig, import_ms_wallet, end_sign,
+                            settings_remove):
     # TODO This test MUST be run with --psbt2 flag on and off
-    clear_ms()
+    clear_miniscript()
     settings_remove("wifs")
     M, N = 3, 5
 
@@ -484,22 +486,23 @@ def test_multisig_wif_store(addr_fmt, dev, fake_ms_txn, start_sign, settings_set
         kk = str_to_path(dd)
         return kk + [0,0]
 
-    keys = import_ms_wallet(M, N, name='wif_store', accept=True, netcode="XTN",
-                            descriptor=True, addr_fmt=addr_fmt, common=dd)
+    keys = import_ms_wallet(M, N, name='wif_store', accept=True, chain="XTN",
+                            addr_fmt=addr_fmt, common=dd)
 
-    psbt = fake_ms_txn(1, 1, M, keys, inp_af=unmap_addr_fmt[addr_fmt],
-                       path_mapper=path_mapper, psbt_v2=pytestconfig.getoption('psbt2'))
+    psbt = fake_ms_txn(1, 1, M, keys, inp_addr_fmt=addr_fmt, path_mapper=path_mapper,
+                       psbt_v2=pytestconfig.getoption('psbt2'))
 
-    # sign with master key first - nothing in WIF store
-    # without warning
-    # one signature from master added
-    start_sign(psbt)
-    title, story = cap_story()
-    assert "warning" not in story
-    signed = end_sign()
+    if not oneshot:
+        # sign with master key first - nothing in WIF store
+        # without warning
+        # one signature from master added
+        start_sign(psbt)
+        title, story = cap_story()
+        assert "warning" not in story
+        psbt = end_sign()
 
-    po = BasicPSBT().parse(signed)
-    assert len(po.inputs[0].part_sigs) == 1
+        po = BasicPSBT().parse(psbt)
+        assert len(po.inputs[0].part_sigs) == 1
 
     # add privkey from 0th & 1st node to WIF store
     der_node0 = keys[0][1].subkey_for_path(dd[2:] + "/0/0")
@@ -510,19 +513,8 @@ def test_multisig_wif_store(addr_fmt, dev, fake_ms_txn, start_sign, settings_set
     pk1 = der_node1.node.private_key.K.sec().hex()
     settings_set("wifs", [(pk0,sk0), (pk1,sk1)])
 
-    # ofe of the private keys will be used for signing
-    # only one as we cannot sign with 2 keys in one sitting
-    start_sign(signed)
-    title, story = cap_story()
-    assert "warning" in story
-    assert "WIF store" in story
-    signed = end_sign()
-    po = BasicPSBT().parse(signed)
-    assert len(po.inputs[0].part_sigs) == 2
-
-    # sign with other key - keys that already have signatures are ignored
-    # that is why we can proceed with this iterative method
-    start_sign(signed, finalize=True)
+    # sign with WIF keys
+    start_sign(psbt, finalize=True)
     title, story = cap_story()
     assert "warning" in story
     assert "WIF store" in story
@@ -598,19 +590,8 @@ def test_wif_store_signing(num_ins, addr_fmt, fake_txn, goto_home, pick_menu_ite
 
     settings_remove("wifs")
 
-    wrap = False
-    if addr_fmt == "p2pkh":
-        sw = False
-    elif addr_fmt == "p2wpkh":
-        sw = True
-    elif addr_fmt == "p2sh-p2wpkh":
-        wrap = True
-        sw = True
-    else:
-        raise ValueError
-
     node = BIP32Node.from_master_secret(os.urandom(32))
-    psbt = fake_txn(num_ins, 1, segwit_in=sw, wrapped=wrap, master_xpub=node.hwif())
+    psbt = fake_txn(num_ins, 1, addr_fmt=addr_fmt, master_xpub=node.hwif())
 
     wifs = []
     for i in range(num_ins):
@@ -650,8 +631,8 @@ def test_wif_store_signing_multi(der_paths, complete, fake_txn, start_sign, end_
 
 
     node = BIP32Node.from_master_secret(os.urandom(32))
-    psbt = fake_txn(1, 1, segwit_in=True, master_xpub=node.hwif(), psbt_v2=True, outvals=[1E8*3],
-                    psbt_hacker=hack)
+    psbt = fake_txn(1, [["p2wpkh", 3*100_000_000]], addr_fmt="p2wpkh", master_xpub=node.hwif(),
+                    psbt_v2=True, psbt_hacker=hack)
     po = BasicPSBT().parse(psbt)
     n = node.subkey_for_path("0/0")
     sk = bytes(n.node.private_key).hex()
@@ -659,7 +640,7 @@ def test_wif_store_signing_multi(der_paths, complete, fake_txn, start_sign, end_
     wifs.append((pk, sk))
 
     node = BIP32Node.from_master_secret(os.urandom(32))
-    psbt = fake_txn(1, 1, segwit_in=False, master_xpub=node.hwif(), psbt_v2=True, psbt_hacker=hack)
+    psbt = fake_txn(1, 1, addr_fmt="p2pkh", master_xpub=node.hwif(), psbt_v2=True, psbt_hacker=hack)
     tmp = BasicPSBT().parse(psbt)
     po.inputs += tmp.inputs
     po.input_count += 1
@@ -669,7 +650,7 @@ def test_wif_store_signing_multi(der_paths, complete, fake_txn, start_sign, end_
     wifs.append((pk, sk))
 
     node = BIP32Node.from_master_secret(os.urandom(32))
-    psbt = fake_txn(1, 1, segwit_in=True, wrapped=True, master_xpub=node.hwif(), psbt_v2=True,
+    psbt = fake_txn(1, 1, addr_fmt="p2sh-p2wpkh", master_xpub=node.hwif(), psbt_v2=True,
                     psbt_hacker=hack)
     tmp = BasicPSBT().parse(psbt)
     po.inputs += tmp.inputs
@@ -702,7 +683,8 @@ def test_wif_store_signing_with_master(fake_txn, start_sign, end_sign, cap_story
     wifs = []
 
     node = BIP32Node.from_master_secret(os.urandom(32))
-    psbt = fake_txn(1, 1, segwit_in=True, master_xpub=node.hwif(), psbt_v2=True, outvals=[1E8*3])
+    psbt = fake_txn(1, [["p2wpkh", 3*100_000_000]], addr_fmt="p2wpkh", master_xpub=node.hwif(),
+                    psbt_v2=True)
     po = BasicPSBT().parse(psbt)
     n = node.subkey_for_path("0/0")
     sk = bytes(n.node.private_key).hex()
@@ -710,7 +692,7 @@ def test_wif_store_signing_with_master(fake_txn, start_sign, end_sign, cap_story
     wifs.append((pk, sk))
 
     node = BIP32Node.from_master_secret(os.urandom(32))
-    psbt = fake_txn(1, 1, segwit_in=False, master_xpub=node.hwif(), psbt_v2=True)
+    psbt = fake_txn(1, 1, addr_fmt="p2pkh", master_xpub=node.hwif(), psbt_v2=True)
     tmp = BasicPSBT().parse(psbt)
     po.inputs += tmp.inputs
     po.input_count += 1
@@ -720,7 +702,7 @@ def test_wif_store_signing_with_master(fake_txn, start_sign, end_sign, cap_story
     wifs.append((pk, sk))
 
     # add simulator input
-    psbt = fake_txn(1, 1, segwit_in=True, psbt_v2=True)
+    psbt = fake_txn(1, 1, addr_fmt="p2wpkh", psbt_v2=True)
     tmp = BasicPSBT().parse(psbt)
     po.inputs += tmp.inputs
     po.input_count += 1
