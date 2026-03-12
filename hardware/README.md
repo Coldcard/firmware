@@ -1,4 +1,3 @@
-
 # Coldcard Hardware Details
 
 This directory contains enough information for you to be able to
@@ -14,6 +13,12 @@ researchers who wish to analyse the Coldcard more completely.
 `schematic-q1d.png`
 
 This is the Q rev D schematic.
+
+![](schematic-mark5f.png)
+
+`schematic-mark5f.png`
+
+This is the Mark4 rev F schematic.
 
 ![](schematic-mark4d.png)
 
@@ -43,9 +48,13 @@ Not included are these minor bits:
 
 - BOM for Q rev D.
 
+`bom-mark5f.xlsx`
+
+- BOM for Mk5 rev F.
+
 `bom-mark4d.xlsx`
 
-- BOM for Mk3 rev D.
+- BOM for Mk4 rev D.
 
 `bom-mark3b.xlsx`
 
