@@ -5,7 +5,6 @@ build your own Coldcard from off-the-shelf parts.
 We are sharing this information for the benefit of security
 researchers who wish to analyse the Coldcard more completely.
 
-
 # Schematic
 
 ![](schematic-q1d.png)
@@ -35,30 +34,19 @@ This is the Mark3 rev B schematic.
 
 # BOM - Bill of Materials
 
-The parts used in the Coldcard are detailed in this spreadsheet file.
+The parts used in the Coldcard are detailed in these spreadsheets.
 Most of them could be bought on Digikey, but some are direct from suppliers.
+
+- BOM for Q rev D: `bom-q1d.xlsx`
+- BOM for Mk5 rev F: `bom-mark5f.xlsx`
+- BOM for Mk4 rev D: `bom-mark4d.xlsx`
+- BOM for Mk3 rev B: `bom-mark3b.xlsx`
 
 Not included are these minor bits:
 
 - the plastic case (custom)
 - the secure bag (with barcode serial number)
 - pin-recovery card
-
-`bom-q1d.xlsx`
-
-- BOM for Q rev D.
-
-`bom-mark5f.xlsx`
-
-- BOM for Mk5 rev F.
-
-`bom-mark4d.xlsx`
-
-- BOM for Mk4 rev D.
-
-`bom-mark3b.xlsx`
-
-- BOM for Mk3 rev B.
 
 # Important
 
