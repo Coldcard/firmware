@@ -2003,6 +2003,9 @@ class psbtObject(psbtProxy):
             # needed for each input if we sign at least one P2TR input
             inp.utxo_spk = utxo.scriptPubKey
 
+            if inp.sighash == SIGHASH_DEFAULT:
+                assert inp.af == AF_P2TR, "SIGHASH_DEFAULT outside taproot context"
+
             if inp.sp_idxs:
                 my_cnt += 1
             if inp.fully_signed:

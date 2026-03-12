@@ -3992,4 +3992,14 @@ def test_txid_qr(fake_txn, start_sign, cap_story, press_cancel, press_select):
     assert "(6) for QR Code of TXID" in story
     press_cancel()
 
+
+@pytest.mark.parametrize("addr_fmt", ["p2wpkh", "p2pkh", "p2sh-p2wpkh"])
+def test_default_sighash_outside_taproot(addr_fmt, fake_txn, start_sign, cap_story):
+    psbt = fake_txn(1, 1, sighashes=["DEFAULT"], addr_fmt=addr_fmt)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "SIGHASH_DEFAULT outside taproot context" in story
+
 # EOF
