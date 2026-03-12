@@ -3543,7 +3543,7 @@ def test_tx_explorer_goto_idx(fake_txn, start_sign, cap_story, use_testnet, need
     num_ins = 27
     num_outs = 32
 
-    psbt = fake_txn(num_ins, num_outs, segwit_in=True, change_outputs=[0])
+    psbt = fake_txn(num_ins, num_outs, addr_fmt="p2wpkh")
     start_sign(psbt)
     title, story = cap_story()
     assert title == "OK TO SEND?"
@@ -3616,7 +3616,7 @@ def test_txn_nVersion_zero(segwit, fake_txn, start_sign, cap_story, goto_home):
             t.nVersion = 0
             psbt.txn = t.serialize()
 
-    psbt = fake_txn(1, 2, segwit_in=segwit, change_outputs=[0], psbt_hacker=hack)
+    psbt = fake_txn(1, 2, addr_fmt="p2wpkh", psbt_hacker=hack)
     start_sign(psbt)
     time.sleep(.1)
     title, story = cap_story()

@@ -969,6 +969,7 @@ def test_key_expression_export(chain, addr_fmt, acct_num, goto_home, settings_se
         press_select()  # confirm story
         acct_num = 0
 
+    sig_check = True
     menu = cap_menu()
     if addr_fmt == AF_P2WPKH:
         menu_item = "Segwit P2WPKH"
@@ -976,6 +977,7 @@ def test_key_expression_export(chain, addr_fmt, acct_num, goto_home, settings_se
     elif addr_fmt == AF_P2TR:
         menu_item = "Taproot P2TR"
         derive = f"m/86h/{chain_num}h/{acct_num}h"
+        sig_check = False
     elif addr_fmt == AF_P2WPKH_P2SH:
         menu_item = "P2SH-Segwit"
         derive = f"m/49h/{chain_num}h/{acct_num}h"
@@ -985,13 +987,16 @@ def test_key_expression_export(chain, addr_fmt, acct_num, goto_home, settings_se
     elif addr_fmt == AF_P2WSH:
         menu_item = "Multi P2WSH"
         derive = f"m/48h/{chain_num}h/{acct_num}h/2h"
+        addr_fmt = AF_CLASSIC
     elif addr_fmt == AF_P2WSH_P2SH:
         menu_item = "Multi P2SH-P2WSH"
         derive = f"m/48h/{chain_num}h/{acct_num}h/1h"
+        addr_fmt = AF_CLASSIC
     else:
         assert addr_fmt == 1000
         menu_item = "Multi P2TR"
         derive = f"m/48h/{chain_num}h/{acct_num}h/3h"
+        addr_fmt = AF_CLASSIC
 
     assert menu_item in menu
     pick_menu_item(menu_item)
@@ -1001,7 +1006,8 @@ def test_key_expression_export(chain, addr_fmt, acct_num, goto_home, settings_se
     idx = 0 if is_q1 else 1
     story_key_exp = story.split("\n\n")[idx]
 
-    contents = load_export(way, label="Key Expression", is_json=False,addr_fmt=addr_fmt)
+    contents = load_export(way, label="Key Expression", is_json=False, addr_fmt=addr_fmt,
+                           sig_check=sig_check)
     key_exp = contents.strip()
 
     xfp = dev.master_fingerprint

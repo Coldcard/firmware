@@ -262,3 +262,50 @@ def bip322_ms_txn(pytestconfig, create_msg_file):
         return rv.getvalue(), msg_challenge
 
     return doit
+
+
+@pytest.fixture
+def bip322_from_classic_tx(dev, create_msg_file):
+    def doit(psbt, msg=b"POR"):
+        # takes in any PSBT and creates BIP-322 PSBT with all inputs as POR
+        # ignores & drops all outputs
+        # 0th input as specified in BIP-322 is added
+        po = BasicPSBT().parse(psbt)
+
+        to_sign =  CTransaction()
+        to_sign.deserialize(BytesIO(po.txn))
+        to_sign.nVersion = 0  # required
+        to_sign.vout = []  # drop all outputs
+        # just one zero amount output with script null data OP_RETURN
+        op_ret_o = BasicPSBTOutput(idx=0)
+        op_return_out = CTxOut(0, b'\x6a')
+        to_sign.vout.append(op_return_out)
+        po.outputs = [op_ret_o]
+
+        i0_utxo = CTransaction()
+        i0_utxo.deserialize(BytesIO(po.inputs[0].utxo))
+
+        scriptPubKey = i0_utxo.vout[to_sign.vin[0].prevout.n].scriptPubKey
+
+        to_spend = CTransaction()
+        to_spend.nVersion = 0
+        out_point = COutPoint(hash=0, n=0xffffffff)
+        msg_hash = bip322_msg_hash(msg)
+        create_msg_file(msg, msg_hash)
+        to_spend.vin = [CTxIn(out_point, scriptSig=b'\x00\x20' + msg_hash)]
+        to_spend.vout.append(CTxOut(0, scriptPubKey))
+        msg_challenge = scriptPubKey
+
+        to_spend.calc_sha256()
+
+        to_sign.vin[0] = CTxIn(COutPoint(to_spend.sha256, 0), nSequence=0xffffffff)
+        po.inputs[0].utxo = to_spend.serialize_with_witness()
+
+        po.txn = to_sign.serialize_with_witness()
+
+        rv = BytesIO()
+        po.serialize(rv)
+        return rv.getvalue(), msg_challenge
+
+    return doit
+

@@ -3071,6 +3071,7 @@ def import_wif_to_store(goto_home, pick_menu_item, cap_story, press_select, cap_
 # useful fixtures
 from test_backup import backup_system
 from test_bbqr import readback_bbqr, render_bbqr, readback_bbqr_ll, try_sign_bbqr, split_scan_bbqr
+from bip322 import bip322_txn, bip322_ms_txn, create_msg_file, bip322_from_classic_tx
 from test_bip39pw import set_bip39_pw
 from test_ccc import get_last_violation
 from test_drv_entro import derive_bip85_secret, activate_bip85_ephemeral
@@ -3089,6 +3090,5 @@ from test_seed_xor import restore_seed_xor
 from test_sign import txid_from_export_prompt
 from test_ux import pass_word_quiz, word_menu_entry, enable_hw_ux
 from txn import fake_txn
-from bip322 import bip322_txn, bip322_ms_txn, create_msg_file
 
 # EOF
