@@ -268,8 +268,8 @@ def bip322_ms_txn(pytestconfig, create_msg_file):
 def bip322_from_classic_tx(dev, create_msg_file):
     def doit(psbt, msg=b"POR"):
         # takes in any PSBT and creates BIP-322 PSBT with all inputs as POR
-        # ignores & drops all outputs
-        # 0th input as specified in BIP-322 is added
+        # ignores & drops all outputs and replaces with one 0 val OP_RETURN
+        # 0th input is adjusted as specified in BIP-322 (to_spend)
         po = BasicPSBT().parse(psbt)
 
         to_sign =  CTransaction()
@@ -282,10 +282,15 @@ def bip322_from_classic_tx(dev, create_msg_file):
         to_sign.vout.append(op_return_out)
         po.outputs = [op_ret_o]
 
-        i0_utxo = CTransaction()
-        i0_utxo.deserialize(BytesIO(po.inputs[0].utxo))
-
-        scriptPubKey = i0_utxo.vout[to_sign.vin[0].prevout.n].scriptPubKey
+        if po.inputs[0].utxo:
+            i0_utxo = CTransaction()
+            i0_utxo.deserialize(BytesIO(po.inputs[0].utxo))
+            scriptPubKey = i0_utxo.vout[to_sign.vin[0].prevout.n].scriptPubKey
+        else:
+            assert po.inputs[0].witness_utxo
+            i0_wutxo = CTxOut()
+            i0_wutxo.deserialize(BytesIO(po.inputs[0].witness_utxo))
+            scriptPubKey = i0_wutxo.scriptPubKey
 
         to_spend = CTransaction()
         to_spend.nVersion = 0
@@ -300,6 +305,8 @@ def bip322_from_classic_tx(dev, create_msg_file):
 
         to_sign.vin[0] = CTxIn(COutPoint(to_spend.sha256, 0), nSequence=0xffffffff)
         po.inputs[0].utxo = to_spend.serialize_with_witness()
+        # if it has witness UTXO - get rid of it
+        po.inputs[0].witness_utxo = None
 
         po.txn = to_sign.serialize_with_witness()
 
