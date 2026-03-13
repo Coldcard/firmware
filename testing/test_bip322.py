@@ -11,6 +11,7 @@ from ctransaction import CTransaction, CTxIn, COutPoint
 from helpers import str_to_path
 from charcodes import KEY_QR, KEY_NFC
 from bbqr import split_qrs
+from psbt import BasicPSBT
 
 
 @pytest.fixture
@@ -662,6 +663,9 @@ def test_miniscript_bip322_por(minisc, clear_miniscript, cap_story, microsd_path
     # cc device key
     cc_key = get_cc_key("86h/1h/0h")
 
+    if "multi_a" in minisc and addr_fmt == "bech32":
+        minisc = minisc.replace("multi_a", "multi")
+
     minisc = minisc.replace("@A", cc_key)
     minisc = minisc.replace("@B", core_keys[0])
 
@@ -713,7 +717,7 @@ def test_miniscript_bip322_por(minisc, clear_miniscript, cap_story, microsd_path
                                                     "DEFAULT" if addr_fmt == "bech32m" else "ALL")
             psbt = psbt_res.get("psbt")
 
-        start_sign(base64.b64encode(psbt).decode())
+        start_sign(base64.b64decode(psbt))
         res = end_sign(accept=True)
 
         res = wo.finalizepsbt(base64.b64encode(res).decode())
@@ -732,10 +736,23 @@ def test_miniscript_bip322_por(minisc, clear_miniscript, cap_story, microsd_path
         psbt = psbt_resp.get("psbt")
 
     por_psbt, _ = bip322_from_classic_tx(psbt.encode())
+    # this is miniscript that we cannot finalize
     start_sign(por_psbt)
     verify_msg_bip322_por("POR", way="sd")
+    time.sleep(.1)
     title, story = cap_story()
-    import pdb;pdb.set_trace()
-    x = 555
+    assert "Proof of Reserves" in story
+    assert "warning" not in story
+    assert f"{num_ins} input{'s' if num_ins > 1 else ''}" in story
+    assert "1 output" in story
+    assert "- OP_RETURN -" in story
+    assert "null-data" in story
+    res = end_sign(accept=True)
+    po = BasicPSBT().parse(res)
+    for i in po.inputs:
+        if addr_fmt == "bech32m":
+            assert len(i.taproot_script_sigs) == 1
+        else:
+            assert len(i.part_sigs) == 1
 
 # EOF
