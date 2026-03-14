@@ -349,26 +349,10 @@ class BitcoinTestnet(ChainsBase):
     b44_cointype = 1
 
 
-class BitcoinRegtest(ChainsBase):
+class BitcoinRegtest(BitcoinTestnet):
     ctype = 'XRT'
     name = 'Bitcoin Regtest'
-
-    slip132 = {
-        AF_CLASSIC:     Slip132Version(0x043587cf, 0x04358394, 't'),
-        AF_P2WPKH_P2SH: Slip132Version(0x044a5262, 0x044a4e28, 'u'),
-        AF_P2WPKH:      Slip132Version(0x045f1cf6, 0x045f18bc, 'v'),
-        AF_P2WSH_P2SH:  Slip132Version(0x024289ef, 0x024285b5, 'U'),
-        AF_P2WSH:       Slip132Version(0x02575483, 0x02575048, 'V'),
-        AF_P2TR:        Slip132Version(0x043587cf, 0x04358394, 't'),
-    }
-
     bech32_hrp = 'bcrt'
-
-    b58_addr    = bytes([111])
-    b58_script  = bytes([196])
-    b58_privkey = bytes([239])
-
-    b44_cointype = 1
 
 
 def get_chain(short_name):
