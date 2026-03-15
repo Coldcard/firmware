@@ -2,7 +2,7 @@
 #
 # psbt.py - understand PSBT file format: verify and generate them
 #
-import stash, gc, history, sys, ngu, ckcc, version, chains
+import stash, gc, history, sys, ngu, ckcc, chains
 from ucollections import OrderedDict
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
@@ -10,7 +10,6 @@ from utils import xfp2str, B2A, keypath_to_str, validate_derivation_path_length,
 from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str
 from uhashlib import sha256
 from uio import BytesIO
-from charcodes import KEY_ENTER
 from sffile import SizerFile
 from chains import taptweak, tapleaf_hash, NLOCK_IS_TIME, AF_TO_STR_AF
 from wallet import MiniScriptWallet, TRUST_PSBT, TRUST_VERIFY
@@ -33,7 +32,7 @@ from public_constants import (
     PSBT_OUT_BIP32_DERIVATION, PSBT_OUT_TAP_BIP32_DERIVATION, PSBT_OUT_TAP_INTERNAL_KEY,
     PSBT_IN_TAP_BIP32_DERIVATION, PSBT_IN_TAP_INTERNAL_KEY, PSBT_IN_TAP_KEY_SIG, PSBT_OUT_TAP_TREE,
     PSBT_IN_TAP_MERKLE_ROOT, PSBT_IN_TAP_LEAF_SCRIPT, PSBT_IN_TAP_SCRIPT_SIG,
-    TAPROOT_LEAF_TAPSCRIPT, TAPROOT_LEAF_MASK,
+    TAPROOT_LEAF_TAPSCRIPT,
     PSBT_OUT_SCRIPT, PSBT_OUT_AMOUNT, PSBT_GLOBAL_VERSION,
     PSBT_GLOBAL_TX_MODIFIABLE, PSBT_GLOBAL_OUTPUT_COUNT, PSBT_GLOBAL_INPUT_COUNT,
     PSBT_GLOBAL_FALLBACK_LOCKTIME, PSBT_GLOBAL_TX_VERSION, PSBT_IN_PREVIOUS_TXID,
@@ -344,7 +343,9 @@ class psbtProxy:
             here = list(unpack_from('<%dI' % (to_read // 4), v))
             here = self.handle_zero_xfp(here, my_xfp, parent)
             parsed_subpaths[xonly_pk] = [leaf_hash_len] + here
-            if (here[0] == my_xfp) or (cosign_xfp and (here[0] == cosign_xfp)) or (xonly_pk in parent.wif_store):
+            if (here[0] == my_xfp) or (cosign_xfp and (here[0] == cosign_xfp)):
+                my_sp_idxs.append(i)
+            elif parent.key_in_wif_store(xonly_pk):
                 my_sp_idxs.append(i)
 
         if my_sp_idxs:
@@ -929,11 +930,10 @@ class psbtInputProxy(psbtProxy):
                         # # ignore keys that does not have correct xfp specified in PSBT
                         continue
 
-                    if xonly_pubkey in psbt.wif_store:
+                    if psbt.key_in_wif_store(xonly_pubkey):
                         assert i in self.sp_idxs
 
                     lhs, path = lhs_path[0], lhs_path[1:]
-                    assert path[0] == my_xfp
                     assert merkle_root is not None, "Merkle root not defined"
                     if self.ik_idx == i:
                         assert not lhs
@@ -1225,6 +1225,23 @@ class psbtObject(psbtProxy):
         self.por322 = False
         self.por322_msg_hash = None
         self.por322_msg_challenge = None
+
+    def key_in_wif_store(self, key):
+        # key -> public key (xonly or classic compressed)
+        # wif_store -> initialized wif store as in psbt class
+        # returns key as found in wif store
+        assert len(key) in [32, 33]
+        if len(key) == 32:
+            # taproot xonly key
+            if b"\x02" + key in self.wif_store:
+                return b"\x02" + key
+            elif b"\x03" + key in self.wif_store:
+                return b"\x03" + key
+        else:
+            if key in self.wif_store:
+                return key
+
+        return None
 
     @property
     def lock_time(self):
@@ -2016,7 +2033,7 @@ class psbtObject(psbtProxy):
                     if index > idx_max:
                         idx_max = index
 
-                    if key in self.wif_store:
+                    if self.key_in_wif_store(key):
                         in_wif_store = True
 
                 if in_wif_store:
@@ -2436,8 +2453,9 @@ class psbtObject(psbtProxy):
 
                         which_key = self.get(pubk)
                         is_xonly = len(which_key) == 32
-                        if which_key in self.wif_store:
-                            node = node_from_privkey(self.wif_store[which_key])
+                        wif_store_key = self.key_in_wif_store(which_key)
+                        if wif_store_key:
+                            node = node_from_privkey(self.wif_store[wif_store_key])
                         else:
                             # xfp can be zero - substitute with self.my_xfp (not my_xfp as it can be CCC)
                             sp = self.handle_zero_xfp(self.parse_xfp_path(sp), self.my_xfp, None)
@@ -2496,8 +2514,9 @@ class psbtObject(psbtProxy):
 
                     pk = self.get(pubk)
                     int_pth = None
-                    if pk in self.wif_store:
-                        node = node_from_privkey(self.wif_store[pk])
+                    wif_store_key = self.key_in_wif_store(pk)
+                    if wif_store_key:
+                        node = node_from_privkey(self.wif_store[wif_store_key])
                     else:
                         int_pth = self.handle_zero_xfp(self.parse_xfp_path(sp), self.my_xfp, None)
                         skp = keypath_to_str(int_pth)
