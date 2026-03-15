@@ -1,6 +1,6 @@
 # (c) Copyright 2026 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, os
+import pytest, time, os, json, base64
 from helpers import prandom, addr_from_display_format
 from charcodes import KEY_QR, KEY_NFC, KEY_UP
 from constants import unmap_addr_fmt, AF_P2WSH, AF_P2SH
@@ -583,7 +583,7 @@ def test_wif_store_ownership(addr_fmt, idx, is_q1, goto_home, pick_menu_item, sc
 
 
 @pytest.mark.parametrize("num_ins", [1, 5])
-@pytest.mark.parametrize("addr_fmt", ["p2pkh", "p2wpkh", "p2sh-p2wpkh"])
+@pytest.mark.parametrize("addr_fmt", ["p2tr", "p2pkh", "p2wpkh", "p2sh-p2wpkh"])
 def test_wif_store_signing(num_ins, addr_fmt, fake_txn, goto_home, pick_menu_item, need_keypress,
                            start_sign, end_sign, cap_menu, cap_story, press_cancel, settings_remove,
                            press_select, import_wif_to_store):
@@ -692,7 +692,7 @@ def test_wif_store_signing_with_master(fake_txn, start_sign, end_sign, cap_story
     wifs.append((pk, sk))
 
     node = BIP32Node.from_master_secret(os.urandom(32))
-    psbt = fake_txn(1, 1, addr_fmt="p2pkh", master_xpub=node.hwif(), psbt_v2=True)
+    psbt = fake_txn(1, 1, addr_fmt="p2tr", master_xpub=node.hwif(), psbt_v2=True)
     tmp = BasicPSBT().parse(psbt)
     po.inputs += tmp.inputs
     po.input_count += 1
@@ -783,5 +783,102 @@ def test_visualize_wif(wif, testnet, is_q1, goto_home, need_keypress, use_testne
     assert title == "Failure"
     assert "Already saved in WIF Store" in story
     press_select()
+
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("tmplt", [
+    "wsh(or_d(multi(2,@0/<0;1>/*,@1/<0;1>/*),and_v(v:thresh(2,pkh(@0/<2;3>/*),a:pkh(@1/<2;3>/*),a:pkh(@2/<0;1>/*)),older(10))))",
+    "tr(unspend()/<0;1>/*,{and_v(v:multi_a(2,@0/<2;3>/*,@1/<2;3>/*,@2/<0;1>/*,@3/<0;1>/*),older(10)),multi_a(2,@0/<0;1>/*,@1/<0;1>/*)})",
+])
+def test_wif_store_signing_miniscript(tmplt, clear_miniscript, goto_home, cap_story, use_regtest,
+                                      bitcoind, get_cc_key, offer_minsc_import, bitcoin_core_signer,
+                                      press_select, start_sign, end_sign, create_core_wallet,
+                                      settings_set):
+    use_regtest()
+    clear_miniscript()
+    goto_home()
+    af = "bech32m" if tmplt.startswith("tr(") else "bech32"
+    tmplt = tmplt.replace("unspend()", "tpubD6NzVbkrYhZ4WbzhCs1gLUM8s8LAwTh68xVh1a3nRQyA3tbAJFSE2FEaH2CEGJTKmzcBagpyG35Kjv3UGpTEWbc7qSCX6mswrLQVVPgXECd")
+
+    csigner0, ckey0 = bitcoin_core_signer(f"co-signer-0")
+    ckey0 = ckey0.replace("/0/*", "")
+    csigner1, ckey1 = bitcoin_core_signer(f"co-signer-1")
+    ckey1 = ckey1.replace("/0/*", "")
+
+    # cc device key
+    cc_key = get_cc_key("86h/1h/0h").replace('/<0;1>/*', "")
+
+    # fill policy
+    desc = tmplt.replace("@0", cc_key)
+    desc = desc.replace("@1", ckey0)
+    desc = desc.replace("@2", ckey1)
+
+    if "@3" in tmplt:
+        csigner2, ckey2 = bitcoin_core_signer(f"co-signer-2")
+        ckey2 = ckey2.replace("/0/*", "")
+        desc = desc.replace("@3", ckey2)
+
+    wname = "wif_msc"
+    _, story = offer_minsc_import(json.dumps({"name": wname, "desc": desc}))
+    assert "Create new miniscript wallet?" in story
+    press_select()
+
+    wo = create_core_wallet(wname, af, "sd", True)
+
+    # use non-recovery path to split into 5 utxos + 1 going back to supply (not a conso)
+    unspent = wo.listunspent()
+    assert len(unspent) == 1
+    psbt_resp = wo.walletcreatefundedpsbt(
+        [],
+        [{bitcoind.supply_wallet.getnewaddress(): 5}],
+        0,
+        {"fee_rate": 2, "change_type": af},
+    )
+    psbt = psbt_resp.get("psbt")
+
+    res = csigner0.listdescriptors(True)
+    prv_ek = pth = None
+    for obj in res["descriptors"]:
+        if not obj["internal"] and obj["desc"].startswith("pkh("):
+            prv_ek, pth = obj["desc"].replace("pkh(", "").split("/", 1)
+            pth = pth.split(")")[0].replace("*", "0")
+
+    c0sk = BIP32Node.from_wallet_key(prv_ek)
+    subkey = c0sk.subkey_for_path(pth)
+    sec = subkey.sec()
+    sk = bytes(subkey.node.private_key)
+
+    po = BasicPSBT().parse(base64.b64decode(psbt))
+    if af == "bech32m":
+        for pk, xfp_pth in po.inputs[0].taproot_bip32_paths.items():
+            if pk == sec[1:]: break
+        else:
+            raise ValueError
+    else:
+        for pk, xfp_pth in po.inputs[0].bip32_paths.items():
+            if pk == sec: break
+        else:
+            raise ValueError
+
+    # add co-signer wif to wif_store
+    settings_set("wifs", [(sec.hex(), sk.hex())])
+    # now CC and WIF store sign in one sitting
+    start_sign(po.as_bytes())
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "Consolidating" not in story
+    assert "warning" in story
+    assert "WIF store" in story
+    final_psbt = end_sign(True)
+    # client software finalization
+    res = wo.finalizepsbt(base64.b64encode(final_psbt).decode())
+    assert res["complete"]
+    tx_hex = res["hex"]
+    res = wo.testmempoolaccept([tx_hex])
+    assert res[0]["allowed"]
+    res = wo.sendrawtransaction(tx_hex)
+    assert len(res) == 64  # tx id
 
 # EOF
