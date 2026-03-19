@@ -4,7 +4,7 @@
 #
 import pincodes, version, random
 from glob import dis
-from ux import ux_wait_keyup, ux_wait_keydown, ux_show_story, ux_show_pin, ux_show_phish_words, X, OK
+from ux import ux_wait_keyup, ux_wait_keydown, ux_show_story, ux_show_pin, ux_show_phish_words, X, OK, ux_confirm
 from callgate import show_logout
 from pincodes import pa
 from uasyncio import sleep_ms
@@ -79,6 +79,13 @@ class LoginUX:
         while 1:
             ch = await ux_wait_keydown()
             if ch is None: continue     # not expected
+
+            # Check for factory reset option: press '0' on empty PIN screen
+            if not self.is_setting and not self.pin and not self.pin_prefix and ch == '0':
+                # User pressed '0' on empty PIN screen - offer factory reset
+                await self.factory_reset_option()
+                self.show_pin(True)
+                continue
 
             if has_qwerty and not self.is_setting and ch.upper() == self.kill_btn:
                 # wipe the seed if they press a special key
@@ -210,6 +217,40 @@ Press %s to continue, %s to stop for now.
         if ch == 'x':
             show_logout()
             # no return
+
+    async def factory_reset_option(self):
+        # Offer factory reset option for users who forgot their PIN
+        # This will wipe all data and allow setting up a new wallet
+        ch = await ux_show_story(
+            "Forgot your PIN?\n\n"
+            "If you cannot remember your PIN prefix and suffix, you can factory "
+            "reset this device.\n\n"
+            "WARNING: This will WIPE all seed words, settings, and wallet data! "
+            "You will need to restore from your backup seed phrase.\n\n"
+            "Press (0) to factory reset, or %s to continue trying your PIN." % X,
+            title="FACTORY RESET?",
+            escape='0'
+        )
+
+        if ch == '0':
+            # Double confirm
+            if not await ux_confirm("FACTORY RESET?\n\n"
+                "This will completely wipe this Coldcard. All seed words, PIN codes, "
+                "and settings will be permanently deleted.\n\n"
+                "You will need your seed phrase to recover your funds."):
+                return False
+
+            if not await ux_confirm("ARE YOU SURE?\n\n"
+                "Press (1) to confirm factory reset. There is NO way to undo this.",
+                confirm_key="1"):
+                return False
+
+            # Perform the factory reset
+            import callgate
+            callgate.fast_wipe(False)
+            # NOT REACHED
+
+        return False
         
 
     async def try_login(self, bypass_pin=None):
@@ -269,8 +310,13 @@ Press %s to continue, %s to stop for now.
             msg += '''\n\nPlease check all digits carefully, and that prefix versus \
 suffix break point is correct.\n\n'''
             msg += '1 failure' if pa.num_fails <= 1 else ('%d failures' % pa.num_fails)
+            msg += '''\n\nPress (0) to factory reset this device if you have forgotten your PIN.'''
 
-            await ux_show_story(msg, title='WRONG PIN')
+            ch = await ux_show_story(msg, title='WRONG PIN', escape='0')
+
+            if ch == '0':
+                # User chose factory reset
+                await self.factory_reset_option()
 
     async def prompt_pin(self):
         # ask for an existing PIN

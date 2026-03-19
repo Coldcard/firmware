@@ -309,11 +309,8 @@ THERE IS ABSOLUTELY NO WAY TO RECOVER A FORGOTTEN PIN! Write it down.
 
     while 1:
         ch = await ux_show_story('''\
-There is ABSOLUTELY NO WAY to 'reset the PIN' or 'factory reset' the Coldcard if you forget the PIN.
-
-DO NOT FORGET THE PIN CODE.
-
-Press (6) to prove you read to the end of this message.''', title='WARNING', escape='6')
+If you forget your PIN prefix and suffix, you can factory reset this device. \
+However, this will WIPE all seed words and settings. Have your seed phrase ready to recover your wallet.\n\nDO NOT FORGET THE PIN CODE.\n\nPress (6) to prove you read to the end of this message.''', title='WARNING', escape='6')
 
         if ch == 'x': return
         if ch == '6': break

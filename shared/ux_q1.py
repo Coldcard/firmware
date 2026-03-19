@@ -460,6 +460,8 @@ def ux_show_pin(dis, pin, subtitle, prefix, is_confirmation, force_draw,
             dis.text(None, foot_y, footer, dark=True)
         elif is_confirmation:
             dis.text(None, foot_y, "Confirm PIN value")
+        else:
+            dis.text(None, foot_y, "0: Forgot PIN?   X: Cancel   Enter: Continue")
     else:
         dis.clear_box(ppx, y, 6, 1)
         dis.clear_box(ssx, y, 6, 1)

@@ -425,7 +425,7 @@ def ux_show_pin(dis, pin, subtitle, prefix, is_confirmation, force_draw,
         elif is_confirmation:
             footer = "X to CANCEL, or OK when DONE"
         else:
-            footer = "X to CANCEL, or OK to CONTINUE"
+            footer = "0:Forgot PIN?  X:Cancel  OK:Continue"
 
         dis.text(None, -1, footer, FontTiny)
 
