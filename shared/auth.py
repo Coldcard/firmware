@@ -276,8 +276,10 @@ async def try_push_tx(data, txid, txn_sha=None):
 
 class ApproveTransaction(UserAuthorizedAction):
     def __init__(self, psbt_len, flags=None, psbt_sha=None, input_method=None,
-                 output_encoder=None, filename=None, miniscript_wallet=None):
+                 output_encoder=None, filename=None, miniscript_wallet=None,
+                 offset=TXN_INPUT_OFFSET):
         super().__init__()
+        self.offset = offset
         self.psbt_len = psbt_len
 
         # do finalize is None if not USB, None = decide based on is_complete
@@ -406,7 +408,7 @@ class ApproveTransaction(UserAuthorizedAction):
         # step 1: parse PSBT from PSRAM into in-memory objects.
 
         try:
-            with SFFile(TXN_INPUT_OFFSET, length=self.psbt_len, message='Reading...') as fd:
+            with SFFile(self.offset, length=self.psbt_len, message='Reading...') as fd:
                 # NOTE: psbtObject captures the file descriptor and uses it later
                 self.psbt = psbtObject.read_psbt(fd)
         except BaseException as exc:
@@ -773,13 +775,14 @@ class ApproveTransaction(UserAuthorizedAction):
                 msg.write('%s %s\n\n' % self.chain.render_value(total_change - visible_change_sum))
 
 
-def sign_transaction(psbt_len, flags=0x0, psbt_sha=None, miniscript_wallet=None):
+def sign_transaction(psbt_len, flags=0x0, psbt_sha=None, miniscript_wallet=None,
+                     offset=TXN_INPUT_OFFSET):
     # transaction (binary) loaded into PSRAM already, checksum checked
     # optional miniscript_wallet arg, choose particular enrolled wallet by name to sign
     UserAuthorizedAction.check_busy(ApproveTransaction)
     UserAuthorizedAction.active_request = ApproveTransaction(
         psbt_len, flags, psbt_sha=psbt_sha, input_method="usb",
-        miniscript_wallet=miniscript_wallet,
+        miniscript_wallet=miniscript_wallet, offset=offset
     )
 
     # kill any menu stack, and put our thing at the top
@@ -934,8 +937,9 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
         elif (ch == 't') and not is_complete:
             # they might want to teleport it, but only if we have PSBT
             # there is no need to teleport PSBT if txn is already complete & ready to be broadcast
+            # updated PSBT is at TXN_OUTPUT_OFFSET (at TXN_INPUT_OFFSET is PSBT that is NOT updated)
             from teleport import kt_send_psbt
-            ok = await kt_send_psbt(psbt, data_len)
+            ok = await kt_send_psbt(psbt, data_len, psbt_offset=TXN_OUTPUT_OFFSET)
             if ok:
                 title = "Sent by Teleport"
             else:

@@ -639,7 +639,7 @@ class SecretPickerMenu(MenuSystem):
         await kt_do_send(self.rx_pubkey, 's', raw=raw)
 
 
-async def kt_send_psbt(psbt, psbt_len):
+async def kt_send_psbt(psbt, psbt_len, psbt_offset):
     # We just finished adding our signature to an incomplete PSBT.
     # User wants to send to one or more other senders for them to complete signing.
 
@@ -689,12 +689,12 @@ async def kt_send_psbt(psbt, psbt_len):
             f = None
             if x in need:
                 # we haven't signed ourselves yet, so allow that
-                from auth import sign_transaction, TXN_INPUT_OFFSET
+                from auth import sign_transaction
 
                 async def sign_now(*a):
                     # this will reset the UX stack:
                     # flags=None --> whether to finalize is decided based on psbt.is_complete
-                    sign_transaction(psbt_len, flags=None)
+                    sign_transaction(psbt_len, flags=None, offset=psbt_offset)
                 
                 f = sign_now
 
@@ -786,6 +786,6 @@ async def kt_send_file_psbt(*a):
         await ux_show_story("We are not part of this wallet.", "Cannot Teleport PSBT")
         return
 
-    await kt_send_psbt(psbt, psbt_len=psbt_len)
+    await kt_send_psbt(psbt, psbt_len=psbt_len, psbt_offset=TXN_INPUT_OFFSET)
     
 # EOF
