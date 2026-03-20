@@ -19,7 +19,7 @@ except ImportError:
 
 from helpers import hash160, str_to_path
 from base58 import encode_base58_checksum, decode_base58_checksum
-from constants import H
+from constants import BIP_341_H
 
 HARDENED = 2 ** 31
 
@@ -793,7 +793,7 @@ class BIP32Node:
 def ranged_unspendable_internal_key(chain_code=32 * b"\x01", subderiv="/<0;1>/*"):
     # provide ranged provably unspendable key in serialized extended key format for core to understand it
     # core does NOT understand 'unspend('
-    pk = b"\x02" + bytes.fromhex(H)
+    pk = b"\x02" + bytes.fromhex(BIP_341_H)
     node = BIP32Node.from_chaincode_pubkey(chain_code, pk)
     return node.hwif() + subderiv
 
