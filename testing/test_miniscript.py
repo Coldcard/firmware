@@ -9,7 +9,7 @@ from psbt import BasicPSBT
 from charcodes import KEY_QR, KEY_RIGHT, KEY_CANCEL, KEY_DELETE
 from bbqr import split_qrs
 from bip32 import BIP32Node, ranged_unspendable_internal_key
-from constants import H
+from constants import BIP_341_H
 from helpers import generate_binary_tree_template, str_to_path
 
 
@@ -2913,7 +2913,7 @@ def test_originless_keys(tmplt, offer_minsc_import, get_cc_key, bitcoin_core_sig
 
 
 @pytest.mark.parametrize("internal_key", [
-    H,
+    BIP_341_H,
     "r=@",
     "r=dfed64ff493dca2ab09eadefaa0c88be8404908fa6eff869ff71c0d359d086b9",
     "f19573a10866ee9881769e24464f9a0e989c2cb8e585db385934130462abed90"

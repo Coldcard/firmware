@@ -70,4 +70,4 @@ SIGHASH_MAP_NON_TAPROOT = {k:v for k, v in SIGHASH_MAP.items() if k != "DEFAULT"
 # (2**31) - 1 --> max unhardened, but we handle hardened via h elsewhere
 MAX_BIP32_IDX = 2147483647
 
-H = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"  # BIP-0341
+BIP_341_H = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"
