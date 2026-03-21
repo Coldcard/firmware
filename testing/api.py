@@ -59,9 +59,9 @@ class Bitcoind:
                 "-fallbackfee=0.0002",
                 "-server=1",
                 "-keypool=1",
-                "-listen=0"
+                "-listen=0",
                 f"-port={self.p2p_port}",
-                f"-rpcport={self.rpc_port}"
+                f"-rpcport={self.rpc_port}",
             ]
         )
         signal.signal(signal.SIGTERM, self.cleanup)
