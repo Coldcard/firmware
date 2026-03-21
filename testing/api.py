@@ -67,7 +67,7 @@ class Bitcoind:
                 "-listen=0",
                 "-keypool=1",
                 f"-port={self.p2p_port}",
-                f"-rpcport={self.rpc_port}"
+                f"-rpcport={self.rpc_port}",
             ]
         )
         signal.signal(signal.SIGTERM, self.cleanup)
