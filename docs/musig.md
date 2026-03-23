@@ -7,6 +7,12 @@ COLDCARD implements all following BIPs, further restricting their scope (read mo
 * `musig()` descriptor key expression [BIP-390](https://github.com/bitcoin/bips/blob/master/bip-0390.mediawiki)
 * Derivation Scheme for MuSig2 Aggregate Keys [BIP-328](https://github.com/bitcoin/bips/blob/master/bip-0328.mediawiki)
 
+
+### Why MuSig2?
+* higher level of **privacy** than OP_CHECKSIGADD. MuSig2 Taproot outputs are indistinguishable for a blockchain observer from regular, single-signer Taproot outputs even though they are actually controlled by multiple signers
+* **on-chain footprint** of a MuSig2 Taproot output is essentially a single BIP340 public key. This is more compact and has lower verification cost than each signer providing an individual public key and signature
+
+
 ### Limitations:
 * COLDCARD must stay powered up between 1st and 2nd round as necessary musig session data are stored in volatile memory only
 * `musig()` can only be used inside `tr()` expression as key expression
@@ -23,3 +29,12 @@ COLDCARD implements all following BIPs, further restricting their scope (read mo
 * COLDCARD strictly differentiate between 1st & 2nd MuSig2 round. If COLDCARD provides nonce, it will not attempt to sign even if it could (a.k.a enough nonces from cosigners are available).
   To provide both nonce(s) & signature(s) signing needs to be preformed twice.
 * keys from WIF Store cannot be used for MuSig2 signing
+* `musig()` key expression is not allowed inside `multi_a` & `sortedmulti_a` fragments, use `thresh` instead
+* inputs that are in different musig rounds in same PSBT are not allowed
+* transaction cannot be modified after 1st musig round was initiated as that would change musig session
+
+### Example
+
+Following policy is example how to do threshold multisig with MuSig2 (and Taptree) even thought MuSig2 is not a native threshold scheme.
+
+`tr(musig(@0,@1,@2),{{pk(musig(@0,@1)),pk(musig(@1,@2))},pk(musig(@0,@2))})`
