@@ -1332,7 +1332,7 @@ class psbtObject(psbtProxy):
 
         # musig related
         self.session = None
-        self.allow_cache_store = True
+        self.allow_cache_store = False
 
         # Proof of Reserves
         self.por322 = False
@@ -2588,7 +2588,6 @@ class psbtObject(psbtProxy):
 
         if my_musig_pubnonces_key in musig_partial_sigs:
             # we have already signed
-            self.allow_cache_store = False
             return
 
         if my_musig_pubnonces_key in musig_pubnonces:
@@ -2621,6 +2620,7 @@ class psbtObject(psbtProxy):
         if inp.musig_added_pubnonces:
             # we added nonce - done
             # strict 1st & 2nd round separation
+            self.allow_cache_store = True
             return
 
         if len(pubnonces) < len(cosigners):

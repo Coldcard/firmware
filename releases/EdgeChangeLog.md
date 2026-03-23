@@ -13,7 +13,8 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
-- New Feature: Ability to sign MuSig2 UTXOs. Read more [here](docs/musig.md)  TODO proper link
+- New Feature: Ability to sign MuSig2 UTXOs. Read more [here](https://github.com/Coldcard/firmware/blob/new_edge/docs/musig.md)
+- New Feature: BIP-322 Proof of Reserves for Miniscript & MuSig2 UTXOs
 - Bugfix: PSBT global XPUBs validation when signing with specific wallet
 - Bugfix: Do not allow sighash DEFAULT outside taproot context
 

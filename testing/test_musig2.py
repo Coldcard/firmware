@@ -1520,4 +1520,292 @@ def test_tmp_seed_cosign(bitcoind, settings_set, end_sign, start_sign, restore_m
     res = bitcoind_wo.sendrawtransaction(tx_hex)
     assert len(res) == 64  # tx id
 
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("cc_in_musig", [True, False])
+def test_musig_in_thresh(cc_in_musig, clear_miniscript, offer_minsc_import, use_regtest, bitcoind,
+                         address_explorer_check, get_cc_key, bitcoin_core_signer, import_duplicate,
+                         press_select, end_sign, create_core_wallet, start_sign, cap_story,
+                         press_cancel):
+    use_regtest()
+    sequence = 25
+
+    core_musig_pubkeys = []
+    core_musig_privkeys = []
+    musig_signers = []
+    for i in range(2):
+        signer, core_pk, core_sk = bitcoin_core_signer(f"musig-co-signer{i}", privkey=True)
+        signer.keypoolrefill(25)
+        core_pk = core_pk.replace("/0/*", "")
+        core_sk = core_sk.replace("/0/*", "")
+        core_musig_pubkeys.append(core_pk)
+        core_musig_privkeys.append(core_sk)
+        musig_signers.append(signer)
+
+    core_pubkeys = []
+    core_privkeys = []
+    signers = []
+    for i in range(2):
+        signer, core_pk, core_sk = bitcoin_core_signer(f"co-signer{i}", privkey=True)
+        signer.keypoolrefill(25)
+        core_pk = core_pk.replace("/0/*", "/<0;1>/*")
+        core_pubkeys.append(core_pk)
+        core_privkeys.append(core_sk)
+        signers.append(signer)
+
+    cc_key = get_cc_key("86h/1h/0h")
+
+    if cc_in_musig:
+        cc_key = cc_key.replace("/<0;1>/*", "")
+        musig = "musig(%s)/<0;1>/*" % ",".join([cc_key] + core_musig_pubkeys)
+        tapscript = f"thresh(3,pk({core_pubkeys[0]}),s:pk({core_pubkeys[1]}),s:pk({musig}),sln:older({sequence}))"
+    else:
+        musig = "musig(%s)/<0;1>/*" % ",".join(core_musig_pubkeys)
+        tapscript = f"thresh(3,pk({core_pubkeys[0]}),s:pk({cc_key}),s:pk({musig}),sln:older({sequence}))"
+
+    desc = f"tr({ranged_unspendable_internal_key()},{tapscript})"
+
+    clear_miniscript()
+    name = "musig_var"
+
+    _, story = offer_minsc_import(json.dumps(dict(name=name, desc=desc)))
+    assert "Create new miniscript wallet?" in story
+    press_select()
+
+    wo = create_core_wallet(name, "bech32m", "sd", 1)
+
+    desc_lst = []
+    for obj in wo.listdescriptors()["descriptors"]:
+        del obj["next"]
+        del obj["next_index"]
+        desc_lst.append(obj)
+
+    if cc_in_musig:
+        # import musig descriptor to signers
+        # each signer has it's own privkey loaded
+        for s, spk, ssk in zip(musig_signers, core_musig_pubkeys, core_musig_privkeys):
+            to_import = copy.deepcopy(desc_lst)
+            for dobj in to_import:
+                dobj["desc"] = dobj["desc"].split("#")[0].replace(spk, ssk)
+                csum = wo.getdescriptorinfo(dobj["desc"])["checksum"]
+                dobj["desc"] = dobj["desc"] + "#" + csum
+
+            res = s.importdescriptors(to_import)
+            for o in res:
+                assert o["success"]
+
+    unspent = wo.listunspent()
+
+    inp = [{"txid": u["txid"], "vout": u["vout"], "sequence": sequence} for u in unspent]
+
+    conso_addr = [{wo.getnewaddress("", "bech32m"): wo.getbalance()}]  # self-spend
+    psbt_resp = wo.walletcreatefundedpsbt(inp, conso_addr, 0, {"fee_rate": 2,
+                                                               "change_type": "bech32m",
+                                                               "subtractFeeFromOutputs": [0]})
+    psbt = psbt_resp.get("psbt")
+    res_psbt = base64.b64decode(psbt)
+
+    if cc_in_musig:
+        # musig co-signers adding nonces
+        for s in musig_signers:
+            psbt_resp = s.walletprocesspsbt(psbt, True, "DEFAULT", True, False)
+            psbt = psbt_resp.get("psbt")
+
+        # CC add nonce
+        start_sign(base64.b64decode(psbt))
+        title, story = cap_story()
+        assert "Consolidating" in story
+        assert f"Wallet: {name}" in story
+        res_psbt = end_sign(exit_export_loop=False)
+        time.sleep(.1)
+        title, story = cap_story()
+        assert "PSBT Updated" == title
+        press_cancel()  # exit export loop
+
+        po = BasicPSBT().parse(res_psbt)
+        for inp in po.inputs:
+            # all co-signers added nonces
+            assert len(inp.musig_pubnonces) == 3
+            # no signature was added
+            assert len(inp.musig_part_sigs) == 0
+
+    # CC add signature
+    start_sign(res_psbt)
+    title, story = cap_story()
+    assert "Consolidating" in story
+    assert f"Wallet: {name}" in story
+    res_psbt = end_sign(exit_export_loop=False)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "PSBT Signed" == title
+    press_cancel()  # exit export loop
+
+    b64_res_psbt = base64.b64encode(res_psbt).decode()
+
+    if cc_in_musig:
+        # musig co-signers add signatures
+        for s in musig_signers:
+            psbt_resp = s.walletprocesspsbt(b64_res_psbt, True, "DEFAULT", True, False)
+            b64_res_psbt = psbt_resp.get("psbt")
+
+        po = BasicPSBT().parse(base64.b64decode(b64_res_psbt))
+        for inp in po.inputs:
+            # nonces from 1st round
+            assert len(inp.musig_pubnonces) == 3
+            # all co-signers added signatures
+            assert len(inp.musig_part_sigs) == 3
+
+    # now sign with one of the normal core signers that are not part of the musig
+    b64_res_psbt = signers[0].walletprocesspsbt(b64_res_psbt, True, "DEFAULT", True, False)["psbt"]
+
+    res = wo.finalizepsbt(b64_res_psbt)
+    assert res["complete"]
+    tx_hex = res["hex"]
+
+    # we are signing for timelocked tapscript
+    res = wo.testmempoolaccept([tx_hex])
+    assert res[0]["allowed"] is False
+    assert res[0]['reject-reason'] == 'non-BIP68-final'
+    bitcoind.supply_wallet.generatetoaddress(sequence, bitcoind.supply_wallet.getnewaddress())
+
+    res = wo.testmempoolaccept([tx_hex])
+    assert res[0]["allowed"]
+    res = wo.sendrawtransaction(tx_hex)
+    assert len(res) == 64  # tx id
+
+    # check addresses are correct
+    address_explorer_check("sd", "bech32m", wo, name)
+
+
+@pytest.mark.parametrize("tapscript", [True, False])
+def test_inputs_in_different_musig_rounds(tapscript, use_regtest, clear_miniscript, bitcoind,
+                                          build_musig_wallet, start_sign, end_sign, cap_story,
+                                          press_cancel):
+    use_regtest()
+    clear_miniscript()
+    name = "diff_round_musig"
+    wo, signers, desc = build_musig_wallet(name, 3, tapscript=tapscript,
+                                           tree_design="left_heavy",  # not balanced tree
+                                           tapscript_musig_threshold=2, num_utxo_available=2)
+    unspent = wo.listunspent()
+    assert len(unspent) == 2
+
+    psbt_resp = wo.walletcreatefundedpsbt([], [{bitcoind.supply_wallet.getnewaddress(): 43.4389}],
+                                          0, {"fee_rate": 2, "change_type": "bech32m"})
+    psbt = psbt_resp.get("psbt")
+
+    # cosigners adding nonces
+    for s in signers:
+        psbt_resp = s.walletprocesspsbt(psbt, True, "DEFAULT", True, False)
+        psbt = psbt_resp.get("psbt")
+
+    # CC add nonce
+    start_sign(base64.b64decode(psbt))
+    title, story = cap_story()
+    assert "Consolidating" not in story
+    assert f"Wallet: {name}" in story
+    res_psbt = end_sign(exit_export_loop=False)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "PSBT Updated" == title
+
+    press_cancel()  # exit export loop
+
+    po = BasicPSBT().parse(res_psbt)
+    for inp in po.inputs:
+        assert len(inp.musig_pubnonces) == (9 if tapscript else 3)
+        assert len(inp.musig_part_sigs) == 0
+
+    b64_res_psbt = po.as_b64_str()
+
+    for s in signers:
+        psbt_resp = s.walletprocesspsbt(b64_res_psbt, True, "DEFAULT", True, False)
+        b64_res_psbt = psbt_resp.get("psbt")
+
+    po = BasicPSBT().parse(base64.b64decode(b64_res_psbt))
+    for inp in po.inputs:
+        assert len(inp.musig_pubnonces) == (9 if tapscript else 3)
+        assert len(inp.musig_part_sigs) == (6 if tapscript else 2)
+
+    # remove nonces and signatures from 0th input, keep them with 1st input
+    # causing this PSBT to have inputs in both 1st & 2nd round (not allowed)
+    po.inputs[0].musig_pubnonces = {}
+    po.inputs[0].musig_part_sigs = {}
+
+    # CC add nonce
+    start_sign(po.as_bytes())
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Consolidating" not in story
+    assert f"Wallet: {name}" in story
+    with pytest.raises(Exception):
+        end_sign(exit_export_loop=False)
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "resign" in story
+
+
+@pytest.mark.parametrize("tapscript", [True, False])
+def test_modify_PSBT_during_musig_signing(tapscript, use_regtest, clear_miniscript, bitcoind,
+                                          build_musig_wallet, start_sign, end_sign, cap_story):
+    use_regtest()
+    clear_miniscript()
+    name = "mod_musig"
+    wo, signers, desc = build_musig_wallet(name, 3, tapscript=tapscript,
+                                           tree_design="right_heavy",  # not balanced tree
+                                           tapscript_musig_threshold=2, num_utxo_available=2)
+    unspent = wo.listunspent()
+    assert len(unspent) == 2
+
+    # spend first UTXO
+    inps = [{"txid": unspent[0]["txid"], "vout": unspent[0]["vout"]}]
+
+    psbt_resp = wo.walletcreatefundedpsbt(inps, [{bitcoind.supply_wallet.getnewaddress(): 5.12345}],
+                                          0, {"fee_rate": 2, "change_type": "bech32m"})
+    psbt = psbt_resp.get("psbt")
+
+    start_sign(base64.b64decode(psbt))
+    title, story = cap_story()
+    assert "Consolidating" not in story
+    assert f"Wallet: {name}" in story
+    res_psbt = end_sign()
+
+    po = BasicPSBT().parse(res_psbt)
+
+    # spend second UTXO
+    inps = [{"txid": unspent[1]["txid"], "vout": unspent[1]["vout"]}]
+
+    psbt_resp = wo.walletcreatefundedpsbt(inps, [{bitcoind.supply_wallet.getnewaddress(): 3.54321}],
+                                          0, {"fee_rate": 3, "change_type": "bech32m"})
+    psbt = psbt_resp.get("psbt")
+    po1 = BasicPSBT().parse(base64.b64decode(psbt))
+
+    # change to PSBT v2 to not need handle txn
+    x = BasicPSBT().parse(po.to_v2())
+    y = BasicPSBT().parse(po1.to_v2())
+
+    combined = BasicPSBT()
+    combined.version = 2
+    combined.txn_version = 2
+
+    combined.input_count = x.input_count + y.input_count
+    combined.output_count = x.output_count + y.output_count
+    combined.fallback_locktime = 0
+    combined.inputs = x.inputs + y.inputs
+    combined.outputs = x.outputs + y.outputs
+
+    start_sign(combined.as_bytes())
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Consolidating" not in story
+    assert f"Wallet: {name}" in story
+    with pytest.raises(Exception):
+        end_sign()
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "musig needs restart" in story
+
 # EOF
