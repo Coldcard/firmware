@@ -729,15 +729,16 @@ class ApproveTransaction(UserAuthorizedAction):
         total_change = 0
         has_change = False
 
-        # TODO: Test pay to silent payment change address
-
         for idx, tx_out in self.psbt.output_iter():
             outp = self.psbt.outputs[idx]
             if outp.is_change:
                 has_change = True
                 total_change += tx_out.nValue
                 if len(largest_change) < MAX_VISIBLE_CHANGE:
-                    largest_change.append((tx_out.nValue, self.chain.render_address(tx_out.scriptPubKey)))
+                    addr = self.chain.render_address(tx_out.scriptPubKey)
+                    if outp.sp_v0_info:
+                        addr += '\n' + self.psbt.render_silent_payment_output_string(outp)
+                    largest_change.append((tx_out.nValue, addr))
                     if len(largest_change) == MAX_VISIBLE_CHANGE:
                         largest_change = sorted(largest_change, key=lambda x: x[0], reverse=True)
                     continue
@@ -765,7 +766,10 @@ class ApproveTransaction(UserAuthorizedAction):
 
             largest.pop(-1)
             if outp.is_change:
-                ret = (here, self.chain.render_address(tx_out.scriptPubKey))
+                addr = self.chain.render_address(tx_out.scriptPubKey)
+                if outp.sp_v0_info:
+                    addr += '\n' + self.psbt.render_silent_payment_output_string(outp)
+                ret = (here, addr)
             else:
                 rendered, _ = self.render_output(tx_out)
                 ret = (here, rendered)
