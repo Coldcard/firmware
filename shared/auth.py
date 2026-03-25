@@ -434,7 +434,30 @@ class ApproveTransaction(UserAuthorizedAction):
             # Silent Payments: Validate and pre-process Silent Payments outputs to make preview useful
             if self.psbt.has_silent_payment_outputs():
                 with stash.SensitiveValues() as sv:
-                    self.psbt.process_silent_payments(sv)
+                    if not self.psbt.process_silent_payments(sv):
+                        # Coverage incomplete: shares computed but waiting on other signers
+                        # Skip normal approval flow — prompt user to contribute shares, then save
+                        del args
+                        ch = await ux_show_story(
+                            "Silent payment ECDH shares will be added to this transaction.\n\n"
+                            "Other signers must contribute their shares before signing can proceed.\n\n"
+                            "Press %s to contribute shares. %s to abort." % (OK, X),
+                            title="CONTRIBUTE SHARES?"
+                        )
+                        if ch != 'y':
+                            self.refused = True
+                            await ux_dramatic_pause("Refused.", 1)
+                            del self.psbt
+                            self.done()
+                            return
+                        try:
+                            await done_signing(self.psbt, self, self.input_method,
+                                            self.filename, self.output_encoder,
+                                            finalize=False)
+                            self.done()
+                        except BaseException as exc:
+                            return await self.failure("PSBT output failed", exc)
+                        return
 
             self.psbt.consider_outputs(*args, cosign_xfp=ccc_c_xfp)
             del args  # not needed anymore
