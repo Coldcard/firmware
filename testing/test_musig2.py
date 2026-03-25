@@ -1808,4 +1808,57 @@ def test_modify_PSBT_during_musig_signing(tapscript, use_regtest, clear_miniscri
     title, story = cap_story()
     assert "musig needs restart" in story
 
+
+@pytest.mark.parametrize("der", ["/**", "/<0;1>/*"])
+def test_import_musig_from_b388_policy(der, microsd_path, garbage_collector, clear_miniscript,
+                                       pick_menu_item, need_keypress, cap_story, use_mainnet,
+                                       press_select, usb_miniscript_policy, goto_home,
+                                       usb_miniscript_get):
+    policy = """{
+"name":"MuSig2",
+"desc_template":"tr(musig(@0,@1,@2)%s,{{pk(musig(@0,@1)%s),pk(musig(@1,@2)%s)},pk(musig(@0,@2)%s)})",
+"keys_info":[
+  "[a0d3c79c/48h/0h/0h/3h]xpub6DyCgL3TMMS3trskRyxP6M6iCqSUYPgC4QECKYkubC1L27aYUnPZJwvw57vK56G1t42KQHhX8MrU5zkt9nispkAMXYDLfiiSyrQ9HT1aQoy",
+  "[9a1c8a27/48h/0h/0h/3h]xpub6DmrCyYSAz65fVFRAPEsvLZ5jHZYeF6DvprfYp7754XD2srXQr8kAcayGKhakmWiNe7iVEpjmC9JuqicHAQZk1rpWijrvh2AEwL7WaietUN",
+  "[0f056943/48h/0h/0h/3h]xpub6FQgdFZAHcAeDMVe9KxWoLMxziCjscCExzuKJhRSjM71CA9dUDZEGNgPe4S2SsRumCBXeaTBZ5nKz2cMDiK4UEbGkFXNipHLkm46inpjE9D"]
+}
+"""
+    policy = policy % (der, der, der, der)
+    fname = "musig_b388.json"
+    fpath = microsd_path(fname)
+    with open(fpath, "w") as f:
+        f.write(policy)
+
+    clear_miniscript()
+    use_mainnet()
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Multisig/Miniscript")
+    pick_menu_item("Import")
+    need_keypress("1")
+    try:
+        pick_menu_item(fname)
+    except: pass
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Create new miniscript wallet" in story
+    assert "/**" in story
+    assert "/<0;1>/*" not in story
+    press_select()
+    pick_menu_item("MuSig2")
+    pick_menu_item("Descriptors")
+    pick_menu_item("BIP-388 Policy")
+
+    contents = usb_miniscript_policy("MuSig2")
+    assert "/**" in contents["desc_template"]
+    assert "/<0;1>/*" not in contents["desc_template"]
+    if der == "/<0;1>/*":
+        policy = policy.replace(der, "/**")
+    assert json.loads(policy) == contents
+
+    contents = usb_miniscript_get("MuSig2")
+    assert "/**" not in contents["desc"]
+    assert "/<0;1>/*" in contents["desc"]
+
 # EOF

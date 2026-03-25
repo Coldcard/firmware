@@ -489,10 +489,7 @@ class MiniScriptWallet(WalletABC):
 
     @staticmethod
     def _from_bip388_wallet_policy(desc_template, keys_info, validate=True):
-        desc_str = bip388_wallet_policy_to_descriptor(
-            desc_template.replace("/<0;1>/*", "/**"),
-            keys_info
-        )
+        desc_str = bip388_wallet_policy_to_descriptor(desc_template, keys_info)
         from descriptor import Descriptor
         desc_obj = Descriptor.from_string(desc_str)
         if validate:
@@ -502,6 +499,7 @@ class MiniScriptWallet(WalletABC):
     @classmethod
     def from_bip388_wallet_policy(cls, name, desc_template, keys_info):
         bip388_validate_policy(desc_template, keys_info)
+        desc_template = desc_template.replace("/<0;1>/*", "/**")
         desc_obj = cls._from_bip388_wallet_policy(desc_template, keys_info)
         msc = cls.from_descriptor_obj(name, desc_obj, desc_template, keys_info)
         return msc

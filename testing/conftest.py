@@ -3083,7 +3083,7 @@ from test_msg import verify_msg_sign_story, sign_msg_from_text, msg_sign_export,
 from test_multisig import import_ms_wallet, make_multisig, fake_ms_txn
 from test_miniscript import (offer_minsc_import, get_cc_key, bitcoin_core_signer, import_miniscript, usb_miniscript_get,
                              usb_miniscript_addr, create_core_wallet, import_duplicate, address_explorer_check,
-                             miniscript_descriptors)
+                             miniscript_descriptors, usb_miniscript_policy)
 from test_multisig import make_ms_address, make_myself_wallet
 from test_musig2 import build_musig_wallet
 from test_notes import need_some_notes, need_some_passwords, goto_notes
