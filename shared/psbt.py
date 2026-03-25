@@ -2605,26 +2605,27 @@ class psbtObject(psbtProxy):
         # generate musig2 secnonce & pubnonce
         sn, pn = ngu.secp256k1.musig_nonce_gen(keypair.pubkey(), sec_rand, keypair.privkey(), digest)
 
-        pubnonces = set()
         if my_musig_pubnonces_key not in musig_pubnonces:
             # I haven't added my pubnoce yet - adding now
             my_pn_bytes = pn.to_bytes()
             inp.musig_added_pubnonces[my_musig_pubnonces_key] = my_pn_bytes
-            pubnonces.add(my_pn_bytes)
-
-        for (pk, ak, lh), pnonce in musig_pubnonces.items():
-            if (ak == der_agg_k) and (lh == leaf_hash):
-                # this is the nonce belonging to our aggregate key
-                pubnonces.add(pnonce)
-
-        if inp.musig_added_pubnonces:
             # we added nonce - done
             # strict 1st & 2nd round separation
             self.allow_cache_store = True
             return
 
+        pubnonces = set()
+        for (pk, ak, lh), pnonce in musig_pubnonces.items():
+            if (ak == der_agg_k) and (lh == leaf_hash):
+                # this is the nonce belonging to our aggregate key
+                pubnonces.add(pnonce)
+                if pk == my_participant_key:
+                    # required, because if pubnonce is different from what was generated in 1st
+                    # round - signatures will be invalid
+                    assert pnonce == pn.to_bytes()
+
         if len(pubnonces) < len(cosigners):
-            # we just added nonce - but cannot sign as number of pubnonces is insufficient
+            # cannot sign as number of pubnonces is insufficient
             return
 
         # all pubnonces are known - we can sign
