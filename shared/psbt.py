@@ -2846,13 +2846,10 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
 
             # Silent Payment Processing
             if self.has_silent_payment_outputs():
-                sp_ready = self.process_silent_payments(sv)
-                if not sp_ready:
-                    # Silent Payments: must not sign if output scripts not set 
-                    # TODO: is this still necessary? if so needs test
-                    self.ux_notes.append(("Silent Payments",
-                        "ECDH shares added. Signatures withheld until all signers contribute."))
-                    return
+                if not self.process_silent_payments(sv):
+                    # Silent Payments: must not sign if output scripts not set for all signers
+                    # Defensive re-check - ApproveTransaction::interact should handle this case before reaching signing
+                    raise FatalPSBTIssue("Silent Payments: Signing cannot proceed until all signers contribute their shares")
 
             # progress
             dis.fullscreen('Signing...')
