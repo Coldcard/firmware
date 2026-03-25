@@ -754,8 +754,6 @@ class ApproveTransaction(UserAuthorizedAction):
         total_change = 0
         has_change = False
 
-        # TODO: Test pay to silent payment change address
-
         for idx, tx_out in self.psbt.output_iter():
             outp = self.psbt.outputs[idx]
             if outp.is_change:
@@ -763,6 +761,8 @@ class ApproveTransaction(UserAuthorizedAction):
                 total_change += tx_out.nValue
                 if len(largest_change) < MAX_VISIBLE_CHANGE:
                     _, addr = self.render_output(tx_out)
+                    if outp.sp_v0_info:
+                        addr += '\n' + self.psbt.render_silent_payment_output_string(outp)
                     largest_change.append((tx_out.nValue, addr))
                     if len(largest_change) == MAX_VISIBLE_CHANGE:
                         largest_change = sorted(largest_change, key=lambda x: x[0], reverse=True)
@@ -790,9 +790,14 @@ class ApproveTransaction(UserAuthorizedAction):
                 continue        # too small
 
             largest.pop(-1)
-
             rendered, dest = self.render_output(tx_out)
-            largest.insert(keep, (here, dest if outp.is_change else rendered))
+            if outp.is_change:
+                if outp.sp_v0_info:
+                    dest += '\n' + self.psbt.render_silent_payment_output_string(outp)
+                ret = (here, dest)
+            else:
+                ret = (here, rendered)
+            largest.insert(keep, ret)
 
         # foreign outputs (soon to be other people's coins)
         visible_out_sum = 0

@@ -15,14 +15,8 @@ from binascii import unhexlify
 from binascii import hexlify
 from bip32 import BIP32Node
 from ckcc_protocol.protocol import CCProtoError
-from constants import simulator_fixed_tprv
 from psbt import BasicPSBT
-from pysecp256k1 import (
-    ec_pubkey_parse,
-    ec_pubkey_serialize,
-    ec_pubkey_tweak_add,
-    tagged_sha256,
-)
+from pysecp256k1 import ec_pubkey_parse, ec_pubkey_tweak_add
 from pysecp256k1.extrakeys import xonly_pubkey_from_pubkey, xonly_pubkey_serialize
 from sp_helpers import (
     _sim_sp,
@@ -31,6 +25,7 @@ from sp_helpers import (
     _sim_verify_dleq,
     _sim_compute_output_script,
 )
+from constants import simulator_fixed_tprv
 
 
 # ---------------------------------------------------------------------------
@@ -319,6 +314,83 @@ def test_sp_partial_owned_coverage_complete(dev, fake_txn, start_sign, end_sign,
 
 
 # ---------------------------------------------------------------------------
+# Multi-signer - incomplete coverage scenario tests
+# ---------------------------------------------------------------------------
+
+
+def test_sp_partial_owned_coverage_incomplete(
+    dev, fake_txn, start_sign, end_sign, cap_story
+):
+    """Scenario (c): some owned + foreign without shares -> coverage incomplete -> save PSBT."""
+    xp = dev.master_xpub
+
+    def sp_hacker(psbt):
+        _add_sp_outputs(psbt, [(0, SCAN_KEY, SPEND_KEY_B)])
+
+    psbt_bytes = fake_txn(
+        [["p2wpkh"], ["p2wpkh", None, None, False]],
+        1,
+        xp,
+        psbt_v2=True,
+        psbt_hacker=sp_hacker,
+    )
+    start_sign(psbt_bytes)
+
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == "CONTRIBUTE SHARES?"
+    assert "ECDH shares" in story
+    assert "Other signers" in story
+
+    signed = end_sign(accept=True, finalize=False)
+
+    tp = BasicPSBT().parse(signed)
+
+    assert not tp.sp_global_ecdh_shares, (
+        "Global ECDH shares must not exist in multi-signer path"
+    )
+
+    assert tp.inputs[0].sp_ecdh_shares and SCAN_KEY in tp.inputs[0].sp_ecdh_shares
+    assert tp.inputs[0].sp_dleq_proofs and SCAN_KEY in tp.inputs[0].sp_dleq_proofs
+    assert not tp.inputs[1].sp_ecdh_shares
+
+    sp_outs = [o for o in tp.outputs if o.sp_v0_info]
+    assert len(sp_outs) == 1
+    assert not sp_outs[0].script, (
+        "Output script must NOT be set when coverage is incomplete"
+    )
+
+    for i, inp in enumerate(tp.inputs):
+        assert not inp.part_sigs, f"Input {i} must not have signature"
+        assert not inp.taproot_key_sig, f"Input {i} must not have taproot signature"
+
+
+def test_sp_partial_owned_coverage_incomplete_refused(
+    dev, fake_txn, start_sign, end_sign, cap_story
+):
+    """Refuse to contribute SP shares -> CCUserRefused."""
+    xp = dev.master_xpub
+
+    def sp_hacker(psbt):
+        _add_sp_outputs(psbt, [(0, SCAN_KEY, SPEND_KEY_B)])
+
+    psbt_bytes = fake_txn(
+        [["p2wpkh"], ["p2wpkh", None, None, False]],
+        1,
+        xp,
+        psbt_v2=True,
+        psbt_hacker=sp_hacker,
+    )
+    start_sign(psbt_bytes)
+
+    time.sleep(0.1)
+    title, _ = cap_story()
+    assert title == "CONTRIBUTE SHARES?"
+
+    end_sign(accept=False)
+
+
+# ---------------------------------------------------------------------------
 # BIP-376 Silent Payments spend sp output test
 # ---------------------------------------------------------------------------
 
@@ -405,3 +477,38 @@ def test_exit_gracefully_on_sp_validation_failure(dev, fake_txn, start_sign, end
     start_sign(psbt_bytes)
     with pytest.raises(CCProtoError, match="SP_V0_INFO wrong size"):
         end_sign(accept=False, finalize=False)
+
+
+# ---------------------------------------------------------------------------
+# Silent Payments Change Detection Tests
+# ---------------------------------------------------------------------------
+
+
+def test_sp_spend_to_labeled_change_address(
+    dev, fake_txn, start_sign, end_sign, cap_story
+):
+    """Two SP outputs: output 0 is a send (no label), output 1 is change (label=0 per BIP-352 convention)."""
+    xp = dev.master_xpub
+
+    def sp_hacker(psbt):
+        _add_sp_outputs(
+            psbt,
+            [
+                (0, SCAN_KEY, SPEND_KEY_B),
+                (1, SCAN_KEY_2, SPEND_KEY_A),
+            ],
+        )
+        psbt.outputs[1].sp_v0_label = b"\x00\x00\x00\x00"
+
+    psbt_bytes = fake_txn(
+        1, 2, xp, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker
+    )
+    start_sign(psbt_bytes)
+
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "not well understood script" not in story
+    assert "sp1" in story
+    assert "Change back:" in story
+
+    end_sign(accept=False, finalize=False)
