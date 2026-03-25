@@ -2382,6 +2382,8 @@ async def change_seed_vault(is_enabled):
 
 async def change_which_chain(*a):
     # setting already changed, but reflect that value in other settings
+    from glob import dis
+    dis.fullscreen("Wait...")
     try:
         # update xpub stored in settings
         import stash
