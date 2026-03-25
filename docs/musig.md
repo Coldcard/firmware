@@ -1,6 +1,6 @@
 # MuSig2
 
-**COLDCARD<sup>&reg;</sup>** `EDGE` versions support [MuSig2](https://github.com/bitcoin/bips/blob/master/bip-0327.mediawiki) from version `6.4.2X` & `6.4.2QX`.
+**COLDCARD<sup>&reg;</sup>** `EDGE` versions support [MuSig2](https://github.com/bitcoin/bips/blob/master/bip-0327.mediawiki) from version `6.5.0X` & `6.5.0QX`.
 
 COLDCARD implements all following BIPs, further restricting their scope (read more in Limitations section):
 * PSBT fields [BIP-373](https://github.com/bitcoin/bips/blob/master/bip-0373.mediawiki)
