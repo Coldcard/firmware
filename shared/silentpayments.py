@@ -319,7 +319,8 @@ class SilentPaymentsMixin:
         if self._is_ecdh_coverage_complete():
             # Computes scripts, or validates existing ones against recomputed values
             self._compute_silent_payment_output_scripts()
-            return True
+            self._detect_sp_change_outputs()
+            return self._all_sp_outputs_have_scripts()
         return False
 
     def render_silent_payment_output_string(self, output):
@@ -365,22 +366,19 @@ class SilentPaymentsMixin:
             return None, None
 
         # Per-input shares: combine shares and pubkeys from eligible inputs
-        combined_ecdh = None
+        ecdh_shares = []
         pubkeys = []
         for inp in self.inputs:
             if inp.sp_ecdh_shares and scan_key in inp.sp_ecdh_shares:
-                share = inp.sp_ecdh_shares[scan_key]
-                if combined_ecdh is None:
-                    combined_ecdh = share
-                else:
-                    combined_ecdh = ngu.secp256k1.ec_pubkey_combine([combined_ecdh, share])
-                if self._is_input_eligible(inp):
-                    pk = self._pubkey_from_input(inp)
-                    if pk:
-                        pubkeys.append(pk)
+                if not self._is_input_eligible(inp):
+                    continue
+                ecdh_shares.append(inp.sp_ecdh_shares[scan_key])
+                pk = self._pubkey_from_input(inp)
+                if pk:
+                    pubkeys.append(pk)
 
-        if combined_ecdh and pubkeys:
-            return combined_ecdh, _combine_pubkeys(pubkeys)
+        if ecdh_shares and pubkeys:
+            return _combine_pubkeys(ecdh_shares), _combine_pubkeys(pubkeys)
         return None, None
 
     def _is_input_eligible(self, input):
@@ -466,7 +464,7 @@ class SilentPaymentsMixin:
         for i, outp in enumerate(self.outputs):
             has_sp_info = bool(outp.sp_v0_info)
             has_sp_label = bool(outp.sp_v0_label)
-            has_script = bool(outp.script and self.get(outp.script))
+            has_script = bool(self.resolve_script(outp.script))
 
             # Output must have script or SP info
             if not has_script and not has_sp_info:
@@ -587,12 +585,11 @@ class SilentPaymentsMixin:
             # Verify per-input coverage and DLEQ proofs
             if scan_key_has_script and not has_global:
                 for i, inp in enumerate(self.inputs):
-                    eligible = self._is_input_eligible(inp)
+                    if not self._is_input_eligible(inp):
+                        continue
                     has_share = inp.sp_ecdh_shares and scan_key in inp.sp_ecdh_shares
 
-                    if not eligible and has_share:
-                        raise FatalPSBTIssue("Input #%d has ECDH share but is ineligible" % i)
-                    if eligible and not has_share:
+                    if not has_share:
                         raise FatalPSBTIssue("Eligible input #%d missing ECDH share" % i)
 
                     if has_share:
@@ -643,21 +640,23 @@ class SilentPaymentsMixin:
                 has_foreign = True
 
         if not input_material:
+            if not has_foreign:
+                raise FatalPSBTIssue("No eligible inputs for ECDH computation")
             return False
 
         self.sp_all_inputs_ours = not has_foreign
-        all_inputs_ours = self.sp_all_inputs_ours
 
         scan_keys = self._get_silent_payment_scan_keys()
         if not scan_keys:
             return False
 
         for scan_key in scan_keys:
-            if all_inputs_ours:
+            if self.sp_all_inputs_ours:
                 # Single-signer: combine all input private keys, one global ECDH share and DLEQ proofs
                 combined_sk = _sum_privkeys(sk for _, sk in input_material)
                 ecdh_share = _compute_ecdh_share(combined_sk, scan_key)
                 dleq_proof = generate_dleq_proof(combined_sk, scan_key)
+                stash.blank_object(combined_sk)
 
                 self.sp_global_ecdh_shares = self.sp_global_ecdh_shares or {}
                 self.sp_global_dleq_proofs = self.sp_global_dleq_proofs or {}
@@ -674,6 +673,7 @@ class SilentPaymentsMixin:
                     inp.sp_dleq_proofs = inp.sp_dleq_proofs or {}
                     inp.sp_ecdh_shares[scan_key] = ecdh_share
                     inp.sp_dleq_proofs[scan_key] = dleq_proof
+        del input_material
         return True
 
     def _compute_silent_payment_output_scripts(self):
@@ -702,9 +702,8 @@ class SilentPaymentsMixin:
                 raise FatalPSBTIssue("Missing ECDH share for output #%d" % out_idx)
 
             computed = _compute_silent_payment_output_script(outpoints, summed_pubkey, ecdh_share, B_spend, k)
-
             if outp.script:
-                existing = self.get(outp.script) if isinstance(outp.script, tuple) else outp.script
+                existing = self.resolve_script(outp.script)
                 if existing != computed:
                     raise FatalPSBTIssue("SP output #%d: output script mismatch" % out_idx)
 
@@ -726,6 +725,25 @@ class SilentPaymentsMixin:
             if outp.sp_v0_info:
                 return True
         return False
+
+    def _all_sp_outputs_have_scripts(self):
+        """Returns True if every SP output has a script set"""
+        for outp in self.outputs:
+            if outp.sp_v0_info and not outp.script:
+                return False
+        return True
+
+    def _detect_sp_change_outputs(self):
+        """
+        Mark SP outputs as change if sp_v0_label is present and equals 0 (BIP-352 change convention)
+
+        No return value; modifies self.outputs 'is_change' in place
+        """
+        for outp in self.outputs:
+            if not outp.sp_v0_info or not outp.sp_v0_label:
+                continue
+            if int.from_bytes(outp.sp_v0_label, "little") == 0:
+                outp.is_change = True
 
     def _get_outpoints(self):
         """
@@ -757,6 +775,14 @@ class SilentPaymentsMixin:
                 scan_key = outp.sp_v0_info[:33]
                 scan_keys.add(scan_key)
         return list(scan_keys)
+
+    def resolve_script(self, script):
+        """Convert an output.script file reference to bytes, or return None if no script"""
+        if not script:
+            return None
+        if isinstance(script, bytes):
+            return script
+        return self.get(script)
 
     # -----------------------------------------------------------------------------
     # Key Derivation Functions
@@ -810,7 +836,9 @@ class SilentPaymentsMixin:
             bytes: Derived private key (32-byte scalar)
         """
         node = sv.derive_path(keypath_to_str(xfp_path, skip=1), register=False)
-        return node.privkey()
+        sk = node.privkey()
+        del node
+        return sk
 
     def _tweak_p2tr_privkey(self, privkey_bytes, input):
         """
@@ -825,4 +853,6 @@ class SilentPaymentsMixin:
             tweak_data += self.get(input.taproot_merkle_root)
         t = ngu.hash.sha256t(TAP_TWEAK_H, tweak_data, True)
         kpt = kp.xonly_tweak_add(t)
-        return _negate_if_odd_y(kpt.privkey())
+        sk = kpt.privkey()
+        del kp, kpt
+        return _negate_if_odd_y(sk)

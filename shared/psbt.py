@@ -1477,12 +1477,7 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
             for idx in range(start, stop):
                 out = self.outputs[idx]
                 amount = unpack("<q", self.get(out.amount))[0]
-                # Silent Payments: scriptPubKey is byte representation after computation
-                if out.sp_v0_info:
-                    spk = out.script # TODO: should this be more defensive?
-                else:
-                    spk = self.get(out.script)
-                tx_out = CTxOut(nValue=amount, scriptPubKey=spk)
+                tx_out = CTxOut(nValue=amount, scriptPubKey=self.resolve_script(out.script))
                 yield idx, tx_out
         else:
             assert self.vout_start is not None     # must call input_iter/validate first
