@@ -22,6 +22,7 @@ from sp_helpers import (
     _sim_sp, _sim_get_ecdh_and_pubkey, _sim_get_outpoints,
     _sim_verify_dleq, _sim_compute_output_script,
 )
+from constants import simulator_fixed_tprv
 
 
 # ---------------------------------------------------------------------------
@@ -37,6 +38,26 @@ SCAN_KEY_2 = unhexlify('0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f281
 SPEND_KEY_A = unhexlify('022f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4')
 SPEND_KEY_B = unhexlify('02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5')
 SPEND_KEY_C = unhexlify('02fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556')
+
+
+# ---------------------------------------------------------------------------
+# Derive labeled SP output keys for use in change output tests.
+# Simulator's BIP-352 keys (testnet: coin_type=1), derived from fixed test seed.
+# Used for SP change output tests where sp_v0_info must match our wallet keys.
+# ---------------------------------------------------------------------------
+
+def _derive_sim_sp_keys():
+    root = BIP32Node.from_wallet_key(simulator_fixed_tprv)
+    scan_node = root.subkey_for_path("352h/1h/0h/1h/0")
+    spend_node = root.subkey_for_path("352h/1h/0h/0h/0")
+    b_scan = scan_node.privkey()          # 32 bytes
+    B_scan = scan_node.sec()              # 33 bytes
+    B_spend = spend_node.sec()            # 33 bytes
+    label_tweak = tagged_sha256(b"BIP0352/Label", b_scan + b'\x00\x00\x00\x00')
+    B_spend_labeled = ec_pubkey_serialize(ec_pubkey_tweak_add(ec_pubkey_parse(B_spend), label_tweak))
+    return B_scan, B_spend_labeled
+
+SIM_B_SCAN, SIM_B_SPEND_LABELED = _derive_sim_sp_keys()
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +316,64 @@ def test_sp_partial_owned_coverage_complete(dev, fake_txn, start_sign, end_sign,
 
 
 # ---------------------------------------------------------------------------
+# Multi-signer - incomplete coverage scenario tests
+# ---------------------------------------------------------------------------
+
+def test_sp_partial_owned_coverage_incomplete(dev, fake_txn, start_sign, end_sign, cap_story):
+    """Scenario (c): some owned + foreign without shares -> coverage incomplete -> save PSBT."""
+    xp = dev.master_xpub
+
+    def sp_hacker(psbt):
+        _add_sp_outputs(psbt, [(0, SCAN_KEY, SPEND_KEY_B)])
+
+    psbt_bytes = fake_txn([['p2wpkh'], ['p2wpkh', None, None, False]], 1, xp,
+                          psbt_v2=True, psbt_hacker=sp_hacker)
+    start_sign(psbt_bytes)
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == 'CONTRIBUTE SHARES?'
+    assert 'ECDH shares' in story
+    assert 'Other signers' in story
+
+    signed = end_sign(accept=True, finalize=False)
+
+    tp = BasicPSBT().parse(signed)
+
+    assert not tp.sp_global_ecdh_shares, "Global ECDH shares must not exist in multi-signer path"
+
+    assert tp.inputs[0].sp_ecdh_shares and SCAN_KEY in tp.inputs[0].sp_ecdh_shares
+    assert tp.inputs[0].sp_dleq_proofs and SCAN_KEY in tp.inputs[0].sp_dleq_proofs
+    assert not tp.inputs[1].sp_ecdh_shares
+
+    sp_outs = [o for o in tp.outputs if o.sp_v0_info]
+    assert len(sp_outs) == 1
+    assert not sp_outs[0].script, "Output script must NOT be set when coverage is incomplete"
+
+    for i, inp in enumerate(tp.inputs):
+        assert not inp.part_sigs, f"Input {i} must not have signature"
+        assert not inp.taproot_key_sig, f"Input {i} must not have taproot signature"
+
+
+def test_sp_partial_owned_coverage_incomplete_refused(dev, fake_txn, start_sign, end_sign, cap_story):
+    """Refuse to contribute SP shares -> CCUserRefused."""
+    xp = dev.master_xpub
+
+    def sp_hacker(psbt):
+        _add_sp_outputs(psbt, [(0, SCAN_KEY, SPEND_KEY_B)])
+
+    psbt_bytes = fake_txn([['p2wpkh'], ['p2wpkh', None, None, False]], 1, xp,
+                          psbt_v2=True, psbt_hacker=sp_hacker)
+    start_sign(psbt_bytes)
+
+    time.sleep(.1)
+    title, _ = cap_story()
+    assert title == 'CONTRIBUTE SHARES?'
+
+    end_sign(accept=False)
+
+
+# ---------------------------------------------------------------------------
 # BIP-376 Silent Payments spend sp output test
 # ---------------------------------------------------------------------------
 
@@ -372,3 +451,52 @@ def test_exit_gracefully_on_sp_validation_failure(dev, fake_txn, start_sign, end
     start_sign(psbt_bytes)
     with pytest.raises(CCProtoError, match="SP_V0_INFO wrong size"):
         end_sign(accept=False, finalize=False)
+
+
+# ---------------------------------------------------------------------------
+# Silent Payments Change Detection Tests
+# ---------------------------------------------------------------------------
+
+def test_sp_spend_to_labeled_change_address(dev, fake_txn, start_sign, end_sign, cap_story):
+    """Two SP outputs: output 0 is a send (no label), output 1 is change (label=0, wallet keys)."""
+    xp = dev.master_xpub
+
+    def sp_hacker(psbt):
+        _add_sp_outputs(psbt, [
+            (0, SCAN_KEY, SPEND_KEY_B),
+            (1, SIM_B_SCAN, SIM_B_SPEND_LABELED),
+        ])
+        psbt.outputs[1].sp_v0_label = b'\x00\x00\x00\x00'
+
+    psbt_bytes = fake_txn(1, 2, xp, addr_fmt='p2wpkh', psbt_v2=True, psbt_hacker=sp_hacker)
+    start_sign(psbt_bytes)
+
+    title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    assert 'not well understood script' not in story
+    assert 'sp1' in story
+    assert 'Change back:' in story
+
+    end_sign(accept=False, finalize=False)
+
+
+def test_sp_labeled_change_wrong_keys_not_change(dev, fake_txn, start_sign, end_sign, cap_story):
+    """SP output with label=0 but non-wallet keys must not be detected as change."""
+    xp = dev.master_xpub
+
+    def sp_hacker(psbt):
+        _add_sp_outputs(psbt, [
+            (0, SCAN_KEY, SPEND_KEY_B),
+            (1, SCAN_KEY, SPEND_KEY_B),
+        ])
+        psbt.outputs[1].sp_v0_label = b'\x00\x00\x00\x00'
+
+    psbt_bytes = fake_txn(1, 2, xp, addr_fmt='p2wpkh', psbt_v2=True, psbt_hacker=sp_hacker)
+    start_sign(psbt_bytes)
+
+    title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    assert 'Change back:' not in story
+    assert 'sp1' in story
+
+    end_sign(accept=False, finalize=False)

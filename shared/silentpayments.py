@@ -196,6 +196,31 @@ def _compute_silent_payment_spending_privkey(b_spend_bytes, sp_tweak_bytes):
     
     return spending_sk
 
+def _apply_label_to_spend_key(B_spend, b_scan, label):
+    """
+    Apply BIP-352 label tweak to spend key
+
+    BIP-352 formula: B_m = B_spend + hash_BIP0352/Label(b_scan || m)*G
+    
+    Args:
+        B_spend: Base spend public key (33 bytes compressed)
+        b_scan: Scan private key (32 bytes)
+        label: Label integer (0 for change, >0 for other purposes)
+    
+    Returns:
+        bytes: B_spend_labeled public key (33 bytes compressed)
+    """
+    msg = b_scan + label.to_bytes(4, 'big')
+    tweak_bytes = ngu.hash.sha256t(BIP352_LABEL_TAG_H, msg, True)
+    tweak_scalar = int.from_bytes(tweak_bytes, 'big') % SECP256K1_ORDER
+
+    # Compute tweaked pubkey
+    G = ngu.secp256k1.generator()
+    Tweak_pubkey = ngu.secp256k1.ec_pubkey_tweak_mul(G, tweak_scalar.to_bytes(32, 'big'))
+    
+    # Apply tweak: B_m = B_spend + Tweak
+    return ngu.secp256k1.ec_pubkey_combine(B_spend, Tweak_pubkey)
+
 
 # -----------------------------------------------------------------------------
 # Input Eligibility (BIP-352)
@@ -450,9 +475,43 @@ class SilentPaymentsMixin:
 
         if self._is_ecdh_coverage_complete():
             self._compute_silent_payment_output_scripts()
+            self._detect_sp_change_outputs(sv)
             return True
 
         return False
+
+    def _detect_sp_change_outputs(self, sv):
+        """
+        Mark SP outputs as change if sp_v0_label is present and keys match our wallet.
+
+        Note:
+            Must be called while SensitiveValues context is open.
+ 
+        No return value; modifies self.outputs 'is_change' in place.
+        """
+        import chains
+        coin_type = chains.current_chain().b44_cointype
+
+        scan_node = sv.derive_path("m/352h/%dh/0h/1h/0" % coin_type, register=False)
+        spend_node = sv.derive_path("m/352h/%dh/0h/0h/0" % coin_type, register=False)
+
+        b_scan_bytes = scan_node.privkey()
+        B_scan_bytes = scan_node.pubkey()
+        B_spend_bytes = spend_node.pubkey()
+
+        B_spend_labeled = _apply_label_to_spend_key(B_spend_bytes, b_scan_bytes, 0)
+
+        for outp in self.outputs:
+            if not outp.sp_v0_info or not outp.sp_v0_label:
+                continue
+            label_val = int.from_bytes(outp.sp_v0_label, 'little')
+            if label_val != 0:
+                continue
+            if outp.sp_v0_info[:33] != B_scan_bytes:
+                continue
+            if outp.sp_v0_info[33:66] != B_spend_labeled:
+                continue
+            outp.is_change = True
 
     def _validate_psbt_structure(self):
         """
