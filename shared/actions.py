@@ -2201,7 +2201,6 @@ Coldcard Firmware
   {rel}
   {built}
 
-
 Bootloader:
   {bl}
   {chk}
