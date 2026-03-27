@@ -41,9 +41,14 @@ from public_constants import (
     PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, MAX_SIGNERS,
     PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS, PSBT_IN_MUSIG2_PUB_NONCE, PSBT_IN_MUSIG2_PARTIAL_SIG,
     PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS,
+    PSBT_OUT_SP_V0_INFO, PSBT_OUT_SP_V0_LABEL, 
+    PSBT_IN_SP_DLEQ, PSBT_IN_SP_ECDH_SHARE,
+    PSBT_GLOBAL_SP_DLEQ, PSBT_GLOBAL_SP_ECDH_SHARE,
+    PSBT_IN_SP_TWEAK, PSBT_IN_SP_SPEND_BIP32_DERIVATION,
     AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH,
     AFC_SEGWIT, AF_BARE_PK
 )
+from silentpayments import SilentPaymentsMixin, _compute_silent_payment_spending_privkey
 
 psbt_tmp256 = bytearray(256)
 
@@ -248,7 +253,8 @@ class psbtProxy:
             # storing offset and length only! Mostly.
             if kt in self.short_values:
                 actual = fd.read(vs)
-                self.store(kt, bytes(key), actual)
+                # only store key data for short_values
+                self.store(kt, bytes(key[1:]), actual)
             else:
                 # skip actual data for now
                 # TODO: could this be stored more compactly?
@@ -401,12 +407,15 @@ class psbtProxy:
 # Track details of each output of PSBT
 #
 class psbtOutputProxy(psbtProxy):
-    no_keys = { PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT, PSBT_OUT_TAP_INTERNAL_KEY, PSBT_OUT_TAP_TREE }
+    no_keys = { PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT, PSBT_OUT_TAP_INTERNAL_KEY, PSBT_OUT_TAP_TREE,
+                 PSBT_OUT_SP_V0_INFO, PSBT_OUT_SP_V0_LABEL }
+    short_values = { PSBT_OUT_SP_V0_INFO, PSBT_OUT_SP_V0_LABEL }
 
     blank_flds = ('unknown', 'subpaths', 'redeem_script', 'witness_script', 'sp_idxs',
                   'is_change', 'amount', 'script', 'attestation', 'proprietary',
                   'taproot_internal_key', 'taproot_subpaths', 'taproot_tree', 'ik_idx',
-                  'musig_pubkeys')
+                  'musig_pubkeys', 'sp_v0_info', 'sp_v0_label',
+                  )
 
     def __init__(self, fd, idx):
         super().__init__()
@@ -422,6 +431,8 @@ class psbtOutputProxy(psbtProxy):
         #self.script = None
         #self.amount = None
         #self.musig_pubkeys = None
+        #self.sp_v0_info = None
+        #self.sp_v0_label = None
 
         # this flag is set when we are assuming output will be change (same wallet)
         #self.is_change = False
@@ -472,6 +483,14 @@ class psbtOutputProxy(psbtProxy):
         elif kt == PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS:
             self.musig_pubkeys = self.musig_pubkeys or []
             self.musig_pubkeys.append((key, val))
+        elif kt == PSBT_OUT_SP_V0_INFO:
+            # Silent payment address (scan_key + spend_key)
+            # val contains 66 bytes: scan_key (33) + spend_key (33)
+            self.sp_v0_info = val
+        elif kt == PSBT_OUT_SP_V0_LABEL:
+            # Optional label for silent payment output
+            # val contains 4-byte little-endian integer
+            self.sp_v0_label = val
         else:
             self.unknown = self.unknown or []
             pos, length = key
@@ -506,8 +525,16 @@ class psbtOutputProxy(psbtProxy):
                 wr(PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS, v, k)
 
         if is_v2:
-            wr(PSBT_OUT_SCRIPT, self.script)
+            if self.script is not None:
+                wr(PSBT_OUT_SCRIPT, self.script)
             wr(PSBT_OUT_AMOUNT, self.amount)
+
+            # Silent Payment fields
+            if self.sp_v0_info:
+                wr(PSBT_OUT_SP_V0_INFO, self.sp_v0_info)
+            
+            if self.sp_v0_label:
+                wr(PSBT_OUT_SP_V0_LABEL, self.sp_v0_label)
 
         if self.proprietary:
             for k, v in self.proprietary:
@@ -516,6 +543,7 @@ class psbtOutputProxy(psbtProxy):
         if self.unknown:
             for k, v in self.unknown:
                 wr(None, v, k)
+
 
     def determine_my_change(self, out_idx, txo, parsed_subpaths, parent):
         # Do things make sense for this output?
@@ -642,7 +670,7 @@ class psbtOutputProxy(psbtProxy):
 class psbtInputProxy(psbtProxy):
 
     # just need to store a simple number for these
-    short_values = { PSBT_IN_SIGHASH_TYPE }
+    short_values = { PSBT_IN_SIGHASH_TYPE, PSBT_IN_SP_ECDH_SHARE, PSBT_IN_SP_DLEQ }
 
     # only part-sigs have a key to be stored.
     no_keys = {PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO, PSBT_IN_SIGHASH_TYPE,
@@ -658,7 +686,8 @@ class psbtInputProxy(psbtProxy):
         'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts',
         'taproot_subpaths', 'taproot_internal_key', 'taproot_key_sig', 'tr_added_sigs',
         'ik_idx', 'musig_pubkeys', 'musig_pubnonces', 'musig_part_sigs', 'musig_agg_idx',
-        'musig_added_pubnonces', 'musig_added_sigs'
+        'musig_added_pubnonces', 'musig_added_sigs',
+        'sp_ecdh_shares', 'sp_dleq_proofs', 'sp_tweak', 'sp_spend_bip32_derivation',
     )
 
     def __init__(self, fd, idx):
@@ -1002,7 +1031,9 @@ class psbtInputProxy(psbtProxy):
                 lhs, path = lhs_path[0], lhs_path[1:]
                 assert not lhs, "LeafHashes have to be empty for internal key"
                 assert self.sp_idxs[0] == 0
-                assert taptweak(xonly_pubkey) == addr_or_pubkey
+                # Silent Payments (BIP-376): sp_tweak replaces taptweak
+                if not self.sp_tweak:
+                    assert taptweak(xonly_pubkey) == addr_or_pubkey
             else:
                 self.is_miniscript = True
 
@@ -1163,6 +1194,20 @@ class psbtInputProxy(psbtProxy):
         elif kt == PSBT_IN_MUSIG2_PARTIAL_SIG:
             self.musig_part_sigs = self.musig_part_sigs or []
             self.musig_part_sigs.append((key, val))
+        elif kt == PSBT_IN_SP_ECDH_SHARE:
+            # Silent Payments: Per-input ECDH share - uses short_values - key and val as bytes
+            if self.sp_ecdh_shares is None:
+                self.sp_ecdh_shares = {}
+            self.sp_ecdh_shares[key] = val
+        elif kt == PSBT_IN_SP_DLEQ:
+            # Silent Payments: Per-input DLEQ proof - uses short_values - key and val as bytes
+            if self.sp_dleq_proofs is None:
+                self.sp_dleq_proofs = {}
+            self.sp_dleq_proofs[key] = val
+        elif kt == PSBT_IN_SP_TWEAK:
+            self.sp_tweak = self.get(val)
+        elif kt == PSBT_IN_SP_SPEND_BIP32_DERIVATION:
+            self.sp_spend_bip32_derivation = (key, val)
         else:
             # including: PSBT_IN_FINAL_SCRIPTSIG, PSBT_IN_FINAL_SCRIPTWITNESS
             self.unknown = self.unknown or []
@@ -1259,14 +1304,30 @@ class psbtInputProxy(psbtProxy):
             if self.req_height_locktime is not None:
                 wr(PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, pack("<I", self.req_height_locktime))
 
+            # Silent Payment fields
+            if self.sp_ecdh_shares:
+                for k, v in self.sp_ecdh_shares.items():
+                    wr(PSBT_IN_SP_ECDH_SHARE, v, k)
+
+            if self.sp_dleq_proofs:
+                for k, v in self.sp_dleq_proofs.items():
+                    wr(PSBT_IN_SP_DLEQ, v, k)
+
+            if self.sp_tweak:
+                wr(PSBT_IN_SP_TWEAK, self.sp_tweak)
+
+            if self.sp_spend_bip32_derivation:
+                k, v = self.sp_spend_bip32_derivation
+                wr(PSBT_IN_SP_SPEND_BIP32_DERIVATION, v, k)
+
         if self.unknown:
             for k, v in self.unknown:
                 wr(None, v, k)
 
 
-class psbtObject(psbtProxy):
+class psbtObject(psbtProxy, SilentPaymentsMixin):
     "Just? parse and store"
-    short_values = { PSBT_GLOBAL_TX_MODIFIABLE }
+    short_values = { PSBT_GLOBAL_TX_MODIFIABLE, PSBT_GLOBAL_SP_ECDH_SHARE, PSBT_GLOBAL_SP_DLEQ }
     no_keys = { PSBT_GLOBAL_UNSIGNED_TX }
     blank_flds = ("hashPrevouts", "hashSequence", "hashOutputs", "hashValues", "hashScriptPubKeys",
                   "my_tr_in", "unknown")
@@ -1329,6 +1390,12 @@ class psbtObject(psbtProxy):
         self.has_gic = False  # global input count
         self.has_goc = False  # global output count
         self.has_gtv = False  # global txn version
+        
+        # Silent Payments: Global ECDH shares and DLEQ proofs
+        # Used when single signer owns all inputs
+        self.sp_global_ecdh_shares = None  # dict[scan_key] = ecdh_share
+        self.sp_global_dleq_proofs = None  # dict[scan_key] = dleq_proof
+        self.sp_processed = False
 
         # musig related
         self.session = None
@@ -1390,6 +1457,16 @@ class psbtObject(psbtProxy):
             # bytes of length 1 (tx modifiable in short_values)
             assert len(val) == 1
             self.txn_modifiable = val[0]
+        elif kt == PSBT_GLOBAL_SP_ECDH_SHARE:
+            # Silent Payments: Global ECDH share - uses short_values - key and val as bytes
+            if self.sp_global_ecdh_shares is None:
+                self.sp_global_ecdh_shares = {}
+            self.sp_global_ecdh_shares[key] = val
+        elif kt == PSBT_GLOBAL_SP_DLEQ:
+            # Silent Payments: Global DLEQ proof - uses short_values - key and val as bytes
+            if self.sp_global_dleq_proofs is None:
+                self.sp_global_dleq_proofs = {}
+            self.sp_global_dleq_proofs[key] = val
         else:
             self.unknown = self.unknown or []
             pos, length = key
@@ -1404,7 +1481,12 @@ class psbtObject(psbtProxy):
             for idx in range(start, stop):
                 out = self.outputs[idx]
                 amount = unpack("<q", self.get(out.amount))[0]
-                tx_out = CTxOut(nValue=amount, scriptPubKey=self.get(out.script))
+                # Silent Payments: scriptPubKey is byte representation after computation
+                if out.sp_v0_info:
+                    spk = out.script # TODO: should this be more defensive?
+                else:
+                    spk = self.get(out.script)
+                tx_out = CTxOut(nValue=amount, scriptPubKey=spk)
                 yield idx, tx_out
         else:
             assert self.vout_start is not None     # must call input_iter/validate first
@@ -1835,7 +1917,9 @@ class psbtObject(psbtProxy):
             if self.is_v2:
                 # v2 requires inclusion
                 assert o.amount
-                assert o.script
+                # Silent Payments: if not spending to silent payment then script must be provided
+                if not o.sp_v0_info:
+                    assert o.script, "v2 script required when not silent payment output"
                 if o.amount == 0 and o.script == b'\x6a':
                     null_data_op_return = True
             else:
@@ -1979,7 +2063,8 @@ class psbtObject(psbtProxy):
                     num_op_return_size += 1
 
             elif af is None:
-                num_unknown_scripts += 1
+                if not output.sp_v0_info:
+                    num_unknown_scripts += 1
 
         if self.total_value_out is None:
             self.total_value_out = total_out
@@ -2339,6 +2424,7 @@ class psbtObject(psbtProxy):
         # useful info from all our parsed paths - will be validated against change outputs
         return length_p, hard_pattern, prefix_p, idx_max
 
+
     def consider_dangerous_sighash(self):
         # Check sighash flags are legal, useful, and safe. Warn about
         # some risks if user has enabled special sighash values.
@@ -2454,6 +2540,15 @@ class psbtObject(psbtProxy):
         if self.xpubs:
             for k, v in self.xpubs:
                 wr(PSBT_GLOBAL_XPUB, v, k)
+
+        # Silent Payments: Global fields
+        if self.sp_global_ecdh_shares:
+            for k, v in self.sp_global_ecdh_shares.items():
+                wr(PSBT_GLOBAL_SP_ECDH_SHARE, v, k)
+        
+        if self.sp_global_dleq_proofs:
+            for k, v in self.sp_global_dleq_proofs.items():
+                wr(PSBT_GLOBAL_SP_DLEQ, v, k)
 
         if self.unknown:
             for k, v in self.unknown:
@@ -2716,6 +2811,9 @@ class psbtObject(psbtProxy):
 
                     oup = self.outputs[out_idx]
 
+                    if oup.sp_v0_info:
+                        continue  # SP change already verified in _detect_sp_change_outputs
+
                     good = 0
                     for i in oup.sp_idxs:
                         # for multisig, will be N paths, and exactly one will
@@ -2747,6 +2845,17 @@ class psbtObject(psbtProxy):
                         raise FraudulentChangeOutput(out_idx, 
                               "Deception regarding change output. "
                               "BIP-32 path doesn't match actual address.")
+
+
+            # Silent Payment Processing
+            if self.has_silent_payment_outputs():
+                sp_ready = self.process_silent_payments_for_signing(sv, dis)
+                if not sp_ready:
+                    # Silent Payments: must not sign if output scripts not set 
+                    # TODO: is this still necessary? if so needs test
+                    self.ux_notes.append(("Silent Payments",
+                        "ECDH shares added. Signatures withheld until all signers contribute."))
+                    return
 
             # progress
             dis.fullscreen('Signing...')
@@ -2940,24 +3049,34 @@ class psbtObject(psbtProxy):
                         if xonly_pk == internal_key:
                             # internal key is our key -> easy
 
-                            # BIP 341 states: "If the spending conditions do not require a script path,
-                            # the output key should commit to an unspendable script path instead of having no script path.
-                            # This can be achieved by computing the output key point as Q = P + int(hashTapTweak(bytes(P)))G."
-                            tweak = xonly_pk
-                            if inp.taproot_merkle_root:
-                                # we have a script path but internal key is spendable by us
-                                # merkle root needs to be added to tweak with internal key
-                                # merkle root was already verified against registered script in determine_my_signing_key
-                                tweak += self.get(inp.taproot_merkle_root)
-
-                            tweak = ngu.hash.sha256t(TAP_TWEAK_H, tweak, True)
-                            kpt = kp.xonly_tweak_add(tweak)
-
                             digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash)
                             if sv.deltamode:
                                 digest = ngu.hash.sha256d(digest)
 
-                            sig = ngu.secp256k1.sign_schnorr(kpt, digest, ngu.random.bytes(32))
+                            if inp.sp_tweak:
+                                # BIP-376: spending a silent payment output
+                                # sp_tweak already encodes the full output key derivation,
+                                # so we skip the normal taproot internal key tweaking
+                                tweaked_sk_int = _compute_silent_payment_spending_privkey(sk, inp.sp_tweak)
+                                tweaked_sk = tweaked_sk_int.to_bytes(32, 'big')
+                                sig = ngu.secp256k1.sign_schnorr(tweaked_sk, digest, ngu.random.bytes(32))
+                                stash.blank_object(tweaked_sk)
+                            else:
+                                # BIP 341 states: "If the spending conditions do not require a script path,
+                                # the output key should commit to an unspendable script path instead of having no script path.
+                                # This can be achieved by computing the output key point as Q = P + int(hashTapTweak(bytes(P)))G."
+                                tweak = xonly_pk
+                                if inp.taproot_merkle_root:
+                                    # we have a script path but internal key is spendable by us
+                                    # merkle root needs to be added to tweak with internal key
+                                    # merkle root was already verified against registered script in determine_my_signing_key
+                                    tweak += self.get(inp.taproot_merkle_root)
+
+                                tweak = ngu.hash.sha256t(TAP_TWEAK_H, tweak, True)
+                                kpt = kp.xonly_tweak_add(tweak)
+                                sig = ngu.secp256k1.sign_schnorr(kpt, digest, ngu.random.bytes(32))
+                                del kpt
+
                             if inp.sighash != SIGHASH_DEFAULT:
                                 sig += bytes([inp.sighash])
 
@@ -2965,13 +3084,10 @@ class psbtObject(psbtProxy):
                             # 'omitting' the sighash byte, resulting in a 64-byte signature with SIGHASH_DEFAULT assumed
                             inp.taproot_key_sig = sig
                             self.sig_added = True
-                            # debug
-                            # ngu.secp256k1.verify_schnorr(sig, digest, kpt.xonly_pubkey())
-
-                            del kpt
 
                         elif isinstance(self.active_miniscript.to_descriptor().key, MusigKey):
                             # internal key is musig
+                            assert not inp.sp_tweak, "MuSig2 + SP tweak spending not yet supported"
                             agg_k = self.active_miniscript.to_descriptor().key.node.pubkey()
 
                             digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash)

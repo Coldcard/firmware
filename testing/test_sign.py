@@ -764,7 +764,7 @@ def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, use_re
 
     end_sign(True)
 
-
+@pytest.mark.bitcoind
 def test_wrong_p2sh_p2wpkh(bitcoind, start_sign, end_sign, bitcoind_d_sim_watch, cap_story):
     sim = bitcoind_d_sim_watch
     sim_addr = sim.getnewaddress("", "bech32")
@@ -1335,6 +1335,7 @@ def test_bip143_attack_data_capture(num_utxo, try_sign, fake_txn, press_cancel,
 @pytest.mark.parametrize('addr_fmt', ADDR_STYLES_SINGLE)
 @pytest.mark.parametrize('num_ins', [1, 17])
 @pytest.mark.parametrize('num_outs', [1, 17])
+@pytest.mark.bitcoind
 def test_txid_calc(num_ins, fake_txn, try_sign, dev, decode_with_bitcoind, cap_story,
                    txid_from_export_prompt, press_cancel, num_outs, addr_fmt):
     # verify correct txid for transactions is being calculated
@@ -2927,6 +2928,7 @@ def random_nLockTime_test_cases(num=10):
     (1748671747, "2025-05-31 06:09:07"),
     *random_nLockTime_test_cases()
 ])
+@pytest.mark.bitcoind
 def test_timelocks_visualize(start_sign, end_sign, dev, bitcoind, use_regtest,
                              bitcoind_d_sim_watch, nLockTime, sim_root_dir):
     # - works on simulator and connected USB real-device
@@ -2983,6 +2985,7 @@ def test_timelocks_visualize(start_sign, end_sign, dev, bitcoind, use_regtest,
 
 @pytest.mark.parametrize('in_out', [(4,1),(2,2),(2,1)])
 @pytest.mark.parametrize('partial', [False, True])
+@pytest.mark.bitcoind
 def test_base64_psbt_qr(in_out, partial, scan_a_qr, readback_bbqr,
                         goto_home, use_regtest, cap_story, fake_txn, dev,
                         decode_psbt_with_bitcoind, decode_with_bitcoind,

@@ -430,6 +430,34 @@ class ApproveTransaction(UserAuthorizedAction):
 
             ccc_c_xfp = CCCFeature.get_xfp()  # can be None
             args = self.psbt.consider_inputs(cosign_xfp=ccc_c_xfp)
+            
+            # Silent Payments: Validate and pre-process Silent Payment outputs
+            if self.psbt.has_silent_payment_outputs():
+                if not self.psbt.preview_silent_payment_outputs():
+                    # Coverage incomplete: shares computed but waiting on other signers.
+                    # Skip normal approval flow — prompt user to contribute shares, then save.
+                    del args
+                    ch = await ux_show_story(
+                        "Silent payment ECDH shares will be added to this transaction.\n\n"
+                        "Other signers must contribute their shares before signing can proceed.\n\n"
+                        "Press %s to contribute shares. %s to abort." % (OK, X),
+                        title="CONTRIBUTE SHARES?"
+                    )
+                    if ch != 'y':
+                        self.refused = True
+                        await ux_dramatic_pause("Refused.", 1)
+                        del self.psbt
+                        self.done()
+                        return
+                    try:
+                        await done_signing(self.psbt, self, self.input_method,
+                                          self.filename, self.output_encoder,
+                                          finalize=False)
+                        self.done()
+                    except BaseException as exc:
+                        return await self.failure("PSBT output failed", exc)
+                    return
+
             self.psbt.consider_outputs(*args, cosign_xfp=ccc_c_xfp)
             del args  # not needed anymore
             # we can properly assess sighash only after we know
@@ -706,7 +734,10 @@ class ApproveTransaction(UserAuthorizedAction):
                 has_change = True
                 total_change += tx_out.nValue
                 if len(largest_change) < MAX_VISIBLE_CHANGE:
-                    largest_change.append((tx_out.nValue, self.chain.render_address(tx_out.scriptPubKey)))
+                    addr = self.chain.render_address(tx_out.scriptPubKey)
+                    if outp.sp_v0_info:
+                        addr += '\n' + self.psbt.render_silent_payment_output_string(outp)
+                    largest_change.append((tx_out.nValue, addr))
                     if len(largest_change) == MAX_VISIBLE_CHANGE:
                         largest_change = sorted(largest_change, key=lambda x: x[0], reverse=True)
                     continue
@@ -714,6 +745,9 @@ class ApproveTransaction(UserAuthorizedAction):
             else:
                 if len(largest_outs) < MAX_VISIBLE_OUTPUTS:
                     rendered, _ = self.render_output(tx_out)
+                    # render silent payment address
+                    if outp.sp_v0_info:
+                        rendered += self.psbt.render_silent_payment_output_string(outp)
                     largest_outs.append((tx_out.nValue, rendered))
                     if len(largest_outs) == MAX_VISIBLE_OUTPUTS:
                         # descending sort from the biggest value to lowest (sort on out.nValue)
@@ -732,7 +766,10 @@ class ApproveTransaction(UserAuthorizedAction):
 
             largest.pop(-1)
             if outp.is_change:
-                ret = (here, self.chain.render_address(tx_out.scriptPubKey))
+                addr = self.chain.render_address(tx_out.scriptPubKey)
+                if outp.sp_v0_info:
+                    addr += '\n' + self.psbt.render_silent_payment_output_string(outp)
+                ret = (here, addr)
             else:
                 rendered, _ = self.render_output(tx_out)
                 ret = (here, rendered)
@@ -1733,6 +1770,9 @@ class TXOutExplorer(TXExplorer):
             outp = self.user_auth_action.psbt.outputs[idx]
             item = "Output %d%s:\n\n" % (idx, " (change)" if outp.is_change else "")
             msg, addr_or_script = self.user_auth_action.render_output(out)
+            # render silent payment address
+            if outp.sp_v0_info:
+                msg += self.user_auth_action.psbt.render_silent_payment_output_string(outp)
             item += msg
             qr_items.append(addr_or_script)
             if outp.is_change:
