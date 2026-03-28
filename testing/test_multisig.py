@@ -3772,4 +3772,66 @@ def test_fully_signed(addr_fmt, num_ins, import_ms_wallet, fake_ms_txn, start_si
     assert title == "Failure"
     assert "completely signed already" in story
     press_cancel()
+
+
+@pytest.mark.parametrize("M_N", [(2, 3), (15, 15)])
+def test_import_multiple_similar_from_psbt(M_N, clear_miniscript, fake_ms_txn, import_ms_wallet,
+                                           start_sign, cap_story, end_sign, press_select,
+                                           settings_set, settings_get, usb_miniscript_get,
+                                           press_cancel):
+    M, N = M_N
+    clear_miniscript()
+    settings_set('pms', 1)  # TRUST_OFFER
+
+    addr_fmt = AF_P2WSH
+    dd = "m/48h/1h/0h/2h"
+
+    def path_mapper(idx):
+        kk = str_to_path(dd)
+        return kk + [0, 0]
+
+    def incl_xpubs(idx, xfp, m, sk):
+        kk = str_to_path(dd)
+        bp = pack('<%dI' % (dd.count("/") + 1), xfp, *kk)
+        return sk.node.serialize_public(), bp
+
+    keys = import_ms_wallet(M, N, accept=True, addr_fmt=addr_fmt, common=dd, do_import=False)
+    keys = keys[0]
+    psbt = fake_ms_txn(1, 2, M, keys, incl_xpubs=incl_xpubs,
+                       outstyles=["p2wsh"], change_outputs=[1], path_mapper=path_mapper)
+
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert 'Create new multisig wallet?' in story
+    assert f"PSBT-{M}of{N}" in story
+    press_select()  # import ms
+    time.sleep(.1)
+    press_select()  # OK TO SIGN
+
+    # create another, different wallet but with the same MofN
+    dd = "m/48h/1h/1h/2h"
+    keys = import_ms_wallet(M, N, accept=True, addr_fmt=addr_fmt, common=dd, do_import=False)
+    keys = keys[0]
+    psbt = fake_ms_txn(1, 2, M, keys, incl_xpubs=incl_xpubs,
+                       outstyles=["p2wsh"], change_outputs=[1], path_mapper=path_mapper)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    # here would be duplicate msg and multisig would not be import-able (unpatched version)
+    assert 'Create new multisig wallet?' in story
+    press_select()  # import ms
+    time.sleep(.1)
+    press_select()  # OK TO SIGN
+    assert f"PSBT-{M}of{N}" in story
+    msc_names = [msc[0] for msc in settings_get("miniscript")]
+    assert len(msc_names) == 2
+    for name in msc_names:
+        res = usb_miniscript_get(name)
+        desc_cs = res["desc"].split("#")[-1]
+        name_cs = name.split("-")[-1]
+        assert desc_cs[4:] == name_cs
+
+    press_cancel()
+
 # EOF
