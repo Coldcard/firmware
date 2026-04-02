@@ -1995,6 +1995,7 @@ class psbtObject(psbtProxy):
         total_out = 0
         total_change = 0
         num_op_return = 0
+        num_zero_value_op_return = 0
         num_op_return_size = 0
         num_unknown_scripts = 0
         zero_val_outs = 0  # only those that are not OP_RETURN are considered
@@ -2086,6 +2087,8 @@ class psbtObject(psbtProxy):
 
             if af == OP_RETURN:
                 num_op_return += 1
+                if txo.nValue == 0:
+                    num_zero_value_op_return += 1
                 if len(txo.scriptPubKey) > 83:
                     num_op_return_size += 1
 
@@ -2152,7 +2155,10 @@ class psbtObject(psbtProxy):
                  'Non-standard zero value output(s).')
             )
 
-        self.consolidation_tx = (self.num_change_outputs == self.num_outputs)
+        self.consolidation_tx = (self.num_change_outputs > 0) and (
+            self.num_change_outputs + num_zero_value_op_return == self.num_outputs
+        )
+
         dis.progress_bar_show(1)
 
         if DEBUG:

@@ -3414,7 +3414,7 @@ def test_null_data_op_return(fake_txn, start_sign, end_sign, reset_seed_words):
 
 def test_smallest_txn(fake_txn, start_sign, end_sign, reset_seed_words, settings_set):
     # serialized txn has just 62 bytes and is the smallest that we support
-    # 1 input (iregardless of script type) and 1 zero value null OP_RETURN
+    # 1 input (regardless of script type) and 1 zero value null OP_RETURN
     reset_seed_words()
     settings_set("fee_limit", -1)
     psbt = fake_txn(1, [["op_return", 10, None, b""]], addr_fmt="p2tr", input_amount=10)
@@ -4470,5 +4470,60 @@ def test_malformed_p2pk_change_output(fake_txn, start_sign, cap_story, end_sign,
     assert "Sending to 1 not well understood script(s)" in story
     assert "Change back:" not in story
     end_sign(accept=True)
+
+
+@pytest.mark.parametrize("data", [
+    [(1, b"Coinkite"), (0, b"Mk1 Mk2 Mk3 Mk4 Q"), (100, b"binarywatch.org"), (100, b"a" * 75)],
+    [(0, b"W" * 34), (0, b"X" * 25)],
+])
+def test_consolidation_with_op_return(data, fake_txn, start_sign, cap_story, end_sign):
+    out_val_op_rets = sum(i[0] for i in data)
+    outputs = [["p2tr", 5000000, True] for _ in range(3)]
+    outputs += [["op_return", amount, None, op_return_data]
+                for amount, op_return_data in data]
+    out_val = sum(o[1] for o in outputs)
+    psbt = fake_txn(1, outputs, addr_fmt="p2tr", input_amount=out_val + 125)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Network fee 0.00000125" in story
+    if not out_val_op_rets:
+        assert "Consolidating" in story
+    else:
+        assert "Consolidating" not in story
+        assert "Sending 0.00000201" in story
+
+    end_sign()
+
+
+def test_zero_value_external_output_not_consolidation(fake_txn, start_sign,
+                                                       cap_story, end_sign):
+    outputs = [["p2tr", 5000000, True] for _ in range(3)]
+    outputs.append(["p2pkh", 0])
+    psbt = fake_txn(1, outputs, addr_fmt="p2tr", input_amount=15000125,
+                    sighashes=["SINGLE"])
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Consolidating" not in story
+    assert "Sending 0.00000000" in story
+    assert "Network fee 0.00000125" in story
+    assert "Some inputs have unusual SIGHASH values" in story
+    end_sign()
+
+
+def test_op_return_zero_val(fake_txn, start_sign, cap_story, end_sign, settings_set):
+    settings_set('fee_limit', -1)
+    outputs = [["op_return", 0, None, b"abcdefgh 2028"] for _ in range(3)]
+    # without input_amount=125 --> failure zero value txn
+    psbt = fake_txn(1, outputs, addr_fmt="p2tr", input_amount=125)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Consolidating" not in story
+    assert "Sending 0.00000000" in story
+    assert "Network fee 0.00000125" in story
+    end_sign()
+
 
 # EOF
