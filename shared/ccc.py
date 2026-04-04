@@ -1092,7 +1092,7 @@ is locked into a special mode that restricts seed access, backups, settings and 
 First step is to define a new PIN code that is used when you want to bypass or \
 disable this feature.
 ''',
-        title="Spending Policy")
+        title="Spending Policy" if version.has_qwerty else "Spend Policy")
 
     if ch != 'y': 
         # just a tourist
