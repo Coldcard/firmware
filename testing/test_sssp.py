@@ -35,7 +35,7 @@ def setup_sssp(goto_sssp_menu, pick_menu_item, cap_story, press_select, pass_wor
         title, story = cap_story()
 
         # it is possible that PIN was set beforehand
-        if title == "Spending Policy":
+        if title == ("Spending Policy" if is_q1 else "Spend Policy"):
             assert "stops you from signing transactions unless conditions are met" in story
             assert "locked into a special mode" in story
             assert "First step is to define a new PIN" in story
