@@ -3178,9 +3178,11 @@ def test_same_key_set_miniscript(get_cc_key, bitcoin_core_signer, create_core_wa
 
             title, story = cap_story()
             if 'OK TO SEND' not in title:
-                pick_menu_item(fname)
-                time.sleep(0.1)
-                title, story = cap_story()
+                try:
+                    pick_menu_item(fname)
+                    time.sleep(0.1)
+                    title, story = cap_story()
+                except: pass
 
             assert title == "OK TO SEND?"
             assert "msc2" in story
@@ -3194,8 +3196,9 @@ def test_same_key_set_miniscript(get_cc_key, bitcoin_core_signer, create_core_wa
 @pytest.mark.parametrize("orig_der", [False, True])
 def test_specific_wallet_signing_xpubs(orig_der, get_cc_key, bitcoin_core_signer, create_core_wallet,
                                        offer_minsc_import, press_select, bitcoind, start_sign,
-                                       cap_story, end_sign, clear_miniscript, goto_home):
+                                       cap_story, end_sign, clear_miniscript, goto_home, use_regtest):
     goto_home()
+    use_regtest()
     clear_miniscript()
 
     msc = "wsh(or_d(pk(@D),and_v(v:multi(2,@A,@B,@C),older(65535))))"
@@ -3255,8 +3258,14 @@ def test_specific_wallet_signing_xpubs(orig_der, get_cc_key, bitcoin_core_signer
     end_sign(accept=True)
 
     item = po.xpubs[0]
-    # wrong key
-    key_wrong = item[0][:-1] + b"\x10"
+    # wrong key - but has to be valid - otherwise "bad pubkey is raised"
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    if orig_der:
+        a, _ = bk.split("]")
+        der = "/".join(a[1:].split("/")[1:])
+        node = node.subkey_for_path(der)
+
+    key_wrong = node.node.serialize_public()
     po.xpubs[0] = (key_wrong, item[1])
 
     start_sign(po.as_bytes(), miniscript="msc")

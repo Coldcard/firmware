@@ -511,4 +511,13 @@ def verify_recover_pubkey(sig, digest):
     except:
         raise ValueError('invalid signature')
 
+
+def type_from_xpub_version(xpub_ver):
+    # https://github.com/satoshilabs/slips/blob/master/slip-0132.md
+    if xpub_ver in [0x0488b21e, 0x049d7cb2, 0x04b24746, 0x0295b43f, 0x02aa7ed3]:
+        return "BTC"
+    else:
+        assert xpub_ver in [0x043587cf, 0x044a5262, 0x045f1cf6, 0x024289ef, 0x02575483]
+        return "XTN"
+
 # EOF
