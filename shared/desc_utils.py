@@ -279,21 +279,12 @@ class ExtendedKey:
         d = self.serialize()
         return ser_compact_size(len(d)) + d
 
-    @staticmethod
-    def chain_from_version(version):
-        # https://github.com/satoshilabs/slips/blob/master/slip-0132.md
-        if version in [0x0488b21e, 0x049d7cb2, 0x04b24746, 0x0295b43f, 0x02aa7ed3]:
-            return "BTC"
-        else:
-            assert version in [0x043587cf, 0x044a5262, 0x045f1cf6, 0x024289ef, 0x02575483]
-            return "XTN"
-
     @classmethod
     def parse_key(cls, key_str):
         assert key_str[1:4].lower() == b"pub", "only extended pubkeys allowed"
         node = ngu.hdnode.HDNode()
         version = node.deserialize(key_str)
-        return node, cls.chain_from_version(version)
+        return node, chains.type_from_xpub_version(version)
 
     def validate(self, my_xfp, disable_checks=False):
         assert self.chain_type == chains.current_key_chain().ctype, "wrong chain"
@@ -419,7 +410,8 @@ class ExtendedKey:
         koi = KeyOriginInfo(ustruct.pack("<I", xfp), path)
         node = ngu.hdnode.HDNode()
         version = node.deser_bytes(ek_bytes)
-        return cls(node, koi, KeyDerivationInfo(), chain_type=cls.chain_from_version(version))
+        return cls(node, koi, KeyDerivationInfo(),
+                   chain_type=chains.type_from_xpub_version(version))
 
     @property
     def is_provably_unspendable(self):
