@@ -19,7 +19,11 @@ from exceptions import FatalPSBTIssue
 from silentpayments import (
     _combine_pubkeys,
     _compute_ecdh_share,
+    _compute_input_hash,
     _compute_silent_payment_output_script,
+    _compute_silent_payment_spending_privkey,
+    _negate_if_odd_y,
+    _sum_privkeys,
     SilentPaymentsMixin,
 )
 
@@ -200,9 +204,45 @@ elif mode == "get_outpoints":
         parts.append(b2a_hex(txid).decode() + ":" + b2a_hex(vout).decode())
     RV.write(",".join(parts))
 
+elif mode == "sum_privkeys":
+    # Sum a list of normalized privkeys; return as 64-char hex
+    privkeys = [a2b_hex(h) for h in params["privkeys"]]
+    result = _sum_privkeys(privkeys)
+    RV.write(b2a_hex(result).decode())
+
 elif mode == "pubkey_from_input":
     # Call _pubkey_from_input for a specific input; return pubkey hex or ""
     psbt = _build_mock_psbt(params)
     i = params["input_index"]
     pk = psbt._pubkey_from_input(psbt.inputs[i])
     RV.write(b2a_hex(pk).decode() if pk else "")
+
+elif mode == "compute_input_hash":
+    outpoints = [(a2b_hex(t), a2b_hex(v)) for t, v in params["outpoints"]]
+    A_sum = a2b_hex(params["A_sum"])
+    result = _compute_input_hash(outpoints, A_sum)
+    RV.write(b2a_hex(result).decode())
+
+elif mode == "compute_shared_secret":
+    ecdh_share = a2b_hex(params["ecdh_share"])
+    input_hash = a2b_hex(params["input_hash"])
+    result = ngu.secp256k1.ec_pubkey_tweak_mul(ecdh_share, input_hash)
+    RV.write(b2a_hex(result).decode())
+
+elif mode == "pubkey_from_privkey":
+    # Compute pubkey = privkey * G; return 33-byte compressed hex
+    privkey = a2b_hex(params["privkey"])
+    G = ngu.secp256k1.generator()
+    pubkey = ngu.secp256k1.ec_pubkey_tweak_mul(G, privkey)
+    RV.write(b2a_hex(pubkey).decode())
+
+elif mode == "compute_spending_privkey":
+    b_spend = a2b_hex(params["b_spend"])
+    tweak = a2b_hex(params["tweak"])
+    result = _compute_silent_payment_spending_privkey(b_spend, tweak)
+    RV.write(b2a_hex(result).decode())
+
+elif mode == "negate_if_odd_y":
+    privkey = a2b_hex(params["privkey"])
+    result = _negate_if_odd_y(privkey)
+    RV.write(b2a_hex(result).decode())
