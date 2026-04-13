@@ -211,7 +211,7 @@ class NotesMenu(MenuSystem):
     @classmethod
     async def disable_notes(cls, *a):
         # they don't want feature anymore; already checked no notes in effect
-        # - no need for confirm, they aren't loosing anything
+        # - no need for confirm, they aren't losing anything
         settings.remove_key('secnap')
         settings.remove_key('notes')
         settings.save()

@@ -220,7 +220,7 @@ def to_ascii_printable(s, strip=False, only_printable=True):
 
 def problem_file_line(exc):
     # return a string of just the filename.py and line number where
-    # an exception occured. Best used on AssertionError.
+    # an exception occurred. Best used on AssertionError.
 
     tmp = uio.StringIO()
     sys.print_exception(exc, tmp)
