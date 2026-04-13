@@ -1,7 +1,7 @@
 # see also? ../cli/requirements.txt
 
 # for testing (only)
-pytest==6.2.5
+pytest==9.0.3
 pyserial
 ecdsa  # already required by ckcc-protocol
 python-secp256k1==0.2.0
