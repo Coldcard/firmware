@@ -75,14 +75,7 @@ HOBBLED_CMDS = frozenset({
     'enrl',             # no new multisigs during policy enforcement
     'back',             # no backups
     'bagi', 'dfu_',     # just in case
-
-    "user",             # same as HSM_DISABLE_CMDS
-    "rmur",
-    "nwur",
-    "gslr",
-    "hsts",
-    "hsms",
-})
+}) | HSM_DISABLE_CMDS
 
 # singleton instance of USBHandler()
 handler = None
