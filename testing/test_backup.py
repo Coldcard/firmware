@@ -2,7 +2,7 @@
 #
 # Testing backups.
 #
-import pytest, time, json, os, shutil, re
+import pytest, time, json, os, shutil, re, struct
 from constants import simulator_fixed_words, simulator_fixed_tprv
 from charcodes import KEY_QR
 from bip32 import BIP32Node
@@ -841,5 +841,55 @@ def test_backup_long_name_display(fname, goto_home, pick_menu_item, need_keypres
         assert fname in scr
 
     press_cancel()
+
+
+def test_header_magic_check(microsd_path, src_root_dir, verify_backup_file, cap_story):
+    fname = "backup.7z"
+    fn = microsd_path(fname)
+
+    with open(f'{src_root_dir}/docs/backup.7z', "rb") as f:
+        conts = f.read()
+
+    # from shared/compat7z.py
+    magic, major, minor, crc = struct.unpack('<6sBBL', conts[:12])
+    assert magic == b"7z\xbc\xaf'\x1c"
+    assert major == 0
+    assert minor >= 3
+
+    # invalid magic
+    with open(fn, "wb") as f:
+        f.write(b"8z\xbc\xaf'\x1c")
+        f.write(conts[6:])
+
+    with pytest.raises(AssertionError):
+        verify_backup_file(fname)
+
+    title, story = cap_story()
+    assert "Bad magic bytes" in story
+
+    # invalid  major
+    with open(fn, "wb") as f:
+        f.write(b"7z\xbc\xaf'\x1c")
+        f.write(bytes([1]))  # major has to be 0
+        f.write(conts[7:])
+
+    with pytest.raises(AssertionError):
+        verify_backup_file(fname)
+
+    title, story = cap_story()
+    assert "Bad magic bytes" in story
+
+    # invalid  minor
+    with open(fn, "wb") as f:
+        f.write(b"7z\xbc\xaf'\x1c")
+        f.write(bytes([0]))
+        f.write(bytes([2]))  # cannot be smaller than 3
+        f.write(conts[8:])
+
+    with pytest.raises(AssertionError):
+        verify_backup_file(fname)
+
+    title, story = cap_story()
+    assert "Bad magic bytes" in story
 
 # EOF
