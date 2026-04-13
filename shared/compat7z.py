@@ -100,7 +100,7 @@ def check_file_headers(f):
     # assume f is seekable
     fh = FileHeader.read(f)
 
-    if not fh.has_good_magic:
+    if not fh.has_good_magic():
         raise ValueError("Bad magic bytes")
 
     # read only first header
