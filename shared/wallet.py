@@ -38,7 +38,7 @@ class MasterSingleSigWallet(WalletABC):
     def __init__(self, addr_fmt, path=None, account_idx=0, chain_name=None):
         # Construct a wallet based on current master secret, and chain.
         # - path is optional, and then we use standard path for addr_fmt
-        # - path can be overriden when we come here via address explorer
+        # - path can be overridden when we come here via address explorer
 
         n = chains.addr_fmt_label(addr_fmt)
         if not version.has_qwerty:

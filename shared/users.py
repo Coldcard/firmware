@@ -78,7 +78,7 @@ KEY = 'usr'
 UserInfo = namedtuple('UserInfo', 'auth_mode secret last_counter')
 
 class Users:
-    '''Track users and thier TOTP secrets or hashed passwords'''    
+    '''Track users and their TOTP secrets or hashed passwords'''
 
     @classmethod
     def get(cls):

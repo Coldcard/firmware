@@ -248,7 +248,7 @@ class MultisigWallet(WalletABC):
     def iter_wallets(cls, M=None, N=None, not_idx=None, addr_fmts=None, name=None):
         # yield MS wallets we know about, that match at least right M,N if known.
         # - this is only place we should be searching this list, please!!
-        # addr_fmts: list of address formats we're intersted in
+        # addr_fmts: list of address formats we're interested in
         # name: string ms wallet name
         lst = settings.get('multisig', [])
 
@@ -583,7 +583,7 @@ class MultisigWallet(WalletABC):
                 found_pk = node.pubkey()
 
                 # Document path(s) used. Not sure this is useful info to user tho.
-                # - Do not show what we can't verify: we don't really know the hardeneded
+                # - Do not show what we can't verify: we don't really know the hardened
                 #   part of the path from fingerprint to here.
                 here = '[%s]' % xfp2str(xfp)
                 if dp != len(path):
