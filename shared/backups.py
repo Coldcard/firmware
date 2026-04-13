@@ -49,7 +49,7 @@ def render_backup_contents(bypass_tmp=False):
         if sv.mode == 'words':
             ADD('mnemonic', bip39.b2a_words(sv.raw))
 
-        if sv.mode == 'master':
+        elif sv.mode == 'master':
             ADD('bip32_master_key', b2a_hex(sv.raw))
 
         ADD('chain', chain.ctype)
@@ -76,7 +76,12 @@ def render_backup_contents(bypass_tmp=False):
             current_tmp = pa.tmp_value[:]
             pa.tmp_value = None
             # we also need correct settings from main seed
-            nv = stash.SecretStash.encode(seed_phrase=sv.raw)
+            if sv.mode == 'words':
+                nv = stash.SecretStash.encode(seed_phrase=sv.raw)
+            else:
+                assert sv.mode == "xprv"
+                nv = stash.SecretStash.encode(xprv=sv.node)
+
             settings.set_key(nv)
             settings.load()
             stash.blank_object(nv)
