@@ -54,7 +54,7 @@ def calc_num_qr(char_capacity, char_len, split_mod):
     if char_len > actual:
         need += 1
 
-    # Challenge: the final QR might have just a a few chars in it, if we redistribute
+    # Challenge: the final QR might have just a few chars in it, if we redistribute
     # the data into the other parts, then each QR can have more forward error correction
     # and be more robust. Must respect split_mod alignment tho.
     level = ceil(char_len / need)

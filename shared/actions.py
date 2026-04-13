@@ -822,7 +822,7 @@ async def start_login_sequence():
             # PIN again) and if it's a duress wallet, that's cool...
 
         # Do we need to do countdown delay? (real or otherwise)
-        # - wiping has already occured if that was selected by trick details
+        # - wiping has already occurred if that was selected by trick details
         # - delay is variable, stored in tc_arg
         delay = tp.was_countdown_pin()
 
@@ -2296,7 +2296,7 @@ async def wipe_address_cache(*a):
 async def wipe_ovc(*a):
     ok = await ux_confirm('''Clear history of segwit UTXO input values we have seen already. \
 This data protects you against specific attacks. Use this only if certain a false-positive \
-has occured in the detection logic.''')
+has occurred in the detection logic.''')
     if not ok: return
 
     import history

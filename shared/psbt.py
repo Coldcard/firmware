@@ -478,7 +478,7 @@ class psbtOutputProxy(psbtProxy):
                 # - we get all of that by re-constructing the script from our wallet details
                 if not redeem_script and not witness_script:
                     # Perhaps an omission, so let's not call fraud on it
-                    # But definately required, else we don't know what script we're sending to.
+                    # But definitely required, else we don't know what script we're sending to.
                     raise FatalPSBTIssue(
                         "Missing redeem/witness script for multisig output #%d" % out_idx
                     )
