@@ -15,6 +15,7 @@ from constants import *
 from charcodes import *
 from core_fixtures import _need_keypress, _sim_exec, _cap_story, _cap_menu, _cap_screen, _sim_eval
 from core_fixtures import _press_select, _pick_menu_item, _enter_complex, _dev_hw_label
+from core_fixtures import _do_keypresses
 from txn import render_address
 from bbqr import split_qrs
 
@@ -207,14 +208,11 @@ def enter_pin(enter_number, press_select, cap_screen, is_q1):
 
 
 @pytest.fixture
-def do_keypresses(need_keypress):
+def do_keypresses(dev):
     # do a series of keypresses, any kind
-    def doit(value):
-        for ch in value:
-            need_keypress(ch)
+    f = functools.partial(_do_keypresses, dev)
+    return f
 
-    return doit
-    
 
 @pytest.fixture
 def enter_text(need_keypress, is_q1):

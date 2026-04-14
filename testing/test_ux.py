@@ -1,11 +1,12 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, os, re, hashlib, shutil
-from helpers import xfp2str, prandom, addr_from_display_format
-from charcodes import KEY_DOWN, KEY_QR, KEY_NFC, KEY_DELETE, KEY_UP
+import pytest, time, os, re, hashlib, shutil, functools
+from helpers import xfp2str, prandom
+from charcodes import KEY_QR, KEY_NFC, KEY_DELETE
 from constants import AF_CLASSIC, simulator_fixed_words, simulator_fixed_xfp
 from mnemonic import Mnemonic
 from bip32 import BIP32Node
+from core_fixtures import _pass_word_quiz, _word_menu_entry
 
 mnem = Mnemonic('english')
 wordlist = mnem.wordlist
@@ -97,117 +98,14 @@ def test_home_menu(cap_menu, cap_story, cap_screen, need_keypress, reset_seed_wo
     press_cancel()
 
 @pytest.fixture
-def word_menu_entry(cap_menu, pick_menu_item, is_q1, do_keypresses, cap_screen):
-    def doit(words, has_checksum=True, q_accept=True):
-        if is_q1:
-            # easier for us on Q, but have to anticipate the autocomplete
-            for n, w in enumerate(words, start=1):
-                do_keypresses(w[0:2])
-                time.sleep(0.05)
-                if 'Next key' in cap_screen():
-                    do_keypresses(w[2])
-                    time.sleep(.01)
-                if 'Next key' in cap_screen():
-                    if len(w) > 3:
-                        do_keypresses(w[3])
-                    else:
-                        do_keypresses(KEY_DOWN)
-                    time.sleep(.01)
-
-                pat = rf'{n}:\s?{w}'
-                for x in range(10):
-                    if re.search(pat, cap_screen()):
-                        break
-                    time.sleep(0.02)
-                else:
-                    raise RuntimeError('timeout')
-
-            if len(words) == 23:
-                do_keypresses(KEY_DOWN)
-                time.sleep(.03)
-                cap_scr = cap_screen()
-                while 'Next key' in cap_scr:
-                    target = cap_scr.split("\n")[-1].replace("Next key: ", "")
-                    # picks first choice!?
-                    do_keypresses(target[0])
-                    time.sleep(.03)
-                    cap_scr = cap_screen()
-            else:
-                cap_scr = cap_screen()
-
-            if has_checksum:
-                assert 'Valid words' in cap_scr
-            else:
-                assert 'Press ENTER if all done' in cap_scr
-
-            if q_accept:
-                do_keypresses('\r')
-            return
-
-        # do the massive drilling-down to pick a specific pass phrase
-        assert len(words) in {1, 12, 18, 23, 24}
-
-        for word in words:
-            while 1:
-                menu = cap_menu()
-                which = None
-                for m in menu:
-                    if '-' not in m:
-                        if m == word:
-                            which = m
-                            break
-                    else:
-                        assert m[-1] == '-'
-                        if m == word[0:len(m)-1]+'-':
-                            which = m
-                            break
-
-                assert which, "cant find: " + word
-
-                pick_menu_item(which)
-                if '-' not in which:
-                    break
-
-    return doit
+def word_menu_entry(dev, cap_menu, pick_menu_item, is_q1, do_keypresses, cap_screen):
+    f = functools.partial(_word_menu_entry, dev, is_q1)
+    return f
 
 @pytest.fixture
-def pass_word_quiz(need_keypress, cap_story, press_select):
-    def doit(words, prefix='', preload=None):
-        if not preload:
-            press_select()
-            time.sleep(.01)
-
-        count = 0
-        last_title = None
-        while 1:
-            title, body = preload or cap_story()
-            preload = None
-
-            if not title.startswith('Word '+prefix): break
-            assert title.endswith(' is?')
-            assert not last_title or last_title != title, "gave wrong ans?"
-
-            wn = int(title.split()[1][len(prefix):])
-            assert 1 <= wn <= len(words)
-            wn -= 1
-
-            ans = [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
-            assert len(ans) == 3
-            
-            correct = ans.index(words[wn])
-            assert 0 <= correct < 3
-
-            #print("Pick %d: %s" % (correct, ans[correct]))
-
-            need_keypress(chr(49 + correct))
-            time.sleep(.1) 
-            count += 1
-
-            last_title = title
-
-        return count, title, body
-
-    return doit
+def pass_word_quiz(dev, need_keypress, cap_story, press_select, is_q1):
+    f = functools.partial(_pass_word_quiz, dev, is_q1)
+    return f
 
 
 @pytest.mark.qrcode

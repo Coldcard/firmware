@@ -211,14 +211,14 @@ class TrickPinMgmt:
     def update_slot(self, pin, new=False, new_pin=None, tc_flags=None, tc_arg=None, secret=None):
         # create or update a trick pin
         # - doesn't support wallet to no-wallet transitions
-        '''
-        >>> from pincodes import pa; pa.setup(b'12-12'); pa.login(); from trick_pins import *
-        '''
+        #
+        # from pincodes import pa; pa.setup(b'12-12'); pa.login(); from trick_pins import *
+        #
         assert isinstance(pin, bytes)
 
         b, slot = self.get_by_pin(pin)
         if not slot:
-            if not new: raise KeyError("wrong pin")
+            assert new, "wrong pin"
 
             # Making a new entry
             b, slot = make_slot()
@@ -398,17 +398,17 @@ class TrickPinMgmt:
                 continue
 
             if flags & TC_DELTA_MODE:
-                prob = validate_delta_pin(true_pin, pin)
+                prob, _ = validate_delta_pin(true_pin, pin)
                 if prob:
                     # just forget it, no UI here to report issue
-                    continue           
+                    continue
 
             try:
                 # might need to construct a BIP-85 or XPRV secret to match
                 path, new_secret = construct_duress_secret(flags, arg)
 
-                b, slot = tp.update_slot(pin.encode(), new=True,
-                                     tc_flags=flags, tc_arg=arg, secret=new_secret)
+                tp.update_slot(pin.encode(), new=True, secret=new_secret,
+                               tc_flags=flags, tc_arg=arg)
             except: pass
 
     @staticmethod
