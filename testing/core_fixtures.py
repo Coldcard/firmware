@@ -7,7 +7,7 @@
 # Below functions are injected with proper scoped `device` in conftest.py
 # using funtools.partial.
 #
-import time
+import time, re
 from charcodes import *
 from ckcc_protocol.client import CCProtocolPacker
 
@@ -148,5 +148,117 @@ def _enter_complex(device, is_Q, target, apply=False, b39pass=True):
 
     if apply:
         _pick_menu_item(device, is_Q, "APPLY")
+
+
+def _pass_word_quiz(device, is_Q, words, prefix='', preload=None):
+    if not preload:
+        _press_select(device, is_Q)
+        time.sleep(.01)
+
+    count = 0
+    last_title = None
+    while 1:
+        title, body = preload or _cap_story(device)
+        preload = None
+
+        if not title.startswith('Word ' + prefix): break
+        assert title.endswith(' is?')
+        assert not last_title or last_title != title, "gave wrong ans?"
+
+        wn = int(title.split()[1][len(prefix):])
+        assert 1 <= wn <= len(words)
+        wn -= 1
+
+        ans = [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
+        assert len(ans) == 3
+
+        correct = ans.index(words[wn])
+        assert 0 <= correct < 3
+
+        # print("Pick %d: %s" % (correct, ans[correct]))
+
+        _need_keypress(device, chr(49 + correct))
+        time.sleep(.1)
+        count += 1
+
+        last_title = title
+
+    return count, title, body
+
+
+def _do_keypresses(device, value):
+    for ch in value:
+        _need_keypress(device, ch)
+
+def _word_menu_entry(device, is_Q, words, has_checksum=True, q_accept=True):
+    if is_Q:
+        # easier for us on Q, but have to anticipate the autocomplete
+        for n, w in enumerate(words, start=1):
+            _do_keypresses(device, w[0:2])
+            time.sleep(0.1)
+            if 'Next key' in _cap_screen(device):
+                _do_keypresses(device, w[2])
+                time.sleep(.01)
+
+            if 'Next key' in _cap_screen(device):
+                if len(w) > 3:
+                    _do_keypresses(device, w[3])
+                else:
+                    _do_keypresses(device, KEY_DOWN)
+                time.sleep(.01)
+
+            pat = rf'{n}:\s?{w}'
+            for x in range(10):
+                if re.search(pat, _cap_screen(device)):
+                    break
+                time.sleep(0.02)
+            else:
+                raise RuntimeError('timeout')
+
+        if len(words) == 23:
+            _do_keypresses(device, KEY_DOWN)
+            time.sleep(.03)
+            cap_scr = _cap_screen(device)
+            while 'Next key' in cap_scr:
+                target = cap_scr.split("\n")[-1].replace("Next key: ", "")
+                # picks first choice!?
+                _do_keypresses(device, target[0])
+                time.sleep(.03)
+                cap_scr = _cap_screen(device)
+        else:
+            cap_scr = _cap_screen(device)
+
+        if has_checksum:
+            assert 'Valid words' in cap_scr
+        else:
+            assert 'Press ENTER if all done' in cap_scr
+
+        if q_accept:
+            _do_keypresses(device, '\r')
+        return
+
+    # do the massive drilling-down to pick a specific pass phrase
+    assert len(words) in {1, 12, 18, 23, 24}
+
+    for word in words:
+        while 1:
+            menu = _cap_menu(device)
+            which = None
+            for m in menu:
+                if '-' not in m:
+                    if m == word:
+                        which = m
+                        break
+                else:
+                    assert m[-1] == '-'
+                    if m == word[0:len(m)-1]+'-':
+                        which = m
+                        break
+
+            assert which, "cant find: " + word
+
+            _pick_menu_item(device, is_Q, which)
+            if '-' not in which:
+                break
 
 # EOF

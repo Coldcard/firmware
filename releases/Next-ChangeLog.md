@@ -4,7 +4,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk and Q
 
-- tbd
+- Bugfix: Delta Mode Trick PIN was never restored from backup
 
 # Mk Specific Changes
 

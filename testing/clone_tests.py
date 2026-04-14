@@ -2,10 +2,12 @@
 #
 import pytest, time, pdb, itertools
 from charcodes import KEY_ENTER
-from core_fixtures import _pick_menu_item, _cap_story, _press_select
-from core_fixtures import _need_keypress, _cap_menu, _sim_exec
+from core_fixtures import _pick_menu_item, _cap_story, _press_select, _word_menu_entry
+from core_fixtures import _need_keypress, _cap_menu, _sim_exec, _pass_word_quiz
 from run_sim_tests import ColdcardSimulator, clean_sim_data
+from ckcc_protocol.cli import wait_and_download
 from ckcc_protocol.client import ColdcardDevice
+from ckcc_protocol.protocol import CCProtocolPacker
 
 
 def _clone(source, target):
@@ -122,5 +124,100 @@ def _clone(source, target):
 def test_clone(source, target):
     _clone(source, target)
     time.sleep(1)
+
+
+def test_backup_restore_delta_pin():
+    # SOURCE
+    # clone with multisig wallet
+    clean_sim_data()  # remove all from previous
+    sim_source = ColdcardSimulator(args=["--ms", "--p2wsh", "--set", "nfc=1", "--set", "vidsk=1"],
+                                   segregate=True)  # in /tmp/cc-simulators
+    sim_source.start(start_wait=6)
+    device_source = ColdcardDevice(is_simulator=True, sn=sim_source.socket)
+    _pick_menu_item(device_source, False, "Settings")
+    time.sleep(.1)
+    _pick_menu_item(device_source, False, "Login Settings")
+    time.sleep(.1)
+    _pick_menu_item(device_source, False, "Trick PINs")
+    time.sleep(.1)
+    _pick_menu_item(device_source, False, "Add New Trick")
+    time.sleep(.1)
+
+    # twice, first select, then verify
+    for _ in range(2):
+        pin = "11-11"
+        pre, suff = pin.split("-")
+        for ch in pre:
+            _need_keypress(device_source, ch)
+            time.sleep(.1)
+        _press_select(device_source, False)
+
+        time.sleep(.2)
+
+        for ch in suff:
+            _need_keypress(device_source, ch)
+            time.sleep(.1)
+        _press_select(device_source, False)
+
+    time.sleep(.2)
+    _pick_menu_item(device_source, False, "Delta Mode")
+    time.sleep(.1)
+    title, story = _cap_story(device_source)
+    assert "trick PIN must be same length as true PIN and differ only in final 4 positions" in story
+    _press_select(device_source, False)
+    time.sleep(.1)
+    _press_select(device_source, False)
+    time.sleep(.1)
+    m = _cap_menu(device_source)
+    assert "11-11" in m[1]
+
+    ok = device_source.send_recv(CCProtocolPacker.start_backup())
+    assert ok is None
+    time.sleep(1)
+    title, story = _cap_story(device_source)
+    assert "backup file password" in story
+    word_list = [item.split()[-1] for item in story.split("\n")[1:-4]]
+    assert len(word_list) == 12
+    _pass_word_quiz(device_source, False, word_list)
+    _press_select(device_source, False)  # bkpw
+    result, chk = wait_and_download(device_source, CCProtocolPacker.get_backup_file(), 0)
+    sim_source.stop()
+
+
+    # TARGET Q (empty)
+    sim_target = ColdcardSimulator(args=["--q1", "-l"])
+    sim_target.start(start_wait=6)
+    device_target = ColdcardDevice(is_simulator=True)
+
+    name = "backup-delta.7z"
+    path = f"../unix/work/MicroSD/{name}"
+    with open(path, "wb") as f:
+        f.write(result)
+
+    _pick_menu_item(device_target, True, "Import Existing")
+    _pick_menu_item(device_target, True, "Restore Backup")
+    _pick_menu_item(device_target, True, name)
+    time.sleep(.1)
+
+    _word_menu_entry(device_target, True, word_list, has_checksum=False)
+    _press_select(device_target, True)  # allow backup restore
+    time.sleep(.1)
+    _press_select(device_target, True)  # best security practices config
+    time.sleep(.1)
+    _press_select(device_target, True)  # success
+
+    sim_target.stop()
+    time.sleep(1)
+    sim_target = ColdcardSimulator(args=["--q1"])
+    sim_target.start(start_wait=6)
+    device_target = ColdcardDevice(is_simulator=True, sn=sim_target.socket)
+    _pick_menu_item(device_target, True, "Settings")
+    time.sleep(.1)
+    _pick_menu_item(device_target, True, "Login Settings")
+    time.sleep(.1)
+    _pick_menu_item(device_target, True, "Trick PINs")
+    time.sleep(.1)
+    m = _cap_menu(device_target)
+    assert "11-11" in m[1]
 
 # EOF
