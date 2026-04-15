@@ -10,6 +10,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: "Send Password" menu item inside Notes & Passwords visibility reversed
 - Bugfix: Yikes when using "Send Password" on entry with password None field
 - Bugfix: Do not show "Saving..." UX after failed Notes & Passwords import
+- Bugfix: Incorrect error message caused by error in Verify/Decrypt Backup
 
 # Mk Specific Changes
 
