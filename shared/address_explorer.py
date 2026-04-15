@@ -126,9 +126,10 @@ class PickAddrFmtMenu(MenuSystem):
             for af in chains.SINGLESIG_AF
         ]
         super().__init__(items)
-        if path.startswith("m/84h"):
+        # below is sensitive to order in chains.SINGLESIG_AF
+        if path.startswith("m/44h"):
             self.goto_idx(1)
-        if path.startswith("m/49h"):
+        elif path.startswith("m/49h"):
             self.goto_idx(2)
 
     async def done(self, _1, _2, item):
