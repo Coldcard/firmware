@@ -892,4 +892,91 @@ def test_header_magic_check(microsd_path, src_root_dir, verify_backup_file, cap_
     title, story = cap_story()
     assert "Bad magic bytes" in story
 
+
+def test_confused_file_check(microsd_path, src_root_dir, verify_backup_file, cap_story):
+    fname = "backup.7z"
+    fn = microsd_path(fname)
+
+    with open(f'{src_root_dir}/docs/backup.7z', "rb") as f:
+        conts = f.read()
+
+    # truncate last bytes so trailing header read returns fewer bytes than sh.size
+    with open(fn, "wb") as f:
+        f.write(conts[:-10])
+
+    with pytest.raises(AssertionError):
+        verify_backup_file(fname)
+
+    title, story = cap_story()
+    assert "Confused file?" in story
+    assert "Truncated file?" in story
+
+    # remove AES+SHA marker so "not marked" assertion fires
+    marker = b'\x24\x06\xf1\x07\x01'
+    assert marker in conts
+    corrupted = conts.replace(marker, b'\x00\x00\x00\x00\x00', 1)
+    with open(fn, "wb") as f:
+        f.write(corrupted)
+
+    with pytest.raises(AssertionError):
+        verify_backup_file(fname)
+
+    title, story = cap_story()
+    assert "Confused file?" in story
+    assert "Not marked as AES+SHA encrypted?" in story
+
+
+def test_check_file_headers_errors(microsd_path, src_root_dir, verify_backup_file, cap_story):
+    from binascii import crc32 as host_crc32
+
+    fname = "backup.7z"
+    fn = microsd_path(fname)
+
+    with open(f'{src_root_dir}/docs/backup.7z', "rb") as f:
+        conts = f.read()
+
+    # Flip a byte in SectionHeader (file bytes 12-31); fh.crc stays the same
+    # but sh.actual_crc() changes --> mismatch --> error
+    corrupted = bytearray(conts)
+    corrupted[12] ^= 0xFF
+    with open(fn, "wb") as f:
+        f.write(bytes(corrupted))
+
+    with pytest.raises(AssertionError):
+        verify_backup_file(fname)
+
+    title, story = cap_story()
+    assert "Second header has wrong CRC" in story
+
+    # Set sh.size (offset 8 in SectionHeader = file bytes 20-27) to > 10000,
+    # then update fh.crc (file bytes 8-11) so the CRC check passes first.
+    fh_bytes = bytearray(conts[:12])
+    sh_bytes = bytearray(conts[12:32])
+    struct.pack_into('<Q', sh_bytes, 8, 99999)          # size field at offset 8 in SectionHeader
+    new_crc = host_crc32(bytes(sh_bytes)) & 0xFFFFFFFF
+    struct.pack_into('<L', fh_bytes, 8, new_crc)        # fh.crc at offset 8 in FileHeader
+    with open(fn, "wb") as f:
+        f.write(bytes(fh_bytes) + bytes(sh_bytes) + conts[32:])
+
+    with pytest.raises(AssertionError):
+        verify_backup_file(fname)
+
+    title, story = cap_story()
+    assert "Second header too big" in story
+
+    # Flip the last byte of the trailing header data
+    sh_offset_val, sh_size_val = struct.unpack_from('<QQ', conts, 12)
+    th_start = 0x20 + sh_offset_val
+    th_end = th_start + sh_size_val
+    corrupted = bytearray(conts)
+    corrupted[th_end - 1] ^= 0xFF
+    with open(fn, "wb") as f:
+        f.write(bytes(corrupted))
+
+    with pytest.raises(AssertionError):
+        verify_backup_file(fname)
+
+    title, story = cap_story()
+    assert "Trailing header has wrong CRC" in story
+
 # EOF

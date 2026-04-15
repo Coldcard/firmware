@@ -51,9 +51,7 @@ def decode_utf_16_le(s):
 '''
 
 def read_var64(f):
-    '''
-        Decode their silly 64-bit encoding.
-    '''
+    # Decode their silly 64-bit encoding.
     first = ord(f.read(1))
     if first < 128:
         return first
@@ -113,22 +111,21 @@ def check_file_headers(f):
     if sh.size > 10000:
         raise ValueError("Second header too big")
 
-    # capture this spot
-    # TODO 'data_start' unused
-    data_start = f.tell()       # expect 0x20
+    # FileHeader.read() always reads exactly calcsize('<6sBBL') = 12 bytes
+    # SectionHeader.read() always reads exactly calcsize('<QQL') = 20 bytes
+    # after those two calls, f.tell() is always start_pos + 32
+    # assert f.tell() == 0x20       # expect 0x20
 
     try:
         f.seek(sh.offset, 1)
         th = f.read(sh.size)
-        if len(th) != sh.size:
-            raise IndexError("Truncated file?")
+        assert len(th) == sh.size, "Truncated file?"
 
         # Look for properties about compression. this could be 
         # faked-out but good enough for now
-        if b'\x24\x06\xf1\x07\x01' not in th:
-            raise RuntimeError("Not marked as AES+SHA encrypted?")
+        assert b'\x24\x06\xf1\x07\x01' in th, "Not marked as AES+SHA encrypted?"
     except Exception as e:
-        raise ValueError("Confused file? %s" % e.message)
+        raise ValueError("Confused file? %s" % e)
 
     if masked_crc(th) != sh.crc:
         raise ValueError("Trailing header has wrong CRC")
@@ -174,7 +171,6 @@ class FileHeader(object):
 
     def actual_crc(self):
         return masked_crc(self.bits)
-
         
 
 class SectionHeader(namedtuple('SectionHeader', ['offset', 'size', 'crc' ])):
@@ -212,6 +208,7 @@ class SectionHeader(namedtuple('SectionHeader', ['offset', 'size', 'crc' ])):
 
     def actual_crc(self):
         return masked_crc(self.bits)
+
 
 class Builder(object):
     def __init__(self, password=None, salt_len=16, iv_len=16, rounds_pow=13, progress_fcn=None):
