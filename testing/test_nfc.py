@@ -666,4 +666,36 @@ def test_nfc_share_files(fname, mode, ftype, nfc_read_json, nfc_read_text,
     assert res == contents
     os.remove(f'{sim_root_dir}/MicroSD/' + fname)
 
+def test_verify_address_nfc_cancel(goto_home, pick_menu_item, press_cancel,
+                                   cap_story, enable_nfc, cap_menu, nfc_write,
+                                   nfc_write_text):
+    # pressing cancel during 'Verify Address' NFC prompt must not "crash".
+    enable_nfc()
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("NFC Tools")
+    pick_menu_item("Verify Address")
+    time.sleep(0.1)
+    press_cancel()
+    time.sleep(0.1)
+    assert "Verify Address" in cap_menu()
+
+    pick_menu_item("Verify Address")
+    nfc_write_text("empty")
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert "Unable to find address from NFC data" in story
+    press_cancel()
+    time.sleep(.1)
+    assert "Verify Address" in cap_menu()
+
+    pick_menu_item("Verify Address")
+    nfc_write(b"empty")
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert "No tag data" in story
+    press_cancel()
+    time.sleep(.1)
+    assert "Verify Address" in cap_menu()
+
 # EOF

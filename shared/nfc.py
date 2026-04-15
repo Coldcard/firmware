@@ -747,10 +747,11 @@ class NFCHandler:
 
     async def verify_address_nfc(self):
         # Get an address or complete bip-21 url even and search it... slow.
-        _, addr, args = await self.read_address()
-        if addr:
-            from ownership import OWNERSHIP
-            await OWNERSHIP.search_ux(addr, args)
+        res = await self.read_address()
+        if not res: return
+        _, addr, args = res
+        from ownership import OWNERSHIP
+        await OWNERSHIP.search_ux(addr, args)
 
     async def read_extended_private_key(self):
         f = lambda x: x.decode().strip() if b"prv" in x else None
