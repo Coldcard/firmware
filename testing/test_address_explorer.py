@@ -555,6 +555,46 @@ def test_custom_path(path_sidx, which_fmt, addr_vs_path, pick_menu_item, goto_ad
             addr_vs_path(a, p, addr_fmt=which_fmt)
 
 
+@pytest.mark.parametrize("prefix,label", [
+    ("m/84h", "Segwit P2WPKH"),
+    ("m/49h", "P2SH-Segwit"),
+    ("m/44h", "Classic P2PKH"),
+])
+def test_pick_addr_fmt_menu_default(prefix, label, goto_address_explorer, is_q1, sim_exec,
+                                    pick_menu_item, need_keypress, press_select, cap_screen,
+                                    cap_story, use_testnet):
+    # PickAddrFmtMenu must pre-select the natural address format for common BIP paths
+    use_testnet()
+    goto_address_explorer()
+    pick_menu_item("Custom Path")
+    pick_menu_item(prefix + "/⋯")
+    need_keypress("0")
+    press_select()
+    path_to_pick = prefix + "/0h" if is_q1 else "⋯/0h"
+    pick_menu_item(path_to_pick)
+    time.sleep(.2)
+    # currently sitting at address format choice menu
+    cur_label = sim_exec(
+        'from ux import the_ux; top = the_ux.top_of_stack();'
+        'RV.write(top.items[top.cursor].label)'
+    )
+    assert cur_label == label, ("For %s: expected cursor on '%s', got '%s'" % (prefix, label, cur_label))
+
+    # choose menu item we're currently at
+    press_select()
+    need_keypress("3")
+    time.sleep(.2)
+    title, story = cap_story()
+    addr = addr_from_display_format(story.split("\n\n")[1].split("\n")[1])
+    if prefix == "m/84h":
+        assert addr.startswith("tb1")
+    elif prefix == "m/49h":
+        assert addr.startswith("2")
+    else:
+        assert addr.startswith("m") or addr.startswith("n")
+
+    # EOF
+
 def test_change_account_cancel(goto_address_explorer, pick_menu_item, press_cancel, cap_menu):
     goto_address_explorer()
     time.sleep(.2)
