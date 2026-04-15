@@ -14,7 +14,7 @@ from ucollections import namedtuple
 from opcodes import OP_RETURN, OP_1, OP_16
 from precomp_tag_hash import TAP_TWEAK_H, TAP_LEAF_H
 
-
+# DO NOT CHANGE ORDER! PickAddrFmtMenu.__init__ expects correct order
 SINGLESIG_AF = (AF_P2WPKH, AF_CLASSIC, AF_P2TR, AF_P2WPKH_P2SH)
 
 # See SLIP 132 <https://github.com/satoshilabs/slips/blob/master/slip-0132.md>
