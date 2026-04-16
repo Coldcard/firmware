@@ -672,6 +672,61 @@ def test_sign_note_body(msg, addr_fmt, acct, need_some_notes,
     sign_msg_from_text(msg, addr_fmt, acct, False, 0, way)
 
 
+def test_send_password_menu_item(need_some_passwords, goto_notes, cap_menu, pick_menu_item,
+                                 settings_set, settings_remove, press_cancel):
+    # covers regression where "Send Password" menu item was only shown when USB was disabled
+    need_some_passwords()
+
+    settings_set('du', 1)
+    goto_notes()
+    pick_menu_item('1: A')
+    time.sleep(.2)
+    m = cap_menu()
+    assert 'Send Password' not in m
+    press_cancel()
+
+    settings_set('du', 0)
+    goto_notes()
+    pick_menu_item('1: A')
+    time.sleep(.2)
+    m = cap_menu()
+    assert 'Send Password' in m
+    for _ in range(3):
+        press_cancel()
+
+
+@pytest.mark.onetime
+def test_password_cancel_stores_empty_not_none(goto_notes, need_keypress, press_select,
+                                               press_cancel, enter_text, settings_get,
+                                               settings_set, cap_screen, pick_menu_item):
+    # canceling the password field when creating a new password entry stored
+    # None instead of ''. EmulatedKeyboard.can_type(None) then raised
+    # TypeError: 'NoneType' object is not iterable when "Send Password" was selected.
+    #
+    settings_set('secnap', True)
+    settings_set('notes', [])
+
+    goto_notes('New Password')
+    enter_text('cancel-pw-test')   # title
+    press_select()                 # skip username
+    press_cancel()                 # cancel password field - bug, stores None
+    press_select()                 # skip site
+    press_cancel()                 # exit misc
+
+    time.sleep(0.2)
+
+    goto_notes()
+    pick_menu_item('1: cancel-pw-test')
+    pick_menu_item('Send Password')
+    time.sleep(.5)
+
+    scr = cap_screen()
+    assert 'Traceback' not in scr
+    assert "Place mouse at" in scr
+    for _ in range(5):
+        press_cancel()
+
+
 @pytest.mark.parametrize("chain", ["BTC", "XTN"])
 @pytest.mark.parametrize("change", [True, False])
 @pytest.mark.parametrize("idx", [None, 0, 9999])

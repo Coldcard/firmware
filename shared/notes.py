@@ -380,7 +380,7 @@ class PasswordContent(NoteContentBase):
         # if self.misc: rv.append(MenuItem('↳ (notes)', f=self.view))
         rv += [
             MenuItem('View Password', f=self.view_pw),
-            MenuItem('Send Password', f=self.send_pw, predicate=lambda: settings.get('du', True)),
+            MenuItem('Send Password', f=self.send_pw, predicate=lambda: not settings.get('du', 0)),
         ]
         if not readonly:
             rv += [
@@ -468,7 +468,8 @@ class PasswordContent(NoteContentBase):
 
         if self.idx == -1:
             # prompt for password only on new records.
-            self.password = await get_a_password(self.password)
+            # can be None if CANCEL is pressed - handle, Send Password requires string
+            self.password = await get_a_password(self.password) or ""
 
         site = await ux_input_text(self.site, max_len=ONE_LINE, scan_ok=True, confirm_exit=False,
                                    prompt='Website', placeholder='(optional)')
@@ -664,8 +665,9 @@ async def import_from_other(menu, *a):
             records = json.load(open(fn, 'rt'))
 
     # We have some JSON, parsed now.
-    await import_from_json(records)
-        
+    ok = await import_from_json(records)
+    if not ok: return
+
     await ux_dramatic_pause('Saved.', 3)
     menu.update_contents()
     
@@ -683,6 +685,7 @@ async def import_from_json(records):
         settings.set('notes', was)
         settings.set('secnap', True)
         settings.save()
+        return True
 
     except Exception as e:
         await ux_show_story(title="Failure", msg=str(e) + '\n\n' + problem_file_line(e))
