@@ -59,7 +59,7 @@ class ApproveHSMPolicy(UserAuthorizedAction):
                 msg = '''Last chance. You are defining a new policy which \
 allows the Coldcard to sign specific transactions without any further user approval.\n\n\
 Policy hash:\n%s\n\n
-Press %s to save policy and enable HSM mode.''' % (self.policy.hash(), confirm_char)
+Press (%s) to save policy and enable HSM mode.''' % (self.policy.hash(), confirm_char)
 
                 ch = await ux_show_story(msg, title=self.title,
                                 escape='x'+confirm_char, strict_escape=True)
