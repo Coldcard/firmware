@@ -425,8 +425,8 @@ def start_hsm(request, dev, hsm_reset, hsm_status, need_keypress, press_select):
             assert 'Last chance' in body2
             assert 'Policy hash:' in body2
             ll = body2.split('\n')[-1]
-            assert ll.startswith("Press ")
-            ch = ll[6]
+            assert ll.startswith("Press (")
+            ch = ll[7]
 
             need_keypress(ch)
             time.sleep(.100)

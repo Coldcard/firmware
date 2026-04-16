@@ -224,16 +224,17 @@ class WIFStore(MenuSystem):
             return
 
         idx, pubkey = item.arg
-        wifs = settings.get('wifs', {})
+        wifs = settings.get('wifs', [])
         if not wifs: return
 
         try:
-            item = wifs[idx]
-            assert item[0] == pubkey
+            entry = wifs[idx]
+            assert entry[0] == pubkey
             del wifs[idx]
             settings.set('wifs', wifs)
             settings.save()
-        except IndexError: pass
+        except IndexError:
+            return
 
         the_ux.pop()  # pop submenu
         self.update_contents()
