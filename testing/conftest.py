@@ -1042,9 +1042,12 @@ def settings_append(sim_exec):
 def settings_get(sim_exec):
 
     def doit(key, def_val=None, prelogin=False):
-        source = "from nvstore import SettingsObject;SettingsObject.prelogin()" if prelogin else "settings"
-        cmd = f"RV.write(repr({source}.get('{key}', {def_val!r})))"
-        resp = sim_exec(cmd)
+        if prelogin:
+            src = f"from nvstore import SettingsObject;RV.write(repr(SettingsObject.prelogin().get('{key}', {def_val!r})))"
+        else:
+            src = f"RV.write(repr(settings.get('{key}', {def_val!r})))"
+
+        resp = sim_exec(src)
         assert 'Traceback' not in resp, resp
         return eval(resp)
 
@@ -1064,8 +1067,9 @@ def master_settings_get(sim_exec):
 @pytest.fixture
 def settings_remove(sim_exec):
 
-    def doit(key):
-        x = sim_exec("settings.remove_key('%s')" % key)
+    def doit(key, prelogin=False):
+        source = "from nvstore import SettingsObject;SettingsObject.prelogin()" if prelogin else "settings"
+        x = sim_exec("%s.remove_key('%s')" % (source, key))
         assert x == ''
 
     return doit

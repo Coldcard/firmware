@@ -459,21 +459,27 @@ async def pick_nickname(*a):
     # Value is not stored with normal settings, it's part of "prelogin" settings
     # which are encrypted with zero-key.
     s = SettingsObject.prelogin()
-    nick = s.get('nick', '')
+    k = "nick"
+    nick = s.get(k, '')
 
     if not nick:
-        ch = await ux_show_story('''\
-You can give this Coldcard a nickname and it will be shown before login.''')
+        ch = await ux_show_story("You can give this Coldcard a nickname"
+                                 " and it will be shown before login.")
         if ch != 'y': return
 
     nn = await ux_input_text(nick, confirm_exit=False, prompt="Enter Nickname")
+
+    if nn is None or (nick == nn): return  # user exit & same value - noop
 
     from glob import dis
     dis.fullscreen("Saving...")
     dis.busy_bar(True)
 
-    nn = nn.strip() if nn else None
-    s.set('nick', nn)
+    if not nn:
+        s.remove_key(k)
+    else:
+        s.set(k, nn.strip())
+
     s.save()
     dis.busy_bar(False)
     del s
