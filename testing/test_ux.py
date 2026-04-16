@@ -1126,6 +1126,35 @@ def test_file_picker_suffixes(pick_menu_item, goto_home, cap_story, microsd_wipe
     microsd_wipe()
 
 
+@pytest.mark.parametrize("already_set", [True, False])
+def test_nickname_cancel_preserves_existing(already_set, goto_home, pick_menu_item, need_keypress,
+                                            settings_set, settings_get, press_cancel, press_select,
+                                            settings_remove, sim_exec):
+    nick = 'CancelTest'
+
+    if already_set:
+        settings_set("nick", nick, prelogin=True)
+    else:
+        settings_remove("nick", prelogin=True)
+
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Login Settings')
+    pick_menu_item('Set Nickname')
+    if not already_set:
+        press_select()  # intro
+
+    press_cancel()
+
+    new_nick = settings_get("nick", False, prelogin=True)
+    if already_set:
+        assert nick == new_nick
+    else:
+        assert new_nick is False
+
+    settings_remove("nick")  # clean-up
+
+
 @pytest.mark.onetime
 def test_dump_menutree(sim_execfile):
     # saves to ../unix/work/menudump.txt
