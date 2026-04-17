@@ -1240,7 +1240,8 @@ P2TR:
         if ch != "y":
             return
 
-    acct = await ux_enter_bip32_index('Account Number:') or 0
+    acct = await ux_enter_bip32_index('Account Number:')
+    if acct is None: return
 
     def render(acct_num):
         sign_der = None

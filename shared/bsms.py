@@ -364,9 +364,11 @@ async def bsms_coordinator_start(*a):
     xfp = xfp2str(settings.get('xfp', 0))
     # M/N
     N = await ux_enter_number('No. of signers?(N)', 15)
+    if N is None: return
     assert 2 <= N <= MAX_SIGNERS, "Number of co-signers must be 2-15"
 
     M = await ux_enter_number("Threshold? (M)", 15)
+    if M is None: return
     assert 1 <= M <= N, "M cannot be bigger than N (N=%d)" % N
 
     ch = await ux_show_story("Default address format is P2WSH.\n\n"
@@ -871,7 +873,8 @@ async def bsms_signer_round1(*a):
     else:
         return
 
-    acct_num = await ux_enter_number('Account Number:', 9999) or 0
+    acct_num = await ux_enter_number('Account Number:', 9999)
+    if acct_num is None: return
 
     # textual key description
     key_description = "Coldcard signer%s account %d" % (af_str, acct_num)

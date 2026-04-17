@@ -179,14 +179,16 @@ async def msg_sign_ux_get_subpath(addr_fmt):
     purpose = chains.af_to_bip44_purpose(addr_fmt)
     chain_n = chains.current_chain().b44_cointype
 
-    acct = await ux_enter_bip32_index('Account Number:') or 0
+    acct = await ux_enter_bip32_index('Account Number:')
+    if acct is None: return
 
     ch = await ux_show_story(title="Change?",
                              msg="Press (0) to use internal/change address,"
                                  " %s to use external/receive address." % OK, escape="0")
     change = 1 if ch == '0' else 0
 
-    idx = await ux_enter_bip32_index('Index Number:') or 0
+    idx = await ux_enter_bip32_index('Index Number:')
+    if idx is None: return
 
     return "m/%dh/%dh/%dh/%d/%d" % (purpose, chain_n, acct, change, idx)
 
@@ -408,6 +410,7 @@ async def ux_sign_msg(txt, approved_cb=None, kill_menu=True):
 
         text, af = item.arg
         subpath = await msg_sign_ux_get_subpath(af)
+        if subpath is None: return
 
         await approve_msg_sign(text, subpath, af, approved_cb=approved_cb,
                                kill_menu=kill_menu, only_printable=False)

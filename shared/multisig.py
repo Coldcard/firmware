@@ -7,7 +7,7 @@ from public_constants import AF_P2WSH, AF_P2WSH_P2SH
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, problem_file_line, get_filesize
 from files import CardSlot, CardMissingError, needs_microsd
-from ux import ux_show_story, ux_dramatic_pause, ux_enter_number, ux_enter_bip32_index
+from ux import ux_show_story, ux_enter_number, ux_enter_bip32_index
 from public_constants import MAX_SIGNERS
 from glob import settings
 from charcodes import KEY_QR
@@ -196,7 +196,8 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
         secret, ccc_ms_count = for_ccc
         # Always include 2 keys from CCC: own master (key A) and key C
         # - force them to same derivation.
-        acct = await ux_enter_bip32_index('CCC Account Number:') or 0
+        acct = await ux_enter_bip32_index('CCC Account Number:')
+        if acct is None: return
 
         dis.fullscreen("Wait...")
         a = add_own_xpub(chain, acct, addr_fmt)  # master: key A
@@ -221,7 +222,8 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
         ch = await ux_show_story("Add current Coldcard with above XFP ?",
                                  title="[%s]" % xfp2str(my_xfp))
         if ch == "y":
-            acct = await ux_enter_bip32_index('Account Number:') or 0
+            acct = await ux_enter_bip32_index('Account Number:')
+            if acct is None: return
             dis.fullscreen("Wait...")
             keys.append(add_own_xpub(chain, acct, addr_fmt))
             num_mine += 1
@@ -236,10 +238,8 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
         M = 2
     else:
         # pick useful M value to start
-        M = await ux_enter_number("How many need to sign?(M)", N, can_cancel=True)
-        if not M:
-            await ux_dramatic_pause('Aborted.', 2)
-            return  # user cancel
+        M = await ux_enter_number("How many need to sign?(M)", N)
+        if M is None: return
 
     dis.fullscreen("Wait...")
 

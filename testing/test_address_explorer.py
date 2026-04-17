@@ -631,4 +631,27 @@ def test_bitcoind_descriptor_address(addr_fmt, acct_num, bitcoind, goto_home, pi
         bitcoind_addrs = bitcoind.deriveaddresses(desc, [0, 249])
         assert cc_addrs == bitcoind_addrs
 
+
+def test_change_account_cancel(goto_address_explorer, pick_menu_item, press_cancel, cap_menu):
+    goto_address_explorer()
+    time.sleep(.2)
+    pick_menu_item('Account Number')
+    time.sleep(.1)
+    press_cancel()
+    time.sleep(.2)
+    assert "Account Number" in cap_menu()
+
+
+def test_change_start_idx_cancel(goto_address_explorer, pick_menu_item, press_cancel, settings_set,
+                                 settings_remove, cap_menu):
+    settings_set('aei', 1)
+    goto_address_explorer()
+    time.sleep(.2)
+    pick_menu_item('Start Idx: 0')
+    time.sleep(.1)
+    press_cancel()
+    time.sleep(.2)
+    assert 'Start Idx: 0' in cap_menu()
+    settings_remove('aei')
+
 # EOF

@@ -1111,8 +1111,10 @@ async def export_xpub(label, _2, item):
         if ch == "2":
             slip132 = not slip132
             continue
+
         if ch == '1':
-            acct = await ux_enter_bip32_index('Account Number:') or 0
+            acct = await ux_enter_bip32_index('Account Number:')
+            if acct is None: continue
             pth_split = path.split("/")
             pth_split[-1] = ("%dh" % acct)
             path = "/".join(pth_split)
@@ -1154,15 +1156,16 @@ async def electrum_skeleton(a, b, item):
 
     ch = await ux_show_story(electrum_export_story(title), escape='1')
 
-    account_num = 0
+    acct = 0
     if ch == '1':
-        account_num = await ux_enter_bip32_index('Account Number:') or 0
-    elif ch != 'y':
+        acct = await ux_enter_bip32_index('Account Number:')
+
+    if (ch not in '1y') or acct is None:
         return
 
     rv = [
         MenuItem(chains.addr_fmt_label(af), f=electrum_skeleton_step2,
-                 arg=(af, account_num, title, fname_pat))
+                 arg=(af, acct, title, fname_pat))
         for af in chains.SINGLESIG_AF
     ]
     the_ux.push(MenuSystem(rv))
@@ -1183,13 +1186,14 @@ async def ss_descriptor_skeleton(_0, _1, item):
         int_ext, allowed_af, ll, f_pattern, direct_way = item.arg
         addition = " for " + ll
 
-    account_num = 0
+    acct = 0
     if not direct_way:
         ch = await ux_show_story(ss_descriptor_export_story(addition), escape='1')
 
         if ch == '1':
-            account_num = await ux_enter_bip32_index('Account Number:', unlimited=True) or 0
-        elif ch != 'y':
+            acct = await ux_enter_bip32_index('Account Number:', unlimited=True)
+
+        if (ch not in '1y') or acct is None:
             return
 
     if int_ext is None:
@@ -1201,12 +1205,12 @@ async def ss_descriptor_skeleton(_0, _1, item):
         int_ext = False if ch == "1" else True
 
     if len(allowed_af) == 1:
-        await make_descriptor_wallet_export(allowed_af[0], account_num, int_ext=int_ext,
+        await make_descriptor_wallet_export(allowed_af[0], acct, int_ext=int_ext,
                                             fname_pattern=f_pattern, direct_way=direct_way)
     else:
         rv = [
             MenuItem(chains.addr_fmt_label(af), f=descriptor_skeleton_step2,
-                     arg=(af, account_num, int_ext, f_pattern, direct_way))
+                     arg=(af, acct, int_ext, f_pattern, direct_way))
             for af in allowed_af
         ]
         the_ux.push(MenuSystem(rv))
@@ -1220,12 +1224,13 @@ async def key_expression_skeleton_step2(_1, _2, item):
 async def key_expression_skeleton(_0, _1, item):
     # Export key expression -> [xfp/d/e/r]xpub
 
-    acct_num = 0
+    acct = 0
     ch = await ux_show_story("This saves a extended key expression."
                              + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape='1')
     if ch == '1':
-        acct_num = await ux_enter_bip32_index('Account Number:', unlimited=True) or 0
-    elif ch != 'y':
+        acct = await ux_enter_bip32_index('Account Number:', unlimited=True)
+
+    if (ch not in '1y') or acct is None:
         return
 
     # element on 2nd index is address format for signed exports
@@ -1248,7 +1253,7 @@ async def key_expression_skeleton(_0, _1, item):
     ct = chains.current_chain().b44_cointype
 
     rv = [
-        MenuItem(label, f=key_expression_skeleton_step2, arg=(orig_der % (ct, acct_num), af))
+        MenuItem(label, f=key_expression_skeleton_step2, arg=(orig_der % (ct, acct), af))
         for label, orig_der, af in todo
     ]
     rv += [MenuItem("Custom Path", menu=doit)]
@@ -1299,14 +1304,15 @@ You can then run the commands in Bitcoin Core's console window, \
 without ever connecting this Coldcard to a computer.\
 ''' + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape='1')
 
-    account_num = 0
+    acct = 0
     if ch == '1':
-        account_num = await ux_enter_bip32_index('Account Number:') or 0
-    elif ch != 'y':
+        acct = await ux_enter_bip32_index('Account Number:')
+
+    if (ch not in '1y') or acct is None:
         return
 
     # no choices to be made, just do it.
-    await make_bitcoin_core_wallet(account_num)
+    await make_bitcoin_core_wallet(acct)
 
 
 async def electrum_skeleton_step2(_1, _2, item):
@@ -1320,13 +1326,14 @@ async def _generic_export(prompt, label, f_pattern):
     # like the Multisig export, make a single JSON file with
     # basically all useful XPUB's in it.
     ch = await ux_show_story(prompt + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape="1")
-    account_num = 0
+    acct = 0
     if ch == '1':
-        account_num = await ux_enter_bip32_index('Account Number:') or 0
-    elif ch != 'y':
+        acct = await ux_enter_bip32_index('Account Number:')
+
+    if (ch not in '1y') or acct is None:
         return
 
-    await export_contents(label, lambda: generate_generic_export(account_num),
+    await export_contents(label, lambda: generate_generic_export(acct),
                           f_pattern, is_json=True)
 
 async def generic_skeleton(*A):
@@ -1371,16 +1378,17 @@ async def unchained_capital_export(*a):
     ch = await ux_show_story('''\
 This saves multisig XPUB information required to setup on the Unchained platform. \
 ''' + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape="1")
-    account_num = 0
+    acct = 0
     if ch == '1':
-        account_num = await ux_enter_bip32_index('Account Number:') or 0
-    elif ch != 'y':
+        acct = await ux_enter_bip32_index('Account Number:')
+
+    if (ch not in '1y') or acct is None:
         return
 
     xfp = xfp2str(settings.get('xfp', 0))
     fname = 'unchained-%s.json' % xfp
 
-    await export_contents('Unchained', lambda: generate_unchained_export(account_num),
+    await export_contents('Unchained', lambda: generate_unchained_export(acct),
                           fname, is_json=True)
 
 
