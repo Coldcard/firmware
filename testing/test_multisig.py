@@ -4275,4 +4275,15 @@ def test_txin_explorer_our_sig(dev, fake_ms_txn, start_sign, settings_set, clear
     start_sign(psbt)
     txin_explorer(num_ins, [(af, inp_amount, 0, "XTN", (M,N), None, None, False, [my_xfp])])
 
+
+def test_ms_xpubs_account_cancel(goto_home, pick_menu_item, press_cancel, cap_menu, press_select):
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Export XPUB')
+    press_select()  # confirm story
+    time.sleep(.1)
+    press_cancel()
+    time.sleep(.2)
+    assert "Export XPUB" in cap_menu()
 # EOF

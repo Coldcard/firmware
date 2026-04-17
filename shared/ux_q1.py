@@ -76,7 +76,7 @@ class PressRelease:
                 self.last_key = ch
                 return ch
 
-async def ux_enter_number(prompt, max_value, can_cancel=False, value=''):
+async def ux_enter_number(prompt, max_value, can_cancel=True, value=''):
     # return the decimal number which the user has entered
     # - default/blank value assumed to be zero
     # - clamps large values to the max

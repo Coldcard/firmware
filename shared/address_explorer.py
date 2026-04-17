@@ -115,7 +115,7 @@ class KeypathMenu(MenuSystem):
         val = item.arg or item.label
         assert val.endswith('/⋯')
         cpath = val[:-2]
-        nl = await ux_enter_bip32_index('%s/' % cpath, unlimited=True)
+        nl = await ux_enter_bip32_index('%s/' % cpath, unlimited=True, can_cancel=False)
         return KeypathMenu(cpath, nl, ranged=self.ranged, done_fn=self.done_fn)
 
 class PickAddrFmtMenu(MenuSystem):
@@ -241,11 +241,15 @@ class AddressListMenu(MenuSystem):
             self.goto_idx(axi)
 
     async def change_account(self, *a):
-        self.account_num = await ux_enter_bip32_index('Account Number:') or 0
+        acct = await ux_enter_bip32_index('Account Number:')
+        if acct is None: return
+        self.account_num = acct
         await self.render()
 
     async def change_start_idx(self, *a):
-        self.start = await ux_enter_bip32_index("Start index:", unlimited=True)
+        idx = await ux_enter_bip32_index("Start index:", unlimited=True)
+        if idx is None: return
+        self.start = idx
         await self.render()
 
     async def pick_single(self, _1, _2, item):
