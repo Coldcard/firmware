@@ -396,4 +396,23 @@ def test_export_nfc_when_disabled(pick_menu_item, goto_home, cap_story, press_se
     assert "Ready To Sign" in m
 
 
+def test_bip85_index_cancel(goto_home, pick_menu_item, press_select, press_cancel,
+                            cap_screen, is_q1):
+    mi = 'Derive Seed B85' if not is_q1 else 'Derive Seeds (BIP-85)'
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item(mi)
+    press_select()  # intro story
+    time.sleep(.1)
+    pick_menu_item('12 words')
+    time.sleep(.1)
+    screen = cap_screen()
+    assert 'Index Number' in screen
+    # cancel should pop back to the choices menu, can_cancel=True
+    press_cancel()
+    time.sleep(.2)
+    screen = cap_screen()
+    assert 'Index Number' not in screen
+
+
 # EOF

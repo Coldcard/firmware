@@ -746,7 +746,7 @@ class SpendingPolicyMenu(MenuSystem):
         # Looks decent on both Q and Mk4...
         was = self.policy.get('mag', 0)
         val = await ux_enter_number('Transaction Max:', max_value=int(1e8),
-                                    can_cancel=True, value=(was or ''))
+                                    value=(was or ''))
 
         args = dict(mag=val)
         if (val is None) or (val == was):
