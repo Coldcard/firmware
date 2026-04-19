@@ -426,10 +426,12 @@ class USBHandler:
 
         if cmd == 'dwld':
             offset, length, fileno = unpack_from('<III', args)
+            assert len(args) == 12, 'badlen'
             return await self.handle_download(offset, length, fileno)
 
         if cmd == 'ncry':
             version, his_pubkey = unpack_from('<I64s', args)
+            assert len(args) == 68, 'badlen'
 
             return self.handle_crypto_setup(version, his_pubkey)
 
@@ -459,9 +461,9 @@ class USBHandler:
         if cmd == 'smsg':
             # sign message
             addr_fmt, len_subpath, len_msg = unpack_from('<III', args)
+            assert len(args) == (12 + len_subpath + len_msg), 'badlen'
             subpath = args[12:12+len_subpath]
             msg = args[12+len_subpath:]
-            assert len(msg) == len_msg, "badlen"
 
             from auth import sign_msg
             sign_msg(msg, subpath, addr_fmt)
@@ -472,6 +474,7 @@ class USBHandler:
             from auth import usb_show_address
 
             addr_fmt, = unpack_from('<I', args)
+            assert len(args) >= 4, 'badlen'
             # regression patch of AFC_BECH32M flag
             # fixed here https://github.com/Coldcard/ckcc-protocol/commit/a6d901f9fca50755835eca895586ca74d0ca81ed
             if addr_fmt == 0x17:  # old P2TR
@@ -483,6 +486,7 @@ class USBHandler:
             # - text config file must already be uploaded
 
             file_len, file_sha = unpack_from('<I32s', args)
+            assert len(args) == 36, 'badlen'
             if file_sha != self.file_checksum.digest():
                 return b'err_Checksum'
             assert 100 < file_len <= (32*200), "badlen"
@@ -498,6 +502,7 @@ class USBHandler:
             # - descriptor text config file must already be uploaded
 
             file_len, file_sha = unpack_from('<I32s', args)
+            assert len(args) == 36, 'badlen'
             if file_sha != self.file_checksum.digest():
                 return b'err_Checksum'
             assert 100 < file_len <= (100 * 200), "badlen"
@@ -524,6 +529,7 @@ class USBHandler:
                     raise HSMDenied
 
                 change, idx, = unpack_from('<II', args)
+                assert len(args) <= 40, 'badlen'
                 assert change in (0, 1), "change not bool"
                 assert 0 <= idx < (2 ** 31), "child idx"
 
@@ -562,6 +568,7 @@ class USBHandler:
         if cmd == 'stxn':
             # sign transaction
             txn_len, flags, txn_sha = unpack_from('<II32s', args)
+            assert len(args) == 40, 'badlen'
             if txn_sha != self.file_checksum.digest():
                 return b'err_Checksum'
 
@@ -646,6 +653,8 @@ class USBHandler:
         if cmd == 'rest':
             # restore backup from what is already uploaded in PSRAM
             file_len, file_sha, bf = unpack_from('<I32sB', args)
+            assert len(args) == 37, 'badlen'
+            assert 0 < file_len <= MAX_TXN_LEN, "badlen"
             if file_sha != self.file_checksum.digest():
                 return b'err_Checksum'
 
@@ -668,6 +677,7 @@ class USBHandler:
                 # HSM mode "start" -- requires user approval
                 if args:
                     file_len, file_sha = unpack_from('<I32s', args)
+                    assert len(args) == 36, 'badlen'
                     if file_sha != self.file_checksum.digest():
                         return b'err_Checksum'
                     assert 2 <= file_len <= (200*1000), "badlen"
@@ -694,6 +704,8 @@ class USBHandler:
             if cmd == 'nwur':     # new user
                 from users import Users
                 auth_mode, ul, sl = unpack_from('<BBB', args)
+                assert len(args) == (3 + ul + sl), 'badlen'
+                assert ul and sl, "badlen"
                 username = bytes(args[3:3+ul]).decode('ascii')
                 secret = bytes(args[3+ul:3+ul+sl])
 
@@ -702,6 +714,8 @@ class USBHandler:
             if cmd == 'rmur':     # delete user
                 from users import Users
                 ul, = unpack_from('<B', args)
+                assert len(args) == (1 + ul), 'badlen'
+                assert ul, "badlen"
                 username = bytes(args[1:1+ul]).decode('ascii')
 
                 return Users.delete(username)
@@ -709,6 +723,8 @@ class USBHandler:
             if cmd == 'user':       # auth user (HSM mode)
                 from users import Users
                 totp_time, ul, tl = unpack_from('<IBB', args)
+                assert len(args) == (6 + ul + tl), 'badlen'
+                assert ul and tl, "badlen"
                 username = bytes(args[6:6+ul]).decode('ascii')
                 token = bytes(args[6+ul:6+ul+tl])
 
@@ -797,7 +813,8 @@ class USBHandler:
         length = min(length, MAX_BLK_LEN)
 
         assert 0 <= file_number < 2, 'bad fnum'
-        assert 0 <= offset <= MAX_TXN_LEN, "bad offset"
+        assert 0 <= offset < MAX_TXN_LEN, "bad offset"
+        assert offset + length <= MAX_TXN_LEN, "bad offset"
         assert 1 <= length, 'len'
 
         # maintain a running SHA256 over what's sent
@@ -832,7 +849,8 @@ class USBHandler:
             dis.progress_sofar(offset, total_size)
 
         assert offset % 256 == 0, 'alignment'
-        assert offset+len(data) <= total_size <= MAX_UPLOAD_LEN, 'long'
+        assert 1 <= total_size <= MAX_UPLOAD_LEN, 'long'
+        assert offset + len(data) <= total_size, 'long'
 
         if hsm_active or pa.hobbled_mode:
             # additional restriction in HSM mode or hobbled: must be PSBT

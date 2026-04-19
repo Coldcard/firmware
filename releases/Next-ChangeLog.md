@@ -8,6 +8,7 @@ This lists the new changes that have not yet been published in a normal release.
   (read more [BIP-322 Proof of Reserves documentation](../docs/proof-of-reserves-bip-322.md) )
 - Enhancement: WIF Store export watch-only descriptor
 - Enhancement: WIF Store address detection without the need for PSBT_IN_BIP32_DERIVATION (Electrum support)
+- Enhancement: Improve USB length validation
 - Bugfix: Disable Virtual Disk and NFC before activating HSM
 - Bugfix: Custom address default menu position wrong
 - Bugfix: Delta Mode Trick PIN was never restored from backup
