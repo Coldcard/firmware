@@ -13,6 +13,7 @@ from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF
 from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
 from ownership import OWNERSHIP
 from exceptions import QRTooBigError
+from silentpayments import encode_silent_payment_address
 
 async def export_by_qr(body, label, type_code, force_bbqr=False):
     # render as QR and show on-screen
@@ -443,6 +444,23 @@ def generate_generic_export(account_num=0):
                 # bonus/check: first non-change address: 0/0
                 node.derive(0, False).derive(0, False)
                 rv[name]['first'] = chain.address(node, fmt)
+
+        # Silent Payments: scan-priv + spend-pub packed as a single bech32m "spscan" string
+        sp_deriv = "m/352h/%dh/%dh" % (chain.b44_cointype, account_num)
+        sp_node    = sv.derive_path(sp_deriv)
+        scan_node  = sv.derive_path(sp_deriv + "/1h/0")
+        spend_node = sv.derive_path(sp_deriv + "/0h/0")
+
+        spscan = encode_silent_payment_address(scan_node.privkey(), spend_node.pubkey())
+        rv["bip352"] = OrderedDict(
+            spscan=spscan,
+            deriv=sp_deriv,
+            name="p2tr",
+            xfp=xfp2str(swab32(sp_node.my_fp())),
+            key_exp="[%s/%s]%s" % (master_xfp_str.lower(),
+                                   sp_deriv.replace("m/", ""),
+                                   spscan),
+        )
 
     sig_deriv = "m/44h/{ct}h/{acc}h".format(ct=chain.b44_cointype, acc=account_num) + "/0/0"
     return ujson.dumps(rv), sig_deriv, AF_CLASSIC
