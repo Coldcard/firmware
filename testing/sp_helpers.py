@@ -314,3 +314,35 @@ def _sim_negate_if_odd_y(sim_exec, sim_execfile, privkey):
         },
     )
     return bytes.fromhex(rv)
+
+
+# ---------------------------------------------------------------------------
+# Helpers for test_export.py bip352 assertions
+# ---------------------------------------------------------------------------
+
+
+def decode_spscan(s, expected_hrp):
+    """Decode an spscan/tspscan bech32m string into (scan_priv: bytes32, spend_pub: bytes33)."""
+    from bech32 import bech32_decode, convertbits, Encoding
+
+    hrp, data, spec = bech32_decode(s)
+    assert hrp == expected_hrp, f"bad HRP: {hrp!r} != {expected_hrp!r}"
+    assert spec == Encoding.BECH32M, "must be bech32m"
+    assert data[0] == 0, "expected version 0"
+    payload = bytes(convertbits(data[1:], 5, 8, False))
+    assert len(payload) == 65, f"expected 65 bytes, got {len(payload)}"
+    return payload[:32], payload[32:]
+
+
+def derive_sp_keys_for_account(account_num, coin_type):
+    """Return (scan_priv: bytes32, spend_pub: bytes33) for the given account/coin_type.
+
+    Derives from the simulator's fixed test seed, matching the firmware's SP derivation paths.
+    """
+    from bip32 import BIP32Node
+    from constants import simulator_fixed_tprv
+
+    root = BIP32Node.from_wallet_key(simulator_fixed_tprv)
+    scan_node = root.subkey_for_path("352h/%dh/%dh/1h/0" % (coin_type, account_num))
+    spend_node = root.subkey_for_path("352h/%dh/%dh/0h/0" % (coin_type, account_num))
+    return scan_node.privkey(), spend_node.sec()
