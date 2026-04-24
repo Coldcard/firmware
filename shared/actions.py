@@ -1100,6 +1100,7 @@ async def export_xpub(label, _2, item):
         if ch == 'x': return
         if ch == "2":
             slip132 = not slip132
+            continue
 
         if ch == '1':
             acct = await ux_enter_bip32_index('Account Number:')
@@ -1107,6 +1108,7 @@ async def export_xpub(label, _2, item):
             pth_split = path.split("/")
             pth_split[-1] = ("%dh" % acct)
             path = "/".join(pth_split)
+            continue
 
         # assume zero account if not picked
         path = path.format(acct=acct)
@@ -1148,7 +1150,7 @@ async def electrum_skeleton(a, b, item):
     if ch == '1':
         acct = await ux_enter_bip32_index('Account Number:')
 
-    if (ch != 'y') or acct is None:
+    if (ch not in '1y') or acct is None:
         return
 
     rv = [
@@ -1181,7 +1183,7 @@ async def ss_descriptor_skeleton(_0, _1, item):
         if ch == '1':
             acct = await ux_enter_bip32_index('Account Number:', unlimited=True)
 
-        if (ch != 'y') or acct is None:
+        if (ch not in '1y') or acct is None:
             return
 
     if int_ext is None:
@@ -1218,7 +1220,7 @@ async def key_expression_skeleton(_0, _1, item):
     if ch == '1':
         acct = await ux_enter_bip32_index('Account Number:', unlimited=True)
 
-    if (ch != 'y') or acct is None:
+    if (ch not in '1y') or acct is None:
         return
 
     # element on 2nd index is address format for signed exports
@@ -1292,7 +1294,7 @@ without ever connecting this Coldcard to a computer.\
     if ch == '1':
         acct = await ux_enter_bip32_index('Account Number:')
 
-    if (ch != 'y') or acct is None:
+    if (ch not in '1y') or acct is None:
         return
 
     # no choices to be made, just do it.
@@ -1314,7 +1316,7 @@ async def _generic_export(prompt, label, f_pattern):
     if ch == '1':
         acct = await ux_enter_bip32_index('Account Number:')
 
-    if (ch != 'y') or acct is None:
+    if (ch not in '1y') or acct is None:
         return
 
     await export_contents(label, lambda: generate_generic_export(acct),
@@ -1366,7 +1368,7 @@ This saves multisig XPUB information required to setup on the Unchained platform
     if ch == '1':
         acct = await ux_enter_bip32_index('Account Number:')
 
-    if (ch != 'y') or acct is None:
+    if (ch not in '1y') or acct is None:
         return
 
     xfp = xfp2str(settings.get('xfp', 0))
