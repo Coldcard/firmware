@@ -12,16 +12,20 @@ import main
 import ngu
 import struct
 import ujson
+from uio import BytesIO
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from dleq import generate_dleq_proof, verify_dleq_proof
 from exceptions import FatalPSBTIssue
+from psbt import psbtObject
+from serializations import SIGHASH_DEFAULT
 from silentpayments import (
     _combine_pubkeys,
     _compute_ecdh_share,
     _compute_input_hash,
     _compute_silent_payment_output_script,
     compute_silent_payment_spending_privkey,
+    _compute_silent_payment_spending_xonly,
     _negate_if_odd_y,
     _sum_privkeys,
     SilentPaymentsMixin,
@@ -248,7 +252,48 @@ elif mode == "compute_spending_privkey":
     result = compute_silent_payment_spending_privkey(b_spend, tweak)
     RV.write(b2a_hex(result).decode())
 
+elif mode == "compute_spend_output_xonly":
+    B_spend = a2b_hex(params["B_spend"])
+    sp_tweak = a2b_hex(params["sp_tweak"])
+    result = _compute_silent_payment_spending_xonly(B_spend, sp_tweak)
+    RV.write(b2a_hex(result).decode())
+
 elif mode == "negate_if_odd_y":
     privkey = a2b_hex(params["privkey"])
     result = _negate_if_odd_y(privkey)
     RV.write(b2a_hex(result).decode())
+
+elif mode == "verify_taproot_key_spend_signature":
+    psbt = psbtObject.read_psbt(BytesIO(a2b_hex(params["psbt"])))
+    input_index = params["input_index"]
+    expected = params.get("expected", True)
+
+    if psbt.version is None:
+        psbt.version = 2 if psbt.txn is None else 0
+    psbt.is_v2 = psbt.version >= 2
+
+    for idx, inp in enumerate(psbt.inputs):
+        utxo = inp.get_utxo(idx)
+        inp.amount = utxo.nValue
+        inp.utxo_spk = utxo.scriptPubKey
+
+    inp = psbt.inputs[input_index]
+    # P2TR scriptPubKey: OP_1 (0x51) OP_PUSHBYTES_32 (0x20) <32-byte x-only>
+    output_xonly = inp.utxo_spk[2:34]
+
+    sig_coords = inp.taproot_key_sig
+    assert sig_coords, "Missing taproot key signature"
+    sig = psbt.get(sig_coords)
+
+    hash_type = SIGHASH_DEFAULT if len(sig) == 64 else sig[-1]
+    digest = psbt.make_txn_taproot_sighash(input_index, hash_type=hash_type)
+
+    try:
+        result = ngu.secp256k1.verify_schnorr(sig[:64], digest, ngu.secp256k1.xonly_pubkey(output_xonly))
+    except Exception:
+        result = False
+
+    assert result == expected, "Taproot spend signature verify: expected %s got %s" % (
+        expected,
+        result,
+    )
