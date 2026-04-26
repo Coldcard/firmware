@@ -107,12 +107,8 @@ def _serialize_psbt(psbt):
 
     return {
         "txn_modifiable": psbt.txn_modifiable,
-        "global_ecdh": {
-            k.hex(): v.hex() for k, v in psbt.sp_global_ecdh_shares.items()
-        },
-        "global_dleq": {
-            k.hex(): v.hex() for k, v in psbt.sp_global_dleq_proofs.items()
-        },
+        "global_ecdh": {k.hex(): v.hex() for k, v in psbt.sp_global_ecdh_shares.items()},
+        "global_dleq": {k.hex(): v.hex() for k, v in psbt.sp_global_dleq_proofs.items()},
         "inputs": inputs,
         "outputs": outputs,
     }
@@ -154,9 +150,7 @@ def _sim_pubkey_from_input(sim_exec, sim_execfile, psbt, input_index):
     return bytes.fromhex(rv) if rv else None
 
 
-def _sim_verify_dleq(
-    sim_exec, sim_execfile, pubkey, scan_key, ecdh_share, proof, expected=True
-):
+def _sim_verify_dleq(sim_exec, sim_execfile, pubkey, scan_key, ecdh_share, proof, expected=True):
     _sim_sp(
         sim_exec,
         sim_execfile,
@@ -184,9 +178,20 @@ def _sim_compute_ecdh_share(sim_exec, sim_execfile, privkey, scan_key):
     return bytes.fromhex(rv)
 
 
-def _sim_compute_output_script(
-    sim_exec, sim_execfile, outpoints, summed_pubkey, ecdh_share, spend_key, k
-):
+def _sim_compute_spend_output_xonly(sim_exec, sim_execfile, B_spend, sp_tweak):
+    rv = _sim_sp(
+        sim_exec,
+        sim_execfile,
+        "compute_spend_output_xonly",
+        {
+            "B_spend": B_spend.hex(),
+            "sp_tweak": sp_tweak.hex(),
+        },
+    )
+    return bytes.fromhex(rv)
+
+
+def _sim_compute_output_script(sim_exec, sim_execfile, outpoints, summed_pubkey, ecdh_share, spend_key, k):
     rv = _sim_sp(
         sim_exec,
         sim_execfile,
@@ -200,6 +205,28 @@ def _sim_compute_output_script(
         },
     )
     return bytes.fromhex(rv)
+
+
+def _sim_verify_taproot_key_spend_signature(sim_exec, sim_execfile, signed_psbt, input_index, expected=True):
+    _sim_sp(
+        sim_exec,
+        sim_execfile,
+        "verify_taproot_key_spend_signature",
+        {
+            "psbt": signed_psbt.hex(),
+            "input_index": input_index,
+            "expected": expected,
+        },
+    )
+
+
+def _verify_signatures(sim_exec, sim_execfile, tp, signed_psbt_bytes):
+    """Verify Schnorr signatures for taproot key-spend inputs"""
+    for i, inp in enumerate(tp.inputs):
+        if inp.witness_utxo and len(inp.witness_utxo) >= 11:
+            if inp.witness_utxo[8:11] == b"\x22\x51\x20":
+                _sim_verify_taproot_key_spend_signature(sim_exec, sim_execfile, signed_psbt_bytes, i)
+            # TODO: add ECDSA verification for P2WPKH inputs
 
 
 def _sim_combine_pubkeys(sim_exec, sim_execfile, pubkeys):
