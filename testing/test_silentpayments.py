@@ -222,6 +222,28 @@ def test_sp_mixed_inputs(dev, fake_txn, start_sign, end_sign, sim_exec, sim_exec
     # reconstruct a wrong hashSequence.
 
 
+def test_sp_mixed_sp_spend_and_regular_input(dev, fake_txn, start_sign, end_sign, sim_exec, sim_execfile):
+    """Regular P2TR input + SP-spend input: both private keys summed for ECDH, both signed"""
+    xp = dev.master_xpub
+
+    def sp_hacker(psbt):
+        _add_sp_outputs(psbt, [(0, SCAN_KEY, SPEND_KEY_B)])
+        _setup_sp_spend_input(
+            sim_exec,
+            sim_execfile,
+            psbt.inputs[1],
+            SP_TWEAK,
+            SP_SPEND_PATH,
+            SP_SPEND_PATH_INTS,
+            clear_taproot=True,
+        )
+
+    psbt_bytes = fake_txn([["p2tr"], ["p2tr"]], 1, xp, psbt_v2=True, psbt_hacker=sp_hacker)
+    start_sign(psbt_bytes)
+    signed = end_sign(accept=True, finalize=False)
+    _assert_sp_spend_success(sim_exec, sim_execfile, signed)
+
+
 # ---------------------------------------------------------------------------
 # Mixed output tests
 # ---------------------------------------------------------------------------
@@ -538,7 +560,7 @@ def test_sp_spend_wrong_purpose_rejected(dev, fake_txn, start_sign, end_sign, si
 
     psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2tr", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
-    with pytest.raises(CCProtoError, match="SP spend key must use 352h path"):
+    with pytest.raises(CCProtoError, match="SP spend key purpose must use 352h path"):
         end_sign(accept=True, finalize=False)
 
 
@@ -590,6 +612,38 @@ def test_exit_gracefully_on_sp_validation_failure(dev, fake_txn, start_sign, end
     start_sign(psbt_bytes)
     with pytest.raises(CCProtoError, match="SP_V0_INFO wrong size"):
         end_sign(accept=False, finalize=False)
+
+
+def test_sp_non_sighash_all_rejected(dev, fake_txn, start_sign, end_sign):
+    """Non-SIGHASH_ALL on an input with SP outputs must be rejected (BIP-375)."""
+    xp = dev.master_xpub
+
+    def sp_hacker(psbt):
+        _add_sp_outputs(psbt, [(0, SCAN_KEY, SPEND_KEY_B)])
+        psbt.inputs[0].sighash = 3  # SIGHASH_SINGLE
+
+    psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker)
+    start_sign(psbt_bytes)
+    with pytest.raises(CCProtoError, match="Silent payments require SIGHASH_ALL"):
+        end_sign(accept=True, finalize=False)
+
+
+def test_sp_psbt_v0_rejected(dev, fake_txn, start_sign, end_sign):
+    """PSBTv0 with SP outputs is rejected: outpoint fields are PSBTv2-only.
+
+    BIP-352 SP computation requires PSBT_IN_PREVIOUS_TXID and PSBT_IN_OUTPUT_INDEX
+    (PSBTv2 fields) to derive the input hash. PSBTv0 embeds outpoints only in the
+    unsigned transaction, so firmware raises when trying to collect them.
+    """
+    xp = dev.master_xpub
+
+    def sp_hacker(psbt):
+        _add_sp_outputs(psbt, [(0, SCAN_KEY, SPEND_KEY_B)])
+
+    psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2wpkh", psbt_v2=False, psbt_hacker=sp_hacker)
+    start_sign(psbt_bytes)
+    with pytest.raises(CCProtoError, match="Missing outpoint for silent payment input"):
+        end_sign(accept=True, finalize=False)
 
 
 # ---------------------------------------------------------------------------
