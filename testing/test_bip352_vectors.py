@@ -8,8 +8,8 @@
 #
 import hashlib
 import json
-import struct
 import pytest
+import struct
 from sp_helpers import (
     _sim_compute_ecdh_share,
     _sim_compute_input_hash,
@@ -21,6 +21,7 @@ from sp_helpers import (
     _sim_negate_if_odd_y,
     _sim_sum_privkeys,
 )
+
 
 NUMS_H = bytes.fromhex(
     "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"
@@ -168,12 +169,12 @@ def _sum_privkeys(sim_exec, sim_execfile, extracted):
     extracted: list of (pubkey_bytes, is_taproot, private_key_hex) tuples.
     """
     normalized = []
-    for pk, is_taproot, privkey_hex in extracted:
+    for _, is_taproot, privkey_hex in extracted:
         privkey_bytes = bytes.fromhex(privkey_hex)
         if is_taproot:
             privkey_bytes = _sim_negate_if_odd_y(sim_exec, sim_execfile, privkey_bytes)
         normalized.append(privkey_bytes)
-    return int.from_bytes(_sim_sum_privkeys(sim_exec, sim_execfile, normalized), "big")
+    return _sim_sum_privkeys(sim_exec, sim_execfile, normalized)
 
 
 # ---------------------------------------------------------------------------
@@ -219,13 +220,8 @@ class TestBIP352Sending:
             return
 
         # 2. Private key sum (with taproot negation)
-        privkey_sum = _sum_privkeys(sim_exec, sim_execfile, extracted)
-        assert "%064x" % privkey_sum == expected_sum, "input_private_key_sum mismatch"
-
-        if privkey_sum == 0:
-            for eo in expected["outputs"]:
-                assert eo == []
-            return
+        a_sum = _sum_privkeys(sim_exec, sim_execfile, extracted)
+        assert a_sum.hex() == expected_sum, "input_private_key_sum mismatch"
 
         pubkeys = [pk for pk, _, _ in extracted]
         A_sum = _sim_combine_pubkeys(sim_exec, sim_execfile, pubkeys)
@@ -250,9 +246,8 @@ class TestBIP352Sending:
         actual_outputs = set()
         for scan_key_hex, group in groups.items():
             scan_pub_key = bytes.fromhex(scan_key_hex)
-            privkey_bytes = bytes.fromhex("%064x" % privkey_sum)
             ecdh_share = _sim_compute_ecdh_share(
-                sim_exec, sim_execfile, privkey_bytes, scan_pub_key
+                sim_exec, sim_execfile, a_sum, scan_pub_key
             )
             input_hash = _sim_compute_input_hash(
                 sim_exec, sim_execfile, outpoints, A_sum

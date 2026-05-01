@@ -12,27 +12,21 @@ import pytest
 import struct
 import time
 from binascii import unhexlify
-from binascii import hexlify
 from bip32 import BIP32Node
 from ckcc_protocol.protocol import CCProtoError
+from constants import simulator_fixed_tprv
 from psbt import BasicPSBT
 from sp_helpers import (
-    _sim_sp,
+    _sim_compute_ecdh_share,
+    _sim_compute_output_script,
+    _sim_compute_spend_output_xonly,
     _sim_get_ecdh_and_pubkey,
     _sim_get_outpoints,
     _sim_verify_dleq,
-    _sim_compute_output_script,
-    _sim_compute_spend_output_xonly,
+    _sim_sp,
     _verify_signatures,
 )
-from constants import simulator_fixed_tprv
 
-
-# ---------------------------------------------------------------------------
-# Test SP recipient keys (any valid secp256k1 points; these are the recipient's
-# keys, not the signer's). Taken from BIP-352 test vectors; sorted lexicographically
-# so multi-output tests can use them in correct k-assignment order.
-# ---------------------------------------------------------------------------
 
 SCAN_KEY = unhexlify("03af606abaa5e29a89b93bf971c21e46dd2797aee31273c47f979a102eb51c3629")
 SCAN_KEY_2 = unhexlify("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798")
@@ -66,44 +60,13 @@ def _add_sp_outputs(psbt, sp_outputs):
         psbt.outputs[idx].script = None
 
 
-def _verify_sp_outputs(sim_exec, sim_execfile, tp, scan_key, spend_keys_in_order):
-    """Verify SP output scripts match expected derivation for a given scan key."""
-    assert scan_key in tp.sp_global_ecdh_shares, "Missing global ECDH share"
-    assert scan_key in tp.sp_global_dleq_proofs, "Missing global DLEQ proof"
-
-    ecdh_share = tp.sp_global_ecdh_shares[scan_key]
-    dleq_proof = tp.sp_global_dleq_proofs[scan_key]
-
-    assert len(ecdh_share) == 33 and ecdh_share[0] in (0x02, 0x03)
-    assert len(dleq_proof) == 64
-
-    _, summed_pubkey = _sim_get_ecdh_and_pubkey(sim_exec, sim_execfile, tp, scan_key)
-    _sim_verify_dleq(sim_exec, sim_execfile, summed_pubkey, scan_key, ecdh_share, dleq_proof)
-
-    outpoints = _sim_get_outpoints(sim_exec, sim_execfile, tp)
-    sp_outs = [o for o in tp.outputs if o.sp_v0_info and o.sp_v0_info[:33] == scan_key]
-    assert len(sp_outs) == len(spend_keys_in_order)
-
-    for k, (outp, sk) in enumerate(zip(sp_outs, spend_keys_in_order)):
-        assert outp.script is not None and len(outp.script) == 34
-        assert outp.script[0] == 0x51
-        expected = _sim_compute_output_script(sim_exec, sim_execfile, outpoints, summed_pubkey, ecdh_share, sk, k)
-        assert outp.script == expected
-
-
-def _compute_foreign_share(sim_exec, sim_execfile, privkey_int, scan_key):
-    """Compute ECDH share and DLEQ proof for a foreign input via simulator."""
-    rv = _sim_sp(
-        sim_exec,
-        sim_execfile,
-        "compute_foreign_share",
-        {
-            "privkey": "%064x" % privkey_int,
-            "scan_key": scan_key.hex(),
-        },
-    )
-    parts = rv.split(",")
-    return bytes.fromhex(parts[0]), bytes.fromhex(parts[1])
+def _assert_sp_spend_success(sim_exec, sim_execfile, signed):
+    """Assert a signed SP spend PSBT has correct global shares and output scripts."""
+    tp = BasicPSBT().parse(signed)
+    assert tp.sp_global_ecdh_shares and SCAN_KEY in tp.sp_global_ecdh_shares
+    assert tp.sp_global_dleq_proofs and SCAN_KEY in tp.sp_global_dleq_proofs
+    _verify_sp_outputs(sim_exec, sim_execfile, tp, SCAN_KEY, [SPEND_KEY_B])
+    _verify_signatures(sim_exec, sim_execfile, tp, signed)
 
 
 def _setup_sp_spend_input(
@@ -113,7 +76,6 @@ def _setup_sp_spend_input(
     sp_tweak,
     path,
     path_ints,
-    *,
     wrong_tweak=None,
     clear_taproot=True,
 ):
@@ -140,13 +102,29 @@ def _setup_sp_spend_input(
     inp.sp_spend_bip32_derivation = {B_spend: xfp_and_path}
 
 
-def _assert_sp_spend_success(sim_exec, sim_execfile, signed):
-    """Assert a signed SP spend PSBT has correct global shares and output scripts."""
-    tp = BasicPSBT().parse(signed)
-    assert tp.sp_global_ecdh_shares and SCAN_KEY in tp.sp_global_ecdh_shares
-    assert tp.sp_global_dleq_proofs and SCAN_KEY in tp.sp_global_dleq_proofs
-    _verify_sp_outputs(sim_exec, sim_execfile, tp, SCAN_KEY, [SPEND_KEY_B])
-    _verify_signatures(sim_exec, sim_execfile, tp, signed)
+def _verify_sp_outputs(sim_exec, sim_execfile, tp, scan_key, spend_keys_in_order):
+    """Verify SP output scripts match expected derivation for a given scan key."""
+    assert scan_key in tp.sp_global_ecdh_shares, "Missing global ECDH share"
+    assert scan_key in tp.sp_global_dleq_proofs, "Missing global DLEQ proof"
+
+    ecdh_share = tp.sp_global_ecdh_shares[scan_key]
+    dleq_proof = tp.sp_global_dleq_proofs[scan_key]
+
+    assert len(ecdh_share) == 33 and ecdh_share[0] in (0x02, 0x03)
+    assert len(dleq_proof) == 64
+
+    _, summed_pubkey = _sim_get_ecdh_and_pubkey(sim_exec, sim_execfile, tp, scan_key)
+    _sim_verify_dleq(sim_exec, sim_execfile, summed_pubkey, scan_key, ecdh_share, dleq_proof)
+
+    outpoints = _sim_get_outpoints(sim_exec, sim_execfile, tp)
+    sp_outs = [o for o in tp.outputs if o.sp_v0_info and o.sp_v0_info[:33] == scan_key]
+    assert len(sp_outs) == len(spend_keys_in_order)
+
+    for k, (outp, sk) in enumerate(zip(sp_outs, spend_keys_in_order)):
+        assert outp.script is not None and len(outp.script) == 34
+        assert outp.script[0] == 0x51
+        expected = _sim_compute_output_script(sim_exec, sim_execfile, outpoints, summed_pubkey, ecdh_share, sk, k)
+        assert outp.script == expected
 
 
 # ---------------------------------------------------------------------------
@@ -357,8 +335,11 @@ def test_sp_partial_owned_coverage_complete(dev, fake_txn, start_sign, end_sign,
     def sp_hacker(psbt):
         _add_sp_outputs(psbt, [(0, SCAN_KEY, SPEND_KEY_B)])
         foreign_sub = psbt._foreign_mk.subkey_for_path("0/1")
-        foreign_privkey_int = int.from_bytes(foreign_sub.privkey(), "big")
-        ecdh_share, proof = _compute_foreign_share(sim_exec, sim_execfile, foreign_privkey_int, SCAN_KEY)
+        ecdh_share = _sim_compute_ecdh_share(sim_exec, sim_execfile, foreign_sub.privkey(), SCAN_KEY)
+        proof = bytes.fromhex(_sim_sp(
+            sim_exec, sim_execfile, "generate_dleq_proof",
+            {"privkey": foreign_sub.privkey().hex(), "scan_key": SCAN_KEY.hex()},
+        ))
         psbt.inputs[1].sp_ecdh_shares = {SCAN_KEY: ecdh_share}
         psbt.inputs[1].sp_dleq_proofs = {SCAN_KEY: proof}
 
@@ -514,6 +495,7 @@ def test_sp_spend_silent_payment_output_with_taproot(dev, fake_txn, start_sign, 
     start_sign(psbt_bytes)
     signed = end_sign(accept=True, finalize=False)
     _assert_sp_spend_success(sim_exec, sim_execfile, signed)
+    _verify_sp_outputs(sim_exec, sim_execfile, BasicPSBT().parse(signed), SCAN_KEY, [SPEND_KEY_B])
 
 
 def test_sp_spend_wrong_tweak_rejected(dev, fake_txn, start_sign, end_sign, sim_exec, sim_execfile):
@@ -611,7 +593,7 @@ def test_exit_gracefully_on_sp_validation_failure(dev, fake_txn, start_sign, end
     psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
     with pytest.raises(CCProtoError, match="SP_V0_INFO wrong size"):
-        end_sign(accept=False, finalize=False)
+        end_sign(accept=True, finalize=False)
 
 
 def test_sp_non_sighash_all_rejected(dev, fake_txn, start_sign, end_sign):
@@ -651,8 +633,44 @@ def test_sp_psbt_v0_rejected(dev, fake_txn, start_sign, end_sign):
 # ---------------------------------------------------------------------------
 
 
-def test_sp_spend_to_labeled_change_address(dev, fake_txn, start_sign, end_sign, cap_story):
+def test_sp_spend_to_labeled_change_address(dev, fake_txn, start_sign, end_sign, cap_story, sim_exec, sim_execfile):
     """Two SP outputs: output 0 is a send (no label), output 1 is change (label=0 per BIP-352 convention)."""
+    xp = dev.master_xpub
+
+    root = BIP32Node.from_wallet_key(simulator_fixed_tprv)
+    sim_scan_pub = root.subkey_for_path("352h/1h/0h/1h/0").sec()
+    sim_spend_pub = root.subkey_for_path("352h/1h/0h/0h/0").sec()
+
+    def sp_hacker(psbt):
+        _add_sp_outputs(
+            psbt,
+            [
+                (0, SCAN_KEY, SPEND_KEY_B),
+                (1, sim_scan_pub, sim_spend_pub),
+            ],
+        )
+        psbt.outputs[1].sp_v0_label = b"\x00\x00\x00\x00"
+
+    psbt_bytes = fake_txn(1, 2, xp, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker)
+    start_sign(psbt_bytes)
+
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "not well understood script" not in story
+    assert "sp1" in story
+    assert "Change back:" in story
+
+    signed = end_sign(accept=True, finalize=False)
+    tp = BasicPSBT().parse(signed)
+    assert SCAN_KEY in tp.sp_global_ecdh_shares and SCAN_KEY in tp.sp_global_dleq_proofs
+    assert sim_scan_pub in tp.sp_global_ecdh_shares and sim_scan_pub in tp.sp_global_dleq_proofs
+    _verify_sp_outputs(sim_exec, sim_execfile, tp, SCAN_KEY, [SPEND_KEY_B])
+    _verify_sp_outputs(sim_exec, sim_execfile, tp, sim_scan_pub, [sim_spend_pub])
+    _verify_signatures(sim_exec, sim_execfile, tp, signed)
+
+
+def test_sp_spend_fraudulent_change_address(dev, fake_txn, start_sign, end_sign):
+    """SP change output (label=0) with arbitrary keys not from this device → Change Fraud."""
     xp = dev.master_xpub
 
     def sp_hacker(psbt):
@@ -667,11 +685,5 @@ def test_sp_spend_to_labeled_change_address(dev, fake_txn, start_sign, end_sign,
 
     psbt_bytes = fake_txn(1, 2, xp, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
-
-    title, story = cap_story()
-    assert title == "OK TO SEND?"
-    assert "not well understood script" not in story
-    assert "sp1" in story
-    assert "Change back:" in story
-
-    end_sign(accept=False, finalize=False)
+    with pytest.raises(CCProtoError, match="SP change output keys do not match this device"):
+        end_sign(accept=True, finalize=False)
