@@ -7,8 +7,9 @@
 import chains
 import ngu
 import stash
+from glob import settings
 from dleq import generate_dleq_proof, verify_dleq_proof
-from exceptions import FatalPSBTIssue
+from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from precomp_tag_hash import (
     BIP352_SHARED_SECRET_TAG_H,
     BIP352_INPUTS_TAG_H,
@@ -46,35 +47,9 @@ def encode_silent_payment_address(scan_key, spend_key, version=0):
     return ngu.codecs.bip352_encode(hrp, scan_key, spend_key, version)
 
 
-def validate_bip376_spend(input, output_xonly, my_xfp=None, parent=None):
-    """Validate silent payment spend using PSBT input data
-
-    TODO: replace with test vectors once available
-    
-    Raises FatalPSBTIssue if any SP spend validation checks fail
-    """
-    B_spend_coords, val_coords = input.sp_spend_bip32_derivation
-    xfp_path = input.parse_xfp_path(val_coords)
-    if my_xfp is not None:
-        xfp_path = input.handle_zero_xfp(xfp_path, my_xfp, parent)
-
-    sp_path = xfp_path[1:]
-    if len(sp_path) != 5:
-        raise FatalPSBTIssue("SP spend path must have 5 components")
-    if sp_path[0] != (352 | 0x80000000):
-        raise FatalPSBTIssue("SP spend key purpose must use 352h path")
-
-    expected_coin = chains.current_chain().b44_cointype | 0x80000000
-    if sp_path[1] != expected_coin:
-        raise FatalPSBTIssue("SP spend path coin type does not match network")
-    if not (sp_path[2] & 0x80000000):
-        raise FatalPSBTIssue("SP spend path account must be hardened")
-    if sp_path[3] != 0x80000000:
-        raise FatalPSBTIssue("SP spend path key type must be 0h")
-
-    B_spend = input.get(B_spend_coords)
-    if _compute_silent_payment_spending_xonly(B_spend, input.sp_tweak) != output_xonly:
-        raise FatalPSBTIssue("SP_TWEAK does not match UTXO output key")
+def sp_derive_path(coin_type, account):
+    """BIP-352 base derivation path for a given coin type and account number"""
+    return "m/352h/%dh/%dh" % (coin_type, account)
 
 
 # -----------------------------------------------------------------------------
@@ -294,21 +269,19 @@ class SilentPaymentsMixin:
     This class assumes it is mixed into psbtObject and has access to psbt as self
     """
 
-    def process_silent_payments(self, sv):
+    def process_silent_payment_outputs(self, sv):
         """
         Core SP workflow: validate, compute shares, compute scripts
 
         Notes:
-        - This function is intended to be called during the preview phase, before signing
+        - This function is intended to be called during the preview phase and again during signing
         - Single-signer should be able to generate output and preview immediately
         - Multi-signer should generate shares and prompt user to collect all shares if not complete
 
         Returns:
             bool: True if output scripts were computed and are ready for preview/signing
-                  False if we generated shares but are waiting on others, or if we don't have necessary info to proceed
+                  False if we generated shares but are waiting on others
         """
-        if not self.has_silent_payment_outputs():
-            return False
         self._validate_psbt_structure()
         self._validate_input_eligibility()
         self._validate_ecdh_coverage()
@@ -319,7 +292,7 @@ class SilentPaymentsMixin:
         if self._is_ecdh_coverage_complete():
             # Computes scripts, or validates existing ones against recomputed values
             self._compute_silent_payment_output_scripts()
-            self._detect_sp_change_outputs()
+            self._detect_sp_change_outputs(sv)
             return self._all_sp_outputs_have_scripts()
         return False
 
@@ -340,6 +313,63 @@ class SilentPaymentsMixin:
         spend_key = output.sp_v0_info[33:66]
 
         return " - silent payments address -\n%s\n" % encode_silent_payment_address(scan_key, spend_key)
+
+    def validate_silent_payment_inputs(self, sv):
+        """
+        Validate inputs spending silent payments (BIP-376)
+
+        Raises FatalPSBTIssue on any failure.
+        """
+        coin_type = chains.current_chain().b44_cointype
+        expected_coin = coin_type | 0x80000000
+
+        candidate_accounts = self._get_candidate_sp_accounts()
+
+        for i, inp in enumerate(self.inputs):
+            if not inp.is_sp_spend:
+                continue
+
+            # Validate path shape and extract B_spend for both our and foreign inputs
+            B_spend_coords, val_coords = inp.sp_spend_bip32_derivation
+            xfp_path = inp.parse_xfp_path(val_coords)
+            xfp_path = inp.handle_zero_xfp(xfp_path, self.my_xfp, self)
+
+            sp_path = xfp_path[1:]
+            if len(sp_path) != 5:
+                raise FatalPSBTIssue("Input #%d: SP spend path must have 5 components" % i)
+            if sp_path[0] != (352 | 0x80000000):
+                raise FatalPSBTIssue("Input #%d: SP spend key purpose must use 352h path" % i)
+            if sp_path[1] != expected_coin:
+                raise FatalPSBTIssue("Input #%d: SP spend path coin type does not match network" % i)
+            if not (sp_path[2] & 0x80000000):
+                raise FatalPSBTIssue("Input #%d: SP spend path account must be hardened" % i)
+            if sp_path[3] != 0x80000000:
+                raise FatalPSBTIssue("Input #%d: SP spend path key type must be 0h" % i)
+            if sp_path[4] != 0:
+                raise FatalPSBTIssue("Input #%d: SP spend path index must be 0" % i)
+
+            B_spend = inp.get(B_spend_coords)
+
+            # For our inputs, validate account is known and B_spend matches derivation from this device
+            if xfp_path[0] == self.my_xfp:
+                account = sp_path[2] & ~0x80000000
+                if account not in candidate_accounts:
+                    raise FatalPSBTIssue(
+                        "Input #%d: SP spend account not recognized on this device" % i)
+
+                spend_node = sv.derive_path(
+                    sp_derive_path(coin_type, account) + "/0h/0", register=False)
+                derived = spend_node.pubkey()
+                del spend_node
+                if derived != B_spend:
+                    raise FatalPSBTIssue("Input #%d: SP spend pubkey mismatch" % i)
+
+            spk = inp.utxo_spk
+            if not spk or not _is_p2tr(spk):
+                raise FatalPSBTIssue("Input #%d: SP spend UTXO is not P2TR" % i)
+            utxo_xonly = spk[2:34]
+            if _compute_silent_payment_spending_xonly(B_spend, inp.sp_tweak) != utxo_xonly:
+                raise FatalPSBTIssue("Input #%d: SP_TWEAK does not match UTXO output key" % i)
 
     # -----------------------------------------------------------------------------
     # Input Helper Functions
@@ -613,9 +643,6 @@ class SilentPaymentsMixin:
         """
         Compute ECDH shares and DLEQ proofs for our inputs, store in PSBT fields
 
-        Notes:
-            Sets self.sp_all_inputs_ours for callers
-
         Returns:
             bool: True if shares were computed
                   False if we have no signable inputs
@@ -644,14 +671,12 @@ class SilentPaymentsMixin:
                 raise FatalPSBTIssue("No eligible inputs for ECDH computation")
             return False
 
-        self.sp_all_inputs_ours = not has_foreign
-
         scan_keys = self._get_silent_payment_scan_keys()
         if not scan_keys:
             return False
 
         for scan_key in scan_keys:
-            if self.sp_all_inputs_ours:
+            if not has_foreign:
                 # Single-signer: combine all input private keys, one global ECDH share and DLEQ proofs
                 combined_sk = _sum_privkeys(sk for _, sk in input_material)
                 ecdh_share = _compute_ecdh_share(combined_sk, scan_key)
@@ -714,6 +739,10 @@ class SilentPaymentsMixin:
     # Utility Functions
     # -----------------------------------------------------------------------------
 
+    def has_silent_payment_inputs(self):
+        """Check if PSBT contains any SP-spend (BIP-376) inputs."""
+        return any(inp.is_sp_spend for inp in self.inputs)
+
     def has_silent_payment_outputs(self):
         """
         Check if PSBT contains any silent payment outputs
@@ -733,17 +762,58 @@ class SilentPaymentsMixin:
                 return False
         return True
 
-    def _detect_sp_change_outputs(self):
+    def _detect_sp_change_outputs(self, sv):
         """
-        Mark SP outputs as change if sp_v0_label is present and equals 0 (BIP-352 change convention)
+        Mark SP outputs as change if they match our accounts.
 
-        No return value; modifies self.outputs 'is_change' in place
+        Raises FraudulentChangeOutput if all SP-eligible inputs are ours (single-signer);
+        multi-signer, a non-matching label=0 output is skipped (may belong to a co-signer).
         """
-        for outp in self.outputs:
+        has_foreign = False
+        for inp in self.inputs:
+            if not self._is_input_eligible(inp):
+                continue
+            if inp.sp_idxs:
+                if self._derive_input_privkey(inp, sv) is None:
+                    has_foreign = True
+                    break
+            elif self._pubkey_from_input(inp):
+                has_foreign = True
+                break
+
+        coin_type = chains.current_chain().b44_cointype
+        candidate_accounts = self._get_candidate_sp_accounts()
+
+        for out_idx, outp in enumerate(self.outputs):
             if not outp.sp_v0_info or not outp.sp_v0_label:
                 continue
-            if int.from_bytes(outp.sp_v0_label, "little") == 0:
-                outp.is_change = True
+            if int.from_bytes(outp.sp_v0_label, "little") != 0:
+                continue
+
+            scan_pub  = outp.sp_v0_info[:33]
+            spend_pub = outp.sp_v0_info[33:66]
+
+            matched = False
+            for account in candidate_accounts:
+                base = sp_derive_path(coin_type, account)
+                scan_node = sv.derive_path(base + "/1h/0", register=False)
+                spend_node = sv.derive_path(base + "/0h/0", register=False)
+                matched = (scan_node.pubkey() == scan_pub) and (spend_node.pubkey() == spend_pub)
+                del scan_node, spend_node
+                if matched:
+                    outp.is_change = True
+                    break
+
+            if not matched and not has_foreign:
+                raise FraudulentChangeOutput(out_idx, "SP change output keys do not match this device")
+
+    def _get_candidate_sp_accounts(self):
+        """Get all known account numbers from device settings, always include account 0"""
+        seen = {0}
+        for _af, acct_num in settings.get('accts', []):
+            if acct_num:
+                seen.add(acct_num)
+        return sorted(seen)
 
     def _get_outpoints(self):
         """

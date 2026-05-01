@@ -20,6 +20,7 @@ from sp_helpers import (
     _sim_compute_ecdh_share,
     _sim_compute_output_script,
     _sim_compute_spend_output_xonly,
+    _sim_generate_dleq_proof,
     _sim_get_ecdh_and_pubkey,
     _sim_get_outpoints,
     _sim_verify_dleq,
@@ -38,6 +39,7 @@ SPEND_KEY_C = unhexlify("02fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057
 
 # BIP-376 SP spend constants (BIP-352 path: m/352h/1h/0h/0h/0, testnet)
 SP_TWEAK = bytes.fromhex("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
+SP_SCAN_PATH = "352h/1h/0h/1h/0"
 SP_SPEND_PATH = "352h/1h/0h/0h/0"
 SP_SPEND_PATH_INTS = [
     352 | 0x80000000,
@@ -47,6 +49,7 @@ SP_SPEND_PATH_INTS = [
     0,
 ]
 
+SIMULATOR_DELAY = 0  # seconds to wait for the simulator to process the PSBT and update the story
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -141,8 +144,7 @@ def test_sp_signing_story(dev, fake_txn, start_sign, end_sign, cap_story):
 
     psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
-
-    time.sleep(0.1)
+    time.sleep(SIMULATOR_DELAY)
     title, story = cap_story()
     assert title == "OK TO SEND?"
     assert "not well understood script" not in story
@@ -160,6 +162,7 @@ def test_sp_p2wpkh_input(dev, fake_txn, start_sign, end_sign, sim_exec, sim_exec
 
     psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     signed = end_sign(accept=True, finalize=False)
 
     tp = BasicPSBT().parse(signed)
@@ -175,6 +178,7 @@ def test_sp_p2tr_input(dev, fake_txn, start_sign, end_sign, sim_exec, sim_execfi
 
     psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2tr", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     signed = end_sign(accept=True, finalize=False)
 
     tp = BasicPSBT().parse(signed)
@@ -191,6 +195,7 @@ def test_sp_mixed_inputs(dev, fake_txn, start_sign, end_sign, sim_exec, sim_exec
 
     psbt_bytes = fake_txn([["p2wpkh"], ["p2tr"]], 1, xp, psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     signed = end_sign(accept=True, finalize=False)
 
     tp = BasicPSBT().parse(signed)
@@ -218,6 +223,7 @@ def test_sp_mixed_sp_spend_and_regular_input(dev, fake_txn, start_sign, end_sign
 
     psbt_bytes = fake_txn([["p2tr"], ["p2tr"]], 1, xp, psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     signed = end_sign(accept=True, finalize=False)
     _assert_sp_spend_success(sim_exec, sim_execfile, signed)
 
@@ -243,6 +249,7 @@ def test_sp_three_outputs_same_scan_key(dev, fake_txn, start_sign, end_sign, sim
 
     psbt_bytes = fake_txn(1, 3, xp, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     signed = end_sign(accept=True, finalize=False)
 
     tp = BasicPSBT().parse(signed)
@@ -268,6 +275,7 @@ def test_sp_two_outputs_different_scan_keys(dev, fake_txn, start_sign, end_sign,
 
     psbt_bytes = fake_txn(1, 2, xp, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     signed = end_sign(accept=True, finalize=False)
 
     tp = BasicPSBT().parse(signed)
@@ -291,6 +299,7 @@ def test_sp_mixed_output_types(dev, fake_txn, start_sign, end_sign, sim_exec, si
 
     psbt_bytes = fake_txn(1, 2, xp, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     signed = end_sign(accept=True, finalize=False)
 
     tp = BasicPSBT().parse(signed)
@@ -313,6 +322,7 @@ def test_sp_all_owned_multi_input(dev, fake_txn, start_sign, end_sign, sim_exec,
 
     psbt_bytes = fake_txn([["p2wpkh"], ["p2wpkh"]], 1, xp, psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     signed = end_sign(accept=True, finalize=False)
 
     tp = BasicPSBT().parse(signed)
@@ -351,6 +361,7 @@ def test_sp_partial_owned_coverage_complete(dev, fake_txn, start_sign, end_sign,
         psbt_hacker=sp_hacker,
     )
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     signed = end_sign(accept=True, finalize=False)
 
     tp = BasicPSBT().parse(signed)
@@ -394,8 +405,7 @@ def test_sp_partial_owned_coverage_incomplete(dev, fake_txn, start_sign, end_sig
         psbt_hacker=sp_hacker,
     )
     start_sign(psbt_bytes)
-
-    time.sleep(0.1)
+    time.sleep(SIMULATOR_DELAY)
     title, story = cap_story()
     assert title == "CONTRIBUTE SHARES?"
     assert "ECDH shares" in story
@@ -435,8 +445,7 @@ def test_sp_partial_owned_coverage_incomplete_refused(dev, fake_txn, start_sign,
         psbt_hacker=sp_hacker,
     )
     start_sign(psbt_bytes)
-
-    time.sleep(0.1)
+    time.sleep(SIMULATOR_DELAY)
     title, _ = cap_story()
     assert title == "CONTRIBUTE SHARES?"
 
@@ -446,6 +455,36 @@ def test_sp_partial_owned_coverage_incomplete_refused(dev, fake_txn, start_sign,
 # ---------------------------------------------------------------------------
 # BIP-376 Silent Payments spend sp output test
 # ---------------------------------------------------------------------------
+
+
+def test_sp_spend_input_to_non_sp_output(dev, fake_txn, start_sign, end_sign, sim_exec, sim_execfile):
+    """Spend from SP input to a non SP output.
+
+    Verifies that SP input validation (tweak, path) passes and the tx is signed
+    without computing ECDH shares (which are only needed for SP outputs).
+    """
+    xp = dev.master_xpub
+
+    def sp_hacker(psbt):
+        _setup_sp_spend_input(
+            sim_exec,
+            sim_execfile,
+            psbt.inputs[0],
+            SP_TWEAK,
+            SP_SPEND_PATH,
+            SP_SPEND_PATH_INTS,
+            clear_taproot=True,
+        )
+
+    psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2tr", psbt_v2=True, psbt_hacker=sp_hacker)
+    start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
+    signed = end_sign(accept=True, finalize=False)
+
+    tp = BasicPSBT().parse(signed)
+    assert not tp.sp_global_ecdh_shares, "Global ECDH shares must not exist when spending to non-SP outputs"
+    assert not tp.inputs[0].sp_ecdh_shares, "Per-input ECDH shares must not exist when spending to non-SP outputs"
+    _verify_signatures(sim_exec, sim_execfile, tp, signed)
 
 
 def test_sp_spend_silent_payment_output(dev, fake_txn, start_sign, end_sign, sim_exec, sim_execfile):
@@ -471,6 +510,7 @@ def test_sp_spend_silent_payment_output(dev, fake_txn, start_sign, end_sign, sim
 
     psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2tr", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     signed = end_sign(accept=True, finalize=False)
     _assert_sp_spend_success(sim_exec, sim_execfile, signed)
 
@@ -493,6 +533,7 @@ def test_sp_spend_silent_payment_output_with_taproot(dev, fake_txn, start_sign, 
 
     psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2tr", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     signed = end_sign(accept=True, finalize=False)
     _assert_sp_spend_success(sim_exec, sim_execfile, signed)
     _verify_sp_outputs(sim_exec, sim_execfile, BasicPSBT().parse(signed), SCAN_KEY, [SPEND_KEY_B])
@@ -518,6 +559,7 @@ def test_sp_spend_wrong_tweak_rejected(dev, fake_txn, start_sign, end_sign, sim_
 
     psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2tr", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     with pytest.raises(CCProtoError, match="SP_TWEAK does not match UTXO output key"):
         end_sign(accept=True, finalize=False)
 
@@ -542,6 +584,7 @@ def test_sp_spend_wrong_purpose_rejected(dev, fake_txn, start_sign, end_sign, si
 
     psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2tr", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     with pytest.raises(CCProtoError, match="SP spend key purpose must use 352h path"):
         end_sign(accept=True, finalize=False)
 
@@ -572,7 +615,68 @@ def test_sp_spend_wrong_coin_type_rejected(dev, fake_txn, start_sign, end_sign, 
 
     psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2tr", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     with pytest.raises(CCProtoError, match="SP spend path coin type does not match network"):
+        end_sign(accept=True, finalize=False)
+
+
+def test_sp_spend_unknown_account_rejected(dev, fake_txn, start_sign, end_sign, sim_exec, sim_execfile):
+    """Path with an account not in settings.get('accts') (and not 0) must be rejected."""
+    xp = dev.master_xpub
+    UNKNOWN_ACCT_PATH = "352h/1h/7h/0h/0"
+    UNKNOWN_ACCT_PATH_INTS = [
+        352 | 0x80000000,
+        1 | 0x80000000,
+        7 | 0x80000000,
+        0 | 0x80000000,
+        0,
+    ]
+
+    def sp_hacker(psbt):
+        _add_sp_outputs(psbt, [(0, SCAN_KEY, SPEND_KEY_B)])
+        _setup_sp_spend_input(
+            sim_exec,
+            sim_execfile,
+            psbt.inputs[0],
+            SP_TWEAK,
+            UNKNOWN_ACCT_PATH,
+            UNKNOWN_ACCT_PATH_INTS,
+        )
+
+    psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2tr", psbt_v2=True, psbt_hacker=sp_hacker)
+    start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
+    with pytest.raises(CCProtoError, match="SP spend account not recognized on this device"):
+        end_sign(accept=True, finalize=False)
+
+
+def test_sp_spend_tampered_pubkey_rejected(dev, fake_txn, start_sign, end_sign, sim_exec, sim_execfile):
+    """PSBT-stated B_spend must match device-derived spend pubkey for the stated path."""
+    xp = dev.master_xpub
+    FAKE_PUBKEY_PATH = "84h/1h/0h/0/0"
+
+    def sp_hacker(psbt):
+        _add_sp_outputs(psbt, [(0, SCAN_KEY, SPEND_KEY_B)])
+        master = BIP32Node.from_wallet_key(simulator_fixed_tprv)
+        mfp = master.fingerprint()
+        # Tampered: B_spend derived from a non-SP path; xfp+path advertises the legitimate SP path
+        fake_B_spend = master.subkey_for_path(FAKE_PUBKEY_PATH).sec()
+        xfp_and_path = mfp + struct.pack("<" + "I" * len(SP_SPEND_PATH_INTS), *SP_SPEND_PATH_INTS)
+
+        # Witness UTXO locked to fake_B_spend + SP_TWEAK*G so tweak math itself passes
+        xonly = _sim_compute_spend_output_xonly(sim_exec, sim_execfile, fake_B_spend, SP_TWEAK)
+        inp = psbt.inputs[0]
+        amount_bytes = inp.witness_utxo[:8]
+        inp.witness_utxo = amount_bytes + b"\x22\x51\x20" + xonly
+        inp.taproot_bip32_paths = {}
+        inp.taproot_internal_key = None
+        inp.sp_tweak = SP_TWEAK
+        inp.sp_spend_bip32_derivation = {fake_B_spend: xfp_and_path}
+
+    psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2tr", psbt_v2=True, psbt_hacker=sp_hacker)
+    start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
+    with pytest.raises(CCProtoError, match="SP spend pubkey mismatch"):
         end_sign(accept=True, finalize=False)
 
 
@@ -592,6 +696,7 @@ def test_exit_gracefully_on_sp_validation_failure(dev, fake_txn, start_sign, end
 
     psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     with pytest.raises(CCProtoError, match="SP_V0_INFO wrong size"):
         end_sign(accept=True, finalize=False)
 
@@ -606,6 +711,7 @@ def test_sp_non_sighash_all_rejected(dev, fake_txn, start_sign, end_sign):
 
     psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     with pytest.raises(CCProtoError, match="Silent payments require SIGHASH_ALL"):
         end_sign(accept=True, finalize=False)
 
@@ -624,6 +730,7 @@ def test_sp_psbt_v0_rejected(dev, fake_txn, start_sign, end_sign):
 
     psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2wpkh", psbt_v2=False, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     with pytest.raises(CCProtoError, match="Missing outpoint for silent payment input"):
         end_sign(accept=True, finalize=False)
 
@@ -638,8 +745,8 @@ def test_sp_spend_to_labeled_change_address(dev, fake_txn, start_sign, end_sign,
     xp = dev.master_xpub
 
     root = BIP32Node.from_wallet_key(simulator_fixed_tprv)
-    sim_scan_pub = root.subkey_for_path("352h/1h/0h/1h/0").sec()
-    sim_spend_pub = root.subkey_for_path("352h/1h/0h/0h/0").sec()
+    sim_scan_pub = root.subkey_for_path(SP_SCAN_PATH).sec()
+    sim_spend_pub = root.subkey_for_path(SP_SPEND_PATH).sec()
 
     def sp_hacker(psbt):
         _add_sp_outputs(
@@ -653,7 +760,7 @@ def test_sp_spend_to_labeled_change_address(dev, fake_txn, start_sign, end_sign,
 
     psbt_bytes = fake_txn(1, 2, xp, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
-
+    time.sleep(SIMULATOR_DELAY)
     title, story = cap_story()
     assert title == "OK TO SEND?"
     assert "not well understood script" not in story
@@ -666,6 +773,71 @@ def test_sp_spend_to_labeled_change_address(dev, fake_txn, start_sign, end_sign,
     assert sim_scan_pub in tp.sp_global_ecdh_shares and sim_scan_pub in tp.sp_global_dleq_proofs
     _verify_sp_outputs(sim_exec, sim_execfile, tp, SCAN_KEY, [SPEND_KEY_B])
     _verify_sp_outputs(sim_exec, sim_execfile, tp, sim_scan_pub, [sim_spend_pub])
+    _verify_signatures(sim_exec, sim_execfile, tp, signed)
+
+
+def test_cosigner_change_output_is_allowed_with_warning(dev, fake_txn, start_sign, end_sign, cap_story, sim_exec, sim_execfile):
+    """label=0 with foreign keys must NOT raise fraud in a multi-signer flow.
+
+    This tests bypasses the normal "coverage incomplete" workflow to simulate this scenario:
+        When foreign inputs are present, a label=0 SP output
+        whose scan/spend keys don't belong to this device is treated as a cosigner's change
+        address and rendered as a normal SP recipient — not marked as change, displays a warning.
+    """
+    xp = dev.master_xpub
+
+    # Fixed deterministic foreign key so the test is reproducible
+    foreign_mk = BIP32Node.from_master_secret(bytes(range(32)))
+    foreign_key = foreign_mk.subkey_for_path("0/0")
+    foreign_pub = foreign_key.sec()
+    foreign_xfp = foreign_mk.fingerprint()
+    foreign_priv = foreign_key.privkey()
+
+    # Pre-compute real ECDH shares and DLEQ proofs for the foreign input.
+    # These must be valid: after preview sets output scripts, _validate_ecdh_coverage
+    # re-runs and verifies per-input DLEQ proofs.
+    foreign_shares = {
+        scan_key: _sim_compute_ecdh_share(sim_exec, sim_execfile, foreign_priv, scan_key)
+        for scan_key in (SCAN_KEY, SCAN_KEY_2)
+    }
+    foreign_proofs = {
+        scan_key: _sim_generate_dleq_proof(sim_exec, sim_execfile, foreign_priv, scan_key)
+        for scan_key in (SCAN_KEY, SCAN_KEY_2)
+    }
+
+    def sp_hacker(psbt):
+        # Output 0: normal SP send (no label, third-party recipient)
+        # Output 1: cosigner's SP change (label=0, keys are NOT this device's)
+        _add_sp_outputs(psbt, [
+            (0, SCAN_KEY, SPEND_KEY_B),
+            (1, SCAN_KEY_2, SPEND_KEY_A),
+        ])
+        psbt.outputs[1].sp_v0_label = b"\x00\x00\x00\x00"
+
+        # Make input 0 foreign: replace the random bip32 entry with the fixed unknown key.
+        # The firmware will fail to derive a privkey for this XFP → all_sp_inputs_ours=False.
+        psbt.inputs[0].bip32_paths = {}
+        psbt.inputs[0].bip32_paths[foreign_pub] = foreign_xfp + struct.pack('<II', 0, 0)
+
+        # Pre-populate real per-input ECDH shares + DLEQ proofs for input 0 so that
+        # coverage is complete after input 1's shares are computed by the firmware.
+        psbt.inputs[0].sp_ecdh_shares = foreign_shares
+        psbt.inputs[0].sp_dleq_proofs = foreign_proofs
+
+    psbt_bytes = fake_txn(2, 2, xp, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker)
+    start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    # Output 1 is NOT our change — it renders as a normal SP recipient
+    assert "Change back:" not in story
+    assert "sp1" in story
+    assert "WARNING" in story
+
+    # Signing must succeed (no fraud error)
+    signed = end_sign(accept=True, finalize=False)
+    tp = BasicPSBT().parse(signed)
+    assert SCAN_KEY_2 in tp.inputs[1].sp_ecdh_shares and SCAN_KEY_2 in tp.inputs[1].sp_dleq_proofs
     _verify_signatures(sim_exec, sim_execfile, tp, signed)
 
 
@@ -685,5 +857,6 @@ def test_sp_spend_fraudulent_change_address(dev, fake_txn, start_sign, end_sign)
 
     psbt_bytes = fake_txn(1, 2, xp, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker)
     start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
     with pytest.raises(CCProtoError, match="SP change output keys do not match this device"):
         end_sign(accept=True, finalize=False)

@@ -98,6 +98,19 @@ def _sim_compute_ecdh_share(sim_exec, sim_execfile, privkey, scan_key):
     return bytes.fromhex(rv)
 
 
+def _sim_generate_dleq_proof(sim_exec, sim_execfile, privkey, scan_key):
+    rv = _sim_sp(
+        sim_exec,
+        sim_execfile,
+        "generate_dleq_proof",
+        {
+            "privkey": privkey.hex(),
+            "scan_key": scan_key.hex(),
+        },
+    )
+    return bytes.fromhex(rv)
+
+
 def _sim_compute_spend_output_xonly(sim_exec, sim_execfile, B_spend, sp_tweak):
     rv = _sim_sp(
         sim_exec,

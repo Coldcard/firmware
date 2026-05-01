@@ -458,8 +458,6 @@ psbt._compute_and_store_ecdh_shares(
         (MY_XFP, 44, 0, 0, 1): TEST_PRIVKEY2,
     }
 )
-assert psbt.sp_all_inputs_ours is True
-
 # Foreign input
 psbt = MockPSBT()
 inp_ours = _make_eligible_input(pk_ours, TEST_DERIV_OURS, b"\x01" * 32, b"\x00" * 4)
@@ -469,8 +467,6 @@ outp = MockOutput()
 outp.sp_v0_info = TEST_SCAN_KEY + TEST_SPEND_KEY
 psbt.outputs = [outp]
 psbt._compute_and_store_ecdh_shares({TEST_DERIV_OURS: TEST_PRIVKEY})
-assert psbt.sp_all_inputs_ours is False
-
 # No signable inputs
 psbt = MockPSBT()
 inp = _make_eligible_input(b"\x02" + b"\xbb" * 32, (FOREIGN_XFP, 44, 0, 0, 0), b"\x01" * 32, b"\x00" * 4)
