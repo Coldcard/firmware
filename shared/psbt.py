@@ -48,7 +48,7 @@ from public_constants import (
     AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH,
     AFC_SEGWIT, AF_BARE_PK
 )
-from silentpayments import SilentPaymentsMixin, compute_silent_payment_spending_privkey, validate_bip376_spend
+from silentpayments import SilentPaymentsMixin, compute_silent_payment_spending_privkey
 
 psbt_tmp256 = bytearray(256)
 
@@ -1030,7 +1030,7 @@ class psbtInputProxy(psbtProxy):
 
         elif self.af == AF_P2TR:
             if self.is_sp_spend:
-                validate_bip376_spend(self, addr_or_pubkey, my_xfp, psbt)
+                pass  # Silent Payments inputs are handled in validate_silent_payment_inputs
             elif len(parsed_subpaths) == 1:
                 # keyspend without a script path
                 assert self.taproot_merkle_root is None, "merkle_root should not be defined for simple keyspend"
@@ -2006,7 +2006,8 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
                 self.num_change_outputs += 1
                 total_change += txo.nValue
 
-                if validate_inp_pths:
+                # Silent Payments: SP change is validated by _detect_sp_change_outputs, skip additional checks here
+                if validate_inp_pths and not output.sp_v0_info:
                     # Enforce some policy on change outputs:
                     # - need to "look like" they are going to same wallet as inputs came from
                     # - range limit last two path components (numerically)
@@ -2797,7 +2798,11 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
             # Double-check the change outputs are right. This is slow, but critical because
             # it detects bad actors, not bugs or mistakes.
             # - equivalent check already done for p2sh outputs when we re-built the redeem script
-            change_outs = [n for n,o in enumerate(self.outputs) if o.is_change]
+
+            # SP change is verified at preview time by _detect_sp_change_outputs;
+            # the subpath/check_pubkey_at_path machinery below doesn't apply to it.
+            change_outs = [n for n, o in enumerate(self.outputs)
+                           if o.is_change and not o.sp_v0_info]
             if change_outs:
                 dis.fullscreen('Change Check...')
 
@@ -2840,8 +2845,10 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
                               "BIP-32 path doesn't match actual address.")
 
             # Silent Payment Processing
+            if self.has_silent_payment_inputs():
+                self.validate_silent_payment_inputs(sv)
             if self.has_silent_payment_outputs():
-                if not self.process_silent_payments(sv):
+                if not self.process_silent_payment_outputs(sv):
                     # Silent Payments: must not sign if output scripts not set for all signers
                     # Defensive re-check - ApproveTransaction::interact should handle this case before reaching signing
                     raise FatalPSBTIssue("Silent Payments: Signing cannot proceed until all signers contribute their shares")
