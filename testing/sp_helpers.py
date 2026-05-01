@@ -6,46 +6,10 @@
 #
 import json
 import os
-import struct
 import tempfile
 
 # Path for large params that exceed the sim_exec message limit
 _SP_PARAMS_FILE = os.path.join(tempfile.gettempdir(), "sp_verify_params.json")
-
-
-def _read_varint(data, offset):
-    first = data[offset]
-    if first < 0xFD:
-        return first, 1
-    elif first == 0xFD:
-        return struct.unpack_from("<H", data, offset + 1)[0], 3
-    elif first == 0xFE:
-        return struct.unpack_from("<I", data, offset + 1)[0], 5
-    else:
-        return struct.unpack_from("<Q", data, offset + 1)[0], 9
-
-
-def _extract_spk_from_tx(tx, vout_idx):
-    """Return the scriptPubKey bytes at vout_idx from a raw serialized transaction."""
-    offset = 4  # skip version
-    if tx[offset] == 0x00:  # segwit marker
-        offset += 2
-    num_in, n = _read_varint(tx, offset)
-    offset += n
-    for _ in range(num_in):
-        offset += 36  # txid + vout
-        script_len, n = _read_varint(tx, offset)
-        offset += n + script_len + 4  # scriptSig + sequence
-    num_out, n = _read_varint(tx, offset)
-    offset += n
-    for i in range(num_out):
-        offset += 8  # value
-        script_len, n = _read_varint(tx, offset)
-        offset += n
-        if i == vout_idx:
-            return tx[offset : offset + script_len]
-        offset += script_len
-    return None
 
 
 def _sim_sp(sim_exec, sim_execfile, mode, params):
@@ -71,58 +35,15 @@ def _sim_sp(sim_exec, sim_execfile, mode, params):
     return None
 
 
-def _serialize_psbt(psbt):
-    """Convert a BasicPSBT to a plain dict for transmission to the simulator."""
-    inputs = []
-    for inp in psbt.inputs:
-        d = {
-            "sighash": inp.sighash,
-            "previous_txid": inp.previous_txid.hex() if inp.previous_txid else None,
-            "prevout_idx": inp.prevout_idx,
-            "ecdh_shares": {k.hex(): v.hex() for k, v in inp.sp_ecdh_shares.items()},
-            "dleq_proofs": {k.hex(): v.hex() for k, v in inp.sp_dleq_proofs.items()},
-            "bip32_paths": [pk.hex() for pk in inp.bip32_paths],
-        }
-        if inp.witness_utxo:
-            d["witness_utxo"] = inp.witness_utxo.hex()
-        elif inp.utxo and inp.prevout_idx is not None:
-            spk = _extract_spk_from_tx(inp.utxo, inp.prevout_idx)
-            if spk:
-                d["utxo_spk"] = spk.hex()
-        if inp.taproot_internal_key:
-            d["taproot_internal_key"] = inp.taproot_internal_key.hex()
-        if inp.redeem_script:
-            d["redeem_script"] = inp.redeem_script.hex()
-        inputs.append(d)
-
-    outputs = []
-    for outp in psbt.outputs:
-        outputs.append(
-            {
-                "sp_v0_info": outp.sp_v0_info.hex() if outp.sp_v0_info else None,
-                "sp_v0_label": outp.sp_v0_label.hex() if outp.sp_v0_label else None,
-                "script": outp.script.hex() if outp.script else None,
-            }
-        )
-
-    return {
-        "txn_modifiable": psbt.txn_modifiable,
-        "global_ecdh": {k.hex(): v.hex() for k, v in psbt.sp_global_ecdh_shares.items()},
-        "global_dleq": {k.hex(): v.hex() for k, v in psbt.sp_global_dleq_proofs.items()},
-        "inputs": inputs,
-        "outputs": outputs,
-    }
-
-
 def _sim_validate_sp(sim_exec, sim_execfile, psbt):
     """Run firmware SP validation on the PSBT. Returns error string or ''."""
-    rv = _sim_sp(sim_exec, sim_execfile, "validate_sp", _serialize_psbt(psbt))
+    rv = _sim_sp(sim_exec, sim_execfile, "validate_sp", {"psbt": psbt.as_bytes().hex()})
     return rv or ""
 
 
 def _sim_get_ecdh_and_pubkey(sim_exec, sim_execfile, psbt, scan_key):
     """Return (ecdh_share_bytes, summed_pubkey_bytes) or (None, None)."""
-    params = {**_serialize_psbt(psbt), "scan_key": scan_key.hex()}
+    params = {"psbt": psbt.as_bytes().hex(), "scan_key": scan_key.hex()}
     rv = _sim_sp(sim_exec, sim_execfile, "get_ecdh_and_pubkey", params)
     if not rv:
         return None, None
@@ -135,7 +56,7 @@ def _sim_get_ecdh_and_pubkey(sim_exec, sim_execfile, psbt, scan_key):
 
 def _sim_get_outpoints(sim_exec, sim_execfile, psbt):
     """Return list of (txid_bytes, vout_bytes) from firmware _get_outpoints()."""
-    rv = _sim_sp(sim_exec, sim_execfile, "get_outpoints", _serialize_psbt(psbt))
+    rv = _sim_sp(sim_exec, sim_execfile, "get_outpoints", {"psbt": psbt.as_bytes().hex()})
     outpoints = []
     for pair in rv.split(","):
         txid_hex, vout_hex = pair.split(":")
@@ -145,12 +66,12 @@ def _sim_get_outpoints(sim_exec, sim_execfile, psbt):
 
 def _sim_pubkey_from_input(sim_exec, sim_execfile, psbt, input_index):
     """Return pubkey bytes from firmware _pubkey_from_input(), or None."""
-    params = {**_serialize_psbt(psbt), "input_index": input_index}
+    params = {"psbt": psbt.as_bytes().hex(), "input_index": input_index}
     rv = _sim_sp(sim_exec, sim_execfile, "pubkey_from_input", params)
     return bytes.fromhex(rv) if rv else None
 
 
-def _sim_verify_dleq(sim_exec, sim_execfile, pubkey, scan_key, ecdh_share, proof, expected=True):
+def _sim_verify_dleq(sim_exec, sim_execfile, pubkey, scan_key, ecdh_share, proof):
     _sim_sp(
         sim_exec,
         sim_execfile,
@@ -160,7 +81,6 @@ def _sim_verify_dleq(sim_exec, sim_execfile, pubkey, scan_key, ecdh_share, proof
             "scan_key": scan_key.hex(),
             "ecdh_share": ecdh_share.hex(),
             "proof": proof.hex(),
-            "expected": expected,
         },
     )
 
@@ -207,7 +127,7 @@ def _sim_compute_output_script(sim_exec, sim_execfile, outpoints, summed_pubkey,
     return bytes.fromhex(rv)
 
 
-def _sim_verify_taproot_key_spend_signature(sim_exec, sim_execfile, signed_psbt, input_index, expected=True):
+def _sim_verify_taproot_key_spend_signature(sim_exec, sim_execfile, signed_psbt, input_index):
     _sim_sp(
         sim_exec,
         sim_execfile,
@@ -215,7 +135,6 @@ def _sim_verify_taproot_key_spend_signature(sim_exec, sim_execfile, signed_psbt,
         {
             "psbt": signed_psbt.hex(),
             "input_index": input_index,
-            "expected": expected,
         },
     )
 

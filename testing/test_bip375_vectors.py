@@ -3,12 +3,13 @@
 # test_bip375_vectors.py - Tests for BIP-375 Silent Payments implementation
 #
 # Unit tests run inside the simulator via devtest/unit_silentpayments.py
-# BIP-375 test vector tests parse PSBTs in CPython and delegate ALL crypto
-# and firmware logic to the simulator via devtest/verify_sp_outputs.py
+# Use simulator to validate BIP-375 test vectors
+# 1. Parse psbts and verify validation failure code matches expected mapping in _SIM_INVALID
+# 2. For valid vectors, verify ECDH share, DLEQ proof and output script computations match expected values
 #
-from binascii import unhexlify
 import json
 import pytest
+from binascii import unhexlify
 from psbt import BasicPSBT
 from sp_helpers import (
     _sim_validate_sp,
@@ -174,7 +175,6 @@ class TestBIP375ValidVectors:
                     scan_key,
                     ecdh_share,
                     proof,
-                    expected=True,
                 )
 
             for inp_idx, inp in enumerate(p.inputs):
@@ -195,7 +195,6 @@ class TestBIP375ValidVectors:
                         scan_key,
                         ecdh_share,
                         proof,
-                        expected=True,
                     )
 
     def test_valid_output_script_derivation(self, sim_exec, sim_execfile):
