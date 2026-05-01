@@ -432,9 +432,12 @@ class ApproveTransaction(UserAuthorizedAction):
             args = self.psbt.consider_inputs(cosign_xfp=ccc_c_xfp)
 
             # Silent Payments: Validate and pre-process Silent Payments outputs to make preview useful
-            if self.psbt.has_silent_payment_outputs():
-                with stash.SensitiveValues() as sv:
-                    if not self.psbt.process_silent_payments(sv):
+            with stash.SensitiveValues() as sv:
+                if self.psbt.has_silent_payment_inputs():
+                    self.psbt.validate_silent_payment_inputs(sv)
+
+                if self.psbt.has_silent_payment_outputs():
+                    if not self.psbt.process_silent_payment_outputs(sv):
                         # Coverage incomplete: shares computed but waiting on other signers
                         # Skip normal approval flow — prompt user to contribute shares, then save
                         del args

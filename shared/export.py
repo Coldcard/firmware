@@ -13,7 +13,7 @@ from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF
 from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
 from ownership import OWNERSHIP
 from exceptions import QRTooBigError
-from silentpayments import encode_silent_payment_address
+from silentpayments import encode_silent_payment_address, sp_derive_path
 
 async def export_by_qr(body, label, type_code, force_bbqr=False):
     # render as QR and show on-screen
@@ -446,7 +446,7 @@ def generate_generic_export(account_num=0):
                 rv[name]['first'] = chain.address(node, fmt)
 
         # Silent Payments: scan-priv + spend-pub packed as a single bech32m "spscan" string
-        sp_deriv = "m/352h/%dh/%dh" % (chain.b44_cointype, account_num)
+        sp_deriv   = sp_derive_path(chain.b44_cointype, account_num)
         sp_node    = sv.derive_path(sp_deriv)
         scan_node  = sv.derive_path(sp_deriv + "/1h/0")
         spend_node = sv.derive_path(sp_deriv + "/0h/0")
