@@ -16,6 +16,7 @@ from exceptions import FatalPSBTIssue
 from psbt import psbtObject
 from serializations import SIGHASH_DEFAULT
 from silentpayments import (
+    _apply_label_to_spend_key,
     _combine_pubkeys,
     _compute_ecdh_share,
     _compute_input_hash,
@@ -178,6 +179,13 @@ elif mode == "compute_spend_output_xonly":
     B_spend = a2b_hex(params["B_spend"])
     sp_tweak = a2b_hex(params["sp_tweak"])
     result = _compute_silent_payment_spending_xonly(B_spend, sp_tweak)
+    RV.write(b2a_hex(result).decode())
+
+elif mode == "apply_label_to_spend_key":
+    spend_pub = a2b_hex(params["spend_pub"])
+    scan_priv = a2b_hex(params["scan_priv"])
+    label = int(params["label"])
+    result = _apply_label_to_spend_key(spend_pub, scan_priv, label)
     RV.write(b2a_hex(result).decode())
 
 elif mode == "negate_if_odd_y":
