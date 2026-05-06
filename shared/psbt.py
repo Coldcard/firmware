@@ -23,7 +23,7 @@ from opcodes import OP_CHECKMULTISIG, OP_RETURN
 from glob import settings
 from precomp_tag_hash import TAP_TWEAK_H, TAP_SIGHASH_H
 from desc_utils import MusigKey, MUSIG_CHAIN_CODE
-from wif import init_wif_store
+from wif import WIFStore
 
 from public_constants import (
     PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_XPUB, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
@@ -49,6 +49,7 @@ psbt_tmp256 = bytearray(256)
 
 # transaction version error
 TX_VER_ERR = "bad txn version"
+NO_KEY_ERR = "None of the keys involved in this transaction belong to this Coldcard"
 
 # single sha256 of b'BIP0322-signed-message'
 BIP322_TAG_HASH = b'te\x84\xa1\x87/\xa1\x00AUN\xff\xa08\xd6\x12IB\xddy\xb4\xe5\x8aL\xda\x18N\x13\xdb\xe6,I'
@@ -381,7 +382,7 @@ class psbtProxy:
             if len(pk) == 33:
                 assert pk[0] in {0x02, 0x03}, "uncompressed pubkey"
 
-            validate_derivation_path_length(val[1])
+            validate_derivation_path_length(val[1], allow_master=True)
             # promote to a list of ints
             here = self.parse_xfp_path(val)
             here = self.handle_zero_xfp(here, my_xfp, parent)
@@ -668,7 +669,7 @@ class psbtInputProxy(psbtProxy):
         'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts',
         'taproot_subpaths', 'taproot_internal_key', 'taproot_key_sig', 'tr_added_sigs',
         'ik_idx', 'musig_pubkeys', 'musig_pubnonces', 'musig_part_sigs', 'musig_agg_idx',
-        'musig_added_pubnonces', 'musig_added_sigs'
+        'musig_added_pubnonces', 'musig_added_sigs', 'wif_key', 'wif_redeem_script'
     )
 
     def __init__(self, fd, idx):
@@ -911,6 +912,23 @@ class psbtInputProxy(psbtProxy):
         if self.af == OP_RETURN:
             return
 
+        if not parsed_subpaths and psbt.wif_store:
+            res = psbt.wif_store.match_address_hash(self.af, addr_or_pubkey)
+            if res:
+                # Add a synthetic, local-only path so the edge signing pipeline can
+                # validate this input without serializing fake derivation metadata.
+                idx, pk = res
+                parsed_subpaths[pk] = [0]
+                self.sp_idxs = [0]
+                self.wif_key = pk
+                if self.af == AF_P2SH:
+                    self.wif_redeem_script = b'\x00\x14' + psbt.wif_store._pkh[idx]
+                    if self.redeem_script:
+                        assert self.get(self.redeem_script) == self.wif_redeem_script
+
+        if not self.sp_idxs or self.fully_signed:
+            return
+
         if self.af is None:
             # If this is reached, we do not understand the output well
             # enough to allow the user to authorize the spend, so fail hard.
@@ -954,11 +972,15 @@ class psbtInputProxy(psbtProxy):
 
         elif self.af in (AF_P2WSH, AF_P2SH):
             # we must have the redeem script already (else fail)
-            ks = self.witness_script or self.redeem_script
-            if not ks:
-                raise FatalPSBTIssue("Missing redeem/witness script for input #%d" % my_idx)
+            if self.wif_redeem_script:
+                redeem_script = self.wif_redeem_script
+            else:
+                ks = self.witness_script or self.redeem_script
+                if not ks:
+                    raise FatalPSBTIssue("Missing redeem/witness script for input #%d" % my_idx)
 
-            redeem_script = self.get(ks)
+                redeem_script = self.get(ks)
+
             native_v0 = (self.af == AF_P2WSH)
 
             if not native_v0 and (len(redeem_script) == 22) and \
@@ -1110,7 +1132,8 @@ class psbtInputProxy(psbtProxy):
         if self.af == AF_P2WPKH:
             return b'\x19\x76\xa9\x14' + self.utxo_spk[2:2+20] + b'\x88\xac'
         elif self.af == AF_P2WPKH_P2SH:
-            return b'\x19\x76\xa9\x14' + self.get(self.redeem_script)[2:22] + b'\x88\xac'
+            redeem_script = self.wif_redeem_script or self.get(self.redeem_script)
+            return b'\x19\x76\xa9\x14' + redeem_script[2:22] + b'\x88\xac'
         elif self.af in (AF_P2WSH, AF_P2WSH_P2SH):
             # "scriptCode is witnessScript preceeded by a
             #  compactSize integer for the size of witnessScript"
@@ -1120,7 +1143,7 @@ class psbtInputProxy(psbtProxy):
         if self.af in [AF_BARE_PK, AF_CLASSIC]:
             return self.utxo_spk
         elif self.af in (AF_P2SH, AF_P2WSH_P2SH, AF_P2WPKH_P2SH):
-            return self.get(self.redeem_script)
+            return self.wif_redeem_script or self.get(self.redeem_script)
         else:
             return b""
 
@@ -1218,8 +1241,9 @@ class psbtInputProxy(psbtProxy):
             for k, v in self.subpaths:
                 wr(PSBT_IN_BIP32_DERIVATION, v, k)
 
-        if self.redeem_script:
-            wr(PSBT_IN_REDEEM_SCRIPT, self.redeem_script)
+        redeem_script = self.redeem_script or self.wif_redeem_script
+        if redeem_script:
+            wr(PSBT_IN_REDEEM_SCRIPT, redeem_script)
 
         if self.witness_script:
             wr(PSBT_IN_WITNESS_SCRIPT, self.witness_script)
@@ -1301,7 +1325,7 @@ class psbtObject(psbtProxy):
         self.xpubs = []         # tuples(xfp_path, xpub)
 
         self.my_xfp = settings.get('xfp', 0)
-        self.wif_store = init_wif_store()
+        self.wif_store = WIFStore()
 
         # details that we discover as we go
         self.inputs = None
@@ -1917,7 +1941,7 @@ class psbtObject(psbtProxy):
         if self.por322:
             assert self.txn_version in {0, 2}, TX_VER_ERR
 
-        if not inp_have_subpath:
+        if not inp_have_subpath and not self.wif_store:
             # Can happen w/ Electrum in watch-mode on XPUB. It doesn't know XFP and
             # so doesn't insert that into PSBT.
             # or PSBT provider forgot to include subpaths
@@ -2186,6 +2210,8 @@ class psbtObject(psbtProxy):
                 smallest_nsequence = txi.nSequence
 
             parsed_subpaths = inp.parse_subpaths(self.my_xfp, self, cosign_xfp)
+            if parsed_subpaths is None:
+                parsed_subpaths = OrderedDict()
 
             if not inp.has_utxo():
                 if inp.sp_idxs and not inp.fully_signed:
@@ -2219,13 +2245,16 @@ class psbtObject(psbtProxy):
                 my_cnt += 1
             if inp.fully_signed:
                 presigned_inputs.add(i)
-            if inp.sp_idxs and (not inp.fully_signed):
+            if (inp.sp_idxs or (not parsed_subpaths and self.wif_store)) and (not inp.fully_signed):
                 # Look at what kind of input this will be, and therefore what
                 # type of signing will be required, and which key we need.
                 # - also validates redeem_script when present
                 # - also finds appropriate miniscript wallet to be used
                 inp.determine_my_signing_key(i, addr_or_pubkey, self.my_xfp, self,
                                              parsed_subpaths, utxo)
+
+                if inp.wif_key:
+                    my_cnt += 1
 
                 # determine_my_signing_key updates fully_signed from the actual
                 # threshold for standard multisig scripts.
@@ -2242,14 +2271,20 @@ class psbtObject(psbtProxy):
                 in_wif_store = False
                 for ii, (key, xpath) in enumerate(parsed_subpaths.items()):
                     if ii not in inp.sp_idxs: continue
-                    p = xpath[2:] if inp.taproot_subpaths else xpath[1:]
-                    length_p.add(len(p))  # ignore xfp
-                    hard_pattern.add(tuple(bool(i & 0x80000000) for i in p))
-                    prefix_p.add(tuple(p[:-2]))
 
-                    index = p[-1] & 0x7fffffff
-                    if index > idx_max:
-                        idx_max = index
+                    if inp.wif_key == key:
+                        in_wif_store = True
+                        continue
+
+                    p = xpath[2:] if inp.taproot_subpaths else xpath[1:]
+                    if p:
+                        length_p.add(len(p))  # ignore xfp
+                        hard_pattern.add(tuple(bool(i & 0x80000000) for i in p))
+                        prefix_p.add(tuple(p[:-2]))
+
+                        index = p[-1] & 0x7fffffff
+                        if index > idx_max:
+                            idx_max = index
 
                     if self.key_in_wif_store(key):
                         in_wif_store = True
@@ -2279,8 +2314,7 @@ class psbtObject(psbtProxy):
             del utxo
 
         if not my_cnt:
-            raise FatalPSBTIssue('None of the keys involved in this transaction '
-                                 'belong to this Coldcard (need %s).' % xfp2str(self.my_xfp))
+            raise FatalPSBTIssue(NO_KEY_ERR + " (need %s)." % xfp2str(self.my_xfp))
 
         if not foreign:
             # no foreign inputs, we can calculate the total input value
@@ -2894,25 +2928,32 @@ class psbtObject(psbtProxy):
 
                     assert not inp.added_sigs, "already done??"
                     assert not inp.taproot_key_sig, "already done taproot??"
-
-                    if inp.taproot_subpaths:
-                        schnorrsig = True
-                        pubk = inp.taproot_subpaths[sp_idx][0]
-                        sp = inp.taproot_subpaths[sp_idx][1][2]
-                    else:
-                        pubk = inp.subpaths[sp_idx][0]
-                        sp = inp.subpaths[sp_idx][1]
-
-                    pk = self.get(pubk)
                     int_pth = None
-                    wif_store_key = self.key_in_wif_store(pk)
-                    if wif_store_key:
-                        node = node_from_privkey(self.wif_store[wif_store_key])
+
+                    if inp.wif_key:
+                        assert not inp.taproot_subpaths
+                        pubk = pk = inp.wif_key
+                        skp = "WIF Store"
+                        node = node_from_privkey(self.wif_store[pk])
                     else:
-                        int_pth = self.handle_zero_xfp(self.parse_xfp_path(sp), self.my_xfp, None)
-                        skp = keypath_to_str(int_pth)
-                        # get node required
-                        node = sv.derive_path(skp, register=False)
+                        if inp.taproot_subpaths:
+                            schnorrsig = True
+                            pubk = inp.taproot_subpaths[sp_idx][0]
+                            sp = inp.taproot_subpaths[sp_idx][1][2]
+                        else:
+                            pubk = inp.subpaths[sp_idx][0]
+                            sp = inp.subpaths[sp_idx][1]
+
+                        pk = self.get(pubk)
+                        wif_store_key = self.key_in_wif_store(pk)
+                        if wif_store_key:
+                            skp = "WIF Store"
+                            node = node_from_privkey(self.wif_store[wif_store_key])
+                        else:
+                            int_pth = self.handle_zero_xfp(self.parse_xfp_path(sp), self.my_xfp, None)
+                            skp = keypath_to_str(int_pth)
+                            # get node required
+                            node = sv.derive_path(skp, register=False)
 
                     # expensive test, but works... and important
                     pu = node.pubkey()

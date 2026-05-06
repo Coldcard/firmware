@@ -9,7 +9,7 @@ from utils import problem_file_line, show_single_address, node_from_pubkey
 from files import CardSlot, CardMissingError, needs_microsd
 from glob import settings
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
-from public_constants import AF_P2WPKH
+from public_constants import AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2SH
 from msgsign import msg_signing_done
 
 MAX_ITEMS = 30
@@ -100,13 +100,13 @@ async def ux_visualize_wif(wif_str, kp, compressed, testnet):
         await ux_show_story(msg, title=title)
 
 
-class WIFStore(MenuSystem):
+class WIFStoreMenu(MenuSystem):
     def __init__(self):
         items = self.construct()
         super().__init__(items)
 
     @classmethod
-    async def make_menu(cls, *a):
+    async def make(cls, *a):
         if not settings.get("wifs", None):
             intro = ("Individual private keys, encoded as WIF (Wallet Import Format) keys"
                      " can be imported and used for signing. Any PSBT that uses a WIF stored here"
@@ -143,6 +143,7 @@ class WIFStore(MenuSystem):
 
             submenu = [
                 MenuItem("Detail", f=self.detail, arg=(wif,pk,sk)),
+                MenuItem("Descriptors", f=self.show_desc_step1, arg=pk),
                 MenuItem("Addresses", f=self.show_addr_step1, arg=pk),
                 MenuItem("Sign MSG", f=self.sign_msg_step1, arg=sk),
                 MenuItem('Delete', f=self.delete, arg=(i, pk), predicate=not_hobbled_mode),
@@ -172,40 +173,51 @@ class WIFStore(MenuSystem):
         await export_contents(title, wif, "wif.txt", None, None,
                               force_prompt=True, intro=msg, ux_title=title)
 
-    async def show_addr_step1(self, a, b, item):
-        pubkey = a2b_hex(item.arg)
+    async def show_desc_step1(self, a, b, item):
         rv = [
-            MenuItem(chains.addr_fmt_label(af), f=self.show_addr_step2, arg=(pubkey, af))
+            MenuItem(chains.addr_fmt_label(af), f=self.show_desc_step2, arg=(item.arg, af))
+            for af in chains.SINGLESIG_AF
+        ]
+        the_ux.push(MenuSystem(rv))
+
+    async def show_desc_step2(self, a, b, item):
+        # allow to export pubkey, instead of main detail where WIF is exported
+        pk, af = item.arg
+        title = "Descriptor"
+
+        if af == AF_P2WPKH:
+            desc = "wpkh(%s)"
+        elif af == AF_CLASSIC:
+            desc = "pkh(%s)"
+        else:
+            assert af == AF_P2WPKH_P2SH
+            desc = "sh(wpkh(%s))"
+
+        from descriptor import append_checksum
+        desc = append_checksum(desc % pk)
+
+        from export import export_contents
+        await export_contents(title, desc, "wif_desc_%d.txt" % af, None, None,
+                              force_prompt=True, intro=desc, ux_title=title)
+
+    async def show_addr_step1(self, a, b, item):
+        rv = [
+            MenuItem(chains.addr_fmt_label(af), f=self.show_addr_step2, arg=(item.arg, af))
             for af in chains.SINGLESIG_AF
         ]
         the_ux.push(MenuSystem(rv))
 
     async def show_addr_step2(self, a, b, item):
-        from glob import NFC
         pubkey, af = item.arg
-        node = node_from_pubkey(pubkey)
+        node = node_from_pubkey(a2b_hex(pubkey))
         addr = chains.current_chain().address(node, af)
-        msg = show_single_address(addr) + "\n\n"
+        msg = show_single_address(addr)
 
-        escape = ""
-        # Q only hint keys
-        if not version.has_qwerty:
-            msg += "Press (1) to show address QR code."
-            escape += "1"
-            if NFC:
-                msg += "(3) to share via NFC."
-                escape += "3"
+        ux_title = chains.addr_fmt_label(af) if version.has_qwerty else None
 
-        title = chains.addr_fmt_label(af) if version.has_qwerty else None
-        while True:
-            ch = await ux_show_story(msg, title=title, escape=escape,
-                                     hint_icons=KEY_QR+(KEY_NFC if NFC else ''))
-            if ch == "x": return
-            if ch in "1"+KEY_QR:
-                await show_qr_code(addr, is_alnum=af == AF_P2WPKH)
-
-            elif NFC and (ch in "3"+KEY_NFC):
-                await NFC.share_text(addr)
+        from export import export_contents
+        await export_contents("Address", addr, "wif_addr.txt", None, None,
+                              force_prompt=True, intro=msg, ux_title=ux_title)
 
     async def sign_msg_step1(self, a, b, item):
         privkey = a2b_hex(item.arg)
@@ -358,13 +370,54 @@ class WIFStore(MenuSystem):
                                 title="Failure")
 
 
-def init_wif_store():
-    # stored as hex strings, need load to bytes
-    wifs = settings.get('wifs', [])
-    if not wifs: return {}
-    res = {}
-    for pk, sk in wifs:
-        res[a2b_hex(pk)] = a2b_hex(sk)
-    return res
+
+class WIFStore:
+    def __init__(self):
+        wifs = settings.get('wifs', [])
+        self.wifs = []  # max 30 items, each (pubkey, privkey)
+        for pk, sk in wifs:
+            self.wifs.append((a2b_hex(pk), a2b_hex(sk)))
+
+        # built lazily, on first match_address_hash() call
+        self._pkh = []   # hash160(pubkey)         — P2PKH / P2WPKH
+        self._sh  = []   # hash160(0014 || _pkh)   — P2SH-P2WPKH
+
+    def __bool__(self):
+        return len(self.wifs) > 0
+
+    def __contains__(self, pubkey):
+        return self._privkey_for(pubkey) is not None
+
+    def __getitem__(self, pubkey):
+        sk = self._privkey_for(pubkey)
+        if sk is None: raise KeyError
+        return sk
+
+    def _privkey_for(self, pubkey):
+        for pk, sk in self.wifs:
+            if pk == pubkey:
+                return sk
+
+    def match_address_hash(self, addr_fmt, hash20):
+        if not self.wifs:
+            return None
+        if not self._pkh:
+            self._pkh = [ngu.hash.hash160(pk) for pk, _ in self.wifs]
+
+        if addr_fmt in (AF_P2WPKH, AF_CLASSIC):
+            table = self._pkh
+        elif addr_fmt == AF_P2SH:
+            if not self._sh:
+                self._sh = [ngu.hash.hash160(b'\x00\x14' + h) for h in self._pkh]
+            table = self._sh
+        else:
+            return None    # AF_P2WSH / AF_P2TR / AF_BARE_PK / unknown — not us
+
+        try:
+            idx = table.index(hash20)
+            return idx, self.wifs[idx][0]
+        except ValueError:
+            return None
+
 
 # EOF

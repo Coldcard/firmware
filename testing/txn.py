@@ -23,7 +23,7 @@ def fake_txn(dev, pytestconfig):
     def doit(inputs, outputs, master_xpub=None, psbt_hacker=None, add_xpub=None, psbt_v2=None,
              fee=200, addr_fmt="p2wpkh", input_amount=100_000_000, capture_scripts=None,
              force_full_tx_utxo=False, supply_num_ins=1, supply_num_outs=1, lock_time=0,
-             sequences=None, sighashes=None, dupe_ins=[]): # input_amount in sats
+             sequences=None, sighashes=None, dupe_ins=[], subpath="0/%d"): # input_amount in sats
 
         psbt = BasicPSBT()
 
@@ -73,7 +73,7 @@ def fake_txn(dev, pytestconfig):
         added_mine = False
         added_foreign = False
         for i, inp in enumerate(inputs):
-            sp = f"0/{i}"
+            sp = None if subpath is None else subpath % i
             af = addr_fmt
             ia = input_amount
             is_mine = True
@@ -102,8 +102,8 @@ def fake_txn(dev, pytestconfig):
                 added_foreign = True
 
             # addr where the fake money will be stored.
-            int_path = str_to_path(sp)
-            subkey = mk.subkey_for_path(sp)
+            int_path = [] if sp is None else str_to_path(sp)
+            subkey = mk if sp is None else mk.subkey_for_path(sp)
             sec = subkey.sec()
             assert len(sec) == 33, "expect compressed"
 
@@ -124,7 +124,7 @@ def fake_txn(dev, pytestconfig):
 
             elif af == "p2pkh":
                 is_segwit = False
-                psbt.inputs[i].bip32_paths[sec] = mfp + struct.pack('<II', 0, i)
+                psbt.inputs[i].bip32_paths[sec] = mfp + struct.pack(f'<{"I"*len(int_path)}', *int_path)
                 scr = bytes([0x76, 0xa9, 0x14]) + subkey.hash160() + bytes([0x88, 0xac])
 
             else:

@@ -10,6 +10,7 @@ from msg import verify_message
 from api import bitcoind, match_key
 from api import bitcoind_wallet, bitcoind_d_wallet, bitcoind_d_wallet_w_sk, bitcoind_d_sim_sign, bitcoind_d_dev_watch
 from api import bitcoind_d_sim_watch, finalize_v2_v0_convert
+from electrum import electrum
 from binascii import b2a_hex, a2b_hex
 from constants import *
 from charcodes import *
