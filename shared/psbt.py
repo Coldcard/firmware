@@ -5,7 +5,7 @@
 import stash, gc, history, sys, ngu, ckcc, chains
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, B2A, keypath_to_str, is_ascii
+from utils import xfp2str, B2A, keypath_to_str
 from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str, node_from_privkey
 from chains import NLOCK_IS_TIME
 from uhashlib import sha256
@@ -20,7 +20,7 @@ from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_AN
 from serializations import ALL_SIGHASH_FLAGS
 from opcodes import OP_CHECKMULTISIG, OP_RETURN
 from glob import settings
-from wif import init_wif_store
+from wif import WIFStore
 
 from public_constants import (
     PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_XPUB, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
@@ -37,6 +37,7 @@ from public_constants import (
 
 # transaction version error
 TX_VER_ERR = "bad txn version"
+NO_KEY_ERR = "None of the keys involved in this transaction belong to this Coldcard"
 
 # single sha256 of b'BIP0322-signed-message'
 BIP322_TAG_HASH = b'te\x84\xa1\x87/\xa1\x00AUN\xff\xa08\xd6\x12IB\xddy\xb4\xe5\x8aL\xda\x18N\x13\xdb\xe6,I'
@@ -292,8 +293,6 @@ class psbtProxy:
 
             vl = self.subpaths[pk][1]
 
-            # force them to use a derived key, never the master
-            assert vl >= 8, 'too short key path'
             assert (vl % 4) == 0, 'corrupt key path'
             assert (vl//4) <= MAX_PATH_DEPTH, 'too deep'
 
@@ -588,6 +587,7 @@ class psbtInputProxy(psbtProxy):
         'fully_signed', 'is_segwit', 'is_multisig', 'is_p2sh', 'num_our_keys',
         'required_key', 'scriptSig', 'amount', 'scriptCode', 'previous_txid',
         'prevout_idx', 'sequence', 'req_time_locktime', 'req_height_locktime', 'addr_fmt',
+        'wif_redeem_script',
     )
 
     def __init__(self, fd, idx):
@@ -773,7 +773,23 @@ class psbtInputProxy(psbtProxy):
         self.amount = utxo.nValue
         self.addr_fmt, addr_or_pubkey, addr_is_segwit = utxo.get_address()
 
-        if not self.subpaths or self.fully_signed or (not self.num_our_keys):
+        subpaths = dict(self.subpaths or {})  # shallow copy
+
+        if not subpaths and psbt.wif_store:
+            res = psbt.wif_store.match_address_hash(self.addr_fmt, addr_or_pubkey)
+            if res:
+                # we have private key in WIF Store
+                # add pubkey with bogus zero fingerprint to current scope "subpaths" copy (will not be serialized)
+                # we want this function to finish properly, to set scriptSig or scriptCode, address format, etc...
+                idx, pk = res
+                subpaths[pk] = bytes(4)
+                self.num_our_keys = 1
+                if self.addr_fmt == AF_P2SH:
+                    self.wif_redeem_script = b'\x00\x14' + psbt.wif_store._pkh[idx]
+                    if self.redeem_script:
+                        assert self.get(self.redeem_script) == self.wif_redeem_script
+
+        if not subpaths or self.fully_signed or (not self.num_our_keys):
             # without xfp+path we will not be able to sign this input
             # - okay if fully signed
             # - okay if payjoin or other multi-signer (not multisig) txn
@@ -802,17 +818,21 @@ class psbtInputProxy(psbtProxy):
             self.is_p2sh = True
 
             # we must have the redeem script already (else fail)
-            ks = self.witness_script or self.redeem_script
-            if not ks:
-                raise FatalPSBTIssue("Missing redeem/witness script for input #%d" % my_idx)
+            if self.wif_redeem_script:
+                redeem_script = self.wif_redeem_script
+            else:
+                ks = self.witness_script or self.redeem_script
+                if not ks:
+                    raise FatalPSBTIssue("Missing redeem/witness script for input #%d" % my_idx)
 
-            redeem_script = self.get(ks)
+                redeem_script = self.get(ks)
+
             self.scriptSig = redeem_script
 
             # new cheat: psbt creator probably telling us exactly what key
             # to use, by providing exactly one. This is ideal for p2sh wrapped p2pkh
-            if len(self.subpaths) == 1:
-                which_key, = self.subpaths.keys()
+            if len(subpaths) == 1:
+                which_key, = subpaths.keys()
             else:
                 # Assume we'll be signing with any key we know
                 # - limitation: we cannot be two legs of a multisig (only if CCC feature used)
@@ -820,7 +840,7 @@ class psbtInputProxy(psbtProxy):
                 if not which_key:
                     which_key = set()
 
-                for pubkey, path in self.subpaths.items():
+                for pubkey, path in subpaths.items():
                     if self.part_sigs and (pubkey in self.part_sigs):
                         # pubkey has already signed, so ignore
                         continue
@@ -854,7 +874,7 @@ class psbtInputProxy(psbtProxy):
             self.scriptSig = utxo.scriptPubKey
             addr = addr_or_pubkey
 
-            for pubkey in self.subpaths:
+            for pubkey in subpaths:
                 if hash160(pubkey) == addr:
                     which_key = pubkey
                     break
@@ -867,7 +887,7 @@ class psbtInputProxy(psbtProxy):
             self.scriptSig = utxo.scriptPubKey
             assert len(addr_or_pubkey) == 33
 
-            if addr_or_pubkey in self.subpaths:
+            if addr_or_pubkey in subpaths:
                 which_key = addr_or_pubkey
             else:
                 # pubkey provided is just wrong vs. UTXO
@@ -890,7 +910,7 @@ class psbtInputProxy(psbtProxy):
                 self.fully_signed = True
                 return
 
-            xfp_paths = list(self.subpaths.values())
+            xfp_paths = list(subpaths.values())
             xfp_paths.sort()
 
             # only search wallets with correct script type (aka address format)
@@ -907,7 +927,7 @@ class psbtInputProxy(psbtProxy):
 
             # validate redeem script, by disassembling it and checking all pubkeys
             try:
-                psbt.active_multisig.validate_script(redeem_script, subpaths=self.subpaths)
+                psbt.active_multisig.validate_script(redeem_script, subpaths=subpaths)
                 target_spk, _ = chains.current_chain().script_pubkey(self.addr_fmt,
                                                                      script=redeem_script)
                 assert target_spk == utxo.scriptPubKey, "spk mismatch"
@@ -1004,8 +1024,9 @@ class psbtInputProxy(psbtProxy):
         for k in self.subpaths:
             wr(PSBT_IN_BIP32_DERIVATION, self.subpaths[k], k)
 
-        if self.redeem_script:
-            wr(PSBT_IN_REDEEM_SCRIPT, self.redeem_script)
+        redeem_script = self.redeem_script or self.wif_redeem_script
+        if redeem_script:
+            wr(PSBT_IN_REDEEM_SCRIPT, redeem_script)
 
         if self.witness_script:
             wr(PSBT_IN_WITNESS_SCRIPT, self.witness_script)
@@ -1044,7 +1065,7 @@ class psbtObject(psbtProxy):
         self.xpubs = []         # tuples(xfp_path, xpub)
 
         self.my_xfp = settings.get('xfp', 0)
-        self.wif_store = init_wif_store()
+        self.wif_store = WIFStore()
 
         # details that we discover as we go
         self.inputs = None
@@ -1511,7 +1532,7 @@ class psbtObject(psbtProxy):
             self.por322 = bool(self.por322_msg)
 
         if self.por322:
-            if not is_ascii(self.por322_msg):
+            if not all(ord(ch) < 128 for ch in self.por322_msg):
                 self.warnings.append((
                     "Message",
                     "Message contains non-ASCII characters that may not be readable on this screen."
@@ -1912,6 +1933,9 @@ class psbtObject(psbtProxy):
             for n,inp in enumerate(self.inputs)
             if (inp.required_key is None) and (not inp.fully_signed)
         )
+        if len(no_keys) >= self.num_inputs:
+            raise FatalPSBTIssue(NO_KEY_ERR)
+
         if no_keys:
             # This is seen when you re-sign same signed file by accident (multisig)
             # - case of len(no_keys)==num_inputs is handled by consider_keys
@@ -1958,9 +1982,7 @@ class psbtObject(psbtProxy):
         others.discard(self.my_xfp)
         msg = ', '.join(xfp2str(i) for i in others)
 
-        raise FatalPSBTIssue('None of the keys involved in this transaction '
-                                 'belong to this Coldcard (need %s, found %s).' 
-                                    % (xfp2str(self.my_xfp), msg))
+        raise FatalPSBTIssue(NO_KEY_ERR + " (need %s, found %s)" % (xfp2str(self.my_xfp), msg))
 
     @classmethod
     def read_psbt(cls, fd):
@@ -2176,12 +2198,12 @@ class psbtObject(psbtProxy):
                     which_key = inp.required_key
     
                     assert not inp.added_sigs, "already done??"
-                    assert which_key in inp.subpaths, 'unk key'
 
 
                     if which_key in self.wif_store:
                         node = node_from_privkey(self.wif_store[which_key])
                     else:
+                        assert which_key in inp.subpaths, 'unk key'
                         # get node required
                         skp = keypath_to_str(inp.subpaths[which_key])
                         node = sv.derive_path(skp, register=False)

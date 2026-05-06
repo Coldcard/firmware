@@ -370,13 +370,14 @@ class ApproveTransaction(UserAuthorizedAction):
             await self.psbt.validate()  # might do UX: accept multisig import
             dis.progress_sofar(10, 100)
 
-            # consider_keys only needs num_our_keys to be set
-            # it set during psbt.validate()
-            self.psbt.consider_keys()
+            if not self.psbt.wif_store:
+                self.psbt.consider_keys()
             dis.progress_sofar(20, 100)
 
             ccc_c_xfp = CCCFeature.get_xfp()  # can be None
             self.psbt.consider_inputs(cosign_xfp=ccc_c_xfp)
+            if self.psbt.wif_store:
+                self.psbt.consider_keys()
             dis.progress_sofar(50, 100)
 
             self.psbt.consider_outputs()
@@ -1720,11 +1721,18 @@ class TXInpExplorer(TXExplorer):
             ws = self.user_auth_action.psbt.wif_store
             our = [inp.required_key] if isinstance(inp.required_key, bytes) else inp.required_key
             psbt_item += "Our key%s:\n\n" % ("s" if len(our) > 1 else "")
+            wif_note = "(WIF Store)"
             for k in our:
-                pth = inp.subpaths[k]
-                ws_note = "\n(WIF Store)" if (ws and k in ws) else ""
-                psbt_item += "%s:\n%s%s\n\n" % (keypath_to_str(pth, prefix="%s/" % xfp2str(pth[0])),
-                                              b2a_hex(k).decode(), ws_note)
+                pubkey = b2a_hex(k).decode()
+                pth = inp.subpaths.get(k)
+                note = ""
+                if pth:
+                    label = keypath_to_str(pth, prefix="%s/" % xfp2str(pth[0]))
+                    if ws and k in ws:
+                        note = "\n" + wif_note
+                    psbt_item += "%s:\n%s%s\n\n" % (label, pubkey, note)
+                else:
+                    psbt_item += "%s\n%s\n\n" % (pubkey, wif_note)
 
         if inp.is_multisig:
             ks_coord = inp.witness_script or inp.redeem_script
