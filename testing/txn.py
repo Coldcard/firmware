@@ -60,12 +60,19 @@ def fake_txn(dev, pytestconfig):
             # - each input is 1BTC
 
             # addr where the fake money will be stored.
-            subkey = mk.subkey_for_path(subpath % i)
-            sec = subkey.sec()
-            assert len(sec) == 33, "expect compressed"
-            assert subpath[0:2] == '0/'
+            if subpath is None:
+                subkey = mk
+                sec = mk.sec()
+                bytes_path = b""
+            else:
+                subkey = mk.subkey_for_path(subpath % i)
+                sec = subkey.sec()
+                assert len(sec) == 33, "expect compressed"
+                assert subpath[0:2] == '0/'
+                # TODO does not respect subpath parameter
+                bytes_path = struct.pack('<II', 0, i)
 
-            psbt.inputs[i].bip32_paths[sec] = xfp + struct.pack('<II', 0, i)
+            psbt.inputs[i].bip32_paths[sec] = xfp + bytes_path
 
             # UTXO that provides the funding for to-be-signed txn
             supply = CTransaction()
