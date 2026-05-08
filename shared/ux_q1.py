@@ -1025,6 +1025,20 @@ class QRScannerInteraction:
             from teleport import kt_incoming
             await kt_incoming(*vals)
 
+        elif what == 'paper_backup':
+            # Encrypted Coldcard backup delivered as a printed sheet of BBQr
+            # codes. The reassembled .7z blob is already in PSRAM at offset 0
+            # (BBQrPsramStorage default); vals[0] is its byte length. Reuse
+            # the existing USB-style restore_complete() path which expects
+            # an int length and reads from PSRAM via SFFile.
+            # A full backup is a master-seed artifact: restore as master on a
+            # blank device (the real recovery case), else as a temporary seed.
+            # Mirrors restore_backup_dev(); the menu-level `tmp` is ignored
+            # because it is always True on a running (seeded) device, which
+            # would dead-end at "Cannot use master seed as temporary".
+            from backups import restore_complete
+            await restore_complete(vals[0], temporary=not pa.is_secret_blank())
+
         else:
             await ux_show_story(what, title='Unhandled')
 

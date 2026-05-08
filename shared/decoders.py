@@ -149,6 +149,16 @@ def decode_qr_result(got, expect_secret=False, expect_text=False, expect_bbqr=Fa
                 raise QRDecodeExplained("Truncated KT RX")
 
             return 'teleport', (ty, got)
+
+        elif ty == 'B':
+            # Binary BBQr: today the only meaningful payload is a Coldcard
+            # paper-backup, identified by the 7z magic header. Reassembled
+            # blob lives at PSRAM offset 0 (BBQrPsramStorage).
+            if final_size >= 6 and bytes(got[:6]) == b'7z\xbc\xaf\x27\x1c':
+                return 'paper_backup', (final_size,)
+            msg = TYPE_LABELS.get(ty, 'Unknown FileType')
+            raise QRDecodeExplained("Sorry, %s not useful." % msg)
+
         else:
             msg = TYPE_LABELS.get(ty, 'Unknown FileType')
             raise QRDecodeExplained("Sorry, %s not useful." % msg)
