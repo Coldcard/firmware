@@ -25,7 +25,7 @@ def fake_txn(dev, pytestconfig):
              outstyles=['p2pkh'],  psbt_hacker=None, change_outputs=[],
              capture_scripts=None, add_xpub=None, op_return=None, taproot_in=False,
              psbt_v2=None, input_amount=1E8, unknown_out_script=None, lock_time=0,
-             sequences=None, sighashes=None, dupe_ins=[]):
+             sequences=None, sighashes=None, dupe_ins=[], p2pk_in=False):
 
         psbt = BasicPSBT()
 
@@ -66,9 +66,15 @@ def fake_txn(dev, pytestconfig):
                 bytes_path = b""
             else:
                 subkey = mk.subkey_for_path(subpath % i)
-                sec = subkey.sec()
-                assert len(sec) == 33, "expect compressed"
+                if p2pk_in:
+                    assert not segwit_in and not taproot_in and not wrapped
+                    assert p2pk_in in (True, 'compressed', 'uncompressed')
+                    sec = subkey.sec(compressed=(p2pk_in != 'uncompressed'))
+                else:
+                    sec = subkey.sec()
+                    assert len(sec) == 33, "expect compressed"
                 assert subpath[0:2] == '0/'
+
                 # TODO does not respect subpath parameter
                 bytes_path = struct.pack('<II', 0, i)
 
@@ -83,7 +89,10 @@ def fake_txn(dev, pytestconfig):
             )
             supply.vin = [CTxIn(out_point, nSequence=0xffffffff)]
 
-            if segwit_in:
+            if p2pk_in:
+                # p2pk: <push pubkey> OP_CHECKSIG
+                scr = bytes([len(sec)]) + sec + b'\xac'
+            elif segwit_in:
                 # p2wpkh
                 scr = bytes([0x00, 0x14]) + subkey.hash160()
                 if wrapped:
@@ -258,6 +267,10 @@ def render_address(script, testnet=True):
         b58_addr    = bytes([111])
         b58_script  = bytes([196])
         b58_privkey = bytes([239])
+
+    if ll in (35, 67) and script[0] == (ll - 2) and script[-1] == 0xac:
+        # does not have address format - just show raw scriptPubKey
+        return b2a_hex(script).decode()
 
     # P2PKH
     if ll == 25 and script[0:3] == b'\x76\xA9\x14' and script[23:26] == b'\x88\xAC':

@@ -440,7 +440,7 @@ class psbtOutputProxy(psbtProxy):
 
         if af == AF_BARE_PK:
             # output is public key (not a hash, much less common)
-            assert len(addr_or_pubkey) == 33
+            assert len(addr_or_pubkey) in (33, 65)   # compressed or uncompressed
 
             if addr_or_pubkey != expect_pubkey:
                 raise FraudulentChangeOutput(out_idx, "P2PK change output is fraudulent")
@@ -885,7 +885,7 @@ class psbtInputProxy(psbtProxy):
         elif self.addr_fmt == AF_BARE_PK:
             # input is single public key (less common)
             self.scriptSig = utxo.scriptPubKey
-            assert len(addr_or_pubkey) == 33
+            assert len(addr_or_pubkey) in (33, 65)   # compressed or uncompressed
 
             if addr_or_pubkey in subpaths:
                 which_key = addr_or_pubkey
@@ -2084,7 +2084,13 @@ class psbtObject(psbtProxy):
         node = sv.derive_path(skp)
 
         # check the pubkey of this BIP-32 node
-        if target_pk == node.pubkey():
+        pu = node.pubkey()  # always 33-byte compressed
+        if len(target_pk) == 65:
+            # P2PK with uncompressed pubkey: re-serialize node's pubkey in
+            # uncompressed form for direct comparison.
+            pu = ngu.secp256k1.pubkey(pu).to_bytes(True)
+
+        if target_pk == pu:
             return node
         return None
 
@@ -2218,14 +2224,9 @@ class psbtObject(psbtProxy):
                     else:
                         assert which_key in inp.subpaths, 'unk key'
                         # get node required
-                        skp = keypath_to_str(inp.subpaths[which_key])
-                        node = sv.derive_path(skp, register=False)
-
-                        # expensive test, but works... and important
-                        pu = node.pubkey()
-
-                        assert pu == which_key, \
-                            "Path (%s) led to wrong pubkey for input#%d"%(skp, in_idx)
+                        node = self.check_pubkey_at_path(sv, inp.subpaths[which_key], which_key)
+                        assert node, "Path (%s) led to wrong pubkey for input#%d" % (
+                            keypath_to_str(inp.subpaths[which_key]), in_idx)
 
                         # track wallet usage
 
@@ -2588,7 +2589,12 @@ class psbtObject(psbtProxy):
 
                 else:
                     pubkey, der_sig = ssig
-                    txi.scriptSig = ser_push_data(der_sig) + ser_push_data(pubkey)
+                    if inp.addr_fmt == AF_BARE_PK:
+                        # P2PK: pubkey is already in scriptPubKey, scriptSig is just <sig>
+                        txi.scriptSig = ser_push_data(der_sig)
+                    else:
+                        # P2PKH: scriptSig is <sig> <pubkey>
+                        txi.scriptSig = ser_push_data(der_sig) + ser_push_data(pubkey)
 
             fd.write(txi.serialize())
 
