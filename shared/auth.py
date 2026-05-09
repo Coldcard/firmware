@@ -651,7 +651,8 @@ class ApproveTransaction(UserAuthorizedAction):
                 has_change = True
                 total_change += tx_out.nValue
                 if len(largest_change) < MAX_VISIBLE_CHANGE:
-                    largest_change.append((tx_out.nValue, self.chain.render_address(tx_out.scriptPubKey)))
+                    _, addr = self.render_output(tx_out)
+                    largest_change.append((tx_out.nValue, addr))
                     if len(largest_change) == MAX_VISIBLE_CHANGE:
                         largest_change = sorted(largest_change, key=lambda x: x[0], reverse=True)
                     continue
@@ -676,12 +677,9 @@ class ApproveTransaction(UserAuthorizedAction):
                 continue        # too small
 
             largest.pop(-1)
-            if outp.is_change:
-                ret = (here, self.chain.render_address(tx_out.scriptPubKey))
-            else:
-                rendered, _ = self.render_output(tx_out)
-                ret = (here, rendered)
-            largest.insert(keep, ret)
+
+            rendered, dest = self.render_output(tx_out)
+            largest.insert(keep, (here, dest if outp.is_change else rendered))
 
         # foreign outputs (soon to be other people's coins)
         visible_out_sum = 0
@@ -1701,8 +1699,10 @@ class TXInpExplorer(TXExplorer):
             item += "=== UTXO ===\n\n%s %s\n\n%s\n\n" % (val, unit, spk)
             if addr:
                 item += show_single_address(addr) + "\n\n"
-                item += "Address Format: %s\n\n" % chains.addr_fmt_str(inp.addr_fmt)
                 qr_items.append(addr)
+
+            if inp.addr_fmt is not None:
+                item += "Address Format: %s\n\n" % chains.addr_fmt_str(inp.addr_fmt)
 
         if self.user_auth_action.psbt.txn_version >= 2:
             has_rtl = inp.has_relative_timelock(txin)

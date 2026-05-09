@@ -50,6 +50,14 @@ def fake_dest_addr(style='p2pkh'):
     if style == 'p2pkh':
         return bytes([0x76, 0xa9, 0x14]) + prandom(20) + bytes([0x88, 0xac])
 
+    if style in ('p2pk', 'p2pk-compressed'):
+        pubkey = bytes([random.choice((2, 3))]) + prandom(32)
+        return bytes([len(pubkey)]) + pubkey + bytes([0xac])
+
+    if style == 'p2pk-uncompressed':
+        pubkey = bytes([4]) + prandom(64)
+        return bytes([len(pubkey)]) + pubkey + bytes([0xac])
+
     if style == "p2tr":
         return bytes([81, 32]) + prandom(32)
 
@@ -57,8 +65,6 @@ def fake_dest_addr(style='p2pkh'):
         # <same date> OP_CHECKLOCKTIMEVERIFY OP_DROP OP_DUP OP_HASH160 <pubKeyHash> OP_EQUALVERIFY OP_CHECKSIG
         hex_str = "049f7b2a5cb17576a914371c20fb2e9899338ce5e99908e64fd30b78931388ac"
         return bytes.fromhex(hex_str)
-
-    # missing: if style == 'p2pk' =>  pay to pubkey, considered obsolete
 
     raise ValueError('not supported: ' + style)
 
@@ -77,8 +83,12 @@ def make_change_addr(wallet, style):
     assert len(target) == 20
 
     is_segwit = True
+    pubkey = dest.sec(compressed=(style != 'p2pk-uncompressed'))
     if style == 'p2pkh':
         redeem_scr = bytes([0x76, 0xa9, 0x14]) + target + bytes([0x88, 0xac])
+        is_segwit = False
+    elif style in ('p2pk', 'p2pk-compressed', 'p2pk-uncompressed'):
+        redeem_scr = bytes([len(pubkey)]) + pubkey + bytes([0xac])
         is_segwit = False
     elif style == 'p2wpkh':
         redeem_scr = bytes([0, 20]) + target
@@ -92,7 +102,7 @@ def make_change_addr(wallet, style):
     else:
         raise ValueError('cant make fake change output of type: ' + style)
 
-    return redeem_scr, actual_scr, is_segwit, dest.sec(), struct.pack('4I', xfp, *deriv)
+    return redeem_scr, actual_scr, is_segwit, pubkey, struct.pack('4I', xfp, *deriv)
 
 def swab32(n):
     # endian swap: 32 bits

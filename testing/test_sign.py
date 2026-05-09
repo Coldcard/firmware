@@ -3932,4 +3932,207 @@ def test_empty_input_scriptPubKey(segwit_in, dev, fake_txn, start_sign, cap_stor
     title, _ = cap_story()
     assert title == "Failure"
 
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize('finalize', [True, False])
+@pytest.mark.parametrize('mode', ['compressed', 'uncompressed'])
+def test_spend_p2pk(mode, finalize, bitcoind, bitcoind_d_wallet, dev,
+                    start_sign, end_sign, cap_story, use_regtest, goto_home):
+    use_regtest()
+    goto_home()
+
+    xfp_str = xfp2str(dev.master_fingerprint).lower()
+    path = "44h/1h/0h/0/0"
+    xpub = dev.send_recv(CCProtocolPacker.get_xpub("m/" + path), timeout=5000)
+    node = BIP32Node.from_wallet_key(xpub)
+
+    if mode == 'compressed':
+        pubkey_hex = node.node.public_key.sec(compressed=True).hex()
+    else:
+        pubkey_hex = node.node.public_key.sec(compressed=False).hex()
+
+    # pk() descriptor with origin info — Core writes the (xfp, path) into the
+    # PSBT's BIP32_DERIVATION so Coldcard recognizes it as its own key.
+    desc = "pk([%s/%s]%s)" % (xfp_str, path, pubkey_hex)
+    desc = bitcoind.rpc.getdescriptorinfo(desc)["descriptor"]
+
+    res = bitcoind_d_wallet.importdescriptors([{
+        "desc": desc, "timestamp": "now", "watchonly": True,
+    }])
+    assert res[0]["success"], res
+
+    # Fund the P2PK output. No Core RPC accepts a raw scriptPubKey as an
+    # output, so we hand-build a skeleton tx with the P2PK output and let
+    # fundrawtransaction fill in inputs, change, and fee from supply_wallet.
+    push_op = b'\x21' if mode == 'compressed' else b'\x41'
+    spk = push_op + bytes.fromhex(pubkey_hex) + b'\xac'
+    txn = CTransaction()
+    txn.vout = [CTxOut(5_00_000_000, spk)]   # 5 BTC
+
+    funded = bitcoind.supply_wallet.fundrawtransaction(txn.serialize().hex())
+    signed = bitcoind.supply_wallet.signrawtransactionwithwallet(funded["hex"])
+    bitcoind.rpc.sendrawtransaction(signed["hex"])
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    assert bitcoind_d_wallet.listunspent()
+
+    dest = bitcoind.supply_wallet.getnewaddress()
+    resp = bitcoind_d_wallet.walletcreatefundedpsbt(
+        [], [{dest: bitcoind_d_wallet.getbalance()}], 0,
+        {"fee_rate": 3, "subtractFeeFromOutputs": [0]})
+    psbt_bytes = base64.b64decode(resp["psbt"])
+
+    # Sanity: confirm Core encoded the pubkey form we asked for in the PSBT's
+    # BIP32_DERIVATION (key field). 33 bytes for compressed, 65 for uncompressed.
+    # Single-sig P2PK has exactly one entry; `all` rejects any extra entries
+    # in unexpected form.
+    expect_pk_len = 33 if mode == 'compressed' else 65
+    pre_po = BasicPSBT().parse(psbt_bytes)
+    pre_keys = list(pre_po.inputs[0].bip32_paths.keys())
+    assert pre_keys
+    assert all(len(k) == expect_pk_len for k in pre_keys)
+
+    start_sign(psbt_bytes, finalize=finalize)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    out = end_sign(accept=True, finalize=finalize)
+
+    if finalize:
+        # Coldcard returned the network tx; broadcast directly.
+        tx_hex = out.hex()
+    else:
+        # Coldcard returned a partially-signed PSBT. Verify the partial sig
+        # carries the same-form pubkey as keydata, then have bitcoind finalize.
+        signed_po = BasicPSBT().parse(out)
+        sig_keys = list(signed_po.inputs[0].part_sigs.keys())
+        assert sig_keys
+        assert all(len(k) == expect_pk_len for k in sig_keys)
+
+        finalized = bitcoind.rpc.finalizepsbt(base64.b64encode(out).decode())
+        assert finalized["complete"], finalized
+        tx_hex = finalized["hex"]
+
+    accept = bitcoind.rpc.testmempoolaccept([tx_hex])
+    assert accept[0]["allowed"], accept
+    txid = bitcoind.rpc.sendrawtransaction(tx_hex)
+    assert len(txid) == 64
+
+    goto_home()
+
+
+@pytest.mark.parametrize('finalize', [True, False])
+@pytest.mark.parametrize('mode', ['compressed', 'uncompressed'])
+def test_fake_txn_spend_p2pk(mode, finalize, fake_txn, start_sign, end_sign, cap_story):
+    expect_pk_len = 33 if mode == 'compressed' else 65
+    style = 'p2pk' if mode == 'compressed' else 'p2pk-uncompressed'
+    psbt = fake_txn(1, 2, p2pk_in=mode, outstyles=[style, 'p2pkh'], change_outputs=[0])
+
+    pre = BasicPSBT().parse(psbt)
+    change_keys = list(pre.outputs[0].bip32_paths.keys())
+    assert change_keys and all(len(k) == expect_pk_len for k in change_keys)
+
+    start_sign(psbt, finalize=finalize)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "Change back:" in story
+
+    out = end_sign(accept=True, finalize=finalize)
+    if not finalize:
+        signed = BasicPSBT().parse(out)
+        sig_keys = list(signed.inputs[0].part_sigs.keys())
+        assert sig_keys and all(len(k) == expect_pk_len for k in sig_keys)
+
+
+@pytest.mark.parametrize('mode', ['compressed', 'uncompressed'])
+@pytest.mark.parametrize('change', [True, False])
+def test_p2pk_change_output_renders(mode, change, fake_txn, start_sign, cap_story, dev,
+                                    goto_home, need_keypress, pick_menu_item, press_cancel):
+    master_xpub = dev.master_xpub or simulator_fixed_tprv
+    mk = BIP32Node.from_wallet_key(master_xpub)
+    xfp = mk.fingerprint()
+
+    input_leaf = mk.subkey_for_path("0/0")
+    input_pk = input_leaf.node.public_key.sec(compressed=(mode == 'compressed'))
+    input_spk = bytes([len(input_pk)]) + input_pk + b'\xac'
+
+    leaf = mk.subkey_for_path("0/77")
+    if mode == 'compressed':
+        pk = leaf.node.public_key.sec(compressed=True)
+        push_op = b'\x21'
+    else:
+        pk = leaf.node.public_key.sec(compressed=False)
+        push_op = b'\x41'
+
+    assert len(pk) == (33 if mode == 'compressed' else 65)
+    p2pk_spk = push_op + pk + b'\xac'                 # <push> <pubkey> OP_CHECKSIG
+
+    def hack(psbt):
+        t = CTransaction()
+        t.deserialize(BytesIO(psbt.txn))
+        t.vout[0].scriptPubKey = p2pk_spk
+        psbt.txn = t.serialize_with_witness()
+        if change:
+            psbt.outputs[0].bip32_paths = {pk: xfp + struct.pack('<II', 0, 77)}
+
+    outvals = [1_000_000, 98_990_000]
+    psbt = fake_txn(1, 2, p2pk_in=mode, psbt_v2=False, psbt_hacker=hack,
+                    outvals=outvals)
+    goto_home()
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"                     # approval screen built, no crash
+    assert ("Change back:" in story) == change
+    if change:
+        assert p2pk_spk.hex() in story.replace(" ", "").replace("\n", "")
+
+    need_keypress("2")
+    pick_menu_item("Outputs")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert (f"Output 0 (change):" if change else "Output 0:") in story
+    assert p2pk_spk.hex() in story.replace(" ", "").replace("\n", "")
+
+    press_cancel()
+    time.sleep(.1)
+    pick_menu_item("Inputs")
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Input 0"
+    stripped = story.replace(" ", "").replace("\n", "")
+    assert input_spk.hex() in stripped
+    assert input_pk.hex() in stripped
+
+    for _ in range(3):
+        press_cancel()
+
+
+def test_malformed_p2pk_change_output(fake_txn, start_sign, cap_story, end_sign, dev):
+    master_xpub = dev.master_xpub or simulator_fixed_tprv
+    mk = BIP32Node.from_wallet_key(master_xpub)
+    xfp = mk.fingerprint()
+    leaf = mk.subkey_for_path("0/77")
+    pk = leaf.node.public_key.sec(compressed=True)
+
+    malformed_p2pk = b'\x21' + pk + os.urandom(32) + b'\xac'
+    assert len(malformed_p2pk) == 67
+
+    def hack(psbt):
+        t = CTransaction()
+        t.deserialize(BytesIO(psbt.txn))
+        t.vout[0].scriptPubKey = malformed_p2pk
+        psbt.txn = t.serialize_with_witness()
+        psbt.outputs[0].bip32_paths = {pk: xfp + struct.pack('<II', 0, 77)}
+
+    psbt = fake_txn(1, 2, segwit_in=True, psbt_v2=False, psbt_hacker=hack)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "to script" in story
+    assert "Sending to 1 not well understood script(s)" in story
+    assert "Change back:" not in story
+    end_sign(accept=True)
+
 # EOF

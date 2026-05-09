@@ -5,7 +5,7 @@
 import ngu
 from uhashlib import sha256
 from ubinascii import hexlify as b2a_hex
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2TR
+from public_constants import AF_BARE_PK, AF_CLASSIC, AF_P2WPKH, AF_P2TR
 from public_constants import AF_P2SH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH
 from public_constants import AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32, AFC_SCRIPT
 from block_height import BLOCK_HEIGHT
@@ -450,6 +450,7 @@ def addr_fmt_label(addr_fmt):
 def addr_fmt_str(addr_fmt):
     # Short string codes used for address format (industry standard)
     return {AF_CLASSIC: "p2pkh",
+            AF_BARE_PK: "p2pk",
             AF_P2SH: "p2sh",
             AF_P2TR: "p2tr",
             AF_P2WPKH: "p2wpkh",

@@ -376,8 +376,10 @@ class CTxOut(object):
             return AF_P2SH, self.scriptPubKey[2:2+20], False
 
         if self.is_p2pk():
-            # rare, pay to full pubkey
-            return AF_BARE_PK, self.scriptPubKey[2:2+33], False
+            # rare, pay to full pubkey: <push_op> <pubkey> OP_CHECKSIG
+            # push_op is 0x21 (33) for compressed, 0x41 (65) for uncompressed
+            pk_len = self.scriptPubKey[0]
+            return AF_BARE_PK, self.scriptPubKey[1:1+pk_len], False
 
         if self.is_op_return():
             return OP_RETURN, self.scriptPubKey, False
@@ -407,8 +409,8 @@ class CTxOut(object):
 
     def is_p2pk(self):
         return (len(self.scriptPubKey) == 35 or len(self.scriptPubKey) == 67) \
-                and (self.scriptPubKey[0] == 0x21 or self.scriptPubKey[0] == 0x41) \
-                and self.scriptPubKey[-1] == 0xac
+                and self.scriptPubKey[0] == len(self.scriptPubKey) - 2 \
+                and self.scriptPubKey[-1] == OP_CHECKSIG
 
     def is_op_return(self):
         return self.scriptPubKey and (self.scriptPubKey[0] == OP_RETURN)
