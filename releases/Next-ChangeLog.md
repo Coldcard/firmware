@@ -13,6 +13,7 @@ This lists the new changes that have not yet been published in a normal release.
   When both UTXO fields are present the full non_witness_utxo is now preferred for amount/script lookup. Thanks, @Damir
 - Bugfix: Emit warning and do not calculate fee for legacy UTXOs with only witness utxo
 - Bugfix: Disable Virtual Disk and NFC before activating HSM
+- Bugfix: P2PK signing was broken. Now supports both compressed and uncompressed P2PK spend
 - Bugfix: Custom address default menu position wrong
 - Bugfix: Delta Mode Trick PIN was never restored from backup
 - Bugfix: Proper error message for incorrect 7z headers

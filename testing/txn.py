@@ -23,7 +23,8 @@ def fake_txn(dev, pytestconfig):
     def doit(inputs, outputs, master_xpub=None, psbt_hacker=None, add_xpub=None, psbt_v2=None,
              fee=200, addr_fmt="p2wpkh", input_amount=100_000_000, capture_scripts=None,
              force_full_tx_utxo=False, supply_num_ins=1, supply_num_outs=1, lock_time=0,
-             sequences=None, sighashes=None, dupe_ins=[], subpath="0/%d"): # input_amount in sats
+             sequences=None, sighashes=None, dupe_ins=[], subpath="0/%d",
+             p2pk_in=False): # input_amount in sats
 
         psbt = BasicPSBT()
 
@@ -74,7 +75,11 @@ def fake_txn(dev, pytestconfig):
         added_foreign = False
         for i, inp in enumerate(inputs):
             sp = None if subpath is None else subpath % i
-            af = addr_fmt
+            if p2pk_in:
+                assert p2pk_in in (True, 'compressed', 'uncompressed')
+                af = 'p2pk-uncompressed' if p2pk_in == 'uncompressed' else 'p2pk'
+            else:
+                af = addr_fmt
             ia = input_amount
             is_mine = True
             try:
@@ -104,8 +109,11 @@ def fake_txn(dev, pytestconfig):
             # addr where the fake money will be stored.
             int_path = [] if sp is None else str_to_path(sp)
             subkey = mk if sp is None else mk.subkey_for_path(sp)
-            sec = subkey.sec()
-            assert len(sec) == 33, "expect compressed"
+            if af == 'p2pk-uncompressed':
+                sec = subkey.sec(compressed=False)
+            else:
+                sec = subkey.sec()
+                assert len(sec) == 33, "expect compressed"
 
             is_segwit = True
             if af == "p2tr":
@@ -126,6 +134,11 @@ def fake_txn(dev, pytestconfig):
                 is_segwit = False
                 psbt.inputs[i].bip32_paths[sec] = mfp + struct.pack(f'<{"I"*len(int_path)}', *int_path)
                 scr = bytes([0x76, 0xa9, 0x14]) + subkey.hash160() + bytes([0x88, 0xac])
+
+            elif af in ('p2pk', 'p2pk-compressed', 'p2pk-uncompressed'):
+                is_segwit = False
+                psbt.inputs[i].bip32_paths[sec] = mfp + struct.pack(f'<{"I"*len(int_path)}', *int_path)
+                scr = bytes([len(sec)]) + sec + b'\xac'
 
             else:
                 raise ValueError("unknown addr_fmt %s" % af)
@@ -294,6 +307,10 @@ def render_address(script, testnet=True):
         b58_addr    = bytes([111])
         b58_script  = bytes([196])
         b58_privkey = bytes([239])
+
+    if ll in (35, 67) and script[0] == (ll - 2) and script[-1] == 0xac:
+        # does not have address format - just show raw scriptPubKey
+        return b2a_hex(script).decode()
 
     # P2PKH
     if ll == 25 and script[0:3] == b'\x76\xA9\x14' and script[23:26] == b'\x88\xAC':

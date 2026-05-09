@@ -574,9 +574,8 @@ class psbtOutputProxy(psbtProxy):
             ))
 
         if af == AF_BARE_PK:
-            # output is compressed public key (not a hash, much less common)
-            # uncompressed public keys not supported!
-            assert len(addr_or_pubkey) == 33
+            # output is public key (not a hash, much less common)
+            assert len(addr_or_pubkey) in (33, 65)
             assert len(parsed_subpaths) == 1
             target, = parsed_subpaths.keys()
 
@@ -955,9 +954,8 @@ class psbtInputProxy(psbtProxy):
                 return
 
         if self.af == AF_BARE_PK:
-            # input is single compressed public key (less common)
-            # uncompressed public keys not supported!
-            assert len(addr_or_pubkey) == 33
+            # input is a single compressed or uncompressed public key (less common)
+            assert len(addr_or_pubkey) in (33, 65)
 
             for i, pubkey in enumerate(parsed_subpaths):
                 if pubkey == addr_or_pubkey:
@@ -1401,10 +1399,10 @@ class psbtObject(psbtProxy):
         self.sig_added = False
 
     def key_in_wif_store(self, key):
-        # key -> public key (xonly or classic compressed)
+        # key -> public key (xonly, compressed, or uncompressed)
         # wif_store -> initialized wif store as in psbt class
         # returns key as found in wif store
-        assert len(key) in [32, 33]
+        assert len(key) in [32, 33, 65]
         if len(key) == 32:
             # taproot xonly key
             if b"\x02" + key in self.wif_store:
@@ -1412,6 +1410,10 @@ class psbtObject(psbtProxy):
             elif b"\x03" + key in self.wif_store:
                 return b"\x03" + key
         else:
+            if len(key) == 65:
+                # WIF Store keeps compressed pubkeys, but P2PK may identify
+                # that same private key using its uncompressed serialization.
+                key = ngu.secp256k1.pubkey(key).to_bytes()
             if key in self.wif_store:
                 return key
 
@@ -2574,6 +2576,9 @@ class psbtObject(psbtProxy):
         our_pk = node.pubkey()
         if is_xonly:
             our_pk = our_pk[1:]
+        elif len(target_pk) == 65:
+            # BIP32 derives compressed keys; re-serialize for legacy P2PK comparison.
+            our_pk = ngu.secp256k1.pubkey(our_pk).to_bytes(True)
         if target_pk == our_pk:
             return node
 
@@ -2982,6 +2987,8 @@ class psbtObject(psbtProxy):
                     pu = node.pubkey()
                     if schnorrsig:
                         pu = pu[1:]
+                    elif len(pk) == 65:
+                        pu = ngu.secp256k1.pubkey(pu).to_bytes(True)
 
                     assert pu == pk, "Path (%s) led to wrong pubkey for input#%d" % (skp, in_idx)
 
@@ -3687,7 +3694,12 @@ class psbtObject(psbtProxy):
                     txi.scriptSig = ss
                 else:
                     pubkey, der_sig = ssig
-                    txi.scriptSig = ser_push_data(der_sig) + ser_push_data(pubkey)
+                    if inp.af == AF_BARE_PK:
+                        # P2PK: pubkey is already in scriptPubKey, scriptSig is just <sig>
+                        txi.scriptSig = ser_push_data(der_sig)
+                    else:
+                        # P2PKH: scriptSig is <sig> <pubkey>
+                        txi.scriptSig = ser_push_data(der_sig) + ser_push_data(pubkey)
 
             fd.write(txi.serialize())
 
