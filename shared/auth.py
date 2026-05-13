@@ -622,7 +622,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 CCCFeature.sign_psbt(self.psbt)
 
             if SSSPFeature.is_enabled():
-                # capture new min-height for velocity limit
+                # update SSSP block_h even if SSSP blocks and overridden by CCC
                 SSSPFeature.update_last_signed(self.psbt)
 
         except FraudulentChangeOutput as exc:

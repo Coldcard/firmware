@@ -3023,7 +3023,7 @@ def import_wif_to_store(goto_home, pick_menu_item, cap_story, press_select, cap_
 from test_backup import backup_system
 from test_bbqr import readback_bbqr, render_bbqr, readback_bbqr_ll, try_sign_bbqr, split_scan_bbqr
 from test_bip39pw import set_bip39_pw
-from test_ccc import get_last_violation
+from test_ccc import get_last_violation, setup_ccc, goto_ccc_menu, ccc_ms_setup, bitcoind_create_watch_only_wallet
 from test_drv_entro import derive_bip85_secret, activate_bip85_ephemeral
 from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto_eph_seed_menu
 from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed, confirm_tmp_seed

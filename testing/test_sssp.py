@@ -767,4 +767,60 @@ def test_sssp_notes_enable(only_q1, setup_sssp):
 def test_sssp_word_check(setup_sssp):
     # just test menu item works
     setup_sssp("11-11", mag=2, vel='6 blocks (hour)', word_check=True)
+
+
+@pytest.mark.bitcoind
+def test_ccc_with_sssp_block_h(setup_ccc, ccc_ms_setup, setup_sssp, bitcoind, policy_sign,
+                               settings_get, settings_set, bitcoind_create_watch_only_wallet,
+                               pick_menu_item, press_select, cap_story):
+    settings_set("ccc", None)
+    settings_set("sssp", None)
+    settings_set("multisig", [])
+    settings_set("chain", "XRT")
+
+    setup_ccc(mag=10, vel='Unlimited')
+    _, target_mi = ccc_ms_setup()
+
+    bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
+
+    setup_sssp(pin="11-11", mag=10, vel='48 blocks (8h)')
+
+    pick_menu_item("Test Drive")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "COLDCARD operation will look like with Spending Policy" in story
+    press_select()
+
+    multi_addr = bitcoind_wo.getnewaddress()
+    bitcoind.supply_wallet.sendtoaddress(address=multi_addr, amount=49)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    cur_h = bitcoind.supply_wallet.getblockchaininfo()["blocks"]
+    psbt1 = bitcoind_wo.walletcreatefundedpsbt(
+        [], [{bitcoind.supply_wallet.getnewaddress(): 1}], cur_h
+    )["psbt"]
+    policy_sign(bitcoind_wo, psbt1)
+
+    assert cur_h == settings_get("sssp")["pol"]["block_h"]
+    assert cur_h == settings_get("ccc")["pol"]["block_h"]
+    baseline_block_h = cur_h
+
+    bitcoind.supply_wallet.generatetoaddress(5, bitcoind.supply_wallet.getnewaddress())
+
+    # second signing -> SSSP velocity BLOCKS but CCC overrides and signing allowed
+    chosen_lock_time = baseline_block_h + 1
+    psbt2 = bitcoind_wo.walletcreatefundedpsbt(
+        [], [{bitcoind.supply_wallet.getnewaddress(): 1}], chosen_lock_time
+    )["psbt"]
+    policy_sign(bitcoind_wo, psbt2)
+
+    assert chosen_lock_time == settings_get("ccc")["pol"]["block_h"]
+    # SSSP block_h is updated too
+    assert chosen_lock_time == settings_get("sssp")["pol"]["block_h"]
+
+    pick_menu_item("EXIT TEST DRIVE")
+    settings_set("ccc", None)
+    settings_set("sssp", None)
+
+
 # EOF
