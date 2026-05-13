@@ -20,7 +20,7 @@ import pytest, time, os, pdb
 from bip32 import BIP32Node
 from constants import simulator_fixed_words, simulator_fixed_xprv
 from test_ephemeral import SEEDVAULT_TEST_DATA, WORDLISTS
-from test_ephemeral import confirm_tmp_seed, verify_ephemeral_secret_ui 
+from test_ephemeral import confirm_tmp_seed, verify_ephemeral_secret_ui
 from test_ux import word_menu_entry
 from charcodes import KEY_QR
 
@@ -495,5 +495,5 @@ def test_empty_notes_bug(set_hobble, goto_notes, cap_menu, pick_menu_item, is_q1
     m = cap_menu()
     assert len(m) == 1
     assert m[0] == "(none saved yet)"
-        
+
 # EOF
