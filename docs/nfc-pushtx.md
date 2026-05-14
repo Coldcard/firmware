@@ -34,7 +34,7 @@ The COLDCARD needs a URL prefix. To that it appends some values:
     - when RegTest is enabled, the value will be `XRT`
 
 We provide a few default URL values to our customers, including one backend we
-will operate on `colcard.com`. The URL can also be directly entered by the
+will operate on `coldcard.com`. The URL can also be directly entered by the
 customer. On the Q, it can be scanned from a QR code.
 
 For COLDCARD backend, the url used is:
