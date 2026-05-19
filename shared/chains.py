@@ -254,7 +254,7 @@ class ChainsBase:
             return ngu.codecs.b58_encode(cls.b58_script + script[2:2+20])
 
         # segwit v0 (P2WPKH, P2WSH)
-        if script[0] == 0 and script[1] in (0x14, 0x20) and (ll-2) == script[1]:
+        if ll in (22, 34) and script[0] == 0 and script[1] in (0x14, 0x20) and (ll-2) == script[1]:
             return ngu.codecs.segwit_encode(cls.bech32_hrp, script[0], script[2:])
 
         # segwit v1 (P2TR) and later segwit version

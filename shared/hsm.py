@@ -5,7 +5,7 @@
 # Unattended signing of transactions and messages, subject to a set of rules.
 #
 import ustruct, chains, sys, gc, uio, ujson, uos, utime, ckcc, ngu
-from utils import problem_file_line, cleanup_deriv_path, match_deriv_path
+from utils import problem_file_line, cleanup_deriv_path, match_deriv_path, keypath_to_str
 from utils import cleanup_payment_address
 from pincodes import AE_LONG_SECRET_LEN
 from stash import blank_object
@@ -882,15 +882,38 @@ class HSMPolicy:
                 # do this super early so always cleared even if other issues
                 local_ok = self.consume_local_code(psbt_sha)
 
-                if not self.rules:
-                    raise ValueError("no txn signing allowed")
-
                 # reject anything with warning, probably
                 if psbt.warnings:
                     if self.warnings_ok:
                         log.info("Txn has warnings, but policy is to accept anyway.")
                     else:
                         raise ValueError("has %d warning(s)" % len(psbt.warnings))
+
+                if psbt.por322:
+                    if not self.msg_paths:
+                        raise ValueError("Message signing not permitted")
+
+                    for inp in psbt.inputs:
+                        if not inp.required_key:
+                            continue
+
+                        if inp.is_multisig:
+                            paths = [
+                                keypath_to_str(inp.subpaths[pk])
+                                for pk in inp.required_key
+                                if pk in inp.subpaths
+                            ]
+                        else:
+                            paths = [keypath_to_str(inp.subpaths[inp.required_key])]
+
+                        if not any(match_deriv_path(self.msg_paths, p) for p in paths):
+                            raise ValueError("Message signing not enabled for that path")
+
+                    self.approve(log, "BIP-322 message signing allowed")
+                    return 'y'
+
+                if not self.rules:
+                    raise ValueError("no txn signing allowed")
 
                 # See who has entered creditials already (all must be valid).
                 users = []

@@ -14,58 +14,59 @@ b2a_hex = lambda a: str(_b2a_hex(a), 'ascii')
 # BIP-174 aka PSBT defined values
 #
 # GLOBAL ===
-PSBT_GLOBAL_UNSIGNED_TX 	     = 0x00
-PSBT_GLOBAL_XPUB        	     = 0x01
-PSBT_GLOBAL_VERSION              = 0xfb
-PSBT_GLOBAL_PROPRIETARY          = 0xfc
+PSBT_GLOBAL_UNSIGNED_TX 	       = 0x00
+PSBT_GLOBAL_XPUB        	       = 0x01
+PSBT_GLOBAL_VERSION                = 0xfb
+PSBT_GLOBAL_PROPRIETARY            = 0xfc
 
 # BIP-370
-PSBT_GLOBAL_TX_VERSION           = 0x02
-PSBT_GLOBAL_FALLBACK_LOCKTIME    = 0x03
-PSBT_GLOBAL_INPUT_COUNT          = 0x04
-PSBT_GLOBAL_OUTPUT_COUNT         = 0x05
-PSBT_GLOBAL_TX_MODIFIABLE        = 0x06
+PSBT_GLOBAL_TX_VERSION             = 0x02
+PSBT_GLOBAL_FALLBACK_LOCKTIME      = 0x03
+PSBT_GLOBAL_INPUT_COUNT            = 0x04
+PSBT_GLOBAL_OUTPUT_COUNT           = 0x05
+PSBT_GLOBAL_TX_MODIFIABLE          = 0x06
+PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE = 0x09
 
 # INPUTS ===
-PSBT_IN_NON_WITNESS_UTXO 	     = 0x00
-PSBT_IN_WITNESS_UTXO 	         = 0x01
-PSBT_IN_PARTIAL_SIG 	         = 0x02
-PSBT_IN_SIGHASH_TYPE 	         = 0x03
-PSBT_IN_REDEEM_SCRIPT 	         = 0x04
-PSBT_IN_WITNESS_SCRIPT 	         = 0x05
-PSBT_IN_BIP32_DERIVATION 	     = 0x06
-PSBT_IN_FINAL_SCRIPTSIG 	     = 0x07
-PSBT_IN_FINAL_SCRIPTWITNESS      = 0x08
-PSBT_IN_POR_COMMITMENT           = 0x09   # Proof of Reserves
-PSBT_IN_RIPEMD160                = 0x0a
-PSBT_IN_SHA256                   = 0x0b
-PSBT_IN_HASH160                  = 0x0c
-PSBT_IN_HASH256                  = 0x0d
+PSBT_IN_NON_WITNESS_UTXO 	       = 0x00
+PSBT_IN_WITNESS_UTXO 	           = 0x01
+PSBT_IN_PARTIAL_SIG 	           = 0x02
+PSBT_IN_SIGHASH_TYPE 	           = 0x03
+PSBT_IN_REDEEM_SCRIPT 	           = 0x04
+PSBT_IN_WITNESS_SCRIPT 	           = 0x05
+PSBT_IN_BIP32_DERIVATION 	       = 0x06
+PSBT_IN_FINAL_SCRIPTSIG 	       = 0x07
+PSBT_IN_FINAL_SCRIPTWITNESS        = 0x08
+PSBT_IN_POR_COMMITMENT             = 0x09   # Proof of Reserves
+PSBT_IN_RIPEMD160                  = 0x0a
+PSBT_IN_SHA256                     = 0x0b
+PSBT_IN_HASH160                    = 0x0c
+PSBT_IN_HASH256                    = 0x0d
 # BIP-370
-PSBT_IN_PREVIOUS_TXID            = 0x0e
-PSBT_IN_OUTPUT_INDEX             = 0x0f
-PSBT_IN_SEQUENCE                 = 0x10
-PSBT_IN_REQUIRED_TIME_LOCKTIME   = 0x11
-PSBT_IN_REQUIRED_HEIGHT_LOCKTIME = 0x12
+PSBT_IN_PREVIOUS_TXID              = 0x0e
+PSBT_IN_OUTPUT_INDEX               = 0x0f
+PSBT_IN_SEQUENCE                   = 0x10
+PSBT_IN_REQUIRED_TIME_LOCKTIME     = 0x11
+PSBT_IN_REQUIRED_HEIGHT_LOCKTIME   = 0x12
 # BIP-371
-PSBT_IN_TAP_KEY_SIG              = 0x13
-PSBT_IN_TAP_SCRIPT_SIG           = 0x14
-PSBT_IN_TAP_LEAF_SCRIPT          = 0x15
-PSBT_IN_TAP_BIP32_DERIVATION     = 0x16
-PSBT_IN_TAP_INTERNAL_KEY         = 0x17
-PSBT_IN_TAP_MERKLE_ROOT          = 0x18
+PSBT_IN_TAP_KEY_SIG                = 0x13
+PSBT_IN_TAP_SCRIPT_SIG             = 0x14
+PSBT_IN_TAP_LEAF_SCRIPT            = 0x15
+PSBT_IN_TAP_BIP32_DERIVATION       = 0x16
+PSBT_IN_TAP_INTERNAL_KEY           = 0x17
+PSBT_IN_TAP_MERKLE_ROOT            = 0x18
 
 # OUTPUTS ===
-PSBT_OUT_REDEEM_SCRIPT 	         = 0x00
-PSBT_OUT_WITNESS_SCRIPT 	     = 0x01
-PSBT_OUT_BIP32_DERIVATION 	     = 0x02
+PSBT_OUT_REDEEM_SCRIPT 	           = 0x00
+PSBT_OUT_WITNESS_SCRIPT 	       = 0x01
+PSBT_OUT_BIP32_DERIVATION 	       = 0x02
 # BIP-370
-PSBT_OUT_AMOUNT                  = 0x03
-PSBT_OUT_SCRIPT                  = 0x04
+PSBT_OUT_AMOUNT                    = 0x03
+PSBT_OUT_SCRIPT                    = 0x04
 # BIP-371
-PSBT_OUT_TAP_INTERNAL_KEY        = 0x05
-PSBT_OUT_TAP_TREE                = 0x06
-PSBT_OUT_TAP_BIP32_DERIVATION    = 0x07
+PSBT_OUT_TAP_INTERNAL_KEY          = 0x05
+PSBT_OUT_TAP_TREE                  = 0x06
+PSBT_OUT_TAP_BIP32_DERIVATION      = 0x07
 
 PSBT_PROP_CK_ID = b"COINKITE"
 
@@ -352,6 +353,7 @@ class BasicPSBT:
         self.outputs = []
         self.txn_modifiable = None
         self.fallback_locktime = None
+        self.bip322_msg = None
         self.unknown = {}
         self.parsed_txn = None
 
@@ -360,6 +362,7 @@ class BasicPSBT:
             a.input_count == b.input_count and \
             a.output_count == b.output_count and \
             a.fallback_locktime == b.fallback_locktime and \
+            a.bip322_msg == b.bip322_msg and \
             a.txn_version == b.txn_version and \
             a.version == b.version and \
             len(a.inputs) == len(b.inputs) and \
@@ -422,6 +425,8 @@ class BasicPSBT:
                     num_outs = self.output_count
                 elif kt == PSBT_GLOBAL_TX_MODIFIABLE:
                     self.txn_modifiable = val[0]
+                elif kt == PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE:
+                    self.bip322_msg = val
                 else:
                     self.unknown[key] = val
 
@@ -434,8 +439,8 @@ class BasicPSBT:
             if self.version == 0:
                 assert self.txn, 'v0: missing reqd section - PSBT_GLOBAL_UNSIGNED_TX'
             elif self.version == 2:
-                # tx version needs to be at least 2 because locktimes
-                assert self.txn_version in {2, 3}, 'v2: missing reqd section - PSBT_GLOBAL_TX_VERSION'
+                assert self.txn_version is not None, 'v2: missing reqd section - PSBT_GLOBAL_TX_VERSION'
+                assert self.txn_version != 0 or self.bip322_msg, 'bad txn version'
                 assert self.input_count is not None, 'v2: missing reqd section - PSBT_GLOBAL_INPUT_COUNT'
                 assert self.output_count is not None, 'v2: missing reqd section - PSBT_GLOBAL_OUTPUT_COUNT'
 
@@ -483,6 +488,9 @@ class BasicPSBT:
         if self.version is not None:
             wr(PSBT_GLOBAL_VERSION, struct.pack('<I', self.version))
 
+        if self.bip322_msg is not None:
+            wr(PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE, self.bip322_msg)
+
         if isinstance(self.unknown, list):
             # just so I can test duplicate unknown values
             # list of tuples [(key0, val0), (key1, val1)]
@@ -512,7 +520,7 @@ class BasicPSBT:
     def to_v2(self):
         if self.version is None or self.version == 0:
             self.version = 2
-            self.txn_version = 2
+            self.txn_version = self.parsed_txn.nVersion
             self.txn = None
             self.input_count = len(self.parsed_txn.vin)
             self.output_count = len(self.parsed_txn.vout)

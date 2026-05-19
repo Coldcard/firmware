@@ -937,6 +937,72 @@ def test_sign_msg_any(quick_start_hsm, attempt_msg_sign, addr_fmt=AF_CLASSIC):
     for p in permit+block: 
         attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
 
+
+def test_bip322_psbt_uses_msg_sign_policy(quick_start_hsm, change_hsm, attempt_psbt,
+                                          bip322_txn):
+    psbt, _ = bip322_txn([["p2wpkh", "0/0", None]], msg=b"HSM BIP-322 message")
+
+    quick_start_hsm(DICT(msg_paths=["m/0/0"]))
+    attempt_psbt(psbt)
+
+    change_hsm(DICT(msg_paths=["any"]))
+    attempt_psbt(psbt)
+
+    change_hsm(DICT(msg_paths=["m/9"]))
+    attempt_psbt(psbt, "Message signing not enabled for that path")
+
+    change_hsm(DICT(rules=[{}]))
+    attempt_psbt(psbt, "Message signing not permitted")
+
+
+def test_bip322_por_psbt_uses_msg_sign_policy(quick_start_hsm, change_hsm, attempt_psbt,
+                                              bip322_txn):
+    psbt, _ = bip322_txn([
+        ["p2wpkh", "0/0", None],
+        ["p2wpkh", "0/1", 1000000],
+        ["p2sh-p2wpkh", "0/2", 2000000],
+        ["p2pkh", "0/3", 3000000],
+    ], msg=b"HSM BIP-322 proof of reserves")
+
+    quick_start_hsm(DICT(msg_paths=["m/0/*"]))
+    attempt_psbt(psbt)
+
+    change_hsm(DICT(msg_paths=["any"]))
+    attempt_psbt(psbt)
+
+    change_hsm(DICT(msg_paths=["m/0/0", "m/0/1", "m/0/2"]))
+    attempt_psbt(psbt, "Message signing not enabled for that path")
+
+    change_hsm(DICT(msg_paths=["m/0/0", "m/0/1", "m/0/2", "m/0/3"]))
+    attempt_psbt(psbt)
+
+    change_hsm(DICT(rules=[{}]))
+    attempt_psbt(psbt, "Message signing not permitted")
+
+
+def test_bip322_ms_psbt_uses_msg_sign_policy(quick_start_hsm, change_hsm, attempt_psbt,
+                                             bip322_ms_txn, import_ms_wallet, clear_ms):
+    clear_ms()
+    deriv = "m/48h/1h/0h/2h"
+
+    def path_mapper(idx):
+        return [0x80000030, 0x80000001, 0x80000000, 0x80000002, 0, 0]
+
+    keys = import_ms_wallet(1, 1, name="hsm_bip322_msg", accept=True, addr_fmt=AF_P2WSH,
+                            common=deriv, do_import=True, descriptor=True)
+    psbt, _ = bip322_ms_txn(1, 1, keys, path_mapper=path_mapper, inp_af=AF_P2WSH,
+                            msg=b"HSM multisig BIP-322 message")
+
+    quick_start_hsm(DICT(msg_paths=[deriv + "/0/0"]))
+    attempt_psbt(psbt)
+
+    change_hsm(DICT(msg_paths=["any"]))
+    attempt_psbt(psbt)
+
+    change_hsm(DICT(msg_paths=["m/48h/1h/0h/2h/0/9"]))
+    attempt_psbt(psbt, "Message signing not enabled for that path")
+
+
 def test_must_log(dev, start_hsm, sd_cards_eject, attempt_msg_sign, fake_txn, attempt_psbt, is_simulator):
     # stop everything if can't log
     policy = DICT(must_log=True, msg_paths=['m'], rules=[{}])
