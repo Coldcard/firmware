@@ -25,6 +25,7 @@ PSBT_GLOBAL_FALLBACK_LOCKTIME       = 0x03
 PSBT_GLOBAL_INPUT_COUNT             = 0x04
 PSBT_GLOBAL_OUTPUT_COUNT            = 0x05
 PSBT_GLOBAL_TX_MODIFIABLE           = 0x06
+PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE  = 0x09
 
 # INPUTS ===
 PSBT_IN_NON_WITNESS_UTXO 	        = 0x00
@@ -463,6 +464,7 @@ class BasicPSBT:
         self.outputs = []
         self.txn_modifiable = None
         self.fallback_locktime = None
+        self.bip322_msg = None
         self.unknown = {}
         self.parsed_txn = None
 
@@ -471,6 +473,7 @@ class BasicPSBT:
             a.input_count == b.input_count and \
             a.output_count == b.output_count and \
             a.fallback_locktime == b.fallback_locktime and \
+            a.bip322_msg == b.bip322_msg and \
             a.txn_version == b.txn_version and \
             a.version == b.version and \
             len(a.inputs) == len(b.inputs) and \
@@ -533,6 +536,8 @@ class BasicPSBT:
                     num_outs = self.output_count
                 elif kt == PSBT_GLOBAL_TX_MODIFIABLE:
                     self.txn_modifiable = val[0]
+                elif kt == PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE:
+                    self.bip322_msg = val
                 else:
                     self.unknown[key] = val
 
@@ -545,8 +550,8 @@ class BasicPSBT:
             if self.version == 0:
                 assert self.txn, 'v0: missing reqd section - PSBT_GLOBAL_UNSIGNED_TX'
             elif self.version == 2:
-                # tx version needs to be at least 2 because locktimes
-                assert self.txn_version in {2, 3}, 'v2: missing reqd section - PSBT_GLOBAL_TX_VERSION'
+                assert self.txn_version is not None, 'v2: missing reqd section - PSBT_GLOBAL_TX_VERSION'
+                assert self.txn_version != 0 or self.bip322_msg, 'bad txn version'
                 assert self.input_count is not None, 'v2: missing reqd section - PSBT_GLOBAL_INPUT_COUNT'
                 assert self.output_count is not None, 'v2: missing reqd section - PSBT_GLOBAL_OUTPUT_COUNT'
 
@@ -594,6 +599,9 @@ class BasicPSBT:
         if self.version is not None:
             wr(PSBT_GLOBAL_VERSION, struct.pack('<I', self.version))
 
+        if self.bip322_msg is not None:
+            wr(PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE, self.bip322_msg)
+
         if isinstance(self.unknown, list):
             # just so I can test duplicate unknown values
             # list of tuples [(key0, val0), (key1, val1)]
@@ -623,7 +631,7 @@ class BasicPSBT:
     def to_v2(self):
         if self.version is None or self.version == 0:
             self.version = 2
-            self.txn_version = 2
+            self.txn_version = self.parsed_txn.nVersion
             self.txn = None
             self.input_count = len(self.parsed_txn.vin)
             self.output_count = len(self.parsed_txn.vout)

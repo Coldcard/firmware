@@ -3072,10 +3072,35 @@ def import_wif_to_store(goto_home, pick_menu_item, cap_story, press_select, cap_
 
     return doit
 
+
+@pytest.fixture
+def bip322_txn(dev, pytestconfig):
+    from bip322 import bip322_txn
+    return functools.partial(bip322_txn, master_xpub=dev.master_xpub,
+                             psbt_v2=pytestconfig.getoption('psbt2'))
+
+
+@pytest.fixture
+def bip322_ms_txn(pytestconfig):
+    from bip322 import bip322_ms_txn
+    return functools.partial(bip322_ms_txn, psbt_v2=pytestconfig.getoption('psbt2'))
+
+
+@pytest.fixture
+def bip322_verify():
+    from bip322 import bip322_verify
+    return bip322_verify
+
+
+@pytest.fixture
+def bip322_from_classic_tx():
+    from bip322 import bip322_from_classic_tx
+    return bip322_from_classic_tx
+
+
 # useful fixtures
 from test_backup import backup_system
 from test_bbqr import readback_bbqr, render_bbqr, readback_bbqr_ll, try_sign_bbqr, split_scan_bbqr
-from bip322 import bip322_txn, bip322_ms_txn, create_msg_file, bip322_from_classic_tx
 from test_bip39pw import set_bip39_pw
 from test_ccc import get_last_violation, setup_ccc, goto_ccc_menu, ccc_ms_setup, bitcoind_create_watch_only_wallet
 from test_drv_entro import derive_bip85_secret, activate_bip85_ephemeral

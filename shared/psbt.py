@@ -15,7 +15,7 @@ from chains import taptweak, tapleaf_hash, NLOCK_IS_TIME, AF_TO_STR_AF
 from wallet import MiniScriptWallet, TRUST_PSBT, TRUST_VERIFY
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160
-from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, COutPoint
+from serializations import CTransaction, CTxIn, CTxInWitness, CTxOut, ser_string, COutPoint
 from serializations import ser_sig_der, uint256_from_str, ser_push_data
 from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_ANYONECANPAY
 from serializations import ALL_SIGHASH_FLAGS, SIGHASH_DEFAULT
@@ -38,7 +38,7 @@ from public_constants import (
     PSBT_GLOBAL_TX_MODIFIABLE, PSBT_GLOBAL_OUTPUT_COUNT, PSBT_GLOBAL_INPUT_COUNT,
     PSBT_GLOBAL_FALLBACK_LOCKTIME, PSBT_GLOBAL_TX_VERSION, PSBT_IN_PREVIOUS_TXID,
     PSBT_IN_OUTPUT_INDEX, PSBT_IN_SEQUENCE, PSBT_IN_REQUIRED_TIME_LOCKTIME,
-    PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, MAX_SIGNERS,
+    PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE, MAX_SIGNERS,
     PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS, PSBT_IN_MUSIG2_PUB_NONCE, PSBT_IN_MUSIG2_PARTIAL_SIG,
     PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS,
     AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH,
@@ -49,6 +49,16 @@ psbt_tmp256 = bytearray(256)
 
 # transaction version error
 TX_VER_ERR = "bad txn version"
+
+# single sha256 of b'BIP0322-signed-message'
+BIP322_TAG_HASH = b'te\x84\xa1\x87/\xa1\x00AUN\xff\xa08\xd6\x12IB\xddy\xb4\xe5\x8aL\xda\x18N\x13\xdb\xe6,I'
+
+def build_bip322_to_spend(msg_hash, message_challenge):
+    to_spend = CTransaction()
+    to_spend.nVersion = 0
+    to_spend.vin = [CTxIn(COutPoint(hash=0, n=0xffffffff), scriptSig=b'\x00\x20' + msg_hash)]
+    to_spend.vout = [CTxOut(0, message_challenge)]
+    return to_spend
 
 # PSBT proprietary keytype
 PSBT_PROPRIETARY = const(0xFC)
@@ -1278,7 +1288,7 @@ class psbtInputProxy(psbtProxy):
 class psbtObject(psbtProxy):
     "Just? parse and store"
     short_values = { PSBT_GLOBAL_TX_MODIFIABLE }
-    no_keys = { PSBT_GLOBAL_UNSIGNED_TX }
+    no_keys = { PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE }
     blank_flds = ("hashPrevouts", "hashSequence", "hashOutputs", "hashValues", "hashScriptPubKeys",
                   "my_tr_in", "unknown")
 
@@ -1347,6 +1357,7 @@ class psbtObject(psbtProxy):
 
         # Proof of Reserves
         self.por322 = False
+        self.por322_msg = None
         self.por322_msg_hash = None
         self.por322_msg_challenge = None
 
@@ -1401,10 +1412,33 @@ class psbtObject(psbtProxy):
             # bytes of length 1 (tx modifiable in short_values)
             assert len(val) == 1
             self.txn_modifiable = val[0]
+        elif kt == PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE:
+            assert key[1] == 0
+            self.por322_msg = self.get(val).decode()
         else:
             self.unknown = self.unknown or []
             pos, length = key
             self.unknown.append(((pos - 1, length + 1), val))
+
+    def validate_bip322_input0(self, inp, txi, utxo):
+        msg_hash = ngu.hash.sha256t(BIP322_TAG_HASH, self.por322_msg.encode(), True)
+        message_challenge = utxo.scriptPubKey
+        to_spend = build_bip322_to_spend(msg_hash, message_challenge)
+        to_spend_hash = uint256_from_str(ngu.hash.sha256d(to_spend.serialize_without_witness()))
+
+        assert txi.prevout.hash == to_spend_hash, "to_spend hash"
+        assert txi.prevout.n == 0, "prevout n"
+        assert utxo.nValue == 0, "input0 value"
+
+        if inp.utxo:
+            old_pos = self.fd.tell()
+            raw_utxo = self.get(inp.utxo)
+            self.fd.seek(old_pos)
+            assert raw_utxo == to_spend.serialize_without_witness(), "utxo"
+
+        self.por322_msg_hash = msg_hash
+        assert message_challenge, "empty message_challenge"
+        self.por322_msg_challenge = message_challenge
 
     def output_iter(self, start=0, stop=None):
         # yield the txn's outputs: index, (CTxOut object) for each
@@ -1845,10 +1879,8 @@ class psbtObject(psbtProxy):
         for o in self.outputs:
             if self.is_v2:
                 # v2 requires inclusion
-                assert o.amount
+                assert o.amount is not None
                 assert o.script
-                if o.amount == 0 and o.script == b'\x6a':
-                    null_data_op_return = True
             else:
                 # v0 requires exclusion
                 assert o.amount is None
@@ -1862,17 +1894,28 @@ class psbtObject(psbtProxy):
 
             self.validate_unkonwn(o, "output")
 
-        if not self.is_v2 and (self.num_outputs == 1):
+        if self.num_outputs == 1:
             for idx, txo in self.output_iter():
                 if txo.nValue == 0 and txo.scriptPubKey == b'\x6a':
                     null_data_op_return = True
 
-        if null_data_op_return and (len(self.outputs) == 1):
-            self.por322 = True
+        if null_data_op_return:
+            assert self.por322_msg, "msg"
+            self.por322 = bool(self.por322_msg)
+
+        if self.por322:
+            if len(self.por322_msg) != len(self.por322_msg.encode()):
+                self.warnings.append((
+                    "Message",
+                    "Message contains non-ASCII characters that may not be readable on this screen."
+                ))
 
         if self.txn_version == 0:
             # only allow txn version 0 for Proof of Reserves txn (BIP-322)
             assert self.por322, TX_VER_ERR
+
+        if self.por322:
+            assert self.txn_version in {0, 2}, TX_VER_ERR
 
         if not inp_have_subpath:
             # Can happen w/ Electrum in watch-mode on XPUB. It doesn't know XFP and
@@ -2228,42 +2271,8 @@ class psbtObject(psbtProxy):
             if self.por322 and (i == 0):
                 # Proof of Reserves 'to_spend' validation
                 try:
-                    assert inp.utxo, "utxo"
-                    fd = self.fd
-                    old_pos = fd.tell()
-                    fd.seek(inp.utxo[0])
-
-                    txn_version, marker, flags = unpack("<iBB", fd.read(6))
-                    assert txn_version == 0, TX_VER_ERR
-                    wit_format = (marker == 0 and flags != 0x0)
-                    if not wit_format:
-                        fd.seek(-2, 1)
-
-                    num_in = deser_compact_size(fd)
-                    assert num_in == 1, "num ins"
-                    tx_inp = CTxIn()
-                    tx_inp.deserialize(fd)
-                    try:
-                        assert len(tx_inp.scriptSig) == 34
-                        assert tx_inp.scriptSig[0] == 0
-                        assert tx_inp.scriptSig[1] == 32
-                    except:
-                        assert False, "scriptSig"
-                    self.por322_msg_hash = tx_inp.scriptSig[2:]
-                    try:
-                        assert tx_inp.prevout.hash == 0
-                        assert tx_inp.prevout.n == 0xffffffff
-                    except:
-                        assert False, "prevout"
-
-                    num_out = deser_compact_size(fd)
-                    assert num_out == 1, "num outs"
-                    tx_out = CTxOut()
-                    tx_out.deserialize(fd)
-                    self.por322_msg_challenge = tx_out.scriptPubKey
-                    assert tx_out.nValue == 0, "nVal"
-
-                    fd.seek(old_pos)
+                    assert inp.sp_idxs, "not our key"
+                    self.validate_bip322_input0(inp, txi, utxo)
                 except Exception as e:
                     raise FatalPSBTIssue("i0: invalid BIP-322 'to_spend': %s" % e)
 
@@ -2365,6 +2374,13 @@ class psbtObject(psbtProxy):
         none_sh = False
         for inp in self.inputs:
             if inp.sp_idxs and not inp.fully_signed:
+                if self.por322:
+                    if inp.taproot_subpaths:
+                        if inp.sighash not in (SIGHASH_ALL, SIGHASH_DEFAULT):
+                            raise FatalPSBTIssue("POR sighash not ALL/DEFAULT")
+                    elif inp.sighash != SIGHASH_ALL:
+                        raise FatalPSBTIssue("POR not SIGHASH_ALL")
+
                 if inp.sighash:
                     if inp.sighash is not None:
                         if inp.sighash not in (SIGHASH_ALL, SIGHASH_DEFAULT):
@@ -2472,6 +2488,9 @@ class psbtObject(psbtProxy):
         if self.xpubs:
             for k, v in self.xpubs:
                 wr(PSBT_GLOBAL_XPUB, v, k)
+
+        if self.por322_msg:
+            wr(PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE, self.por322_msg.encode())
 
         if self.unknown:
             for k, v in self.unknown:
