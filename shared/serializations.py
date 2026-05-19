@@ -379,7 +379,7 @@ class CTxOut(object):
             # rare, pay to full pubkey
             return AF_BARE_PK, self.scriptPubKey[2:2+33], False
 
-        if self.scriptPubKey[0] == OP_RETURN:
+        if self.is_op_return():
             return OP_RETURN, self.scriptPubKey, False
 
         return None, self.scriptPubKey, None
@@ -409,6 +409,9 @@ class CTxOut(object):
         return (len(self.scriptPubKey) == 35 or len(self.scriptPubKey) == 67) \
                 and (self.scriptPubKey[0] == 0x21 or self.scriptPubKey[0] == 0x41) \
                 and self.scriptPubKey[-1] == 0xac
+
+    def is_op_return(self):
+        return self.scriptPubKey and (self.scriptPubKey[0] == OP_RETURN)
 
     #def __repr__(self):
     #    return "CTxOut(nValue=%d scriptPubKey=%s)" \

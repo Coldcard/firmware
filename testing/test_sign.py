@@ -3779,4 +3779,37 @@ def test_txid_qr(fake_txn, start_sign, cap_story, press_cancel, press_select, go
     assert "(6) for QR Code of TXID" in story
     press_cancel()
 
+
+@pytest.mark.parametrize("segwit_in", [True, False])
+def test_empty_input_scriptPubKey(segwit_in, dev, fake_txn, start_sign, cap_story):
+    def hack(psbt):
+        target_idx = 0
+
+        if segwit_in:
+            txo = CTxOut()
+            txo.deserialize(BytesIO(psbt.inputs[target_idx].witness_utxo))
+            txo.scriptPubKey = b""
+            psbt.inputs[target_idx].witness_utxo = txo.serialize()
+        else:
+            supply_tx = CTransaction()
+            supply_tx.deserialize(BytesIO(psbt.inputs[target_idx].utxo))
+            supply_tx.vout[0].scriptPubKey = b""
+            psbt.inputs[target_idx].utxo = supply_tx.serialize_with_witness()
+
+            supply_tx.calc_sha256()
+
+            spend_tx = CTransaction()
+            spend_tx.deserialize(BytesIO(psbt.txn))
+            spend_tx.vin[target_idx] = CTxIn(
+                COutPoint(supply_tx.sha256, 0),
+                nSequence=spend_tx.vin[target_idx].nSequence,
+            )
+            psbt.txn = spend_tx.serialize_with_witness()
+
+    psbt = fake_txn(2, 1, dev.master_xpub, psbt_hacker=hack, segwit_in=segwit_in)
+
+    start_sign(psbt)
+    title, _ = cap_story()
+    assert title == "Failure"
+
 # EOF

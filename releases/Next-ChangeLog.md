@@ -4,6 +4,8 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk and Q
 
+- Change: BIP-322 Proof of Reserves & message signing PSBT requires PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE
+  (read more [BIP-322 Proof of Reserves documentation](../docs/proof-of-reserves-bip-322.md) )
 - Bugfix: Disable Virtual Disk and NFC before activating HSM
 - Bugfix: Custom address default menu position wrong
 - Bugfix: Delta Mode Trick PIN was never restored from backup

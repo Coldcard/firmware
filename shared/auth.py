@@ -292,56 +292,6 @@ class ApproveTransaction(UserAuthorizedAction):
         self.result = None      # will be (len, sha256) of the resulting PSBT
         self.chain = chains.current_chain()
 
-    async def por322_msg_verify(self):
-        # https://gist.github.com/orangesurf/0c1d0a31d3ebe7e48335a34d56788d4c
-        from glob import NFC
-        from ux import import_export_prompt
-        from actions import file_picker
-        ch = await import_export_prompt("message", is_import=True, force_prompt=True,
-                                        intro="Import msg that hashes to 'to_spend' msg hash.",
-                                        key0="to input message manually",
-                                        title="BIP-322 Messsage" if version.has_qwerty else 'BIP-322 MSG',
-                                        no_qr=not version.has_qwerty)
-
-        # single sha256 of b'BIP0322-signed-message'
-        bip322_tag_hash = b'te\x84\xa1\x87/\xa1\x00AUN\xff\xa08\xd6\x12IB\xddy\xb4\xe5\x8aL\xda\x18N\x13\xdb\xe6,I'
-
-        if ch == KEY_CANCEL:
-            return
-        elif ch == "0":
-            msg = await ux_input_text("", confirm_exit=False)
-        elif ch == KEY_NFC:
-            msg = await NFC.read_bip322_msg()
-        elif ch == KEY_QR:
-            from ux_q1 import QRScannerInteraction
-            msg = await QRScannerInteraction().scan_text('Scan message from a QR code')
-        else:
-            choices = await file_picker(suffix='.txt', ux=False, **ch)
-            target = "%s.txt" % b2a_hex(self.psbt.por322_msg_hash).decode()
-
-            for fname, dir, _ in choices:
-                if target == fname:
-                    fn = dir + "/" + fname
-                    break
-            else:
-                fn = await file_picker(choices=choices, **ch)
-
-            if not fn: return
-
-            with CardSlot(readonly=True, **ch) as card:
-                with open(fn, 'rt') as fd:
-                    msg = fd.read()
-
-        assert msg, "need msg"
-        msg_hash = ngu.hash.sha256t(bip322_tag_hash, msg, True)
-        assert msg_hash == self.psbt.por322_msg_hash, "hash verification failed"
-        ch = await ux_show_story(
-            msg+"\n\nPress %s to approve message, otherwise %s to exit." % (OK, X),
-            title="Message:"
-        )
-        return True if ch == "y" else False
-
-
     def render_output(self, o):
         # Pretty-print a transactions output. 
         # - expects CTxOut object
@@ -477,6 +427,7 @@ class ApproveTransaction(UserAuthorizedAction):
         #
         try:
             msg = uio.StringIO()
+            is_por = self.psbt.por322 and (self.psbt.num_inputs > 1)
 
             # mention warning at top
             wl= len(self.psbt.warnings)
@@ -486,20 +437,15 @@ class ApproveTransaction(UserAuthorizedAction):
                 msg.write('(%d warnings below)\n\n' % wl)
 
             if self.psbt.por322:
-
+                msg.write("%s\n\n" % ("Proof of Reserves" if is_por else "BIP-322 Message"))
+                msg.write("Message:\n%s\n\n" % self.psbt.por322_msg)
+                if is_por:
+                    msg.write("Amount %s %s\n\n" % self.chain.render_value(self.psbt.total_value_in))
                 try:
-                    if not await self.por322_msg_verify():
-                        self.refused = True
-                        await ux_dramatic_pause("Refused.", 1)
-                        self.done()
-                        return
-                except Exception as exc:
-                    return await self.failure("Msg verification failed.", exc)
-
-                msg.write("Proof of Reserves\n\n")
-                msg.write("Amount %s %s\n\n" % self.chain.render_value(self.psbt.total_value_in))
-                msg.write("Message Hash:\n%s\n\n" % b2a_hex(self.psbt.por322_msg_hash).decode())
-                msg.write("Message Challenge:\n%s\n\n" % b2a_hex(self.psbt.por322_msg_challenge).decode())
+                    addr = self.chain.render_address(self.psbt.por322_msg_challenge)
+                    msg.write("Challenge Address:\n%s\n\n" % show_single_address(addr))
+                except ValueError:
+                    msg.write("Message Challenge:\n%s\n\n" % b2a_hex(self.psbt.por322_msg_challenge).decode())
             else:
                 if self.psbt.consolidation_tx:
                     # consolidating txn that doesn't change balance of account.
@@ -513,15 +459,18 @@ class ApproveTransaction(UserAuthorizedAction):
                 if fee is not None:
                     msg.write("Network fee %s %s\n\n" % self.chain.render_value(fee))
 
-            msg.write(" %d %s\n %d %s\n\n" % (
-                self.psbt.num_inputs,
-                "input" if self.psbt.num_inputs == 1 else "inputs",
-                self.psbt.num_outputs,
-                "output" if self.psbt.num_outputs == 1 else "outputs",
-            ))
+            if not self.psbt.por322 or is_por:
+                msg.write(" %d %s\n %d %s\n\n" % (
+                    self.psbt.num_inputs,
+                    "input" if self.psbt.num_inputs == 1 else "inputs",
+                    self.psbt.num_outputs,
+                    "output" if self.psbt.num_outputs == 1 else "outputs",
+                ))
 
-            # outputs + change story created here
-            self.output_summary_text(msg)
+            if not self.psbt.por322:
+                # outputs + change story created here
+                self.output_summary_text(msg)
+
             gc.collect()
 
             if self.psbt.ux_notes:
@@ -549,8 +498,13 @@ class ApproveTransaction(UserAuthorizedAction):
 
             if not hsm_active:
                 esc = "2"
-                msg.write("Press %s to approve and sign transaction."
-                          " Press (2) to explore transaction." % OK)
+                noun = "transaction"
+                if self.psbt.por322:
+                    noun = "proof of reserves" if is_por else "message"
+
+                msg.write("Press %s to approve and sign %s."
+                          " Press (2) to explore transaction." % (OK, noun))
+
                 if (self.input_method == "sd") and CardSlot.both_inserted():
                     esc += "b"
                     msg.write(" (B) to write to lower SD slot.")
@@ -817,13 +771,19 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
         # USB case - user can choose whether to attempt finalization
         is_complete = finalize
 
+    if psbt.por322:
+        # network txn strips PSBT BIP-32 with paths with pubkey required for verification
+        # overrides --finalize from USB
+        # disable pushTX for BIP-322
+        is_complete = False
+
     with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as psram:
         if is_complete:
             txid = psbt.finalize(psram)
             noun = "Finalized TX ready for broadcast"
         else:
             psbt.serialize(psram)
-            noun = "Partly Signed PSBT"
+            noun = "Signed BIP-322 PSBT" if psbt.por322 else "Partly Signed PSBT"
             txid = None
 
         data_len = psram.tell()
@@ -894,7 +854,7 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
 
         elif ch == KEY_QR:
             here = PSRAM.read_at(TXN_OUTPUT_OFFSET, data_len)
-            msg = txid or 'Partly Signed PSBT'
+            msg = txid or noun
             try:
                 if len(here) > 920:
                     # too big for simple QR - use BBQr instead
