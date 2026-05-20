@@ -359,6 +359,11 @@ class CTxOut(object):
         # Detect type of output from scriptPubKey, and return 2-tuple:
         #    (addr_type_code, pubkey/pubkeyhash/scripthash)
         # 'addr' is byte string, either 20 or 32 long
+
+        # scriptPubKey can be None for MuSig2 + SP before computing outputs
+        if self.scriptPubKey is None:
+            return None, None
+
         if self.is_p2tr():
             return AF_P2TR, self.scriptPubKey[2:2+32]
 
