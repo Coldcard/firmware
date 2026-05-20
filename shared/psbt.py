@@ -2008,7 +2008,13 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
             if self.session:
                 if idx == 0:
                     self.session.update(ser_compact_size(self.num_outputs))
-                self.session.update(txo.serialize())
+                sp_out = self.outputs[idx]
+                if sp_out.sp_v0_info:
+                    # Use the stable value||sp_v0_info bytes so the session cache is identical 
+                    # in both rounds. See "MuSig2 Silent Payments: stable nonce_msg" for more details.
+                    self.session.update(pack('<q', txo.nValue) + sp_out.sp_v0_info)
+                else:
+                    self.session.update(txo.serialize())
 
             output = self.outputs[idx]
 
@@ -2715,8 +2721,18 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
         # sec_rand is pseudo random, derived from session true randomness
         sec_rand = ngu.hash.sha256s(session_rand + pack("<I", inp_idx) + pack("<I", musig_index))
 
+        # MuSig2 Silent Payments: stable nonce_msg
+        # A normal MuSig2 signer binds the secnonce to the sighash, but for SP the sighash
+        # is not stable across rounds (SP output script is empty in round 1, filled prior to
+        # round 2). Bind to session_digest instead: it commits to all inputs and outputs,
+        # substituting value||sp_v0_info for SP-output scripts, so it is byte-identical in both rounds.
+        if self.has_silent_payment_outputs():
+            nonce_msg = ngu.hash.sha256s(session_digest + der_agg_k + leaf_hash)
+        else:
+            nonce_msg = digest
+
         # generate musig2 secnonce & pubnonce
-        sn, pn = ngu.secp256k1.musig_nonce_gen(keypair.pubkey(), sec_rand, keypair.privkey(), digest)
+        sn, pn = ngu.secp256k1.musig_nonce_gen(keypair.pubkey(), sec_rand, keypair.privkey(), nonce_msg)
 
         if my_musig_pubnonces_key not in musig_pubnonces:
             # I haven't added my pubnoce yet - adding now
@@ -3122,9 +3138,14 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
                             # internal key is musig
                             agg_k = self.active_miniscript.to_descriptor().key.node.pubkey()
 
-                            digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash)
-                            if sv.deltamode:
-                                digest = ngu.hash.sha256d(digest)
+                            # Round 1 MuSig2+SP: SP outputs have no scriptPubKey yet, avoid using live sighash as nonce_msg 
+                            # for nonce generation - see "MuSig2 Silent Payments: stable nonce_msg" for details.
+                            if (musig_round1 and self.has_silent_payment_outputs()):
+                                digest = None
+                            else:
+                                digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash)
+                                if sv.deltamode:
+                                    digest = ngu.hash.sha256d(digest)
 
                             complete = self.musig_process_input(musig_session, in_idx, inp, kp,
                                                                 agg_k, internal_key, digest)
