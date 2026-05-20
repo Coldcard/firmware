@@ -1,6 +1,6 @@
 # (c) Copyright 2024 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# silentpayments.py - BIP-352/BIP-375/BIP-376
+# silentpayments.py - BIP-352/BIP-375/BIP-376 (MuSig2 inputs leverage BIPs 327/328/373)
 #
 # Consolidates cryptographic primitives and PSBT handling logic for Silent Payments
 #
@@ -8,6 +8,7 @@
 import chains
 import ngu
 import stash
+from desc_utils import MusigKey
 from dleq import generate_dleq_proof, verify_dleq_proof
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from glob import settings
@@ -15,16 +16,30 @@ from precomp_tag_hash import (
     BIP352_INPUTS_TAG_H,
     BIP352_LABEL_TAG_H,
     BIP352_SHARED_SECRET_TAG_H,
+    KEYAGG_COEFF_TAG_H,
+    KEYAGG_LIST_TAG_H,
     TAP_TWEAK_H,
 )
 from serializations import SIGHASH_ALL, SIGHASH_DEFAULT
 from ubinascii import unhexlify as a2b_hex
+from ucollections import namedtuple
 from utils import keypath_to_str
 
 G = ngu.secp256k1.generator()
 # BIP-341 NUMS point (Nothing Up My Sleeve) - x-only (32-byte)
 NUMS_H = a2b_hex("50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0")
 SECP256K1_ORDER = ngu.secp256k1.curve_order_int()
+
+# Coefficients for combining MuSig2 partial ECDH shares (consumed by _musig_aggregate_shares,
+# produced by psbt.musig_keyagg_context).
+#
+# For a tr(musig(...)) input the spending key is a_Q = g_v * (gacc * sum(a_i * sk_i) + tacc),
+# so the aggregate ECDH share a_Q * B_scan can be rebuilt from the per-participant partial
+# shares share_i = sk_i * B_scan as: negation_factor * sum(a_i * share_i) + total_tweak * B_scan.
+# The BIP-327 KeyAgg coefficients a_i and both coefficients below are public:
+#   negation_factor:  +1 or -1, negates the summed weighted shares (== g_v * gacc)
+#   total_tweak:  scalar tweak applied to the scan key, 0..n-1 (== (g_v * tacc) mod n)
+MusigEcdhFactors = namedtuple("MusigEcdhFactors", ("negation_factor", "total_tweak"))
 
 
 def encode_silent_payment_address(scan_key, spend_key, version=0):
@@ -224,6 +239,75 @@ def _compute_silent_payment_spending_xonly(B_spend_bytes, sp_tweak_bytes):
     return output_pubkey[1:]
 
 
+def _musig_aggregate_shares(participant_pks, partial_shares, factors, scan_key):
+    """
+    Combine MuSig2 partial ECDH shares into the aggregate share a_Q * B_scan
+
+    Formula: agg_share = negation_factor * sum(a_i * share_i) + total_tweak * B_scan
+        where share_i is each participant's partial share and a_i its BIP-327 KeyAgg coefficient.
+
+    Args:
+        participant_pks: Participant keys, for KeyAgg coefficients (33-byte compressed)
+        partial_shares: List of (participant_pk, share_point)
+        factors: MusigEcdhFactors(negation_factor, total_tweak)
+        scan_key: Recipient scan key B_scan (33-byte compressed public key)
+
+    Returns:
+        bytes: aggregate ECDH share a_Q * B_scan (33-byte compressed)
+    """
+    if factors is None:
+        raise ValueError("MuSig2 ecdh factors must be provided")
+
+    weighted_shares = [
+        ngu.secp256k1.ec_pubkey_tweak_mul(share, _musig_keyagg_coefficient(participant_pks, participant_pk))
+        for participant_pk, share in partial_shares
+    ]
+    share_sum = _combine_pubkeys(weighted_shares)
+
+    # Negate share_sum if the combined sign is -1 (point negation via scalar n-1).
+    if factors.negation_factor < 0:
+        share_sum = ngu.secp256k1.ec_pubkey_tweak_mul(share_sum, (SECP256K1_ORDER - 1).to_bytes(32, "big"))
+
+    share_tweak = ngu.secp256k1.ec_pubkey_tweak_mul(scan_key, factors.total_tweak.to_bytes(32, "big"))
+    return ngu.secp256k1.ec_pubkey_combine([share_sum, share_tweak])
+
+
+def _musig_keyagg_coefficient(participant_pks, participant_pk):
+    """
+    Compute BIP-327 KeyAgg coefficient a_i for participant key `Pk`
+
+    Formula: a_i = H_KeyAggCoeff(H_KeyAggList(sorted(Pks)) || Pk) mod n
+
+    Args:
+        participant_pks: Participant keys (33-byte compressed)
+        participant_pk: Participant key to compute the coefficient for (33-byte compressed)
+
+    Note: 
+        `a_i` is recomputed in Python because libsecp256k1 keeps `secp256k1_musig_keyaggcoef`
+        internal (`static`) and never exposes it through the MuSig2 API.
+
+    Returns:
+        bytes: KeyAgg coefficient a_i (32-byte scalar)
+    """
+    sorted_pks = sorted(participant_pks)
+    L = ngu.hash.sha256t(KEYAGG_LIST_TAG_H, b"".join(sorted_pks), True)
+
+    # GetSecondKey: first key distinct from sorted_pks[0]; that key's coefficient is 1.
+    pk2 = None
+    for pk in sorted_pks:
+        if pk != sorted_pks[0]:
+            pk2 = pk
+            break
+
+    if pk2 is not None and participant_pk == pk2:
+        return (1).to_bytes(32, "big")
+
+    coefficient_int = (
+        int.from_bytes(ngu.hash.sha256t(KEYAGG_COEFF_TAG_H, L + participant_pk, True), "big") % SECP256K1_ORDER
+    )
+    return coefficient_int.to_bytes(32, "big")
+
+
 def _negate_if_odd_y(privkey):
     """
     Normalize a private key so its corresponding public key has even Y (0x02 prefix)
@@ -415,17 +499,26 @@ class SilentPaymentsMixin:
                 return ecdh_share, _combine_pubkeys(pubkeys)
             return None, None
 
-        # Per-input shares: combine shares and pubkeys from eligible inputs
+        # Per-input shares: combine shares (MuSig2 inputs reconstruct from partials) and pubkeys from eligible inputs
         ecdh_shares = []
         pubkeys = []
         for inp in self.inputs:
-            if inp.sp_ecdh_shares and scan_key in inp.sp_ecdh_shares:
-                if not self._is_input_eligible(inp):
-                    continue
-                ecdh_shares.append(inp.sp_ecdh_shares[scan_key])
-                pk = self._pubkey_from_input(inp)
-                if pk:
-                    pubkeys.append(pk)
+            if not self._is_input_eligible(inp):
+                continue
+
+            pk = self._pubkey_from_input(inp)
+            if not pk:
+                continue
+
+            share = None
+            if inp.is_musig:
+                share = self._musig_input_ecdh_share(inp, scan_key)
+            elif inp.sp_ecdh_shares and scan_key in inp.sp_ecdh_shares:
+                share = inp.sp_ecdh_shares[scan_key]
+
+            if share:
+                ecdh_shares.append(share)
+                pubkeys.append(pk)
 
         if ecdh_shares and pubkeys:
             return _combine_pubkeys(ecdh_shares), _combine_pubkeys(pubkeys)
@@ -498,11 +591,26 @@ class SilentPaymentsMixin:
         for scan_key in scan_keys:
             if self.sp_global_ecdh_shares and scan_key in self.sp_global_ecdh_shares:
                 continue
-            # Check per-input: every eligible input must have a share
+            # Check per-input shares for non-MuSig2 eligible inputs
             for inp in self.inputs:
-                if self._is_input_eligible(inp):
-                    if not inp.sp_ecdh_shares or scan_key not in inp.sp_ecdh_shares:
-                        return False
+                if not self._is_regular_sp_input(inp):
+                    continue
+                if not inp.sp_ecdh_shares or scan_key not in inp.sp_ecdh_shares:
+                    return False
+
+        # Check MuSig2 partial ECDH share completeness: all spending participants must have contributed.
+        for inp in self.inputs:
+            if self._is_musig_sp_input(inp):
+                participants = self._musig_spending_participants(inp)
+                if not participants:
+                    return False
+                for participant_pk in participants:
+                    for scan_key in scan_keys:
+                        if (
+                            not inp.musig_partial_ecdh_shares
+                            or (scan_key, participant_pk) not in inp.musig_partial_ecdh_shares
+                        ):
+                            return False
         return True
 
     def _validate_psbt_structure(self):
@@ -602,13 +710,19 @@ class SilentPaymentsMixin:
         for scan_key in scan_keys:
             has_global = self.sp_global_ecdh_shares and scan_key in self.sp_global_ecdh_shares
             has_input = any(inp.sp_ecdh_shares and scan_key in inp.sp_ecdh_shares for inp in self.inputs)
+            has_musig = any(
+                inp.is_musig
+                and inp.musig_partial_ecdh_shares
+                and any(share_scan_key == scan_key for (share_scan_key, _) in inp.musig_partial_ecdh_shares)
+                for inp in self.inputs
+            )
 
             # Check if any output with this scan pk has a computed script
             scan_key_has_script = any(
                 outp.sp_v0_info and outp.sp_v0_info[:33] == scan_key and outp.script for outp in self.outputs
             )
 
-            if scan_key_has_script and not has_global and not has_input:
+            if scan_key_has_script and not has_global and not has_input and not has_musig:
                 raise FatalPSBTIssue("SP output script set but no ECDH share for scan key")
 
             # Verify global DLEQ proof
@@ -632,11 +746,11 @@ class SilentPaymentsMixin:
                 if not verify_dleq_proof(combined_pk, scan_key, ecdh_share, proof):
                     raise FatalPSBTIssue("Global DLEQ proof verification failed")
 
-            # Verify per-input coverage and DLEQ proofs
+            # Verify per-input coverage and DLEQ proofs (non-MuSig2 inputs only)
             if scan_key_has_script and not has_global:
                 for i, inp in enumerate(self.inputs):
-                    if not self._is_input_eligible(inp):
-                        continue
+                    if not self._is_regular_sp_input(inp):
+                        continue  # MuSig2 inputs verified below
                     has_share = inp.sp_ecdh_shares and scan_key in inp.sp_ecdh_shares
 
                     if not has_share:
@@ -655,6 +769,19 @@ class SilentPaymentsMixin:
                         if not verify_dleq_proof(pk, scan_key, ecdh_share, proof):
                             raise FatalPSBTIssue("Input #%d DLEQ proof verification failed" % i)
 
+        # Verify MuSig2 partial ECDH shares and DLEQ proofs for all present shares
+        for i, inp in enumerate(self.inputs):
+            if self._is_musig_sp_input(inp) and inp.musig_partial_ecdh_shares:
+                for (scan_key, participant_pk), share in inp.musig_partial_ecdh_shares.items():
+                    if (
+                        not inp.musig_partial_dleq_proofs
+                        or (scan_key, participant_pk) not in inp.musig_partial_dleq_proofs
+                    ):
+                        raise FatalPSBTIssue("MuSig2 share missing DLEQ for input #%d" % i)
+                    proof = inp.musig_partial_dleq_proofs[(scan_key, participant_pk)]
+                    if not verify_dleq_proof(participant_pk, scan_key, share, proof):
+                        raise FatalPSBTIssue("MuSig2 DLEQ verification failed for input #%d" % i)
+
     # -----------------------------------------------------------------------------
     # Modify PSBT Field Functions
     # -----------------------------------------------------------------------------
@@ -667,10 +794,18 @@ class SilentPaymentsMixin:
             bool: True if shares were computed
                   False if we have no signable inputs
         """
+        # MuSig2 path: contribute partial ECDH shares for each musig SP input we participate in
+        musig_contributed = False
+        for inp in self.inputs:
+            if self._is_musig_sp_input(inp):
+                if self._contribute_musig_ecdh_shares(sv, inp):
+                    musig_contributed = True
+
+        # Regular path: collect per-input private keys for non-MuSig2 eligible inputs we own
         has_foreign = False
         input_material = []  # list of [(inp, privkey_bytes), ...]
         for inp in self.inputs:
-            if not self._is_input_eligible(inp):
+            if not self._is_regular_sp_input(inp):
                 continue
 
             # Classify each eligible input:
@@ -687,16 +822,16 @@ class SilentPaymentsMixin:
                 has_foreign = True
 
         if not input_material:
-            if not has_foreign:
+            if not has_foreign and not musig_contributed:
                 raise FatalPSBTIssue("No eligible inputs for ECDH computation")
-            return False
+            return bool(input_material or musig_contributed)
 
         scan_keys = self._get_silent_payment_scan_keys()
         if not scan_keys:
-            return False
+            return bool(musig_contributed)
 
         for scan_key in scan_keys:
-            if not has_foreign:
+            if not has_foreign and not self.has_musig_sp_inputs():
                 # Single-signer: combine all input private keys, one global ECDH share and DLEQ proofs
                 combined_sk = _sum_privkeys(sk for _, sk in input_material)
                 ecdh_share = _compute_ecdh_share(combined_sk, scan_key)
@@ -708,10 +843,11 @@ class SilentPaymentsMixin:
                 self.sp_global_ecdh_shares[scan_key] = ecdh_share
                 self.sp_global_dleq_proofs[scan_key] = dleq_proof
             else:
-                # Multi-signer: per-input ECDH shares and DLEQ proofs for owned inputs
+                # Multi-signer or MuSig2 present: per-input ECDH shares and DLEQ proofs for owned inputs
                 for inp, input_sk in input_material:
                     ecdh_share = _compute_ecdh_share(input_sk, scan_key)
                     dleq_proof = generate_dleq_proof(input_sk, scan_key)
+                    del input_sk
 
                     # TODO: when previewing shares should we update input fields in-place before user consent?
                     inp.sp_ecdh_shares = inp.sp_ecdh_shares or {}
@@ -949,3 +1085,154 @@ class SilentPaymentsMixin:
         sk = kpt.privkey()
         del kp, kpt
         return _negate_if_odd_y(sk)
+
+    # -----------------------------------------------------------------------------
+    # Musig2 Functions
+    # -----------------------------------------------------------------------------
+
+    def has_musig_sp_inputs(self):
+        """Return True if any input is both MuSig2 and SP-eligible."""
+        return any(self._is_musig_sp_input(inp) for inp in self.inputs)
+
+    def _is_musig_sp_input(self, inp):
+        """SP-eligible MuSig2 keyspend input -> partial-ECDH-share path"""
+        return inp.is_musig and self._is_input_eligible(inp)
+
+    def _is_regular_sp_input(self, inp):
+        """SP-eligible non-MuSig2 input -> per-input ECDH-share path"""
+        return self._is_input_eligible(inp) and not inp.is_musig
+
+    def _contribute_musig_ecdh_shares(self, sv, input):
+        """
+        Contribute partial ECDH share + DLEQ proof for our participant key in a MuSig2 SP input,
+            store contributions in PSBT input fields
+
+        Returns:
+            bool: True if we contributed at least one share
+                  False if we are not a participant
+        """
+        # Select participants from the spending aggregate
+        participants = self._musig_spending_participants(input)
+        if not participants:
+            return False
+        key = self.active_miniscript.to_descriptor().key
+
+        # Locate our participant in the enrolled descriptor and derive it via its
+        # origin path as specified in the descriptor
+        my_participant_sk = None
+        my_participant_pk = None
+        for k in key.keys:
+            if k.origin.cc_fp != self.my_xfp:
+                continue
+            node = sv.derive_path(k.origin.str_derivation(), register=False)
+            my_participant_sk = node.privkey()
+            my_participant_pk = k.node.pubkey()
+            del node
+            break
+
+        if my_participant_sk is None:
+            return False
+
+        # Confirm our account-level key is a participant in this input's musig aggregate
+        my_xonly = my_participant_pk[1:]
+        is_participant = any((p[1:] if len(p) == 33 else p) == my_xonly for p in participants)
+        if not is_participant:
+            stash.blank_object(my_participant_sk)
+            return False
+
+        contributed = False
+        scan_keys = self._get_silent_payment_scan_keys()
+        for scan_key in scan_keys:
+            if input.musig_partial_ecdh_shares and (scan_key, my_participant_pk) in input.musig_partial_ecdh_shares:
+                contributed = True
+                continue
+
+            my_share = _compute_ecdh_share(my_participant_sk, scan_key)
+            my_proof = generate_dleq_proof(my_participant_sk, scan_key)
+
+            input.musig_partial_ecdh_shares = input.musig_partial_ecdh_shares or {}
+            input.musig_partial_dleq_proofs = input.musig_partial_dleq_proofs or {}
+            input.musig_partial_ecdh_shares[(scan_key, my_participant_pk)] = my_share
+            input.musig_partial_dleq_proofs[(scan_key, my_participant_pk)] = my_proof
+            contributed = True
+
+        stash.blank_object(my_participant_sk)
+        return contributed
+
+    def _musig_input_ecdh_share(self, input, scan_key):
+        """
+        Combine this input's MuSig2 partial ECDH shares for scan_key into the aggregate
+        share a_Q * B_scan
+
+        Note:
+            This is the MuSig2 equivalent of inp.sp_ecdh_shares[scan_key] for a non-musig input.
+
+        Returns:
+            bytes: aggregate share, or None if no shares are present for scan_key or no
+                   enrolled MuSig2 descriptor is available
+        """
+        if not input.musig_partial_ecdh_shares:
+            return None
+
+        participant_pks, factors = self._musig_sp_ecdh_factors(input)
+        if participant_pks is None or factors is None:
+            return None
+
+        # Only combine shares from the spending aggregate's participants
+        participant_set = set(participant_pks)
+        partial_shares = [
+            (participant_pk, share)
+            for (entry_scan_key, participant_pk), share in input.musig_partial_ecdh_shares.items()
+            if entry_scan_key == scan_key and participant_pk in participant_set
+        ]
+        if not partial_shares:
+            return None
+
+        return _musig_aggregate_shares(participant_pks, partial_shares, factors, scan_key)
+
+    def _musig_sp_ecdh_factors(self, input):
+        """
+        Derive BIP-327 factors to combine partial ECDH shares into a_Q * B_scan for a
+        tr(musig(...)) keyspend SP input
+
+        Rebuilds the KeyAgg cache from the participant set, applies the descriptor's
+        BIP-328 synthetic derivation and the BIP-341 taproot tweak, then reads the parity
+        accumulators (gacc before taproot, g_v after) and the accumulated tweak (tacc).
+
+        Returns:
+            tuple: (participant_pks, MusigEcdhFactors)
+                   (None, None) if there is no enrolled MuSig2 descriptor for this input
+        """
+        participant_pks = self._musig_spending_participants(input)
+        if not participant_pks:
+            return None, None
+        agg_k = self.active_miniscript.to_descriptor().key.node.pubkey()
+
+        # BIP-328 synthetic derivation indices (e.g. /0/*) from the enrolled descriptor
+        parsed = input.parse_subpaths(self.my_xfp, self)
+        xfp_paths = [v[1:] for v in parsed.values()]
+        branch, idx = self.active_miniscript.subderivation_indexes(xfp_paths)
+        to_derive = [branch, idx]
+
+        # aggregate + verify, BIP-328 synthetic derivation, BIP-341 keyspend taproot tweak
+        _, _, output_key, factors = self.musig_keyagg_context(
+            input, agg_k, participant_pks, to_derive, compute_factors=True
+        )
+
+        # derived output key must match the input's actual scriptPubKey
+        if output_key[1:] != input.utxo_spk[2:34]:
+            raise FatalPSBTIssue("MuSig2+Silent Payments output key mismatch")
+
+        return participant_pks, factors
+
+    def _musig_spending_participants(self, input):
+        """
+        Participant pubkeys of the aggregate that actually spends this input, per the
+        enrolled descriptor; None if unavailable.
+        """
+        if self.active_miniscript is None:
+            return None
+        key = self.active_miniscript.to_descriptor().key
+        if not isinstance(key, MusigKey):
+            return None
+        return input.get_musig_pubkeys().get(key.node.pubkey())

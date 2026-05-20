@@ -49,7 +49,7 @@ from public_constants import (
     AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH,
     AFC_SEGWIT, AF_BARE_PK
 )
-from silentpayments import SilentPaymentsMixin, compute_silent_payment_spending_privkey
+from silentpayments import MusigEcdhFactors, SilentPaymentsMixin, compute_silent_payment_spending_privkey
 
 psbt_tmp256 = bytearray(256)
 
@@ -2676,6 +2676,41 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
         output_key = ngu.secp256k1.musig_pubkey_xonly_tweak_add(keyagg_cache, tap_tweak)
         return output_key.to_bytes(), tap_tweak
 
+    def musig_keyagg_context(self, inp, agg_k, participant_pks, to_derive,
+                             keyspend=True, compute_factors=False):
+        # Assemble the MuSig2 keyagg context for an input,
+        # factors are used for partial ECDH share combining
+        #
+        # Returns (keyagg_cache, derived_k, output_key, factors):
+        #   keyagg_cache: MusigKeyAggCache object representing the aggregated key context
+        #   derived_k:    synthetically-derived aggregate key (33-byte compressed key)
+        #   output_key:   taproot output key (33-byte compressed key)
+        #   factors:      MusigEcdhFactors(negation_factor, total_tweak) when compute_factors
+        #                 (requires keyspend), else None. These are the two BIP-327
+        #                 combine coefficients consumed by _musig_aggregate_shares.
+        keyagg_cache = self.musig_build_cache(agg_k, participant_pks)
+        derived_k, sum_IL = self.musig_derive_keyagg_cache(to_derive, agg_k, keyagg_cache)
+
+        output_key = tap_tweak = None
+        if keyspend:
+            output_key, tap_tweak = self.musig_taproot_tweak(inp, keyagg_cache, derived_k[1:])
+
+        factors = None
+        if compute_factors and tap_tweak is not None:
+            # Rebuild the BIP-327 tweak context so partial ECDH shares combine without
+            # secrets (see MusigEcdhFactors). Parity is +1 for even-Y (0x02 prefix) else -1:
+            #   gacc: parity of the BIP-328 synthetically-derived key (pre-taproot)
+            #   g_v:  parity of the BIP-341 taproot output key
+            #   tacc: tweak accumulator = gacc * sum_IL + tap_tweak  (mod n)
+            SECP256K1_ORDER = ngu.secp256k1.curve_order_int()
+            gacc = 1 if derived_k[0] == 0x02 else -1
+            g_v = 1 if output_key[0] == 0x02 else -1
+            tacc = (gacc * int.from_bytes(sum_IL, "big")
+                    + int.from_bytes(tap_tweak, "big")) % SECP256K1_ORDER
+            factors = MusigEcdhFactors(g_v * gacc, (g_v * tacc) % SECP256K1_ORDER)
+
+        return keyagg_cache, derived_k, output_key, factors
+
     def musig_process_input(self, session, inp_idx, inp, keypair, agg_k, der_agg_k,
                             digest, leaf_hash=b""):
 
@@ -2711,6 +2746,9 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
         # is derived aggregate key xonly ?
         dak_xo = int(len(der_agg_k) == 32)
         # key is derived inside the key_agg cache
+        # TODO: replace with musig_keyagg_context?
+        # keyagg_cache, derived_k, output_key, _ = self.musig_keyagg_context(
+        # inp, agg_k, participant_pks, to_derive, keyspend=(not leaf_hash))
         derived_k, _ = self.musig_derive_keyagg_cache(to_derive, agg_k, keyagg_cache)
         assert derived_k[dak_xo:] == der_agg_k
 
@@ -2905,9 +2943,13 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
                 self.validate_silent_payment_inputs(sv)
             if self.has_silent_payment_outputs():
                 if not self.process_silent_payment_outputs(sv):
-                    # Silent Payments: must not sign if output scripts not set for all signers
-                    # Defensive re-check - ApproveTransaction::interact should handle this case before reaching signing
-                    raise FatalPSBTIssue("Silent Payments: Signing cannot proceed until all signers contribute their shares")
+                    if self.has_musig_sp_inputs() and musig_round1:
+                        # MuSig2+SP Round 1 needs to generate nonces even with incomplete SP coverage
+                        pass
+                    else:
+                        # Silent Payments: must not sign if output scripts not set for all signers
+                        # Defensive re-check - ApproveTransaction::interact should handle this case before reaching signing
+                        raise FatalPSBTIssue("Silent Payments: Signing cannot proceed until all signers contribute their shares")
 
             # progress
             dis.fullscreen('Signing...')
