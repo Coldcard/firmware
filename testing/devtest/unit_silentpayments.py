@@ -39,6 +39,8 @@ from public_constants import (
     PSBT_IN_SP_DLEQ,
     PSBT_OUT_SP_V0_INFO,
     PSBT_OUT_SP_V0_LABEL,
+    PSBT_IN_MUSIG2_PARTIAL_ECDH_SHARE, 
+    PSBT_IN_MUSIG2_PARTIAL_DLEQ,
 )
 
 # ---------------------------------------------------------------------------
@@ -106,6 +108,8 @@ assert PSBT_IN_SP_ECDH_SHARE == 0x1D
 assert PSBT_IN_SP_DLEQ == 0x1E
 assert PSBT_OUT_SP_V0_INFO == 0x09
 assert PSBT_OUT_SP_V0_LABEL == 0x0A
+assert PSBT_IN_MUSIG2_PARTIAL_ECDH_SHARE == 0x21
+assert PSBT_IN_MUSIG2_PARTIAL_DLEQ == 0x22
 
 # ---------------------------------------------------------------------------
 # DLEQ Proofs
@@ -211,24 +215,33 @@ except ValueError as e:
 class MockInput:
     def __init__(self):
         self.sp_idxs = None
-        self.sp_ecdh_shares = None
-        self.sp_dleq_proofs = None
-        self.subpaths = None
-        self.taproot_subpaths = None
+        self.sp_ecdh_shares = {}
+        self.sp_dleq_proofs = {}
+        self.subpaths = []
+        self.taproot_subpaths = []
         self.previous_txid = None
         self.prevout_idx = None
         self.witness_utxo = None
         self.taproot_internal_key = None
         self.sp_tweak = None
-        self.sp_spend_bip32_derivation = None
+        self.sp_spend_bip32_derivation = {}
         self.utxo_spk = None
         self.ik_idx = None
         self.sighash = None
         self.redeem_script = None
+        self.musig_partial_ecdh_shares = None
+        self.musig_partial_dleq_proofs = None
+        self.musig_pubkeys = []
+        self.musig_pubnonces = []
+        self.musig_part_sigs = []
 
     @property
     def is_sp_spend(self):
         return bool(self.sp_tweak and self.sp_spend_bip32_derivation)
+
+    @property
+    def is_musig(self):
+        return bool(self.musig_pubkeys or self.musig_pubnonces or self.musig_part_sigs)
 
 
 class MockOutput:
@@ -245,6 +258,9 @@ class MockPSBT(SilentPaymentsMixin):
         self.my_xfp = MY_XFP
         self.sp_global_ecdh_shares = {}
         self.sp_global_dleq_proofs = {}
+        self.musig_partial_ecd_shares = {}
+        self.musig_partial_dleq_proofs = {}
+        self.txn_modifiable = None
 
     def get(self, x):
         return x

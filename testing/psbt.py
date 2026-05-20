@@ -67,6 +67,9 @@ PSBT_IN_SP_DLEQ                     = 0x1e
 # BIP-376 Silent Payments
 PSBT_IN_SP_SPEND_BIP32_DERIVATION   = 0x1f
 PSBT_IN_SP_TWEAK                    = 0x20
+# BIP-375 MuSig2 Silent Payments
+PSBT_IN_MUSIG2_PARTIAL_ECDH_SHARE   = 0x21
+PSBT_IN_MUSIG2_PARTIAL_DLEQ         = 0x22
 
 # OUTPUTS ===
 PSBT_OUT_REDEEM_SCRIPT 	            = 0x00
@@ -153,6 +156,8 @@ class BasicPSBTInput(PSBTSection):
         self.musig_pubkeys = {}
         self.musig_pubnonces = {}
         self.musig_part_sigs = {}
+        self.musig_partial_ecdh_shares = {}
+        self.musig_partial_dleq_proofs = {}
         self.sp_ecdh_shares = {}
         self.sp_dleq_proofs = {}
         self.sp_tweak = None
@@ -187,6 +192,8 @@ class BasicPSBTInput(PSBTSection):
              a.musig_pubkeys == b.musig_pubkeys and \
              a.musig_pubnonces == b.musig_pubnonces and \
              a.musig_part_sigs == b.musig_part_sigs and \
+             a.musig_partial_ecdh_shares == b.musig_partial_ecdh_shares and \
+             a.musig_partial_dleq_proofs == b.musig_partial_dleq_proofs and \
              a.sp_ecdh_shares == b.sp_ecdh_shares and \
              a.sp_dleq_proofs == b.sp_dleq_proofs and \
              a.sp_tweak == b.sp_tweak and \
@@ -280,6 +287,18 @@ class BasicPSBTInput(PSBTSection):
             aggregate_key = key[33:66]
             tapleaf_h = key[66:]
             self.musig_part_sigs[(participant_key, aggregate_key, tapleaf_h)] = val
+        elif kt == PSBT_IN_MUSIG2_PARTIAL_ECDH_SHARE:
+            assert len(key) == 66  # scan key (33) + participant pubkey (33)
+            assert len(val) == 33
+            scan_key = key[:33]
+            participant_key = key[33:66]
+            self.musig_partial_ecdh_shares[(scan_key, participant_key)] = val
+        elif kt == PSBT_IN_MUSIG2_PARTIAL_DLEQ:
+            assert len(key) == 66  # scan key (33) + participant pubkey (33)
+            assert len(val) == 64
+            scan_key = key[:33]
+            participant_key = key[33:66]
+            self.musig_partial_dleq_proofs[(scan_key, participant_key)] = val
         elif kt == PSBT_IN_SP_ECDH_SHARE:
             self.sp_ecdh_shares[key] = val
         elif kt == PSBT_IN_SP_DLEQ:
@@ -357,6 +376,13 @@ class BasicPSBTInput(PSBTSection):
         if self.sp_spend_bip32_derivation:
             for k, v in self.sp_spend_bip32_derivation.items():
                 wr(PSBT_IN_SP_SPEND_BIP32_DERIVATION, v, k)
+
+        if self.musig_partial_ecdh_shares:
+            for (sk, pk), share in self.musig_partial_ecdh_shares.items():
+                wr(PSBT_IN_MUSIG2_PARTIAL_ECDH_SHARE, share, sk + pk)
+        if self.musig_partial_dleq_proofs:
+            for (sk, pk), proof in self.musig_partial_dleq_proofs.items():
+                wr(PSBT_IN_MUSIG2_PARTIAL_DLEQ, proof, sk + pk)
 
         if self.musig_pubnonces:
             for (pk, ak, lh), pubnonce in self.musig_pubnonces.items():

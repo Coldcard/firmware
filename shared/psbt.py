@@ -45,6 +45,7 @@ from public_constants import (
     PSBT_IN_SP_DLEQ, PSBT_IN_SP_ECDH_SHARE,
     PSBT_GLOBAL_SP_DLEQ, PSBT_GLOBAL_SP_ECDH_SHARE,
     PSBT_IN_SP_TWEAK, PSBT_IN_SP_SPEND_BIP32_DERIVATION,
+    PSBT_IN_MUSIG2_PARTIAL_ECDH_SHARE, PSBT_IN_MUSIG2_PARTIAL_DLEQ,
     AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH,
     AFC_SEGWIT, AF_BARE_PK
 )
@@ -666,7 +667,8 @@ class psbtInputProxy(psbtProxy):
     # just need to store a simple number for these
     # Silent Payments (shares/dleq): bytes (not proxied) so scan-pub can be used as dict key
     # and dict can be mutated in place
-    short_values = { PSBT_IN_SIGHASH_TYPE, PSBT_IN_SP_ECDH_SHARE, PSBT_IN_SP_DLEQ }
+    short_values = { PSBT_IN_SIGHASH_TYPE, PSBT_IN_SP_ECDH_SHARE, PSBT_IN_SP_DLEQ,
+                     PSBT_IN_MUSIG2_PARTIAL_ECDH_SHARE, PSBT_IN_MUSIG2_PARTIAL_DLEQ }
 
     # only part-sigs have a key to be stored.
     no_keys = {PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO, PSBT_IN_SIGHASH_TYPE,
@@ -683,6 +685,7 @@ class psbtInputProxy(psbtProxy):
         'taproot_subpaths', 'taproot_internal_key', 'taproot_key_sig', 'tr_added_sigs',
         'ik_idx', 'musig_pubkeys', 'musig_pubnonces', 'musig_part_sigs', 'musig_agg_idx',
         'musig_added_pubnonces', 'musig_added_sigs',
+        'musig_partial_ecdh_shares', 'musig_partial_dleq_proofs',
         'sp_ecdh_shares', 'sp_dleq_proofs', 'sp_tweak', 'sp_spend_bip32_derivation',
     )
 
@@ -732,10 +735,14 @@ class psbtInputProxy(psbtProxy):
         #self.musig_part_sigs = None
 
         # === silent payments ===
-        #self.sp_ecdh_shares = None              # dict[scan-pub] = ecdh_share
-        #self.sp_dleq_proofs = None              # dict[scan-pub] = dleq_proof
+        #self.sp_ecdh_shares = None              # dict[scan-key] = ecdh_share
+        #self.sp_dleq_proofs = None              # dict[scan-key] = dleq_proof
         #self.sp_tweak = None
         #self.sp_spend_bip32_derivation = None   # (spend-pub, xfp || path)
+        # key = scan_key_33 || participant_pk_33
+        #self.musig_partial_ecdh_shares = None   # dict[scan-key||part-pk] = ecdh_share
+        # key = scan_key_33 || participant_pk_33
+        #self.musig_partial_dleq_proofs = None   # dict[scan-key||part-pk] = dleq_proof
 
         self.parse(fd)
 
@@ -1210,6 +1217,12 @@ class psbtInputProxy(psbtProxy):
             self.sp_tweak = self.get(val)
         elif kt == PSBT_IN_SP_SPEND_BIP32_DERIVATION:
             self.sp_spend_bip32_derivation = (key, val)
+        elif kt == PSBT_IN_MUSIG2_PARTIAL_ECDH_SHARE:
+            self.musig_partial_ecdh_shares = self.musig_partial_ecdh_shares or {}
+            self.musig_partial_ecdh_shares[(key[:33], key[33:66])] = val
+        elif kt == PSBT_IN_MUSIG2_PARTIAL_DLEQ:
+            self.musig_partial_dleq_proofs = self.musig_partial_dleq_proofs or {}
+            self.musig_partial_dleq_proofs[(key[:33], key[33:66])] = val
         else:
             # including: PSBT_IN_FINAL_SCRIPTSIG, PSBT_IN_FINAL_SCRIPTWITNESS
             self.unknown = self.unknown or []
@@ -1320,6 +1333,14 @@ class psbtInputProxy(psbtProxy):
             if self.sp_spend_bip32_derivation:
                 k, v = self.sp_spend_bip32_derivation
                 wr(PSBT_IN_SP_SPEND_BIP32_DERIVATION, v, k)
+
+            if self.musig_partial_ecdh_shares:
+                for (scan_key, participant_pk), share in self.musig_partial_ecdh_shares.items():
+                    wr(PSBT_IN_MUSIG2_PARTIAL_ECDH_SHARE, share, scan_key + participant_pk)
+
+            if self.musig_partial_dleq_proofs:
+                for (scan_key, participant_pk), proof in self.musig_partial_dleq_proofs.items():
+                    wr(PSBT_IN_MUSIG2_PARTIAL_DLEQ, proof, scan_key + participant_pk)
 
         if self.unknown:
             for k, v in self.unknown:
