@@ -41,6 +41,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Handle malformed NDEF records robustly. Thanks, @Damir
 - Bugfix: Ignore `bkpw` if added to backup. Thanks [@dmonakhov](https://github.com/dmonakhov)
 - Bugfix: Keep NFC export tag live for repeated probes
+- Bugfix: Fix 1of1 multisig signing failure
 
 # Mk Specific Changes
 
