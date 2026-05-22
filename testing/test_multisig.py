@@ -1177,6 +1177,24 @@ def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_miniscript, import_ms
     else:
         try_sign(psbt)
 
+
+@pytest.mark.parametrize("finalize", [True, False])
+def test_1of1_multisig_sign(finalize, clear_miniscript, import_ms_wallet, fake_ms_txn, start_sign,
+                            end_sign, cap_story):
+    # Minimal 1-of-1 multisig: import the wallet, then sign a 1-in/1-out PSBT.
+    clear_miniscript()
+    M = N = 1
+    keys = import_ms_wallet(M, N, accept=True)
+
+    psbt = fake_ms_txn(1, 1, M, keys)
+
+    start_sign(psbt, finalize=finalize)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+
+    end_sign(accept=True, finalize=finalize)
+
+
 @pytest.mark.unfinalized
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('num_ins', [ 15 ])

@@ -984,16 +984,18 @@ class psbtInputProxy(psbtProxy):
             native_v0 = (self.af == AF_P2WSH)
 
             if not native_v0 and (len(redeem_script) == 22) and \
-                    redeem_script[0] == 0 and redeem_script[1] == 20 and \
-                    len(parsed_subpaths) == 1:
+                    redeem_script[0] == 0 and redeem_script[1] == 20:
+
+                # P2SH-P2WPKH is a single-key input. Do not mistake a 1-of-1
+                # multisig script for singlesig merely because it has one path.
+                assert len(parsed_subpaths) == 1, "p2sh-p2wpkh needs one key"
 
                 for i, pubkey in enumerate(parsed_subpaths):
                     target_spk, _ = chains.current_chain().script_pubkey(AF_P2WPKH_P2SH,
                                                                          pubkey=pubkey)
-                    if target_spk == utxo.scriptPubKey:
-                        # it's actually segwit p2wpkh inside p2sh
-                        self.af = AF_P2WPKH_P2SH
-                        assert i == self.sp_idxs[0]
+                    assert target_spk == utxo.scriptPubKey, "p2sh-p2wpkh pubkey mismatch"
+                    self.af = AF_P2WPKH_P2SH
+                    assert i == self.sp_idxs[0]
 
             else:
                 # A standard multisig input is complete once its script threshold is met,
