@@ -829,17 +829,20 @@ class psbtInputProxy(psbtProxy):
 
             self.scriptSig = redeem_script
 
-            # new cheat: psbt creator probably telling us exactly what key
-            # to use, by providing exactly one. This is ideal for p2sh wrapped p2pkh
-            if len(subpaths) == 1:
+            if not addr_is_segwit and len(redeem_script) == 22 and \
+                    redeem_script[0] == 0 and redeem_script[1] == 20:
+                # segwit p2pkh wrapped in p2sh: exactly one key, not multisig.
+                # psbt creator tells us the key by providing exactly one subpath.
+                self.addr_fmt = AF_P2WPKH_P2SH
+                addr = redeem_script[2:22]
+                self.is_segwit = True
+
+                assert len(subpaths) == 1, "p2sh-p2wpkh needs one key"
                 which_key, = subpaths.keys()
             else:
-                # Assume we'll be signing with any key we know
-                # - limitation: we cannot be two legs of a multisig (only if CCC feature used)
-                # - but if partial sig already in place, ignore that one
-                if not which_key:
-                    which_key = set()
+                self.is_multisig = True
 
+                which_key = set()
                 for pubkey, path in subpaths.items():
                     if self.part_sigs and (pubkey in self.part_sigs):
                         # pubkey has already signed, so ignore
@@ -850,19 +853,7 @@ class psbtInputProxy(psbtProxy):
                         which_key.add(pubkey)
 
                     elif pubkey in psbt.wif_store:
-                        # maybe sset some input value
                         which_key.add(pubkey)
-
-            if not addr_is_segwit and \
-                    len(redeem_script) == 22 and \
-                    redeem_script[0] == 0 and redeem_script[1] == 20:
-                # it's actually segwit p2pkh inside p2sh
-                self.addr_fmt = AF_P2WPKH_P2SH
-                addr = redeem_script[2:22]
-                self.is_segwit = True
-            else:
-                # multiple keys involved
-                self.is_multisig = True
 
             if self.witness_script and not self.is_segwit and self.is_multisig:
                 # bugfix

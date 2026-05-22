@@ -1664,6 +1664,21 @@ def test_wrong_pubkey(dev, try_sign, fake_txn):
     msg = ee.value.args[0]
     assert ('pubkey vs. address wrong' in msg)
 
+
+def test_p2sh_p2wpkh_multiple_bip32_paths_rejected(fake_txn, start_sign, cap_story):
+    psbt = fake_txn(1, 1, segwit_in=True, wrapped=True)
+    po = BasicPSBT().parse(psbt)
+
+    other = BIP32Node.from_master_secret(os.urandom(32))
+    other_key = other.subkey_for_path("0/0")
+    po.inputs[0].bip32_paths[other_key.sec()] = other.fingerprint() + struct.pack('<II', 0, 0)
+
+    start_sign(po.as_bytes(), finalize=True)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "p2sh-p2wpkh needs one key" in story
+
+
 def test_incomplete_signing(dev, try_sign, fake_txn, cap_story):
     # psbt where we only sign one input
     # - must not allow finalization
