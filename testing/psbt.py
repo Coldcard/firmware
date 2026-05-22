@@ -373,6 +373,9 @@ class BasicPSBT:
         return (self.version == 2) or (not self.txn)
 
     def parse(self, raw):
+        if isinstance(raw, str):
+            raw = raw.encode('ascii')
+
         # auto-detect and decode Base64 and Hex.
         if raw[0:10].lower() == b'70736274ff':
             raw = a2b_hex(raw.strip())
@@ -580,4 +583,3 @@ def test_my_psbt():
         assert chk == p
 
 # EOF
-

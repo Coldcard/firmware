@@ -40,6 +40,8 @@ def fake_txn(dev, pytestconfig):
             psbt.txn_version = 2
             psbt.input_count = num_ins
             psbt.output_count = num_outs
+            if lock_time:
+                psbt.fallback_locktime = lock_time
 
         txn = CTransaction()
         txn.nLockTime = lock_time
