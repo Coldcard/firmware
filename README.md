@@ -28,9 +28,11 @@ has been automated using Docker. Steps are as follows:
 
     ```shell
     git clone https://github.com/Coldcard/firmware.git
-    git checkout 2023-12-21T1526-v5.2.2
-    # get a copy of that binary into ./releases/2023-12-21T1526-v5.2.2-mk4-coldcard.dfu
-    cd firmware/stm32
+    cd firmware
+    # DOWNLOAD https://coldcard.com/downloads
+    # get a copy of binary into ./releases/2026-03-05T2052-v5.5.0-mk-coldcard.dfu
+    git checkout 2026-03-05T2052-v5.5.0
+    cd stm32
     make -f MK4-Makefile repro
     ```
 
