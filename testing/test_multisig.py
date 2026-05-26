@@ -1017,10 +1017,10 @@ def fake_ms_txn(pytestconfig):
 
             supply.vout.append(CTxOut(int(input_amount), scriptPubKey))
 
-            if not segwit_in:
-                psbt.inputs[i].utxo = supply.serialize_with_witness()
-            else:
+            if segwit_in:
                 psbt.inputs[i].witness_utxo = supply.vout[-1].serialize()
+            else:
+                psbt.inputs[i].utxo = supply.serialize_with_witness()
 
             if lock_time and not i:
                 seq = 0xfffffffd
@@ -1198,10 +1198,12 @@ def test_1of1_multisig_sign(finalize, clear_miniscript, import_ms_wallet, fake_m
 @pytest.mark.unfinalized
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('num_ins', [ 15 ])
-@pytest.mark.parametrize('M', [ 2, 4])
+@pytest.mark.parametrize('M', [ 2, 4, 1])
+@pytest.mark.parametrize('inp_addr_fmt', ["p2sh", "p2wsh"])
 @pytest.mark.parametrize('incl_xpubs', [ True, False ])
-def test_ms_sign_myself(M, use_regtest, make_myself_wallet, num_ins, dev, incl_xpubs,
-                        clear_miniscript, fake_ms_txn, try_sign, bitcoind, sim_root_dir):
+def test_ms_sign_myself(M, use_regtest, make_myself_wallet, inp_addr_fmt, num_ins, dev,
+                        clear_miniscript, fake_ms_txn, try_sign, incl_xpubs, bitcoind,
+                        sim_root_dir):
 
     # IMPORTANT: won't work if you start simulator with --ms flag. Use no args
 
@@ -1212,12 +1214,14 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, num_ins, dev, incl_x
     use_regtest()
 
     # create a wallet, with 3 bip39 pw's
-    keys, select_wallet = make_myself_wallet(M, addr_fmt="p2sh", do_import=(not incl_xpubs))
+    keys, select_wallet = make_myself_wallet(M, addr_fmt=inp_addr_fmt,
+                                             do_import=(not incl_xpubs))
     N = len(keys)
     assert M<=N
 
-    psbt = fake_ms_txn(num_ins, num_outs, M, keys, inp_addr_fmt="p2sh", incl_xpubs=incl_xpubs,
-                       outstyles=["p2sh"], change_outputs=list(range(1,num_outs)))
+    psbt = fake_ms_txn(num_ins, num_outs, M, keys, inp_addr_fmt=inp_addr_fmt,
+                       incl_xpubs=incl_xpubs,
+                       outstyles=all_out_styles, change_outputs=list(range(1,num_outs)))
 
     with open(f'{sim_root_dir}/debug/myself-before.psbt', 'w') as f:
         f.write(b64encode(psbt).decode())

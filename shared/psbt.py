@@ -859,48 +859,57 @@ class psbtInputProxy(psbtProxy):
         fd = self.fd
         old_pos = fd.tell()
 
-        if self.witness_utxo:
-            # Going forward? Just what we will witness; no other junk
-            # - prefer this format, altho does that imply segwit txn must be generated?
-            # - I don't know why we wouldn't always use this
-            # - once we use this partial utxo data, we must create witness data out
+        if self.utxo:
+            # skip over all the parts of the txn we don't care about, without
+            # fully parsing it... pull out a single TXO
+            fd.seek(self.utxo[0])
 
-            fd.seek(self.witness_utxo[0])
+            _, marker, flags = unpack("<iBB", fd.read(6))
+            wit_format = (marker == 0 and flags != 0x0)
+            if not wit_format:
+                # rewind back over marker+flags
+                fd.seek(-2, 1)
+
+            # How many ins? We accept zero here because utxo's inputs might have been
+            # trimmed to save space, and we have test cases like that.
+            num_in = deser_compact_size(fd)
+            _skip_n_objs(fd, num_in, 'CTxIn')
+
+            num_out = deser_compact_size(fd)
+            assert idx < num_out, "not enuf outs"
+            _skip_n_objs(fd, idx, 'CTxOut')
+
             utxo = CTxOut()
             utxo.deserialize(fd)
+
+            # ... followed by more outs, and maybe witness data, but we don't care ...
+
             fd.seek(old_pos)
 
             return utxo
 
-        assert self.utxo, 'no utxo'
+        assert self.witness_utxo, 'no utxo'
 
-        # skip over all the parts of the txn we don't care about, without
-        # fully parsing it... pull out a single TXO
-        fd.seek(self.utxo[0])
-
-        _, marker, flags = unpack("<iBB", fd.read(6))
-        wit_format = (marker == 0 and flags != 0x0)
-        if not wit_format:
-            # rewind back over marker+flags
-            fd.seek(-2, 1)
-
-        # How many ins? We accept zero here because utxo's inputs might have been
-        # trimmed to save space, and we have test cases like that.
-        num_in = deser_compact_size(fd)
-        _skip_n_objs(fd, num_in, 'CTxIn')
-
-        num_out = deser_compact_size(fd)
-        assert idx < num_out, "not enuf outs"
-        _skip_n_objs(fd, idx, 'CTxOut')
-
+        fd.seek(self.witness_utxo[0])
         utxo = CTxOut()
         utxo.deserialize(fd)
-
-        # ... followed by more outs, and maybe witness data, but we don't care ...
-
         fd.seek(old_pos)
 
         return utxo
+
+    def witness_utxo_is_provably_segwit(self, utxo):
+        af, addr_or_pubkey = utxo.get_address()
+        if af and (af & AFC_SEGWIT):
+            return True
+
+        if af != AF_P2SH or not self.redeem_script:
+            return False
+
+        redeem_script = self.get(self.redeem_script)
+        return redeem_script[0] == 0 and \
+            ((len(redeem_script) == 22 and redeem_script[1] == 20) or
+             (len(redeem_script) == 34 and redeem_script[1] == 32)) and \
+            hash160(redeem_script) == addr_or_pubkey
 
     def determine_my_signing_key(self, my_idx, addr_or_pubkey, my_xfp, psbt, parsed_subpaths, utxo):
         # See what it takes to sign this particular input
@@ -2137,6 +2146,7 @@ class psbtObject(psbtProxy):
         from glob import dis
 
         foreign = []
+        unverified_witness_utxo = []
         total_in = 0
         presigned_inputs = set()
         # time based relative locks
@@ -2232,6 +2242,8 @@ class psbtObject(psbtProxy):
             inp.amount = utxo.nValue
             assert inp.amount >= 0, "negative input value: i%d" % i
             total_in += inp.amount
+            if not inp.utxo and not inp.witness_utxo_is_provably_segwit(utxo):
+                unverified_witness_utxo.append(i)
 
             inp.af, addr_or_pubkey = utxo.get_address()
             # save scriptPubKey of utxo for later use
@@ -2268,6 +2280,9 @@ class psbtObject(psbtProxy):
                 # meaning we're not going to sign this input - other wallet in use
                 if not inp.sp_idxs:
                     continue
+
+                if not inp.is_segwit and not inp.utxo:
+                    raise FatalPSBTIssue('Legacy input #%d requires non-witness UTXO' % i)
 
                 # parsed subpaths are OrderedDict - matches sp_idxs
                 in_wif_store = False
@@ -2318,7 +2333,7 @@ class psbtObject(psbtProxy):
         if not my_cnt:
             raise FatalPSBTIssue(NO_KEY_ERR + " (need %s)." % xfp2str(self.my_xfp))
 
-        if not foreign:
+        if not foreign and not unverified_witness_utxo:
             # no foreign inputs, we can calculate the total input value
             self.total_value_in = total_in
             assert total_in > 0 or self.por322, "zero value txn"
@@ -2327,9 +2342,15 @@ class psbtObject(psbtProxy):
             # OK for multi-party transactions (coinjoin etc.)
             assert not self.por322  # cannot have foreign inputs in POR txn
             self.total_value_in = None
-            self.warnings.append(
-                ("Unable to calculate fee", "Some input(s) haven't provided UTXO(s): " + seq_to_str(foreign))
-            )
+            if foreign:
+                self.warnings.append(
+                    ("Unable to calculate fee", "Some input(s) haven't provided UTXO(s): " + seq_to_str(foreign))
+                )
+            if unverified_witness_utxo:
+                self.warnings.append(
+                    ("Unable to calculate fee", "Some input(s) provided unverified witness UTXO(s): " +
+                     seq_to_str(unverified_witness_utxo))
+                )
 
         if len(presigned_inputs) == self.num_inputs:
             # Maybe wrong f cases? Maybe they want to add their

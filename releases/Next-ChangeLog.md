@@ -9,6 +9,9 @@ This lists the new changes that have not yet been published in a normal release.
 - Enhancement: WIF Store export watch-only descriptor
 - Enhancement: WIF Store address detection without the need for PSBT_IN_BIP32_DERIVATION (Electrum support)
 - Enhancement: Improve USB length validation
+- Bugfix: Fixes legacy input amount spoofing by rejecting witness-utxo-only PSBT inputs when Coldcard is expected to sign a non-segwit input.
+  When both UTXO fields are present the full non_witness_utxo is now preferred for amount/script lookup. Thanks, @Damir
+- Bugfix: Emit warning and do not calculate fee for legacy UTXOs with only witness utxo
 - Bugfix: Disable Virtual Disk and NFC before activating HSM
 - Bugfix: Custom address default menu position wrong
 - Bugfix: Delta Mode Trick PIN was never restored from backup
