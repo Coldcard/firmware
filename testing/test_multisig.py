@@ -1279,7 +1279,7 @@ def fake_ms_txn(pytestconfig):
     # - but has UTXO's to match needs
     from struct import pack
 
-    def doit(num_ins, num_outs, M, keys, fee=10000, outvals=None, segwit_in=False,
+    def doit(num_ins, num_outs, M, keys, fee=10000, outvals=None,
              outstyles=['p2pkh'], change_outputs=[], incl_xpubs=False, hack_psbt=None,
              hack_change_out=False, input_amount=1E8, psbt_v2=None, bip67=True,
              violate_script_key_order=False, path_mapper=None, inp_af=AF_P2WSH,
@@ -1329,21 +1329,14 @@ def fake_ms_txn(pytestconfig):
             )
 
             # lots of supporting details needed for p2sh inputs
-            if inp_af:
-                if inp_af == AF_P2WSH:
-                    psbt.inputs[i].witness_script = script
-                elif inp_af == AF_P2SH:
-                    psbt.inputs[i].redeem_script = script
-                else:
-                    assert inp_af == AF_P2WSH_P2SH
-                    psbt.inputs[i].witness_script = script
-                    psbt.inputs[i].redeem_script = b'\0\x20' + sha256(script).digest()
-
+            if inp_af == AF_P2WSH:
+                psbt.inputs[i].witness_script = script
+            elif inp_af == AF_P2SH:
+                psbt.inputs[i].redeem_script = script
             else:
-                if segwit_in:
-                    psbt.inputs[i].witness_script = script
-                else:
-                    psbt.inputs[i].redeem_script = script
+                assert inp_af == AF_P2WSH_P2SH
+                psbt.inputs[i].witness_script = script
+                psbt.inputs[i].redeem_script = b'\0\x20' + sha256(script).digest()
 
             for pubkey, xfp_path in details:
                 psbt.inputs[i].bip32_paths[pubkey] = b''.join(pack('<I', j) for j in xfp_path)
@@ -1359,10 +1352,10 @@ def fake_ms_txn(pytestconfig):
 
             supply.vout.append(CTxOut(int(input_amount), scriptPubKey))
 
-            if not segwit_in:
-                psbt.inputs[i].utxo = supply.serialize_with_witness()
-            else:
+            if inp_af in [AF_P2WSH, AF_P2WSH_P2SH]:
                 psbt.inputs[i].witness_utxo = supply.vout[-1].serialize()
+            else:
+                psbt.inputs[i].utxo = supply.serialize_with_witness()
 
             if lock_time and not i:
                 seq = 0xfffffffd
@@ -1532,9 +1525,9 @@ def test_1of1_multisig_sign(finalize, clear_ms, import_ms_wallet, fake_ms_txn, s
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('num_ins', [ 15 ])
 @pytest.mark.parametrize('M', [ 2, 4, 1])
-@pytest.mark.parametrize('segwit', [True, False])
+@pytest.mark.parametrize('addr_fmt', [AF_P2SH, AF_P2WSH])
 @pytest.mark.parametrize('incl_xpubs', [ True, False ])
-def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev, clear_ms,
+def test_ms_sign_myself(M, use_regtest, make_myself_wallet, addr_fmt, num_ins, dev, clear_ms,
                         fake_ms_txn, try_sign, incl_xpubs, bitcoind, sim_root_dir):
 
     # IMPORTANT: wont work if you start simulator with --ms flag. Use no args
@@ -1550,9 +1543,9 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
     N = len(keys)
     assert M<=N
 
-    psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs,
+    psbt = fake_ms_txn(num_ins, num_outs, M, keys, incl_xpubs=incl_xpubs,
                        outstyles=all_out_styles, change_outputs=list(range(1,num_outs)),
-                       inp_af=AF_P2SH)
+                       inp_af=addr_fmt)
 
     with open(f'{sim_root_dir}/debug/myself-before.psbt', 'w') as f:
         f.write(b64encode(psbt).decode())
@@ -3114,7 +3107,7 @@ def test_ms_wallet_ordering(clear_ms, import_ms_wallet, try_sign_microsd, fake_m
     name = f'ms2'
     keys3 = import_ms_wallet(3, 5, name=name, accept=1, do_import=True, addr_fmt="p2wsh")
 
-    psbt = fake_ms_txn(5, 5, 3, keys3, outstyles=all_out_styles, segwit_in=True, incl_xpubs=True)
+    psbt = fake_ms_txn(5, 5, 3, keys3, outstyles=all_out_styles, incl_xpubs=True)
 
     try_sign_microsd(psbt, encoding='base64')
 
@@ -3135,12 +3128,12 @@ def test_ms_xpub_ordering(descriptor, m_n, clear_ms, make_multisig, import_ms_wa
         import_ms_wallet(M, N, keys=opt, name=name, accept=1, do_import=True,
                          addr_fmt="p2wsh", descriptor=descriptor)
         psbt = fake_ms_txn(5, 5, M, opt, outstyles=all_out_styles,
-                           segwit_in=True, incl_xpubs=True)
+                           incl_xpubs=True)
         try_sign_microsd(psbt, encoding='base64')
         for opt_1 in all_options:
             # create PSBT with original keys order
             psbt = fake_ms_txn(5, 5, M, opt_1, outstyles=all_out_styles,
-                               segwit_in=True, incl_xpubs=True)
+                               incl_xpubs=True)
             try_sign_microsd(psbt, encoding='base64')
 
 
@@ -4102,7 +4095,7 @@ def test_change_output_script_type(clear_ms, import_ms_wallet, start_sign, end_s
     sign_check(psbt)
 
     psbt = fake_ms_txn(2, 2, M, keys, force_outstyle="p2sh-p2wsh",
-                       change_outputs=[0,1], inp_af=AF_P2SH, segwit_in=True)
+                       change_outputs=[0,1], inp_af=AF_P2SH)
 
     sign_check(psbt)
 

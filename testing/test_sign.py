@@ -559,6 +559,9 @@ def test_change_case(start_sign, use_regtest, end_sign, check_against_bitcoind, 
     chg_addr = 'mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'
 
     psbt = open('data/example-change.psbt', 'rb').read()
+    b4 = BasicPSBT().parse(psbt)
+    b4.convert_witness_utxo_to_utxo(0)
+    psbt = b4.as_bytes()
 
     start_sign(psbt)
 
@@ -568,7 +571,6 @@ def test_change_case(start_sign, use_regtest, end_sign, check_against_bitcoind, 
     assert split_sory[0] == "Change back:"
     assert chg_addr == addr_from_display_format(split_sory[-1])
 
-    b4 = BasicPSBT().parse(psbt)
     check_against_bitcoind(B2A(b4.txn), Decimal('0.00000294'), change_outs=[1,])
 
     signed = end_sign(True)
@@ -610,6 +612,7 @@ def test_change_fraud_path(start_sign, use_regtest, end_sign, case, check_agains
 
     psbt = open('data/example-change.psbt', 'rb').read()
     b4 = BasicPSBT().parse(psbt)
+    b4.convert_witness_utxo_to_utxo(0)
 
     (pubkey, path), = b4.outputs[1].bip32_paths.items()
     skp = bytearray(b4.outputs[1].bip32_paths[pubkey])
@@ -654,6 +657,7 @@ def test_change_fraud_addr(start_sign, end_sign, use_regtest, check_against_bitc
 
     psbt = open('data/example-change.psbt', 'rb').read()
     b4 = BasicPSBT().parse(psbt)
+    b4.convert_witness_utxo_to_utxo(0)
 
     # tweak output addr to garbage
     t = CTransaction()
@@ -691,6 +695,7 @@ def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, use_re
         psbt = f.read()
 
     b4 = BasicPSBT().parse(psbt)
+    b4.convert_witness_utxo_to_utxo(0)
 
     t = CTransaction()
     t.deserialize(BytesIO(b4.txn))
@@ -840,15 +845,16 @@ def test_sign_multisig_partial_fail(start_sign, end_sign):
 def test_sign_wutxo(start_sign, set_seed_words, end_sign, cap_story, sim_exec, sim_execfile,
                     sim_root_dir):
 
-    # Example from SomberNight: we can sign it, but signature won't be accepted by
-    # network because the PSBT lies about the UTXO amount and tries to give away to miners,
-    # as overly-large fee.
+    # Example from SomberNight, normalized to use a full UTXO so this test still
+    # reaches the fee display path after legacy witness-only UTXOs are rejected.
 
     set_seed_words('fault lava rice chest uncle exclude power tornado catalog stool'
                     ' swear rival sun aspect oyster deer pepper exchange scrap toward'
                     ' mix second world shaft')
 
-    in_psbt = a2b_hex(open('data/snight-example.psbt', 'rb').read()[:-1])
+    snight = BasicPSBT().parse(a2b_hex(open('data/snight-example.psbt', 'rb').read()[:-1]))
+    snight.convert_witness_utxo_to_utxo(0)
+    in_psbt = snight.as_bytes()
 
     for fin in (False, True):
         start_sign(in_psbt, finalize=fin)
@@ -1136,6 +1142,7 @@ def test_change_troublesome(dev, start_sign, cap_story, try_path, expect, sim_ro
 
     psbt = open('data/example-change.psbt', 'rb').read()
     b4 = BasicPSBT().parse(psbt)
+    b4.convert_witness_utxo_to_utxo(0)
 
     pubkey = a2b_hex('03c80814536f8e801859fc7c2e5129895b261153f519d4f3418ffb322884a7d7e1')
     path = [int(p) if ("'" not in p) else 0x80000000+int(p[:-1]) 
@@ -1768,6 +1775,104 @@ def test_own_utxo_missing(segwit_in, num_missing, dev, fake_txn, start_sign, cap
     assert title == "Failure"
     assert "Missing own UTXO(s)" in story
     press_cancel()
+
+def _replace_input_utxo_with_witness_utxo(psbt, idx):
+    inp = psbt.inputs[idx]
+    txn = CTransaction()
+    txn.deserialize(BytesIO(inp.utxo))
+    assert len(txn.vout) == 1
+    inp.witness_utxo = txn.vout[0].serialize()
+    inp.utxo = None
+
+def test_nested_segwit_witness_utxo_only_fee_shown(dev, fake_txn, start_sign,
+                                                  cap_story, end_sign):
+    psbt = fake_txn(1, 2, dev.master_xpub, segwit_in=True, wrapped=True)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "Network fee" in story
+    assert "unverified witness UTXO" not in story
+    end_sign(accept=True)
+
+def test_own_legacy_witness_utxo_only_fails(dev, fake_txn, start_sign, cap_story, press_cancel):
+    def hack(psbt):
+        _replace_input_utxo_with_witness_utxo(psbt, 0)
+
+    psbt = fake_txn(1, 2, dev.master_xpub, segwit_in=False, psbt_hacker=hack)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Legacy input #0 requires non-witness UTXO" in story
+    press_cancel()
+
+def test_foreign_legacy_witness_utxo_only_ok(dev, fake_txn, start_sign, cap_story, end_sign):
+    def hack(psbt):
+        pk = list(psbt.inputs[1].bip32_paths.keys())[0]
+        pp = psbt.inputs[1].bip32_paths[pk]
+        psbt.inputs[1].bip32_paths[pk] = b'what' + pp[4:]
+        _replace_input_utxo_with_witness_utxo(psbt, 1)
+
+    psbt = fake_txn(2, 2, dev.master_xpub, segwit_in=False, psbt_hacker=hack)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "Limited Signing" in story
+    assert "Unable to calculate fee" in story
+    assert "Some input(s) provided unverified witness UTXO(s): 1" in story
+    assert "Legacy input #1 requires non-witness UTXO" not in story
+    signed = end_sign(accept=True)
+    assert signed != psbt
+
+def test_mismatched_p2sh_witness_program_unverified(dev, fake_txn, start_sign,
+                                                    cap_story, end_sign):
+    def hack(psbt):
+        pk = list(psbt.inputs[1].bip32_paths.keys())[0]
+        pp = psbt.inputs[1].bip32_paths[pk]
+        psbt.inputs[1].bip32_paths[pk] = b'what' + pp[4:]
+
+        inp = psbt.inputs[1]
+        txn = CTransaction()
+        txn.deserialize(BytesIO(inp.utxo))
+        assert len(txn.vout) == 1
+
+        redeem_script = bytes([0, 20]) + os.urandom(32)
+        inp.redeem_script = redeem_script
+        inp.witness_utxo = CTxOut(txn.vout[0].nValue,
+                                  bytes([0xa9, 0x14]) + hash160(redeem_script) + bytes([0x87])).serialize()
+        inp.utxo = None
+
+    psbt = fake_txn(2, 2, dev.master_xpub, segwit_in=False, psbt_hacker=hack)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "Limited Signing" in story
+    assert "Unable to calculate fee" in story
+    assert "Some input(s) provided unverified witness UTXO(s): 1" in story
+    assert "Network fee" not in story
+    signed = end_sign(accept=True)
+    assert signed != psbt
+
+def test_presigned_own_legacy_witness_utxo_only_ok(dev, fake_txn, start_sign, cap_story, end_sign):
+    def hack(psbt):
+        pubkey = list(psbt.inputs[1].bip32_paths.keys())[0]
+        psbt.inputs[1].part_sigs[pubkey] = os.urandom(71)
+        _replace_input_utxo_with_witness_utxo(psbt, 1)
+
+    psbt = fake_txn(2, 2, dev.master_xpub, segwit_in=False, psbt_hacker=hack)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "Partly Signed Already" in story
+    assert "Unable to calculate fee" in story
+    assert "Some input(s) provided unverified witness UTXO(s): 1" in story
+    assert "Legacy input #1 requires non-witness UTXO" not in story
+    signed = end_sign(accept=True)
+    assert signed != psbt
 
 @pytest.mark.bitcoind
 def test_bitcoind_missing_foreign_utxo(bitcoind, bitcoind_d_sim_watch, microsd_path, try_sign):
