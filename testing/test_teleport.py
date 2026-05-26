@@ -734,7 +734,7 @@ def test_teleport_real_ms(dev, fake_ms_txn):
         # match the default paths created by CC in airgapped MS wallet creation.
         return str_to_path(deriv)
 
-    psbt = fake_ms_txn(3, 2, M, keys, fee=10000, outvals=None, segwit_in=False,
+    psbt = fake_ms_txn(3, 2, M, keys, fee=10000, outvals=None, inp_af=AF_P2WSH,
              outstyles=['p2pkh'], change_outputs=[], incl_xpubs=False,
              hack_change_out=False, input_amount=1E8, path_mapper=p2wsh_mapper)
 

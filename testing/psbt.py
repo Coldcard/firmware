@@ -517,6 +517,42 @@ class BasicPSBT:
     def as_b64_str(self):
         return b64encode(self.as_bytes()).decode()
 
+    def convert_witness_utxo_to_utxo(self, idx):
+        # Test helper: the original prev txn cannot be reconstructed from a
+        # witness_utxo, so retarget this PSBT input to a synthetic funding txn.
+        inp = self.inputs[idx]
+        assert inp.witness_utxo
+        assert inp.utxo is None
+
+        prev_txo = CTxOut()
+        prev_txo.deserialize(io.BytesIO(inp.witness_utxo))
+
+        if self.is_v2():
+            assert inp.prevout_idx is not None
+            prevout_idx = inp.prevout_idx
+        else:
+            assert self.parsed_txn
+            txin = self.parsed_txn.vin[idx]
+            prevout_idx = txin.prevout.n
+
+        funding = CTransaction()
+        funding.nVersion = 2
+        funding.vin = [CTxIn(COutPoint(0, 0xffffffff), nSequence=0xffffffff)]
+        funding.vout = [CTxOut(0, b'') for _ in range(prevout_idx)]
+        funding.vout.append(prev_txo)
+        funding.calc_sha256()
+
+        inp.utxo = funding.serialize_with_witness()
+        inp.witness_utxo = None
+
+        if self.is_v2():
+            inp.previous_txid = ser_uint256(funding.sha256)
+        else:
+            txin.prevout.hash = funding.sha256
+            self.txn = self.parsed_txn.serialize_with_witness()
+
+        return funding
+
     def to_v2(self):
         if self.version is None or self.version == 0:
             self.version = 2
