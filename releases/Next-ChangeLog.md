@@ -40,6 +40,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Stricter address ownership validation rejects unrecognized payment addresses before wallet search
 - Bugfix: Handle malformed NDEF records robustly. Thanks, @Damir
 - Bugfix: Ignore `bkpw` if added to backup. Thanks [@dmonakhov](https://github.com/dmonakhov)
+- Bugfix: Keep NFC export tag live for repeated probes
 
 # Mk Specific Changes
 
