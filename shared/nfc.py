@@ -226,10 +226,13 @@ class NFCHandler:
         self.set_rf_disable(1)
 
     async def share_loop(self, n, **kws):
+        # Keep one fully-written tag image live until the user exits. Some
+        # phones perform multiple probes while deciding if a tag is NDEF.
+        await self.big_write(n.bytes())
+
         while 1:
-            done = await self.share_start(n, **kws)
-            if done:
-                # do not wipe if we are not done
+            aborted = await self.ux_animation(exit_after_activity=False, **kws)
+            if aborted:
                 await self.wipe(kws.get("is_secret", False))
                 break
 
@@ -401,8 +404,9 @@ class NFCHandler:
         self.write_dyn(GPO_CTRL_Dyn, 0x01)      # GPO_EN
         self.read_dyn(IT_STS_Dyn)               # clear interrupt
 
-    async def ux_animation(self, write_mode, allow_enter=True, prompt=None, line2=None,
-                           is_secret=False):
+    async def ux_animation(self, allow_enter=True, prompt=None, line2=None,
+                           is_secret=False, exit_after_activity=True,
+                           min_delay=1000):
         # Run the pretty animation, and detect both when we are written, and/or key to exit/abort.
         # - similar when "read" and then removed from field
         # - return T if aborted by user
@@ -428,7 +432,6 @@ class NFCHandler:
 
         # (ms) How long to wait after RF field comes and goes
         # - user can press OK during this period if they know they are done
-        min_delay = (3000 if write_mode else 1000)
 
         while 1:
             if dis.has_lcd:
@@ -467,7 +470,7 @@ class NFCHandler:
                     aborted = False
                     break
 
-            if last_activity:
+            if exit_after_activity and last_activity:
                 dt = utime.ticks_diff(utime.ticks_ms(), last_activity)
                 if dt >= min_delay:
                     # They acheived some RF activity and then nothing for some time, so
@@ -484,14 +487,14 @@ class NFCHandler:
         # - assumpting is people know what they are scanning
         # - x key to abort early, but also self-clears
         await self.big_write(ndef_obj.bytes())
-        return await self.ux_animation(False, **kws)
+        return await self.ux_animation(**kws)
 
     async def start_nfc_rx(self, **kws):
         # Pretend to be a big warm empty tag ready to be stuffed with data
         await self.big_write(ndef.CC_WR_FILE)
 
         # wait until something is written
-        aborted = await self.ux_animation(True, **kws)
+        aborted = await self.ux_animation(min_delay=3000, **kws)
         if aborted: return
 
         # read CCFILE area (header)
