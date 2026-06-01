@@ -4,7 +4,17 @@
 
 ## Usage
 
-Mk4 NFC antenna is centered under number `8` on the keypad. Before using NFC,
+The NFC antenna location depends on the hardware:
+
+- **Mk4**: a PCB trace loop, centered under number `8` on the keypad.
+- **Mk5**: a discrete coil (`L6`) in the **top-right corner** of the device
+- **Q1**: a flexible "sticker" antenna behind the display. The green LED below the
+  bottom-right of the display (`D12`) lights up while an NFC transfer is active —
+  it is the activity indicator, not the antenna.
+
+![nfc tap sweet-spots per model](nfc-tap-locations.png)
+
+Before using NFC,
 it is important to locate the position of NFC antenna on your device and point it 
 correctly towards the Coldcard NFC antenna. Picture below shows an example with iPhone
 that has NFC antenna located at the top right edge. The NFC smartphone antenna 
@@ -36,7 +46,7 @@ in general. Good interoperability is critical with radio standards.
 
 ## Lower Layers
 
-The Coldcard Mk4 has an chip that acts as a Type 5 NFC tag.  The
+The Coldcard has a chip that acts as a Type 5 NFC tag.  The
 radio standard is called "NFC-V" or ISO-15693, and operates on a
 13.56 Mhz carrier wave.
 
@@ -58,9 +68,13 @@ unless we are actively sharing something. We disable the "energy
 harvesting" features of the chip, so it will not do anything when
 the Coldcard is powered-down, regardless of the NFC setting.
 
-If the above is not enough for you, the antenna can be destroyed
-by cutting the trace labeled "NFC" inside the hole for the MicroSD
-card. Use the point of a sharp knife to cut and peel up the trace.
+If the above is not enough for you, the antenna can be destroyed:
+
+- **Mk4**: cut the trace labeled "NFC" inside the hole for the MicroSD card,
+  using the point of a sharp knife to cut and peel up the trace.
+- **Mk5**: has no such trace — its antenna is the discrete coil `L6` in the
+  top-right corner, which would have to be physically removed instead.
+- **Q1**: cut the trace labeled "NFC DATA" under the batteries.
 
 The NFC traffic is not encrypted and is subject to eavesdropping.
 While the NFC feature is active, your Coldcard can be uniquely
