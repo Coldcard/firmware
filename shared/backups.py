@@ -201,6 +201,13 @@ def restore_from_dict_ll(vals, raw):
 
         k = key[8:]
 
+        if k == 'bkpw':
+            # never import a cached backup password from a backup file.
+            # write-side (render_backup_contents) strips bkpw, so a present
+            # value means a tampered/crafted file trying to fixate the
+            # password used for all FUTURE backups - drop it.
+            continue
+
         if k == 'sd2fa':
             # do NOT restore sd2fa as SD card can be lost or damaged
             # new version of firmware 5.1.3+ will not back sd2fa
