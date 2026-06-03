@@ -4,16 +4,17 @@
 #
 # Consolidates cryptographic primitives and PSBT handling logic for Silent Payments
 #
+
 import chains
 import ngu
 import stash
-from glob import settings
 from dleq import generate_dleq_proof, verify_dleq_proof
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
+from glob import settings
 from precomp_tag_hash import (
+    BIP352_INPUTS_TAG_H,
     BIP352_LABEL_TAG_H,
     BIP352_SHARED_SECRET_TAG_H,
-    BIP352_INPUTS_TAG_H,
     TAP_TWEAK_H,
 )
 from serializations import SIGHASH_ALL, SIGHASH_DEFAULT
@@ -57,6 +58,7 @@ def sp_derive_path(coin_type, account):
 # Silent Payments Cryptographic Primitives
 # -----------------------------------------------------------------------------
 
+
 def _apply_label_to_spend_key(B_spend_bytes, b_scan_bytes, label):
     """
     Apply BIP-352 label tweak to spend key
@@ -71,7 +73,7 @@ def _apply_label_to_spend_key(B_spend_bytes, b_scan_bytes, label):
     Returns:
         bytes: Labeled spend public key (33-byte compressed)
     """
-    msg = b_scan_bytes + label.to_bytes(4, 'big')
+    msg = b_scan_bytes + label.to_bytes(4, "big")
     label_tweak_bytes = ngu.hash.sha256t(BIP352_LABEL_TAG_H, msg, True)
     label_tweak_point = ngu.secp256k1.ec_pubkey_tweak_mul(G, label_tweak_bytes)
     return ngu.secp256k1.ec_pubkey_combine([B_spend_bytes, label_tweak_point])
@@ -374,11 +376,9 @@ class SilentPaymentsMixin:
             if xfp_path[0] == self.my_xfp:
                 account = sp_path[2] & ~0x80000000
                 if account not in candidate_accounts:
-                    raise FatalPSBTIssue(
-                        "Input #%d: SP spend account not recognized on this device" % i)
+                    raise FatalPSBTIssue("Input #%d: SP spend account not recognized on this device" % i)
 
-                spend_node = sv.derive_path(
-                    sp_derive_path(coin_type, account) + "/0h/0", register=False)
+                spend_node = sv.derive_path(sp_derive_path(coin_type, account) + "/0h/0", register=False)
                 derived = spend_node.pubkey()
                 del spend_node
                 if derived != B_spend:
@@ -731,15 +731,17 @@ class SilentPaymentsMixin:
         """
         outpoints = self._get_outpoints()
 
+        # BIP-375: sort by spend key then output index in ascending order for each scan key group to determine
+        # ordering of the k value
+        sp_outputs = [(outp.sp_v0_info, out_idx, outp) for out_idx, outp in enumerate(self.outputs) if outp.sp_v0_info]
+        sp_outputs.sort(key=lambda t: (t[0], t[1]))
+
         # Track k per scan key
         scan_key_k = {}
 
-        for out_idx, outp in enumerate(self.outputs):
-            if not outp.sp_v0_info:
-                continue
-
-            scan_key = outp.sp_v0_info[:33]
-            B_spend = outp.sp_v0_info[33:66]
+        for sp_info, out_idx, outp in sp_outputs:
+            scan_key = sp_info[:33]
+            B_spend = sp_info[33:66]
             k = scan_key_k.get(scan_key, 0)
 
             ecdh_share, summed_pubkey = self._get_ecdh_and_pubkey(scan_key)
@@ -810,7 +812,7 @@ class SilentPaymentsMixin:
             if int.from_bytes(outp.sp_v0_label, "little") != 0:
                 continue
 
-            scan_pub  = outp.sp_v0_info[:33]
+            scan_pub = outp.sp_v0_info[:33]
             spend_pub = outp.sp_v0_info[33:66]
 
             matched = False
@@ -831,7 +833,7 @@ class SilentPaymentsMixin:
     def _get_candidate_sp_accounts(self):
         """Get all known account numbers from device settings, always include account 0"""
         seen = {0}
-        for _af, acct_num in settings.get('accts', []):
+        for _af, acct_num in settings.get("accts", []):
             if acct_num:
                 seen.add(acct_num)
         return sorted(seen)
