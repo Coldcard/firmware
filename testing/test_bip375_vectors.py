@@ -90,12 +90,8 @@ class TestBIP375InvalidVectors:
         ("k values assigned to wrong output indices", "output script mismatch"),
     ]
 
-    @pytest.mark.parametrize(
-        "desc,expected_err", _SIM_INVALID, ids=[d for d, _ in _SIM_INVALID]
-    )
-    def test_invalid_vectors_sim_validate_sp(
-        self, sim_exec, sim_execfile, desc, expected_err
-    ):
+    @pytest.mark.parametrize("desc,expected_err", _SIM_INVALID, ids=[d for d, _ in _SIM_INVALID])
+    def test_invalid_vectors_sim_validate_sp(self, sim_exec, sim_execfile, desc, expected_err):
         p = BasicPSBT().parse(self._get(desc)["psbt"].encode())
         err = _sim_validate_sp(sim_exec, sim_execfile, p)
         assert err, "Expected validation failure for: %s" % desc
@@ -121,24 +117,15 @@ class TestBIP375ValidVectors:
             eligible_privkeys = [
                 unhexlify(inp["private_key"])
                 for inp in vec["supplementary"]["inputs"]
-                if inp["private_key"]
-                and _sim_pubkey_from_input(
-                    sim_exec, sim_execfile, p, inp["input_index"]
-                )
+                if inp["private_key"] and _sim_pubkey_from_input(sim_exec, sim_execfile, p, inp["input_index"])
             ]
             for expected in vec["supplementary"]["sp_proofs"]:
                 scan_key = unhexlify(expected["scan_key"])
                 expected_ecdh = unhexlify(expected["ecdh_share"])
                 if "input_index" in expected:
-                    ik = next(
-                        k
-                        for k in vec["supplementary"]["inputs"]
-                        if k["input_index"] == expected["input_index"]
-                    )
+                    ik = next(k for k in vec["supplementary"]["inputs"] if k["input_index"] == expected["input_index"])
                     privkey = unhexlify(ik["private_key"])
-                    actual = _sim_compute_ecdh_share(
-                        sim_exec, sim_execfile, privkey, scan_key
-                    )
+                    actual = _sim_compute_ecdh_share(sim_exec, sim_execfile, privkey, scan_key)
                 else:
                     shares = [
                         _sim_compute_ecdh_share(
@@ -150,9 +137,9 @@ class TestBIP375ValidVectors:
                         for privkey in eligible_privkeys
                     ]
                     actual = _sim_combine_pubkeys(sim_exec, sim_execfile, shares)
-                assert actual == expected_ecdh, (
-                    "ECDH mismatch in valid[%d] for scan_key %s"
-                    % (vi, expected["scan_key"][:16])
+                assert actual == expected_ecdh, "ECDH mismatch in valid[%d] for scan_key %s" % (
+                    vi,
+                    expected["scan_key"][:16],
                 )
 
     def test_valid_dleq_verification(self, sim_exec, sim_execfile):
@@ -162,12 +149,8 @@ class TestBIP375ValidVectors:
 
             for scan_key, proof in p.sp_global_dleq_proofs.items():
                 ecdh_share = p.sp_global_ecdh_shares.get(scan_key)
-                assert ecdh_share is not None, (
-                    "valid[%d]: global ECDH share missing for scan key" % vi
-                )
-                _, summed_pubkey = _sim_get_ecdh_and_pubkey(
-                    sim_exec, sim_execfile, p, scan_key
-                )
+                assert ecdh_share is not None, "valid[%d]: global ECDH share missing for scan key" % vi
+                _, summed_pubkey = _sim_get_ecdh_and_pubkey(sim_exec, sim_execfile, p, scan_key)
                 _sim_verify_dleq(
                     sim_exec,
                     sim_execfile,
@@ -185,9 +168,7 @@ class TestBIP375ValidVectors:
                     continue
                 for scan_key, proof in inp.sp_dleq_proofs.items():
                     ecdh_share = inp.sp_ecdh_shares.get(scan_key)
-                    assert ecdh_share is not None, (
-                        "valid[%d] inp[%d]: ECDH share missing" % (vi, inp_idx)
-                    )
+                    assert ecdh_share is not None, "valid[%d] inp[%d]: ECDH share missing" % (vi, inp_idx)
                     _sim_verify_dleq(
                         sim_exec,
                         sim_execfile,
@@ -202,18 +183,17 @@ class TestBIP375ValidVectors:
             vec = self.VALID_VECTORS[vi]
             p = BasicPSBT().parse(vec["psbt"].encode())
             sp_outputs = [
-                (o.sp_v0_info[:33], o.sp_v0_info[33:66], o.script)
-                for o in p.outputs
+                (o.sp_v0_info[:33], o.sp_v0_info[33:66], out_index, o.script)
+                for out_index, o in enumerate(p.outputs)
                 if o.sp_v0_info and len(o.sp_v0_info) == 66
             ]
             if not sp_outputs:
                 continue
+            sp_outputs.sort(key=lambda t: (t[0], t[1], t[2]))
             outpoints = _sim_get_outpoints(sim_exec, sim_execfile, p)
             scan_key_k = {}
-            for scan_key, spend_key, script in sp_outputs:
-                ecdh_share, summed_pubkey = _sim_get_ecdh_and_pubkey(
-                    sim_exec, sim_execfile, p, scan_key
-                )
+            for scan_key, spend_key, _oi, script in sp_outputs:
+                ecdh_share, summed_pubkey = _sim_get_ecdh_and_pubkey(sim_exec, sim_execfile, p, scan_key)
                 if not ecdh_share:
                     continue
                 if not script:  # If script is missing, skip vectors test missing script
@@ -230,6 +210,4 @@ class TestBIP375ValidVectors:
                     spend_key,
                     k,
                 )
-                assert script == expected, (
-                    "valid[%d]: output script mismatch at k=%d" % (vi, k)
-                )
+                assert script == expected, "valid[%d]: output script mismatch at k=%d" % (vi, k)
