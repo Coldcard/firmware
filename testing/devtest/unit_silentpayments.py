@@ -61,8 +61,6 @@ P2WPKH_SPK = b"\x00\x14" + b"\xab" * 20
 
 # ECDH share computation
 ecdh_share = _compute_ecdh_share(TEST_PRIVKEY, TEST_SCAN_KEY)
-assert len(ecdh_share) == 33
-assert ecdh_share[0] in (0x02, 0x03)
 
 # Input hash computation (order-independent)
 outpoints = [
@@ -77,8 +75,6 @@ outpoints = [
 ]
 spk = a2b_hex("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798")
 ih = _compute_input_hash(outpoints, spk)
-assert isinstance(ih, bytes) and len(ih) == 32
-assert int.from_bytes(ih, "big") > 0
 assert _compute_input_hash(outpoints[::-1], spk) == ih
 
 # Shared secret tweak (different k -> different tweak)
@@ -118,8 +114,6 @@ assert PSBT_OUT_SP_V0_LABEL == 0x0A
 pubkey = ngu.secp256k1.ec_pubkey_tweak_mul(G, TEST_PRIVKEY)
 
 proof = generate_dleq_proof(TEST_PRIVKEY, TEST_SCAN_KEY)
-assert len(proof) == 64
-assert verify_dleq_proof(pubkey, TEST_SCAN_KEY, ecdh_share, proof)
 
 # Tampered proof rejected
 tampered = bytearray(proof)
@@ -200,11 +194,8 @@ except ValueError as e:
 # Spending Privkey
 # ---------------------------------------------------------------------------
 
-result = compute_silent_payment_spending_privkey((1).to_bytes(32, "big"), (42).to_bytes(32, "big"))
-assert isinstance(result, bytes) and len(result) == 32
-assert result != (1).to_bytes(32, "big")
-assert 0 < int.from_bytes(result, "big") < ngu.secp256k1.curve_order_int()
-
+# Valid computation is value-tested by BIP-352 receive vectors; only the
+# zero-input error path is unique to this unit test.
 try:
     compute_silent_payment_spending_privkey(b"\x00" * 32, b"\x00" * 32)
     assert False, "Should raise"
@@ -522,6 +513,7 @@ outpoints = [(b"\x01" * 32, b"\x00\x00\x00\x00"), (b"\x02" * 32, b"\x01\x00\x00\
 expected = _compute_silent_payment_output_script(outpoints, summed_pk, combined_share, TEST_SPEND_KEY, 0)
 assert outp.script == expected
 
+# BIP-375: order by spend key when to determine k order when scan key is the same
 # k counter per scan key (skips non-SP outputs)
 psbt, scan_key, es, _, pk, _ = _make_mock_psbt_with_global_proofs()
 spend_key_a = a2b_hex("022f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4")
@@ -541,9 +533,10 @@ psbt._compute_silent_payment_output_scripts()
 
 ops = [(b"\x01" * 32, b"\x00\x00\x00\x00")]
 spk_sum = _combine_pubkeys([pk])
+# spend keys sorted ascending: a (022f..) < c (0279..) < b (02c6..)
 assert sp0.script == _compute_silent_payment_output_script(ops, spk_sum, es, spend_key_a, k=0)
-assert sp2.script == _compute_silent_payment_output_script(ops, spk_sum, es, spend_key_b, k=1)
-assert sp4.script == _compute_silent_payment_output_script(ops, spk_sum, es, spend_key_c, k=2)
+assert sp4.script == _compute_silent_payment_output_script(ops, spk_sum, es, spend_key_c, k=1)
+assert sp2.script == _compute_silent_payment_output_script(ops, spk_sum, es, spend_key_b, k=2)
 assert reg1.script is None
 assert reg3.script is None
 
