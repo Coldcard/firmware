@@ -98,7 +98,7 @@ def build_note(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
                need_keypress, cap_screen_qr, readback_bbqr, nfc_read_text,
                press_select, press_cancel, is_headless, nfc_disabled):
 
-    def doit(n_title, n_body):
+    def doit(n_title, n_body, group=None):
         # we don't try to preserve leading/trailing spaces on note bodies
         n_body= n_body.strip()
 
@@ -107,6 +107,11 @@ def build_note(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
         # create
         enter_text(n_title)
         enter_text(n_body, multiline=True)
+        if group:
+            pick_menu_item('New Group')
+            enter_text(group)
+        else:
+            pick_menu_item('(none)')
 
         # view
         time.sleep(0.1)
@@ -172,6 +177,10 @@ def build_note(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
         obj = obj[0]
         assert obj['title'] == n_title
         assert obj['misc'] == n_body
+        if group:
+            assert obj['group'] == group
+        else:
+            assert 'group' not in obj
 
         # back to top notes menu
         press_select()
@@ -185,7 +194,8 @@ def build_password(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
                    cap_text_box, settings_get, settings_set, scan_a_qr,
                    press_select, press_cancel, is_headless):
 
-    def doit(n_title, n_user=None, n_pw='secret', n_site=None, n_body=None, key_pw=None):
+    def doit(n_title, n_user=None, n_pw='secret', n_site=None, n_body=None,
+             key_pw=None, group=None):
         goto_notes('New Password')
         enter_text(n_title)
         if n_user:
@@ -221,6 +231,11 @@ def build_password(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
             enter_text(n_body, multiline=True)
         else:
             press_cancel()
+        if group:
+            pick_menu_item('New Group')
+            enter_text(group)
+        else:
+            pick_menu_item('(none)')
 
         # view
         time.sleep(0.1)
@@ -282,7 +297,7 @@ def change_password(goto_notes, pick_menu_item, enter_text, cap_story,
                     cap_menu):
 
     def doit(id_title, new_title=None, new_username=None, new_site=None,
-             new_misc=None, new_password=None, old_password=None):
+             new_misc=None, new_password=None, new_group=None):
         goto_notes()
         m = cap_menu()
         found = [i for i in m if f': {id_title}' in i]
@@ -311,6 +326,18 @@ def change_password(goto_notes, pick_menu_item, enter_text, cap_story,
             if new_misc:
                 enter_text(KEY_CLEAR + new_misc, multiline=True)
                 need_in_story.append('Other Notes')
+            else:
+                press_cancel()
+            if new_group is not None:
+                if new_group:
+                    if new_group in cap_menu():
+                        pick_menu_item(new_group)
+                    else:
+                        pick_menu_item('New Group')
+                        enter_text(new_group)
+                else:
+                    pick_menu_item('(none)')
+                need_in_story.append('Group')
             else:
                 press_cancel()
 
@@ -349,6 +376,8 @@ def change_password(goto_notes, pick_menu_item, enter_text, cap_story,
             assert note['misc'] == new_misc
         if new_password:
             assert note['password'] == new_password
+        if new_group is not None:
+            assert note.get('group', '') == new_group
 
     return doit
 
@@ -363,7 +392,7 @@ def test_build_note(n_title, n_body, build_note, delete_note):
 @pytest.mark.parametrize('size', [ 4000, 30000])
 @pytest.mark.parametrize('encoding', '2Z' )
 def test_huge_notes(size, encoding, goto_notes, enter_text, cap_menu, need_keypress,
-                    scan_a_qr, settings_set, settings_get):
+                    scan_a_qr, settings_set, settings_get, pick_menu_item):
 
     # Since we don't limit note sizes, by request of NVK ... test them
     
@@ -387,6 +416,7 @@ def test_huge_notes(size, encoding, goto_notes, enter_text, cap_menu, need_keypr
         time.sleep(2.0 / len(parts))       # just so we can watch
     
     time.sleep(.5)      # decompression time in some cases
+    pick_menu_item('(none)')
     m = cap_menu()
     assert 'Export' in m
 
@@ -478,6 +508,168 @@ def test_sort_by_title(goto_notes, pick_menu_item, cap_story, need_keypress, set
 
     assert sorted((i['title'] for i in after), key=lambda i:i.lower()) \
                     == [i['title'] for i in after]
+
+
+def test_grouped_note_menu(settings_set, settings_get, goto_notes, cap_menu,
+                           pick_menu_item, build_note, press_cancel, press_select):
+    settings_set('notes', [])
+    settings_set('secnap', True)
+
+    build_note('group-note', 'body', group='Work')
+    notes = settings_get('notes')
+    assert notes[-1]['group'] == 'Work'
+
+    goto_notes()
+    m = cap_menu()
+    assert '↳ Work' in m
+    assert not any(': group-note' in i for i in m)
+
+    press_select()
+    m = cap_menu()
+    assert '1: group-note' in m
+    press_cancel()
+
+
+def test_grouped_password_menu(settings_set, settings_get, goto_notes, cap_menu,
+                               pick_menu_item, build_password, press_cancel, press_select):
+    settings_set('notes', [])
+    settings_set('secnap', True)
+
+    build_password('group-pw', n_pw='secret', group='Accounts')
+    press_cancel()
+    notes = settings_get('notes')
+    assert notes[-1]['group'] == 'Accounts'
+
+    goto_notes()
+    m = cap_menu()
+    assert '↳ Accounts' in m
+    assert not any(': group-pw' in i for i in m)
+
+    press_select()
+    m = cap_menu()
+    assert '1: group-pw' in m
+    press_cancel()
+
+
+def test_grouped_and_ungrouped_menu(settings_set, goto_notes, cap_menu,
+                                    pick_menu_item, press_cancel):
+    settings_set('secnap', True)
+    settings_set('notes', [
+        {'title': 'loose-note', 'misc': 'aaa'},
+        {'title': 'work-note', 'misc': 'bbb', 'group': 'Work'},
+        {'title': 'work-pw', 'misc': '', 'password': 'secret', 'site': '',
+         'user': '', 'group': 'Work'},
+    ])
+
+    goto_notes()
+    m = cap_menu()
+    assert '1: loose-note' in m
+    assert '↳ Work' in m
+    assert not any(': work-note' in i for i in m)
+    assert not any(': work-pw' in i for i in m)
+
+    pick_menu_item('↳ Work')
+    m = cap_menu()
+    assert '2: work-note' in m
+    assert '3: work-pw' in m
+    press_cancel()
+
+
+def test_new_grouped_note_cancel_lands_in_group(settings_set, goto_notes, cap_menu,
+                                                pick_menu_item, enter_text, press_cancel):
+    settings_set('notes', [])
+    settings_set('secnap', True)
+
+    goto_notes('New Note')
+    enter_text('new-note')
+    enter_text('body', multiline=True)
+    pick_menu_item('New Group')
+    enter_text('Work')
+
+    assert '"new-note"' in cap_menu()
+
+    press_cancel()
+    m = cap_menu()
+    assert '1: new-note' in m
+    assert 'New Note' not in m
+
+    press_cancel()
+    m = cap_menu()
+    assert '↳ Work' in m
+    assert '1: new-note' not in m
+
+
+def test_edit_note_group_moves(settings_set, settings_get, goto_notes, cap_menu,
+                               pick_menu_item, enter_text, press_select,
+                               press_cancel, cap_story):
+
+    settings_set('secnap', True)
+    settings_set('notes', [{'title': 'move-note', 'misc': 'body'}])
+
+    goto_notes()
+    pick_menu_item('1: move-note')
+    pick_menu_item('Edit')
+    press_select()     # unchanged title
+    press_cancel()     # unchanged note body
+    pick_menu_item('New Group')
+    enter_text('Work')
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "SURE" in title
+    assert 'Group' in story
+    press_select()
+    time.sleep(.1)
+
+    goto_notes()
+    m = cap_menu()
+    assert '↳ Work' in m
+    assert '1: move-note' not in m
+
+    press_select()
+    pick_menu_item('1: move-note')
+    pick_menu_item('Edit')
+    press_select()
+    press_cancel()
+    pick_menu_item('New Group')
+    enter_text('Home')
+    time.sleep(.1)
+    title, story = cap_story()
+    assert 'SURE' in title
+    assert 'Group' in story
+    press_select()
+
+    goto_notes()
+    m = cap_menu()
+    assert '↳ Work' not in m
+    assert '↳ Home' in m
+
+    press_select()
+    pick_menu_item('1: move-note')
+    pick_menu_item('Edit')
+    press_select()
+    press_cancel()
+    pick_menu_item('(none)')
+    time.sleep(.1)
+    title, story = cap_story()
+    assert 'SURE' in title
+    assert 'Group' in story
+    press_select()
+
+    press_cancel()
+    m = cap_menu()
+    assert '↳ Home' not in m
+    assert '1: move-note' in m
+    assert '(none)' not in m
+
+
+def test_old_records_without_group(settings_set, settings_get, goto_notes, cap_menu):
+    settings_set('secnap', True)
+    settings_set('notes', [{'title': 'old-note', 'misc': 'body'}])
+
+    goto_notes()
+    assert '1: old-note' in cap_menu()
+    assert settings_get('notes')[0].get('group', '') == ''
+
 
 def test_top_import(goto_notes, cap_menu, cap_story, need_keypress, settings_get,
                     settings_set, scan_a_qr, need_some_notes):
@@ -705,7 +897,7 @@ def test_send_password_menu_item(need_some_passwords, goto_notes, cap_menu, pick
 
     settings_set('du', 1)
     goto_notes()
-    pick_menu_item('1: A')
+    pick_menu_item([i for i in cap_menu() if i.endswith(': A')][0])
     time.sleep(.2)
     m = cap_menu()
     assert 'Send Password' not in m
@@ -713,7 +905,7 @@ def test_send_password_menu_item(need_some_passwords, goto_notes, cap_menu, pick
 
     settings_set('du', 0)
     goto_notes()
-    pick_menu_item('1: A')
+    pick_menu_item([i for i in cap_menu() if i.endswith(': A')][0])
     time.sleep(.2)
     m = cap_menu()
     assert 'Send Password' in m
@@ -738,6 +930,7 @@ def test_password_cancel_stores_empty_not_none(goto_notes, need_keypress, press_
     press_cancel()                 # cancel password field - bug, stores None
     press_select()                 # skip site
     press_cancel()                 # exit misc
+    pick_menu_item('(none)')       # no group
 
     time.sleep(0.2)
 
