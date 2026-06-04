@@ -131,9 +131,7 @@ class NotesMenu(MenuSystem):
         else:
             wipe_if_deltamode()
 
-            rv = []
-            for note in NoteContent.get_all():
-                rv.append(MenuItem('%d: %s' % (note.idx+1, note.title), menu=note.make_menu))
+            rv = cls.construct_note_items(readonly=False)
 
             rv.extend(news)
 
@@ -151,13 +149,31 @@ class NotesMenu(MenuSystem):
         # When only allowed to view, no export/add new/delete.
         wipe_if_deltamode()
 
-        rv = []
-        for note in NoteContent.get_all():
-            rv.append(MenuItem('%d: %s' % (note.idx+1, note.title),
-                               menu=note.make_menu, arg=True))  # readonly=True
+        rv = cls.construct_note_items(readonly=True)
 
         if not rv:
             rv.append(MenuItem('(none saved yet)'))
+
+        return rv
+
+    @classmethod
+    def construct_note_items(cls, readonly=False):
+        rv = []
+        by_group = {}
+
+        for note in NoteContent.get_all():
+            item = MenuItem('%d: %s' % (note.idx+1, note.title),
+                            menu=note.make_menu, arg=readonly)
+            group = note.group
+            if group:
+                if group not in by_group:
+                    by_group[group] = []
+                by_group[group].append(item)
+            else:
+                rv.append(item)
+
+        for group in sorted(by_group):
+            rv.append(MenuItem('↳ ' + group, menu=NoteGroupMenu(group, readonly)))
 
         return rv
 
@@ -231,9 +247,27 @@ class NotesMenu(MenuSystem):
     @classmethod
     async def drill_to(cls, menu, item):
         # make it so looks like we drilled down into the new note
-        menu.goto_idx(item.idx)
+        label = '%d: %s' % (item.idx+1, item.title)
+        group = item.group
+        if group:
+            cls.goto_exact_label(menu, '↳ ' + group)
+            gm = NoteGroupMenu(group)
+            cls.goto_exact_label(gm, label)
+            the_ux.push(gm)
+        else:
+            cls.goto_exact_label(menu, label)
+
         m = await item._make_menu()
         the_ux.push(MenuSystem(m))
+
+    @staticmethod
+    def goto_exact_label(menu, label):
+        for i, mi in enumerate(menu.items):
+            if mi.label == label:
+                menu.goto_idx(i)
+                return True
+
+        return False
 
 
 class NoteContentBase:
@@ -250,9 +284,15 @@ class NoteContentBase:
         return PasswordContent(j, idx) if 'user' in j else NoteContent(j, idx)
 
     def serialize(self):
-        return {fld:getattr(self, fld, '') for fld in self.flds}
+        res = {}
+        for fld in self.flds:
+            val = getattr(self, fld, '')
+            # user field is necessary for proper password identification in constructor
+            if not val and (fld != "user"):
+                continue
+            res[fld] = val
 
-    to_json = serialize
+        return res
 
     @classmethod
     def get_all(cls):
@@ -278,6 +318,15 @@ class NoteContentBase:
         settings.put('notes', [n.serialize() for n in notes])
         settings.save()
 
+    @classmethod
+    def get_groups(cls):
+        groups = set()
+        for note in cls.get_all():
+            if note.group:
+                groups.add(note.group)
+
+        return sorted(groups)
+
     async def delete(self, *a):
         # Remove note
         ok = await ux_confirm("Everything about this note/password will be lost.")
@@ -298,6 +347,11 @@ class NoteContentBase:
         the_ux.pop()
         m = the_ux.top_of_stack()
         m.update_contents()
+        parent = the_ux.parent_of(m)
+        if parent:
+            parent.update_contents()
+            if isinstance(m, NoteGroupMenu) and not m.has_notes():
+                the_ux.pop()
 
         await ux_dramatic_pause('Deleted.', 3)
 
@@ -335,6 +389,11 @@ class NoteContentBase:
             # update parent
             parent = the_ux.parent_of(menu)
             parent.update_contents()
+            grandparent = the_ux.parent_of(parent)
+            if grandparent:
+                grandparent.update_contents()
+            if isinstance(parent, NoteGroupMenu) and not parent.has_notes():
+                the_ux.stack.remove(parent)
         else:
             menu.update_contents()
 
@@ -368,9 +427,73 @@ class NoteContentBase:
                         predicate=2 <= len(self.misc) <= MSG_SIGNING_MAX_LENGTH)
 
 
+class NoteGroupMenu(MenuSystem):
+    def __init__(self, group, readonly=False):
+        self.group = group
+        self.readonly = readonly
+        super().__init__(self.construct())
+
+    def construct(self):
+        items = []
+        for note in NoteContent.get_all():
+            if note.group == self.group:
+                items.append(MenuItem('%d: %s' % (note.idx+1, note.title),
+                                      menu=note.make_menu, arg=self.readonly))
+
+        return items or [MenuItem('(none)')]
+
+    def has_notes(self):
+        return any(note.group == self.group for note in NoteContent.get_all())
+
+    def update_contents(self):
+        self.replace_items(self.construct())
+
+
+class GroupPickerMenu(MenuSystem):
+    def __init__(self, current=''):
+        self.result = None
+        self.current = current
+
+        groups = NoteContentBase.get_groups()
+        chosen = 0
+        items = [MenuItem('(none)', f=self.picked, arg='')]
+
+        for group in groups:
+            if group == self.current:
+                chosen = len(items)
+            items.append(MenuItem(group, f=self.picked, arg=group))
+
+        items.append(MenuItem('New Group', f=self.new_group))
+
+        super().__init__(items, chosen=chosen)
+
+    async def picked(self, menu, idx, mi):
+        assert menu == self
+        self.result = mi.arg
+        the_ux.pop()
+
+    async def new_group(self, menu, idx, mi):
+        group = await ux_input_text('', max_len=ONE_LINE, confirm_exit=False,
+                                    prompt='Group', placeholder='(optional)')
+        if group is None:
+            self.result = None
+        else:
+            self.result = group
+
+        the_ux.pop()
+
+    @classmethod
+    async def pick(cls, current=''):
+        m = cls(current)
+        the_ux.push(m)
+        await m.interact()
+
+        return current if m.result is None else m.result
+
+
 class PasswordContent(NoteContentBase):
     # "Passwords" have a few more fields and are more structured
-    flds = ['title', 'user', 'password', 'site', 'misc' ]
+    flds = ['title', 'user', 'password', 'site', 'misc', 'group']
     type_label = 'password'
 
     async def _make_menu(self, readonly=False):
@@ -483,6 +606,8 @@ class PasswordContent(NoteContentBase):
         if misc is None:
             misc = self.misc
 
+        group = await GroupPickerMenu.pick(self.group)
+
         if self.idx != -1:
             # confirm changes, don't for new records
             chgs = []
@@ -494,6 +619,8 @@ class PasswordContent(NoteContentBase):
                 chgs.append('Username')
             if self.misc != misc:
                 chgs.append('Other Notes')
+            if self.group != group:
+                chgs.append('Group')
 
             if not chgs:
                 await ux_dramatic_pause('No changes.', 3)
@@ -507,6 +634,7 @@ class PasswordContent(NoteContentBase):
         self.user = user
         self.site = site
         self.misc = misc
+        self.group = group
 
         await self._save_ux(menu)
         return self
@@ -514,7 +642,7 @@ class PasswordContent(NoteContentBase):
 
 class NoteContent(NoteContentBase):
     # Pure "notes" have just a title and free-form text
-    flds = ['title', 'misc']
+    flds = ['title', 'misc', 'group']
     type_label = 'note'
 
     async def _make_menu(self, readonly=False):
@@ -560,6 +688,8 @@ class NoteContent(NoteContentBase):
         if misc is None:
             misc = self.misc
 
+        group = await GroupPickerMenu.pick(self.group)
+
         if self.idx != -1:
             # confirm changes, don't for new records
             chgs = []
@@ -567,6 +697,8 @@ class NoteContent(NoteContentBase):
                 chgs.append('Title')
             if self.misc != misc:
                 chgs.append('Note Text')
+            if self.group != group:
+                chgs.append('Group')
 
             if not chgs:
                 await ux_dramatic_pause('No changes.', 3)
@@ -579,6 +711,7 @@ class NoteContent(NoteContentBase):
 
         self.title = title
         self.misc = misc
+        self.group = group
 
         await self._save_ux(menu)
 
