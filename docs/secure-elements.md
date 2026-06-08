@@ -92,8 +92,8 @@ increases flexibility and resistance to known plain text attacks.
 | `pin stretch`         | slot 2              | HMAC         | SE1      | Key stretching for PIN entry and anti-phish words
 | `firmware`            | slot 14             | SHA256d      | SE1      | Firmware checksum, controls green/red LEDs
 | `nonce/chksum`        | slot 10             | data         | SE1      | AES nonce and GMAC tag, protected by PIN
-| `SE2 easy key`        | page 15             | AES via HMAC | SE2      | Another SE2 part of AES seed key
-| `SE2 hard key`        | page 14             | AES via ECC  | SE2      | SE2's part of AES seed key; ECC used to unlock
+| `SE2 easy key`        | page 14             | AES via HMAC | SE2      | Another SE2 part of AES seed key
+| `SE2 hard key`        | page 15             | AES via ECC  | SE2      | SE2's part of AES seed key; ECC used to unlock
 | `tpin key`            | `tpin_key`          | HMAC(key)    | MCU      | Key for HMAC used to encrypt trick PINs
 | `trick PIN slots`     | pages 0-12          | HMAC         | SE2      | Protect duress wallet seeds and pins (6 spots)
 | `SE2 trash`           | secret B            | HMAC         | SE2      | Used to destroy values (only SE2 knows the value)

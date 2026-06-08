@@ -5,9 +5,12 @@ wallet systems, but we also have a file format for general purpose
 exports, which we hope future wallet makers will leverage.
 
 It contains master XPUB, XFP for that, and derived values for the top hardened
-position of BIP44, BIP84 and BIP49.
+position of the single-signature schemes BIP44, BIP49 and BIP84, plus the
+multisig schemes BIP48 (`bip48_1` = `.../1h` P2SH-P2WSH and `bip48_2` = `.../2h` P2WSH).
+When the account number is zero, a BIP45 (`m/45h`) multisig section is also included
+(it is omitted for non-zero accounts, as in the example below).
 
-The feature can be found here: _Advanced > MicroSD > Export Wallet > Generic JSON_
+The feature can be found here: _Advanced/Tools > Export Wallet > Generic JSON_
 
 Please contact us (or better yet, make a pull request), if you need something
 more in this file.
@@ -18,32 +21,51 @@ Here is an example, produced by the Simulator for account number 123.
 
 ```javascript
 {
-    "chain": "XTN",
+    "chain": "BTC",
     "xfp": "0F056943",
-    "xpub": "tpubD6NzVbkrYhZ4XzL5Dhayo67Gorv1YMS7j8pRUvVMd5odC2LBPLAygka9p7748JtSq82FNGPppFEz5xxZUdasBRCqJqXvUHq6xpnsMcYJzeh",
     "account": 123,
+    "xpub": "xpub661MyMwAqRbcGC9DmWbtbAmuUjpMYxw4BWE88NSDHB3jSjfUK7KtYJuKa52GbowD3DVLkgsxH9QwPnTx5mjdHykYFEncnmAsNsCTbWzBhA7",
     "bip44": {
-        "deriv": "m/44'/1'/123'",
-        "first": "n44vs1Rv7T8SANrg2PFGQhzVkhr5Q6jMMD",
         "name": "p2pkh",
-        "xfp": "B7908B26",
-        "xpub": "tpubDCiHGUNYdRRGoSH22j8YnruUKgguCK1CC2NFQUf9PApeZh8ewAJJWGMUrhggDNK73iCTanWXv1RN5FYemUH8UrVUBjqDb8WF2VoKmDh9UTo"
+        "xfp": "5F898064",
+        "deriv": "m/44h/0h/123h",
+        "xpub": "xpub6DStQXfAgHuLbMpCf86ruVkF4yT9pSLyWsFiqQTWY9osuinq8Dyee4W5jCjMfyku5LNkRB9oFinrY5ufn9XXEn8Vvzc2jnifKMaQCNV7RBZ",
+        "desc": "pkh([0f056943/44h/0h/123h]xpub6DStQXfAgHuLbMpCf86ruVkF4yT9pSLyWsFiqQTWY9osuinq8Dyee4W5jCjMfyku5LNkRB9oFinrY5ufn9XXEn8Vvzc2jnifKMaQCNV7RBZ/<0;1>/*)#4tl8jryn",
+        "first": "1GTNtzG5xX2UhdD5e3Nu7i1WPxFdjxQMJt"
     },
     "bip49": {
-        "_pub": "upub5DMRSsh6mNak9KbcVjJ7xAgHJvbE3Nx22CBTier5C35kv8j7g2q58ywxskBe6JCcAE2VH86CE2aL4MifJyKbRw8Gj9ay7SWvUBkp2DJ7y52",
-        "deriv": "m/49'/1'/123'",
-        "first": "2N87V39riUUCd4vmXfDjMWAu9gUCiBji5jB",
-        "name": "p2wpkh-p2sh",
-        "xfp": "CEE1D809",
-        "xpub": "tpubDCDqt7XXvhAdy1MpSze5nMJA9x8DrdRaKALRRPasfxyHpiqWWEAr9cbDBQ9BcX7cB3up98Pk97U2QQ3xrvQsi5dNPmRYYhdcsKY9wwEY87T"
+        "name": "p2sh-p2wpkh",
+        "xfp": "A748B1FC",
+        "deriv": "m/49h/0h/123h",
+        "xpub": "xpub6DDm8WzH5a9qjKkttzqSB3uGofNohU9D3n3UG8WMxkUZzJEMPTYiQRf1dvTFCQR82MjGW4LUMVuTtnW4hF17RpzCqVwhf6Z2fnJPWtjG164",
+        "desc": "sh(wpkh([0f056943/49h/0h/123h]xpub6DDm8WzH5a9qjKkttzqSB3uGofNohU9D3n3UG8WMxkUZzJEMPTYiQRf1dvTFCQR82MjGW4LUMVuTtnW4hF17RpzCqVwhf6Z2fnJPWtjG164/<0;1>/*))#5j7t2n2u",
+        "_pub": "ypub6Y42SBfCEFhKacx1jMd4P8zmydXFe68hxtZh3XQFLkrT3Q3ae7iH2VK9f8QqCK53Rzr5FXw2pAG1n57dQwR8E4fohqe8F1NWwWN2uVRfBry",
+        "first": "3CeBRbJKCpg7BpJME2vM8ZxhCjBnhG4toy"
     },
     "bip84": {
-        "_pub": "vpub5Y5a91QvDT45EnXQaKeuvJupVvX8f9BiywDcadSTtaeJ1VgJPPXMitnYsqd9k7GnEqh44FKJ5McJfu6KrihFXhAmvSWgm7BAVVK8Gupu4fL",
-        "deriv": "m/84'/1'/123'",
-        "first": "tb1qc58ys2dphtphg6yuugdf3d0kufmk0tye044g3l",
         "name": "p2wpkh",
-        "xfp": "78CF94E5",
-        "xpub": "tpubDC7jGaaSE66VDB6VhEDFYQSCAyugXmfnMnrMVyHNzW9wryyTxvha7TmfAHd7GRXrr2TaAn2HXn9T8ep4gyNX1bzGiieqcTUNcu2poyntrET"
+        "xfp": "2C5207AA",
+        "deriv": "m/84h/0h/123h",
+        "xpub": "xpub6CaWStGvcXqSW9BzU2vpCoP7aWjz9VfR5DS2nuYWVvKV2nug2dESg3HdFsaWHeoZaxuAhNcPB3TH2gq8MugS3JX1yGuhB4QbC2BneaYqB16",
+        "desc": "wpkh([0f056943/84h/0h/123h]xpub6CaWStGvcXqSW9BzU2vpCoP7aWjz9VfR5DS2nuYWVvKV2nug2dESg3HdFsaWHeoZaxuAhNcPB3TH2gq8MugS3JX1yGuhB4QbC2BneaYqB16/<0;1>/*)#yk84tprf",
+        "_pub": "zpub6rF34DckutvQCjaE8kW4cya7vT2t2jeQuSUUMhLHFw5F8zY8XwZZvAbuJHVgHU7QQF8nCKoW6NANoG4FoJWTdmtDhxJYLt3ZjUK5RqUSMdF",
+        "first": "bc1qhj6avwmp5lhpgqwm6dgxrf3v5lf67rjm99a8an"
+    },
+    "bip48_1": {
+        "name": "p2sh-p2wsh",
+        "xfp": "845A3542",
+        "deriv": "m/48h/0h/123h/1h",
+        "xpub": "xpub6EkcQSTygvxVnBP2X2fM6HY5D7wv46tWbBc54ADaypuCr47vQh1GPdPAZFdx81ou5Rp4vBnzeJT5MDWDZstzijxkHfrofXRycpt1ASfg1La",
+        "desc": "sh(wsh(sortedmulti(M,[0f056943/48h/0h/123h/1h]xpub6EkcQSTygvxVnBP2X2fM6HY5D7wv46tWbBc54ADaypuCr47vQh1GPdPAZFdx81ou5Rp4vBnzeJT5MDWDZstzijxkHfrofXRycpt1ASfg1La/0/*,...)))",
+        "_pub": "Ypub6kUxqLsLQa4M43jXJ3ux8SyP6t8dD5ZbpZmxkpP1jc7VXLW4RkZ76ouEPAZ1gMgiiXzrYFPfzBC8MfjYaoTxfTm1zUfdeqiTnHDX8raCfeg"
+    },
+    "bip48_2": {
+        "name": "p2wsh",
+        "xfp": "2A01C6B0",
+        "deriv": "m/48h/0h/123h/2h",
+        "xpub": "xpub6EkcQSTygvxVneXmk3ywiS2PFhBdiPxeMxYf6RFxHCHH36NxdcN7DjUpudCppAAxs58CG6DQLjtqZNmyC3MpgVob6wpdeATjpZZ1woX92EF",
+        "desc": "wsh(sortedmulti(M,[0f056943/48h/0h/123h/2h]xpub6EkcQSTygvxVneXmk3ywiS2PFhBdiPxeMxYf6RFxHCHH36NxdcN7DjUpudCppAAxs58CG6DQLjtqZNmyC3MpgVob6wpdeATjpZZ1woX92EF/0/*,...))",
+        "_pub": "Zpub75KE91YFZFbpup5PMS2AxgZCKRWnozdEWTEmaUKGQysSmUaKuL5WYyf2kk5UNQhhupRnddQe9GzST7crvfLoRTHTg6KtDPZiFjxBJobzcUz"
     }
 }
 ```
@@ -51,7 +73,14 @@ Here is an example, produced by the Simulator for account number 123.
 ## Notes
 
 1. The `first` address is formed by added `/0/0` onto the given derivation, and is assumed
-to be the first (non-change) receive address for the wallet.
+to be the first (non-change) receive address for the wallet. It is only present on the
+single-signature sections (`bip44`, `bip49`, `bip84`); multisig sections omit it.
+
+1a. Each section includes a `desc` field: a ready-to-import Bitcoin output descriptor
+(with `#checksum`). Single-sig descriptors use the `<0;1>/*` multipath form. Multisig
+sections (`bip48_1`, `bip48_2`, and `bip45` when present) emit a `sortedmulti(...)`
+template with `M` and a trailing `...` as placeholders, to be completed with your
+threshold and the other co-signers' keys.
 
 2. The user may specify any value (up to 9999) for the account number, and it's meant to
 segregate funds into sub-wallets. Don't assume it's zero.
@@ -59,8 +88,8 @@ segregate funds into sub-wallets. Don't assume it's zero.
 3. When making your PSBT files to spend these amounts, remember that the XFP of the master
 (`0F056943` in this example) is the root of the subkey paths found in the file, and 
 you must include the full derivation path from master. So based on this example,
-to spend a UTXO on `tb1qc58ys2dphtphg6yuugdf3d0kufmk0tye044g3l`, the input section
-of your PSBT would need to specify `(m=0F056943)/84'/1'/123'/0/0`.
+to spend a UTXO on `bc1qhj6avwmp5lhpgqwm6dgxrf3v5lf67rjm99a8an`, the input section
+of your PSBT would need to specify `(m=0F056943)/84'/0'/123'/0/0`.
 
 4. The `_pub` value is the [SLIP-132](https://github.com/satoshilabs/slips/blob/master/slip-0132.md) style "ypub/zpub/etc" which some systems might want. It implies
 a specific address format.
