@@ -1,7 +1,7 @@
 # Temporary Seeds
 
 
-[_(new in v5.0.7, requires Mk4)_](upgrade.md)
+[_(new in v5.0.7, requires Mk4, Mk5, or Q)_](upgrade.md)
 
 
 Temporary seed (renamed in `5.2.0` from Ephemeral seed) is a temporary secret completely separate 
@@ -42,7 +42,7 @@ Read more about `Seed Vault` feature below.
     - `24 words`
     - `XPRV (BIP-32)`
     - pick derivation `Index` in next prompt, or just press OK for index 0
-    - Press (2) in next prompt to activate derived secret as a temporary seed
+    - Press (0) in next prompt to activate derived secret as a temporary seed
 
 * temporary seed can be activated from Duress Wallet
     - go to `Settings -> Login Settings -> Trick Pins`
@@ -66,7 +66,7 @@ Ability to generate and use **Temporary seed** is available on Coldcard when:
 
 # Restore Master
 
-[_(new in v5.2.0, requires Mk4)_](upgrade.md)
+[_(new in v5.2.0, requires Mk4, Mk5, or Q)_](upgrade.md)
 
 From version `5.2.0` users no longer need to reboot COLDCARD to return
 to their "master seed" (one stored in SE2). Once COLDCARD has temporary
@@ -84,7 +84,7 @@ Seed Vault entries can only be deleted in Seed Vault menu.
 
 # Seed Vault
 
-[_(new in v5.2.0, requires Mk4)_](upgrade.md)
+[_(new in v5.2.0, requires Mk4, Mk5, or Q)_](upgrade.md)
 
 Seed Vault adds the ability to store multiple temporary secrets into encrypted settings for simple
 recall and later use (AES-256-CTR encrypted with your master seed's key).

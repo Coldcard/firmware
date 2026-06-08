@@ -247,13 +247,14 @@
       Bitcoin Core
       Nunchuk
       Bull Bitcoin
-      Zeus
+      Blue Wallet
       Electrum Wallet
       Wasabi Wallet
       Fully Noded
       Unchained
       Theya
       Bitcoin Safe
+      Zeus
       Samourai Postmix
       Samourai Premix
       Descriptor
@@ -279,13 +280,14 @@
         Bitcoin Core
         Nunchuk
         Bull Bitcoin
-        Zeus
+        Blue Wallet
         Electrum Wallet
         Wasabi Wallet
         Fully Noded
         Unchained
         Theya
         Bitcoin Safe
+        Zeus
         Samourai Postmix
         Samourai Premix
         Descriptor
@@ -360,6 +362,7 @@
         Enable
       User Management [MAYBE]
     Paper Wallets
+    WIF Store
     NFC Tools [IF NFC ENABLED]
       Sign PSBT
       Show Address
@@ -630,13 +633,14 @@
         Bitcoin Core
         Nunchuk
         Bull Bitcoin
-        Zeus
+        Blue Wallet
         Electrum Wallet
         Wasabi Wallet
         Fully Noded
         Unchained
         Theya
         Bitcoin Safe
+        Zeus
         Samourai Postmix
         Samourai Premix
         Descriptor
@@ -661,13 +665,14 @@
       Bitcoin Core
       Nunchuk
       Bull Bitcoin
-      Zeus
+      Blue Wallet
       Electrum Wallet
       Wasabi Wallet
       Fully Noded
       Unchained
       Theya
       Bitcoin Safe
+      Zeus
       Samourai Postmix
       Samourai Premix
       Descriptor
@@ -694,6 +699,7 @@
       Coldcard Backup
       Restore Seed XOR
     Paper Wallets
+    WIF Store
     NFC Tools [IF NFC ENABLED]
       Sign PSBT
       Show Address

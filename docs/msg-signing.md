@@ -2,15 +2,16 @@
 
 COLDCARD can sign messages send to it via USB with the help of `ckcc` utility, 
 sign messages provided via specially crafted file on SD card or Vdisk, 
-and Mk4 can also sign messages sent to COLDCARD via NFC.
+and NFC-equipped models (Mk4, Mk5, and Q) can also sign messages sent to COLDCARD via NFC.
+The resulting signature can be returned over SD card/Vdisk, NFC, or — on Q — as a QR code.
 
 Signature format follows [BIP-0137](https://github.com/bitcoin/bips/blob/master/bip-0137.mediawiki) specification.
 COLDCARD Mk3 and COLDCARD Mk4 up to version `5.1.0` used compressed P2PKH header byte for all script types.
-From Mk4 `5.1.0` correct header byte is used for corresponding script type.
+From version `5.1.0` correct header byte is used for corresponding script type.
 
 ### Verification
 
-From COLDCARD Mk4 version `5.1.0` users can verify signed messages directly on the device.
+From version `5.1.0` users can verify signed messages directly on the device.
 If signature file is on SD card or Virtual disk `Advanced/Tools -> File Management -> Verify Sig File`. In case
 signature file is detached signature of signed export (or any other file), COLDCARD can check if digest of file 
 specified in the message matches contents of file. This requires file signed to be  available on SD card or Vdisk.
@@ -21,7 +22,7 @@ Bitcoin core can only verify P2PKH.
 
 ## Signed Exports
 
-From Mk4 version `5.1.0` most of SD card and Virtual disk exports are accompanied by detached signature file.
+From version `5.1.0` most of SD card and Virtual disk exports are accompanied by detached signature file.
 If exported file name is `addresses.csv` signature file name will be `addresses.sig`.
 
 ### Message construction and signature file format
@@ -38,8 +39,6 @@ mtHSVByP9EYZmB26jASDdPVm19gvpecb5R
 IFOvGVJrm31S0j+F4dVfQ5kbRKWKcmhmXIn/Lw8iIgaCG5QNZswjrN4X673R7jTZo1kvLmiD4hlIrbuLh/HqDuk=
 -----END BITCOIN SIGNATURE-----
 ```
-
-### What is signed
 
 ### What Is Signed
 
@@ -61,13 +60,3 @@ IFOvGVJrm31S0j+F4dVfQ5kbRKWKcmhmXIn/Lw8iIgaCG5QNZswjrN4X673R7jTZo1kvLmiD4hlIrbuL
     * Multisig wallet descriptor: signed by the key corresponding to the first external address of own enrolled extended key `my_key/0/0`
     * Generic XPUBs export: signed by the key corresponding to the first external address of own standard P2WSH derivation `m/48h/<coin_type>h/<account>h/2h/0/0`
     * Multisig address explorer export: Signed by own key at the same derivation as first (0th) row on exported list. `my_key/<change>/<start_index>`
-
-### What is NOT signed
-
-Multisig exports and generic multisig xpub exports are not signed. It is not clear at this point
-whether to sign these exports with some generic single signature key (i.e. `m/44'/<coin_type>'/0'/0/0`)
-or with our portion (leg) of script. In both cases script type (address format) would not match as multisignature
-message signing is not standardized.
-
-1. **Multisig exports**
-2. **Generic multisig exports**

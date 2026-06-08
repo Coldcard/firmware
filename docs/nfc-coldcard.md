@@ -1,6 +1,6 @@
-# NFC and Coldcard Mk4
+# NFC and Coldcard
 
-(Applies to Coldcard Mk4 only)
+(Applies to NFC-equipped models: Mk4, Mk5, and Q)
 
 ## Usage
 
