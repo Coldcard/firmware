@@ -30,8 +30,8 @@ the correct code.
 - Usual 2fa base32 secret is picked by CC and stored in CC (so that server is stateless)
 - CC creates URL encrypted to the pubkey of server, containing args: 
   - shared secret for TOTP (same value as held in user's phone)
-  - the response nonce (16 bytes, or 8 digits for Mk4) to be revealed to the user
-    on successful auth
+  - the response nonce (32 bytes, shown as 64 hex chars, on Q; or 8 digits on Mk4)
+    to be revealed to the user on successful auth
   - flag if Q model, so can provide a QR to be scanned in that case (rather than digits)
   - some text label for what's being approved, which is presented to user so they can pick
     correct 2fa shared secret.
@@ -82,12 +82,15 @@ the correct code.
 
 ## URL Format 
 
-    https://coldcard.com/2fa?ss={shared_secret}&q={is_q}&g={nonce}&nm={label_text}
+    https://coldcard.com/2fa?g={nonce}&ss={shared_secret}&nm={label_text}&q={is_q}
 
+(the query string is then encrypted to the server's pubkey, so the args above
+are what is inside the encrypted payload.)
+
+- `nonce`: text string that is either 8 digits on Mk4, or 64 hex chars on Q
 - `shared_secret`: 16 chars of Base32-encoded pre-shared secret
-- `is_q`: flag indicating use of QR to provide nonce back to user
-- `nonce`: text string that is either 8 digits for Mk4, or hex digits for QR
 - `nm`: human readable label for the transaction/purpose
+- `is_q`: flag indicating use of QR to provide nonce back to user
 
 Server will accept plaintext arguments as above, but normally everything
 after the question mark is encrypted.

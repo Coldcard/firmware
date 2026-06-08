@@ -2,7 +2,7 @@
 #
 # ndef.py -- NDEF records: making them and parsing them.
 #
-# - see ../docs/nfc-on-coldcard.md for background.
+# - see ../docs/nfc-coldcard.md for background.
 # - cross platform file
 #
 from struct import pack, unpack

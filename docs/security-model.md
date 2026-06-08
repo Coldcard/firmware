@@ -1,4 +1,4 @@
-# COLDCARD Mk4/Q Security Model
+# COLDCARD Mk4/Mk5/Q Security Model
 
 ## Abstract
 
@@ -96,9 +96,10 @@ user entered the True PIN. An attacker will only have access to the
 duress wallet. They won't have access to steal the main stash.
 
 The private key can be automatically derived using BIP-85 methods,
-based on account numbers 1001, 1002, or 1003. Because this is BIP-85
-based and uses a 24-word seed, it behaves exactly like a normal
-wallet. Defining a passphrase for the wallet is also possible.
+based on account numbers 1001, 1002, or 1003 for a 24-word duress wallet
+(or 2001, 2002, 2003 for a 12-word one). Because this is BIP-85
+based, it behaves exactly like a normal wallet. Defining a passphrase
+for the wallet is also possible.
 
 The Mk4 also supports older COLDCARD duress wallets and their UTXOs
 on the blockchain. There is an option to create compatible wallets
@@ -243,7 +244,7 @@ COLDCARD's case to do so, but the option is there if needed.
 
 ## SD Card Recovery Mode
 
-Mk4/Q bootloader is smart enough to be able to read an SD card. You
+Mk4/Mk5/Q bootloader is smart enough to be able to read an SD card. You
 will only be able to trigger the SD card loading code, if the
 COLDCARD was powered down during the upgrade process. At that point,
 the intended firmware image has been lost because it it held in

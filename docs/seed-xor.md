@@ -12,7 +12,7 @@ are not discrete and you could be compelled to produce the passphrase.
 
 Enter [_Seed XOR_](https://seedxor.com), a plausibly deniable means
 of storing secrets in two or more parts that look and behave just
-like the original secret. One 12 or 24-word seed phrase becomes two or more parts
+like the original secret. One 12-, 18-, or 24-word seed phrase becomes two or more parts
 that are also BIP-39 compatible seeds phrases. These should be backed up in your
 preferred method, metal or otherwise. These parts can be individually loaded
 with honeypot funds as each one has same word length, with the last being
@@ -78,10 +78,12 @@ words right the next day.
 
 When the parts are made deterministically, we take a double-SHA256 over
 a fixed string (`Batshitoshi`), your master secret, and the text
-`1 of 4 parts` which changes for each part.
+`0 of 4 parts` which changes for each part (the index is 0-based).
 
-In random mode, we simply pick 32 random bytes (and then double-SHA256
-them) from the Coldcard's True Random Number Generator (TRNG)..
+In random mode, we simply pick random bytes (and then double-SHA256
+them) from the Coldcard's True Random Number Generator (TRNG). The number
+of bytes matches your secret length: 16, 24, or 32 bytes for a 12-, 18-,
+or 24-word seed respectively.
 
 This is done to make all but the one part. The final part is the
 value needed to get back to your secret, so it's the XOR of the
