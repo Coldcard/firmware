@@ -12,7 +12,7 @@ import version, ujson
 from uio import StringIO, BytesIO
 import seed
 from glob import settings
-from pincodes import pa
+from pincodes import pa, BootloaderError
 
 # we make passwords with this number of words
 num_pw_words = const(12)
@@ -157,7 +157,17 @@ def restore_from_dict_ll(vals, raw):
 
     # clear (in-memory) settings and change also nvram key
     # - also captures xfp, xpub at this point
-    pa.change(new_secret=raw)
+    try:
+        pa.change(new_secret=raw)
+    except BootloaderError:
+        # SE1 can execute the write but fail to deliver the status
+        # response - if the new secret is in place, keep going
+        got = pa.fetch()
+        committed = (got[:len(raw)] == raw)
+        stash.blank_object(got)
+        if not committed:
+            raise
+
     dis.progress_bar_show(.25)
 
     # force the right chain

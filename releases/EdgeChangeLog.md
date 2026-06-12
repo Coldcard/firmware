@@ -28,6 +28,9 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 - Enhancement: Warn when a transaction's block-height `nLockTime` is more than
   ten years beyond the Bitcoin block height known to the firmware.
 - Enhancement: Retain up to 128 UTXO cache entries across restarts.
+- Bugfix: Restore Backup now verifies whether a seed write succeeded after a bootloader
+  AE_FAIL before aborting, avoiding a half-restored device with seed written but settings
+  missing.
 - Bugfix: Show outputs to segwit v1+ witness programs other than 32 bytes long
   as their bech32m address, rather than as a raw script.
 
