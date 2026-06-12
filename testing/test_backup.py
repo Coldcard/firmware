@@ -328,6 +328,72 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
                       pass_way=pass_way)
 
 
+def test_restore_backup_se1_fail(goto_home, pick_menu_item, cap_story, unit_test,
+                                 cap_menu, word_menu_entry, press_select, press_cancel,
+                                 reset_seed_words, backup_system, microsd_path, sim_exec,
+                                 garbage_collector, restore_backup_unpacked):
+    # SE1 sometimes executes the secret write but fails to deliver the status
+    # response (AE_FAIL). Restore must verify whether the secret landed before
+    # aborting, or the device is left with seed restored but settings missing.
+    reset_seed_words()
+    words = backup_system(reuse_pw=True)
+
+    for _ in range(20):
+        time.sleep(.1)
+        title, body = cap_story()
+        if '.7z' in body:
+            break
+    else:
+        raise AssertionError('backup not written')
+
+    fn = [ln.strip() for ln in body.split('\n') if ln.endswith('.7z')][0]
+    garbage_collector.append(microsd_path(fn))
+    press_cancel()
+
+    unit_test('devtest/clear_seed.py')
+    m = cap_menu()
+    assert m[0] == 'New Seed Words'
+
+    # from now on: execute pin change in SE, but report AE_FAIL for both attempts
+    rv = sim_exec('import ckcc\n'
+                  'ckcc._orig_gate = ckcc.gate\n'
+                  'ckcc._fails = 2\n'
+                  'def _flaky(method, buf, arg2, _ckcc=ckcc, _orig=ckcc.gate):\n'
+                  '    rv = _orig(method, buf, arg2)\n'
+                  '    if method == 18 and arg2 == 3 and _ckcc._fails:\n'
+                  '        _ckcc._fails -= 1\n'
+                  '        return -106\n'
+                  '    return rv\n'
+                  'ckcc.gate = _flaky\n')
+    assert 'Traceback' not in rv
+
+    try:
+        pick_menu_item('Import Existing')
+        pick_menu_item('Restore Backup')
+        time.sleep(.1)
+        pick_menu_item(fn)
+        time.sleep(.1)
+        word_menu_entry(words, has_checksum=False)
+        time.sleep(.2)
+        title, story = cap_story()
+        assert "Above is the master fingerprint" in story
+        press_select()
+
+        for _ in range(30):
+            time.sleep(.2)
+            title, story = cap_story()
+            if 'best security practices' in story:
+                break
+        else:
+            raise AssertionError('FTUX story never shown: %r %r' % (title, story))
+        restore_backup_unpacked()
+
+        # all injected failures were consumed by the restore
+        assert sim_exec('import ckcc; RV.write(str(ckcc._fails))') == '0'
+    finally:
+        sim_exec('import ckcc; ckcc.gate = ckcc._orig_gate')
+
+
 @pytest.mark.parametrize("stype", [
     "words12", "words24", "xprv",
     pytest.param(SHARES[0], id="ms1-128"),

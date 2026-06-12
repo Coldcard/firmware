@@ -4,6 +4,10 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk and Q
 
+- Bugfix: Restore Backup now verifies whether a seed write succeeded after a bootloader
+  AE_FAIL before aborting, avoiding a half-restored device with seed written but settings
+  missing.
+
 - Change: Restrict the Codex32 checksum calculator to MS1 shares and warn that
   completing a checksum locks in transcription errors.
 
