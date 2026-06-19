@@ -14,7 +14,7 @@ from pysecp256k1 import ec_seckey_verify, ec_pubkey_parse, ec_pubkey_serialize, 
 from mnemonic import Mnemonic
 from bip32 import BIP32Node
 from constants import AF_P2WSH
-from charcodes import KEY_QR
+from charcodes import KEY_QR, KEY_NFC
 from bbqr import split_qrs
 from psbt import BasicPSBT
 
@@ -702,6 +702,52 @@ def test_ccc_whitelist(whitelist_ok, setup_ccc, ccc_ms_setup,
     policy_sign(bitcoind_wo, psbt, violation=None if whitelist_ok else "whitelist")
 
 
+def test_ccc_whitelist_nfc_import(setup_ccc, settings_set, pick_menu_item, cap_story,
+                                  cap_menu, press_select, press_nfc, nfc_write_text,
+                                  settings_get, skip_if_useless_way, is_q1):
+    skip_if_useless_way("nfc")
+
+    settings_set("ccc", None)
+    addr = "bcrt1qlk39jrclgnawa42tvhu2n7se987qm96qg8v76e"
+
+    setup_ccc(vel="Unlimited")
+
+    pick_menu_item("Spending Policy")
+    pick_menu_item("Whitelist Addresses" if is_q1 else "Whitelist")
+
+    time.sleep(.1)
+    m = cap_menu()
+    assert "(none yet)" in m
+    assert "Import from File" in m
+
+    pick_menu_item("Import from File")
+    time.sleep(.1)
+    _, story = cap_story()
+
+    if f"press {KEY_NFC if is_q1 else '(3)'} to import via NFC" not in story:
+        pytest.xfail("NFC disabled")
+
+    press_nfc()
+    time.sleep(.2)
+    nfc_write_text(addr)
+    time.sleep(.3)
+
+    _, story = cap_story()
+    assert "Added new address to whitelist" in story
+    assert addr in story
+
+    press_select()
+    time.sleep(.1)
+
+    m = cap_menu()
+    mi_addrs = [a for a in m if '⋯' in a]
+    assert len(mi_addrs) == 1
+    _start, _end = mi_addrs[0].split('⋯')
+    assert addr.startswith(_start)
+    assert addr.endswith(_end)
+    assert settings_get("ccc")["pol"]["addrs"] == [addr]
+
+
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("velocity_mi", ['6 blocks (hour)', '48 blocks (8h)'])
 def test_ccc_velocity(velocity_mi, setup_ccc, ccc_ms_setup, bitcoind, settings_set,
@@ -927,6 +973,72 @@ def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim
 
     # sign with B (B does not have ccc in settings so CC is unaware that part of CCC is signing)
     policy_sign(bitcoind_wo, base64.b64encode(part_psbt).decode())  # no violations
+    restore_main_seed()
+
+
+@pytest.mark.bitcoind
+def test_ccc_whitelist_overlimit_no_mutation(settings_set, setup_ccc, enter_enabled_ccc,
+                                             ccc_ms_setup, bitcoind_create_watch_only_wallet,
+                                             settings_get, pick_menu_item, cap_menu, cap_story,
+                                             cap_screen, scan_a_qr, press_select, press_cancel,
+                                             is_q1, microsd_path, need_keypress, restore_main_seed):
+    # An over-limit whitelist import must be rejected WITHOUT having already
+    # mutated the (settings-backed) policy address list.
+    settings_set("ccc", None)
+    settings_set("chain", "XRT")
+    settings_set("multisig", [])
+
+    c_words = "cluster comic depend absent grain circle demand tag pass clock certain strategy lunar bless pulse useful comfort fatigue glove decorate taste allow adult journey".split()
+    setup_ccc(c_words=c_words, mag=100000000, vel=None, whitelist=None)
+    b_words = "ceiling apology excite illegal accident define boat prosper decrease utility romance try trial dizzy win lawsuit much sustain similar meadow draw oil cousin wagon".split()
+    _, target_mi = ccc_ms_setup(b_words=b_words)
+    bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
+
+    enter_enabled_ccc(c_words)
+    desc_str = bitcoind_wo.listdescriptors()["descriptors"][0]["desc"]
+    addrs = bitcoind_wo.deriveaddresses(desc_str, (0, 25))
+    base, extra = addrs[:24], addrs[24:26]
+
+    setup_ccc(c_words, whitelist=base, first_time=False)
+    assert len(settings_get("ccc")["pol"]["addrs"]) == 24
+
+    # back at the CCC menu now -- import 2 more
+    pick_menu_item("Spending Policy")
+    pick_menu_item("Whitelist Addresses" if is_q1 else "Whitelist")
+    time.sleep(.1)
+    if is_q1:
+        pick_menu_item("Scan QR")
+        for i, a in enumerate(extra, start=1):
+            scan_a_qr(a)
+            for _ in range(10):
+                scr = cap_screen()
+                if (f"Got {i} so far" in scr) and ("ENTER to apply" in scr):
+                    break
+                time.sleep(.2)
+            else:
+                assert False, "scan not registered"
+        press_select()
+    else:
+        fname = "ccc_over.txt"
+        with open(microsd_path(fname), "w") as f:
+            for a in extra:
+                f.write(a + "\n")
+        pick_menu_item("Import from File")
+        time.sleep(.1)
+        _, story = cap_story()
+        if "Press (1)" in story:
+            need_keypress("1")
+        pick_menu_item(fname)
+
+    time.sleep(.2)
+    _, story = cap_story()
+    assert "Max %d items in whitelist" % 25 in story
+    press_select()
+
+    assert settings_get("ccc")["pol"]["addrs"] == base
+
+    press_cancel()
+    press_cancel()
     restore_main_seed()
 
 
@@ -1268,5 +1380,104 @@ def test_ms_setup_cosigner_import(way, ftype, is_bbqr, N, goto_home, settings_se
 
     for _, obj in keys:
         assert f"[{obj['xfp'].lower()}/{obj['p2wsh_deriv'].replace('m/', '')}]{obj['p2wsh']}" in desc
+
+
+def test_ccc_challenge_qr_bad_checksum_crash(setup_ccc, goto_ccc_menu, cap_story, need_keypress,
+                                             press_select, press_cancel, scan_a_qr, sim_exec,
+                                             settings_set, is_q1):
+    if not is_q1:
+        pytest.skip('Q1 only (QR scan path)')
+
+    settings_set('ccc', None)
+    settings_set('seedvault', False)         # avoid seed-vault bypass path
+
+    setup_ccc()
+
+    # reset the fail counter so the assertion below is unambiguous
+    sim_exec('import ccc; ccc.NUM_CHALLENGE_FAILS = 0')
+
+    goto_ccc_menu()
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == 'CCC Enabled'
+    assert 'policy cannot be viewed' in story
+    press_select()
+    time.sleep(.1)
+
+    need_keypress(KEY_QR)
+    time.sleep(.1)
+
+    # SeedQR with 12 zero-indices = "abandon" * 12 = wordlist-valid but
+    # consensus-invalid BIP-39 checksum
+    bad_seed_qr = '0000' * 12
+    scan_a_qr(bad_seed_qr)
+    time.sleep(.5)
+    press_select()
+
+    title, story = cap_story()
+    assert 'Sorry, those words are incorrect' in story
+
+    # The challenge callback must have been reached -- counter stays 1.
+    fails = int(sim_exec('import ccc; RV.write(str(ccc.NUM_CHALLENGE_FAILS))'))
+    assert fails == 1
+
+    press_cancel()
+    press_cancel()
+
+
+def test_ccc_magnitude_cancel_preserves_value(setup_ccc, enter_enabled_ccc, settings_set,
+                                              settings_get, pick_menu_item, cap_menu,
+                                              press_select, press_cancel, press_delete):
+    settings_set('ccc', None)
+
+    c_words = setup_ccc(mag=1)        # 1 BTC magnitude
+    assert settings_get('ccc')['pol']['mag'] == 1
+
+    enter_enabled_ccc(c_words)
+    pick_menu_item('Spending Policy')
+    pick_menu_item('Max Magnitude')
+    time.sleep(.1)
+
+    press_delete()  # delete 1
+    time.sleep(.1)
+    press_cancel()
+    time.sleep(.1)
+
+    menu = cap_menu()
+    # back in the menu, CANCEL on empty value
+    assert 'Max Magnitude' == menu[0]
+
+    # magnitude unchanged
+    time.sleep(.1)
+    mag = settings_get('ccc')['pol']['mag']
+    assert mag == 1
+
+    settings_set('ccc', None)
+
+
+@pytest.mark.bitcoind
+def test_ccc_whitelist_op_return(setup_ccc, ccc_ms_setup, bitcoind, settings_set,
+                                 policy_sign, bitcoind_create_watch_only_wallet):
+    settings_set("ccc", None)
+    settings_set("chain", "XRT")
+    settings_set("multisig", [])
+
+    whitelist = ["bcrt1qqca9eefwz8tzn7rk6aumhwhapyf5vsrtrddxxp"]
+    setup_ccc(whitelist=whitelist, vel="Unlimited")
+    _, target_mi = ccc_ms_setup()
+    bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
+
+    multi_addr = bitcoind_wo.getnewaddress()
+    bitcoind.supply_wallet.sendtoaddress(address=multi_addr, amount=5.0)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    op_return_data = b"Coldcard CCC OP_RETURN test"
+    send_to = whitelist[0]
+    psbt_resp = bitcoind_wo.walletcreatefundedpsbt(
+        [], [{send_to: 1}, {"data": op_return_data.hex()}], 0, {"fee_rate": 2}
+    )
+    psbt = psbt_resp.get("psbt")
+
+    policy_sign(bitcoind_wo, psbt, violation="whitelist")
 
 # EOF

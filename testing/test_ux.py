@@ -1,6 +1,7 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, os, re, hashlib, shutil, functools
+import pytest, time, os, re, hashlib, shutil, functools, ndef
+from binascii import b2a_hex
 from helpers import xfp2str, prandom
 from charcodes import KEY_QR, KEY_NFC, KEY_DELETE
 from constants import AF_CLASSIC, simulator_fixed_words, simulator_fixed_xfp
@@ -758,7 +759,7 @@ def test_sign_file_from_list_files(f_len, goto_home, cap_story, pick_menu_item, 
 
 
 def test_rename_from_list_files(goto_home, cap_story, pick_menu_item, need_keypress, is_q1,
-                                microsd_path, press_select, cap_screen, enter_complex):
+                                microsd_path, press_select, cap_screen, enter_complex, cap_menu):
     def clear(fname):
         for i in range(len(fname)):
             if not is_q1 and not i:
@@ -818,6 +819,15 @@ def test_rename_from_list_files(goto_home, cap_story, pick_menu_item, need_keypr
     assert not os.path.exists(fpath)
     assert os.path.exists(microsd_path(new_fname))
 
+    # delete (6) from the same loop must blank the *renamed* file, not the stale old path
+    assert "(6) to delete" in story
+    need_keypress("6")
+    time.sleep(.1)
+    menu = cap_menu()
+    assert "List Files" in menu
+    assert not os.path.exists(microsd_path(new_fname))
+    assert not os.path.exists(fpath)
+
 
 def test_bip39_pw_signing_xfp_ux(pick_menu_item, press_select, cap_story, enter_complex,
                                  reset_seed_words, cap_menu, go_to_passphrase, microsd_wipe):
@@ -855,6 +865,28 @@ def test_q1_seed_word_entry_bug(word_menu_entry, unit_test, pick_menu_item,
     # now we are yikes if bug not fixed
     press_select()
     expect_ftux()
+
+
+def test_q1_seed_word_bad_qr_keeps_words(unit_test, pick_menu_item, is_q1, do_keypresses,
+                                         need_keypress, scan_a_qr, cap_screen):
+    if not is_q1:
+        raise pytest.skip("Q only")
+
+    unit_test('devtest/clear_seed.py')
+    pick_menu_item('Import Existing')
+    pick_menu_item('12 Words')
+
+    do_keypresses("aba")
+    time.sleep(1)
+    assert "1: abandon" in cap_screen()
+
+    need_keypress(KEY_QR)
+    scan_a_qr("not a seed qr")
+    time.sleep(1)
+
+    screen = cap_screen()
+    assert "1: abandon" in screen
+    assert "Unable to decode as secret" in screen
 
 
 def test_custom_pushtx_url(goto_home, pick_menu_item, press_select, enter_complex,
@@ -1021,6 +1053,53 @@ def test_qr_share_files(fname, pick_menu_item, goto_home, is_q1, cap_menu, cap_s
     assert res == qr.decode()
     os.remove(f'{sim_root_dir}/MicroSD/' + fname)
 
+
+@pytest.mark.parametrize("way", ["nfc", "qr"])
+def test_share_binary_txn_file(way, goto_home, pick_menu_item, src_root_dir, sim_root_dir,
+                                press_select, cap_story, cap_screen_qr, is_q1,
+                                nfc_read, nfc_block4rf):
+    if way == "qr" and not is_q1:
+        pytest.skip("QR share is Q1 only")
+
+    with open(f"{src_root_dir}/testing/data/devils-txn.txn", "r") as f:
+        binary = bytes.fromhex(f.read().strip())
+    assert binary[2:8] != bytes(6)
+
+    fname = "binary-l01.txn"
+    dst = f"{sim_root_dir}/MicroSD/{fname}"
+    with open(dst, "wb") as f:
+        f.write(binary)
+
+    try:
+        goto_home()
+        pick_menu_item("Advanced/Tools")
+        pick_menu_item("File Management")
+        pick_menu_item("NFC File Share" if way == "nfc" else "QR File Share")
+        time.sleep(.1)
+        pick_menu_item(fname)
+        time.sleep(.2)
+
+        title, story = cap_story()
+        assert "ERROR" not in title
+
+        if way == "nfc":
+            nfc_block4rf()
+            res = nfc_read()
+            got_txn = None
+            for got in ndef.message_decoder(res):
+                if got.type == 'urn:nfc:ext:bitcoin.org:txn':
+                    got_txn = bytes(got.data)
+                    break
+            assert got_txn == binary
+            press_select()
+        else:
+            qr = cap_screen_qr()
+            assert qr.decode().lower() == b2a_hex(binary).decode().lower()
+    finally:
+        try: os.remove(dst)
+        except OSError: pass
+
+
 @pytest.mark.parametrize("word,cs_word", [
     # few combos with all words with length 8 + their longest possible checksum word
     ("acoustic", "decrease"),
@@ -1153,6 +1232,80 @@ def test_nickname_cancel_preserves_existing(already_set, goto_home, pick_menu_it
         assert new_nick is False
 
     settings_remove("nick")  # clean-up
+
+
+@pytest.mark.parametrize('chain', ['BTC', 'XTN'])
+@pytest.mark.parametrize('rz', [8, 5, 2, 0])
+@pytest.mark.parametrize('amount', [
+    '1.1',
+    '50',
+    '0.12345678',
+    '1.10000000',
+])
+def test_bip21_amount_display(amount, chain, rz, settings_set, settings_remove, scan_a_qr,
+                              cap_story, goto_home, need_keypress, press_cancel):
+    settings_set('chain', chain)
+    settings_set('rz', rz)
+
+    whole, _, frac = amount.partition('.')
+    sats = int((whole or '0') + (frac + '00000000')[:8])
+
+    if rz == 8:
+        amt = '%d.%08d %s' % (sats // 100000000, sats % 100000000, chain)
+    elif rz == 5:
+        amt = '%d.%05d m%s' % (sats // 100000, sats % 100000, chain)
+    elif rz == 2:
+        amt = '%d.%02d bits' % (sats // 100, sats % 100)
+    else:
+        assert rz == 0
+        amt = '%d sats' % sats
+
+    expected = 'Amount: %s' % amt
+
+    # base58 P2PKH decodes regardless of chain setting (we exploit bug here to not need to specify 2 addrs)
+    addr = 'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R'
+    url = 'bitcoin:%s?amount=%s' % (addr, amount)
+
+    goto_home()
+    need_keypress(KEY_QR)
+    time.sleep(.1)
+    scan_a_qr(url)
+    time.sleep(.5)
+
+    title, body = cap_story()
+    assert title == 'Payment Address', title
+    assert expected in body
+
+    press_cancel()
+    settings_set('chain', 'XTN')
+    settings_remove('rz')
+
+
+@pytest.mark.parametrize('amount', [
+    '999999999',        # 9-digit whole part: 99,999,999 > 21M BTC supply
+    '999999999.0',      # same, with explicit fractional zero
+    '1.123456789',      # 9-digit fractional part: sub-satoshi precision
+    'abc',              # not numeric at all
+    '1.5a',             # mixed digits + alpha in fractional part
+    '-1.0',             # negative sign breaks isdigit()
+    '1,5',              # comma not handled (no dot found, whole isn't digits)
+    '',                 # empty string
+])
+def test_bip21_amount_display_corrupt(amount, scan_a_qr, cap_story, goto_home,
+                                       need_keypress, press_cancel):
+    addr = 'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R'
+    url = 'bitcoin:%s?amount=%s' % (addr, amount)
+
+    goto_home()
+    need_keypress(KEY_QR)
+    time.sleep(.1)
+    scan_a_qr(url)
+    time.sleep(.5)
+
+    title, body = cap_story()
+    assert title == 'Payment Address', title
+    assert 'Amount: (corrupt)' in body
+    press_cancel()
 
 
 @pytest.mark.onetime

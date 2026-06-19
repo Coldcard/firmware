@@ -195,41 +195,43 @@ def disassemble(script):
 
     try:
         offset = 0
+        slen = len(script)
         while 1:
-            if offset >= len(script):
+            if offset >= slen:
                 #print('dis %d done' % offset)
                 return
             c = script[offset]
             offset += 1
 
             if 1 <= c <= 75:
-                #print('dis %d: bytes=%s' % (offset, b2a_hex(script[offset:offset+c])))
-                yield (script[offset:offset+c], None)
-                offset += c
+                cnt = c
             elif OP_1 <= c <= OP_16:
                 # OP_1 thru OP_16
-                #print('dis %d: number=%d' % (offset, (c - OP_1 + 1)))
                 yield (c - OP_1 + 1, None)
+                continue
             elif c == OP_PUSHDATA1:
                 cnt = script[offset]
                 offset += 1
-                yield (script[offset:offset+cnt], None)
-                offset += cnt
             elif c == OP_PUSHDATA2:
                 # up to 65535 bytes
                 cnt, = struct.unpack_from("H", script, offset)
                 offset += 2
-                yield (script[offset:offset+cnt], None)
-                offset += cnt
             elif c == OP_PUSHDATA4:
                 # no where to put so much data
                 raise NotImplementedError
             elif c == OP_1NEGATE:
                 yield (-1, None)
+                continue
             else:
                 # OP_0 included here
-                #print('dis %d: opcode=%d' % (offset, c))
                 yield (None, c)
+                continue
+
+            # a data push of `cnt` bytes - reject if it runs off the end
+            if offset + cnt > slen:
+                raise ValueError
+            yield (script[offset:offset+cnt], None)
+            offset += cnt
     except Exception as e:
         # import sys;sys.print_exception(e)
         raise ValueError("bad script")

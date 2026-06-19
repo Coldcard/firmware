@@ -8,7 +8,7 @@ from ucollections import namedtuple
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from exceptions import UnknownAddressExplained
-from utils import problem_file_line, show_single_address
+from utils import problem_file_line, show_single_address, validate_own_address
 from public_constants import AFC_SCRIPT, AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH_P2SH, AF_P2TR, AF_P2WSH
 
 # Track many addresses, but in compressed form
@@ -304,11 +304,10 @@ class OwnershipCache:
 
         dis.fullscreen("Wait...")
 
-        ch = chains.current_chain()
-        addr_fmt = ch.possible_address_fmt(addr)
-        if not addr_fmt:
-            # might be valid address over on testnet vs mainnet
-            raise UnknownAddressExplained('That address is not valid on ' + ch.name)
+        try:
+            addr, addr_fmt = validate_own_address(addr)
+        except Exception as e:
+            raise UnknownAddressExplained('That address is not valid on ' + e.args[0])
 
         matches = OWNERSHIP.filter(addr_fmt, args)
 
@@ -343,7 +342,7 @@ class OwnershipCache:
             dis.fullscreen("WIF Store...")
             from wif import iter_wif_store_addresses
             target_af = AF_P2WPKH_P2SH if addr_fmt == AF_P2SH else addr_fmt
-            for i, store_addr in iter_wif_store_addresses(ch, target_af):
+            for i, store_addr in iter_wif_store_addresses(target_af):
                 if store_addr == addr:
                     return False, ("wif", target_af), i+1
 

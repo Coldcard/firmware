@@ -101,7 +101,7 @@ def test_wif_store_import_paper_wallet(goto_home, pick_menu_item, press_select, 
 def test_wif_store_import_fail(way, wif, err, import_wif_to_store, skip_if_useless_way,
                                settings_remove, press_select, cap_story, use_testnet, settings_get):
 
-    err = err or "no valid WIF found"
+    err = err or "No valid WIF key found"
     skip_if_useless_way(way)
     use_testnet()
     settings_remove("wifs")
@@ -334,6 +334,38 @@ def test_wif_store_capacity(import_wif_to_store, settings_remove, press_select, 
     time.sleep(.1)
     menu = cap_menu()
     assert "Import WIF" in menu
+
+
+def test_visualize_wif_store_capacity(is_q1, goto_home, use_testnet, settings_remove,
+                                      import_wif_to_store, settings_get, need_keypress,
+                                      scan_a_qr, cap_story, press_select):
+    if not is_q1:
+        raise pytest.skip("need scanner")
+
+    settings_remove("wifs")
+    use_testnet()
+
+    goto_home()
+    import_wif_to_store([make_fake_wif() for _ in range(30)])
+    assert len(settings_get("wifs", [])) == 30
+
+    goto_home()
+    need_keypress(KEY_QR)
+    scan_a_qr("cUR6JLQCmdPPt3op4jEYmFhjHpWC2AoZaWmZqoDaBQYMXN4QeKuc")
+    time.sleep(1)
+
+    title, story = cap_story()
+    assert title == "WIF Key"
+    assert "Press (1) to import to WIF Store" in story
+
+    need_keypress("1")
+    time.sleep(.1)
+
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Max 30 items allowed in WIF Store" in story
+    assert len(settings_get("wifs", [])) == 30
+    press_select()
 
 
 def test_wif_store_import_duplicate(settings_remove, import_wif_to_store, settings_get, cap_menu, cap_story,
@@ -799,7 +831,7 @@ def test_visualize_wif(wif, testnet, is_q1, goto_home, need_keypress, use_testne
     time.sleep(.1)
     title, story = cap_story()
     assert title == "Failure"
-    assert "Already saved in WIF Store" in story
+    assert "duplicate WIF" in story
     press_select()
 
 # EOF

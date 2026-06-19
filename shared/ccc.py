@@ -10,6 +10,7 @@
 # - "hobbled" refers to less-than full control over Coldcard, even though you have main PIN
 #
 import gc, chains, version, ngu, web2fa, bip39, re
+from ubinascii import hexlify as b2a_hex
 from chains import NLOCK_IS_TIME
 from utils import swab32, xfp2str, truncate_address, deserialize_secret, show_single_address
 from glob import settings, dis
@@ -122,7 +123,10 @@ class SpendingPolicy(dict):
             for idx, txo in psbt.output_iter():
                 out = psbt.outputs[idx]
                 if not out.is_change:  # ignore change
-                    addr = c.render_address(txo.scriptPubKey)
+                    try:
+                        addr = c.render_address(txo.scriptPubKey)
+                    except ValueError:
+                        addr = str(b2a_hex(txo.scriptPubKey), 'ascii')
                     if addr not in wl:
                         raise SpendPolicyViolation("whitelist: " + addr)
 
@@ -232,7 +236,12 @@ class CCCFeature:
     @classmethod
     def words_check(cls, words):
         # Test if words provided are right
-        enc = seed_words_to_encoded_secret(words)
+        try:
+            # a2b_words with checksum check
+            enc = seed_words_to_encoded_secret(words)
+        except:
+            return False
+
         exp = cls.get_encoded_secret()
         return enc == exp
 
@@ -585,11 +594,12 @@ class SPAddrWhitelist(MenuSystem):
         if choice == KEY_CANCEL:
             return
         elif choice == KEY_NFC:
-            addr = await NFC.read_address()
-            if not addr:
+            res = await NFC.read_address()
+            if not res:
                 # error already displayed in nfc.py
                 return
 
+            _, addr, _ = res
             await self.add_addresses([addr])
             return
 
@@ -651,11 +661,12 @@ class SPAddrWhitelist(MenuSystem):
 
     async def add_addresses(self, more_addrs):
         # add new entries, if unique; preserve ordering
-        addrs = self.policy.get('addrs', [])
+        # - work on a copy and check the limit *before* committing: the list
+        #   from get('addrs') is the live, settings-backed one
+        addrs = list(self.policy.get('addrs', []))
         new = []
         for a in more_addrs:
-            if a not in addrs:
-                addrs.append(a)
+            if a not in addrs and a not in new:
                 new.append(a)
 
         if not new:
@@ -663,10 +674,10 @@ class SPAddrWhitelist(MenuSystem):
                                 '\n\n'.join(show_single_address(a) for a in more_addrs))
             return
 
-        if len(addrs) > MAX_WHITELIST:
+        if len(addrs) + len(new) > MAX_WHITELIST:
             return await self.maxed_out()
 
-        self.policy.update_policy_key(addrs=addrs)
+        self.policy.update_policy_key(addrs=addrs + new)
         self.update_contents()
 
         if len(new) > 1:
@@ -747,14 +758,10 @@ class SpendingPolicyMenu(MenuSystem):
         was = self.policy.get('mag', 0)
         val = await ux_enter_number('Transaction Max:', max_value=int(1e8),
                                     value=(was or ''))
+        if val is None: return
 
         args = dict(mag=val)
-        if (val is None) or (val == was):
-            msg = "Did not change"
-            val = was
-        else:
-            msg = "You have set the"
-            unchanged = False
+        msg = "Did not change" if val == was else "You have set the"
 
         if not val:
             msg = "No check for maximum transaction size will be done. "

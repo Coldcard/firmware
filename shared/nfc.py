@@ -618,7 +618,7 @@ class NFCHandler:
                     # it's a txn, and we wrote as hex
                     data = a2b_hex(data)
                 else:
-                    assert data[2:8] == bytes(6)
+                    assert data[1:4] == bytes(3)
                 sha = ngu.hash.sha256s(data)
                 await self.share_signed_txn(txid, data, len(data), sha)
             elif ext == 'psbt':
@@ -775,15 +775,17 @@ class NFCHandler:
         if not data: return
 
         winner = None
-        for urn, msg, meta in ndef.record_parser(data):
-            msg = bytes(msg)
-            try:
-                r = func(msg)
-                if r is not None:
-                    winner = r
-                    break
-            except:
-                pass
+        try:
+            for urn, msg, meta in ndef.record_parser(data):
+                msg = bytes(msg)
+                try:
+                    r = func(msg)
+                    if r is not None:
+                        winner = r
+                        break
+                except:
+                    pass
+        except Exception: pass  # dont crash when given garbage
 
         if not winner:
             await ux_show_story(fail_msg)

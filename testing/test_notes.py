@@ -520,6 +520,31 @@ def test_top_import(goto_notes, cap_menu, cap_story, need_keypress, settings_get
     goto_notes()
 
 
+def test_top_import_u_typed_json(goto_notes, cap_menu, cap_story, need_keypress,
+                                 settings_get, settings_set, scan_a_qr):
+    settings_set('notes', [])
+
+    goto_notes('Import')
+    need_keypress(KEY_QR)
+
+    notes = {"coldcard_notes": [{"title": "demo", "misc": "x"}]}
+    jj = json.dumps(notes)
+    _, parts = split_qrs(jj, 'U', max_version=20)   # deliberately U-typed
+    for p in parts:
+        scan_a_qr(p)
+
+    time.sleep(.5)
+    m = cap_menu()
+    for _ in range(3):
+        if "1:" in m[0]:
+            break
+        time.sleep(.2)
+        m = cap_menu()
+
+    assert settings_get('notes') == notes["coldcard_notes"]
+    goto_notes()
+
+
 @pytest.mark.parametrize('qr,title', [
     ('otpauth://totp/ACME%20Co:john.doe@email.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&issuer=ACME%20Co&algorithm=SHA1&digits=6&period=30',
      'ACME Co:john.doe@email.com'),
@@ -746,5 +771,27 @@ def test_sign_password_free_form(chain, change, idx, need_some_passwords, settin
     pick_menu_item(f"1: {title}")
     pick_menu_item("Sign Note Text")
     sign_msg_from_text(msg, AF_P2WPKH, None, change, idx, "qr", chain)
+
+
+@pytest.mark.parametrize("length", [1, 241])
+def test_sign_misc_length(length, settings_set, cap_menu, goto_notes,
+                          pick_menu_item, press_cancel):
+    msg = "a" * length
+    settings_set('notes', [
+        {'misc': msg,
+         'password': '89898989898989898989898989898',
+         'site': 'https://abaaba.com',
+         'title': "BA",
+         'user': 'BABA'},
+        {'title': "AB",
+         'misc': msg,}
+    ])
+    goto_notes()
+    pick_menu_item(f"1: BA")
+    assert "Sign Note Text" not in cap_menu()
+
+    press_cancel()
+    pick_menu_item(f"2: AB")
+    assert "Sign Note Text" not in cap_menu()
 
 # EOF

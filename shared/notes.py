@@ -10,6 +10,7 @@ from ux_q1 import QRScannerInteraction
 from actions import goto_top_menu
 from glob import settings, dis
 from files import CardMissingError, needs_microsd, CardSlot
+from public_constants import MSG_SIGNING_MAX_LENGTH
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 from charcodes import KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6
 from lcd_display import CHARS_W
@@ -363,7 +364,8 @@ class NoteContentBase:
         await ux_sign_msg(txt, approved_cb=msg_signing_done, kill_menu=False)
 
     def sign_misc_menu_item(self):
-        return MenuItem("Sign Note Text", f=self.sign_txt_msg, arg=self.misc)
+        return MenuItem("Sign Note Text", f=self.sign_txt_msg, arg=self.misc,
+                        predicate=2 <= len(self.misc) <= MSG_SIGNING_MAX_LENGTH)
 
 
 class PasswordContent(NoteContentBase):

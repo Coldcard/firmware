@@ -271,8 +271,9 @@ async def try_push_tx(data, txid, txn_sha=None):
 
 class ApproveTransaction(UserAuthorizedAction):
     def __init__(self, psbt_len, flags=None, psbt_sha=None, input_method=None,
-                 output_encoder=None, filename=None):
+                 output_encoder=None, filename=None, offset=TXN_INPUT_OFFSET):
         super().__init__()
+        self.offset = offset
         self.psbt_len = psbt_len
 
         # do finalize is None if not USB, None = decide based on is_complete
@@ -400,7 +401,7 @@ class ApproveTransaction(UserAuthorizedAction):
         # step 1: parse PSBT from PSRAM into in-memory objects.
 
         try:
-            with SFFile(TXN_INPUT_OFFSET, length=self.psbt_len, message='Reading...') as fd:
+            with SFFile(self.offset, length=self.psbt_len, message='Reading...') as fd:
                 # NOTE: psbtObject captures the file descriptor and uses it later
                 self.psbt = psbtObject.read_psbt(fd)
         except BaseException as exc:
@@ -764,11 +765,12 @@ class ApproveTransaction(UserAuthorizedAction):
                 msg.write('%s %s\n\n' % self.chain.render_value(total_change - visible_change_sum))
 
 
-def sign_transaction(psbt_len, flags=0x0, psbt_sha=None):
+def sign_transaction(psbt_len, flags=0x0, psbt_sha=None, input_method="usb", offset=TXN_INPUT_OFFSET):
     # transaction (binary) loaded into PSRAM already, checksum checked
     UserAuthorizedAction.check_busy(ApproveTransaction)
     UserAuthorizedAction.active_request = ApproveTransaction(
-        psbt_len, flags, psbt_sha=psbt_sha, input_method="usb",
+        psbt_len, flags, psbt_sha=psbt_sha, input_method=input_method,
+        offset=offset
     )
 
     # kill any menu stack, and put our thing at the top
@@ -839,6 +841,10 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
         msg = noun + " shared via USB."
         title = "PSBT Signed"
 
+    elif input_method == "kt":
+        first_time = False
+        title = "PSBT Signed"
+
     if txid and await try_push_tx(data_len, txid, data_sha2):
         # go directly to reexport menu after pushTX
         first_time = False
@@ -857,8 +863,6 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
                 ch = KEY_QR
             elif input_method == "nfc":
                 ch = KEY_NFC
-            elif input_method == "kt":
-                ch = 't'
             else:
                 # SD/VDisk
                 ch = {"force_vdisk": input_method == "vdisk", "slot_b": slot_b}
@@ -916,8 +920,9 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
         elif (ch == 't') and not is_complete:
             # they might want to teleport it, but only if we have PSBT
             # there is no need to teleport PSBT if txn is already complete & ready to be broadcast
+            # updated PSBT is at TXN_OUTPUT_OFFSET (at TXN_INPUT_OFFSET is PSBT that is NOT updated)
             from teleport import kt_send_psbt
-            ok = await kt_send_psbt(psbt, data_len)
+            ok = await kt_send_psbt(psbt, data_len, psbt_offset=TXN_OUTPUT_OFFSET)
             if ok is None:
                 title = "Failed to Teleport"
             else:
@@ -1065,7 +1070,7 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
 
     return msg
 
-    
+
 async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, just_read=False, ux_abort=False):
     # sign a PSBT file found on a MicroSD card
     # - or from VirtualDisk (mk4)
@@ -1595,6 +1600,9 @@ class TXExplorer:
         self.qr_msgs = []
         self.title = None
 
+    def can_goto_idx(self):
+        return self.max_items > 1
+
     @classmethod
     async def start(cls, user_auth_action):
         rv = [
@@ -1607,6 +1615,7 @@ class TXExplorer:
     def make_ux_msg(self, offset, count):
         from glob import dis
         dis.fullscreen('Wait...')
+        esc = "4"+KEY_QR
         rv = ""
         qrs = []
         change = []
@@ -1615,18 +1624,29 @@ class TXExplorer:
             rv += item
             dis.progress_sofar(idx-offset+1, count)
 
-        rv += 'Press RIGHT to see next group'
+        hints = []
+        if end < self.max_items:
+            hints.append('RIGHT to see next group')
+            esc += KEY_RIGHT + "9"
         if offset:
-            rv += ', LEFT to go back'
+            hints.append('LEFT to go back')
+            esc += KEY_LEFT + "7"
 
-        rv += ", (2) to go to index"
+        if self.can_goto_idx():
+            hints.append("(2) to go to index")
+            esc += "2"
 
         if not version.has_qwerty:
             # Q has hint key
-            rv += ", (4) to show QR code"
-        rv += ('. %s to quit.' % X)
+            hints.append("(4) to show QR code")
 
-        return rv, qrs, change, end
+        if hints:
+            rv += 'Press ' + ', '.join(hints)
+            rv += ('. %s to quit.' % X)
+        else:
+            rv += 'Press %s to quit.' % X
+
+        return rv, qrs, change, end, esc
 
 
     async def explore(self, *a):
@@ -1635,11 +1655,10 @@ class TXExplorer:
         # - shows all inputs: utxo amount and address, txid & tx index.
 
         start = 0
-        msg, addrs, change, end = self.make_ux_msg(start, self.n)
+        msg, addrs, change, end, esc = self.make_ux_msg(start, self.n)
 
         while True:
-            ch = await ux_show_story(msg, title=self.title, escape='2479'+KEY_RIGHT+KEY_LEFT+KEY_QR,
-                                     hint_icons=KEY_QR)
+            ch = await ux_show_story(msg, title=self.title, hint_icons=KEY_QR, escape=esc)
             if ch == 'x':
                 del msg
                 return
@@ -1661,7 +1680,7 @@ class TXExplorer:
                 else:
                     # go forwards
                     start += self.n
-            elif ch == "2":
+            elif (ch == "2") and (self.max_items > 1):
                 max_v = self.max_items - 1
                 res = await ux_enter_number("Start Idx (0-%d):" % max_v, max_value=max_v)
                 if res is None: continue
@@ -1670,7 +1689,7 @@ class TXExplorer:
                 # nothing changed - do not recalc msg
                 continue
 
-            msg, addrs, change, end = self.make_ux_msg(start, self.n)
+            msg, addrs, change, end, esc = self.make_ux_msg(start, self.n)
 
 
 class TXOutExplorer(TXExplorer):
@@ -1747,7 +1766,6 @@ class TXInpExplorer(TXExplorer):
                 psbt_item += "%s:\n%s%s\n\n" % (keypath_to_str(pth, prefix="%s/" % xfp2str(pth[0])),
                                               b2a_hex(k).decode(), ws_note)
 
-        M = None
         if inp.is_multisig:
             ks_coord = inp.witness_script or inp.redeem_script
             if ks_coord:
@@ -1767,7 +1785,7 @@ class TXInpExplorer(TXExplorer):
                 if pk in inp.part_sigs:
                     done.append(xfp2str(pth[0]))
 
-            if inp.fully_signed or (M and (len(done) >= M)):
+            if inp.fully_signed:
                 psbt_item += "Input fully signed.\n\n"
             else:
                 psbt_item += "Already signed:\n"
@@ -1782,7 +1800,7 @@ class TXInpExplorer(TXExplorer):
                 1 | 0x80: "ALL|ANYONECANPAY",
                 2 | 0x80: "NONE|ANYONECANPAY",
                 3 | 0x80: "SINGLE|ANYONECANPAY",
-            }[inp.sighash]
+            }.get(inp.sighash, "0x%02x (non-standard)" % inp.sighash)
 
         if psbt_item:
             psbt_item = "=== PSBT ===\n\n" + psbt_item

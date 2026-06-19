@@ -1873,6 +1873,25 @@ def test_op_return_signing(op_return_data, dev, fake_txn, bitcoind_d_sim_watch, 
         assert isinstance(tx_id, str) and len(tx_id) == 64
 
 
+def test_op_return_trailing_data_not_hidden(fake_txn, start_sign, cap_story):
+    weird = b'\x6a\x00\x04hide'   # OP_RETURN OP_0 <push b"hide">
+
+    def hack(psbt):
+        t = CTransaction()
+        t.deserialize(BytesIO(psbt.txn))
+        t.vout[0].scriptPubKey = weird
+        psbt.txn = t.serialize_with_witness()
+
+    psbt = fake_txn(1, 2, segwit_in=True, psbt_v2=False, psbt_hacker=hack)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    flat = story.lower().replace(' ', '')
+    assert 'null-data' not in flat
+    assert weird.hex() in flat
+
+
 @pytest.mark.parametrize("unknowns", [
     # tuples (unknown_global, unknown_ins, unknown_outs)
     ({b"x" * 16: b"y" * 16}, {b"q": b"p"}, {b"w" * 5: b"z" * 22}),
@@ -3225,6 +3244,32 @@ def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_stor
     end_sign(finalize=finalize)
 
 
+def test_txout_explorer_qr_too_big_single_item(fake_txn, start_sign, cap_story, cap_screen,
+                                               need_keypress, pick_menu_item, press_cancel,
+                                               is_q1):
+    if not is_q1:
+        raise pytest.skip("Q1 QR fallback")
+
+    psbt = fake_txn(1, 10, segwit_in=True, psbt_v2=False, op_return=[(0, b'a' * 1000)])
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+
+    need_keypress("2")
+    pick_menu_item("Outputs")
+    time.sleep(.1)
+    need_keypress(KEY_RIGHT)
+    time.sleep(.1)
+    need_keypress(KEY_QR)
+    time.sleep(.5)
+    scr = cap_screen()
+    assert "QR too big" in scr
+
+    press_cancel()
+    press_cancel()
+
+
 def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_ms_import,
                         cap_story, try_sign, reset_seed_words, clear_ms):
     reset_seed_words()
@@ -3552,6 +3597,27 @@ def test_unknown_input_script(stype, fake_txn , start_sign, cap_story, use_testn
     txin_explorer(len(ins), ins)
 
 
+@pytest.mark.parametrize("mi", ["Inputs", "Outputs"])
+def test_tx_explorer_goto_idx_single_item_yikes(mi, fake_txn, start_sign, cap_story, use_testnet,
+                                                need_keypress, pick_menu_item, press_cancel, cap_menu):
+    use_testnet()
+    psbt = fake_txn(1, 1, segwit_in=True)
+    start_sign(psbt)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+
+    need_keypress("2")
+    pick_menu_item(mi)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "(2)" not in story
+    need_keypress("2")  # must not yikes
+    press_cancel()
+    menu = cap_menu()
+    assert "Inputs" in menu
+    assert "Outputs" in menu
+
+
 def test_tx_explorer_goto_idx(fake_txn, start_sign, cap_story, use_testnet, need_keypress,
                               pick_menu_item, cap_screen, enter_number, press_cancel, is_q1):
     use_testnet()
@@ -3616,6 +3682,45 @@ def test_tx_explorer_goto_idx(fake_txn, start_sign, cap_story, use_testnet, need
 
     for _ in range(3):
         press_cancel()
+
+
+def test_input_explorer_foreign_bad_sighash(fake_txn, start_sign, cap_story,
+                                            need_keypress, pick_menu_item, press_cancel,
+                                            use_testnet):
+    # PSBT has a foreign input (not ours) carrying a PSBT_IN_SIGHASH_TYPE value
+    # outside ALL_SIGHASH_FLAGS. consider_dangerous_sighash() only validates
+    # our-key inputs, so the PSBT passes validation and reaches the approval UX.
+    # Browsing the TX Explorer -> Inputs must not crash on the foreign input.
+    use_testnet()
+
+    def hack(psbt):
+        # Make input 0 foreign: replace its xfp prefix with a non-matching one.
+        foreign_xfp = b"\xab\xcd\xef\x01"
+        new_paths = {}
+        for pk, path_bytes in psbt.inputs[0].bip32_paths.items():
+            new_paths[pk] = foreign_xfp + path_bytes[4:]
+        psbt.inputs[0].bip32_paths = new_paths
+        psbt.inputs[0].sighash = 0x05
+
+    psbt = fake_txn(2, 2, segwit_in=True, psbt_hacker=hack)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, _ = cap_story()
+    assert title == "OK TO SEND?"
+
+    need_keypress("2")
+    time.sleep(.1)
+    pick_menu_item("Inputs")
+    time.sleep(.2)
+
+    title, story = cap_story()
+    # foreign input shown first; must render the raw value, not crash
+    assert title == "Input 0"
+    assert "sighash: 0x05 (non-standard)" in story
+
+    press_cancel()
+    press_cancel()
+    press_cancel()
 
 
 @pytest.mark.parametrize("segwit", [True, False])

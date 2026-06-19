@@ -398,7 +398,7 @@ class TrickPinMgmt:
                 continue
 
             if flags & TC_DELTA_MODE:
-                prob, _ = validate_delta_pin(true_pin, pin)
+                prob, arg = validate_delta_pin(true_pin, pin)
                 if prob:
                     # just forget it, no UI here to report issue
                     continue

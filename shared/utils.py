@@ -8,7 +8,7 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
 from charcodes import OUT_CTRL_ADDRESS, OUT_CTRL_NOWRAP
 from uhashlib import sha256
-from public_constants import MAX_PATH_DEPTH, AF_CLASSIC
+from public_constants import MAX_PATH_DEPTH, AF_CLASSIC, AF_P2SH, AF_P2WPKH, AF_P2WSH, AF_P2TR
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
 
@@ -193,29 +193,18 @@ def str2xfp(txt):
     # Inverse of xfp2str
     return ustruct.unpack('<I', a2b_hex(txt))[0]
 
-def is_ascii(s):
-    if len(s) == len(s.encode()):
-        return True
-    return False
 
-def is_printable(s):
-    PRINTABLE = range(32, 127)
-    for ch in s:
-        if ord(ch) not in PRINTABLE:
-            return False
-    return True
-
-def to_ascii_printable(s, strip=False, only_printable=True):
+def to_ascii_printable(s, only_printable=True):
     try:
-        s = str(s, 'ascii')
-        if strip:
-            s = s.strip()
-        assert is_ascii(s)
-        if only_printable:
-            assert is_printable(s)
+        # s must be a string!
+        # in relaxed mode allow \n and \t; reject other C0 controls / DEL
+        extra = b'' if only_printable else b'\t\n'
+        for o in s.encode('ascii'):
+            assert 32 <= o <= 126 or (o in extra)
         return s
     except:
-        raise AssertionError("must be ascii" + (" printable" if only_printable else ""))
+        err = "must be ascii printable" + ("" if only_printable else ", tab, or newline")
+        raise AssertionError(err)
 
 
 def problem_file_line(exc):
@@ -252,7 +241,7 @@ def cleanup_deriv_path(bin_path, allow_star=False):
     # - do not assume /// is m/0/0/0
     # - if allow_star, then final position can be * or *h (wildcard)
 
-    s = to_ascii_printable(bin_path, strip=True).lower()
+    s = to_ascii_printable(str(bin_path, "ascii").strip()).lower()
 
     # empty string is valid
     if s == '': return 'm'
@@ -690,6 +679,35 @@ def decode_bip21_text(got):
         pass
 
     raise ValueError('not bip-21')
+
+def validate_own_address(addr):
+    ch = chains.current_chain()
+    addr_l = addr.lower()
+
+    if addr_l[:3] in ("bc1", "tb1") or addr_l[:5] == 'bcrt1':
+        try:
+            hrp, witver, data = ngu.codecs.segwit_decode(addr)
+
+            assert hrp == ch.bech32_hrp
+            assert witver == 0
+            if len(data) == 20:
+                return addr_l, AF_P2WPKH
+            if len(data) == 32:
+                return addr_l, AF_P2WSH
+        except: pass
+
+    # Bitcoin main/test/reg base58 address prefixes.
+    elif addr and addr[0] in '123mn':
+        try:
+            raw = ngu.codecs.b58_decode(addr)
+            assert len(raw) == 21
+            if raw[0] == ch.b58_addr[0]:
+                return addr, AF_CLASSIC
+            if raw[0] == ch.b58_script[0]:
+                return addr, AF_P2SH
+        except: pass
+
+    assert False, ch.name
 
 def encode_seed_qr(words):
     return ''.join('%04d' % bip39.get_word_index(w) for w in words)
