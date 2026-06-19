@@ -512,6 +512,28 @@ def test_ephemeral_seed_generate(num_words, generate_ephemeral_words, dice,
         restore_main_seed(preserve_settings)
 
 
+def test_ephemeral_seed_import_qr_bad_checksum(reset_seed_words, goto_eph_seed_menu,
+                                               pick_menu_item, scan_a_qr, cap_story,
+                                               press_cancel, is_q1):
+    if not is_q1:
+        pytest.skip('Q1 only (QR scan path)')
+
+    reset_seed_words()
+    goto_eph_seed_menu()
+    pick_menu_item('Import from QR Scan')
+    time.sleep(.1)
+
+    # SeedQR with 12 zero-indices = "abandon" * 12, wordlist-valid but
+    # consensus-invalid BIP-39 checksum.
+    scan_a_qr('0000' * 12)
+    time.sleep(.5)
+
+    title, story = cap_story()
+    assert 'checksum fail' in story
+    press_cancel()
+    press_cancel()
+
+
 @pytest.mark.parametrize("num_words", [12, 18, 24])
 @pytest.mark.parametrize("way", ["input", "nfc", "qr"])
 @pytest.mark.parametrize("truncated", [False, True])

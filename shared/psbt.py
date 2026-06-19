@@ -665,7 +665,7 @@ class psbtInputProxy(psbtProxy):
             # - assuming PSBT creator doesn't give us extra data not required
             # - seems harmless if they fool us into thinking already signed; we do nothing
             # - could also look at pubkey needed vs. sig provided
-            # - could consider structure of MofN in p2sh cases
+            # - structure of MofN is considered in determine_my_signing_key where fully_signed is updated
             self.fully_signed = (len(self.part_sigs) >= len(self.subpaths))
         else:
             # No signatures at all yet for this input (typical non multisig)
@@ -875,6 +875,11 @@ class psbtInputProxy(psbtProxy):
 
             #print("redeem: %s" % b2a_hex(redeem_script))
             M, N = disassemble_multisig_mn(redeem_script)
+
+            if len(self.part_sigs) >= M:
+                self.fully_signed = True
+                return
+
             xfp_paths = list(self.subpaths.values())
             xfp_paths.sort()
 
@@ -1781,8 +1786,6 @@ class psbtObject(psbtProxy):
                 prevouts.add(k)
 
             inp = self.inputs[i]
-            if inp.fully_signed:
-                self.presigned_inputs.add(i)
 
             if not inp.has_utxo():
                 if inp.num_our_keys and not inp.fully_signed:
@@ -1804,6 +1807,11 @@ class psbtObject(psbtProxy):
             # - also validates redeem_script when present
             # - also finds appropriate multisig wallet to be used
             inp.determine_my_signing_key(i, utxo, self.my_xfp, self, cosign_xfp)
+            # determine_my_signing_key is updating fully_signed for multisig inputs
+            # based on redeem/witness script
+            if inp.fully_signed:
+                self.presigned_inputs.add(i)
+
             if inp.required_key and self.wif_store:
                 is_in = False
                 for pk in inp.required_key if isinstance(inp.required_key, set) else [inp.required_key]:

@@ -577,7 +577,11 @@ async def restore_complete(fname_or_fd, temporary=False, words=True, usb=False):
         # give them a menu to pick from, and start picking
         if usb:
             # we're not originating from a menu
-            words = await seed.WordNestMenu.get_n_words(12)
+            words = await seed.WordNestMenu.get_n_words(num_pw_words)
+            if len(words) != num_pw_words:
+                seed.WordNestMenu.pop_all()
+                return
+
             await done(words)
         else:
             m = seed.WordNestMenu(num_words=num_pw_words, has_checksum=False, done_cb=done)

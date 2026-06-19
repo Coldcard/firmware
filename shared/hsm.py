@@ -656,6 +656,15 @@ class HSMPolicy:
         assert not glob.hsm_active
         glob.hsm_active = self
 
+        # HSM is the locked-down operating mode: shut down peripherals
+        # that enlarge the USB-stack interaction surface.
+        # - VDisk: MSC bulk OUT and HID OUT share the STM32 OTG_FS RX FIFO;
+        #   under load this can wedge the HID OUT endpoint permanently
+        if glob.VD is not None:
+            glob.VD.shutdown()
+        if glob.NFC is not None:
+            glob.NFC.shutdown()
+
         self.start_time = utime.ticks_ms()
 
         if new_file:

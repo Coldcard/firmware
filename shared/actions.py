@@ -820,12 +820,15 @@ async def start_login_sequence():
         sp_unlock = tp.was_sp_unlock()
         if sp_unlock:
             # Trying to unlock spending policy: ask for main PIN next.
-            await ux_show_story("Spending Policy Unlock: Please provide Main PIN next.")
-            pa.reset()
-            await block_until_login()
+            while True:
+                await ux_show_story("Spending Policy Unlock: Please provide Main PIN next.")
+                pa.reset()
+                await block_until_login()
+                if pa.has_secrets():
+                    break
 
-            # we don't really know if that was the Main PIN (could easily be the bypass
-            # PIN again) and if it's a duress wallet, that's cool...
+            # Main or duress wallet PINs are acceptable here, but zero-secret
+            # trick PINs are not enough to disable spending policy.
 
         # Do we need to do countdown delay? (real or otherwise)
         # - wiping has already occurred if that was selected by trick details
@@ -938,12 +941,14 @@ async def start_login_sequence():
             settings.master_set("seedvault", False)
         except: pass
 
-    if version.has_nfc and settings.get('nfc', 0):
+
+    from glob import hsm_active
+    if version.has_nfc and settings.get('nfc', 0) and not hsm_active:
         # Maybe allow NFC now
         import nfc
         nfc.NFCHandler.startup()
 
-    if settings.get('vidsk', 0):
+    if settings.get('vidsk', 0) and not hsm_active:
         # Maybe start virtual disk
         import vdisk
         vdisk.VirtDisk()
@@ -1623,7 +1628,7 @@ async def qr_share_file(_1, _2, item):
                     # it's a txn, and we wrote as hex
                     data = data.decode()
                 else:
-                    assert data[2:8] == bytes(6)
+                    assert data[1:4] == bytes(3)
                     data = b2a_hex(data).decode()
             elif data[0:5] == b'psbt\xff':
                 tc = "P"
@@ -1778,6 +1783,7 @@ async def list_files(*A):
                                 assert s not in new_basename, "illegal char"
                             uos.rename(path + "/" + basename, path + "/" + new_basename)
                             basename = new_basename
+                            fn = path + "/" + basename      # keep full path in sync (delete/sign use it)
                         except Exception as e:
                             await ux_show_story("Failed to rename the file. " + str(e),
                                                 title="Failure")
@@ -2444,7 +2450,11 @@ async def scan_any_qr(menu, label, item):
 async def _scan_any_qr(expect_secret=False, tmp=False):
     from ux_q1 import QRScannerInteraction
     x = QRScannerInteraction()
-    await x.scan_anything(expect_secret=expect_secret, tmp=tmp)
+    try:
+        await x.scan_anything(expect_secret=expect_secret, tmp=tmp)
+    except Exception as e:
+        await ux_show_story(msg="Failed to import from QR.\n\n%s\n%s" % (e, problem_file_line(e)),
+                            title="ERROR")
 
 
 PUSHTX_SUPPLIERS = [

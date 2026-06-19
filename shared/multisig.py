@@ -424,6 +424,11 @@ class MultisigWallet(WalletABC):
                 # do not allow to import multi if sortedmulti with the same set of keys
                 # already imported and vice-versa
                 return None, ["BIP-67 clash"], 1
+            elif not self.bip67 and self.xpubs != c.xpubs:
+                # multi(2,A,B) and multi(2,B,A) are consensus-different scripts;
+                # treat as duplicates -- don't allow either if a same-keys variant
+                # in a different order is already enrolled
+                return None, ["key order"], 1
             elif self.name == c.name:
                 return None, [], 1
             else:
@@ -1082,11 +1087,11 @@ class MultisigWallet(WalletABC):
             story = 'Update NAME only of existing multisig wallet?'
         elif num_dups and isinstance(diff_items, list):
             # failures only
-            story = "Duplicate wallet."
+            story = "Duplicate wallet. "
             if diff_items:
                 story += diff_items[0]
             else:
-                story += ' All details are the same as existing!'
+                story += 'All details are the same as existing!'
             is_dup = True
         elif diff_items:
             # Concern here is overwrite when similar, but we don't overwrite anymore, so 

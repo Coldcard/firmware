@@ -2643,7 +2643,8 @@ def txin_explorer(cap_story, press_cancel, need_keypress, is_q1, cap_menu,
             time.sleep(.1)
             title, story = cap_story()
             ss = story.split("\n\n")
-            assert "Press RIGHT to see next group" in ss[-1]
+            if i < (num_inputs - 1):
+                assert "RIGHT to see next group" in ss[-1]
             if i:
                 assert " LEFT to go back" in ss[-1]
             else:
@@ -2718,7 +2719,8 @@ def txout_explorer(cap_story, press_cancel, need_keypress, is_q1, verify_qr_addr
             _, story = cap_story()
             ss = story.split("\n\n")
             assert len(ss) == (len(d) * 2) + 1
-            assert "Press RIGHT to see next group" in ss[-1]
+            if (i + n) < len(data):
+                assert "RIGHT to see next group" in ss[-1]
             if i:
                 assert " LEFT to go back" in ss[-1]
             else:

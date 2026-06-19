@@ -134,7 +134,7 @@ class FullKeyboard(NumpadBase):
             if self._history[kn] == NUM_SAMPLES:
                 self.is_pressed[kn] = 1
                 new_presses.add(kn)
-            elif self._history[i] == 0:
+            elif self._history[kn] == 0:
                 self.is_pressed[kn] = 0
             self._history[kn] = 0
 

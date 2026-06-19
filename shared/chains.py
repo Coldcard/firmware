@@ -264,50 +264,34 @@ class ChainsBase:
 
     @classmethod
     def op_return(cls, script):
-        # returns decoded string op return data if script is op return otherwise None
-        gen = disassemble(script)
-        script_type = next(gen)
-        if OP_RETURN not in script_type:
-            return
+        try:
+            gen = disassemble(script)
+            item, opcode = next(gen)
+        except (StopIteration, ValueError):
+            return None
+
+        if opcode != OP_RETURN:
+            return None
 
         try:
-            data = next(gen)[0]
-            if data:
-                return data
-        except StopIteration:
-            pass
+            try:
+                data, opcode = next(gen)
+            except StopIteration:
+                return b""  # bare OP_RETURN
 
-        return b""
+            try:
+                next(gen)
+                return None  # extra ops/pushes -> raw script display
+            except StopIteration: pass
 
-    @classmethod
-    def possible_address_fmt(cls, addr):
-        # Given a text (serialized) address, return what
-        # address format applies to the address, but
-        # for AF_P2SH case, could be: AF_P2SH,  AF_P2WPKH_P2SH, AF_P2WSH_P2SH. .. we don't know
-        hrp = cls.bech32_hrp + "1"
-        if addr.startswith(hrp):
-            if addr.startswith(hrp+'p'):
-                # segwit v1 (any ver=1 script or address, but for now just taproot...)
-                return AF_P2TR
-            elif addr.startswith(hrp+'q'):
-                # segwit v0
-                return AF_P2WPKH if len(addr) < 55 else AF_P2WSH
+        except ValueError:
+            return None
 
-            return 0
-
-        try:
-            raw = ngu.codecs.b58_decode(addr)
-        except ValueError: 
-            # not base58, not an error
-            return 0
-
-        if raw[0] == cls.b58_addr[0]:
-            return AF_CLASSIC
-        if raw[0] == cls.b58_script[0]:
-            return AF_P2SH
-
-        return 0
-
+        if isinstance(data, bytes):
+            return data
+        if data is None and opcode == 0:
+            return b""  # OP_RETURN OP_0
+        return None
 
 class BitcoinMain(ChainsBase):
     # see <https://github.com/bitcoin/bitcoin/blob/master/src/chainparams.cpp#L140>

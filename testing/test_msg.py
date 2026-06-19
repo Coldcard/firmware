@@ -2,7 +2,7 @@
 #
 # Message signing.
 #
-import pytest, time, os, itertools, hashlib, json
+import pytest, time, os, itertools, hashlib, json, random
 from bip32 import BIP32Node
 from msg import verify_message, RFC_SIGNATURE_TEMPLATE, sign_message, parse_signed_message
 from base64 import b64encode, b64decode
@@ -11,6 +11,7 @@ from ckcc_protocol.constants import *
 from constants import addr_fmt_names, msg_sign_unmap_addr_fmt
 from charcodes import KEY_QR, KEY_NFC
 from helpers import addr_from_display_format
+from bbqr import split_qrs
 
 
 def addr_fmt_from_subpath(subpath):
@@ -543,7 +544,69 @@ def test_sign_msg_fails(dev, sign_on_microsd, msg, subpath, addr_fmt, concern,
     assert concern in story
 
 
-@pytest.mark.parametrize('msg,num_iter,expect', [ 
+def test_sign_msg_malformed_json_subpath_type(open_microsd, microsd_path, goto_home,
+                                              pick_menu_item, cap_story, press_cancel):
+    fname = 't-msgsign-bad.json'
+
+    try: os.unlink(microsd_path(fname))
+    except OSError: pass
+
+    with open_microsd(fname, 'wt') as sd:
+        sd.write(json.dumps({"msg": "hello", "subpath": 84}))
+
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
+    pick_menu_item('Sign Text File')
+    time.sleep(.1)
+    pick_menu_item(fname)
+    time.sleep(.1)
+
+    title, story = cap_story()
+    assert not story.startswith('Ok to sign this?')
+    assert story.startswith('Problem: subpath')
+    press_cancel()
+
+    with open_microsd(fname, 'wt') as sd:
+        sd.write(json.dumps({"msg": "hello", "addr_fmt": 8}))
+
+    pick_menu_item('Sign Text File')
+    time.sleep(.1)
+    pick_menu_item(fname)
+    time.sleep(.1)
+
+    title, story = cap_story()
+    assert not story.startswith('Ok to sign this?')
+    assert story.startswith('Problem: Invalid address format')
+    press_cancel()
+
+
+def test_sign_msg_json_rejects_ui_control_chars(open_microsd, microsd_path,
+                                                goto_home, pick_menu_item, cap_story):
+    # JSON message-sign relaxes printable validation to allow \n and \t, but
+    # other C0 control bytes (e.g. \x01) must still be rejected
+    fname = 't-msgsign-ctrl.json'
+    try: os.unlink(microsd_path(fname))
+    except OSError: pass
+
+    with open_microsd(fname, 'wt') as sd:
+        sd.write(json.dumps({"msg": "\x01CONFIRM SEND\nrealmsg", "subpath": "m"}))
+
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
+    pick_menu_item('Sign Text File')
+    time.sleep(.1)
+    pick_menu_item(fname)
+    time.sleep(.2)
+
+    title, story = cap_story()
+    assert not story.startswith('Ok to sign this?')
+    assert story.startswith('Problem: ')
+    assert 'must be ascii printable, tab, or newline' in story
+
+
+@pytest.mark.parametrize('msg,num_iter,expect', [
     ('Test2', 1, 'IHra0jSywF1TjIJ5uf7IDECae438cr4o3VmG6Ri7hYlDL+pUEXyUfwLwpiAfUQVqQFLgs6OaX0KsoydpuwRI71o='),
     ('Test', 2, 'IDgMx1ljPhLHlKUOwnO/jBIgK+K8n8mvDUDROzTgU8gOaPDMs+eYXJpNXXINUx5WpeV605p5uO6B3TzBVcvs478='),
     ('Test1', 3, 'IEt/v9K95YVFuRtRtWaabPVwWOFv1FSA/e874I8ABgYMbRyVvHhSwLFz0RZuO87ukxDd4TOsRdofQwMEA90LCgI='),
@@ -1019,6 +1082,36 @@ def test_sparrow_qr_sign_msg(msg, path, skip_if_useless_way, need_keypress, scan
     if addr_fmt == AF_CLASSIC:
         res = bitcoind.rpc.verifymessage(addr, sig, ret_msg)
         assert res is True
+
+
+def test_sparrow_qr_sign_msg_via_bbqr(skip_if_useless_way, need_keypress, scan_a_qr,
+                                      cap_story, press_select, msg_sign_export,
+                                      addr_vs_path, verify_msg_sign_story):
+    skip_if_useless_way("qr")
+
+    path = "m/84h/0"
+    msg = "a" * 240
+    data = "signmessage %s ascii:%s" % (path, msg)
+    addr_fmt = addr_fmt_from_subpath(path)
+
+    need_keypress(KEY_QR)
+
+    _, parts = split_qrs(data, 'U', encoding='2', max_version=20)
+    random.shuffle(parts)
+    for p in parts:
+        scan_a_qr(p)
+
+    time.sleep(1)
+
+    title, story = cap_story()
+    subpath = verify_msg_sign_story(story, msg, path, addr_fmt)
+    press_select()
+
+    signed_msg = msg_sign_export("qr")
+    ret_msg, addr, sig = parse_signed_message(signed_msg)
+    assert ret_msg == msg
+    addr_vs_path(addr, subpath, addr_fmt)
+    assert verify_message(addr, sig, ret_msg) is True
 
 
 @pytest.mark.parametrize("msg", [(50*"a")+"\n\n"+(100*"b"), "Balance replenish 564565456254"])

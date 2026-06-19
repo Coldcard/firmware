@@ -138,11 +138,14 @@ async def batt_idle_logout():
     # - even before login
     import glob
     from uasyncio import sleep_ms
-    from glob import settings, dis
+    from glob import settings, dis, SCAN
     import utime
 
     while True:
         await sleep_ms(20000)  # 20 seconds
+
+        if SCAN.busy_scanning:
+            continue
 
         if get_batt_level() is None:
             # on USB power

@@ -238,7 +238,39 @@ def test_cleanup_deriv_path_fails(path, ans, sim_exec, star=True):
 
     assert 'Traceback' in rv
     assert ans in rv
-    
+
+
+@pytest.mark.parametrize('script_hex, expect', [
+    # not OP_RETURN -> None
+    ('51', None),                                # OP_1
+    ('0014' + '00'*20, None),                    # p2wpkh
+    # real null-data -> b""
+    ('6a', b''),                                 # bare OP_RETURN
+    ('6a00', b''),                               # OP_RETURN OP_0
+    ('6a4c00', b''),                             # OP_RETURN PUSHDATA1 len 0 (empty push)
+    # single push -> the data
+    ('6a0468696465', b'hide'),                   # OP_RETURN <push "hide">
+    ('6a01ff', b'\xff'),                         # OP_RETURN <push 0xff>
+    # data behind OP_RETURN -> None (caller shows raw script)
+    ('6a000468696465', None),                    # OP_RETURN OP_0 <push "hide">
+    ('6a04414141410442424242', None),            # OP_RETURN <push><push>
+    ('6a55', None),                              # OP_RETURN OP_5
+    # non-push opcode after OP_RETURN (not OP_0) -> None, not null-data
+    ('6a76', None),                              # OP_RETURN OP_DUP
+    ('6a6a', None),                              # OP_RETURN OP_RETURN
+    # truncated / malformed pushes after OP_RETURN -> None (show raw script)
+    ('6a04ff', None),                            # OP_RETURN <direct push len 4, only 1 byte>
+    ('6a4c04ff', None),                          # OP_RETURN PUSHDATA1 len 4, only 1 byte
+    ('6a4d', None),                              # OP_RETURN PUSHDATA2 truncated length
+    ('', None),                                  # empty script
+])
+def test_op_return_decode(script_hex, expect, sim_exec):
+    cmd = ('from chains import BitcoinMain; from ubinascii import unhexlify; '
+           'RV.write(repr(BitcoinMain.op_return(unhexlify(%r))))' % script_hex)
+    rv = sim_exec(cmd)
+    assert 'Traceback' not in rv, rv
+    assert rv == repr(expect)
+
 
 @pytest.mark.parametrize('patterns, paths, answers', [
     (["m"], ("m", "m/2", "*", "any"), [True, False, False, False]),
@@ -326,16 +358,30 @@ def test_word_wrap(txt, target, width, sim_exec):
     assert lines == target
 
 
+def check_own_address_detect(addr, sim_exec):
+    cmd = f"""
+from glob import settings
+from utils import validate_own_address
+rv = []
+for ctype in ('BTC', 'XTN', 'XRT'):
+    settings.set('chain', ctype)
+    try:
+        rv.append((ctype, validate_own_address({addr!r})[1]))
+    except:
+        rv.append((ctype, 0))
+settings.set('chain', 'XTN')
+RV.write(repr(rv))
+"""
+    lst = sim_exec(cmd)
+    assert 'Error' not in lst
+    return eval(lst)
+
+
 @pytest.mark.parametrize('addr,net,fmt', [
     ( 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', 'BTC', AF_P2WPKH ),
 ])
 def test_addr_detect(addr, net, fmt, sim_exec):
-    cmd = f'from chains import AllChains; RV.write(repr([(ch.ctype, ch.possible_address_fmt({addr!r})) for ch in AllChains]))'
-    print(cmd)
-    lst = sim_exec(cmd)
-    assert 'Error' not in lst
-
-    for got_net, match in eval(lst):
+    for got_net, match in check_own_address_detect(addr, sim_exec):
         if match:
             assert net == got_net
             assert match == fmt
@@ -356,16 +402,11 @@ def test_addr_fake_detect(addr_fmt, testnet, sim_exec):
 
     addr = fake_address(addr_fmt, testnet)
 
-    cmd = f'from chains import AllChains; RV.write(repr([(ch.ctype, ch.possible_address_fmt({addr!r})) for ch in AllChains]))'
-    lst = sim_exec(cmd)
-    assert 'Error' not in lst
-    #print(lst)
-
     expect_net = ('BTC' if not testnet else 'XTN')
 
     expect_addr_fmt = addr_fmt if addr_fmt not in { AF_P2WSH_P2SH, AF_P2WPKH_P2SH } else AF_P2SH
 
-    for got_net, match in eval(lst):
+    for got_net, match in check_own_address_detect(addr, sim_exec):
         if match:
             if got_net == 'XRT':
                 assert expect_net == 'XTN'

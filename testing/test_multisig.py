@@ -3381,6 +3381,34 @@ def test_bare_cc_ms_qr_import(N, make_multisig, scan_a_qr, clear_ms, goto_home,
     press_cancel()
 
 
+def test_ms_qr_import_per_cosigner_paths(make_multisig, scan_a_qr, clear_ms, goto_home,
+                                         pick_menu_item, cap_story, press_cancel, is_q1):
+    # this wasn't tested
+    # not needed on EDGE
+    if not is_q1:
+        raise pytest.skip("No QR support for Mk4")
+    clear_ms()
+    M, N = 2, 3
+    deriv_tmpl = "m/214748364{idx}h/" + "/".join(["2147483647h"] * 11)   # 12 components
+    keys = make_multisig(M, N, deriv=deriv_tmpl)
+    config = "Name: per-path-qr\nPolicy: %d of %d\nFormat: P2WSH\n\n" % (M, N)
+    for idx, (xfp, master, sub) in enumerate(keys):
+        config += "Derivation: %s\n%s: %s\n\n" % (deriv_tmpl.format(idx=idx),
+                                                  xfp2str(xfp), sub.hwif(as_private=False))
+
+    actual_vers, parts = split_qrs(config, 'U', max_version=20)
+    random.shuffle(parts)
+    goto_home()
+    pick_menu_item("Scan Any QR Code")
+    for p in parts:
+        scan_a_qr(p)
+        time.sleep(2.0 / len(parts))
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Create new multisig wallet?" in story
+    press_cancel()
+
+
 @pytest.mark.parametrize("desc", ["multi", "sortedmulti"])
 @pytest.mark.parametrize("data", [
     # (out_style, amount, is_change)
@@ -3442,6 +3470,78 @@ def test_import_duplicate_shuffled_keys_legacy(clear_ms, make_multisig, import_m
     assert 'Duplicate wallet' in story
     assert f'{OK} to approve' not in story
     press_cancel()
+
+def test_import_reorder_different_name_multi(clear_ms, make_multisig, offer_ms_import,
+                                              settings_set, cap_story, press_select,
+                                              press_cancel):
+    settings_set("unsort_ms", 1)
+    clear_ms()
+    M, N = 2, 3
+    keys = make_multisig(M, N)
+
+    def build_desc(klist):
+        key_list = [(xfp, "m/45h", sk.hwif(as_private=False)) for xfp, _, sk in klist]
+        d = MultisigDescriptor(M=M, N=N, keys=key_list, addr_fmt=AF_P2WSH, is_sorted=False)
+        return d.serialize()
+
+    val_a = json.dumps({"name": "victim", "desc": build_desc(keys)})
+    title, story = offer_ms_import(val_a)
+    assert "Create new multisig" in story
+    press_select()
+    time.sleep(.1)
+
+    keys[0], keys[1] = keys[1], keys[0]
+    val_b = json.dumps({"name": "attacker", "desc": build_desc(keys)})
+    title, story = offer_ms_import(val_b)
+    assert "Update NAME only" not in story
+    assert "Duplicate wallet. key order" in story
+    press_cancel()
+
+
+@pytest.mark.parametrize("is_sorted", [True, False])
+def test_import_same_keys_same_order_rename(is_sorted, clear_ms, make_multisig, offer_ms_import,
+                                            settings_set, cap_story, press_select, press_cancel):
+    settings_set("unsort_ms", 1)
+    clear_ms()
+    M, N = 2, 3
+    keys = make_multisig(M, N)
+    key_list = [(xfp, "m/45h", sk.hwif(as_private=False)) for xfp, _, sk in keys]
+    desc = MultisigDescriptor(M=M, N=N, keys=key_list, addr_fmt=AF_P2WSH,
+                              is_sorted=is_sorted).serialize()
+
+    title, story = offer_ms_import(json.dumps({"name": "original", "desc": desc}))
+    assert "Create new multisig" in story
+    press_select()
+    time.sleep(.1)
+
+    title, story = offer_ms_import(json.dumps({"name": "renamed", "desc": desc}))
+    assert "Update NAME only" in story
+    assert "Duplicate wallet" not in story
+    press_cancel()
+
+
+def test_import_sortedmulti_reorder_rename(clear_ms, make_multisig, offer_ms_import,
+                                           cap_story, press_select, press_cancel):
+    clear_ms()
+    M, N = 2, 3
+    keys = make_multisig(M, N)
+
+    def build_desc(klist):
+        key_list = [(xfp, "m/45h", sk.hwif(as_private=False)) for xfp, _, sk in klist]
+        return MultisigDescriptor(M=M, N=N, keys=key_list, addr_fmt=AF_P2WSH,
+                                  is_sorted=True).serialize()
+
+    title, story = offer_ms_import(json.dumps({"name": "original", "desc": build_desc(keys)}))
+    assert "Create new multisig" in story
+    press_select()
+    time.sleep(.1)
+
+    keys[0], keys[1] = keys[1], keys[0]
+    title, story = offer_ms_import(json.dumps({"name": "renamed", "desc": build_desc(keys)}))
+    assert "Update NAME only" in story
+    assert "Duplicate wallet" not in story
+    press_cancel()
+
 
 @pytest.mark.parametrize("order", list(itertools.product([True, False], repeat=2)))
 def test_import_duplicate_shuffled_keys(clear_ms, make_multisig, import_ms_wallet,
@@ -4207,7 +4307,7 @@ def test_fwd_slash_in_name(import_ms_wallet, clear_ms, pick_menu_item, need_keyp
 
 @pytest.mark.parametrize("chain", ["BTC", "XTN"])
 @pytest.mark.parametrize("M_N", [(3, 5)])#, (14, 15)])
-@pytest.mark.parametrize("complete", [True, False, None])
+@pytest.mark.parametrize("complete", [False, None])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh", "p2sh-p2wsh"])
 def test_txin_explorer(dev, chain, M_N, addr_fmt, fake_ms_txn, start_sign, settings_set, txin_explorer,
                        cap_story, pytestconfig, import_ms_wallet, complete, clear_ms):
@@ -4222,9 +4322,7 @@ def test_txin_explorer(dev, chain, M_N, addr_fmt, fake_ms_txn, start_sign, setti
                             descriptor=True, addr_fmt=addr_fmt)
 
     all_xfps = [xfp2str(k[0]) for k in keys][:-1] # remove myself
-    if complete:
-        target_xfps = all_xfps[:M]
-    elif complete is False:
+    if complete is False:
         target_xfps = all_xfps[:M-1]
     else:
         target_xfps = []
@@ -4286,4 +4384,43 @@ def test_ms_xpubs_account_cancel(goto_home, pick_menu_item, press_cancel, cap_me
     press_cancel()
     time.sleep(.2)
     assert "Export XPUB" in cap_menu()
+
+
+@pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh", "p2sh"])
+@pytest.mark.parametrize("num_ins", [1, 10])
+@pytest.mark.parametrize("incl_self", [True, False])
+def test_fully_signed(addr_fmt, num_ins, import_ms_wallet, fake_ms_txn, start_sign, cap_story,
+                      press_cancel, clear_ms, incl_self):
+    clear_ms()
+    M, N = 2, 4
+    keys = import_ms_wallet(M, N, name='fully_signed', accept=True, netcode="XTN",
+                            descriptor=True, addr_fmt="p2wsh")
+
+    # both below cases include full necessary (dummy)signature set (M)
+    if incl_self:
+        i, j = 2, 4  # remove two random co-signers, keep myself as already signed
+    else:
+        i, j = 0, 2  # remove myself + one more random co-signer
+
+    xfps = [xfp2str(k[0]) for k in keys][i:j]
+
+    assert len(xfps) == M
+
+    def hack(psbt):
+        for inp in psbt.inputs:
+            for i, (pk, pth) in enumerate(inp.bip32_paths.items()):
+                xfp = pth[:4].hex().upper()
+                if xfp in xfps:
+                    inp.part_sigs[pk] = os.urandom(71)  # fake sig
+
+    psbt = fake_ms_txn(num_ins, 2, M, keys, inp_af=unmap_addr_fmt[addr_fmt],
+                       hack_psbt=hack)
+
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Failure" == title
+    assert "completely signed already" in story
+    press_cancel()
+
 # EOF

@@ -542,6 +542,8 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, num_ins, dev, clea
         if 'Finalized TX' in body:
             break
 
+        assert "shared via USB" not in body
+        assert "Updated PSBT is" not in story  # assert not written to SD/Vdisk
         assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
         num_sigs_needed -= 1
 
@@ -651,6 +653,52 @@ def test_teleport_big_ms(make_myself_wallet, clear_ms, fake_ms_txn, try_sign, ca
     press_cancel()
 
 
+def test_teleport_file_psbt_uses_loaded_file(make_myself_wallet, clear_ms, fake_ms_txn, cap_story,
+                                             need_keypress, cap_menu, pick_menu_item, grab_payload,
+                                             rx_complete, set_master_key, goto_home, settings_get,
+                                             settings_set, open_microsd, import_ms_wallet, press_cancel):
+    clear_ms()
+    M, N = 2, 4
+    keys = import_ms_wallet(M, N, name='ms-tp', unique=11, accept=True,
+                            descriptor=False, bip67=True)
+    psbt = fake_ms_txn(1, 1, M, keys)
+
+    fname = 'ms-tp.psbt'
+    open_microsd(fname, 'wb').write(psbt)
+
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
+    pick_menu_item('Teleport Multisig PSBT')
+    need_keypress('1')
+    try:
+        pick_menu_item(fname)
+    except KeyError:
+        pass
+
+    m = cap_menu()
+    assert len(m) == N
+    target = next(i for i in m if 'YOU' not in i)
+    target_xfp = str2xfp(target[1:9])
+    # forward the (unsigned) file to this co-signer, instead of signing first and forwarding after
+    pick_menu_item(target)
+
+    pw, data, qr_raw = grab_payload('E')
+
+    tmp_ms = settings_get('multisig')
+
+    # become that co-signer; give it the one wallet it shares with us
+    node, = [n for x, n, _ in keys if x == target_xfp]
+    set_master_key(node.hwif(as_private=True))
+    settings_set('multisig', [tmp_ms[-1]])
+
+    # with the bug the payload is stale/zero bytes or whatever was in OUT_OFFSET -> PSBT load fails;
+    rx_complete(('E', qr_raw), pw, expect_xfp=simulator_fixed_xfp)
+    title, body = cap_story()
+    assert title == 'OK TO SEND?'
+    press_cancel()
+
+
 @pytest.mark.manual
 def test_teleport_real_ms(dev, fake_ms_txn):
     #
@@ -755,6 +803,29 @@ def test_send_backup(testcase, rx_start, tx_start, cap_menu, enter_complex, pick
         restore_backup_unpacked()
         assert settings_get('notes') == notes
         settings_set('notes', [])
+
+
+def test_teleport_backup_invalid_raw_secret(grab_payload, rx_complete, goto_home,
+                                            pick_menu_item, cap_story, is_q1):
+    # yikes. Must instead show a clean FAILED story.
+    if not is_q1:
+        raise pytest.skip("Q1 Key Teleport")
+    from teleport_protocol import sender_step1
+
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('Key Teleport (start)')
+    code, _qr_data, qr_raw = grab_payload('R')
+
+    bad_backup = b'chain = "XTN"\n'
+    cleartext = b'b' + bad_backup
+    noid_txt, encrypted_payload, _, _ = sender_step1(code, qr_raw, cleartext)
+
+    rx_complete(('S', encrypted_payload), noid_txt)
+    time.sleep(.5)
+    title, body = cap_story()
+    assert title == 'FAILED'
+    assert "Invalid backup" in body
 
 
 def test_hobble_limited(set_hobble, scan_a_qr, cap_menu, cap_screen, pick_menu_item, grab_payload,

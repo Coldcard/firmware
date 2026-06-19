@@ -488,7 +488,7 @@ NormalSystem = [
     MenuItem("Address Explorer", menu=address_explore, shortcut='x'),
     MenuItem('Secure Notes & Passwords', menu=make_notes_menu, shortcut='n',
                  predicate=lambda: version.has_qwerty and settings.get("secnap", False)),
-    MenuItem('Type Passwords', f=password_entry, shortcut='t',
+    MenuItem('Type Passwords', f=password_entry, shortcut='e',
              predicate=lambda: settings.get("emu", False) and has_secrets()),
     MenuItem('Seed Vault', menu=make_seed_vault_menu, shortcut='v',
              predicate=lambda: settings.master_get('seedvault') and has_secrets()),

@@ -11,6 +11,15 @@ from bbqr import TYPE_LABELS
 from utils import decode_bip21_text
 
 
+def decode_qr_text(got):
+    if isinstance(got, str):
+        return got
+
+    try:
+        return got.decode()
+    except UnicodeError:
+        raise QRDecodeExplained('UTF-8 decode failed')
+
 def decode_seed_qr(data):
     # SeedQR: 4 digit groups of index into word list
     parts = [data[pos:pos + 4] for pos in range(0, len(data), 4)]
@@ -39,6 +48,8 @@ def decode_secret(got):
     # - xprv / tprv
     # - words (either full or prefixes, case insensitive)
     # - SeedQR (github.com/SeedSigner/seedsigner/blob/dev/docs/seed_qr/README.md)
+    # - word lists are NOT BIP-39-checksum-validated here. Callers that
+    #   require a valid seed must run bip39.a2b_words(...)
 
     if len(got) > 300:
         raise ValueError("Too big.")
@@ -51,7 +62,7 @@ def decode_secret(got):
         # xprv or tprv: private key import for sure
         # - verify checksum is right
         try:
-            raw = ngu.codecs.b58_decode(got)  
+            ngu.codecs.b58_decode(got)
         except:
             raise ValueError('corrupt xprv?')
 
@@ -63,7 +74,7 @@ def decode_secret(got):
             kp, testnet, compressed = decode_wif(got)
             return 'wif', (got, kp, compressed, testnet)
         except: pass
-    
+
     taste = got.strip().lower()
 
     if taste.isdigit():
@@ -108,11 +119,8 @@ def decode_qr_result(got, expect_secret=False, expect_text=False, expect_bbqr=Fa
             return got.decode()
 
         if ty == 'P':
-            # may already be in PSRAM, avoid a copy here
-            from glob import PSRAM
-            if PSRAM.is_at(got, 0):
-                got = 'PSRAM'       # see qr_psbt_sign()
-
+            # `got` is the literal 'PSRAM' from BBQrPsramStorage when data already there
+            # otherwise it's real bytes
             return 'psbt', (None, final_size, got)
 
         elif ty == 'T':
@@ -120,9 +128,10 @@ def decode_qr_result(got, expect_secret=False, expect_text=False, expect_bbqr=Fa
 
         elif ty == 'U':
             # continue thru code below for TEXT
-            pass
+            got = decode_qr_text(got)
 
         elif ty == 'J':
+            got = decode_qr_text(got)
             what = "json"
             if "msg" in got:
                 what = "smsg"
@@ -187,12 +196,7 @@ def decode_short_text(got):
     # - if bad checksum on bitcoin addr, we treat as text... since might be
     # return: what-it-is, (tuple)
 
-    if not isinstance(got, str):
-        # decode utf-8
-        try:
-            got = got.decode()
-        except UnicodeError:
-            raise QRDecodeExplained('UTF-8 decode failed')
+    got = decode_qr_text(got)
 
     # might be a PSBT?
     if len(got) > 100:
@@ -227,10 +231,11 @@ def decode_short_text(got):
         cc_ms_pat = r"[0-9a-fA-F]+\s*:\s*[xtyYzZuUvV]pub[1-9A-HJ-NP-Za-km-z]+"
         rgx = ure.compile(cc_ms_pat)
         # go line by line and match above, once 2 matches observed - considered multisig
-        # important to not use ure.search for big strings (can run out of stack)
+        # important to not use ure.search for big strings (can run out of stack);
+        # a real line here is a "<8-hex xfp>: <xpub>" key (~121 chars)
         c = 0  # match count
         for l in got.split("\n"):
-            if rgx.search(l):
+            if len(l) <= 150 and rgx.search(l):
                 c += 1
             if c > 1:
                 return 'multi', (got,)

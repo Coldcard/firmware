@@ -443,6 +443,49 @@ def test_xor_import_empty(parts, expect, pick_menu_item, cap_story, need_keypres
     reset_seed_words()
 
 
+def test_blank_tmp_seed_xor_restore(unit_test, goto_eph_seed_menu, pick_menu_item, cap_story,
+                                    choose_by_word_length, word_menu_entry, need_keypress, OK,
+                                    confirm_tmp_seed, verify_ephemeral_secret_ui, reset_seed_words):
+    # From the Temporary Seed menu, Seed XOR restore must not persist into a blank SE.
+    parts = [zero16, ones16]
+    expect = ones16
+    num_words = 12
+
+    unit_test('devtest/clear_seed.py')
+
+    goto_eph_seed_menu()
+    pick_menu_item('Restore Seed XOR')
+
+    time.sleep(0.1)
+    title, body = cap_story()
+    assert 'all the parts' in body
+    assert f"Press {OK} for 24 words" in body
+    assert "press (1)" in body
+    assert "press (2)" in body
+
+    choose_by_word_length(num_words)
+    time.sleep(0.01)
+
+    for n, part in enumerate(parts):
+        word_menu_entry(part.split())
+
+        time.sleep(0.01)
+        title, body = cap_story()
+        assert f"You've entered {n + 1} parts so far" in body
+
+        if n != len(parts) - 1:
+            assert "Or (2)" not in body
+            need_keypress('1')
+        else:
+            assert "Or (2) if done" in body
+            assert f"{num_words}: {expect.split()[-1]}" in body
+
+    need_keypress('2')
+    confirm_tmp_seed(seedvault=False)
+    verify_ephemeral_secret_ui(mnemonic=expect.split(), seed_vault=False)
+    reset_seed_words()
+
+
 @pytest.mark.parametrize("num_words", [12, 24])
 @pytest.mark.parametrize("num_parts", [2, 4, 20])
 @pytest.mark.parametrize("incl_self", [True, False])

@@ -532,7 +532,7 @@ class USBHandler:
             assert 50 < txn_len <= MAX_TXN_LEN, "badlen"
 
             from auth import sign_transaction
-            sign_transaction(txn_len, (flags & STXN_FLAGS_MASK), txn_sha)
+            sign_transaction(txn_len, (flags & STXN_FLAGS_MASK), txn_sha, input_method="usb")
             return None
 
         if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok':

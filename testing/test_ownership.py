@@ -268,6 +268,56 @@ def test_ux(valid, testnet, method,
         assert "1 wallet(s)" in story
         assert 'without finding a match' in story
 
+
+@pytest.mark.parametrize('addr', [
+    '7FzPuteovG12fi',       # valid Base58Check, but not a payment address
+    '14h3c6cfU92',          # valid Base58Check, but wrong payload length
+    'tb1pqqqq4cagmm',       # valid Bech32, but wrong chain
+    bech32_encode('tb', 1, bytes(range(32))),     # valid Bech32m, but not supported here
+])
+@pytest.mark.parametrize('method', ['qr', 'nfc'])
+def test_invalid_address_ownership(addr, method, goto_home, pick_menu_item,
+                                   scan_a_qr, cap_story, need_keypress,
+                                   nfc_write, load_shared_mod, src_root_dir,
+                                   sim_root_dir, skip_if_useless_way, use_testnet):
+    skip_if_useless_way(method)
+    use_testnet()
+
+    if method == 'qr':
+        goto_home()
+        pick_menu_item('Scan Any QR Code')
+        scan_a_qr(addr)
+        time.sleep(1)
+
+        title, story = cap_story()
+
+        assert addr == addr_from_display_format(story.split("\n\n")[0])
+        assert '(1) to verify ownership' in story
+        need_keypress('1')
+
+    elif method == 'nfc':
+        cc_ndef = load_shared_mod('cc_ndef', f'{src_root_dir}/shared/ndef.py')
+        n = cc_ndef.ndefMaker()
+        n.add_text(addr)
+        ccfile = n.bytes()
+
+        goto_home()
+        pick_menu_item('Advanced/Tools')
+        pick_menu_item('NFC Tools')
+        pick_menu_item('Verify Address')
+        with open(f'{sim_root_dir}/debug/nfc-addr.ndef', 'wb') as f:
+            f.write(ccfile)
+        nfc_write(ccfile)
+
+
+    time.sleep(1)
+    title, story = cap_story()
+    assert addr == addr_from_display_format(story.split("\n\n")[0])
+    assert title == 'Unknown Address'
+    assert 'That address is not valid on Bitcoin Testnet' in story
+    assert 'without finding a match' not in story
+
+
 @pytest.mark.parametrize("af", ["P2SH-Segwit", "Segwit P2WPKH", "Classic P2PKH", "ms0"])
 def test_address_explorer_saver(af, wipe_cache, settings_set, goto_address_explorer,
                                 pick_menu_item, need_keypress, sim_exec, clear_ms,
@@ -481,8 +531,7 @@ def test_ae_saver(wipe_cache, settings_set, goto_address_explorer, cap_story,
 
 def test_regtest_addr_on_mainnet(goto_home, is_q1, pick_menu_item, scan_a_qr, nfc_write, cap_story,
                                  need_keypress, load_shared_mod, use_mainnet, src_root_dir, sim_root_dir):
-    # testing bug in chains.possible_address_fmt
-    # allowed regtest addresses to be allowed on main chain
+    # Regtest addresses must not be accepted on main chain.
     goto_home()
     use_mainnet()
     addr = "bcrt1qmff7njttlp6tqtj0nq7svcj2p9takyqm3mfl06"
