@@ -344,17 +344,20 @@ async def kt_accept_values(dtype, raw):
 
         # This will take over UX w/ the signing process
         # flags=None --> whether to finalize is decided based on psbt.is_complete
-        sign_transaction(psbt_len, flags=None)
+        sign_transaction(psbt_len, flags=None, input_method="kt")
         return
 
     elif dtype == 'b':
         # full system backup, including master: text lines
         from backups import text_bk_parser, restore_tmp_from_dict_ll, restore_from_dict, extract_raw_secret
 
-        vals = text_bk_parser(raw)
-        assert vals         # empty?
-
-        raw_sec, _ = extract_raw_secret(vals)
+        try:
+            vals = text_bk_parser(raw)
+            assert vals         # empty?
+            raw_sec, _ = extract_raw_secret(vals)
+        except Exception as e:
+            await ux_show_story("Invalid backup\n\n" + str(e), title='FAILED')
+            return
 
         from flow import has_secrets
 
@@ -658,10 +661,8 @@ async def kt_send_psbt(psbt, psbt_len, psbt_offset):
         await ux_show_story("No more signers?")
         return
 
-    # move out of PSRAM
-    from auth import TXN_OUTPUT_OFFSET
-
-    with SFFile(TXN_OUTPUT_OFFSET, psbt_len) as fd:
+    # (TXN_OUTPUT_OFFSET after signing, TXN_INPUT_OFFSET for the file-teleport path)
+    with SFFile(psbt_offset, psbt_len) as fd:
         bin_psbt = fd.read(psbt_len)
 
     my_xfp = settings.get('xfp')
@@ -694,7 +695,7 @@ async def kt_send_psbt(psbt, psbt_len, psbt_offset):
                 async def sign_now(*a):
                     # this will reset the UX stack:
                     # flags=None --> whether to finalize is decided based on psbt.is_complete
-                    sign_transaction(psbt_len, flags=None, offset=psbt_offset)
+                    sign_transaction(psbt_len, flags=None, input_method="kt", offset=psbt_offset)
                 
                 f = sign_now
 

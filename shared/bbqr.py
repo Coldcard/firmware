@@ -439,5 +439,18 @@ class BBQrPsramStorage(BBQrStorage):
         from glob import PSRAM
         return PSRAM.read_at(0, self.final_size)
 
+    def finalize(self):
+        self._finalize()
+
+        if self.hdr.encoding == 'Z':
+            self.zlib_decompress()
+
+        # PSBT-typed BBQrs end up at PSRAM[0..size]
+        # skip a redundant PSRAM->heap->PSRAM round-trip
+        if self.hdr.file_type == 'P':
+            return self.hdr.file_type, self.final_size, 'PSRAM'
+
+        return self.hdr.file_type, self.final_size, self.get_buffer()
+
 
 # EOF

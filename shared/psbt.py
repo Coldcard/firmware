@@ -964,6 +964,17 @@ class psbtInputProxy(psbtProxy):
                         assert i == self.sp_idxs[0]
 
             else:
+                # A standard multisig input is complete once its script threshold is met,
+                # not only when every listed pubkey has signed. Other miniscript forms
+                # are handled by the existing wallet/script validation below.
+                try:
+                    M, _ = disassemble_multisig_mn(redeem_script)
+                    if len(self.part_sigs or []) >= M:
+                        self.fully_signed = True
+                        return
+                except:
+                    pass
+
                 # Assume we'll be signing with any key we know
                 # - but if partial sig already in place, ignore that one
                 self.is_miniscript = True
@@ -2099,7 +2110,8 @@ class psbtObject(psbtProxy):
                 # - assuming PSBT creator doesn't give us extra data not required
                 # - seems harmless if they fool us into thinking already signed; we do nothing
                 # - could also look at pubkey needed vs. sig provided
-                # - could consider structure of MofN in p2sh cases
+                # - structure of standard M-of-N scripts is considered later in
+                #   determine_my_signing_key, where fully_signed is updated
                 if len(inp.part_sigs) >= len(inp.subpaths):
                     inp.fully_signed = True
 
@@ -2171,6 +2183,12 @@ class psbtObject(psbtProxy):
                 # - also finds appropriate miniscript wallet to be used
                 inp.determine_my_signing_key(i, addr_or_pubkey, self.my_xfp, self,
                                              parsed_subpaths, utxo)
+
+                # determine_my_signing_key updates fully_signed from the actual
+                # threshold for standard multisig scripts.
+                if inp.fully_signed:
+                    presigned_inputs.add(i)
+                    continue
 
                 # determine_my_signing_key may have removed sp_idxs
                 # meaning we're not going to sign this input - other wallet in use

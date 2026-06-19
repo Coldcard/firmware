@@ -700,6 +700,52 @@ def test_sssp_bypass_pin(request, word_check, randomize):
     device.close()
 
 
+def test_sssp_bypass_pin_alone_no_login(request):
+    main_pin = "22-22"
+    bypass_pin = "111-111"
+    is_Q = request.config.getoption('--Q')
+
+    clean_sim_data()
+    sim = ColdcardSimulator(args=["--q1"] if is_Q else [])
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+
+    _pick_menu_item(device, is_Q, "Advanced/Tools")
+    _pick_menu_item(device, is_Q, "Spending Policy")
+    _pick_menu_item(device, is_Q, "Single-Signer")
+    _press_select(device, is_Q)
+    _login(device, is_Q, bypass_pin)
+    _login(device, is_Q, bypass_pin)
+    time.sleep(2)
+    sim.stop()
+    device.close()
+
+    sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", main_pin, "--early-usb"])
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+
+
+    _login(device, is_Q, bypass_pin)
+    time.sleep(.1)
+    _, story = _cap_story(device)
+    assert "Spending Policy Unlock" in story
+    _press_select(device, is_Q)
+    time.sleep(.1)
+    _login(device, is_Q, bypass_pin)  # bypass PIN a 2nd time, instead of main PIN
+    time.sleep(1.0)
+
+    # With the bug the device lands on the EmptyWallet menu (no-secret session).
+    # With the fix the zero-secret PIN is rejected and login does not complete.
+    scr = _cap_screen(device)
+    assert "New Seed Words" not in scr
+    assert "Import Existing" not in scr
+
+    assert "provide Main PIN" in scr
+
+    sim.stop()
+    device.close()
+
+
 def test_sssp_login_countdown(request):
     bypass_pin = "236-156"
     is_Q = request.config.getoption('--Q')

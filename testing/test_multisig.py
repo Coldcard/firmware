@@ -3580,7 +3580,7 @@ def test_fwd_slash_in_name(import_ms_wallet, clear_miniscript, pick_menu_item, n
 
 @pytest.mark.parametrize("chain", ["BTC", "XTN"])
 @pytest.mark.parametrize("M_N", [(3, 5)])#, (14, 15)])
-@pytest.mark.parametrize("complete", [True, False, None])
+@pytest.mark.parametrize("complete", [False, None])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh", "p2sh-p2wsh"])
 def test_txin_explorer(dev, chain, M_N, addr_fmt, fake_ms_txn, start_sign, settings_set, txin_explorer,
                        cap_story, pytestconfig, import_ms_wallet, complete, clear_miniscript):
@@ -3595,9 +3595,7 @@ def test_txin_explorer(dev, chain, M_N, addr_fmt, fake_ms_txn, start_sign, setti
                             addr_fmt=addr_fmt)
 
     all_xfps = [xfp2str(k[0]) for k in keys][:-1] # remove myself
-    if complete:
-        target_xfps = all_xfps[:M]
-    elif complete is False:
+    if complete is False:
         target_xfps = all_xfps[:M-1]
     else:
         target_xfps = []
@@ -3658,4 +3656,37 @@ def test_ms_xpubs_account_cancel(goto_home, pick_menu_item, press_cancel, cap_me
     press_cancel()
     time.sleep(.2)
     assert "Export XPUB" in cap_menu()
+
+
+@pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh", "p2sh"])
+@pytest.mark.parametrize("num_ins", [1, 10])
+@pytest.mark.parametrize("incl_self", [True, False])
+def test_fully_signed(addr_fmt, num_ins, import_ms_wallet, fake_ms_txn, start_sign,
+                      cap_story, press_cancel, clear_miniscript, incl_self):
+    clear_miniscript()
+    M, N = 2, 4
+    keys = import_ms_wallet(M, N, name="fully_signed", accept=True, chain="XTN",
+                            addr_fmt=addr_fmt)
+
+    # Both cases provide the complete threshold of dummy signatures. One set
+    # includes our signer and the other consists only of foreign co-signers.
+    i, j = (2, 4) if incl_self else (0, 2)
+    xfps = [xfp2str(k[0]) for k in keys][i:j]
+    assert len(xfps) == M
+
+    def hack(psbt):
+        for inp in psbt.inputs:
+            for pk, pth in inp.bip32_paths.items():
+                if pth[:4].hex().upper() in xfps:
+                    inp.part_sigs[pk] = os.urandom(71)
+
+    psbt = fake_ms_txn(num_ins, 2, M, keys, inp_addr_fmt=addr_fmt,
+                       hack_psbt=hack)
+
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "completely signed already" in story
+    press_cancel()
 # EOF

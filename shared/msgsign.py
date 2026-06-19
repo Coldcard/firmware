@@ -267,7 +267,7 @@ def validate_text_for_signing(text, only_printable=True):
     # - messages must be short and ascii only. Our charset is limited
     # - too many spaces, leading/trailing can be an issue
     # MSG_MAX_SPACES = 4      # impt. compared to -=- positioning
-
+    text = str(text, "ascii")  # handle memoryview coming from USB
     result = to_ascii_printable(text, only_printable=only_printable)
 
     length = len(result)
@@ -315,6 +315,7 @@ def parse_msg_sign_request(data):
         if text is None:
             raise AssertionError("MSG required")
         subpath = data_dict.get("subpath", subpath)
+        assert isinstance(subpath, str), "subpath"
         addr_fmt = data_dict.get("addr_fmt", addr_fmt)
         is_json = True
     except ValueError:
@@ -333,11 +334,13 @@ def parse_msg_sign_request(data):
         addr_fmt = addr_fmt_from_subpath(subpath)
 
     if not subpath:
-        subpath = chains.STD_DERIVATIONS[addr_fmt]
-        subpath = subpath.format(
-            coin_type=chains.current_chain().b44_cointype,
-            account=0, change=0, idx=0
-        )
+        try:
+            subpath = chains.STD_DERIVATIONS[addr_fmt]
+            subpath = subpath.format(
+                coin_type=chains.current_chain().b44_cointype,
+                account=0, change=0, idx=0
+            )
+        except: pass
 
     return text, subpath, addr_fmt, is_json
 

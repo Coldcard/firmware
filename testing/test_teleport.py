@@ -546,6 +546,8 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, num_ins, dev, clea
         if 'Finalized TX' in body:
             break
 
+        assert "shared via USB" not in body
+        assert "Updated PSBT is" not in body  # not written to SD/Virtual Disk
         assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
         num_sigs_needed -= 1
 
@@ -651,6 +653,50 @@ def test_teleport_big_ms(clear_miniscript, fake_ms_txn, try_sign, cap_story,
     press_cancel()
 
 
+def test_teleport_file_psbt_uses_loaded_file(clear_miniscript, fake_ms_txn, cap_story,
+                                             need_keypress, cap_menu, pick_menu_item,
+                                             grab_payload, rx_complete, set_master_key,
+                                             goto_home, open_microsd, import_ms_wallet,
+                                             press_cancel):
+    clear_miniscript()
+    M, N = 2, 4
+    keys = import_ms_wallet(M, N, name="ms-tp", unique=11, accept=True, bip67=True)
+    psbt = fake_ms_txn(1, 1, M, keys)
+
+    fname = "ms-tp.psbt"
+    open_microsd(fname, "wb").write(psbt)
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("File Management")
+    pick_menu_item("Teleport Multisig/Miniscript PSBT")
+    need_keypress("1")
+    try:
+        pick_menu_item(fname)
+    except KeyError:
+        pass
+
+    menu = cap_menu()
+    assert len(menu) == N
+    target = next(item for item in menu if "YOU" not in item)
+    target_xfp = str2xfp(target[1:9])
+    pick_menu_item(target)
+
+    pw, _, qr_raw = grab_payload("E")
+
+    # Become the selected co-signer and enroll the same edge miniscript wallet.
+    node, = [node for xfp, node, _ in keys if xfp == target_xfp]
+    set_master_key(node.hwif(as_private=True))
+    import_ms_wallet(M, N, name="www", keys=keys, accept=True, bip67=True)
+
+    # Before the fix, this decoded stale/zero output-buffer bytes instead of
+    # the PSBT loaded from the selected file.
+    rx_complete(("E", qr_raw), pw, expect_xfp=simulator_fixed_xfp)
+    title, _ = cap_story()
+    assert title == "OK TO SEND?"
+    press_cancel()
+
+
 @pytest.mark.manual
 def test_teleport_real_ms(dev, fake_ms_txn, sim_root_dir):
     #
@@ -753,6 +799,28 @@ def test_send_backup(testcase, rx_start, tx_start, cap_menu, enter_complex, pick
         restore_backup_unpacked()
         assert settings_get('notes') == notes
         settings_set('notes', [])
+
+
+def test_teleport_backup_invalid_raw_secret(grab_payload, rx_complete, goto_home,
+                                            pick_menu_item, cap_story, is_q1):
+    if not is_q1:
+        raise pytest.skip("Q1 Key Teleport")
+    from teleport_protocol import sender_step1
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Key Teleport (start)")
+    code, _, qr_raw = grab_payload("R")
+
+    bad_backup = b'chain = "XTN"\n'
+    cleartext = b"b" + bad_backup
+    noid_txt, encrypted_payload, _, _ = sender_step1(code, qr_raw, cleartext)
+
+    rx_complete(("S", encrypted_payload), noid_txt)
+    time.sleep(.5)
+    title, body = cap_story()
+    assert title == "FAILED"
+    assert "Invalid backup" in body
 
 
 @pytest.mark.bitcoind

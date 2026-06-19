@@ -12,6 +12,7 @@ from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 from public_constants import AF_P2WPKH
 from msgsign import msg_signing_done
 
+MAX_ITEMS = 30
 
 def decode_wif(wif):
     # Decode base58 encoded WIF string, return keypair and metadata
@@ -33,7 +34,7 @@ def decode_wif(wif):
     return kp, testnet, compressed
 
 
-def iter_wif_store_addresses(chain, addr_fmt):
+def iter_wif_store_addresses(addr_fmt):
     # nothing found among singlesig & registered multisig wallets
     # check WIF store
     wifs = settings.get("wifs", [])
@@ -41,7 +42,37 @@ def iter_wif_store_addresses(chain, addr_fmt):
 
     for i, (pk, sk) in enumerate(wifs):
         node = node_from_pubkey(a2b_hex(pk))
-        yield i, chain.address(node, addr_fmt)
+        yield i, chains.current_chain().address(node, addr_fmt)
+
+
+def save_wif_store_items(new_wifs):
+    saved = settings.get("wifs", [])
+    len_saved = len(saved)
+    unique = []
+    dups = 0
+
+    for item in new_wifs:
+        if item in unique:
+            continue
+
+        if item not in saved:
+            unique.append(item)
+        else:
+            dups += 1
+
+    err = ("No valid WIF key found." + (" Contains duplicate WIF(s)" if dups else ""))
+    assert unique, err
+
+    err = ("Max %d items allowed in WIF Store.\n\nAttempted to import %d keys,"
+           " while remaining WIF store capacity is only %d. Please, make room"
+           " first." % (MAX_ITEMS, len(unique), MAX_ITEMS - len_saved))
+    assert (len_saved + len(unique)) <= MAX_ITEMS, err
+
+    saved.extend(unique)
+    settings.set('wifs', saved)
+    settings.save()
+
+    return len(unique)
 
 
 async def ux_visualize_wif(wif_str, kp, compressed, testnet):
@@ -58,21 +89,18 @@ async def ux_visualize_wif(wif_str, kp, compressed, testnet):
 
     ch = await ux_show_story(msg, title="WIF Key", escape=esc)
     if ch == "1":
-        saved = settings.get("wifs", [])
-        if (pk, sk) in saved:
-            await ux_show_story("Already saved in WIF Store.", title="Failure")
-            return
+        title = "Success"
+        try:
+            save_wif_store_items([(pk, sk)])
+            msg = "Saved to WIF Store."
+        except Exception as e:
+            title = "Failure"
+            msg = str(e)
 
-        saved.append((pk, sk))
-        settings.set('wifs', saved)
-        settings.save()
-
-        await ux_show_story("Saved to WIF Store.", title="Success")
+        await ux_show_story(msg, title=title)
 
 
 class WIFStore(MenuSystem):
-    MAX_ITEMS = 30
-
     def __init__(self):
         items = self.construct()
         super().__init__(items)
@@ -104,7 +132,7 @@ class WIFStore(MenuSystem):
 
         items = []
 
-        if len(wifs) < self.MAX_ITEMS:
+        if len(wifs) < MAX_ITEMS:
             items.append(MenuItem('Import WIF', f=self.import_wif, predicate=not_hobbled_mode))
 
         a_items = []
@@ -299,12 +327,8 @@ class WIFStore(MenuSystem):
         # allow commas, spaces, and newlines as separators
         got = got.replace(',', ' ').split()
 
-        saved = settings.get("wifs", [])
-        len_saved = len(saved)
-
         try:
             new_wifs = []
-            dups = 0
 
             for here in got:
                 here = here.strip()
@@ -323,28 +347,10 @@ class WIFStore(MenuSystem):
                 sk = b2a_hex(kp.privkey()).decode()
                 pk = b2a_hex(kp.pubkey().to_bytes()).decode()
 
-                item = (pk, sk)
-                if item in new_wifs:
-                    # duplicate in import content
-                    continue
+                new_wifs.append((pk, sk))
 
-                if item in saved:       # ignore dups
-                    dups += 1
-                else:
-                    new_wifs.append(item)
+            save_wif_store_items(new_wifs)
 
-            assert new_wifs, 'no valid WIF found' if not dups else 'duplicate WIF(s)'
-
-            if (len_saved + len(new_wifs)) > self.MAX_ITEMS:
-                await ux_show_story("Max %d items allowed in WIF Store.\n\nAttempted to import %d keys,"
-                                    " while remaining WIF store capacity is only %d. Please, make room"
-                                    " first." % (self.MAX_ITEMS, len(new_wifs), self.MAX_ITEMS - len_saved),
-                                    title="Failure")
-                return
-
-            saved.extend(new_wifs)
-            settings.set('wifs', saved)
-            settings.save()
             self.update_contents()
 
         except Exception as e:

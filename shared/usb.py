@@ -582,7 +582,8 @@ class USBHandler:
                     return w
 
             from auth import sign_transaction
-            sign_transaction(txn_len, (flags & STXN_FLAGS_MASK), txn_sha, miniscript_wallet=w)
+            sign_transaction(txn_len, (flags & STXN_FLAGS_MASK), txn_sha,
+                             input_method="usb", miniscript_wallet=w)
             return None
 
         if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok':

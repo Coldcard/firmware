@@ -205,7 +205,7 @@ def bip322_ms_txn(pytestconfig, create_msg_file):
 
             for pubkey, xfp_path in details:
                 psbt.inputs[i].bip32_paths[pubkey] = b''.join(struct.pack('<I', j) for j in xfp_path)
-                if with_sigs and (xfp_path[0] != keys[-1][0]):  # only cosigner signatures are added
+                if with_sigs and (xfp_path[0] != keys[-1][0]) and len(psbt.inputs[i].part_sigs) < (M-1):  # only cosigner signatures are added
                     psbt.inputs[i].part_sigs[pubkey] = b"\x30" + 70*b"a"
 
             if i == 0:

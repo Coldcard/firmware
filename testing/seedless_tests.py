@@ -1,14 +1,14 @@
 # (c) Copyright 2024 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 import pytest, pdb, time, random, os
-from charcodes import KEY_CANCEL
+from charcodes import KEY_CANCEL, KEY_QR
 from core_fixtures import _pick_menu_item, _press_select
-from core_fixtures import _need_keypress, _sim_exec
+from core_fixtures import _need_keypress, _sim_exec, _cap_story
 from run_sim_tests import ColdcardSimulator, clean_sim_data
 from ckcc_protocol.client import ColdcardDevice
 
 
-def test_status_bar_rewrite_after_restore_master(request):
+def test_status_bar_rewrite_after_restore_master():
     from PIL import Image
     clean_sim_data()  # remove all from previous
     sim = ColdcardSimulator(args=["--q1", "-l"])
@@ -38,3 +38,23 @@ def test_status_bar_rewrite_after_restore_master(request):
     rv0.show()
     rv1.show()
     sim.stop()
+
+
+def test_seedless_qr_import_bad_checksum():
+    clean_sim_data()
+    sim = ColdcardSimulator(args=["--q1", "-l"])
+    sim.start(start_wait=3)
+    device = ColdcardDevice(is_simulator=True)
+    try:
+        _need_keypress(device, KEY_QR)
+        time.sleep(.3)
+
+        # Inject a bad-checksum SeedQR via the simulator's scan queue
+        bad_seed = '0000' * 12
+        _sim_exec(device, 'glob.SCAN._q.put_nowait(%r)' % bad_seed.encode())
+        time.sleep(.5)
+
+        title, story = _cap_story(device)
+        assert 'checksum fail' in story
+    finally:
+        sim.stop()

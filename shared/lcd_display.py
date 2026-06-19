@@ -734,7 +734,9 @@ class Display:
             lines = self.handle_qr_msg(msg, max_lines=True)
             self.draw_qr_lines(lines, False)
 
-        self.draw_qr_idx_hint(idx_hint)
+        if idx_hint:
+            self.draw_qr_idx_hint(idx_hint)
+
         self.show()
 
     def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, partial_bar=None,
