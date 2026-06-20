@@ -215,7 +215,6 @@ class SensitiveValues:
             self.deltamode = False
 
             self.mode, self.raw, self.node = SecretStash.decode(self.secret, self._bip39pw)
-            self.spots.append(self.secret)
         else:
             # More typical: fetch the secret from bootloader and SE
             # - but that's real slow, so avoid if possible
