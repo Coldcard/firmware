@@ -2244,7 +2244,7 @@ def verify_backup_file(goto_home, pick_menu_item, cap_story, need_keypress):
         # Check on-device verify UX works.
         goto_home()
         pick_menu_item('Advanced/Tools')
-        pick_menu_item('Backup')
+        pick_menu_item('File Management')
         pick_menu_item('Verify Backup')
         time.sleep(0.1)
         pick_menu_item(os.path.basename(fn))

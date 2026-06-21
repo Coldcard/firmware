@@ -1056,10 +1056,13 @@ def test_qr_share_files(fname, pick_menu_item, goto_home, is_q1, cap_menu, cap_s
 
 @pytest.mark.parametrize("way", ["nfc", "qr"])
 def test_share_binary_txn_file(way, goto_home, pick_menu_item, src_root_dir, sim_root_dir,
-                                press_select, cap_story, cap_screen_qr, is_q1,
-                                nfc_read, nfc_block4rf):
+                                press_select, cap_story, cap_screen_qr, is_q1,enable_nfc,
+                                nfc_read, nfc_block4rf, garbage_collector):
     if way == "qr" and not is_q1:
         pytest.skip("QR share is Q1 only")
+
+    if way == "nfc":
+        enable_nfc()
 
     with open(f"{src_root_dir}/testing/data/devils-txn.txn", "r") as f:
         binary = bytes.fromhex(f.read().strip())
@@ -1067,37 +1070,34 @@ def test_share_binary_txn_file(way, goto_home, pick_menu_item, src_root_dir, sim
 
     fname = "binary-l01.txn"
     dst = f"{sim_root_dir}/MicroSD/{fname}"
+    garbage_collector.append(dst)
     with open(dst, "wb") as f:
         f.write(binary)
 
-    try:
-        goto_home()
-        pick_menu_item("Advanced/Tools")
-        pick_menu_item("File Management")
-        pick_menu_item("NFC File Share" if way == "nfc" else "QR File Share")
-        time.sleep(.1)
-        pick_menu_item(fname)
-        time.sleep(.2)
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("File Management")
+    pick_menu_item("NFC File Share" if way == "nfc" else "QR File Share")
+    time.sleep(.1)
+    pick_menu_item(fname)
+    time.sleep(.2)
 
-        title, story = cap_story()
-        assert "ERROR" not in title
+    title, story = cap_story()
+    assert "ERROR" not in title
 
-        if way == "nfc":
-            nfc_block4rf()
-            res = nfc_read()
-            got_txn = None
-            for got in ndef.message_decoder(res):
-                if got.type == 'urn:nfc:ext:bitcoin.org:txn':
-                    got_txn = bytes(got.data)
-                    break
-            assert got_txn == binary
-            press_select()
-        else:
-            qr = cap_screen_qr()
-            assert qr.decode().lower() == b2a_hex(binary).decode().lower()
-    finally:
-        try: os.remove(dst)
-        except OSError: pass
+    if way == "nfc":
+        nfc_block4rf()
+        res = nfc_read()
+        got_txn = None
+        for got in ndef.message_decoder(res):
+            if got.type == 'urn:nfc:ext:bitcoin.org:txn':
+                got_txn = bytes(got.data)
+                break
+        assert got_txn == binary
+        press_select()
+    else:
+        qr = cap_screen_qr()
+        assert qr.decode().lower() == b2a_hex(binary).decode().lower()
 
 
 @pytest.mark.parametrize("word,cs_word", [
@@ -1120,11 +1120,11 @@ def test_q1_24_8char_words(set_seed_words, is_q1, goto_home, pick_menu_item, pre
     if not is_q1:
         raise pytest.skip("only Q")
 
-    goto_home()
     # longest words in wordlist_en have 8 chars
     words = ([word] * 23) + [cs_word]
     set_seed_words(" ".join(words))
 
+    goto_home()
     pick_menu_item("Advanced/Tools")
     pick_menu_item("Danger Zone")
     pick_menu_item("Seed Functions")
