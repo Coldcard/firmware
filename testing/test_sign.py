@@ -3605,15 +3605,19 @@ def test_tx_explorer_goto_idx_single_item_yikes(mi, fake_txn, start_sign,
     menu = cap_menu()
     assert "Inputs" in menu
     assert "Outputs" in menu
+    press_cancel()
+    press_cancel()
 
 
 def test_tx_explorer_goto_idx(fake_txn, start_sign, cap_story, use_testnet, need_keypress,
-                              pick_menu_item, cap_screen, enter_number, press_cancel, is_q1):
+                              pick_menu_item, cap_screen, enter_number, press_cancel, is_q1,
+                              goto_home):
     use_testnet()
     num_ins = 27
     num_outs = 32
 
     psbt = fake_txn(num_ins, num_outs, addr_fmt="p2wpkh")
+    goto_home()
     start_sign(psbt)
     title, story = cap_story()
     assert title == "OK TO SEND?"
@@ -3675,7 +3679,7 @@ def test_tx_explorer_goto_idx(fake_txn, start_sign, cap_story, use_testnet, need
 
 def test_input_explorer_foreign_bad_sighash(fake_txn, start_sign, cap_story,
                                             need_keypress, pick_menu_item,
-                                            press_cancel, use_testnet):
+                                            press_cancel, use_testnet, goto_home):
     use_testnet()
 
     def hack(psbt):
@@ -3688,6 +3692,7 @@ def test_input_explorer_foreign_bad_sighash(fake_txn, start_sign, cap_story,
         psbt.inputs[0].sighash = 0x05
 
     psbt = fake_txn(2, 2, addr_fmt="p2wpkh", psbt_hacker=hack)
+    goto_home()
     start_sign(psbt)
     time.sleep(.1)
     title, _ = cap_story()
@@ -4070,7 +4075,9 @@ def test_single_multi_psbt(multi, ss_af, ms_af, dev, fake_txn, fake_ms_txn, impo
 
 @pytest.mark.parametrize("addr_fmt", ["p2wpkh", "p2pkh"])
 @pytest.mark.parametrize("num_ins", [2, 110])
-def test_duplicate_inputs(addr_fmt, num_ins, fake_txn, start_sign, end_sign, cap_story):
+def test_duplicate_inputs(addr_fmt, num_ins, fake_txn, start_sign, end_sign, cap_story,
+                          goto_home):
+    goto_home()
     psbt = fake_txn(num_ins, 2, addr_fmt=addr_fmt, dupe_ins=[num_ins-1])
     start_sign(psbt)
     title, story = cap_story()
@@ -4080,7 +4087,8 @@ def test_duplicate_inputs(addr_fmt, num_ins, fake_txn, start_sign, end_sign, cap
         assert title == "OK TO SEND?"
 
 
-def test_txid_qr(fake_txn, start_sign, cap_story, press_cancel, press_select):
+def test_txid_qr(fake_txn, start_sign, cap_story, press_cancel, press_select, goto_home):
+    goto_home()
     psbt = fake_txn(1, 2)
     start_sign(psbt, finalize=False)
     press_select()  # confirm signing
