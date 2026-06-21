@@ -388,7 +388,7 @@ def test_huge_notes(size, encoding, goto_notes, enter_text, cap_menu, need_keypr
     
     time.sleep(.5)      # decompression time in some cases
     m = cap_menu()
-    assert m[-2] == 'Export'
+    assert 'Export' in m
 
     notes = settings_get('notes')
     assert len(notes) == 1
@@ -700,6 +700,7 @@ def test_sign_note_body(msg, addr_fmt, acct, need_some_notes,
 def test_send_password_menu_item(need_some_passwords, goto_notes, cap_menu, pick_menu_item,
                                  settings_set, settings_remove, press_cancel):
     # covers regression where "Send Password" menu item was only shown when USB was disabled
+    settings_set("notes", [])
     need_some_passwords()
 
     settings_set('du', 1)

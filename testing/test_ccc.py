@@ -631,8 +631,9 @@ def policy_sign(start_sign, end_sign, cap_story, get_last_violation):
 @pytest.mark.parametrize("mag", [1000000, None, 2])
 def test_ccc_magnitude(mag_ok, mag, setup_ccc, ccc_ms_setup,
                        bitcoind, settings_set, policy_sign,
-                       bitcoind_create_watch_only_wallet):
+                       bitcoind_create_watch_only_wallet, goto_home):
 
+    goto_home()
     settings_set("ccc", None)
     settings_set("chain", "XRT")
     settings_set("multisig", [])
@@ -669,8 +670,8 @@ def test_ccc_magnitude(mag_ok, mag, setup_ccc, ccc_ms_setup,
 @pytest.mark.parametrize("whitelist_ok", [True, False])
 def test_ccc_whitelist(whitelist_ok, setup_ccc, ccc_ms_setup,
                        bitcoind, settings_set, policy_sign,
-                       bitcoind_create_watch_only_wallet):
-
+                       bitcoind_create_watch_only_wallet, goto_home):
+    goto_home()
     settings_set("ccc", None)
     settings_set("chain", "XRT")
     settings_set("multisig", [])
@@ -704,9 +705,9 @@ def test_ccc_whitelist(whitelist_ok, setup_ccc, ccc_ms_setup,
 
 def test_ccc_whitelist_nfc_import(setup_ccc, settings_set, pick_menu_item, cap_story,
                                   cap_menu, press_select, press_nfc, nfc_write_text,
-                                  settings_get, skip_if_useless_way, is_q1):
+                                  settings_get, skip_if_useless_way, is_q1, goto_home):
     skip_if_useless_way("nfc")
-
+    goto_home()
     settings_set("ccc", None)
     addr = "bcrt1qlk39jrclgnawa42tvhu2n7se987qm96qg8v76e"
 
@@ -753,8 +754,8 @@ def test_ccc_whitelist_nfc_import(setup_ccc, settings_set, pick_menu_item, cap_s
 def test_ccc_velocity(velocity_mi, setup_ccc, ccc_ms_setup, bitcoind, settings_set,
                       policy_sign, settings_get, bitcoind_create_watch_only_wallet,
                       enter_enabled_ccc, pick_menu_item, cap_story, need_keypress,
-                      press_select, press_cancel):
-
+                      press_select, press_cancel, goto_home):
+    goto_home()
     settings_set("ccc", None)
     settings_set("chain", "XRT")
     settings_set("multisig", [])
@@ -857,8 +858,8 @@ def test_ccc_velocity(velocity_mi, setup_ccc, ccc_ms_setup, bitcoind, settings_s
 
 @pytest.mark.bitcoind
 def test_ccc_warnings(setup_ccc, ccc_ms_setup, bitcoind, settings_set, policy_sign,
-                      bitcoind_create_watch_only_wallet, settings_get):
-
+                      bitcoind_create_watch_only_wallet, settings_get, goto_home):
+    goto_home()
     settings_set("ccc", None)
     settings_set("chain", "XRT")
     settings_set("multisig", [])
@@ -917,9 +918,10 @@ def test_ccc_warnings(setup_ccc, ccc_ms_setup, bitcoind, settings_set, policy_si
 def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim_exec,
                    bitcoind, settings_get, load_export, press_cancel, restore_main_seed,
                    bitcoind_create_watch_only_wallet, policy_sign, goto_eph_seed_menu,
-                   pick_menu_item, word_menu_entry, press_select, import_multisig):
+                   pick_menu_item, word_menu_entry, press_select, import_multisig, goto_home):
 
     # - maxed out values: 24 words, 25 whitelisted p2wsh values
+    goto_home()
     settings_set("ccc", None)
     settings_set("chain", "XRT")
     settings_set("multisig", [])
@@ -980,10 +982,11 @@ def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim
 def test_ccc_whitelist_overlimit_no_mutation(settings_set, setup_ccc, enter_enabled_ccc,
                                              ccc_ms_setup, bitcoind_create_watch_only_wallet,
                                              settings_get, pick_menu_item, cap_menu, cap_story,
-                                             cap_screen, scan_a_qr, press_select, press_cancel,
-                                             is_q1, microsd_path, need_keypress, restore_main_seed):
+                                             cap_screen, scan_a_qr, press_select, press_cancel, goto_home,
+                                             is_q1, microsd_path, need_keypress):
     # An over-limit whitelist import must be rejected WITHOUT having already
     # mutated the (settings-backed) policy address list.
+    goto_home()
     settings_set("ccc", None)
     settings_set("chain", "XRT")
     settings_set("multisig", [])
@@ -1039,15 +1042,15 @@ def test_ccc_whitelist_overlimit_no_mutation(settings_set, setup_ccc, enter_enab
 
     press_cancel()
     press_cancel()
-    restore_main_seed()
 
 
 @pytest.mark.parametrize("seed_vault", [True, False])
 def test_load_and_sign_key_C(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim_exec,
                              bitcoind_create_watch_only_wallet, pick_menu_item, load_export,
                              cap_story, press_cancel, bitcoind, policy_sign, restore_main_seed,
-                             verify_ephemeral_secret_ui, word_menu_entry, import_multisig,
+                             verify_ephemeral_secret_ui, word_menu_entry, import_multisig, goto_home,
                              press_select, settings_get, seed_vault, confirm_tmp_seed):
+    goto_home()
     settings_set("ccc", None)
     settings_set("chain", "XRT")
     settings_set("multisig", [])
@@ -1384,10 +1387,11 @@ def test_ms_setup_cosigner_import(way, ftype, is_bbqr, N, goto_home, settings_se
 
 def test_ccc_challenge_qr_bad_checksum_crash(setup_ccc, goto_ccc_menu, cap_story, need_keypress,
                                              press_select, press_cancel, scan_a_qr, sim_exec,
-                                             settings_set, is_q1):
+                                             settings_set, is_q1, goto_home):
     if not is_q1:
         pytest.skip('Q1 only (QR scan path)')
 
+    goto_home()
     settings_set('ccc', None)
     settings_set('seedvault', False)         # avoid seed-vault bypass path
 
@@ -1426,8 +1430,9 @@ def test_ccc_challenge_qr_bad_checksum_crash(setup_ccc, goto_ccc_menu, cap_story
 
 
 def test_ccc_magnitude_cancel_preserves_value(setup_ccc, enter_enabled_ccc, settings_set,
-                                              settings_get, pick_menu_item, cap_menu,
+                                              settings_get, pick_menu_item, cap_menu, goto_home,
                                               press_select, press_cancel, press_delete):
+    goto_home()
     settings_set('ccc', None)
 
     c_words = setup_ccc(mag=1)        # 1 BTC magnitude
@@ -1452,12 +1457,12 @@ def test_ccc_magnitude_cancel_preserves_value(setup_ccc, enter_enabled_ccc, sett
     mag = settings_get('ccc')['pol']['mag']
     assert mag == 1
 
-    settings_set('ccc', None)
-
 
 @pytest.mark.bitcoind
 def test_ccc_whitelist_op_return(setup_ccc, ccc_ms_setup, bitcoind, settings_set,
-                                 policy_sign, bitcoind_create_watch_only_wallet):
+                                 policy_sign, bitcoind_create_watch_only_wallet,
+                                 goto_home):
+    goto_home()
     settings_set("ccc", None)
     settings_set("chain", "XRT")
     settings_set("multisig", [])
