@@ -947,7 +947,18 @@ Q1 specials:
         child.kill()
         return
 
-    xterm_args = ['xterm', '-title', 'Coldcard Simulator REPL', '-geom', '132x40+650+40']
+    xterm_args = [
+        'xterm',
+        '-title', 'Coldcard Simulator REPL',
+        '-geom', '132x40+650+40',
+        # Route selections to CLIPBOARD so pasting in other apps (Ctrl+V) works.
+        '-xrm', 'XTerm*selectToClipboard: true',
+        # Add Ctrl+Shift+C / Ctrl+Shift+V bindings (gnome-terminal style).
+        # Shift+<mouse select> still works, and middle-click still pastes PRIMARY.
+        '-xrm', 'XTerm.vt100.translations: #override\n'
+                '  Ctrl Shift <Key>C: copy-selection(CLIPBOARD)\n'
+                '  Ctrl Shift <Key>V: insert-selection(CLIPBOARD)',
+    ]
 
     log = ("--log" in sys.argv)
     if log:
