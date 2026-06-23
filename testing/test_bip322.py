@@ -283,7 +283,7 @@ def test_bip322_0th_input_witness_utxo_requires_zero_value(bip322_txn, start_sig
 
 @pytest.mark.parametrize("ins", [
     [["p2wpkh", None, None], ["p2wpkh", None, 10000000], ["p2wpkh", None, 10000000]],
-    [["p2wpkh", None, None], ["p2sh-p2wpkh", None, 10000000], ["p2pkh", None, 10000000]],
+    [["p2sh-p2wpkh", None, None], ["p2sh-p2wpkh", None, 10000000], ["p2sh-p2wpkh", None, 10000000]],
     [["p2pkh", None, None], ["p2wpkh", None, 10000000], ["p2sh-p2wpkh", None, 10000000]],
 ])
 def test_bip322_Xth_input_witness_utxo(ins, bip322_txn, start_sign, cap_story, end_sign,
