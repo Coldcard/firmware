@@ -1539,7 +1539,14 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, addr_fmt, num_ins, d
     use_regtest()
 
     # create a wallet, with 3 bip39 pw's
-    keys, select_wallet = make_myself_wallet(M, do_import=(not incl_xpubs))
+    if addr_fmt == AF_P2WSH:
+        af = "p2wsh"
+    elif addr_fmt == AF_P2SH:
+        af = "p2sh"
+    else:
+        assert False
+
+    keys, select_wallet = make_myself_wallet(M, do_import=(not incl_xpubs), addr_fmt=af)
     N = len(keys)
     assert M<=N
 
