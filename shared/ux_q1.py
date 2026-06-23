@@ -1215,6 +1215,11 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
     else:
         # default to Base32, because always best option
         encoding = '2'
+        if isinstance(data, str):
+            # 'U'/'J' payloads are UTF-8 text; b32encode consumes the UTF-8
+            # bytes, so convert now to keep length/slicing consistent (else
+            # multi-byte chars overflow target_vers -> assert below trips)
+            data = data.encode()
         data_len = len(data)
 
     # try a few select resolutions (sizes) in order such that we use either single QR
