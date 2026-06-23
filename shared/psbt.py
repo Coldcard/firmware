@@ -2433,7 +2433,7 @@ class psbtObject(psbtProxy):
         none_sh = False
         for inp in self.inputs:
             if inp.sp_idxs and not inp.fully_signed:
-                if self.por322:
+                if self.por322 and inp.sighash is not None:
                     if inp.taproot_subpaths:
                         if inp.sighash not in (SIGHASH_ALL, SIGHASH_DEFAULT):
                             raise FatalPSBTIssue("POR sighash not ALL/DEFAULT")
