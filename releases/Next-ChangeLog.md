@@ -66,3 +66,8 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Yikes when showing "QR too big" for a transaction output alone on an output-explorer page
 - Bugfix: Yikes receiving a malformed full-backup via Key Teleport
 - Bugfix: Keyboard debounce could leave a key stuck as "pressed" after release when another key was held
+- Bugfix: Scanner robustness
+  - Avoid holding the QR scanner reset line low; reset is now only pulsed and then left deasserted.
+  - Recover scanner setup failures by retrying configuration and reinitializing on the next scan when needed.
+  - Prevent delayed scanner sleep commands from racing with a newly started scan.
+  - Improve scanner shutdown/recovery after scan cancel or command timeout.
