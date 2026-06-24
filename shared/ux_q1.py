@@ -825,7 +825,6 @@ class QRScannerInteraction:
         while 1:
             if task.done():
                 data = await task
-                #print("Scanned: %r" % data)
                 break
 
             dis.image(None, 40, 'scan_%d' % frames[ph])
@@ -838,7 +837,12 @@ class QRScannerInteraction:
                 data = None
                 break
 
-        task.cancel()
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
         # clear screen right away so user knows we got it
         dis.clear()

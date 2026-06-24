@@ -57,10 +57,11 @@ SLOW_BAUD = const(9600)
 FAST_BAUD = const(57600)
 RX_BUF_SIZE = const(4350)              # big enough for full v40 decoded
 
-# TODO: constructor should leave it in reset for simple lower-power usage; then after
-#       login we can do full setup (2+ seconds) and then sleep again until needed.
-
+# TODO: constructor should avoid full setup until after login; after setup,
+#       command sleep is the known low-power state.
 class QRScanner:
+
+    needs_reinit = False
 
     def __init__(self):
 
@@ -68,6 +69,8 @@ class QRScanner:
         self.scan_light = False     # is light on during scanning?
         self.version = None
         self.setup_done = False
+        self.needs_reinit = False
+        self.sleep_seq = 0
 
         # hodl this lock when communicating w/ QR scanner
         self.lock = asyncio.Lock()
@@ -84,16 +87,21 @@ class QRScanner:
         # setup hardware, reset scanner and return time to delay until ready
         from machine import UART, Pin
         self.serial = UART(2, SLOW_BAUD, rxbuf=RX_BUF_SIZE)
-        self.reset = Pin('QR_RESET', Pin.OUT_OD, value=0)
+        self.reset = Pin('QR_RESET', Pin.OUT_OD, value=1)
         self.trigger = Pin('QR_TRIG', Pin.OUT_OD, value=1)      # wasn't needed
 
-        # NOTE: reset is active low (open drain)
+        self.pulse_reset()
+
+        # needs full 2 seconds of recovery time after reset
+        return 2
+
+    def pulse_reset(self):
+        # RESET is active low (open drain). Keep it as a pulse; module docs
+        # describe low on this pin as wake-up, so don't use it as parking state.
         self.reset(0)
         utime.sleep_ms(10)
         self.reset(1)
-
-        # needs full 2 seconds of recovery time
-        return 2
+        self.needs_reinit = False
 
     def set_baud(self, br):
         # change serial port baud rate
@@ -118,56 +126,104 @@ class QRScanner:
 
     async def setup_task(self, start_delay):
         # Task to setup device, and then die.
-        await asyncio.sleep(start_delay)
+        async with self.lock:
+            for attempt in range(3):
+                await asyncio.sleep(start_delay)
 
-        async with self.lock: 
+                try:
+                    await self._configure()
+                except Exception:
+                    # a step failed or timed out (would have left scanner dead
+                    # until next boot); reset module and start over
+                    await self.blind_shutdown()
+                    if attempt == 2:
+                        break
+                    start_delay = self.reset_stream()
+                    continue
 
-            # might need to repeat a few time to get into right state
+                self.setup_done = True
+                await self.goto_sleep()
+                return
+            self.mark_needs_reinit()
+
+    def reset_stream(self):
+        self.sleep_seq += 1
+        start_delay = self.hardware_setup()
+        self.stream = asyncio.StreamReader(self.serial, {})
+        return start_delay
+
+    def mark_needs_reinit(self):
+        self.setup_done = False
+        self.version = None
+        self.needs_reinit = True
+        if hasattr(self, 'reset'):
+            self.reset(1)
+
+    async def blind_shutdown(self):
+        for baud in (SLOW_BAUD, FAST_BAUD):
+            self.set_baud(baud)
+            await self.tx('S_CMD_020D')        # return to "Command mode"
+            await asyncio.sleep_ms(20)
+            await self.tx('S_CMD_03L0')        # turn off bright light
+            await asyncio.sleep_ms(20)
+            await self.tx('SRDF0050')          # sleep scanner
+            await asyncio.sleep_ms(150)
+            await self.tx('SRDF0050')
+            await asyncio.sleep_ms(20)
+
+    async def _configure(self):
+        # full config sequence; any step may raise on timeout/framing error
+
+        # might need to repeat a few time to get into right state
+        for retry in range(5):
+            baud = await self.probe_baud()
+            if baud: break
+        else:
+            #print("QR Scanner: missing")
+            raise RuntimeError('no contact')
+
+        try:
+            await self.txrx('S_CMD_FFFF')         # factory reset of settings
+        except RuntimeError:
+            await asyncio.sleep_ms(1000)
             for retry in range(5):
                 baud = await self.probe_baud()
                 if baud: break
             else:
-                #print("QR Scanner: missing")
-                return
+                raise RuntimeError('no contact after S_CMD_FFFF')
 
-            await self.txrx('S_CMD_FFFF')         # factory reset of settings
+        # go to high speed!
+        if baud != FAST_BAUD:
+            await self.txrx('S_CMD_H3BR%d' % FAST_BAUD)
+            self.set_baud(FAST_BAUD)
 
-            # go to high speed!
-            if baud != FAST_BAUD:
-                await self.txrx('S_CMD_H3BR%d' % FAST_BAUD)
-                self.set_baud(FAST_BAUD)
+        # configure it like we want it
+        await self.txrx('S_CMD_MTRS5000')     # 5s to read before fail (unused)
+        await self.txrx('S_CMD_MT11')         # trigger is edge-based (not level)
+        await self.txrx('S_CMD_MT30')         # Same code reading without delay
+        await self.txrx('S_CMD_MT20')         # Enable automatic sleep when idle
+        await self.txrx('S_CMD_MTRF500')      # Idle time: 500ms
+        await self.txrx('S_CMD_059A')         # add CR LF after QR data (important)
+        await self.txrx('S_CMD_03L0')         # light off all the time by default
+        await self.txrx('S_CMD_0407')         # turn on signal for our yellow led
 
-            # configure it like we want it
-            await self.txrx('S_CMD_MTRS5000')     # 5s to read before fail (unused)
-            await self.txrx('S_CMD_MT11')         # trigger is edge-based (not level)
-            await self.txrx('S_CMD_MT30')         # Same code reading without delay
-            await self.txrx('S_CMD_MT20')         # Enable automatic sleep when idle
-            await self.txrx('S_CMD_MTRF500')      # Idle time: 500ms
-            await self.txrx('S_CMD_059A')         # add CR LF after QR data (important)
-            await self.txrx('S_CMD_03L0')         # light off all the time by default
-            await self.txrx('S_CMD_0407')         # turn on signal for our yellow led
+        # settings under continuous scan mode
+        await self.txrx('S_CMD_MARS0000')    # "Modify the duration of single code reading" (ms)
+        await self.txrx('S_CMD_MARR000')       # "Modify the time of the reading interval 0ms"
+        await self.txrx('S_CMD_MA31')          # Enable "Same code reading delay"
+        await self.txrx('S_CMD_MARI0050')      # "Modify the same code reading delay 50ms"
 
-            # settings under continuous scan mode
-            await self.txrx('S_CMD_MARS0000')    # "Modify the duration of single code reading" (ms)
-            await self.txrx('S_CMD_MARR000')       # "Modify the time of the reading interval 0ms"
-            await self.txrx('S_CMD_MA31')          # Enable "Same code reading delay"
-            await self.txrx('S_CMD_MARI0050')      # "Modify the same code reading delay 50ms"
+        # these aren't useful (yet?) and just make things harder to decode.
+        #await self.txrx('S_CMD_05F1')         # add all information on
+        #await self.txrx('S_CMD_05L1')         # output decoding length info on
+        #await self.txrx('S_CMD_05S1')         # STX start char
+        #await self.txrx('S_CMD_05C1')         # CodeID+prefix
+        #await self.txrx('S_CMD_0501')         # prefix on
+        #await self.txrx('S_CMD_0506')         # suffix
+        #await self.txrx('S_CMD_05D0')         # tx total data
 
-            # these aren't useful (yet?) and just make things harder to decode.
-            #await self.txrx('S_CMD_05F1')         # add all information on
-            #await self.txrx('S_CMD_05L1')         # output decoding length info on
-            #await self.txrx('S_CMD_05S1')         # STX start char
-            #await self.txrx('S_CMD_05C1')         # CodeID+prefix
-            #await self.txrx('S_CMD_0501')         # prefix on
-            #await self.txrx('S_CMD_0506')         # suffix
-            #await self.txrx('S_CMD_05D0')         # tx total data
-
-            # prevent scanning magic QR to affect settings
-            await self.txrx('S_CMD_0000')         # close setting codes
-
-            self.setup_done = True
-
-            await self.goto_sleep()
+        # prevent scanning magic QR to affect settings
+        await self.txrx('S_CMD_0000')         # close setting codes
             
     async def scan_once(self):
         # Blocks until something is scanned. Returns it as string
@@ -175,6 +231,16 @@ class QRScanner:
         # - updates UX via BBQrState.collect() while BBQr is being received
         # - returns a BBQr object at that point
         self.scan_light = False
+
+        if self.needs_reinit:
+            try:
+                await self.setup_task(self.reset_stream())
+                if self.setup_done:
+                    await asyncio.sleep_ms(200)
+            except asyncio.CancelledError:
+                await self.blind_shutdown()
+                self.mark_needs_reinit()
+                return None
 
         # wait for reset process to complete (can be an issue right after boot)
         # - few seconds of boot time needed
@@ -211,19 +277,22 @@ class QRScanner:
             finally:
                 # Problem: another valid scan can come in just as we are trying
                 # to get out of scanner mode
-                for retry in range(10):
+                for retry in range(3):
                     try:
-                        await self.txrx('S_CMD_020D')         # return to "Command mode"
-                        await self.txrx('S_CMD_03L0')         # turn off bright light
+                        await self.txrx('S_CMD_020D', timeout=1000)   # return to "Command mode"
+                        await self.txrx('S_CMD_03L0', timeout=1000)   # turn off bright light
                         #print('rest after %d retries' % retry)
                         break
-                    except: pass
-                    await asyncio.sleep_ms(25)
+                    except Exception:
+                        pass
+                    await asyncio.sleep_ms(50)
                 else:
-                    pass
                     #print('reset failed')
+                    await self.blind_shutdown()
+                    self.mark_needs_reinit()
 
-                await self.goto_sleep()
+                if self.setup_done:
+                    await self.goto_sleep()
                 self.busy_scanning = False
 
         # return BBQr object or string if simple QR
@@ -254,13 +323,14 @@ class QRScanner:
         # send specific command until it responds
         # - it will wake on any command, but not instant
         # - first one seems to fail 100%
+        self.sleep_seq += 1
         await self.tx('SRDF0051')       # blindly at first
 
         for retry in range(5):
             try:
                 await self.txrx('SRDF0051', timeout=50)       # 50 ok, 20 too short
                 return
-            except: 
+            except Exception:
                 # first try usually fails, that's okay... its asleep and groggy
                 pass
 
@@ -270,9 +340,13 @@ class QRScanner:
         # - need blind retries here
         # - might be two layers of sleep, and we need this second command after the first
         # - helps to turn off the yellow LED, and save power as well
+        self.sleep_seq += 1
+        sleep_seq = self.sleep_seq
         await self.tx('SRDF0050')
         async def later():
             await asyncio.sleep_ms(150)
+            if sleep_seq != self.sleep_seq or self.busy_scanning:
+                return
             await self.tx('SRDF0050')
         asyncio.create_task(later())
 
@@ -289,6 +363,22 @@ class QRScanner:
         # - do not use async self.stream because other tasks may be using it
         #print('tx >> ' + msg)
         self.serial.write(msg)
+
+    async def readexactly_timeout(self, num, timeout, msg=None):
+        # Avoid asyncio.wait_for_ms here: it can leave the scanner setup task
+        # stuck after a CancelledError. Convert scanner silence into a normal
+        # retryable command failure instead.
+        if timeout is None:
+            return await self.stream.readexactly(num)
+
+        start = utime.ticks_ms()
+        while self.stream.s.any() < num:
+            if utime.ticks_diff(utime.ticks_ms(), start) >= timeout:
+                #print("no rx after %s" % msg)
+                raise RuntimeError
+            await asyncio.sleep_ms(5)
+
+        return await self.stream.readexactly(num)
 
     async def txrx(self, msg, timeout=250):
         # Send a command, get the corresponding response.
@@ -310,13 +400,8 @@ class QRScanner:
         expect = LEN_OKAY
         rx = b''
         while 1:
-            try:
-                rx += await asyncio.wait_for_ms(self.stream.readexactly(expect), timeout)
-            except asyncio.TimeoutError:
-                if timeout is None:
-                    continue
-                #print("no rx after %s" % msg)
-                raise RuntimeError
+            rx += await self.readexactly_timeout(expect, timeout, msg)
+
 
             #print('txrx << ' + B2A(rx))
 
