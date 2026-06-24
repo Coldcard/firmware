@@ -17,6 +17,7 @@ class SimulatedQRScanner(QRScanner):
         self.busy_scanning = False
         self.setup_done = True
         self.version = 'V2.3.420'
+        self.needs_reinit = False
         self.lock = asyncio.Lock()
         # returns a Q we append to as results come in
         self._q = Queue()

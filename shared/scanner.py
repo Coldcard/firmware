@@ -61,8 +61,6 @@ RX_BUF_SIZE = const(4350)              # big enough for full v40 decoded
 #       command sleep is the known low-power state.
 class QRScanner:
 
-    needs_reinit = False
-
     def __init__(self):
 
         self.busy_scanning = False
