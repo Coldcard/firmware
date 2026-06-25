@@ -1532,6 +1532,7 @@ class psbtObject(psbtProxy):
             self.por322 = bool(self.por322_msg)
 
         if self.por322:
+            assert len(self.por322_msg) <= 330, "msg len"
             if len(self.por322_msg) != len(self.por322_msg.encode()):
                 self.warnings.append((
                     "Message",

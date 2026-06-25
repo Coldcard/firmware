@@ -733,4 +733,42 @@ def test_bip322_empty_message_challenge_rejected(bip32_paths, por, bip322_txn,
     title, story = cap_story()
     assert title == "Failure"
 
+
+@pytest.mark.parametrize("msg", [
+    b"A"*330,  # allowed
+    b"X"*331,  # too long
+    b"",       # empty
+])
+def test_msg_size(msg, bip322_txn, start_sign, end_sign, cap_story, need_keypress,
+                  press_select, press_cancel, bip322_verify):
+
+    psbt, msg_challenge = bip322_txn([["p2wpkh", None, None]], msg=msg)
+
+    start_sign(psbt, finalize=True)
+
+    time.sleep(.1)
+    title, story = cap_story()
+
+    if 0 < len(msg) <= 330:
+        assert title == "OK TO SIGN?"
+        assert "BIP-322 Message" in story
+        assert "sign message" in story
+
+        assert ("Message:\n%s" % msg.decode()) in story
+
+        signed = end_sign(accept=True, exit_export_loop=False)
+        bip322_verify(signed)
+        title, story = cap_story()
+        assert title == "PSBT Signed"
+        assert "Signed BIP-322 PSBT shared via USB." in story
+        press_cancel()
+
+    else:
+        assert title == "Failure"
+        if msg:
+            assert "msg len" in story
+        else:
+            assert "msg" in story
+
+
 # EOF
