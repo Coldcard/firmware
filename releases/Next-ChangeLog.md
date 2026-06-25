@@ -33,7 +33,6 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Non-standard OP_RETURN outputs shown as "null-data", hiding part of the script
 - Bugfix: Over-limit CCC address-whitelist import was rejected but still modified the policy
 - Bugfix: Deleting a file right after renaming it (List Files) blanked the old name, leaving the renamed file
-- Bugfix: SSSP bypass PIN alone could complete login into a no-secret session. Second prompt now requires a PIN that loads secrets.
 - Bugfix: Reordered `multi(...)` multisig with same keys was misreported as name-only change. Now blocked as duplicate.
 - Bugfix: Max WIF store capacity limit was ignored if saving via QR WIF visualization
 - Bugfix: Force Seed XOR restore from Temporary Seed menu to remain temporary even when master seed is blank
