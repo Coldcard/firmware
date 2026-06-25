@@ -14,7 +14,8 @@ must meet all these requirements:
   adds signatures to the PSBT. Finalizing and encoding the final BIP-322
   signature string is the responsibility of the finalizer.
 * PSBT MUST include `PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE = 0x09`; the value is
-  the exact message shown to the user and signed by BIP-322.
+  the exact message shown to the user and signed by BIP-322. The decoded
+  message must be non-empty and no longer than 330 characters.
 * PSBT requires `PSBT_IN_BIP32_DERIVATION` for each input
 * P2SH wrapped segwit addresses MUST have proper redeem script in PSBT: `PSBT_IN_REDEEM_SCRIPT`
 * P2WSH segwit addresses MUST have proper witness script in PSBT: `PSBT_IN_WITNESS_SCRIPT`
