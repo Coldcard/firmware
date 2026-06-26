@@ -2646,6 +2646,27 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
 
         return agg
 
+    @staticmethod
+    def musig_build_cache(agg_k, participant_pks):
+        # Aggregate the participant keys and verify the result matches the enrolled
+        # aggregate key. Raises FatalPSBTIssue on mismatch
+        keyagg_cache = ngu.secp256k1.MusigKeyAggCache()
+        ngu.secp256k1.musig_pubkey_agg(
+            [ngu.secp256k1.pubkey(pk) for pk in participant_pks], keyagg_cache)
+        if keyagg_cache.agg_pubkey().to_bytes() != agg_k:
+            raise FatalPSBTIssue("musig keyagg mismatch")
+        return keyagg_cache
+
+    def musig_taproot_tweak(self, inp, keyagg_cache, der_xonly):
+        # BIP-341 keyspend tweak applied to the keyagg cache. Caller decides whether a
+        # tweak applies (keyspend only, not tapscript leaf). Returns (output_key_33, tweak_32).
+        tweak_data = der_xonly
+        if inp.taproot_merkle_root:
+            tweak_data += self.get(inp.taproot_merkle_root)
+        tap_tweak = ngu.hash.sha256t(TAP_TWEAK_H, tweak_data, True)
+        output_key = ngu.secp256k1.musig_pubkey_xonly_tweak_add(keyagg_cache, tap_tweak)
+        return output_key.to_bytes(), tap_tweak
+
     def musig_process_input(self, session, inp_idx, inp, keypair, agg_k, der_agg_k,
                             digest, leaf_hash=b""):
 
@@ -2661,15 +2682,7 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
         musig_partial_sigs = inp.get_musig_part_sigs()
         musig_pubnonces = inp.get_musig_pubnonces()
 
-        keyagg_cache = ngu.secp256k1.MusigKeyAggCache()
-
-        # below will sort, but should be already sorted in PSBT
-        ngu.secp256k1.musig_pubkey_agg(
-            [ngu.secp256k1.pubkey(pk) for pk in cosigners],
-            keyagg_cache
-        )
-        # verify aggregate key is correct
-        assert keyagg_cache.agg_pubkey().to_bytes() == agg_k
+        keyagg_cache = self.musig_build_cache(agg_k, cosigners)
 
         musig_index = None  # index of musig expression in key list
         for i, k in enumerate(self.active_miniscript.to_descriptor().keys):
@@ -2689,17 +2702,14 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
         # is derived aggregate key xonly ?
         dak_xo = int(len(der_agg_k) == 32)
         # key is derived inside the key_agg cache
-        assert self.musig_derive_keyagg_cache(to_derive, agg_k, keyagg_cache)[dak_xo:] == der_agg_k
+        derived_k = self.musig_derive_keyagg_cache(to_derive, agg_k, keyagg_cache)
+        assert derived_k[dak_xo:] == der_agg_k
 
         if not leaf_hash:
             # now finally get the output key - only for musig in taproot internal key
-            tweak_data = der_agg_k
-            if inp.taproot_merkle_root:
-                tweak_data += self.get(inp.taproot_merkle_root)
-            tweak32 = ngu.hash.sha256t(TAP_TWEAK_H, tweak_data, True)
-            output_key = ngu.secp256k1.musig_pubkey_xonly_tweak_add(keyagg_cache, tweak32)
+            output_key, _ = self.musig_taproot_tweak(inp, keyagg_cache, derived_k[1:])
             # tweaked derived aggregate key
-            der_agg_k = output_key.to_bytes()
+            der_agg_k = output_key
 
         my_musig_pubnonces_key = (my_participant_key, der_agg_k, leaf_hash)
 
