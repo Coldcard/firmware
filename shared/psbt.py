@@ -2636,15 +2636,20 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
 
     @staticmethod
     def musig_derive_keyagg_cache(to_derive, agg_key, keyagg_cache):
+        # Returns (agg_pubkey_33, sum_IL_32) where sum_IL is used to reconstruct the
+        # BIP-327 tweak accumulator for MuSig2+SP partial ECDH share combining.
         ck = MUSIG_CHAIN_CODE
         agg = agg_key
+        sum_IL = 0
+        SECP256K1_ORDER = ngu.secp256k1.curve_order_int()
         for idx in to_derive:
             I = ngu.hmac.hmac_sha512(ck, agg + pack(">I", idx))
             IL, ck = I[:32], I[32:]
             ngu.secp256k1.musig_pubkey_ec_tweak_add(keyagg_cache, IL)
             agg = keyagg_cache.agg_pubkey().to_bytes()
+            sum_IL = (sum_IL + int.from_bytes(IL, 'big')) % SECP256K1_ORDER
 
-        return agg
+        return agg, sum_IL.to_bytes(32, 'big')
 
     @staticmethod
     def musig_build_cache(agg_k, participant_pks):
@@ -2702,7 +2707,7 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
         # is derived aggregate key xonly ?
         dak_xo = int(len(der_agg_k) == 32)
         # key is derived inside the key_agg cache
-        derived_k = self.musig_derive_keyagg_cache(to_derive, agg_k, keyagg_cache)
+        derived_k, _ = self.musig_derive_keyagg_cache(to_derive, agg_k, keyagg_cache)
         assert derived_k[dak_xo:] == der_agg_k
 
         if not leaf_hash:
