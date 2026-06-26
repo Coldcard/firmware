@@ -19,6 +19,46 @@ def wipe_cache(sim_exec):
         sim_exec(cmd)
     return doit
 
+def test_clear_ownership_accounts_ux(goto_home, pick_menu_item, cap_story, need_keypress,
+                                     press_select, press_cancel, settings_set, settings_get,
+                                     is_q1):
+    accts = [[AF_P2WPKH, 22]]
+    menu_item = "Clear Address cache" if is_q1 else "Clear Addr cache"
+
+    def goto_clear_cache():
+        goto_home()
+        pick_menu_item('Advanced/Tools')
+        pick_menu_item('Danger Zone')
+        pick_menu_item(menu_item)
+        time.sleep(.1)
+        return cap_story()
+
+    settings_set('accts', accts)
+
+    title, story = goto_clear_cache()
+    assert title == "Clear Cache"
+    assert "Press (1) to also forget remembered account numbers." in story
+    assert "Press (2) to show remembered account numbers." in story
+
+    need_keypress('2')
+    title, story = cap_story()
+    assert str(accts) in story
+    press_select()
+    assert settings_get('accts') == accts
+
+    title, story = goto_clear_cache()
+    assert title == "Clear Cache"
+    assert "Press (1) to also forget remembered account numbers." in story
+    need_keypress('1')
+    time.sleep(3.5)
+    assert settings_get('accts', 'gone') == 'gone'
+
+    title, story = goto_clear_cache()
+    assert title == "Clear Cache"
+    assert "Press (1) to also forget remembered account numbers." not in story
+    assert "Press (2) to show remembered account numbers." not in story
+    press_cancel()
+
 
 '''
     >>> [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH]

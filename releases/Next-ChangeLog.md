@@ -7,6 +7,8 @@ your addition and anything else already in this file.**
 
 # Shared Improvements - Both Mk and Q
 
+- Enhancement: Added an option to forget remembered account numbers when clearing
+  the address ownership cache.
 - Bugfix: Restore Backup now verifies whether a seed write succeeded after a bootloader
   AE_FAIL before aborting, avoiding a half-restored device with seed written but settings
   missing.
