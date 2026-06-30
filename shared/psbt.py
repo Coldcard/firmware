@@ -335,7 +335,11 @@ class psbtProxy:
             key, val = self.taproot_subpaths[i]
             assert key[1] == 32  # "PSBT_IN_TAP_BIP32_DERIVATION xonly-pubkey length != 32"
             xonly_pk = self.get(key)
-            pos, length = val
+            # 3rd element is cached coordinates written by earlier parse, drop and it will be re-computed below
+            if len(val) == 2:
+                pos, length = val
+            else:
+                pos, length, _ = val
             end_pos = pos + length
             self.fd.seek(pos)
             leaf_hash_len = deser_compact_size(self.fd)
