@@ -49,14 +49,14 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Mk Specific Changes
 
-## 5.5.x - 2065-04-xx
+## 5.5.1 - 2065-04-xx
 
 - tbd
 
 
 # Q Specific Changes
 
-## 1.4.xQ - 2065-04-xx
+## 1.4.1Q - 2065-04-xx
 
 - New Feature: Secure Notes & Passwords UX groups
 - New Feature: Apply Secure Note text, or Secure Note password as BIP-39 passphrase
