@@ -14,6 +14,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
   PSBT inputs when Coldcard is expected to sign a non-segwit input.  When both
   UTXO fields are present the full `non_witness_utxo` is now preferred for
   amount/script lookup. Thanks, @Damir!
+- Bugfix: Keep NFC export tag alive for repeated probes. Helps NFC tap reliability on iOS.
 - Bugfix: Emit warning and do not calculate fee for legacy UTXOs with only witness utxo.
 - Bugfix: Disable Virtual Disk and NFC before activating HSM.
 - Bugfix: P2PK signing was broken. Now supports both compressed and uncompressed P2PK spend.
@@ -21,12 +22,8 @@ This lists the changes in the most recent firmware, for each hardware platform.
 - Bugfix: Delta Mode Trick PIN was never restored from backup.
 - Bugfix: Proper error message for incorrect 7z headers.
 - Bugfix: Exiting nickname entry with nickname already saved deleted previous nickname.
-- Bugfix: "Send Password" menu item inside Notes & Passwords visibility reversed.
-- Bugfix: Yikes when using "Send Password" on entry with password None field.
-- Bugfix: Do not show "Saving..." UX after failed Notes & Passwords import.
 - Bugfix: Incorrect error message caused by error in Verify/Decrypt Backup.
 - Bugfix: NFC Verify Address raised incorrect error message.
-- Bugfix: Notes & Passwords bulk import JSON with BBQr encoded as text.
 - Bugfix: CCC key C challenge handled bad BIP-39 checksum by crashing the UX. Now treated
   as a wrong attempt (counts toward 3-strike lockout).
 - Bugfix: CCC magnitude reset from CANCEL on empty input.
@@ -51,7 +48,6 @@ This lists the changes in the most recent firmware, for each hardware platform.
   addresses before wallet search.
 - Bugfix: Handle malformed NDEF records robustly. Thanks, @Damir!
 - Bugfix: Ignore `bkpw` if added to backup. Thanks, [@dmonakhov](https://github.com/dmonakhov)!
-- Bugfix: Keep NFC export tag live for repeated probes.
 - Bugfix: Fix 1-of-1 multisig signing failure.
 
 # Mk Specific Changes
@@ -89,6 +85,10 @@ This lists the changes in the most recent firmware, for each hardware platform.
 - Bugfix: Yikes receiving a malformed full-backup via Key Teleport.
 - Bugfix: Keyboard debounce could leave a key stuck as "pressed" after release, when another
   key was held (sometimes).
+- Bugfix: "Send Password" menu item inside Notes & Passwords visibility reversed.
+- Bugfix: Yikes when using "Send Password" on entry with password None field.
+- Bugfix: Do not show "Saving..." UX after failed Notes & Passwords import.
+- Bugfix: Notes & Passwords bulk import JSON with BBQr encoded as text.
 
 
 
