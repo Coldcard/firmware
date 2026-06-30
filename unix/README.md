@@ -85,19 +85,17 @@ See `variant/sim_settings.py` for the details of settings-related options.
 
 - uses good old `xterm` for console input and output
 - this directory has additional `requirements.txt` (a superset of other requirements of the project)
-- run "brew install sdl2" before/after doing python requirements
+- run "brew install sdl2" before doing python requirements
 - run "make setup" then "make"
 - then "./simulator.py"
 
 # MacOS building
 
 - Follow instructions on <https://github.com/micropython/micropython>
-- probably: `brew install libffi` if not already present
-- to get `pkg-config libffi` to output useful things, need this:
-
-    setenv PKG_CONFIG_PATH /usr/local/opt/libffi/lib/pkgconfig
-
-- but that's in the Makefile now
+- probably: `brew install pkgconf libffi` if not already present
+- It used to be that to get `pkg-config libffi` to output useful
+  things, your needed this:
+    `setenv PKG_CONFIG_PATH /usr/local/opt/libffi/lib/pkgconfig`
 
 # Other OS
 

@@ -7,9 +7,6 @@ MPY_TOP = ../external/micropython
 PORT_TOP = $(MPY_TOP)/ports/unix
 V=0
 
-# bugfix for my Mac at least
-export PKG_CONFIG_PATH=/usr/local/opt/libffi/lib/pkgconfig
-
 CC_TOP := $(realpath ..)
 
 MAKE_ARGS = -j 4 VARIANT=coldcard-mpy VARIANT_DIR=$(PWD)/variant CC_TOP=$(CC_TOP) DEBUG=1
