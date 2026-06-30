@@ -176,12 +176,10 @@ SUBMODULES := $(shell git config --file ../.gitmodules --name-only --get-regex p
 SUBMODULES := $(SUBMODULES:submodule.%.path=%)
 SUBMODULES := $(filter-out stm32/mk4-bootloader/hal, $(SUBMODULES))
 submods-match:
-	@echo Submodules: $(SUBMODULES)
-	git submodule status --cached $(SUBMODULES:%=../%) > sm-want.txt
-	git submodule status $(SUBMODULES:%=../%) > sm-have.txt
-	@echo "Submodules: <WANT vs. >HAVE"
-	diff sm-want.txt sm-have.txt
-	@rm sm-have.txt sm-want.txt
+	@echo Checking submodule revisions: $(SUBMODULES)
+	@git submodule status $(SUBMODULES:%=../%) | awk '\
+		/^[^ ]/ { print; bad=1 } \
+		END { exit bad }'
 	@echo "Submodules are right revisions."
 
 .PHONY: code-committed
