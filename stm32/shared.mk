@@ -112,7 +112,7 @@ release: submods-match code-committed block_height
 
 # Make a release-candidate, faster.
 .PHONY: rc1
-rc1: 
+rc1: submods-match
 	$(SUBMAKE) clean 		# critical, or else you get a mix of debug/not
 	$(SUBMAKE) DEBUG_BUILD=0 all
 	$(SIGNIT) sign -b $(BUILD_DIR) -m $(HW_MODEL) $(VERSION_STRING) $(PROD_KEYNUM) -o rc1.bin
@@ -181,7 +181,7 @@ submods-match:
 	git submodule status $(SUBMODULES:%=../%) > sm-have.txt
 	@echo "Submodules: <WANT vs. >HAVE"
 	diff sm-want.txt sm-have.txt
-	rm sm-have.txt sm-want.txt
+	@rm sm-have.txt sm-want.txt
 	@echo "Submodules are right revisions."
 
 .PHONY: code-committed
