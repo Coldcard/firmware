@@ -52,14 +52,14 @@ This lists the changes in the most recent firmware, for each hardware platform.
 
 # Mk Specific Changes
 
-## 5.5.1 - 2065-06-30
+## 5.5.1 - 2065-07-01
 
 - All bug fixes and enhancements listed above.
 
 
 # Q Specific Changes
 
-## 1.4.1Q - 2065-06-30
+## 1.4.1Q - 2065-07-01
 
 - New Feature: Secure Notes & Passwords UX groups. Thanks, [@Gen6G](https://x.com/Gen6G)!
 - New Feature: Apply Secure Note text, or Secure Note password as BIP-39 passphrase.
