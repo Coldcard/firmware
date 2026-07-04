@@ -9,10 +9,11 @@ from utils import problem_file_line, show_single_address, node_from_pubkey
 from files import CardSlot, CardMissingError, needs_microsd
 from glob import settings
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
-from public_constants import AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2SH, AF_P2TR
+from public_constants import AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2SH, AF_P2TR, AF_BARE_PK
 from msgsign import msg_signing_done
 
 MAX_ITEMS = 30
+
 
 def decode_wif(wif):
     # Decode base58 encoded WIF string, return keypair and metadata
@@ -34,15 +35,31 @@ def decode_wif(wif):
     return kp, testnet, compressed
 
 
+def encode_wif(pk, sk, chain):
+    # WIF preserves whether the corresponding public key is compressed.
+    suffix = b'\x01' if len(pk) == 66 else b''
+    return ngu.codecs.b58_encode(chain.b58_privkey + a2b_hex(sk) + suffix)
+
+
 def iter_wif_store_addresses(addr_fmt):
     # nothing found among singlesig & registered multisig wallets
     # check WIF store
     wifs = settings.get("wifs", [])
     if not wifs: return
 
-    for i, (pk, sk) in enumerate(wifs):
-        node = node_from_pubkey(a2b_hex(pk))
-        yield i, chains.current_chain().address(node, addr_fmt)
+    for i, (pk, _) in enumerate(wifs):
+        is_compressed = len(pk) == 66
+        if addr_fmt != AF_CLASSIC and not is_compressed:
+            continue
+
+        pubkey = a2b_hex(pk)
+        if addr_fmt == AF_P2TR:
+            node = node_from_pubkey(pubkey)
+            addr = chains.current_chain().address(node, addr_fmt)
+        else:
+            addr = chains.current_chain().pubkey_to_address(pubkey, addr_fmt)
+
+        yield i, addr
 
 
 def save_wif_store_items(new_wifs):
@@ -82,8 +99,7 @@ async def ux_visualize_wif(wif_str, kp, compressed, testnet):
     msg = "%s\n\nchain: %s\n\nPrivkey:\n%s\n\nPubkey:\n%s" % (wif_str, ch_str, sk, pk)
     esc = ""
 
-    if compressed and (testnet == (chains.current_chain().ctype != "BTC")):
-        # we only support compressed in WIF store
+    if testnet == (chains.current_chain().ctype != "BTC"):
         msg += "\n\nPress (1) to import to WIF Store."
         esc += "1"
 
@@ -138,16 +154,17 @@ class WIFStoreMenu(MenuSystem):
         a_items = []
         export_all = []
         for i, (pk, sk) in enumerate(wifs):
-            wif = ngu.codecs.b58_encode(ch.b58_privkey + a2b_hex(sk) + b'\x01')
+            wif = encode_wif(pk, sk, ch)
             export_all.append(wif)
 
             submenu = [
                 MenuItem("Detail", f=self.detail, arg=(wif,pk,sk)),
-                MenuItem("Descriptors", f=self.show_desc_step1, arg=pk),
-                MenuItem("Addresses", f=self.show_addr_step1, arg=pk),
-                MenuItem("Sign MSG", f=self.sign_msg_step1, arg=sk),
-                MenuItem('Delete', f=self.delete, arg=(i, pk), predicate=not_hobbled_mode),
+                MenuItem("Descriptors", f=self.show_desc_step1, arg=(pk, sk)),
+                MenuItem("Addresses", f=self.show_addr_step1, arg=(pk, sk)),
             ]
+            if len(pk) == 66:
+                submenu.append(MenuItem("Sign MSG", f=self.sign_msg_step1, arg=sk))
+            submenu.append(MenuItem('Delete', f=self.delete, arg=(i, pk), predicate=not_hobbled_mode))
 
             # cannot use truncate_address here, as it does nto fit on Mk4 (because padded numbering)
             clen = 12 if version.has_qwerty else 5
@@ -174,10 +191,16 @@ class WIFStoreMenu(MenuSystem):
                               force_prompt=True, intro=msg, ux_title=title)
 
     async def show_desc_step1(self, a, b, item):
-        rv = [
-            MenuItem(chains.addr_fmt_label(af), f=self.show_desc_step2, arg=(item.arg, af))
-            for af in chains.SINGLESIG_AF
-        ]
+        pk, _ = item.arg
+        compressed = len(pk) == 66
+        rv = []
+
+        to_do = chains.SINGLESIG_AF + (AF_BARE_PK,) if compressed else (AF_CLASSIC, AF_BARE_PK)
+
+        for af in to_do:
+            label = "Bare P2PK" if af == AF_BARE_PK else chains.addr_fmt_label(af)
+            rv.append(MenuItem(label, f=self.show_desc_step2, arg=(pk, af)))
+
         the_ux.push(MenuSystem(rv))
 
     async def show_desc_step2(self, a, b, item):
@@ -192,6 +215,8 @@ class WIFStoreMenu(MenuSystem):
         elif af == AF_P2TR:
             pk = pk[2:] # xonly from string
             desc = "tr(%s)"
+        elif af == AF_BARE_PK:
+            desc = "pk(%s)"
         else:
             assert af == AF_P2WPKH_P2SH
             desc = "sh(wpkh(%s))"
@@ -204,16 +229,22 @@ class WIFStoreMenu(MenuSystem):
                               force_prompt=True, intro=desc, ux_title=title)
 
     async def show_addr_step1(self, a, b, item):
-        rv = [
-            MenuItem(chains.addr_fmt_label(af), f=self.show_addr_step2, arg=(item.arg, af))
-            for af in chains.SINGLESIG_AF
-        ]
+        pk, _ = item.arg
+        compressed = len(pk) == 66
+        rv = []
+
+        for af in chains.SINGLESIG_AF if compressed else (AF_CLASSIC,):
+            rv.append(MenuItem(chains.addr_fmt_label(af), f=self.show_addr_step2, arg=(pk, af)))
         the_ux.push(MenuSystem(rv))
 
     async def show_addr_step2(self, a, b, item):
         pubkey, af = item.arg
-        node = node_from_pubkey(a2b_hex(pubkey))
-        addr = chains.current_chain().address(node, af)
+        pubkey = a2b_hex(pubkey)
+        if af == AF_P2TR:
+            node = node_from_pubkey(pubkey)
+            addr = chains.current_chain().address(node, af)
+        else:
+            addr = chains.current_chain().pubkey_to_address(pubkey, af)
         msg = show_single_address(addr)
 
         ux_title = chains.addr_fmt_label(af) if version.has_qwerty else None
@@ -356,11 +387,10 @@ class WIFStoreMenu(MenuSystem):
                     # ignore garbage text, headers, addresses, etc.
                     continue
 
-                assert compressed, "compressed only"
                 assert testnet == (chains.current_chain().ctype != "BTC"), "chain"
 
                 sk = b2a_hex(kp.privkey()).decode()
-                pk = b2a_hex(kp.pubkey().to_bytes()).decode()
+                pk = b2a_hex(kp.pubkey().to_bytes(not compressed)).decode()
 
                 new_wifs.append((pk, sk))
 
@@ -413,14 +443,18 @@ class WIFStore:
             if not self._sh:
                 self._sh = [ngu.hash.hash160(b'\x00\x14' + h) for h in self._pkh]
             table = self._sh
+        elif addr_fmt == AF_BARE_PK:
+            table = [pk for pk, _ in self.wifs]
         else:
-            return None    # AF_P2WSH / AF_P2TR / AF_BARE_PK / unknown — not us
+            return None    # AF_P2WSH / AF_P2TR / unknown -- not us
 
-        try:
-            idx = table.index(hash20)
-            return idx, self.wifs[idx][0]
-        except ValueError:
-            return None
+        for idx, target in enumerate(table):
+            if addr_fmt in (AF_P2WPKH, AF_P2SH) and len(self.wifs[idx][0]) != 33:
+                # do not match uncompressed keys for segwit
+                continue
+            if target == hash20:
+                return idx, self.wifs[idx][0]
 
+        return None
 
 # EOF

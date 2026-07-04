@@ -4,6 +4,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk and Q
 
+- New Feature: Allow uncompressed WIF keys in WIF Store
 - Enhancement: Can export WIF Store watch-only descriptor.
 - Enhancement: WIF Store address detection without the need
   for `PSBT_IN_BIP32_DERIVATION` (improves Electrum support)
