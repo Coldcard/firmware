@@ -306,6 +306,28 @@ class Display:
         self.text(lm+16,y+24, "big")
         self._draw_qr_display(bw, lm, msg, False, None, idx_hint, False)
 
+    def draw_qr_grid(self, qr_data, pos):
+        from utils import qr_grid_bounds, qr_grid_size
+
+        self.clear()
+
+        row, col, x0, y0, cw, ch = qr_grid_bounds(qr_data.width(), pos)
+
+        box, bw, bh = qr_grid_size(cw, ch, self.WIDTH, self.HEIGHT)
+        x = (self.WIDTH - bw) // 2
+        y = (self.HEIGHT - bh) // 2
+
+        self.dis.fill_rect(x, y, bw, bh, 1)
+        mark = box - 1
+        for yy in range(ch):
+            for xx in range(cw):
+                if qr_data.get(x0 + xx, y0 + yy):
+                    self.dis.fill_rect(x + (xx * box) + 1, y + (yy * box) + 1,
+                                       mark, mark, 0)
+
+        self.text(2, 0, "%c%d" % (65 + row, col + 1), FontSmall)
+        self.show()
+
     def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert,
                         is_addr=False, force_msg=False, side_msg=None):
         # 'sidebar' is a pre-formated obj to show to right of QR -- oled life

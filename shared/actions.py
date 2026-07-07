@@ -715,9 +715,19 @@ async def export_seedqr(*a):
     # see standard: <https://github.com/SeedSigner/seedsigner/blob/dev/docs/seed_qr/README.md>
     import bip39, stash
 
-    if not await ux_confirm('The next screen will show the seed words in a QR code.'
-                            '\n\nAnyone with knowledge of those words '
-                            'can control all funds in this wallet.'):
+    title = "Are you SURE ?!?"
+    msg = ('The next screen will show the seed words in a QR code.'
+           '\n\nAnyone with knowledge of those words '
+           'can control all funds in this wallet.'
+           '\n\nPress (1) to view QR sections for manual transcription onto paper or metal.'
+           '\n\nPress %s to view the full QR code.' % OK)
+
+    if not version.has_qwerty:
+        msg = title + "\n\n" + msg
+        title = None
+
+    ch = await ux_show_story(msg, title=title, escape='1')
+    if ch not in '1y':
         return
 
     from glob import dis
@@ -737,8 +747,11 @@ async def export_seedqr(*a):
 
         del words
 
-    from ux import show_qr_code
-    await show_qr_code(qr, True, msg="SeedQR", is_secret=True)
+    from ux import show_qr_code, show_qr_grid
+    if ch == '1':
+        await show_qr_grid(qr, True)
+    else:
+        await show_qr_code(qr, True, msg="SeedQR", is_secret=True)
 
     stash.blank_object(qr)
 

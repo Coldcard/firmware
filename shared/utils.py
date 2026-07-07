@@ -744,6 +744,23 @@ def validate_own_address(addr):
 def encode_seed_qr(words):
     return ''.join('%04d' % bip39.get_word_index(w) for w in words)
 
+def qr_grid_parts(w):
+    return 6 if w == 29 else 5
+
+def qr_grid_bounds(w, pos):
+    parts = qr_grid_parts(w)
+    row = pos // parts
+    col = pos % parts
+    x0 = ((w * col) + parts - 1) // parts
+    x1 = ((w * (col + 1)) + parts - 1) // parts
+    y0 = ((w * row) + parts - 1) // parts
+    y1 = ((w * (row + 1)) + parts - 1) // parts
+    return row, col, x0, y0, x1 - x0, y1 - y0
+
+def qr_grid_size(cw, ch, max_w, max_h):
+    box = min((max_w - 1) // cw, (max_h - 1) // ch)
+    return box, (cw * box) + 1, (ch * box) + 1
+
 def show_single_address(addr):
     # insert some metadata so display layer can do special rendering
     # of addresses (based on hardware capabilities)
