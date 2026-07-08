@@ -144,7 +144,7 @@ async def batt_idle_logout():
     while True:
         await sleep_ms(20000)  # 20 seconds
 
-        if SCAN.busy_scanning:
+        if SCAN and SCAN.busy_scanning:
             continue
 
         if get_batt_level() is None:
