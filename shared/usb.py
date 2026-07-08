@@ -459,6 +459,20 @@ class USBHandler:
             sign_msg(msg, subpath, addr_fmt)
             return None
 
+        if cmd == 'slp9':
+            # SLIP-19 ownership proof, for coinjoin remote signing (Wasabi WabiSabi).
+            flags, len_subpath, len_commit = unpack_from('<III', args)
+            assert len(args) == (12 + len_subpath + len_commit), 'badlen'
+            subpath = bytes(args[12:12+len_subpath]).decode()
+            commitment = bytes(args[12+len_subpath:])
+
+            from glob import hsm_active
+            if hsm_active and not hsm_active.approve_slip19(subpath):
+                raise HSMDenied
+
+            from slip19 import make_ownership_proof
+            return b'biny' + make_ownership_proof(subpath, flags, commitment)
+
         if cmd == 'p2sh':
             # show P2SH (probably multisig) address on screen (also provides it back)
             # - must provide redeem script, and list of [xfp+path]
