@@ -17,6 +17,11 @@ def _cs(n):
         return bytes([n])
     return bytes([0xfd, n & 0xff, (n >> 8) & 0xff])
 
+def _tagged_hash(tag, msg):
+    # BIP-340 tagged hash: SHA256( SHA256(tag) || SHA256(tag) || msg ).
+    th = ngu.hash.sha256s(tag)
+    return ngu.hash.sha256s(th + th + msg)
+
 def make_ownership_proof(subpath, flags, commitment):
     # subpath: str like "m/84h/0h/0h/1/0"; flags: int; commitment: bytes.
     with stash.SensitiveValues() as sv:
@@ -42,8 +47,21 @@ def make_ownership_proof(subpath, flags, commitment):
         der = _der_sig(r, s) + bytes([0x01])            # + SIGHASH_ALL
         witness = _cs(2) + _cs(len(der)) + der + _cs(len(pubkey)) + pubkey
     else:
-        # P2TR: BIP86 output key + BIP-340 schnorr keyspend over the same digest.
-        raise ValueError("taproot slip19 not yet implemented")   # productionization TODO
+        # P2TR (BIP-86 key-spend): tweak the internal key with the taproot tweak (no script tree),
+        # then sign the same SLIP-19 digest as a BIP-340 key-spend. libsecp256k1's
+        # keypair_xonly_tweak_add handles the internal even-Y negation and output-key parity, so the
+        # resulting signature verifies against the tweaked output key in the scriptPubKey.
+        kp = ngu.secp256k1.keypair(pk)
+        internal_xonly = kp.xonly_pubkey().to_bytes()               # 32-byte internal x-only key
+        out_kp = kp.xonly_tweak_add(_tagged_hash(b'TapTweak', internal_xonly))
+        out_xonly = out_kp.xonly_pubkey().to_bytes()                # 32-byte output x-only key
+        spk = bytes([0x51, 0x20]) + out_xonly                       # P2TR: OP_1 push32 <output key>
+        preimage = proof_body + _cs(len(spk)) + spk + _cs(len(commitment)) + commitment
+        digest = ngu.hash.sha256s(preimage)
+        # aux_rand = 0: BIP-340 permits it; sign32 still binds (secret, message) so it is safe and
+        # deterministic for a proof. Witness is a single key-spend sig (SigHash.Default -> 64 bytes).
+        sig = ngu.secp256k1.sign_schnorr(out_kp, digest, bytes(32))
+        witness = _cs(1) + _cs(len(sig)) + sig
 
     bip322_sig = _cs(0) + witness       # empty scriptSig, then witness stack
     return proof_body + bip322_sig
