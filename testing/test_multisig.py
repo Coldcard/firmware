@@ -940,7 +940,8 @@ def fake_ms_txn(pytestconfig):
     def doit(num_ins, num_outs, M, keys, fee=10000, outvals=None, inp_addr_fmt="p2wsh",
              outstyles=['p2pkh'], change_outputs=[], incl_xpubs=False, hack_psbt=None,
              hack_change_out=False, input_amount=1E8, psbt_v2=None, bip67=True,
-             violate_script_key_order=False, path_mapper=None, netcode="XTN", force_outstyle=None):
+             violate_script_key_order=False, path_mapper=None, netcode="XTN",
+             force_outstyle=None, lock_time=0):
 
         psbt = BasicPSBT()
         if psbt_v2 is None:
@@ -954,9 +955,12 @@ def fake_ms_txn(pytestconfig):
             psbt.txn_version = 2
             psbt.input_count = num_ins
             psbt.output_count = num_outs
+            if lock_time:
+                psbt.fallback_locktime = lock_time
 
         txn = CTransaction()
         txn.nVersion = 2
+        txn.nLockTime = lock_time
 
         if incl_xpubs:
             # add global header with XPUB's
@@ -1018,15 +1022,20 @@ def fake_ms_txn(pytestconfig):
             else:
                 psbt.inputs[i].witness_utxo = supply.vout[-1].serialize()
 
+            if lock_time and not i:
+                seq = 0xfffffffd
+            else:
+                seq = 0xffffffff
+
             supply.calc_sha256()
             if psbt_v2:
                 psbt.inputs[i].previous_txid = supply.hash
                 psbt.inputs[i].prevout_idx = 0
-                # TODO sequence
-                # TODO height timelock
-                # TODO time timelock
+                psbt.inputs[i].sequence = seq
+                # psbt.inputs[i].req_time_locktime = None
+                # psbt.inputs[i].req_height_locktime = None
 
-            spendable = CTxIn(COutPoint(supply.sha256, 0), nSequence=0xffffffff)
+            spendable = CTxIn(COutPoint(supply.sha256, 0), nSequence=seq)
             txn.vin.append(spendable)
 
         for i in range(num_outs):
