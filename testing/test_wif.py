@@ -963,7 +963,7 @@ def test_descriptor_export(import_wif_to_store, cap_menu, goto_home, settings_re
 
 
 @pytest.mark.bitcoind
-@pytest.mark.parametrize('mode', [ "Classic P2PKH", "P2SH-Segwit", "Segwit P2WPKH"])
+@pytest.mark.parametrize('mode', ["Classic P2PKH", "P2SH-Segwit", "Segwit P2WPKH", "Taproot P2TR"])
 def test_spend_paper_wallet_desc_core(mode, bitcoind, settings_remove, import_wif_to_store,
                                       start_sign, end_sign, cap_story, use_regtest, cap_menu,
                                       pick_menu_item, goto_home, need_keypress, load_export):
