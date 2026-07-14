@@ -310,6 +310,9 @@ class psbtProxy:
 
     def get(self, val):
         # get the raw bytes for a value.
+        if isinstance(val, bytes):
+            return val
+
         pos, ll = val
         self.fd.seek(pos)
         return self.fd.read(ll)
