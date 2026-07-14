@@ -3,13 +3,13 @@
 import chains, ngu, version
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
-from ux import ux_show_story, ux_confirm, the_ux, import_export_prompt, ux_input_text, show_qr_code
+from ux import ux_show_story, ux_confirm, the_ux, import_export_prompt, ux_input_text
 from menu import MenuSystem, MenuItem
 from utils import problem_file_line, show_single_address, node_from_pubkey
 from files import CardSlot, CardMissingError, needs_microsd
 from glob import settings
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
-from public_constants import AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2SH
+from public_constants import AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2SH, AF_P2TR
 from msgsign import msg_signing_done
 
 MAX_ITEMS = 30
@@ -189,6 +189,8 @@ class WIFStoreMenu(MenuSystem):
             desc = "wpkh(%s)"
         elif af == AF_CLASSIC:
             desc = "pkh(%s)"
+        elif af == AF_P2TR:
+            desc = "tr(%s)"
         else:
             assert af == AF_P2WPKH_P2SH
             desc = "sh(wpkh(%s))"
