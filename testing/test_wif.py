@@ -1283,7 +1283,10 @@ def test_spend_paper_wallet_desc_core(mode, bitcoind, settings_remove, import_wi
     title, story = cap_story()
     assert "WIF store: 0" in story
     signed1 = end_sign(accept=True, finalize=True)
-    assert signed1 == signed
+
+    if mode != "Taproot P2TR":
+        # taproot signatures are not deterministic
+        assert signed1 == signed
 
     tx_hex = signed.hex()
     accept = bitcoind.rpc.testmempoolaccept([tx_hex])

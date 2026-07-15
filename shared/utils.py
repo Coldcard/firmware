@@ -340,10 +340,8 @@ def match_deriv_path(patterns, path):
 
     return False
 
-def validate_derivation_path_length(length, allow_master=False):
-    # force them to use a derived key, never the master
-    if not allow_master:
-        assert length >= 4, 'too short key path'
+def validate_derivation_path_length(length):
+    # assert length >= 4, 'too short key path'
     assert (length % 4) == 0, 'corrupt key path'
     assert (length // 4) <= MAX_PATH_DEPTH, 'too deep'
 

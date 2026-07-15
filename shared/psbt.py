@@ -359,8 +359,8 @@ class psbtProxy:
             self.taproot_subpaths[i] = (key, (val[0], val[1], (curr_pos, to_read)))
             # internal key is allowed to go from master
             # unspendable path can be just a bare xonly pubkey
-            allow_master = True if not leaf_hash_len else False
-            validate_derivation_path_length(to_read, allow_master=allow_master)
+            # master keys allowed
+            validate_derivation_path_length(to_read)
             v = self.fd.read(to_read)
             here = list(unpack_from('<%dI' % (to_read // 4), v))
             here = self.handle_zero_xfp(here, my_xfp, parent)
@@ -386,7 +386,7 @@ class psbtProxy:
             if len(pk) == 33:
                 assert pk[0] in {0x02, 0x03}, "uncompressed pubkey"
 
-            validate_derivation_path_length(val[1], allow_master=True)
+            validate_derivation_path_length(val[1])
             # promote to a list of ints
             here = self.parse_xfp_path(val)
             here = self.handle_zero_xfp(here, my_xfp, parent)
