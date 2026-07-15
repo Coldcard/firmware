@@ -2270,6 +2270,14 @@ class psbtObject(psbtProxy):
                     raise FatalPSBTIssue("POR not SIGHASH_ALL")
                 raise FatalPSBTIssue("SIGHASH_DEFAULT outside taproot context")
 
+            if self.por322 and (i == 0):
+                # Validate and capture the message challenge before any signing-key
+                # handling below can skip the rest of this input.
+                try:
+                    self.validate_bip322_input0(inp, txi, utxo)
+                except Exception as e:
+                    raise FatalPSBTIssue("i0: invalid BIP-322 'to_spend': %s" % e)
+
             if inp.sp_idxs:
                 my_cnt += 1
             if inp.fully_signed:
@@ -2335,15 +2343,13 @@ class psbtObject(psbtProxy):
                     # attribute after creating sighash
                     self.my_tr_in = True
 
-            if self.por322 and (i == 0):
-                # Proof of Reserves 'to_spend' validation
-                try:
-                    assert inp.sp_idxs, "not our key"
-                    self.validate_bip322_input0(inp, txi, utxo)
-                except Exception as e:
-                    raise FatalPSBTIssue("i0: invalid BIP-322 'to_spend': %s" % e)
-
             del utxo
+
+        if self.por322:
+            if not self.inputs[0].sp_idxs:
+                raise FatalPSBTIssue("i0: invalid BIP-322 'to_spend': not our key")
+            if not self.por322_msg_challenge:
+                raise FatalPSBTIssue("Missing BIP-322 message challenge")
 
         if not my_cnt:
             raise FatalPSBTIssue(NO_KEY_ERR + " (need %s)." % xfp2str(self.my_xfp))

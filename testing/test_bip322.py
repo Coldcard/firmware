@@ -4,6 +4,7 @@
 # NOTE: Run this module with and without --psbt2 to cover both PSBT versions.
 #
 import pytest, time, os, base64
+from ckcc_protocol.protocol import CCProtocolPacker
 from io import BytesIO
 from decimal import Decimal
 from constants import SIGHASH_MAP, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH
@@ -723,7 +724,10 @@ def test_wif_store_sign_bip322_por(num_ins, addr_fmt, bip322_txn, goto_home, pic
 @pytest.mark.parametrize("bip32_paths", [True, False])
 @pytest.mark.parametrize("por", [True, False])
 def test_bip322_empty_message_challenge_rejected(bip32_paths, por, bip322_txn,
-                                                 start_sign, cap_story):
+                                                 start_sign, cap_story, settings_set, dev):
+    n = BIP32Node.from_master_secret(os.urandom(32))
+    settings_set("wifs", [(n.sec().hex(), bytes(n.node.private_key).hex())])
+
     def hack(psbt_in):
         to_spend_tx = CTransaction()
         to_sign_tx = CTransaction()
@@ -749,6 +753,8 @@ def test_bip322_empty_message_challenge_rejected(bip32_paths, por, bip322_txn,
     start_sign(psbt)
     title, story = cap_story()
     assert title == "Failure"
+    assert "empty message_challenge" in story
+    assert dev.send_recv(CCProtocolPacker.ping(b"ok")) == b"ok"
 
 
 @pytest.mark.bitcoind
