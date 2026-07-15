@@ -853,7 +853,7 @@ def test_miniscript_bip322_por(minisc, clear_miniscript, cap_story, microsd_path
 @pytest.mark.parametrize("tapscript", [True, False])
 def test_musig_bip322_por(num_ins, tapscript, bitcoind, use_regtest, clear_miniscript, cap_story,
                           build_musig_wallet, bip322_from_classic_tx, start_sign, end_sign,
-                          verify_msg_bip322_por):
+                          verify_msg_bip322_por, bip322_verify):
     use_regtest()
     clear_miniscript()
 
@@ -909,7 +909,7 @@ def test_musig_bip322_por(num_ins, tapscript, bitcoind, use_regtest, clear_minis
 
     # core fixed utxo for input0 - rework
     por_psbt, _ = bip322_from_classic_tx(po.as_bytes())
-    start_sign(por_psbt, finalize=not tapscript)
+    start_sign(por_psbt)
     verify_msg_bip322_por("POR", is_por=is_por)
     time.sleep(.1)
     title, story = cap_story()
@@ -919,7 +919,9 @@ def test_musig_bip322_por(num_ins, tapscript, bitcoind, use_regtest, clear_minis
     assert ("1 output" in story) == is_por
     assert "- OP_RETURN -" not in story
     assert "null-data" not in story
-    end_sign(accept=True, finalize=not tapscript)
+    signed = end_sign(accept=True)
+    if not tapscript:
+        bip322_verify(signed)
 
 @pytest.mark.parametrize("msg", [
     b"A"*330,  # allowed
