@@ -2344,6 +2344,8 @@ class psbtObject(psbtProxy):
             del utxo
 
         if self.por322:
+            if not self.inputs[0].sp_idxs:
+                raise FatalPSBTIssue("i0: invalid BIP-322 'to_spend': not our key")
             if not self.por322_msg_challenge:
                 raise FatalPSBTIssue("Missing BIP-322 message challenge")
 
