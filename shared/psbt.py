@@ -2266,8 +2266,6 @@ class psbtObject(psbtProxy):
             inp.utxo_spk = utxo.scriptPubKey
 
             if inp.sighash == SIGHASH_DEFAULT and inp.af != AF_P2TR:
-                if self.por322:
-                    raise FatalPSBTIssue("POR not SIGHASH_ALL")
                 raise FatalPSBTIssue("SIGHASH_DEFAULT outside taproot context")
 
             if self.por322 and (i == 0):

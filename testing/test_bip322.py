@@ -246,7 +246,9 @@ def test_bip322_por_invalid_sighash(sighash, bip322_txn, start_sign, cap_story, 
 
     title, story = cap_story()
     assert title == "Failure"
-    assert "POR not SIGHASH_ALL" in story
+    err = ("SIGHASH_DEFAULT outside taproot context" if sighash == "DEFAULT"
+           else "POR not SIGHASH_ALL")
+    assert err in story
 
 
 @pytest.mark.parametrize("ins", [

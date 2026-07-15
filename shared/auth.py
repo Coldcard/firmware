@@ -446,15 +446,11 @@ class ApproveTransaction(UserAuthorizedAction):
                 msg.write("Message:\n%s\n\n" % self.psbt.por322_msg)
                 if is_por:
                     msg.write("Amount %s %s\n\n" % self.chain.render_value(self.psbt.total_value_in))
-                challenge = self.psbt.por322_msg_challenge
-                if not challenge:
-                    msg.close()
-                    return await self.failure("Invalid BIP-322 message challenge")
                 try:
-                    addr = self.chain.render_address(challenge)
+                    addr = self.chain.render_address(self.psbt.por322_msg_challenge)
                     msg.write("Challenge Address:\n%s\n\n" % show_single_address(addr))
                 except ValueError:
-                    msg.write("Message Challenge:\n%s\n\n" % b2a_hex(challenge).decode())
+                    msg.write("Message Challenge:\n%s\n\n" % b2a_hex(self.psbt.por322_msg_challenge).decode())
             else:
                 if self.psbt.active_miniscript:
                     # show name of the multisig/miniscript wallet that we signed with
