@@ -825,6 +825,23 @@ def test_wif_store_signing(num_ins, addr_fmt, fake_txn, goto_home, pick_menu_ite
     end_sign(finalize=True)
 
 
+def test_wif_store_signing_taproot_without_paths(fake_txn, start_sign, end_sign, cap_story,
+                                                  settings_remove, import_wif_to_store):
+    settings_remove("wifs")
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    po = BasicPSBT().parse(fake_txn(1, 1, addr_fmt="p2tr", master_xpub=node.hwif()))
+    po.inputs[0].taproot_internal_key, = po.inputs[0].taproot_bip32_paths.keys()
+    po.inputs[0].taproot_bip32_paths = None
+
+    import_wif_to_store([node.subkey_for_path("0/0").node.private_key.wif(testnet=True)])
+
+    start_sign(po.as_bytes(), finalize=True)
+    _, story = cap_story()
+    assert "WIF store: 0" in story
+    end_sign(finalize=True)
+
+
 @pytest.mark.parametrize("script_type", ["p2pkh", "p2pk"])
 @pytest.mark.parametrize("compressed", [False, True])
 @pytest.mark.parametrize("der_paths", [False, True])

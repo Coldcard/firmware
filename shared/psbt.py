@@ -838,7 +838,7 @@ class psbtInputProxy(psbtProxy):
 
     def handle_none_sighash(self):
         if self.sighash is None:
-            self.sighash = SIGHASH_DEFAULT if self.taproot_subpaths else SIGHASH_ALL
+            self.sighash = SIGHASH_DEFAULT if self.af == AF_P2TR else SIGHASH_ALL
 
     def has_utxo(self):
         # do we have a copy of the corresponding UTXO?
@@ -925,12 +925,22 @@ class psbtInputProxy(psbtProxy):
             return
 
         if not parsed_subpaths and psbt.wif_store:
-            res = psbt.wif_store.match_address_hash(self.af, addr_or_pubkey)
+            res = None
+            if self.af == AF_P2TR and self.taproot_internal_key:
+                xonly_pk = self.get(self.taproot_internal_key)
+                pk = psbt.key_in_wif_store(xonly_pk)
+                if pk:
+                    res = 0, pk
+                    parsed_subpaths[xonly_pk] = [0]
+                    self.ik_idx = [0]
+            else:
+                res = psbt.wif_store.match_address_hash(self.af, addr_or_pubkey)
             if res:
                 # Add a synthetic, local-only path so the edge signing pipeline can
                 # validate this input without serializing fake derivation metadata.
                 idx, pk = res
-                parsed_subpaths[pk] = [0]
+                if self.af != AF_P2TR:
+                    parsed_subpaths[pk] = [0]
                 self.sp_idxs = [0]
                 self.wif_key = pk
                 if self.af == AF_P2SH:
@@ -2876,7 +2886,7 @@ class psbtObject(psbtProxy):
                     assert inp.sighash in [SIGHASH_ALL, SIGHASH_DEFAULT], "POR sighash not ALL/DEFAULT"
 
                 # decide if it is appropriate to drop sighash from PSBT
-                if inp.taproot_subpaths:
+                if inp.af == AF_P2TR:
                     drop_sighash = (inp.sighash == SIGHASH_DEFAULT)
                 else:
                     drop_sighash = (inp.sighash == SIGHASH_ALL)
@@ -2964,6 +2974,9 @@ class psbtObject(psbtProxy):
                         pubk = pk = inp.wif_key
                         skp = "WIF Store"
                         node = node_from_privkey(self.wif_store[pk])
+                        if inp.af == AF_P2TR:
+                            schnorrsig = True
+                            pk = self.get(inp.taproot_internal_key)
                     else:
                         if inp.taproot_subpaths:
                             schnorrsig = True
@@ -3007,7 +3020,7 @@ class psbtObject(psbtProxy):
                     digest = self.make_txn_sighash(in_idx, txi, inp.sighash)
                 else:
                     # Hash the inputs and such in totally new ways, based on BIP-143
-                    if not inp.taproot_subpaths:
+                    if inp.af != AF_P2TR:
                         digest = self.make_txn_segwit_sighash(in_idx, txi, inp.amount,
                                                               inp.segwit_v0_scriptCode(),
                                                               inp.sighash)
