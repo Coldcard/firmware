@@ -1414,10 +1414,6 @@ class psbtObject(psbtProxy):
             elif b"\x03" + key in self.wif_store:
                 return b"\x03" + key
         else:
-            if len(key) == 65:
-                # WIF Store keeps compressed pubkeys, but P2PK may identify
-                # that same private key using its uncompressed serialization.
-                key = ngu.secp256k1.pubkey(key).to_bytes()
             if key in self.wif_store:
                 return key
 

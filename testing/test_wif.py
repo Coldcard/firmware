@@ -827,9 +827,10 @@ def test_wif_store_signing(num_ins, addr_fmt, fake_txn, goto_home, pick_menu_ite
 
 @pytest.mark.parametrize("script_type", ["p2pkh", "p2pk"])
 @pytest.mark.parametrize("compressed", [False, True])
-def test_wif_store_signing_without_paths(script_type, compressed, fake_txn, start_sign, end_sign,
-                                         cap_story, settings_remove, import_wif_to_store,
-                                         goto_home):
+@pytest.mark.parametrize("der_paths", [False, True])
+def test_wif_store_signing_exact_key(script_type, compressed, der_paths, fake_txn, start_sign,
+                                     end_sign, cap_story, settings_remove, import_wif_to_store,
+                                     goto_home):
     settings_remove("wifs")
     goto_home()
 
@@ -863,7 +864,11 @@ def test_wif_store_signing_without_paths(script_type, compressed, fake_txn, star
                                 nSequence=spend_tx.vin[0].nSequence)
         po.txn = spend_tx.serialize_with_witness()
 
-    po.inputs[0].bip32_paths = {}
+    if der_paths and not compressed and script_type == "p2pkh":
+        path, = po.inputs[0].bip32_paths.values()
+        po.inputs[0].bip32_paths = {pubkey: path}
+    elif not der_paths:
+        po.inputs[0].bip32_paths = {}
 
     import_wif_to_store([n.node.private_key.wif(compressed=compressed, testnet=True)])
 
