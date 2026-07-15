@@ -793,6 +793,36 @@ def test_wif_store_other_serialization_not_owned(compressed, is_q1, goto_home, p
     assert "without finding a match" in story
 
 
+@pytest.mark.parametrize("addr_fmt", ["p2wpkh", "p2sh-p2wpkh", "p2tr"])
+def test_uncompressed_wif_not_owned_by_segwit(addr_fmt, fake_txn, start_sign, cap_story,
+                                              settings_remove, import_wif_to_store):
+    settings_remove("wifs")
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    n = node.subkey_for_path("0/0")
+    po = BasicPSBT().parse(fake_txn(1, 1, addr_fmt=addr_fmt, master_xpub=node.hwif()))
+
+    if addr_fmt == "p2tr":
+        po.inputs[0].taproot_internal_key, = po.inputs[0].taproot_bip32_paths.keys()
+        po.inputs[0].taproot_bip32_paths = {}
+    else:
+        pubkey_hash = hash160(n.node.public_key.sec(compressed=False))
+        redeem_script = b'\x00\x14' + pubkey_hash
+        wrapped = addr_fmt == "p2sh-p2wpkh"
+        script = (b'\xa9\x14' + hash160(redeem_script) + b'\x87') if wrapped else redeem_script
+
+        po.inputs[0].bip32_paths = {}
+        po.inputs[0].witness_utxo = CTxOut(100_000_000, script).serialize()
+        po.inputs[0].redeem_script = redeem_script if wrapped else None
+
+    import_wif_to_store([n.node.private_key.wif(compressed=False, testnet=True)])
+
+    start_sign(po.as_bytes(), finalize=True)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "None of the keys involved in this transaction belong to this Coldcard" in story
+
+
 @pytest.mark.parametrize("num_ins", [1, 5])
 @pytest.mark.parametrize("addr_fmt", ["p2tr", "p2pkh", "p2wpkh", "p2sh-p2wpkh"])
 def test_wif_store_signing(num_ins, addr_fmt, fake_txn, goto_home, pick_menu_item, need_keypress,
