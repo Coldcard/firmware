@@ -5,7 +5,7 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from ux import ux_show_story, ux_confirm, the_ux, import_export_prompt, ux_input_text
 from menu import MenuSystem, MenuItem
-from utils import problem_file_line, show_single_address, node_from_pubkey
+from utils import problem_file_line, show_single_address
 from files import CardSlot, CardMissingError, needs_microsd
 from glob import settings
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
@@ -54,10 +54,8 @@ def iter_wif_store_addresses(addr_fmt):
 
         pubkey = a2b_hex(pk)
         if addr_fmt == AF_P2TR:
-            node = node_from_pubkey(pubkey)
-            addr = chains.current_chain().address(node, addr_fmt)
-        else:
-            addr = chains.current_chain().pubkey_to_address(pubkey, addr_fmt)
+            pubkey = pubkey[1:]  # x-only internal key
+        addr = chains.current_chain().pubkey_to_address(pubkey, addr_fmt)
 
         yield i, addr
 
@@ -241,10 +239,8 @@ class WIFStoreMenu(MenuSystem):
         pubkey, af = item.arg
         pubkey = a2b_hex(pubkey)
         if af == AF_P2TR:
-            node = node_from_pubkey(pubkey)
-            addr = chains.current_chain().address(node, af)
-        else:
-            addr = chains.current_chain().pubkey_to_address(pubkey, af)
+            pubkey = pubkey[1:]  # x-only internal key
+        addr = chains.current_chain().pubkey_to_address(pubkey, af)
         msg = show_single_address(addr)
 
         ux_title = chains.addr_fmt_label(af) if version.has_qwerty else None

@@ -334,6 +334,7 @@ def test_wif_store_addresses(netcode, compressed, import_wif_to_store, use_mainn
         ("P2SH-Segwit", "p2sh-p2wpkh"),
         ("Segwit P2WPKH", "p2wpkh"),
         ("Classic P2PKH", "p2pkh"),
+        ("Taproot P2TR", "p2tr"),
     ] if compressed else [("Classic P2PKH", "p2pkh")]
 
     for mi, af in cases:
@@ -678,6 +679,7 @@ def test_multisig_wif_store(oneshot, addr_fmt, dev, fake_ms_txn, start_sign, set
 
 
 @pytest.mark.parametrize("addr_fmt,compressed", [
+    ("p2tr", True),
     ("p2wpkh", True),
     ("p2sh-p2wpkh", True),
     ("p2pkh", True),
@@ -737,7 +739,7 @@ def test_wif_store_ownership(addr_fmt, compressed, idx, is_q1, goto_home, pick_m
     assert f"Found in WIF store at index {idx}" in story
     need_keypress(KEY_QR if is_q1 else '1')
     addr_qr = cap_screen_qr().decode()
-    if addr_fmt == "p2wpkh":
+    if addr_fmt in ("p2wpkh", "p2tr"):
         addr_qr = addr_qr.lower()
 
     assert addr == addr_qr
