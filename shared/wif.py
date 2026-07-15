@@ -190,6 +190,7 @@ class WIFStoreMenu(MenuSystem):
         elif af == AF_CLASSIC:
             desc = "pkh(%s)"
         elif af == AF_P2TR:
+            pk = pk[2:] # xonly from string
             desc = "tr(%s)"
         else:
             assert af == AF_P2WPKH_P2SH

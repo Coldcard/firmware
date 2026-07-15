@@ -987,7 +987,11 @@ def test_spend_paper_wallet_desc_core(mode, bitcoind, settings_remove, import_wi
     desc = load_export("sd", "Descriptor", is_json=False, sig_check=False)
 
     # must match pubkey from device
-    assert pk.K.sec().hex() in desc
+    pubkey = pk.K.sec().hex()
+    if mode == "Taproot P2TR":
+        assert pubkey[2:] in desc
+    else:
+        assert pubkey in desc
 
     paper_addr = bitcoind.rpc.deriveaddresses(desc)[0]
 
@@ -1018,7 +1022,10 @@ def test_spend_paper_wallet_desc_core(mode, bitcoind, settings_remove, import_wi
     # remove BIP-32 paths from PSBT inputs
     # causes auto-detection on CC side
     for i in range(len(po.inputs)):
-        po.inputs[i].bip32_paths = None
+        if mode == "Taproot P2TR":
+            po.inputs[i].taproot_bip32_paths = None
+        else:
+            po.inputs[i].bip32_paths = None
 
     psbt1_bytes = po.as_bytes()
     assert len(psbt_bytes) > len(psbt1_bytes)

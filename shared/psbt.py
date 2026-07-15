@@ -310,6 +310,7 @@ class psbtProxy:
 
     def get(self, val):
         # get the raw bytes for a value.
+        # TODO remove
         if isinstance(val, bytes):
             return val
 
