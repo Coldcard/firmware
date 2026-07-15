@@ -310,10 +310,6 @@ class psbtProxy:
 
     def get(self, val):
         # get the raw bytes for a value.
-        # TODO remove
-        if isinstance(val, bytes):
-            return val
-
         pos, ll = val
         self.fd.seek(pos)
         return self.fd.read(ll)
@@ -3557,7 +3553,11 @@ class psbtObject(psbtProxy):
         # or one signature from partial sigs if input is fully sign
         if inp.added_sigs:
             assert len(inp.added_sigs) == 1
-            return self.get(inp.added_sigs[0][0]), inp.added_sigs[0][1]
+            pk, sig = inp.added_sigs[0]
+            if inp.wif_key:
+                assert pk == inp.wif_key
+                return pk, sig
+            return self.get(pk), sig
 
         if inp.part_sigs:
             assert len(inp.part_sigs) == 1
