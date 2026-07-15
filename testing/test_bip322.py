@@ -660,7 +660,7 @@ def test_bip322_invalid_ms_psbt(addr_fmt, bip322_ms_txn, start_sign, cap_story, 
 
 
 @pytest.mark.parametrize("num_ins", [1, 12])
-@pytest.mark.parametrize("addr_fmt", ["p2pkh", "p2wpkh", "p2sh-p2wpkh"])
+@pytest.mark.parametrize("addr_fmt", ["p2pkh", "p2wpkh", "p2sh-p2wpkh", "p2tr"])
 def test_wif_store_sign_bip322_por(num_ins, addr_fmt, bip322_txn, goto_home, pick_menu_item,
                                    need_keypress, start_sign, end_sign, cap_menu, cap_story,
                                    press_cancel, settings_remove, press_select, import_wif_to_store,
@@ -685,7 +685,14 @@ def test_wif_store_sign_bip322_por(num_ins, addr_fmt, bip322_txn, goto_home, pic
         ins.append([addr_fmt, None, amt , n.node.private_key.K.sec()])
 
     msg = b"Coinkite"
-    psbt, msg_challenge = bip322_txn(ins, msg=msg)
+    psbt, msg_challenge = bip322_txn(
+        ins, msg=msg, sighash=SIGHASH_MAP["DEFAULT"] if addr_fmt == "p2tr" else None)
+    if addr_fmt == "p2tr":
+        po = BasicPSBT().parse(psbt)
+        for inp in po.inputs:
+            inp.taproot_internal_key, = inp.taproot_bip32_paths.keys()
+            inp.taproot_bip32_paths = None
+        psbt = po.as_bytes()
 
     import_wif_to_store(wifs)
 

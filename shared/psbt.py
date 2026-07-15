@@ -2265,8 +2265,10 @@ class psbtObject(psbtProxy):
             # needed for each input if we sign at least one P2TR input
             inp.utxo_spk = utxo.scriptPubKey
 
-            if inp.sighash == SIGHASH_DEFAULT:
-                assert inp.af == AF_P2TR, "SIGHASH_DEFAULT outside taproot context"
+            if inp.sighash == SIGHASH_DEFAULT and inp.af != AF_P2TR:
+                if self.por322:
+                    raise FatalPSBTIssue("POR not SIGHASH_ALL")
+                raise FatalPSBTIssue("SIGHASH_DEFAULT outside taproot context")
 
             if inp.sp_idxs:
                 my_cnt += 1
@@ -2445,7 +2447,7 @@ class psbtObject(psbtProxy):
         for inp in self.inputs:
             if inp.sp_idxs and not inp.fully_signed:
                 if self.por322 and inp.sighash is not None:
-                    if inp.taproot_subpaths:
+                    if inp.af == AF_P2TR:
                         if inp.sighash not in (SIGHASH_ALL, SIGHASH_DEFAULT):
                             raise FatalPSBTIssue("POR sighash not ALL/DEFAULT")
                     elif inp.sighash != SIGHASH_ALL:
