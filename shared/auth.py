@@ -30,6 +30,10 @@ from msgsign import sign_message_digest
 TXN_INPUT_OFFSET = 0
 TXN_OUTPUT_OFFSET = MAX_TXN_LEN
 
+SP_EXPORT_NOTE = '''\
+Silent Payment output detected - finalize signed PSBT on wallet coordinator to broadcast.
+Direct broadcast requires opt-in via Danger Zone > SP Final Export.'''
+
 class UserAuthorizedAction:
     active_request = None
 
@@ -855,6 +859,7 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
     # User authorized PSBT for signing, and we added signatures.
     # - allow PushTX if enabled (first thing)
     # - can save final TXN out to SD card/VirtDisk, share by NFC, QR.
+    # - silent payments should discourage save final txn by default
 
     from glob import PSRAM, hsm_active
     from sffile import SFFile
@@ -866,9 +871,15 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
     base_title = "PSBT " + ("Signed" if psbt.sig_added else "Updated")
 
     is_complete = psbt.is_complete()
+    sp_export_hint = None
     if finalize is not None:
         # USB case - user can choose whether to attempt finalization
         is_complete = finalize
+    elif is_complete and psbt.has_silent_payment_outputs():
+        from glob import settings
+        if not settings.get('spfin', False):
+            is_complete = False
+            sp_export_hint = SP_EXPORT_NOTE
 
     with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as psram:
         if is_complete:
@@ -876,7 +887,9 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
             noun = "Finalized TX ready for broadcast"
         else:
             psbt.serialize(psram)
-            noun = "Partly Signed PSBT"
+            # not finalizing: either genuinely partial (needs more sigs) or an SP tx we
+            # kept as PSBT on purpose - only the latter (sp_export_hint) is fully signed.
+            noun = "Signed PSBT" if sp_export_hint else "Partly Signed PSBT"
             txid = None
 
         data_len = psram.tell()
@@ -991,13 +1004,14 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
             # typical case: save to SD card, show filenames we used
             assert isinstance(ch, dict)
             msg = await _save_to_disk(psbt, txid, ch, is_complete, data_len,
-                                      output_encoder, filename)
+                                      output_encoder, filename, sp_export_hint)
 
         input_method = None
         first_time = False
         title = base_title
 
-async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_encoder, filename=None):
+async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_encoder,
+                        filename=None, sp_note=None):
     # Saving a PSBT from PSRAM to something disk-like.
     # - handle save-to-SD/VirtDisk cases. With re-attempt when no card, etc.
     assert isinstance(save_options, dict)       # from import_export_prompt
@@ -1033,7 +1047,7 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
 
     while 1:
         # try to put back into same spot, but also do top-of-card
-        if not is_complete:
+        if not is_complete and not sp_note:
             # keep the filename under control during multiple passes
             target_fname = base.replace('-part', '') + '-part.psbt'
         else:
@@ -1113,7 +1127,7 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
     # Done, show the filenames we used.
     if out_fn:
         msg = "Updated PSBT is:\n\n%s" % out_fn
-        if out2_fn:
+        if out2_fn or sp_note:
             msg += '\n\n'
     else:
         # del_after is probably set
@@ -1121,6 +1135,9 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
 
     if out2_fn:
         msg += 'Finalized transaction (ready for broadcast):\n\n%s' % out2_fn
+    elif sp_note:
+        # in place of the finalized-txn line: explain why it was not produced
+        msg += sp_note
 
     return msg
 
