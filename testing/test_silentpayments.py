@@ -871,3 +871,91 @@ def test_sp_spend_fraudulent_change_address(dev, fake_txn, start_sign, end_sign)
     time.sleep(SIMULATOR_DELAY)
     with pytest.raises(CCProtoError, match="SP change output keys do not match this device"):
         end_sign(accept=True, finalize=False)
+
+
+# ---------------------------------------------------------------------------
+# Finalized/broadcast export policy for SP-output transactions
+# ---------------------------------------------------------------------------
+
+
+def _one_sp_output_psbt(dev, fake_txn):
+    def sp_hacker(psbt):
+        _add_sp_outputs(psbt, [(0, SCAN_KEY, SPEND_KEY_B)])
+    return fake_txn(1, 1, dev.master_xpub, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker)
+
+
+def _sp_sign_microsd(open_microsd, microsd_path, goto_home, pick_menu_item,
+                     cap_story, need_keypress, psbt_bytes):
+    # Sign an SP-output PSBT via the air-gapped microSD flow (finalize=None path),
+    # approve, and let the first-pass auto-echo save to SD. Returns the save-summary
+    # story and the files that ended up on the card.
+    import os
+    from glob import glob as _glob
+
+    name = 'sptest'
+    for f in _glob(microsd_path(name + '*')):
+        os.remove(f)
+    with open_microsd(name + '.psbt', 'wb') as sd:
+        sd.write(psbt_bytes)
+
+    goto_home()
+    pick_menu_item('Ready To Sign')
+    time.sleep(0.1)
+    title, story = cap_story()
+    if 'OK TO SEND' not in title:
+        pick_menu_item(name + '.psbt')
+        time.sleep(0.1)
+        title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    need_keypress('y')
+
+    title, story = cap_story()
+    assert 'Updated PSBT' in story
+
+    txn = _glob(microsd_path(name + '*-final.txn'))
+    signed = _glob(microsd_path(name + '*-signed.psbt'))
+    part = _glob(microsd_path(name + '*-part.psbt'))
+    return story, txn, (signed or part)
+
+
+def test_sp_export_defaults_to_psbt(dev, fake_txn, settings_remove, open_microsd,
+        microsd_path, goto_home, pick_menu_item, cap_story, need_keypress):
+    # Default (spfin unset): SP-output tx exports the signed PSBT, no broadcast tx,
+    # and the policy note replaces the finalized-transaction line.
+    settings_remove('spfin')
+    psbt_bytes = _one_sp_output_psbt(dev, fake_txn)
+
+    story, txn, psbt_out = _sp_sign_microsd(open_microsd, microsd_path, goto_home,
+                            pick_menu_item, cap_story, need_keypress, psbt_bytes)
+
+    assert not txn, "no finalized broadcast tx by default"
+    assert psbt_out and 'signed.psbt' in psbt_out[0]
+    assert 'Finalized transaction' not in story
+    assert 'SP Final Export' in story, "policy note should be shown"
+
+    tp = BasicPSBT().parse(open(psbt_out[0], 'rb').read())
+    assert any(o.sp_v0_info for o in tp.outputs), "PSBT retains SP metadata for verification"
+
+
+def test_sp_export_final_allowed(dev, fake_txn, settings_set, settings_remove, open_microsd,
+        microsd_path, goto_home, pick_menu_item, cap_story, need_keypress):
+    # With the opt-in setting, the current finalized-export behavior is restored.
+    settings_set('spfin', 1)
+    try:
+        psbt_bytes = _one_sp_output_psbt(dev, fake_txn)
+        story, txn, _ = _sp_sign_microsd(open_microsd, microsd_path, goto_home,
+                            pick_menu_item, cap_story, need_keypress, psbt_bytes)
+        assert txn, "finalized broadcast tx written when allowed"
+        assert 'Finalized transaction' in story
+        assert 'SP Final Export' not in story
+    finally:
+        settings_remove('spfin')
+
+
+def test_sp_export_usb_finalize_unchanged(dev, fake_txn, start_sign, end_sign, settings_remove):
+    # USB STXN_FINALIZE is honored despite SP outputs and spfin unset (USB path untouched).
+    settings_remove('spfin')
+    psbt_bytes = _one_sp_output_psbt(dev, fake_txn)
+    start_sign(psbt_bytes, finalize=True)
+    time.sleep(SIMULATOR_DELAY)
+    end_sign(accept=True, finalize=True)    # asserts a non-PSBT finalized tx is returned

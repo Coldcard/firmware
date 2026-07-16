@@ -357,6 +357,14 @@ If you disable sighash flag restrictions, and ignore the \
 warnings, funds can be stolen by specially crafted PSBT or MitM.
 
 Keep blocked unless you intend to sign special transactions.'''),
+    ToggleMenuItem("SP Final Export", "spfin", ["Default: PSBT", "Allow Final"],
+                   story='''\
+Silent Payment outputs are computed on-device. A coordinator requires a signed \
+PSBT to verify the computation. By default, Silent Payment transactions \
+export as PSBT for the coordinator to finalize.
+
+Enable only if you intend to broadcast Silent Payment \
+transactions directly from this device.'''),
     ToggleMenuItem('Testnet Mode', 'chain', ['Bitcoin', 'Testnet4', 'Regtest'],
         value_map=['BTC', 'XTN', 'XRT'],
         on_change=change_which_chain,
