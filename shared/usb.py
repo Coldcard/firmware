@@ -568,7 +568,6 @@ class USBHandler:
         if cmd == 'stxn':
             # sign transaction
             txn_len, flags, txn_sha = unpack_from('<II32s', args)
-            assert len(args) == 40, 'badlen'
             if txn_sha != self.file_checksum.digest():
                 return b'err_Checksum'
 
@@ -577,9 +576,11 @@ class USBHandler:
             # optional miniscript wallet name
             try:
                 name_len = unpack_from('B', args[40:])[0]
+                assert len(args) == 41 + name_len, 'badlen'
                 name = str(args[41:41 + name_len], "ascii")
                 assert 1 <= len(name) <= 32, "name len"
             except:
+                assert len(args) == 40, 'badlen'
                 name = None
 
             w = None

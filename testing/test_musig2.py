@@ -521,6 +521,7 @@ def test_musig(tapscript, ts_level, cc_first, clear_miniscript, microsd_path, us
     address_explorer_check("sd", "bech32m", wo, name)
 
 
+@pytest.mark.veryslow
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("N_K", [(5,3),(6,4), (10,9)])
 @pytest.mark.parametrize("tapscript", [True, False])
