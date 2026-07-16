@@ -51,6 +51,10 @@ def psram_wipe(offset, length):
     for pos in range(offset, offset+length, 256):
         PSRAM.write(pos, z)
 
+SP_EXPORT_NOTE = '''\
+Silent Payment output detected - finalize signed PSBT on wallet coordinator to broadcast.
+Direct broadcast requires opt-in via Danger Zone > SP Final Export.'''
+
 class UserAuthorizedAction:
     active_request = None
 
@@ -879,6 +883,7 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
     # User authorized PSBT for signing, and we added signatures.
     # - allow PushTX if enabled (first thing)
     # - can save final TXN out to SD card/VirtDisk, share by NFC, QR.
+    # - silent payments should discourage save final txn by default
 
     from glob import PSRAM, hsm_active
     from sffile import SFFile
@@ -890,9 +895,15 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
     base_title = "PSBT " + ("Signed" if psbt.sig_added else "Updated")
 
     is_complete = psbt.is_complete()
+    sp_export_hint = None
     if finalize is not None:
         # USB case - user can choose whether to attempt finalization
         is_complete = finalize
+    elif is_complete and psbt.has_silent_payment_outputs():
+        from glob import settings
+        if not settings.get('spfin', False):
+            is_complete = False
+            sp_export_hint = SP_EXPORT_NOTE
 
     if psbt.por322:
         # network txn strips PSBT BIP-32 with paths with pubkey required for verification
@@ -906,7 +917,10 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
             noun = "Finalized TX ready for broadcast"
         else:
             psbt.serialize(psram)
-            noun = "Signed BIP-322 PSBT" if psbt.por322 else "Partly Signed PSBT"
+            # not finalizing: either genuinely partial (needs more sigs) or an SP tx we
+            # kept as PSBT on purpose - only the latter (sp_export_hint) is fully signed.
+            noun = ("Signed BIP-322 PSBT" if psbt.por322 else
+                    "Signed PSBT" if sp_export_hint else "Partly Signed PSBT")
             txid = None
 
         data_len = psram.tell()
@@ -1025,13 +1039,14 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
             # typical case: save to SD card, show filenames we used
             assert isinstance(ch, dict)
             msg = await _save_to_disk(psbt, txid, ch, is_complete, data_len,
-                                      output_encoder, filename)
+                                      output_encoder, filename, sp_export_hint)
 
         input_method = None
         first_time = False
         title = base_title
 
-async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_encoder, filename=None):
+async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_encoder,
+                        filename=None, sp_note=None):
     # Saving a PSBT from PSRAM to something disk-like.
     # - handle save-to-SD/VirtDisk cases. With re-attempt when no card, etc.
     assert isinstance(save_options, dict)       # from import_export_prompt
@@ -1051,10 +1066,10 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
 
     if match:
         prefix = base[:-len(match.group(0))]
-        suffix = '-signed' if is_complete else '-part-%d' % (int(match.group(1)) + 1)
+        suffix = '-signed' if (is_complete or sp_note) else '-part-%d' % (int(match.group(1)) + 1)
     else:
         prefix = base if is_complete else base.replace('-part', '')
-        suffix = '-signed' if is_complete else '-part'
+        suffix = '-signed' if (is_complete or sp_note) else '-part'
 
     target_fname = prefix + suffix + '.psbt'
 
@@ -1151,7 +1166,7 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
     # Done, show the filenames we used.
     if out_fn:
         msg = "Updated PSBT is:\n\n%s" % out_fn
-        if out2_fn:
+        if out2_fn or sp_note:
             msg += '\n\n'
     else:
         # del_after is probably set
@@ -1159,6 +1174,9 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
 
     if out2_fn:
         msg += 'Finalized transaction (ready for broadcast):\n\n%s' % out2_fn
+    elif sp_note:
+        # in place of the finalized-txn line: explain why it was not produced
+        msg += sp_note
 
     return msg
 
