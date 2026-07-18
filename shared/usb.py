@@ -55,6 +55,7 @@ HSM_WHITELIST = frozenset({
     'stok', 'smok',             # completion check: sign txn or msg
     'xpub', 'msck',             # quick status checks
     'p2sh', 'show',             # limited by HSM policy
+    'slp9',                     # SLIP-19 ownership proof; limited by slip19_paths policy
     'user',                     # auth HSM user, other user cmds not allowed
     'gslr',                     # read storage locker; hsm mode only, limited usage
 })
@@ -463,7 +464,8 @@ class USBHandler:
             # SLIP-19 ownership proof, for coinjoin remote signing (Wasabi WabiSabi).
             flags, len_subpath, len_commit = unpack_from('<III', args)
             assert len(args) == (12 + len_subpath + len_commit), 'badlen'
-            subpath = bytes(args[12:12+len_subpath]).decode()
+            from utils import cleanup_deriv_path
+            subpath = cleanup_deriv_path(args[12:12+len_subpath])
             commitment = bytes(args[12+len_subpath:])
 
             from glob import hsm_active
