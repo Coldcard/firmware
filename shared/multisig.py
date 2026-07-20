@@ -5,10 +5,9 @@
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson, version
 from public_constants import AF_P2WSH, AF_P2WSH_P2SH
 from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, problem_file_line, get_filesize
+from utils import xfp2str, problem_file_line, get_filesize, max_signers
 from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_show_story, ux_enter_number, ux_enter_bip32_index
-from public_constants import MAX_SIGNERS
 from glob import settings
 from charcodes import KEY_QR
 from desc_utils import ExtendedKey, KeyOriginInfo
@@ -229,9 +228,10 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
             num_mine += 1
 
     N = len(keys)
+    limit = max_signers(addr_fmt)
 
-    if (N > MAX_SIGNERS) or (N < 2):
-        await ux_show_story("Invalid number of signers,min is 2 max is %d." % MAX_SIGNERS)
+    if (N > limit) or (N < 2):
+        await ux_show_story("Invalid number of signers,min is 2 max is %d." % limit)
         return
 
     if for_ccc:
@@ -244,7 +244,7 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
     dis.fullscreen("Wait...")
 
     # create appropriate object
-    assert 1 <= M <= N <= MAX_SIGNERS
+    assert 1 <= M <= N <= limit
 
     if for_ccc:
         name = "Coldcard Co-sign" if version.has_qwerty else "CCC"

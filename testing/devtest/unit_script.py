@@ -1,8 +1,9 @@
 # (c) Copyright 2025 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 from uio import BytesIO
-from serializations import ser_push_data, ser_string_vector, deser_string_vector
+from serializations import ser_push_data, ser_push_int, ser_string_vector, deser_string_vector
 from serializations import ser_compact_size, deser_compact_size, disassemble
+from psbt import disassemble_multisig_mn
 
 test_data = [
     # data,  result
@@ -49,5 +50,23 @@ for i in [253, 0x10000, 0x100000000]:
         x = ser_compact_size(num)
 
         assert num == deser_compact_size(BytesIO(x))
+
+# standard multisig M/N decoding, including pushed values above OP_16
+pk = b"\x02" + (b"\x01" * 32)
+for M, N in ((1, 16), (1, 17), (17, 20), (20, 20)):
+    script = ser_push_int(M) + ((b"\x21" + pk) * N)
+    script += ser_push_int(N) + b"\xae"
+    assert disassemble_multisig_mn(script) == (M, N)
+
+# pushed values are only canonical above OP_16
+nonminimal_M = b"\x01\x01" + (b"\x21" + pk) + ser_push_int(17) + b"\xae"
+nonminimal_N = ser_push_int(1) + (b"\x21" + pk) + b"\x01\x10\xae"
+assert disassemble_multisig_mn(nonminimal_M) == (None, None)
+assert disassemble_multisig_mn(nonminimal_N) == (None, None)
+
+for M, N in ((2, 1), (1, 21)):
+    script = ser_push_int(M) + ((b"\x21" + pk) * N)
+    script += ser_push_int(N) + b"\xae"
+    assert disassemble_multisig_mn(script) == (None, None)
 
 # EOF

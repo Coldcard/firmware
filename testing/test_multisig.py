@@ -200,7 +200,7 @@ def import_ms_wallet(dev, make_multisig, offer_minsc_import, press_select,
     return doit
 
 
-@pytest.mark.parametrize('N', [ 3, 15])
+@pytest.mark.parametrize('N', [3, 15, 16, 20, 21])
 def test_ms_import_variations(N, offer_minsc_import, press_cancel, is_q1, get_cc_key):
     # all the different ways...
     my_key = get_cc_key(path="").replace("/<0;1>/*", "")
@@ -211,9 +211,22 @@ def test_ms_import_variations(N, offer_minsc_import, press_cancel, is_q1, get_cc
     # - no xfps
     # - no meta data
     k0 = ','.join(keys)
-    title, story = offer_minsc_import(f"sh(multi({N},{k0}))")
-    assert f'Policy: {N} of {N}\n' in story
-    press_cancel()
+    if N <= 15:
+        title, story = offer_minsc_import(f"sh(multi({N},{k0}))")
+        assert f'Policy: {N} of {N}\n' in story
+        press_cancel()
+    else:
+        with pytest.raises(BaseException) as ee:
+            offer_minsc_import(f"sh(multi({N},{k0}))")
+        assert ("max signers" if N <= 20 else "M/N range") in str(ee.value)
+
+    if N > 20:
+        desc = f"wsh(sortedmulti({N},{k0}))"
+        for invalid_desc in (desc, f"sh({desc})"):
+            with pytest.raises(BaseException) as ee:
+                offer_minsc_import(invalid_desc)
+            assert "M/N range" in str(ee.value)
+        return
 
     # exclude myself (expect fail)
     k1 = ','.join(keys[1:])
@@ -222,6 +235,11 @@ def test_ms_import_variations(N, offer_minsc_import, press_cancel, is_q1, get_cc
     assert "My key 0F056943 missing in descriptor" in str(ee.value)
 
     desc0 = f"wsh(sortedmulti({N},{k0}))"
+    if N == 20:
+        title, story = offer_minsc_import(f"sh({desc0})")
+        assert f'Policy: {N} of {N}\n' in story
+        press_cancel()
+
     # normal names
     for name in [ 'Zy', 'Z'*20, 'Vault #3' ]:
         title, story = offer_minsc_import(json.dumps({"name": name, "desc": desc0}))
@@ -1178,6 +1196,37 @@ def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_miniscript, import_ms
         try_sign_microsd(psbt, encoding=('binary', 'hex', 'base64')[random.randint(0,2)])
     else:
         try_sign(psbt)
+
+
+@pytest.mark.unfinalized
+@pytest.mark.parametrize("M,inp_addr_fmt", [
+    (2, "p2wsh"),
+    (17, "p2sh-p2wsh"),
+    (20, "p2wsh"),
+])
+def test_ms_sign_20_xpubs(M, inp_addr_fmt, clear_miniscript, import_ms_wallet,
+                          fake_ms_txn, try_sign_microsd, settings_set):
+    # Automatic PSBT wallet discovery must handle pushed M/N values and 20 global XPUBs.
+    N = 20
+    dd = "m/48h/1h/0h/%dh" % (1 if inp_addr_fmt == "p2sh-p2wsh" else 2)
+
+    def path_mapper(idx):
+        return str_to_path(dd) + [0, 0]
+
+    def include_xpubs(idx, xfp, m, sk):
+        kk = str_to_path(dd)
+        bp = pack('<%dI' % (dd.count("/") + 1), xfp, *kk)
+        return sk.node.serialize_public(), bp
+
+    clear_miniscript()
+    settings_set('pms', 2)
+    keys, _ = import_ms_wallet(M, N, addr_fmt=inp_addr_fmt, do_import=False, common=dd)
+    psbt = fake_ms_txn(1, 1, M, keys, inp_addr_fmt=inp_addr_fmt,
+                       incl_xpubs=include_xpubs, path_mapper=path_mapper)
+
+    _, updated, _ = try_sign_microsd(psbt)
+    aft = BasicPSBT().parse(updated)
+    assert len(aft.inputs[0].part_sigs) == 1
 
 
 @pytest.mark.parametrize("finalize", [True, False])
@@ -2196,7 +2245,7 @@ def test_finalization(m_n, script, desc, use_regtest, clear_miniscript, bitcoind
 
 
 @pytest.mark.bitcoind
-@pytest.mark.parametrize("m_n", [(2,3), (3,5), (15,15)])
+@pytest.mark.parametrize("m_n", [(2,3), (3,5), (20,20)])
 @pytest.mark.parametrize("script", ["p2wsh", "p2sh-p2wsh", "p2sh"])
 @pytest.mark.parametrize("sighash", list(SIGHASH_MAP_NON_TAPROOT.keys()))
 @pytest.mark.parametrize('desc', ["multi", "sortedmulti"])
@@ -2211,6 +2260,9 @@ def test_bitcoind_MofN_tutorial(m_n, script, clear_miniscript, goto_home, need_k
     addr_type = bitcoind_addr_fmt(script)
 
     M, N = m_n
+    if (M == N == 20) and script == "p2sh":
+        M = N = 15  # 520byte p2sh redeem limit
+
     settings_set("sighshchk", 1)  # disable checks
     use_regtest()
     clear_miniscript()

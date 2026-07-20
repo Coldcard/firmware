@@ -11,7 +11,7 @@ from ubinascii import b2a_base64, a2b_base64
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 
-from public_constants import AF_P2WSH, AF_P2WSH_P2SH, AF_CLASSIC, MAX_SIGNERS
+from public_constants import AF_P2WSH, AF_P2WSH_P2SH, AF_CLASSIC
 from utils import xfp2str, problem_file_line
 from menu import MenuSystem, MenuItem
 from files import CardSlot, CardMissingError, needs_microsd
@@ -363,11 +363,11 @@ async def bsms_coordinator_start(*a):
     from glob import NFC, dis, settings
     xfp = xfp2str(settings.get('xfp', 0))
     # M/N
-    N = await ux_enter_number('No. of signers?(N)', 15)
+    N = await ux_enter_number('No. of signers?(N)', 20)
     if N is None: return
-    assert 2 <= N <= MAX_SIGNERS, "Number of co-signers must be 2-15"
+    assert 2 <= N <= 20, "Number of co-signers must be 2-20"
 
-    M = await ux_enter_number("Threshold? (M)", 15)
+    M = await ux_enter_number("Threshold? (M)", N)
     if M is None: return
     assert 1 <= M <= N, "M cannot be bigger than N (N=%d)" % N
 

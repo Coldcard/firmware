@@ -6,7 +6,8 @@ import stash, gc, history, sys, ngu, ckcc, chains
 from ucollections import OrderedDict
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, B2A, keypath_to_str, validate_derivation_path_length, problem_file_line, node_from_privkey
+from utils import (xfp2str, B2A, keypath_to_str, validate_derivation_path_length,
+                   problem_file_line, node_from_privkey, max_signers)
 from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str, swab32
 from uhashlib import sha256
 from uio import BytesIO
@@ -19,7 +20,7 @@ from serializations import CTransaction, CTxIn, CTxInWitness, CTxOut, ser_string
 from serializations import ser_sig_der, uint256_from_str, ser_push_data
 from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_ANYONECANPAY
 from serializations import ALL_SIGHASH_FLAGS, SIGHASH_DEFAULT
-from opcodes import OP_CHECKMULTISIG, OP_RETURN
+from opcodes import OP_1, OP_16, OP_CHECKMULTISIG, OP_RETURN
 from glob import settings
 from precomp_tag_hash import TAP_TWEAK_H, TAP_SIGHASH_H, BIP322_TAG_HASH
 from desc_utils import MusigKey, MUSIG_CHAIN_CODE
@@ -38,7 +39,7 @@ from public_constants import (
     PSBT_GLOBAL_TX_MODIFIABLE, PSBT_GLOBAL_OUTPUT_COUNT, PSBT_GLOBAL_INPUT_COUNT,
     PSBT_GLOBAL_FALLBACK_LOCKTIME, PSBT_GLOBAL_TX_VERSION, PSBT_IN_PREVIOUS_TXID,
     PSBT_IN_OUTPUT_INDEX, PSBT_IN_SEQUENCE, PSBT_IN_REQUIRED_TIME_LOCKTIME,
-    PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE, MAX_SIGNERS,
+    PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE,
     PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS, PSBT_IN_MUSIG2_PUB_NONCE, PSBT_IN_MUSIG2_PARTIAL_SIG,
     PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS,
     AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH,
@@ -124,11 +125,30 @@ def _skip_n_objs(fd, n, cls):
 def disassemble_multisig_mn(redeem_script):
     # pull out just M and N from script. Simple, faster, no memory.
 
-    if not redeem_script or (redeem_script[-1] != OP_CHECKMULTISIG):
+    if not redeem_script or len(redeem_script) < 4 or \
+            (redeem_script[-1] != OP_CHECKMULTISIG):
         return None, None
 
-    M = redeem_script[0] - 80
-    N = redeem_script[-2] - 80
+    if OP_1 <= redeem_script[0] <= OP_16:
+        M = redeem_script[0] - OP_1 + 1
+    elif redeem_script[0] == 1:
+        M = redeem_script[1]
+        if not 17 <= M <= 20:
+            return None, None
+    else:
+        return None, None
+
+    if OP_1 <= redeem_script[-2] <= OP_16:
+        N = redeem_script[-2] - OP_1 + 1
+    elif redeem_script[-3] == 1:
+        N = redeem_script[-2]
+        if not 17 <= N <= 20:
+            return None, None
+    else:
+        return None, None
+
+    if not 1 <= M <= N <= 20:
+        return None, None
 
     return M, N
 
@@ -1434,7 +1454,7 @@ class psbtObject(psbtProxy):
         elif kt == PSBT_GLOBAL_XPUB:
             # list of tuples(xfp_path, xpub)
             self.xpubs.append((key, val))
-            assert len(self.xpubs) <= MAX_SIGNERS
+            assert len(self.xpubs) <= 20
         elif kt == PSBT_GLOBAL_VERSION:
             self.version = unpack("<I", self.get(val))[0]
         elif kt == PSBT_GLOBAL_TX_VERSION:
@@ -1639,10 +1659,9 @@ class psbtObject(psbtProxy):
             # does not match PSBT_XPUBS length
             if N != len(self.xpubs): continue
 
-            assert 1 <= M <= N <= MAX_SIGNERS
-
             # guess address format also - based on scripts provided by PSBT provider
             af = i.guess_multisig_addr_fmt()
+            assert 1 <= M <= N <= max_signers(af)
 
             return af, M, N
 

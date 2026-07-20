@@ -8,9 +8,16 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
 from charcodes import OUT_CTRL_ADDRESS, OUT_CTRL_NOWRAP
 from uhashlib import sha256
-from public_constants import MAX_PATH_DEPTH, AF_CLASSIC, AF_P2SH, AF_P2WPKH, AF_P2WSH, AF_P2TR
+from public_constants import (MAX_PATH_DEPTH, MAX_SIGNERS, AF_CLASSIC, AF_P2SH,
+                              AF_P2WPKH, AF_P2WSH, AF_P2TR)
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
+
+
+def max_signers(addr_fmt=None):
+    # OP_CHECKMULTISIG allows 20 pubkeys, but legacy P2SH is limited to 15 by script size.
+    return MAX_SIGNERS if addr_fmt == AF_P2SH else 20
+
 
 try:
     from font_iosevka import FontIosevka
