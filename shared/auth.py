@@ -819,7 +819,7 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
 
     elif input_method == "kt":
         first_time = False
-        title = "PSBT Signed"
+        title = base_title
 
     if txid and await try_push_tx(data_len, txid, data_sha2):
         # go directly to reexport menu after pushTX
