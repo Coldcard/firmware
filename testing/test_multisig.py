@@ -913,6 +913,7 @@ def make_myself_wallet(dev, set_bip39_pw, offer_minsc_import, press_select, clea
             # select to specific pw
             print(f"--- switch to another leg of MS: {idx} ---")
             xfp = set_bip39_pw(passwords[idx])
+            clear_miniscript()
             if do_import and not no_import:
                 offer_minsc_import(config)
                 time.sleep(.1)
@@ -1227,8 +1228,6 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, inp_addr_fmt, num_in
         f.write(b64encode(psbt).decode())
     for idx in range(M):
         select_wallet(idx)
-        if incl_xpubs:
-            clear_miniscript()
         _, updated = try_sign(psbt, accept_ms_import=incl_xpubs)
         with open(f'{sim_root_dir}/debug/myself-after.psbt', 'w') as f:
             f.write(b64encode(updated).decode())
