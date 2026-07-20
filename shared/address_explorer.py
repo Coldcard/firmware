@@ -120,8 +120,10 @@ class PickAddrFmtMenu(MenuSystem):
         # below is sensitive to order in chains.SINGLESIG_AF
         if path.startswith("m/44h"):
             self.goto_idx(1)
-        elif path.startswith("m/49h"):
+        elif path.startswith("m/86h"):
             self.goto_idx(2)
+        elif path.startswith("m/49h"):
+            self.goto_idx(3)
 
     async def done(self, _1, _2, item):
         the_ux.pop()

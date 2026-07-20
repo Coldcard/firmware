@@ -985,13 +985,13 @@ def test_ccc_whitelist_overlimit_no_mutation(settings_set, setup_ccc, enter_enab
                                              ccc_ms_setup, bitcoind_create_watch_only_wallet,
                                              settings_get, pick_menu_item, cap_menu, cap_story,
                                              cap_screen, scan_a_qr, press_select, press_cancel, goto_home,
-                                             is_q1, microsd_path, need_keypress):
+                                             is_q1, microsd_path, need_keypress, clear_miniscript):
     # An over-limit whitelist import must be rejected WITHOUT having already
     # mutated the (settings-backed) policy address list.
     goto_home()
     settings_set("ccc", None)
     settings_set("chain", "XRT")
-    settings_set("multisig", [])
+    clear_miniscript()
 
     c_words = "cluster comic depend absent grain circle demand tag pass clock certain strategy lunar bless pulse useful comfort fatigue glove decorate taste allow adult journey".split()
     setup_ccc(c_words=c_words, mag=100000000, vel=None, whitelist=None)
@@ -1480,11 +1480,11 @@ def test_ccc_magnitude_cancel_preserves_value(setup_ccc, enter_enabled_ccc, sett
 @pytest.mark.bitcoind
 def test_ccc_whitelist_op_return(setup_ccc, ccc_ms_setup, bitcoind, settings_set,
                                  policy_sign, bitcoind_create_watch_only_wallet,
-                                 goto_home):
+                                 goto_home, clear_miniscript):
     goto_home()
     settings_set("ccc", None)
     settings_set("chain", "XRT")
-    settings_set("multisig", [])
+    clear_miniscript()
 
     whitelist = ["bcrt1qqca9eefwz8tzn7rk6aumhwhapyf5vsrtrddxxp"]
     setup_ccc(whitelist=whitelist, vel="Unlimited")

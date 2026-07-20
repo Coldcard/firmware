@@ -785,10 +785,10 @@ def test_miniscript_enforce(af, settings_set, clear_miniscript, goto_home, get_c
 @pytest.mark.bitcoind
 def test_ccc_with_sssp_block_h(setup_ccc, ccc_ms_setup, setup_sssp, bitcoind, policy_sign,
                                settings_get, settings_set, bitcoind_create_watch_only_wallet,
-                               pick_menu_item, press_select, cap_story):
+                               pick_menu_item, press_select, cap_story, clear_miniscript):
     settings_set("ccc", None)
     settings_set("sssp", None)
-    settings_set("multisig", [])
+    clear_miniscript()
     settings_set("chain", "XRT")
 
     setup_ccc(mag=10, vel='Unlimited')

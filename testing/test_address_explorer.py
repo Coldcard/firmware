@@ -634,6 +634,7 @@ def test_bitcoind_descriptor_address(addr_fmt, acct_num, bitcoind, goto_home, pi
 
 @pytest.mark.parametrize("prefix,label", [
     ("m/84h", "Segwit P2WPKH"),
+    ("m/86h", "Taproot P2TR"),
     ("m/49h", "P2SH-Segwit"),
     ("m/44h", "Classic P2PKH"),
 ])
@@ -664,7 +665,9 @@ def test_pick_addr_fmt_menu_default(prefix, label, goto_address_explorer, is_q1,
     title, story = cap_story()
     addr = addr_from_display_format(story.split("\n\n")[1].split("\n")[1])
     if prefix == "m/84h":
-        assert addr.startswith("tb1")
+        assert addr.startswith("tb1q")
+    elif prefix == "m/86h":
+        assert addr.startswith("tb1p")
     elif prefix == "m/49h":
         assert addr.startswith("2")
     else:
