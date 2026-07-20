@@ -834,7 +834,7 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
                                   need_keypress, offer_minsc_import, load_export, reset_seed_words,
                                   cap_story, cap_menu, grab_payload, sim_root_dir, rx_complete,
                                   settings_set, try_sign, settings_get, press_cancel, keys,
-                                  cap_screen):
+                                  cap_screen, microsd_path):
 
     reset_seed_words()
     use_regtest()
@@ -943,9 +943,14 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
     for i in range(len(signers)):
         # expect: a menu of other signers to pick from
         if i == (len(signers) - 1):
-            done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
-            resp_len, chk = done
-            psbt_out = dev.download_file(resp_len, chk)
+            need_keypress("1")  # save result to SD
+            time.sleep(.25)
+            title, body = cap_story()
+            assert "Updated PSBT is:" in body
+            psbt_fname = body.split("Updated PSBT is:\n\n")[1].split("\n\n")[0]
+            with open(microsd_path(psbt_fname), "rb") as f:
+                psbt_out = f.read()
+
             res = wo.finalizepsbt(base64.b64encode(psbt_out).decode())
             assert res["complete"]
             tx_hex = res["hex"]
@@ -1233,10 +1238,14 @@ def test_teleport_musig_sign(tapscript, wtype, reset_seed_words, use_regtest, cl
     assert "Finalized TX ready for broadcast" in body
     txid = body.split("\n\n")[1].split()[1]
 
-    done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
-    resp_len, chk = done
-    tx_out = dev.download_file(resp_len, chk)
-    tx_hex = tx_out.hex()
+    need_keypress("1")  # save result to SD
+    time.sleep(.25)
+    title, body = cap_story()
+    assert "Finalized transaction (ready for broadcast):" in body
+    tx_fname = body.split("Finalized transaction (ready for broadcast):\n\n")[1].split("\n\n")[0]
+    with open(microsd_path(tx_fname), "r") as f:
+        tx_hex = f.read().strip()
+
     res = wo.testmempoolaccept([tx_hex])
     assert res[0]["allowed"]
     res = wo.sendrawtransaction(tx_hex)
