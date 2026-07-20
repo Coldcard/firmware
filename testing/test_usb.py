@@ -313,6 +313,18 @@ def test_enrl_short_args(dev):
         dev.send_recv(msg, encrypt=False)
     assert 'buffer too small' in str(e.value)
 
+def test_mins_short_args(dev):
+    msg = b'mins' + struct.pack('<I', 200)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'buffer too small' in str(e.value)
+
+def test_msas_short_args(dev):
+    msg = b'msas' + struct.pack('<I', 0)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg)
+    assert 'buffer too small' in str(e.value)
+
 def test_rest_short_args(dev):
     msg = b'rest' + struct.pack('<I', 100)
     with pytest.raises(CCProtoError) as e:
@@ -348,6 +360,24 @@ def test_enrl_trailing_garbage(dev):
     with pytest.raises(CCProtoError) as e:
         dev.send_recv(msg, encrypt=False)
     assert 'badlen' in str(e.value)
+
+def test_mins_trailing_garbage(dev):
+    msg = b'mins' + struct.pack('<I', 200) + bytes(32) + b'\xff'  # 37 bytes, need exactly 36
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_msas_name_too_long(dev):
+    msg = b'msas' + struct.pack('<II', 0, 0) + bytes(33)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg)
+    assert 'badlen' in str(e.value)
+
+@pytest.mark.parametrize("cmd", [b"msdl", b"msgt", b"mspl"])
+def test_miniscript_name_too_long(cmd, dev):
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(cmd + bytes(33))
+    assert 'name len' in str(e.value)
 
 def test_stxn_trailing_garbage(dev):
     msg = b'stxn' + struct.pack('<II', 100, 0) + bytes(32) + b'\xff'  # 41 bytes, need exactly 40
