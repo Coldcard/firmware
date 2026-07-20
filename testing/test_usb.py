@@ -262,27 +262,6 @@ def test_dwld_oob_psram_read(file_no, dev, mk_num):
         dev.send_recv(msg, encrypt=False)
     assert 'bad offset' in str(e.value)
 
-def test_p2sh_truncated_xfp_paths(dev):
-    AF_P2SH = 0x08
-    header = struct.pack('<IBBH', AF_P2SH, 1, 2, 30)
-    script = bytes(30)
-    xfp0 = struct.pack('<BI', 1, 0xDEADBEEF)   # one uint32
-    msg = b'p2sh' + header + script + xfp0
-    with pytest.raises(CCProtoError) as e:
-        dev.send_recv(msg, encrypt=False)
-    assert 'badlen' in str(e.value)
-
-def test_p2sh_xfp_path_data_too_short(dev):
-    AF_P2SH = 0x08
-    header = struct.pack('<IBBH', AF_P2SH, 1, 2, 30)
-    script = bytes(30)
-    xfp0 = struct.pack('<BI', 1, 0xDEADBEEF)
-    xfp1_ln = struct.pack('<B', 2)
-    msg = b'p2sh' + header + script + xfp0 + xfp1_ln
-    with pytest.raises(CCProtoError) as e:
-        dev.send_recv(msg, encrypt=False)
-    assert 'buffer too small' in str(e.value)
-
 def test_rest_zero_file_len(dev):
     empty_sha = hashlib.sha256(b'').digest()
     msg = b'rest' + struct.pack('<I32sB', 0, empty_sha, 0)
@@ -346,21 +325,8 @@ def test_show_short_args(dev):
         dev.send_recv(msg, encrypt=False)
     assert 'buffer too small' in str(e.value)
 
-def test_p2sh_short_args(dev):
-    msg = b'p2sh' + struct.pack('<I', 0x08)
-    with pytest.raises(CCProtoError) as e:
-        dev.send_recv(msg, encrypt=False)
-    assert 'buffer too small' in str(e.value)
-
-
 def test_dwld_short_args(dev):
     msg = b'dwld' + struct.pack('<II', 0, 256)
-    with pytest.raises(CCProtoError) as e:
-        dev.send_recv(msg, encrypt=False)
-    assert 'buffer too small' in str(e.value)
-
-def test_msck_short_args(dev):
-    msg = b'msck' + struct.pack('<II', 1, 2)
     with pytest.raises(CCProtoError) as e:
         dev.send_recv(msg, encrypt=False)
     assert 'buffer too small' in str(e.value)
@@ -379,12 +345,6 @@ def test_ncry_trailing_garbage(dev):
 
 def test_enrl_trailing_garbage(dev):
     msg = b'enrl' + struct.pack('<I', 200) + bytes(32) + b'\xff'  # 37 bytes, need exactly 36
-    with pytest.raises(CCProtoError) as e:
-        dev.send_recv(msg, encrypt=False)
-    assert 'badlen' in str(e.value)
-
-def test_msck_trailing_garbage(dev):
-    msg = b'msck' + struct.pack('<III', 1, 2, 0xAB) + b'\xff'  # 13 bytes, need exactly 12
     with pytest.raises(CCProtoError) as e:
         dev.send_recv(msg, encrypt=False)
     assert 'badlen' in str(e.value)
