@@ -4235,12 +4235,12 @@ def test_default_sighash_outside_taproot(addr_fmt, fake_txn, start_sign, cap_sto
     assert "SIGHASH_DEFAULT outside taproot context" in story
 
 
-@pytest.mark.parametrize("segwit_in", [True, False])
-def test_empty_input_scriptPubKey(segwit_in, dev, fake_txn, start_sign, cap_story):
+@pytest.mark.parametrize("af", ["p2wpkh", "p2tr", "p2pkh", "p2sh-p2wpkh"])
+def test_empty_input_scriptPubKey(af, dev, fake_txn, start_sign, cap_story):
     def hack(psbt):
         target_idx = 0
 
-        if segwit_in:
+        if af in ["p2wpkh", "p2sh-p2wpkh", "p2tr"]:
             txo = CTxOut()
             txo.deserialize(BytesIO(psbt.inputs[target_idx].witness_utxo))
             txo.scriptPubKey = b""
@@ -4261,11 +4261,12 @@ def test_empty_input_scriptPubKey(segwit_in, dev, fake_txn, start_sign, cap_stor
             )
             psbt.txn = spend_tx.serialize_with_witness()
 
-    psbt = fake_txn(2, 1, dev.master_xpub, psbt_hacker=hack, segwit_in=segwit_in)
+    psbt = fake_txn(2, 1, dev.master_xpub, psbt_hacker=hack, addr_fmt=af)
 
     start_sign(psbt)
-    title, _ = cap_story()
+    title, story = cap_story()
     assert title == "Failure"
+    assert "Unhandled scriptPubKey: " == story  # empty scriptPubKey
 
 
 @pytest.mark.bitcoind

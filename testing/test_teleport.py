@@ -16,6 +16,8 @@ from test_ephemeral import SEEDVAULT_TEST_DATA
 from test_backup import make_big_notes
 from ckcc.protocol import CCProtocolPacker
 from test_hobble import set_hobble
+from test_notes import goto_notes
+
 
 # All tests in this file are exclusively meant for Q
 #
@@ -471,7 +473,7 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, num_ins, dev, clea
         f.write(psbt)
 
     cur_wallet = 0
-    my_xfp = select_wallet(cur_wallet, no_import=hobbled)
+    my_xfp = select_wallet(cur_wallet, no_import=hobbled, clear_wallets=False)
 
     _, updated = try_sign(psbt, accept_ms_import=False, exit_export_loop=False)
     with open(f'{sim_root_dir}/debug/myself-after-1.psbt', 'wb') as f:
@@ -528,7 +530,7 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, num_ins, dev, clea
         # assert msg in story
 
         # switch personalities, and try to read that QR
-        new_xfp = select_wallet(idx, no_import=hobbled)
+        new_xfp = select_wallet(idx, no_import=hobbled, clear_wallets=False)
         assert new_xfp == next_xfp
         my_xfp = next_xfp
         assert settings_get('xfp') == my_xfp
@@ -1236,7 +1238,13 @@ def test_teleport_musig_sign(tapscript, wtype, reset_seed_words, use_regtest, cl
     title, body = cap_story()
     assert '(T) to use Key Teleport to send PSBT to other co-signers' not in body  # done
     assert "Finalized TX ready for broadcast" in body
-    txid = body.split("\n\n")[1].split()[1]
+    split_body = body.split("\n\n")
+    for p in split_body:
+        if "TXID" in p:
+            txid = p.split()[1]
+            break
+    else:
+        assert False, "TXID not found"
 
     need_keypress("1")  # save result to SD
     time.sleep(.25)
@@ -1253,12 +1261,10 @@ def test_teleport_musig_sign(tapscript, wtype, reset_seed_words, use_regtest, cl
     press_cancel()
 
 
-def test_hobble_limited(set_hobble, scan_a_qr, cap_menu, cap_screen, pick_menu_item, grab_payload,
-                        rx_complete, cap_story, press_cancel, press_select, settings_get,
-                        settings_set, restore_backup_unpacked, main_do_over, set_encoded_secret,
-                        reset_seed_words, make_big_notes):
+def test_hobble_limited(set_hobble, cap_screen, rx_complete, reset_seed_words, goto_home):
     # verify: in hobbled mode, KT is blocked for everything except multisig cases
-
+    reset_seed_words()
+    goto_home()
     set_hobble(True)
 
     from bbqr import split_qrs

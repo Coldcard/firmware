@@ -909,11 +909,12 @@ def make_myself_wallet(dev, set_bip39_pw, offer_minsc_import, press_select, clea
             time.sleep(.1)
             press_select()
 
-        def select_wallet(idx, no_import=False):
+        def select_wallet(idx, no_import=False, clear_wallets=True):
             # select to specific pw
             print(f"--- switch to another leg of MS: {idx} ---")
             xfp = set_bip39_pw(passwords[idx])
-            clear_miniscript()
+            if clear_wallets:
+                clear_miniscript()
             if do_import and not no_import:
                 offer_minsc_import(config)
                 time.sleep(.1)
