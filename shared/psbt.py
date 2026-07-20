@@ -1913,9 +1913,6 @@ class psbtObject(psbtProxy):
                     assert v[1] == 32  # PSBT_IN_MUSIG2_PARTIAL_SIG value is partial signature
 
 
-            if i.sighash and (i.sighash not in ALL_SIGHASH_FLAGS):
-                raise FatalPSBTIssue("Unsupported sighash flag 0x%x" % i.sighash)
-
             self.validate_unkonwn(i, "input")
 
         null_data_op_return = False
@@ -2446,6 +2443,9 @@ class psbtObject(psbtProxy):
         none_sh = False
         for inp in self.inputs:
             if inp.sp_idxs and not inp.fully_signed:
+                if inp.sighash is not None and inp.sighash not in ALL_SIGHASH_FLAGS:
+                    raise FatalPSBTIssue("Unsupported sighash flag 0x%x" % inp.sighash)
+
                 if self.por322 and inp.sighash is not None:
                     if inp.af == AF_P2TR:
                         if inp.sighash not in (SIGHASH_ALL, SIGHASH_DEFAULT):
