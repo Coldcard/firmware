@@ -425,6 +425,26 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
             else:
                 assert False
 
+    # BIP-352 Silent Payments block
+    from sp_helpers import decode_spscan, derive_sp_keys_for_account
+    bip352 = obj["bip352"]
+    ct = 0 if netcode == "BTC" else 1
+    acct = int(acct_num or 0)
+    assert set(bip352.keys()) == {"spscan", "deriv", "name", "xfp", "key_exp"}
+    assert bip352["deriv"] == "m/352h/%dh/%dh" % (ct, acct)
+    assert bip352["name"] == "p2tr"
+    assert len(bip352["xfp"]) == 8
+
+    hrp_expected = "spscan" if netcode == "BTC" else "tspscan"
+    scan_priv_enc, spend_pub_enc = decode_spscan(bip352["spscan"], hrp_expected)
+    exp_scan_priv, exp_spend_pub = derive_sp_keys_for_account(acct, ct)
+    assert scan_priv_enc == exp_scan_priv
+    assert spend_pub_enc == exp_spend_pub
+
+    expected_origin = "[%s/352h/%dh/%dh]" % (xfp2str(simulator_fixed_xfp).lower(), ct, acct)
+    assert bip352["key_exp"].startswith(expected_origin + hrp_expected + "1")
+    assert bip352["key_exp"].split("]", 1)[1] == bip352["spscan"]
+
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize('testnet', [True, False])
 @pytest.mark.parametrize('acct_num', [None, '0', '99', '123'])

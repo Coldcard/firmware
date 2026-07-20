@@ -264,6 +264,7 @@ def fake_txn(dev, pytestconfig):
 
         # last minute chance to mod PSBT object
         if psbt_hacker:
+            psbt._foreign_mk = foreign_mk
             psbt_hacker(psbt)
 
         rv = BytesIO()
