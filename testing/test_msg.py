@@ -578,7 +578,7 @@ def test_sign_msg_malformed_json_subpath_type(open_microsd, microsd_path, goto_h
 
     title, story = cap_story()
     assert not story.startswith('Ok to sign this?')
-    assert story.startswith('Problem: Invalid address format')
+    assert story.startswith('Problem: Unsupported address format')
     press_cancel()
 
 
