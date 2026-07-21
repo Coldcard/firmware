@@ -273,9 +273,8 @@ def bip322_txn(inputs, msg=b"POR", addr_fmt="p2wpkh", input_amount=1E8, to_sign_
             to_spend.vin = [CTxIn(out_point, nSequence=0xffffffff)]
             to_spend.vout.append(CTxOut(int(ia), scr))
 
-
-            if sighash is not None:
-                psbt.inputs[i].sighash = sighash
+        if sighash is not None:
+            psbt.inputs[i].sighash = sighash
 
         to_spend.calc_sha256()
 

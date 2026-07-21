@@ -238,8 +238,7 @@ def test_bip322_output_explorer(bip322_txn, start_sign, cap_story, need_keypress
 
 @pytest.mark.parametrize("sighash", [sh for sh in SIGHASH_MAP if sh != 'ALL'])
 def test_bip322_por_invalid_sighash(sighash, bip322_txn, start_sign, cap_story, settings_set):
-    settings_set("sighshchk", 1)  # BIP-322 POR still requires SIGHASH_ALL in warn-only mode.
-    # all POR txns must have only SIGHASH_ALL
+    settings_set("sighshchk", 1)  # non-taproot POR still requires ALL in warn-only mode
     psbt, _ = bip322_txn([["p2sh-p2wpkh", None, None], ["p2wpkh", None, 100000], ["p2pkh", None, 1000000]],
                          sighash=SIGHASH_MAP[sighash])
     start_sign(psbt, finalize=True)
@@ -249,6 +248,20 @@ def test_bip322_por_invalid_sighash(sighash, bip322_txn, start_sign, cap_story, 
     err = ("SIGHASH_DEFAULT outside taproot context" if sighash == "DEFAULT"
            else "POR not SIGHASH_ALL")
     assert err in story
+
+
+@pytest.mark.parametrize("sighash", [sh for sh in SIGHASH_MAP
+                                      if sh not in ("ALL", "DEFAULT")])
+def test_bip322_por_invalid_taproot_sighash(sighash, bip322_txn, start_sign, cap_story,
+                                            settings_set):
+    settings_set("sighshchk", 1)
+    psbt, _ = bip322_txn([["p2tr", None, None], ["p2tr", None, 100000]],
+                         sighash=SIGHASH_MAP[sighash])
+    start_sign(psbt, finalize=True)
+
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "POR sighash not ALL/DEFAULT" in story
 
 
 @pytest.mark.parametrize("ins", [
@@ -663,11 +676,17 @@ def test_bip322_invalid_ms_psbt(addr_fmt, bip322_ms_txn, start_sign, cap_story, 
 
 
 @pytest.mark.parametrize("num_ins", [1, 12])
-@pytest.mark.parametrize("addr_fmt", ["p2pkh", "p2wpkh", "p2sh-p2wpkh", "p2tr"])
-def test_wif_store_sign_bip322_por(num_ins, addr_fmt, bip322_txn, goto_home, pick_menu_item,
-                                   need_keypress, start_sign, end_sign, cap_menu, cap_story,
-                                   press_cancel, settings_remove, press_select, import_wif_to_store,
-                                   bip322_verify):
+@pytest.mark.parametrize("addr_fmt,sighash", [
+    ("p2pkh", None),
+    ("p2wpkh", None),
+    ("p2sh-p2wpkh", None),
+    ("p2tr", "DEFAULT"),
+    ("p2tr", "ALL"),
+])
+def test_wif_store_sign_bip322_por(num_ins, addr_fmt, sighash, bip322_txn, goto_home,
+                                   pick_menu_item, need_keypress, start_sign, end_sign, cap_menu,
+                                   cap_story, press_cancel, settings_remove, press_select,
+                                   import_wif_to_store, bip322_verify):
 
     settings_remove("wifs")
 
@@ -689,7 +708,7 @@ def test_wif_store_sign_bip322_por(num_ins, addr_fmt, bip322_txn, goto_home, pic
 
     msg = b"Coinkite"
     psbt, msg_challenge = bip322_txn(
-        ins, msg=msg, sighash=SIGHASH_MAP["DEFAULT"] if addr_fmt == "p2tr" else None)
+        ins, msg=msg, sighash=SIGHASH_MAP[sighash] if sighash else None)
     if addr_fmt == "p2tr":
         po = BasicPSBT().parse(psbt)
         for inp in po.inputs:
