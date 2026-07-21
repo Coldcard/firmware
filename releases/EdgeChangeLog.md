@@ -27,6 +27,7 @@ to be safe, and please be careful not to cut corners or rush this process.
 
 # Shared Improvements - Both Mk4 and Q
 
+- Enhancement: Faster multisig address generation and PSBT input verification
 - Bugfix: Renaming a MiniScript wallet could rename a different stored wallet when wallets from multiple chains were present
 - Bugfix: Generate unique names when creating multisig wallets from PSBTs with the same M-of-N parameters
 
