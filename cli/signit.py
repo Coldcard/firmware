@@ -106,6 +106,18 @@ def show_version(fname):
 
     print('{built}-v{ver}'.format(built=built, ver=ver))
 
+@main.command('sha256sum')
+@click.argument('files', nargs=-1, required=True, type=click.Path(exists=True))
+def sha256sum(files):
+    "Print SHA256 checksum of file(s); portable stand-in for sha256sum(1)/shasum."
+    for fn in files:
+        h = sha256()
+        with open(fn, 'rb') as fd:
+            for chunk in iter(lambda: fd.read(1 << 20), b''):
+                h.update(chunk)
+        # match GNU sha256sum output: "<hex>  <name>" (two spaces)
+        print("%s  %s" % (h.hexdigest(), fn))
+
 def dfu_parse(fd):
     # do just a little parsing of DFU headers, to find start/length of main binary
     # - not trying to support anything but what ../stm32/Makefile will generate

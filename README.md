@@ -29,11 +29,12 @@ has been automated using Docker. Steps are as follows:
     ```shell
     git clone https://github.com/Coldcard/firmware.git
     cd firmware
+    git submodule update --init
     # DOWNLOAD https://coldcard.com/downloads
-    # get a copy of binary into ./releases/2026-03-05T2052-v5.5.0-mk-coldcard.dfu
-    git checkout 2026-03-05T2052-v5.5.0
+    # get a copy of binary into ./releases/2026-07-01T1729-v5.5.1-mk-coldcard.dfu
+    git checkout 2026-07-01T1730-v5.5.1
     cd stm32
-    make -f MK4-Makefile repro
+    make -f MK-Makefile repro
     ```
 
 4. At the end of the process a clear confirmation message is shown, or the differences.

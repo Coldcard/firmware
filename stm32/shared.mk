@@ -308,6 +308,7 @@ ifeq ($(PUBLISHED_BIN),)
 	@echo ""
 else
 	@echo Comparing against: $(PUBLISHED_BIN)
+	@echo SHA256: `$(SIGNIT) sha256sum $(PUBLISHED_BIN)`
 	test -n "$(PUBLISHED_BIN)" -a -f $(PUBLISHED_BIN)
 	$(RM) -f check-fw.bin check-bootrom.bin
 	$(SIGNIT) split $(PUBLISHED_BIN) check-fw.bin check-bootrom.bin
