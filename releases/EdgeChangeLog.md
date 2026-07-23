@@ -27,8 +27,11 @@ to be safe, and please be careful not to cut corners or rush this process.
 
 # Shared Improvements - Both Mk4 and Q
 
+- New Feature: Allow uncompressed WIF keys in WIF Store
 - Enhancement: Faster multisig address generation and PSBT input verification
+- Enhancement: Use predictable sequential filenames for PSBTs processed multiple times via MicroSD or Virtual Disk
 - Bugfix: Renaming a MiniScript wallet could rename a different stored wallet when wallets from multiple chains were present
 - Bugfix: Generate unique names when creating multisig wallets from PSBTs with the same M-of-N parameters
+- Bugfix: Correctly identify consolidations containing zero-value OP_RETURN outputs without misclassifying other zero-value external outputs
 
 - [`History-Edge.md`](History-Edge.md)
