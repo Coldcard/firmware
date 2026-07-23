@@ -927,11 +927,22 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
 
     dis.fullscreen("Wait...")
 
+    match = None
     if filename:
         _, basename = filename.rsplit('/', 1)
         base = basename.rsplit('.', 1)[0]
+        match = ure.compile(r"-part-(\d+)$").search(base)
     else:
         base = 'recent-txn'
+
+    if match:
+        prefix = base[:-len(match.group(0))]
+        suffix = '-signed' if is_complete else '-part-%d' % (int(match.group(1)) + 1)
+    else:
+        prefix = base if is_complete else base.replace('-part', '')
+        suffix = '-signed' if is_complete else '-part'
+
+    target_fname = prefix + suffix + '.psbt'
 
     # default encoding is binary
     output_encoder = output_encoder or (lambda x:x)
@@ -953,13 +964,6 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
 
     while 1:
         # try to put back into same spot, but also do top-of-card
-        if not is_complete:
-            # keep the filename under control during multiple passes
-            target_fname = base.replace('-part', '') + '-part.psbt'
-        else:
-            # add -signed to end. We won't offer to sign again.
-            target_fname = base + '-signed.psbt'
-
         # attempt write-out
         try:
             with CardSlot(**save_options) as card:

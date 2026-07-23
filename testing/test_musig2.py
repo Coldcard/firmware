@@ -2,7 +2,7 @@
 #
 # MuSig2 tests.
 #
-import pytest, base64, itertools, time, json, copy, random, os
+import pytest, base64, itertools, time, json, copy, random
 from txn import BasicPSBT
 from constants import SIGHASH_MAP
 from bip32 import random_keys, ranged_unspendable_internal_key, BIP32Node
@@ -1401,29 +1401,31 @@ def test_only_unique_keys_in_musig(get_cc_key, offer_minsc_import):
 
 
 @pytest.mark.bitcoind
-def test_tmp_seed_cosign(bitcoind, settings_set, end_sign, start_sign, restore_main_seed, use_regtest,
-                         cap_story, goto_eph_seed_menu, pick_menu_item, word_menu_entry,
-                         confirm_tmp_seed, usb_miniscript_get, offer_minsc_import, press_select,
-                         clear_miniscript, get_cc_key, create_core_wallet):
+def test_tmp_seed_cosign(bitcoind, restore_main_seed, use_regtest, cap_story,
+                         goto_eph_seed_menu, pick_menu_item, word_menu_entry,
+                         confirm_tmp_seed, offer_minsc_import, press_select,
+                         clear_miniscript, get_cc_key, create_core_wallet,
+                         microsd_path, goto_home, microsd_wipe):
 
-    # proves that we can hold secnonce for multiple seed types on one device (even for same txn where respective keys are co-signers)
+    # Proves that we can hold secnonce for multiple seed types on one device
+    # (even for the same txn where respective keys are co-signers), and that
+    # repeated SD-card passes keep a stable, incrementing filename.
     b_words = "sight will strike aspect nerve saddle young special dragon fence chest tattoo"
+    c_words = "able december recipe saddle cheese squirrel almost planet family cannon sight tattoo"
 
     use_regtest()
     clear_miniscript()
+    microsd_wipe()
 
     name = "tmp_musig_cosign"
     der_pth = "86h/1h/0h"
 
-    # it is string mnemonic
-    b39_seed = Mnemonic.to_seed(b_words)
-    b_node = BIP32Node.from_master_secret(b39_seed)
+    b_node = BIP32Node.from_master_secret(Mnemonic.to_seed(b_words))
     b_xfp = b_node.fingerprint().hex()
     b_key = b_node.subkey_for_path(der_pth).hwif()
     b_key_exp = f"[{b_xfp}/{der_pth}]{b_key}"
 
-    # C is just random key we won't use
-    c_node = BIP32Node.from_master_secret(os.urandom(32))
+    c_node = BIP32Node.from_master_secret(Mnemonic.to_seed(c_words))
     c_xfp = c_node.fingerprint().hex()
     c_key = c_node.subkey_for_path(der_pth).hwif()
     c_key_exp = f"[{c_xfp}/{der_pth}]{c_key}"
@@ -1436,90 +1438,162 @@ def test_tmp_seed_cosign(bitcoind, settings_set, end_sign, start_sign, restore_m
     s1 = f"pk(musig({cc_key},{c_key_exp}))"
     s2 = f"pk(musig({c_key_exp},{b_key_exp}))"
 
-
     inner += ","
     inner += "{%s,{%s,%s}}" % (s0,s1,s2)
     desc = f"tr({inner})"
 
     title, story = offer_minsc_import(json.dumps(dict(name=name, desc=desc)))
     assert "Create new miniscript wallet?" in story
-    # do some checks on policy --> helper function to replace keys with letters
     press_select()
 
     bitcoind_wo = create_core_wallet(name, "bech32m", "sd", True)
 
     psbt = bitcoind_wo.walletcreatefundedpsbt(
-        [], [{bitcoind.supply_wallet.getnewaddress(): 0.2},
-             {bitcoind.supply_wallet.getnewaddress(): 0.255}],
+        [], [{bitcoind.supply_wallet.getnewaddress(): 0.2}],
         0, {"fee_rate": 20, "change_type": "bech32m"}
     )['psbt']
 
-    start_sign(base64.b64decode(psbt))
+    fname = "the.psbt"
+    with open(microsd_path(fname), "w") as f:
+        f.write(psbt)
+
+    goto_home()
+    pick_menu_item("Ready To Sign")
     time.sleep(.1)
     title, story = cap_story()
-    assert 'OK TO SEND?' == title
+    if "OK TO SEND?" not in title:
+        time.sleep(.1)
+        pick_menu_item(fname)
+        time.sleep(.1)
+        title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "warning" not in story
+    press_select()
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "PSBT Updated"
 
-    signed = end_sign(accept=True)
-    po = BasicPSBT().parse(signed)
-    assert not po.inputs[0].musig_part_sigs
-    assert po.inputs[0].musig_pubnonces
+    fname = story.split("\n\n")[1]
+    assert fname == "the-part.psbt"
 
+    for i, words in [(2, b_words), (3, c_words)]:
+        goto_eph_seed_menu()
+        pick_menu_item("Import Words")
+        pick_menu_item("12 Words")
+        time.sleep(.1)
+        word_menu_entry(words.split())
+        confirm_tmp_seed(seedvault=False)
+        title, story = offer_minsc_import(desc)
+        assert "Create new miniscript wallet?" in story
+        press_select()
+
+        goto_home()
+        pick_menu_item("Ready To Sign")
+        time.sleep(.1)
+        title, story = cap_story()
+        if "OK TO SEND?" not in title:
+            time.sleep(.1)
+            pick_menu_item(fname)
+            time.sleep(.1)
+            title, story = cap_story()
+        assert title == "OK TO SEND?"
+        assert "warning" not in story
+        press_select()
+        time.sleep(.1)
+        title, story = cap_story()
+        assert title == "PSBT Updated"
+
+        fname = story.split("\n\n")[1]
+        assert fname == f"the-part-{i}.psbt"
+
+    # Still at C words: perform its second MuSig round.
+    goto_home()
+    pick_menu_item("Ready To Sign")
+    time.sleep(.1)
+    title, story = cap_story()
+    if "OK TO SEND?" not in title:
+        time.sleep(.1)
+        pick_menu_item(fname)
+        time.sleep(.1)
+        title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "warning" not in story
+    press_select()
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "PSBT Signed"
+
+    fname = story.split("\n\n")[1]
+    assert fname == "the-part-4.psbt"
+
+    # Back to B words; the miniscript wallet is already imported.
     goto_eph_seed_menu()
     pick_menu_item("Import Words")
     pick_menu_item("12 Words")
-    time.sleep(0.1)
+    time.sleep(.1)
     word_menu_entry(b_words.split())
     confirm_tmp_seed(seedvault=False)
-    title, story = offer_minsc_import(desc)
-    assert "Create new miniscript wallet?" in story
+
+    goto_home()
+    pick_menu_item("Ready To Sign")
+    time.sleep(.1)
+    title, story = cap_story()
+    if "OK TO SEND?" not in title:
+        time.sleep(.1)
+        pick_menu_item(fname)
+        time.sleep(.1)
+        title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "warning" not in story
     press_select()
-
-    start_sign(signed)
     time.sleep(.1)
     title, story = cap_story()
-    assert 'OK TO SEND?' == title
-    assert "warning" not in story
-    signed = end_sign(accept=True)
-    po = BasicPSBT().parse(signed)
-    # now we should have all pubnonces that we need
-    assert len(po.inputs[0].musig_part_sigs) == 0
-    assert po.inputs[0].musig_pubnonces
+    assert title == "PSBT Signed"
 
-    # 2nd round - get signature
-    start_sign(signed)
-    time.sleep(.1)
-    title, story = cap_story()
-    assert 'OK TO SEND?' == title
-    assert "warning" not in story
-    signed = end_sign(accept=True)
-    po = BasicPSBT().parse(signed)
-    # now we should have signature one signature
-    assert len(po.inputs[0].musig_part_sigs) == 1
+    fname = story.split("\n\n")[1]
+    assert fname == "the-part-5.psbt"
 
     try:
-        # this is run with --eff so number of settings may be incorrect - no prob
+        # This is run with --eff, so the number of settings may be incorrect.
         restore_main_seed()
-    except: pass
+    except Exception:
+        pass
 
-    start_sign(signed)
+    goto_home()
+    pick_menu_item("Ready To Sign")
     time.sleep(.1)
     title, story = cap_story()
-    assert 'OK TO SEND?' == title
+    if "OK TO SEND?" not in title:
+        time.sleep(.1)
+        pick_menu_item(fname)
+        time.sleep(.1)
+        title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "warning" not in story
+    press_select()
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "PSBT Signed"
+    split_story = story.split("\n\n")
+    fname_psbt = split_story[1]
+    assert fname_psbt == "the-signed.psbt"
+    fname_txn = split_story[3]
+    cc_txid = split_story[4].split("\n")[-1]
 
-    signed = end_sign(accept=True)
-    po = BasicPSBT().parse(signed)
-    assert len(po.inputs[0].musig_part_sigs) == 2
-    assert po.inputs[0].musig_pubnonces
-    # 1 aggregate sig for aggregated musig leaf
-    assert len(po.inputs[0].taproot_script_sigs) == 1
+    with open(microsd_path(fname_psbt), "r") as f:
+        psbt = f.read().strip()
 
-    res = bitcoind_wo.finalizepsbt(base64.b64encode(signed).decode())
+    with open(microsd_path(fname_txn), "r") as f:
+        txn = f.read().strip()
+
+    res = bitcoind_wo.finalizepsbt(psbt)
     assert res["complete"]
     tx_hex = res["hex"]
-    res = bitcoind_wo.testmempoolaccept([tx_hex])
+    assert tx_hex == txn
+    res = bitcoind_wo.testmempoolaccept([txn])
     assert res[0]["allowed"]
-    res = bitcoind_wo.sendrawtransaction(tx_hex)
-    assert len(res) == 64  # tx id
+    res = bitcoind_wo.sendrawtransaction(txn)
+    assert res == cc_txid
 
 
 @pytest.mark.bitcoind
