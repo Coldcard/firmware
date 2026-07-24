@@ -32,6 +32,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 - Bugfix: Correctly identify consolidations containing zero-value OP_RETURN outputs without misclassifying other zero-value external outputs
 - Bugfix: Prevent duplicate WIF Store keys and multisig wallets after restarting
 - Bugfix: Require HSM policies to explicitly allow any path before signing BIP-322 messages with WIF Store keys
+- Bugfix: Reject foreign inputs in BIP-322 Proof of Reserves transactions
 - Bugfix: Fixed PSBT uploads being mistaken for partial firmware uploads
 - Bugfix: Reject BIP388 wallet policy imports with non-ASCII or non-printable names
 - Bugfix: Reject duplicate singleton keys in PSBT maps

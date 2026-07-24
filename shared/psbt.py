@@ -2138,6 +2138,7 @@ class psbtObject(psbtProxy):
         my_cnt = 0
         prevouts = set()
         from_wif_store = 0
+        foreign_por = False
 
         dis.fullscreen("Validating...", line2="Inputs")
 
@@ -2203,6 +2204,9 @@ class psbtObject(psbtProxy):
             if parsed_subpaths is None:
                 parsed_subpaths = OrderedDict()
 
+            if self.por322 and i and not inp.sp_idxs:
+                foreign_por = True
+
             if not inp.has_utxo():
                 if inp.sp_idxs and not inp.fully_signed:
                     # we cannot proceed if the input is ours and there is no UTXO
@@ -2253,6 +2257,10 @@ class psbtObject(psbtProxy):
                 # - also finds appropriate miniscript wallet to be used
                 inp.determine_my_signing_key(i, addr_or_pubkey, self.my_xfp, self,
                                              parsed_subpaths, utxo)
+
+                # May have been identified as belonging to another wallet.
+                if self.por322 and i and not inp.sp_idxs:
+                    foreign_por = True
 
                 if inp.wif_key:
                     my_cnt += 1
@@ -2314,6 +2322,8 @@ class psbtObject(psbtProxy):
                 raise FatalPSBTIssue("i0: invalid BIP-322 'to_spend': not our key")
             if not self.por322_msg_challenge:
                 raise FatalPSBTIssue("Missing BIP-322 message challenge")
+            if foreign_por:
+                raise FatalPSBTIssue("Foreign inputs not allowed in BIP-322 Proof of Reserves")
 
         if not my_cnt:
             raise FatalPSBTIssue(NO_KEY_ERR + " (need %s)." % xfp2str(self.my_xfp))

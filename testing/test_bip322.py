@@ -337,8 +337,7 @@ def test_bip322_Xth_input_witness_utxo(ins, bip322_txn, start_sign, cap_story, e
     [["p2wpkh", None, None], ["p2pkh", None, 10000000], ["p2pkh", None, 10000000]],
     [["p2sh-p2wpkh", None, None], ["p2sh-p2wpkh", None, 10000000], ["p2sh-p2wpkh", None, 10000000]],
 ])
-def test_bip322_incomplete_psbt_bip32_paths(ins, bip322_txn, start_sign, cap_story,
-                                            verify_msg_bip322_por):
+def test_bip322_incomplete_psbt_bip32_paths(ins, bip322_txn, start_sign, cap_story):
 
     def hack(psbt_in):
         without_paths = 0 if len(psbt_in.inputs) == 1 else 1
@@ -349,17 +348,11 @@ def test_bip322_incomplete_psbt_bip32_paths(ins, bip322_txn, start_sign, cap_sto
     psbt, _ = bip322_txn(ins, psbt_hacker=hack)
     start_sign(psbt)
     title, story = cap_story()
+    assert title == "Failure"
     if len(ins) == 1:
-        assert title == "Failure"
         assert 'PSBT inputs do not contain any key path information.' in story
     else:
-        verify_msg_bip322_por("POR")
-        time.sleep(.1)
-        title, story = cap_story()
-        assert "warning" in story
-        assert "Limited Signing" in story
-        assert "because we either don't know the key" in story
-        assert "We are not signing 1 input(s)" in story
+        assert "Foreign inputs not allowed in BIP-322 Proof of Reserves" in story
 
 
 def test_bip322_por_input0_bip32_paths_required(bip322_txn, start_sign, cap_story):
