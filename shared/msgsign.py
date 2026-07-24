@@ -262,7 +262,8 @@ def write_sig_file(content_list, derive=None, addr_fmt=AF_CLASSIC, pk=None, sig_
 
     return sig_nice
 
-def validate_text_for_signing(text, allow_tab_nl=False):
+def validate_text_for_signing(text, allow_tab_nl=False,
+                              max_length=MSG_SIGNING_MAX_LENGTH):
     # Check for some UX/UI traps in the message itself.
     # - messages must be short and ascii only. Our charset is limited
     # - too many spaces, leading/trailing can be an issue
@@ -272,7 +273,7 @@ def validate_text_for_signing(text, allow_tab_nl=False):
 
     length = len(result)
     assert length >= 2, "msg too short (min. 2)"
-    assert length <= MSG_SIGNING_MAX_LENGTH, "msg too long (max. %d)" % MSG_SIGNING_MAX_LENGTH
+    assert length <= max_length, "msg too long (max. %d)" % max_length
     assert "   " not in result, 'too many spaces together in msg(max. 3)'
     # other confusion w/ whitepace
     assert result[0] != ' ', 'leading space(s) in msg'
