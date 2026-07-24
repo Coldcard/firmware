@@ -55,9 +55,13 @@ HSM_WHITELIST = frozenset({
     'stok', 'smok',             # completion check: sign txn or msg
     'xpub', 'msck',             # quick status checks
     'p2sh', 'show',             # limited by HSM policy
+    'slp9',                     # SLIP-19 ownership proof; limited by slip19_paths policy
     'user',                     # auth HSM user, other user cmds not allowed
     'gslr',                     # read storage locker; hsm mode only, limited usage
 })
+
+# SLIP-19 proof flag asserting a human approved this input (mirrors slip19.FLAG_USER_CONFIRMATION).
+SLIP19_USER_CONFIRMATION = const(0x01)
 
 # HSM related commands that are not allowed if 'hsmcmd' is disabled.
 HSM_DISABLE_CMDS = frozenset({
@@ -458,6 +462,30 @@ class USBHandler:
             from auth import sign_msg
             sign_msg(msg, subpath, addr_fmt)
             return None
+
+        if cmd == 'slp9':
+            # SLIP-19 ownership proof, for coinjoin remote signing (Wasabi WabiSabi).
+            addr_fmt, flags, len_subpath, len_commit = unpack_from('<IIII', args)
+            assert len(args) == (16 + len_subpath + len_commit), 'badlen'
+            from utils import cleanup_deriv_path
+            # One canonical path is used for BOTH the policy check and the derivation below, so a
+            # caller cannot get one string approved and a different key signed.
+            subpath = cleanup_deriv_path(args[16:16+len_subpath])
+            commitment = bytes(args[16+len_subpath:])
+
+            from glob import hsm_active
+            if hsm_active:
+                if not hsm_active.approve_slip19(subpath):
+                    raise HSMDenied
+            elif flags & SLIP19_USER_CONFIRMATION:
+                # The confirmation flag is an assertion to the coordinator that a human approved
+                # this input. Outside HSM mode nobody has, and the host picks the flag, so refuse
+                # rather than sign a claim we cannot back. Under HSM the approved policy is the
+                # standing consent, which is the whole point of the policy.
+                raise ValueError('user confirmation flag requires an approved HSM policy')
+
+            from slip19 import make_ownership_proof
+            return b'biny' + make_ownership_proof(subpath, addr_fmt, flags, commitment)
 
         if cmd == 'p2sh':
             # show P2SH (probably multisig) address on screen (also provides it back)

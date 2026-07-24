@@ -489,6 +489,7 @@ class HSMPolicy:
 
         # a list of paths we can accept for signing
         self.msg_paths = pop_deriv_list(j, 'msg_paths')
+        self.slip19_paths = pop_deriv_list(j, 'slip19_paths')   # SLIP-19 ownership proofs (coinjoin)
         self.share_xpubs = pop_deriv_list(j, 'share_xpubs')
         self.share_addrs = pop_deriv_list(j, 'share_addrs', 'p2sh')
 
@@ -528,7 +529,7 @@ class HSMPolicy:
         
     def save(self):
         # Create JSON document for next time.
-        simple = ['must_log', 'never_log', 'msg_paths', 'share_xpubs', 'share_addrs',
+        simple = ['must_log', 'never_log', 'msg_paths', 'slip19_paths', 'share_xpubs', 'share_addrs',
                     'notes', 'period', 'allow_sl', 'warnings_ok', 'boot_to_hsm', 'priv_over_ux']
         rv = OrderedDict()
         for fn in simple:
@@ -817,6 +818,12 @@ class HSMPolicy:
             return ('p2sh' in self.share_addrs)
 
         return match_deriv_path(self.share_addrs, subpath)
+
+    def approve_slip19(self, subpath=None):
+        # Are we allowing SLIP-19 ownership proofs (coinjoin remote signing) over USB?
+        if not self.slip19_paths:
+            return False
+        return match_deriv_path(self.slip19_paths, subpath)
 
     @property
     def uptime(self):
