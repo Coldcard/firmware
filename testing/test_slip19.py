@@ -9,7 +9,9 @@ from hashlib import sha256
 from ckcc.protocol import CCProtocolPacker
 
 # The HSM harness fixtures live next door; importing them here makes pytest resolve them.
-from test_hsm import hsm_reset, hsm_status, start_hsm
+# enable_hsm_commands is autouse in test_hsm and must be pulled in explicitly, otherwise these
+# tests only pass when some earlier module happens to have left hsmcmd enabled on the simulator.
+from test_hsm import hsm_reset, hsm_status, start_hsm, enable_hsm_commands
 
 AF_P2WPKH = 0x07
 AF_P2TR = 0x23
