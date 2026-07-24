@@ -15,8 +15,9 @@ must meet all these requirements:
   signature string is the responsibility of the finalizer.
 * PSBT MUST include `PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE = 0x09`; the value is
   the exact message shown to the user and signed by BIP-322. The decoded
-  message must be printable ASCII between 2 and 330 characters. Leading or
-  trailing spaces and runs of three spaces are not allowed.
+  message must contain 2 to 330 ASCII characters. Newline and tab are allowed;
+  all other characters must be printable. Leading or trailing spaces and runs
+  of three spaces are not allowed.
 * PSBT requires `PSBT_IN_BIP32_DERIVATION` for each input
 * P2SH wrapped segwit addresses MUST have proper redeem script in PSBT: `PSBT_IN_REDEEM_SCRIPT`
 * P2WSH segwit addresses MUST have proper witness script in PSBT: `PSBT_IN_WITNESS_SCRIPT`

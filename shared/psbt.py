@@ -1474,6 +1474,7 @@ class psbtObject(psbtProxy):
             self.txn_modifiable = val[0]
         elif kt == PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE:
             assert key[1] == 0
+            assert val[1] <= 330, "msg too long (max. 330)"
             self.por322_msg = self.get(val).decode()
         else:
             self.unknown = self.unknown or []
@@ -1961,8 +1962,8 @@ class psbtObject(psbtProxy):
 
         if self.por322:
             from msgsign import validate_text_for_signing
-            self.por322_msg = validate_text_for_signing(
-                self.por322_msg.encode(), max_length=330
+            validate_text_for_signing(
+                self.por322_msg.encode(), allow_tab_nl=True, max_length=330
             )
 
         if self.txn_version == 0:

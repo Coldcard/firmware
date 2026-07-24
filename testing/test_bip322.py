@@ -100,6 +100,19 @@ def test_bip322_invalid_msg_text(msg, concern, bip322_txn, start_sign, cap_story
     assert concern in story.lower()
 
 
+def test_bip322_tab_newline_msg(bip322_txn, start_sign, end_sign, cap_story,
+                                bip322_verify):
+    msg = b"first line\n\tsecond line"
+    psbt, _ = bip322_txn([["p2wpkh", None, None]], msg=msg)
+
+    start_sign(psbt, finalize=True)
+    title, story = cap_story()
+    assert title == "OK TO SIGN?"
+    assert msg.decode() in story
+    signed = end_sign(accept=True)
+    bip322_verify(signed)
+
+
 def test_bip322_global_msg_hash_mismatch(bip322_txn, start_sign, cap_story):
     def hack(psbt_in):
         psbt_in.bip322_msg = b"wrong message"
