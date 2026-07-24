@@ -81,7 +81,7 @@ def compute_policy_hash(policy):
                 rv = type_(value)
         return rv
 
-    top_keys = [('must_log', bool), ('never_log', bool), ('msg_paths', Deriv), ('share_xpubs', Deriv), ('share_addrs', Deriv),
+    top_keys = [('must_log', bool), ('never_log', bool), ('msg_paths', Deriv), ('slip19_paths', Deriv), ('share_xpubs', Deriv), ('share_addrs', Deriv),
                     ('notes', str), ('period', int), ('allow_sl', int), ('warnings_ok', bool), ('boot_to_hsm', str), ('priv_over_ux', bool)]
 
     canonical = OrderedDict()
