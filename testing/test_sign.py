@@ -3400,8 +3400,8 @@ def test_txout_explorer_qr_too_big_single_item(fake_txn, start_sign, cap_story,
     time.sleep(.5)
     assert "QR too big" in cap_screen()
 
-    press_cancel()
-    press_cancel()
+    for _ in range(4):
+        press_cancel()
 
 
 def test_null_data_op_return(fake_txn, start_sign, end_sign, reset_seed_words):
