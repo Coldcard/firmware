@@ -1960,12 +1960,10 @@ class psbtObject(psbtProxy):
             self.por322 = bool(self.por322_msg)
 
         if self.por322:
-            assert len(self.por322_msg) <= 330, "msg len"
-            if len(self.por322_msg) != len(self.por322_msg.encode()):
-                self.warnings.append((
-                    "Message",
-                    "Message contains non-ASCII characters that may not be readable on this screen."
-                ))
+            from msgsign import validate_text_for_signing
+            self.por322_msg = validate_text_for_signing(
+                self.por322_msg.encode(), max_length=330
+            )
 
         if self.txn_version == 0:
             # only allow txn version 0 for Proof of Reserves txn (BIP-322)

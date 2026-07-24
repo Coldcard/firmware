@@ -15,7 +15,8 @@ must meet all these requirements:
   signature string is the responsibility of the finalizer.
 * PSBT MUST include `PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE = 0x09`; the value is
   the exact message shown to the user and signed by BIP-322. The decoded
-  message must be non-empty and no longer than 330 characters.
+  message must be printable ASCII between 2 and 330 characters. Leading or
+  trailing spaces and runs of three spaces are not allowed.
 * PSBT requires `PSBT_IN_BIP32_DERIVATION` for each input
 * P2SH wrapped segwit addresses MUST have proper redeem script in PSBT: `PSBT_IN_REDEEM_SCRIPT`
 * P2WSH segwit addresses MUST have proper witness script in PSBT: `PSBT_IN_WITNESS_SCRIPT`
@@ -68,9 +69,6 @@ When the PSBT contains only input 0, COLDCARD labels the request as
 of any additional reserve UTXOs. In that case it does not show transaction
 input/output counts. When the PSBT contains additional inputs, COLDCARD labels
 the request as `Proof of Reserves` and shows the reserve amount.
-
-If the message contains non-ASCII characters, COLDCARD warns that some
-characters may not be readable on screen.
 
 Legacy PoR PSBTs without `PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE` are rejected by
 this flow.
