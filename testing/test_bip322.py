@@ -85,20 +85,28 @@ def test_bip322_por(msg, ins, bip322_txn, start_sign, end_sign, cap_story, need_
     press_cancel()
 
 
-def test_bip322_por_utf8_msg(bip322_txn, start_sign, end_sign, cap_story, press_select,
-                             bip322_verify):
-    msg = "UTF-8 support: öäüéàè - test text".encode()
+@pytest.mark.parametrize("msg, concern", [
+    ("UTF-8: öäüéàè".encode(), "ascii"),
+    (b"shown\x03hidden", "must be ascii printable"),
+])
+def test_bip322_invalid_msg_text(msg, concern, bip322_txn, start_sign, cap_story):
+    psbt, _ = bip322_txn([["p2wpkh", None, None]], msg=msg)
+
+    start_sign(psbt, finalize=True)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert concern in story.lower()
+
+
+def test_bip322_tab_newline_msg(bip322_txn, start_sign, end_sign, cap_story,
+                                bip322_verify):
+    msg = b"first line\n\tsecond line"
     psbt, _ = bip322_txn([["p2wpkh", None, None]], msg=msg)
 
     start_sign(psbt, finalize=True)
     title, story = cap_story()
     assert title == "OK TO SIGN?"
-    assert "BIP-322 Message" in story
-    assert "Proof of Reserves" not in story
     assert msg.decode() in story
-    assert "WARNING" in story
-    assert "non-ASCII characters" in story
-    assert "Message Hash:" not in story
     signed = end_sign(accept=True)
     bip322_verify(signed)
 
@@ -734,13 +742,14 @@ def test_bip322_empty_message_challenge_rejected(bip32_paths, por, bip322_txn,
     assert title == "Failure"
 
 
-@pytest.mark.parametrize("msg", [
-    b"A"*330,  # allowed
-    b"X"*331,  # too long
-    b"",       # empty
+@pytest.mark.parametrize("msg, valid, concern", [
+    (b"A"*330, True, None),
+    (b"X"*331, False, "msg too long (max. 330)"),
+    (b"A", False, "msg too short (min. 2)"),
+    (b"", False, "msg"),
 ])
-def test_msg_size(msg, bip322_txn, start_sign, end_sign, cap_story, need_keypress,
-                  press_select, press_cancel, bip322_verify):
+def test_msg_size(msg, valid, concern, bip322_txn, start_sign, end_sign, cap_story,
+                  need_keypress, press_select, press_cancel, bip322_verify):
 
     psbt, msg_challenge = bip322_txn([["p2wpkh", None, None]], msg=msg)
 
@@ -749,7 +758,7 @@ def test_msg_size(msg, bip322_txn, start_sign, end_sign, cap_story, need_keypres
     time.sleep(.1)
     title, story = cap_story()
 
-    if 0 < len(msg) <= 330:
+    if valid:
         assert title == "OK TO SIGN?"
         assert "BIP-322 Message" in story
         assert "sign message" in story
@@ -765,10 +774,7 @@ def test_msg_size(msg, bip322_txn, start_sign, end_sign, cap_story, need_keypres
 
     else:
         assert title == "Failure"
-        if msg:
-            assert "msg len" in story
-        else:
-            assert "msg" in story
+        assert concern in story
 
 
 # EOF
