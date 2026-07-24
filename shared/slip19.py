@@ -22,21 +22,22 @@ def _tagged_hash(tag, msg):
     th = ngu.hash.sha256s(tag)
     return ngu.hash.sha256s(th + th + msg)
 
-def make_ownership_proof(subpath, flags, commitment):
-    # subpath: str like "m/84h/0h/0h/1/0"; flags: int; commitment: bytes.
+def make_ownership_proof(subpath, addr_fmt, flags, commitment):
+    # subpath: str like "m/84h/0h/0h/1/0"; addr_fmt: AF_P2WPKH or AF_P2TR; commitment: bytes.
+    # The caller states the address format, the same way smsg does. Deriving it from the path
+    # purpose instead would be a guess: the purpose does not have to match the script actually
+    # used at that path, and a proof over the wrong scriptPubKey is silently useless.
+    assert addr_fmt in (AF_P2WPKH, AF_P2TR), 'unsupported address format for ownership proof'
+
     with stash.SensitiveValues() as sv:
         node = sv.derive_path(subpath)
         pk = node.privkey()
         pubkey = node.pubkey()          # 33-byte compressed
 
-    # scriptPubKey: default Wasabi paths -> P2WPKH for 84h, P2TR for 86h. Decide by path purpose.
-    purpose = subpath.split("/")[1] if "/" in subpath else ""
-    is_taproot = purpose.startswith("86")
-
     oid = bytes(32)                     # ownership id (see _ownership_id note)
     proof_body = SLIP19_MAGIC + bytes([flags & 0xff]) + _cs(1) + oid
 
-    if not is_taproot:
+    if addr_fmt == AF_P2WPKH:
         h160 = ngu.hash.ripemd160(ngu.hash.sha256s(pubkey))
         spk = bytes([0x00, 0x14]) + h160
         preimage = proof_body + _cs(len(spk)) + spk + _cs(len(commitment)) + commitment
