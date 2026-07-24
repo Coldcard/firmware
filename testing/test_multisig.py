@@ -1205,7 +1205,8 @@ def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_miniscript, import_ms
     (20, "p2wsh"),
 ])
 def test_ms_sign_20_xpubs(M, inp_addr_fmt, clear_miniscript, import_ms_wallet,
-                          fake_ms_txn, try_sign_microsd, settings_set):
+                          fake_ms_txn, try_sign_microsd, settings_get, settings_set,
+                          settings_remove):
     # Automatic PSBT wallet discovery must handle pushed M/N values and 20 global XPUBs.
     N = 20
     dd = "m/48h/1h/0h/%dh" % (1 if inp_addr_fmt == "p2sh-p2wsh" else 2)
@@ -1219,14 +1220,21 @@ def test_ms_sign_20_xpubs(M, inp_addr_fmt, clear_miniscript, import_ms_wallet,
         return sk.node.serialize_public(), bp
 
     clear_miniscript()
+    old_pms = settings_get("pms", None)
     settings_set('pms', 2)
-    keys, _ = import_ms_wallet(M, N, addr_fmt=inp_addr_fmt, do_import=False, common=dd)
-    psbt = fake_ms_txn(1, 1, M, keys, inp_addr_fmt=inp_addr_fmt,
-                       incl_xpubs=include_xpubs, path_mapper=path_mapper)
+    try:
+        keys, _ = import_ms_wallet(M, N, addr_fmt=inp_addr_fmt, do_import=False, common=dd)
+        psbt = fake_ms_txn(1, 1, M, keys, inp_addr_fmt=inp_addr_fmt,
+                           incl_xpubs=include_xpubs, path_mapper=path_mapper)
 
-    _, updated, _ = try_sign_microsd(psbt)
-    aft = BasicPSBT().parse(updated)
-    assert len(aft.inputs[0].part_sigs) == 1
+        _, updated, _ = try_sign_microsd(psbt)
+        aft = BasicPSBT().parse(updated)
+        assert len(aft.inputs[0].part_sigs) == 1
+    finally:
+        if old_pms is None:
+            settings_remove("pms")
+        else:
+            settings_set("pms", old_pms)
 
 
 @pytest.mark.parametrize("finalize", [True, False])
