@@ -189,6 +189,7 @@ class ApprovalRule:
     def __init__(self, j, idx):
         # read json dict provided
         self.spent_so_far = 0       # for velocity
+        self.txn_count = 0          # for max_txn
 
         def check_user(u):
             if not Users.valid_username(u):
@@ -205,6 +206,7 @@ class ApprovalRule:
         self.local_conf = pop_bool(j, 'local_conf')
         self.wallet = pop_string(j, 'wallet', 1, 20)
         self.min_pct_self_transfer = pop_float(j, 'min_pct_self_transfer', 0, 100.0)
+        self.max_txn = pop_int(j, 'max_txn', 1, 10000)
         self.patterns = pop_list(j, 'patterns')
 
         assert sorted(set(self.users)) == sorted(self.users), 'dup users'
@@ -240,7 +242,7 @@ class ApprovalRule:
         # cleaned up data
         flds = [ 'per_period', 'max_amount', 'users', 'min_users',
                     'local_conf', 'whitelist', 'wallet',
-                    'min_pct_self_transfer', 'patterns' ]
+                    'min_pct_self_transfer', 'max_txn', 'patterns' ]
         rv = OrderedDict()
         for f in flds:
             val = getattr(self, f, None)
@@ -299,6 +301,9 @@ class ApprovalRule:
         if self.min_pct_self_transfer:
             rv += ' if self-transfer percentage is at least %.2f' % self.min_pct_self_transfer
 
+        if self.max_txn is not None:
+            rv += ', for at most %d transaction(s)' % self.max_txn
+
         if self.patterns:
             rv += ' with the following patterns: '
             for p in self.patterns:
@@ -319,6 +324,9 @@ class ApprovalRule:
 
         if self.max_amount is not None:
             assert total_out <= self.max_amount, 'amount exceeded'
+
+        if self.max_txn is not None:
+            assert self.txn_count < self.max_txn, 'transaction count exceeded'
 
         attest_mode = self.whitelist_opts and self.whitelist_opts.attest
         allow_zeroval = self.whitelist_opts and self.whitelist_opts.allow_zeroval_outs
@@ -971,6 +979,9 @@ class HSMPolicy:
 
                 if rule.per_period is not None:
                     self.record_spend(rule, total_out)
+
+                if rule.max_txn is not None:
+                    rule.txn_count += 1
 
                 return 'y'
             except BaseException as exc:
