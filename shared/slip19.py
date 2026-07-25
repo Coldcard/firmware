@@ -53,11 +53,19 @@ def _ownership_id_key():
 
     with stash.SensitiveValues() as sv:
         seed = _master_seed(sv)
+        try:
+            root = ngu.hmac.hmac_sha512(b'Symmetric key seed', seed)
+        finally:
+            # Only this one HMAC needs the seed, so it does not outlive the block. The
+            # intermediate nodes are seed-derived too, so each is blanked once consumed.
+            stash.blank_object(seed)
 
-    n = ngu.hmac.hmac_sha512(b'Symmetric key seed', seed)
-    n = ngu.hmac.hmac_sha512(n[0:32], b'\x00' + b'SLIP-0019')
-    n = ngu.hmac.hmac_sha512(n[0:32], b'\x00' + b'Ownership identification key')
-    k = bytes(n[32:64])
+    n1 = ngu.hmac.hmac_sha512(root[0:32], b'\x00' + b'SLIP-0019')
+    stash.blank_object(root)
+    n2 = ngu.hmac.hmac_sha512(n1[0:32], b'\x00' + b'Ownership identification key')
+    stash.blank_object(n1)
+    k = bytes(n2[32:64])
+    stash.blank_object(n2)
 
     _oid_key_cache = (xfp, k)
     return k
