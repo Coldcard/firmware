@@ -116,4 +116,44 @@ def test_slp9_hsm_path_gate(slp9, start_hsm, hsm_reset, policy_paths, subpath, a
 
     hsm_reset()
 
+
+# --- the ownership identifier itself ---------------------------------------------
+#
+# Official SLIP-19 vector 1: BIP-39 seed "all all ... all", no passphrase, P2WPKH at
+# m/84h/0h/0h/1/0. The identifier is defined over the scriptPubKey alone, so it does
+# not depend on which chain the simulator happens to be set to.
+
+VECTOR_WORDS = "all all all all all all all all all all all all"
+VECTOR_SPK = bytes.fromhex("0014b2f771c370ccf219cd3059cda92bdf7f00cf2103")
+VECTOR_OID = bytes.fromhex("a122407efc198211c81af4450f40b235d54775efd934d16b9e31c6ce9bad5707")
+
+
+def test_ownership_id_matches_official_vector(set_seed_words, sim_eval):
+    # Pin the derivation against the published vector, so a change to the SLIP-21 label
+    # path or the HMAC ordering fails here rather than in somebody wallet.
+    set_seed_words(VECTOR_WORDS)
+
+    rv = sim_eval("__import__(\"binascii\").hexlify("
+                  "__import__(\"slip19\").ownership_id(%r)).decode()" % VECTOR_SPK)
+    assert rv.strip().strip("\x27\"") == VECTOR_OID.hex()
+
+
+def test_slp9_carries_the_real_ownership_id(set_seed_words, slp9):
+    # End to end: the id inside the proof is the spec value for the key the device just
+    # derived, not the 32 zero bytes this replaced, which told a coordinator nothing.
+    set_seed_words(VECTOR_WORDS)
+
+    oid = slp9(subpath=SEGWIT_PATH, addr_fmt=AF_P2WPKH)[6:38]
+    assert oid != bytes(32)
+    assert oid == VECTOR_OID
+
+
+def test_ownership_id_is_bound_to_the_script(set_seed_words, slp9):
+    # One seed, two scripts: the identifiers must differ, or the id is not identifying.
+    set_seed_words(VECTOR_WORDS)
+
+    segwit = slp9(subpath=SEGWIT_PATH, addr_fmt=AF_P2WPKH)[6:38]
+    taproot = slp9(subpath=TAPROOT_PATH, addr_fmt=AF_P2TR)[6:38]
+    assert segwit != taproot
+
 # EOF
