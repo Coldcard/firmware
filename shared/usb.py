@@ -362,10 +362,18 @@ class USBHandler:
 
         if is_devmode and cmd[0].isupper():
             # special hacky commands to support testing w/ the simulator
+            #
+            # EVAL/EXEC are arbitrary code execution and XKEY injects keypresses, so they must
+            # not also be a way around HSM mode. HSM exists so the device can be left unattended
+            # with a host that may be compromised - which is exactly what unattended coinjoin
+            # signing is. The simulator keeps them, because the test suite drives HSM over this
+            # same path.
+            if hsm_active and not is_simulator():
+                raise HSMDenied
             try:
                 from usb_test_commands import do_usb_command
                 return do_usb_command(cmd, args)
-            except: 
+            except:
                 pass
 
         if hsm_active:
