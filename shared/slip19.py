@@ -17,6 +17,57 @@ def _cs(n):
         return bytes([n])
     return bytes([0xfd, n & 0xff, (n >> 8) & 0xff])
 
+# --- SLIP-19 ownership identifier -------------------------------------------------
+# id = HMAC-SHA256(key = k, msg = scriptPubKey), where
+#   k          = Key(m/"SLIP-0019"/"Ownership identification key")   [SLIP-19]
+# derived per SLIP-21:
+#   m          = HMAC-SHA512(key=b"Symmetric key seed", msg=seed)
+#   Child(N,l) = HMAC-SHA512(key=N[0:32], msg=b"\x00" + l)
+#   Key(N)     = N[32:64]
+# The key is cached against the master fingerprint. A different seed - including the same
+# words under a different BIP-39 passphrase - yields a different xfp, so a cached key can
+# never leak across wallets.
+_oid_key_cache = None
+
+
+def _master_seed(sv):
+    # SLIP-21 needs the seed the BIP-32 tree was built from, not the tree itself.
+    if sv.mode == 'master':
+        return bytes(sv.raw)
+    if sv.mode == 'words':
+        # Re-derives through PBKDF2 (seconds); that cost is why the key is cached.
+        import bip39
+        return bip39.master_secret(bip39.b2a_words(sv.raw), sv._bip39pw)
+    # An xprv-imported secret has no seed, so no ownership identifier exists for it. Refuse
+    # rather than emit a proof carrying a made-up id.
+    raise ValueError('ownership proofs need a seed; this wallet was imported as xprv')
+
+
+def _ownership_id_key():
+    global _oid_key_cache
+
+    from glob import settings
+    xfp = settings.get('xfp', 0)
+    if _oid_key_cache is not None and _oid_key_cache[0] == xfp:
+        return _oid_key_cache[1]
+
+    with stash.SensitiveValues() as sv:
+        seed = _master_seed(sv)
+
+    n = ngu.hmac.hmac_sha512(b'Symmetric key seed', seed)
+    n = ngu.hmac.hmac_sha512(n[0:32], b'\x00' + b'SLIP-0019')
+    n = ngu.hmac.hmac_sha512(n[0:32], b'\x00' + b'Ownership identification key')
+    k = bytes(n[32:64])
+
+    _oid_key_cache = (xfp, k)
+    return k
+
+
+def ownership_id(spk):
+    # SLIP-19 ownership identifier for one of this wallet's scriptPubKeys.
+    return bytes(ngu.hmac.hmac_sha256(_ownership_id_key(), spk))
+
+
 def _tagged_hash(tag, msg):
     # BIP-340 tagged hash: SHA256( SHA256(tag) || SHA256(tag) || msg ).
     th = ngu.hash.sha256s(tag)
@@ -34,12 +85,10 @@ def make_ownership_proof(subpath, addr_fmt, flags, commitment):
         pk = node.privkey()
         pubkey = node.pubkey()          # 33-byte compressed
 
-    oid = bytes(32)                     # ownership id (see _ownership_id note)
-    proof_body = SLIP19_MAGIC + bytes([flags & 0xff]) + _cs(1) + oid
-
     if addr_fmt == AF_P2WPKH:
         h160 = ngu.hash.ripemd160(ngu.hash.sha256s(pubkey))
         spk = bytes([0x00, 0x14]) + h160
+        proof_body = SLIP19_MAGIC + bytes([flags & 0xff]) + _cs(1) + ownership_id(spk)
         preimage = proof_body + _cs(len(spk)) + spk + _cs(len(commitment)) + commitment
         digest = ngu.hash.sha256s(preimage)
         sig65 = ngu.secp256k1.sign(pk, digest, 0).to_bytes()
@@ -57,6 +106,7 @@ def make_ownership_proof(subpath, addr_fmt, flags, commitment):
         out_kp = kp.xonly_tweak_add(_tagged_hash(b'TapTweak', internal_xonly))
         out_xonly = out_kp.xonly_pubkey().to_bytes()                # 32-byte output x-only key
         spk = bytes([0x51, 0x20]) + out_xonly                       # P2TR: OP_1 push32 <output key>
+        proof_body = SLIP19_MAGIC + bytes([flags & 0xff]) + _cs(1) + ownership_id(spk)
         preimage = proof_body + _cs(len(spk)) + spk + _cs(len(commitment)) + commitment
         digest = ngu.hash.sha256s(preimage)
         # aux_rand = 0: BIP-340 permits it; sign32 still binds (secret, message) so it is safe and
