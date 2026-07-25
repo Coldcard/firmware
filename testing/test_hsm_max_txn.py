@@ -59,4 +59,32 @@ def test_max_txn_combines_with_the_self_transfer_floor(dev, start_hsm, fake_txn,
 
     hsm_reset()
 
+
+def test_rate_limit_is_shown_and_enforced(dev, start_hsm, fake_txn, attempt_psbt, hsm_reset):
+    # max_txn bounds the total but not the rate, so a coordinator that keeps proposing rounds can
+    # burn the whole budget in minutes and farm a mining fee off each one. Rate is its own axis.
+    policy = dict(warnings_ok=True, period=60,
+                  rules=[dict(max_txn=10, max_txn_per_period=2)])
+
+    stat = start_hsm(policy)
+    assert '2 transaction(s) per period' in stat.summary
+
+    psbt = fake_txn(1, 1, dev.master_xpub, fee=0)
+    attempt_psbt(psbt)
+    attempt_psbt(psbt)
+    # Budget still has 8 left, but the period does not.
+    attempt_psbt(psbt, 'too many transactions this period')
+
+    hsm_reset()
+
+
+def test_rate_limit_needs_a_period(dev, start_hsm, hsm_reset):
+    # Anything measured per period is meaningless without one, and the policy already refuses that
+    # combination for the sats velocity limit.
+    policy = dict(warnings_ok=True, rules=[dict(max_txn_per_period=2)])
+
+    with pytest.raises(Exception) as ee:
+        start_hsm(policy)
+    assert 'period' in str(ee.value).lower()
+
 # EOF

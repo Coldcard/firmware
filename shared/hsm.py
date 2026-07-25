@@ -190,6 +190,7 @@ class ApprovalRule:
         # read json dict provided
         self.spent_so_far = 0       # for velocity
         self.txn_count = 0          # for max_txn
+        self.txn_this_period = 0    # for max_txn_per_period
 
         def check_user(u):
             if not Users.valid_username(u):
@@ -206,7 +207,9 @@ class ApprovalRule:
         self.local_conf = pop_bool(j, 'local_conf')
         self.wallet = pop_string(j, 'wallet', 1, 20)
         self.min_pct_self_transfer = pop_float(j, 'min_pct_self_transfer', 0, 100.0)
+        self.max_sats_leaving = pop_int(j, 'max_sats_leaving', 0, MAX_SATS)
         self.max_txn = pop_int(j, 'max_txn', 1, 10000)
+        self.max_txn_per_period = pop_int(j, 'max_txn_per_period', 1, 10000)
         self.patterns = pop_list(j, 'patterns')
 
         assert sorted(set(self.users)) == sorted(self.users), 'dup users'
@@ -235,14 +238,16 @@ class ApprovalRule:
 
     @property
     def has_velocity(self):
-        return self.per_period is not None
+        # Anything measured per period needs the policy to define one.
+        return self.per_period is not None or self.max_txn_per_period is not None
 
     def to_json(self):
         # remote users need to know what's happening, and we save this
         # cleaned up data
         flds = [ 'per_period', 'max_amount', 'users', 'min_users',
                     'local_conf', 'whitelist', 'wallet',
-                    'min_pct_self_transfer', 'max_txn', 'patterns' ]
+                    'min_pct_self_transfer', 'max_sats_leaving', 'max_txn',
+                    'max_txn_per_period', 'patterns' ]
         rv = OrderedDict()
         for f in flds:
             val = getattr(self, f, None)
@@ -301,8 +306,14 @@ class ApprovalRule:
         if self.min_pct_self_transfer:
             rv += ' if self-transfer percentage is at least %.2f' % self.min_pct_self_transfer
 
+        if self.max_sats_leaving is not None:
+            rv += ', and at most %s may leave the wallet per txn' % render(self.max_sats_leaving)
+
         if self.max_txn is not None:
             rv += ', for at most %d transaction(s)' % self.max_txn
+
+        if self.max_txn_per_period is not None:
+            rv += ', no more than %d transaction(s) per period' % self.max_txn_per_period
 
         if self.patterns:
             rv += ' with the following patterns: '
@@ -380,16 +391,29 @@ class ApprovalRule:
             # check this txn would not exceed the velocity limit
             assert self.spent_so_far + total_out <= self.per_period, 'would exceed period spending'
 
-        # check the self-transfer percentage
-        if self.min_pct_self_transfer:
+        if self.max_txn_per_period is not None:
+            assert self.txn_this_period < self.max_txn_per_period, 'too many transactions this period'
+
+        # what we put in versus what comes back: the ratio and the absolute loss are both checked
+        # against it, so walk the PSBT once.
+        if self.min_pct_self_transfer or self.max_sats_leaving is not None:
             own_in_value = sum([i.amount for i in psbt.inputs if i.num_our_keys])
             own_out_value = 0
             for idx, txo in psbt.output_iter():
                 o = psbt.outputs[idx]
                 if o.num_our_keys:
                     own_out_value += txo.nValue
-            percentage = (float(own_out_value) / own_in_value) * 100.0
-            assert percentage >= self.min_pct_self_transfer, 'does not meet self transfer threshold, expected: %.2f, actual: %.2f' % (self.min_pct_self_transfer, percentage)
+
+            # None of our own inputs means the ratio is undefined; refuse rather than divide by zero.
+            assert own_in_value, 'no inputs of ours to compare against'
+
+            if self.min_pct_self_transfer:
+                percentage = (float(own_out_value) / own_in_value) * 100.0
+                assert percentage >= self.min_pct_self_transfer, 'does not meet self transfer threshold, expected: %.2f, actual: %.2f' % (self.min_pct_self_transfer, percentage)
+
+            if self.max_sats_leaving is not None:
+                leaving = own_in_value - own_out_value
+                assert leaving <= self.max_sats_leaving, 'too much value leaving: %d sats, limit is %d' % (leaving, self.max_sats_leaving)
 
         # check various patterns
 
@@ -695,11 +719,15 @@ class HSMPolicy:
             for r in self.rules:
                 if r.per_period:
                     self.record_spend(r, r.per_period)
+                if r.max_txn_per_period:
+                    r.txn_this_period = r.max_txn_per_period
+                    self.record_spend(r, 0)
 
     def reset_period(self):
         # new period has begun
         for r in self.rules:
             r.spent_so_far = 0
+            r.txn_this_period = 0
         self.period_started = 0
 
     def record_spend(self, rule, amt):
@@ -982,6 +1010,11 @@ class HSMPolicy:
 
                 if rule.max_txn is not None:
                     rule.txn_count += 1
+
+                if rule.max_txn_per_period is not None:
+                    rule.txn_this_period += 1
+                    # starts the period clock without recording a spend
+                    self.record_spend(rule, 0)
 
                 return 'y'
             except BaseException as exc:
