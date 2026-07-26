@@ -264,7 +264,7 @@ class hsmUxInteraction:
     update_contents = show
 
     def draw_busy(self, msg, percent):
-        from display import FontTiny
+        from display import FontTiny, FontSmall
         from glob import dis
 
         self.last_percent = 0.5
@@ -286,7 +286,11 @@ class hsmUxInteraction:
         if self.busy_text is not None:
             # clear under it
             dis.clear_rect(0,y, 128, 64-y)
-            dis.text(None, y, self.busy_text)
+
+            # Drop to the tiny font rather than run off the screen: dis.text centres but does not
+            # wrap or shrink, so anything wider than 128px silently loses its ends.
+            font = FontSmall if dis.width(self.busy_text, FontSmall) <= 128 else FontTiny
+            dis.text(None, y, self.busy_text, font)
 
         if self.percent is not None:
             x = int(128 * self.percent)

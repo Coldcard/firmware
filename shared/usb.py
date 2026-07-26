@@ -481,7 +481,7 @@ class USBHandler:
             subpath = cleanup_deriv_path(args[16:16+len_subpath])
             commitment = bytes(args[16+len_subpath:])
 
-            from glob import hsm_active
+            from glob import dis, hsm_active
             if hsm_active:
                 if not hsm_active.approve_slip19(subpath):
                     raise HSMDenied
@@ -493,7 +493,18 @@ class USBHandler:
                 raise ValueError('user confirmation flag requires an approved HSM policy')
 
             from slip19 import make_ownership_proof
-            return b'biny' + make_ownership_proof(subpath, addr_fmt, flags, commitment)
+
+            # Say what the device is doing. Unattended signing is otherwise silent, so there is no
+            # way to tell a working coinjoin session from an idle one by looking at the Coldcard.
+            # In HSM mode this lands on the status screen's busy line; leave the normal UX alone.
+            if hsm_active:
+                dis.fullscreen('Signing ownership proof')
+            try:
+                return b'biny' + make_ownership_proof(subpath, addr_fmt, flags, commitment)
+            finally:
+                if hsm_active:
+                    # A finished progress bar is how the busy line gets cleared again.
+                    dis.progress_bar(1)
 
         if cmd == 'p2sh':
             # show P2SH (probably multisig) address on screen (also provides it back)
