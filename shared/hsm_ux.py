@@ -166,8 +166,17 @@ async def start_hsm_approval(sf_len=0, usb_mode=False, startup_mode=False):
 class hsmUxInteraction:
     # Based on Menu() class, but just skeleton: blocks everything
 
+    # How long a busy message may sit unchanged before it is cleared. A host that stops talking part
+    # way through an upload never sends the rest, and since nothing raised, the code that normally
+    # restores the screen never runs -- so the device is left reading "Receiving..." while it is in
+    # fact idle and waiting. Harmless, but it is the worst possible reading for something meant to
+    # be left signing unattended. Comfortably longer than the gap between progress updates during a
+    # real transfer, so ordinary work never trips it.
+    BUSY_TIMEOUT_MS = const(30000)
+
     def __init__(self):
         self.busy_text = None
+        self.busy_since = None
         self.percent = None
         self.digits = ''
         self.phase = 0
@@ -279,9 +288,20 @@ class hsmUxInteraction:
             if percent >= 0.995:            # ~ last pixel
                 self.percent = None
                 self.busy_text = msg = None
+                self.busy_since = None
 
         if msg is not None:
             self.busy_text = msg
+
+        if msg is not None or percent is not None:
+            # something is still happening, so keep it on screen
+            self.busy_since = utime.ticks_ms()
+        elif (self.busy_text is not None and self.busy_since is not None
+                and utime.ticks_diff(utime.ticks_ms(), self.busy_since) > BUSY_TIMEOUT_MS):
+            # nothing has moved for a while: the host is gone, so stop claiming to be busy
+            self.busy_text = None
+            self.percent = None
+            self.busy_since = None
 
         if self.busy_text is not None:
             # clear under it
