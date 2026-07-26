@@ -882,7 +882,6 @@ class HSMPolicy:
 
                 # reject anything with warning, probably
                 if psbt.warnings:
-                    print(psbt.warnings)
                     if self.warnings_ok:
                         log.info("Txn has warnings, but policy is to accept anyway.")
                     else:
