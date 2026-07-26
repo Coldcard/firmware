@@ -92,7 +92,7 @@ def compute_policy_hash(policy):
 
     rules_keys = [ ('per_period', int), ('max_amount', int), ('users', list), ('min_users', int),
                 ('local_conf', bool), ('whitelist', list), ('wallet', str), ('min_pct_self_transfer', float),
-                ('max_sats_leaving', int), ('max_txn', int), ('max_txn_per_period', int), ('patterns', list), ('whitelist_opts', WhitelistOpts) ]
+                ('max_sats_leaving', int), ('max_txn', int), ('max_txn_per_period', int), ('min_inputs', int), ('patterns', list), ('whitelist_opts', WhitelistOpts) ]
 
     canonical["rules"] = []
     for rule in policy.get("rules", []):

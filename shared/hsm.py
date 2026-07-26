@@ -181,6 +181,11 @@ class ApprovalRule:
     # - local_conf: local user must also confirm w/ code
     # - wallet: which multisig wallet to restrict to, or '1' for single signer only
     # - min_pct_self_transfer: minimum percentage of own input value that must go back to self
+    # - min_inputs: fewest inputs the whole transaction may have, ours and everyone else's.
+    #   Meant for coinjoins: a round with only a couple of participants tells the coordinator
+    #   almost everything, so refuse to sign one. Note this counts inputs, which a coordinator
+    #   willing to add its own can inflate at will -- it rules out the degenerate round, it is
+    #   not an anonymity set.
     # - patterns: list of transaction patterns to check for. Valid values:
     #       * EQ_NUM_INS_OUTS:      the number of inputs and outputs must be equal
     #       * EQ_NUM_OWN_INS_OUTS:  the number of **own** inputs and outputs must be equal
@@ -210,6 +215,7 @@ class ApprovalRule:
         self.max_sats_leaving = pop_int(j, 'max_sats_leaving', 0, MAX_SATS)
         self.max_txn = pop_int(j, 'max_txn', 1, 10000)
         self.max_txn_per_period = pop_int(j, 'max_txn_per_period', 1, 10000)
+        self.min_inputs = pop_int(j, 'min_inputs', 1, 10000)
         self.patterns = pop_list(j, 'patterns')
 
         assert sorted(set(self.users)) == sorted(self.users), 'dup users'
@@ -247,7 +253,7 @@ class ApprovalRule:
         flds = [ 'per_period', 'max_amount', 'users', 'min_users',
                     'local_conf', 'whitelist', 'wallet',
                     'min_pct_self_transfer', 'max_sats_leaving', 'max_txn',
-                    'max_txn_per_period', 'patterns' ]
+                    'max_txn_per_period', 'min_inputs', 'patterns' ]
         rv = OrderedDict()
         for f in flds:
             val = getattr(self, f, None)
@@ -315,6 +321,9 @@ class ApprovalRule:
         if self.max_txn_per_period is not None:
             rv += ', no more than %d transaction(s) per period' % self.max_txn_per_period
 
+        if self.min_inputs is not None:
+            rv += ', only in transactions with %d or more inputs' % self.min_inputs
+
         if self.patterns:
             rv += ' with the following patterns: '
             for p in self.patterns:
@@ -338,6 +347,12 @@ class ApprovalRule:
 
         if self.max_txn is not None:
             assert self.txn_count < self.max_txn, 'transaction count exceeded'
+
+        if self.min_inputs is not None:
+            # every participant's inputs, not just ours: a coinjoin round is only worth joining
+            # if enough others are in it.
+            assert psbt.num_inputs >= self.min_inputs, \
+                'too few inputs: %d, need %d' % (psbt.num_inputs, self.min_inputs)
 
         attest_mode = self.whitelist_opts and self.whitelist_opts.attest
         allow_zeroval = self.whitelist_opts and self.whitelist_opts.allow_zeroval_outs
