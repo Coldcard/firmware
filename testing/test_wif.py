@@ -3,7 +3,7 @@
 import pytest, time, os, json, base64, struct
 
 from conftest import microsd_path
-from helpers import prandom, addr_from_display_format, hash160
+from helpers import prandom, addr_from_display_format, hash160, taptweak
 from charcodes import KEY_QR, KEY_NFC, KEY_UP
 from constants import unmap_addr_fmt, AF_P2WSH, AF_P2SH
 from bip32 import BIP32Node, PrivateKey
@@ -855,14 +855,22 @@ def test_wif_store_signing(num_ins, addr_fmt, fake_txn, goto_home, pick_menu_ite
     end_sign(finalize=True)
 
 
-def test_wif_store_signing_taproot_without_paths(fake_txn, start_sign, end_sign, cap_story,
-                                                  settings_remove, import_wif_to_store):
+@pytest.mark.parametrize("with_merkle_root", [False, True])
+def test_wif_store_signing_taproot_without_paths(with_merkle_root, fake_txn, start_sign,
+                                                  end_sign, cap_story, settings_remove,
+                                                  import_wif_to_store):
     settings_remove("wifs")
 
     node = BIP32Node.from_master_secret(os.urandom(32))
     po = BasicPSBT().parse(fake_txn(1, 1, addr_fmt="p2tr", master_xpub=node.hwif()))
-    po.inputs[0].taproot_internal_key, = po.inputs[0].taproot_bip32_paths.keys()
-    po.inputs[0].taproot_bip32_paths = None
+    inp = po.inputs[0]
+    inp.taproot_internal_key, = inp.taproot_bip32_paths.keys()
+    inp.taproot_bip32_paths = None
+
+    if with_merkle_root:
+        inp.taproot_merkle_root = os.urandom(32)
+        output_key = taptweak(inp.taproot_internal_key, inp.taproot_merkle_root)
+        inp.witness_utxo = CTxOut(100_000_000, b'\x51\x20' + output_key).serialize()
 
     import_wif_to_store([node.subkey_for_path("0/0").node.private_key.wif(testnet=True)])
 
@@ -870,6 +878,62 @@ def test_wif_store_signing_taproot_without_paths(fake_txn, start_sign, end_sign,
     _, story = cap_story()
     assert "WIF store: 0" in story
     end_sign(finalize=True)
+
+
+def test_wif_store_rejects_mismatched_taproot_merkle_root(
+        fake_txn, start_sign, cap_story, settings_remove, import_wif_to_store):
+    settings_remove("wifs")
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    po = BasicPSBT().parse(fake_txn(1, 1, addr_fmt="p2tr", master_xpub=node.hwif()))
+    inp = po.inputs[0]
+    inp.taproot_internal_key, = inp.taproot_bip32_paths.keys()
+    inp.taproot_bip32_paths = None
+    inp.taproot_merkle_root = os.urandom(32)
+
+    import_wif_to_store([node.subkey_for_path("0/0").node.private_key.wif(testnet=True)])
+
+    start_sign(po.as_bytes(), finalize=True)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Invalid PSBT" in story
+
+
+def test_se_single_sig_rejects_taproot_merkle_root(
+        fake_txn, start_sign, cap_story, settings_remove, master_xpub):
+    settings_remove("wifs")
+
+    po = BasicPSBT().parse(fake_txn(1, 1, addr_fmt="p2tr", master_xpub=master_xpub))
+    inp = po.inputs[0]
+    inp.taproot_internal_key, = inp.taproot_bip32_paths.keys()
+    inp.taproot_merkle_root = os.urandom(32)
+    output_key = taptweak(inp.taproot_internal_key, inp.taproot_merkle_root)
+    inp.witness_utxo = CTxOut(100_000_000, b'\x51\x20' + output_key).serialize()
+
+    start_sign(po.as_bytes(), finalize=True)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Invalid PSBT" in story
+
+
+@pytest.mark.parametrize("root_len", [31, 33])
+def test_wif_store_rejects_bad_taproot_merkle_root_length(
+        root_len, fake_txn, start_sign, cap_story, settings_remove, import_wif_to_store):
+    settings_remove("wifs")
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    po = BasicPSBT().parse(fake_txn(1, 1, addr_fmt="p2tr", master_xpub=node.hwif()))
+    inp = po.inputs[0]
+    inp.taproot_internal_key, = inp.taproot_bip32_paths.keys()
+    inp.taproot_bip32_paths = None
+    inp.taproot_merkle_root = os.urandom(root_len)
+
+    import_wif_to_store([node.subkey_for_path("0/0").node.private_key.wif(testnet=True)])
+
+    start_sign(po.as_bytes(), finalize=True)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Invalid PSBT" in story
 
 
 @pytest.mark.parametrize("addr_fmt", ["p2pkh", "p2wpkh", "p2sh-p2wpkh", "p2tr"])

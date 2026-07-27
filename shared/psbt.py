@@ -1047,20 +1047,22 @@ class psbtInputProxy(psbtProxy):
                         raise FatalPSBTIssue('Need witness script for input #%d' % my_idx)
 
         elif self.af == AF_P2TR:
+            if self.taproot_merkle_root is not None:
+                assert len(parsed_subpaths) != 1 or self.wif_key, "Merkle root not allowed"
+                merkle_root = self.get(self.taproot_merkle_root)
+
             if len(parsed_subpaths) == 1:
-                # keyspend without a script path
-                assert self.taproot_merkle_root is None, "merkle_root should not be defined for simple keyspend"
+                # Simple SE-backed key-path spends must not commit to an unknown
+                # script tree. WIF Store is the explicit escape hatch for externally
+                # constructed Taproot outputs.
                 assert self.ik_idx == [0]
                 xonly_pubkey, lhs_path = list(parsed_subpaths.items())[0]
                 lhs, path = lhs_path[0], lhs_path[1:]
                 assert not lhs, "LeafHashes have to be empty for internal key"
                 assert self.sp_idxs[0] == 0
-                assert taptweak(xonly_pubkey) == addr_or_pubkey
+                assert taptweak(xonly_pubkey, merkle_root) == addr_or_pubkey
             else:
                 self.is_miniscript = True
-
-                if self.taproot_merkle_root is not None:
-                    merkle_root = self.get(self.taproot_merkle_root)
 
                 for i, (xonly_pubkey, lhs_path) in enumerate(parsed_subpaths.items()):
                     if i not in self.sp_idxs:
@@ -1864,6 +1866,9 @@ class psbtObject(psbtProxy):
 
             if i.taproot_internal_key:
                 assert i.taproot_internal_key[1] == 32  # "PSBT_IN_TAP_INTERNAL_KEY length != 32"
+
+            if i.taproot_merkle_root:
+                assert i.taproot_merkle_root[1] == 32  # "PSBT_IN_TAP_MERKLE_ROOT length != 32"
 
             if i.taproot_key_sig:
                 # "PSBT_IN_TAP_KEY_SIG length != 64 or 65"
@@ -3065,7 +3070,7 @@ class psbtObject(psbtProxy):
                             if inp.taproot_merkle_root:
                                 # we have a script path but internal key is spendable by us
                                 # merkle root needs to be added to tweak with internal key
-                                # merkle root was already verified against registered script in determine_my_signing_key
+                                # merkle root was already bound to the output key
                                 tweak += self.get(inp.taproot_merkle_root)
 
                             tweak = ngu.hash.sha256t(TAP_TWEAK_H, tweak, True)
