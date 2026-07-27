@@ -105,7 +105,7 @@ async def ux_visualize_wif(wif_str, kp, compressed, testnet):
     if ch == "1":
         title = "Success"
         try:
-            save_wif_store_items([(pk, sk)])
+            save_wif_store_items([[pk, sk]])
             msg = "Saved to WIF Store."
         except Exception as e:
             title = "Failure"
@@ -388,7 +388,7 @@ class WIFStoreMenu(MenuSystem):
                 sk = b2a_hex(kp.privkey()).decode()
                 pk = b2a_hex(kp.pubkey().to_bytes(not compressed)).decode()
 
-                new_wifs.append((pk, sk))
+                new_wifs.append([pk, sk])
 
             save_wif_store_items(new_wifs)
 

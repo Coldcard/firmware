@@ -502,7 +502,9 @@ def test_wif_store_import_duplicate(settings_remove, import_wif_to_store, settin
 
     import_wif_to_store(wif_list)
     b4 = cap_menu()
-    assert len(settings_get("wifs")) == 4
+    saved = settings_get("wifs")
+    assert len(saved) == 4
+    assert all(isinstance(item, list) for item in saved)
 
     import_wif_to_store(wif_list, early_exit=True)
     assert len(settings_get("wifs")) == 4
