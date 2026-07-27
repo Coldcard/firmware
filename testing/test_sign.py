@@ -1424,7 +1424,7 @@ def test_payjoin_signing(num_ins, num_outs, fake_txn, try_sign, start_sign, end_
     assert 'Limited Signing' in story
     assert "don't know the key" in story
     assert "different wallet" in story
-    assert ': %s' % (num_ins-1) in story
+    assert "We are not signing 1 input(s)" in story
 
     end_sign(True, finalize=False)
 
@@ -1766,29 +1766,53 @@ def test_foreign_utxo_missing(addr_fmt, num_not_ours, dev, fake_txn, start_sign,
     time.sleep(.1)
     _, story = cap_story()
 
-    no = ", ".join(str(i) for i in list(range(num_not_ours)))
     assert "warnings" in story
-    assert f"Limited Signing:" in story
-    assert f": {no}" in story
-    assert f"Unable to calculate fee: Some input(s) haven't provided UTXO(s): {no}" in story
+    assert "Limited Signing:" in story
+    assert f"We are not signing {num_not_ours} input(s)" in story
+    assert f"Unable to calculate fee: {num_not_ours} input(s) haven't provided UTXO." in story
     signed = end_sign(accept=True)
     assert signed != psbt
 
+
+def test_many_foreign_inputs_warning_is_bounded(fake_txn, start_sign, cap_story, press_cancel):
+    num_inputs = 250
+    num_foreign = num_inputs - 1
+
+    def hack(psbt):
+        for inp in psbt.inputs[:num_foreign]:
+            pk, = inp.bip32_paths.keys()
+            path = inp.bip32_paths[pk]
+            inp.bip32_paths[pk] = b"what" + path[4:]
+            inp.utxo = None
+            inp.witness_utxo = None
+
+    psbt = fake_txn(num_inputs, 2, addr_fmt="p2wpkh", psbt_hacker=hack)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+
+    assert title == "OK TO SEND?"
+    assert f"We are not signing {num_foreign} input(s)" in story
+    assert f"{num_foreign} input(s) haven't provided UTXO." in story
+    assert "0, 1, 2" not in story
+    press_cancel()
+
+
 @pytest.mark.parametrize("addr_fmt", ["p2pkh", "p2wpkh", "p2tr"])
-@pytest.mark.parametrize("num_missing", [1, 3, 4])
-def test_own_utxo_missing(num_missing, dev, fake_txn, start_sign, cap_story, end_sign,
+@pytest.mark.parametrize("idx_missing", [1, 3, 4])
+def test_own_utxo_missing(idx_missing, dev, fake_txn, start_sign, cap_story, end_sign,
                           press_cancel, addr_fmt):
     def hack(psbt):
-        for i in range(num_missing):
-            # no utxo provided for our input
-            psbt.inputs[i].utxo = None
-            psbt.inputs[i].witness_utxo = None
+        # no utxo provided for our input
+        psbt.inputs[idx_missing].utxo = None
+        psbt.inputs[idx_missing].witness_utxo = None
 
     psbt = fake_txn(5, 2, dev.master_xpub, addr_fmt=addr_fmt, psbt_hacker=hack)
     start_sign(psbt)
     time.sleep(.1)
     title, story = cap_story()
     assert title == "Failure"
+    assert f"i{idx_missing}:" in story
     assert "Missing own UTXO(s)" in story
     press_cancel()
 
@@ -1837,7 +1861,7 @@ def test_foreign_legacy_witness_utxo_only_ok(dev, fake_txn, start_sign, cap_stor
     assert title == "OK TO SEND?"
     assert "Limited Signing" in story
     assert "Unable to calculate fee" in story
-    assert "Some input(s) provided unverified witness UTXO(s): 1" in story
+    assert "1 input(s) provided unverified witness UTXO." in story
     assert "Legacy input #1 requires non-witness UTXO" not in story
     signed = end_sign(accept=True)
     assert signed != psbt
@@ -1867,7 +1891,7 @@ def test_mismatched_p2sh_witness_program_unverified(dev, fake_txn, start_sign,
     assert title == "OK TO SEND?"
     assert "Limited Signing" in story
     assert "Unable to calculate fee" in story
-    assert "Some input(s) provided unverified witness UTXO(s): 1" in story
+    assert "1 input(s) provided unverified witness UTXO." in story
     assert "Network fee" not in story
     signed = end_sign(accept=True)
     assert signed != psbt
@@ -1885,7 +1909,7 @@ def test_presigned_own_legacy_witness_utxo_only_ok(dev, fake_txn, start_sign, ca
     assert title == "OK TO SEND?"
     assert "Partly Signed Already" in story
     assert "Unable to calculate fee" in story
-    assert "Some input(s) provided unverified witness UTXO(s): 1" in story
+    assert "1 input(s) provided unverified witness UTXO." in story
     assert "Legacy input #1 requires non-witness UTXO" not in story
     signed = end_sign(accept=True)
     assert signed != psbt
@@ -4179,9 +4203,9 @@ def test_single_multi_psbt(multi, ss_af, ms_af, dev, fake_txn, fake_ms_txn, impo
 
         assert "(1 warning below)" in story
         assert 'Limited Signing' in story
-        assert ("We are not signing these inputs, because we either don't "
+        assert ("We are not signing 1 input(s), because we either don't "
                 "know the key, inputs belong to different wallet,"
-                " or we have already signed: 1") in story
+                " or we have already signed.") in story
 
         res = end_sign()
         r = BasicPSBT().parse(res)

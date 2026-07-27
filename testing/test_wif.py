@@ -848,10 +848,7 @@ def test_wif_store_signing(num_ins, addr_fmt, fake_txn, goto_home, pick_menu_ite
     time.sleep(.1)
     title, story = cap_story()
     assert "warning" in story
-    if num_ins == 1:
-        assert "WIF store: 0" in story
-    else:
-        assert f"WIF store: {', '.join([str(i) for i in range(num_ins)])}" in story
+    assert f"{num_ins} input(s) use key from the WIF store." in story
     end_sign(finalize=True)
 
 
@@ -876,7 +873,7 @@ def test_wif_store_signing_taproot_without_paths(with_merkle_root, fake_txn, sta
 
     start_sign(po.as_bytes(), finalize=True)
     _, story = cap_story()
-    assert "WIF store: 0" in story
+    assert "1 input(s) use key from the WIF store." in story
     end_sign(finalize=True)
 
 
@@ -958,7 +955,7 @@ def test_wif_store_signing_with_unrelated_path(addr_fmt, fake_txn, start_sign, e
 
     start_sign(po.as_bytes(), finalize=True)
     _, story = cap_story()
-    assert "WIF store: 0" in story
+    assert "1 input(s) use key from the WIF store." in story
     end_sign(finalize=True)
 
 
@@ -1012,7 +1009,7 @@ def test_wif_store_signing_exact_key(script_type, compressed, der_paths, fake_tx
     start_sign(po.as_bytes(), finalize=False)
     title, story = cap_story()
     assert title == "OK TO SEND?"
-    assert "WIF store: 0" in story
+    assert "1 input(s) use key from the WIF store." in story
 
     signed = BasicPSBT().parse(end_sign(accept=True, finalize=False))
     assert list(signed.inputs[0].part_sigs.keys()) == [pubkey]
@@ -1074,9 +1071,9 @@ def test_wif_store_signing_multi(der_paths, complete, fake_txn, start_sign, end_
     title, story = cap_story()
     assert "warning" in story
     if complete:
-        assert "WIF store: 0, 1, 2" in story
+        assert "3 input(s) use key from the WIF store." in story
     else:
-        assert "WIF store: 0, 1" in story
+        assert "2 input(s) use key from the WIF store." in story
         assert "Limited Signing" in story
 
     end_sign(finalize=complete)
@@ -1118,7 +1115,7 @@ def test_wif_store_signing_with_master(fake_txn, start_sign, end_sign, cap_story
     start_sign(po.to_v0(), finalize=True)
     title, story = cap_story()
     assert "warning" in story
-    assert "WIF store: 0, 1" in story
+    assert "2 input(s) use key from the WIF store." in story
 
     end_sign(finalize=True)
 
@@ -1385,7 +1382,7 @@ def test_spend_paper_wallet_desc_core(mode, bitcoind, settings_remove, import_wi
     start_sign(psbt_bytes, finalize=True)
     time.sleep(.1)
     title, story = cap_story()
-    assert "WIF store: 0" in story
+    assert "1 input(s) use key from the WIF store." in story
     signed = end_sign(accept=True, finalize=True)
 
     # remove BIP-32 paths from PSBT inputs
@@ -1401,7 +1398,7 @@ def test_spend_paper_wallet_desc_core(mode, bitcoind, settings_remove, import_wi
     start_sign(psbt1_bytes, finalize=True)
     time.sleep(.1)
     title, story = cap_story()
-    assert "WIF store: 0" in story
+    assert "1 input(s) use key from the WIF store." in story
     signed1 = end_sign(accept=True, finalize=True)
 
     if mode != "Taproot P2TR":
@@ -1487,7 +1484,7 @@ def test_spend_uncompressed_wif_core_psbt(script_type, finalize, bitcoind, bitco
         time.sleep(.1)
         title, story = cap_story()
         assert title == "OK TO SEND?"
-        assert "WIF store: 0" in story
+        assert "1 input(s) use key from the WIF store." in story
         return end_sign(accept=True, finalize=do_finalize)
 
     out = cc_sign(finalize)
@@ -1634,7 +1631,7 @@ def test_spend_paper_wallet_addr_only(mode, bitcoind, settings_remove, import_wi
     start_sign(psbt_bytes, finalize=True)
     time.sleep(.1)
     title, story = cap_story()
-    assert "WIF store: 0" in story
+    assert "1 input(s) use key from the WIF store." in story
     signed = end_sign(accept=True, finalize=True)
 
     tx_hex = signed.hex()
@@ -1700,7 +1697,7 @@ def test_spend_paper_wallet_addr_only_p2sh_segwit_signed_psbt_finalizes(
     start_sign(psbt_bytes, finalize=False)
     time.sleep(.1)
     title, story = cap_story()
-    assert "WIF store: 0" in story
+    assert "1 input(s) use key from the WIF store." in story
     signed_psbt = end_sign(accept=True, finalize=False)
 
     finalize_res = bitcoind.rpc.finalizepsbt(base64.b64encode(signed_psbt).decode(), True)
@@ -1755,7 +1752,7 @@ def test_spend_paper_wallet_wif_input_details(
     time.sleep(.1)
     title, story = cap_story()
     assert title == "OK TO SEND?", story
-    assert "WIF store: 0" in story
+    assert "1 input(s) use key from the WIF store." in story
     assert "Press (2) to explore transaction" in story
 
     need_keypress("2")
@@ -1836,7 +1833,7 @@ def test_spend_paper_wallet_via_electrum(mode, bitcoind, electrum, settings_remo
     start_sign(psbt_bytes, finalize=True)
     time.sleep(.1)
     title, story = cap_story()
-    assert "WIF store: 0" in story
+    assert "1 input(s) use key from the WIF store." in story
     signed = end_sign(accept=True, finalize=True)
 
     tx_hex = signed.hex()

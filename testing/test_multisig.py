@@ -3223,7 +3223,7 @@ def test_input_script_type(clear_miniscript, import_ms_wallet, start_sign, end_s
 
         assert "(1 warning below)" in story
         assert "WARNING" in story
-        assert "Limited Signing: We are not signing these inputs" in story
+        assert "Limited Signing: We are not signing 2 input(s)" in story
         res = end_sign()
         po = BasicPSBT().parse(res)
         for inp in po.inputs:

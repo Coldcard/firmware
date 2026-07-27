@@ -93,10 +93,6 @@ class HashNDump:
         print(' END')
         return self.rv.digest()
 
-def seq_to_str(seq):
-    # take a set or list of numbers and show a tidy list in order.
-    return ', '.join(str(i) for i in sorted(seq))
-
 def _skip_n_objs(fd, n, cls):
     # skip N sized objects in the stream, for example a vectors of CTxIns
     # - returns starting position
@@ -2158,10 +2154,10 @@ class psbtObject(psbtProxy):
         # check nSequences & nLockTime and warn about TX level locktimes
         from glob import dis
 
-        foreign = []
-        unverified_witness_utxo = []
+        foreign = 0
+        unverified_witness_utxo = 0
         total_in = 0
-        presigned_inputs = set()
+        presigned_inputs = 0
         # time based relative locks
         tb_rel_locks = []
         # block height based relative locks
@@ -2176,7 +2172,7 @@ class psbtObject(psbtProxy):
         idx_max = 0
         my_cnt = 0
         prevouts = set()
-        from_wif_store = []
+        from_wif_store = 0
 
         dis.fullscreen("Validating...", line2="Inputs")
 
@@ -2241,10 +2237,11 @@ class psbtObject(psbtProxy):
             if not inp.has_utxo():
                 if inp.sp_idxs and not inp.fully_signed:
                     # we cannot proceed if the input is ours and there is no UTXO
-                    raise FatalPSBTIssue('Missing own UTXO(s). Cannot determine value being signed')
+                    raise FatalPSBTIssue('i%d: Missing own UTXO(s).'
+                                         ' Cannot determine value being signed' % i)
 
                 # input clearly not ours
-                foreign.append(i)
+                foreign += 1
                 continue
 
             # pull out just the CTXOut object
@@ -2256,7 +2253,7 @@ class psbtObject(psbtProxy):
             assert inp.amount >= 0, "negative input value: i%d" % i
             total_in += inp.amount
             if not inp.utxo and not inp.witness_utxo_is_provably_segwit(utxo):
-                unverified_witness_utxo.append(i)
+                unverified_witness_utxo += 1
 
             inp.af, addr_or_pubkey = utxo.get_address()
             # save scriptPubKey of utxo for later use
@@ -2279,7 +2276,7 @@ class psbtObject(psbtProxy):
             if inp.sp_idxs:
                 my_cnt += 1
             if inp.fully_signed:
-                presigned_inputs.add(i)
+                presigned_inputs += 1
             if (inp.sp_idxs or self.wif_store) and (not inp.fully_signed):
                 # Look at what kind of input this will be, and therefore what
                 # type of signing will be required, and which key we need.
@@ -2294,7 +2291,7 @@ class psbtObject(psbtProxy):
                 # determine_my_signing_key updates fully_signed from the actual
                 # threshold for standard multisig scripts.
                 if inp.fully_signed:
-                    presigned_inputs.add(i)
+                    presigned_inputs += 1
                     continue
 
                 # determine_my_signing_key may have removed sp_idxs
@@ -2328,7 +2325,7 @@ class psbtObject(psbtProxy):
                         in_wif_store = True
 
                 if in_wif_store:
-                    from_wif_store.append(i)
+                    from_wif_store += 1
 
                 # iff to UTXO is segwit, then check it's value, and also
                 # capture that value, since it's supposed to be immutable
@@ -2362,16 +2359,14 @@ class psbtObject(psbtProxy):
             assert not self.por322  # cannot have foreign inputs in POR txn
             self.total_value_in = None
             if foreign:
-                self.warnings.append(
-                    ("Unable to calculate fee", "Some input(s) haven't provided UTXO(s): " + seq_to_str(foreign))
-                )
+                self.warnings.append(("Unable to calculate fee",
+                                      "%d input(s) haven't provided UTXO." % foreign))
             if unverified_witness_utxo:
-                self.warnings.append(
-                    ("Unable to calculate fee", "Some input(s) provided unverified witness UTXO(s): " +
-                     seq_to_str(unverified_witness_utxo))
-                )
+                self.warnings.append(("Unable to calculate fee",
+                                      "%d input(s) provided unverified witness UTXO." %
+                                      unverified_witness_utxo))
 
-        if len(presigned_inputs) == self.num_inputs:
+        if presigned_inputs == self.num_inputs:
             # Maybe wrong f cases? Maybe they want to add their
             # own signature, even tho N of M is satisfied?!
             raise FatalPSBTIssue('Transaction looks completely signed already?')
@@ -2379,32 +2374,31 @@ class psbtObject(psbtProxy):
         # We should know pubkey required for each input now.
         # - but we may not be the signer for those inputs, which is fine.
         # - TODO: but what if not SIGHASH_ALL
-        no_keys = set(
-            n
-            for n,inp in enumerate(self.inputs)
-            if (not inp.sp_idxs) and (not inp.fully_signed)
-        )
+        no_keys = 0
+        for inp in self.inputs:
+            if (not inp.sp_idxs) and (not inp.fully_signed):
+                no_keys += 1
         # HWI blocker
-        # if len(no_keys) == self.num_inputs:
+        # if no_keys == self.num_inputs:
         #     # nothing to sign for us
         #     raise FatalPSBTIssue("Nothing to sign here")
 
         if no_keys:
             # This is seen when you re-sign same signed file by accident (multisig)
-            # - case of len(no_keys)==num_inputs is handled by consider_inputs
+            # - case of no_keys==num_inputs is handled by consider_inputs
             self.warnings.append(('Limited Signing',
-                "We are not signing these inputs, because we either don't know the key,"
-                " inputs belong to different wallet, or we have already signed: " + seq_to_str(no_keys)))
+                "We are not signing %d input(s), because we either don't know the key,"
+                " inputs belong to different wallet, or we have already signed." % no_keys))
 
         if presigned_inputs:
             # this isn't really even an issue for some complex usage cases
             self.warnings.append(('Partly Signed Already',
-                'Some input(s) provided were already completely signed by other parties: ' +
-                        seq_to_str(presigned_inputs)))
+                '%d input(s) provided were already completely signed by other parties.' %
+                        presigned_inputs))
 
         if from_wif_store:
-            self.warnings.append(("WIF Store", "Some input(s) use key from the WIF store: " +
-                                  seq_to_str(from_wif_store)))
+            self.warnings.append(("WIF Store", "%d input(s) use key from the WIF store." %
+                                  from_wif_store))
 
         if isinstance(self.lock_time, int) and self.lock_time > 0:
             if smallest_nsequence == 0xffffffff:
@@ -2435,7 +2429,7 @@ class psbtObject(psbtProxy):
 
         if DEBUG:
             print("PSBT inputs: %d inputs contain our key, %d fully-signed" % (
-                my_cnt, len(presigned_inputs)))
+                my_cnt, presigned_inputs))
 
         dis.progress_bar_show(1)
 

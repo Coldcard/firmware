@@ -359,7 +359,7 @@ def test_bip322_incomplete_psbt_bip32_paths(ins, bip322_txn, start_sign, cap_sto
         assert "warning" in story
         assert "Limited Signing" in story
         assert "because we either don't know the key" in story
-        assert ": 1" in story
+        assert "We are not signing 1 input(s)" in story
 
 
 def test_bip322_por_input0_bip32_paths_required(bip322_txn, start_sign, cap_story):
@@ -737,15 +737,12 @@ def test_wif_store_sign_bip322_por(num_ins, addr_fmt, sighash, bip322_txn, goto_
     if num_ins == 1:
         assert "Proof of Reserves" not in story
         assert "Amount " not in story
-        assert "1 input" not in story
+        assert "\n 1 input\n" not in story
         assert "1 output" not in story
     assert msg.decode() in story
     assert "Message Hash:" not in story
     assert "warning" in story
-    if num_ins == 1:
-        assert "WIF store: 0" in story
-    else:
-        assert f"WIF store: {', '.join([str(i) for i in range(num_ins)])}" in story
+    assert f"{num_ins} input(s) use key from the WIF store." in story
     signed = end_sign()
     bip322_verify(signed)
 
