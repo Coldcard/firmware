@@ -30,6 +30,9 @@ to be safe, and please be careful not to cut corners or rush this process.
 - New Feature: Allow uncompressed WIF keys in WIF Store
 - Enhancement: Faster multisig address generation and PSBT input verification
 - Enhancement: Use predictable sequential filenames for PSBTs processed multiple times via MicroSD or Virtual Disk
+- Change: The main transaction approval story no longer lists every affected input or output for repeated warnings,
+  relative timelocks, or unusual change derivation paths. It now shows compact summaries; use the transaction
+  explorer to review individual details.
 - Bugfix: Renaming a MiniScript wallet could rename a different stored wallet when wallets from multiple chains were present
 - Bugfix: Generate unique names when creating multisig wallets from PSBTs with the same M-of-N parameters
 - Bugfix: Correctly identify consolidations containing zero-value OP_RETURN outputs without misclassifying other zero-value external outputs
