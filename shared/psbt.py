@@ -907,6 +907,20 @@ class psbtInputProxy(psbtProxy):
         if self.af == OP_RETURN:
             return
 
+        if self.fully_signed:
+            return
+
+        if psbt.active_miniscript or psbt.active_singlesig:
+            # We have already selected a wallet type, so skip incompatible inputs.
+            if psbt.active_miniscript and (self.af in (AF_CLASSIC, AF_P2WPKH, AF_BARE_PK)):
+                # signing with miniscript wallet - ignore single sig utxos
+                self.sp_idxs = None
+                return
+            elif psbt.active_singlesig and (self.af == AF_P2WSH):
+                # signing with single sig wallet - ignore p2wsh utxos
+                self.sp_idxs = None
+                return
+
         if not self.sp_idxs and psbt.wif_store:
             match_key = pk = None
 
@@ -935,24 +949,13 @@ class psbtInputProxy(psbtProxy):
                     if self.redeem_script:
                         assert self.get(self.redeem_script) == self.wif_redeem_script
 
-        if not self.sp_idxs or self.fully_signed:
+        if not self.sp_idxs:
             return
 
         if self.af is None:
             # If this is reached, we do not understand the output well
             # enough to allow the user to authorize the spend, so fail hard.
             raise FatalPSBTIssue('Unhandled scriptPubKey: ' + b2a_hex(addr_or_pubkey).decode())
-
-        if psbt.active_miniscript or psbt.active_singlesig:
-            # we have already set one of these - sow we can use some short-cuts
-            if psbt.active_miniscript and (self.af in (AF_CLASSIC, AF_P2WPKH, AF_BARE_PK)):
-                # signing with miniscript wallet - ignore single sig utxos
-                self.sp_idxs = None
-                return
-            elif psbt.active_singlesig and (self.af == AF_P2WSH):
-                # we are signing single sig inputs - ignore p2wsh utxos
-                self.sp_idxs = None
-                return
 
         if self.af == AF_BARE_PK:
             # input is a single compressed or uncompressed public key (less common)
