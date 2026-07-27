@@ -872,6 +872,32 @@ def test_wif_store_signing_taproot_without_paths(fake_txn, start_sign, end_sign,
     end_sign(finalize=True)
 
 
+@pytest.mark.parametrize("addr_fmt", ["p2pkh", "p2wpkh", "p2sh-p2wpkh", "p2tr"])
+def test_wif_store_signing_with_unrelated_path(addr_fmt, fake_txn, start_sign, end_sign,
+                                               cap_story, settings_remove, import_wif_to_store):
+    settings_remove("wifs")
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    po = BasicPSBT().parse(fake_txn(1, 1, addr_fmt=addr_fmt, master_xpub=node.hwif()))
+    inp = po.inputs[0]
+
+    unrelated = BIP32Node.from_master_secret(os.urandom(32)).subkey_for_path("0/0")
+    if addr_fmt == "p2tr":
+        inp.taproot_internal_key, = inp.taproot_bip32_paths.keys()
+        path, = inp.taproot_bip32_paths.values()
+        inp.taproot_bip32_paths = {unrelated.node.public_key.sec()[1:]: path}
+    else:
+        path, = inp.bip32_paths.values()
+        inp.bip32_paths = {unrelated.node.public_key.sec(): path}
+
+    import_wif_to_store([node.subkey_for_path("0/0").node.private_key.wif(testnet=True)])
+
+    start_sign(po.as_bytes(), finalize=True)
+    _, story = cap_story()
+    assert "WIF store: 0" in story
+    end_sign(finalize=True)
+
+
 @pytest.mark.parametrize("script_type", ["p2pkh", "p2pk"])
 @pytest.mark.parametrize("compressed", [False, True])
 @pytest.mark.parametrize("der_paths", [False, True])

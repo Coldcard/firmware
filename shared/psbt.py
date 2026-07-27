@@ -907,27 +907,31 @@ class psbtInputProxy(psbtProxy):
         if self.af == OP_RETURN:
             return
 
-        if not parsed_subpaths and psbt.wif_store:
-            res = None
+        if not self.sp_idxs and psbt.wif_store:
+            match_key = pk = None
+
             if self.af == AF_P2TR and self.taproot_internal_key:
-                xonly_pk = self.get(self.taproot_internal_key)
-                pk = psbt.key_in_wif_store(xonly_pk)
-                if pk:
-                    res = 0, pk
-                    parsed_subpaths[xonly_pk] = [0]
-                    self.ik_idx = [0]
+                match_key = self.get(self.taproot_internal_key)
+                pk = psbt.key_in_wif_store(match_key)
             else:
-                res = psbt.wif_store.match_address_hash(self.af, addr_or_pubkey)
-            if res:
+                match = psbt.wif_store.match_address_hash(self.af, addr_or_pubkey)
+                if match:
+                    pk = match[1]
+                    match_key = pk
+
+            if pk:
                 # Add a synthetic, local-only path so the edge signing pipeline can
-                # validate this input without serializing fake derivation metadata.
-                idx, pk = res
-                if self.af != AF_P2TR:
-                    parsed_subpaths[pk] = [0]
+                # validate this input without trusting unrelated derivation metadata
+                # or serializing the synthetic path.
+                parsed_subpaths.clear()
+                parsed_subpaths[match_key] = [0]
                 self.sp_idxs = [0]
                 self.wif_key = pk
-                if self.af == AF_P2SH:
-                    self.wif_redeem_script = b'\x00\x14' + psbt.wif_store._pkh[idx]
+
+                if self.af == AF_P2TR:
+                    self.ik_idx = [0]
+                elif self.af == AF_P2SH:
+                    self.wif_redeem_script = b'\x00\x14' + hash160(pk)
                     if self.redeem_script:
                         assert self.get(self.redeem_script) == self.wif_redeem_script
 
@@ -2264,7 +2268,7 @@ class psbtObject(psbtProxy):
                 my_cnt += 1
             if inp.fully_signed:
                 presigned_inputs.add(i)
-            if (inp.sp_idxs or (not parsed_subpaths and self.wif_store)) and (not inp.fully_signed):
+            if (inp.sp_idxs or self.wif_store) and (not inp.fully_signed):
                 # Look at what kind of input this will be, and therefore what
                 # type of signing will be required, and which key we need.
                 # - also validates redeem_script when present
@@ -2963,7 +2967,6 @@ class psbtObject(psbtProxy):
                     int_pth = None
 
                     if inp.wif_key:
-                        assert not inp.taproot_subpaths
                         pubk = pk = inp.wif_key
                         skp = "WIF Store"
                         node = node_from_privkey(self.wif_store[pk])
