@@ -2294,8 +2294,8 @@ class psbtObject(psbtProxy):
                     history.verify_amount(txi.prevout, inp.amount, i)
 
                 if inp.af == AF_P2TR:
-                    # based on this we know whether we can drop inp.utxo_spk
-                    # attribute after creating sighash
+                    # Signing a Taproot input may require every input's scriptPubKey
+                    # when calculating the BIP341 sighash.
                     self.my_tr_in = True
 
             del utxo
