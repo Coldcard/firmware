@@ -3068,9 +3068,7 @@ class psbtObject(psbtProxy):
                             # This can be achieved by computing the output key point as Q = P + int(hashTapTweak(bytes(P)))G."
                             tweak = xonly_pk
                             if inp.taproot_merkle_root:
-                                # we have a script path but internal key is spendable by us
-                                # merkle root needs to be added to tweak with internal key
-                                # merkle root was already bound to the output key
+                                # Include the script-tree root in the key-path tweak.
                                 tweak += self.get(inp.taproot_merkle_root)
 
                             tweak = ngu.hash.sha256t(TAP_TWEAK_H, tweak, True)
