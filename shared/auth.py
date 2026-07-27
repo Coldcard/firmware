@@ -1765,13 +1765,12 @@ class TXInpExplorer(TXExplorer):
 
         psbt_item = ""
         if inp.sp_idxs:
-            ws = self.user_auth_action.psbt.wif_store
+            psbt = self.user_auth_action.psbt
             psbt_item += "Our key%s:\n\n" % ("s" if len(inp.sp_idxs) > 1 else "")
             if inp.wif_key:
                 psbt_item += "%s\n(WIF Store)\n\n" % b2a_hex(inp.wif_key).decode()
             else:
                 for i in inp.sp_idxs:
-                    # get node required
                     if inp.taproot_subpaths:
                         pubk = inp.taproot_subpaths[i][0]
                         sp = inp.taproot_subpaths[i][1][2]
@@ -1779,11 +1778,17 @@ class TXInpExplorer(TXExplorer):
                         pubk = inp.subpaths[i][0]
                         sp = inp.subpaths[i][1]
 
-                    pth = inp.parse_xfp_path(sp)
                     k = inp.get(pubk)
-                    ws_note = "\n(WIF Store)" if (ws and k in ws) else ""
-                    psbt_item += "%s:\n%s%s\n\n" % (keypath_to_str(pth, prefix="%s/" % xfp2str(pth[0])),
-                                             b2a_hex(k).decode(), ws_note)
+                    wif_key = psbt.key_in_wif_store(k)
+                    if wif_key:
+                        psbt_item += "%s\n(WIF Store)\n\n" % b2a_hex(wif_key).decode()
+                        continue
+
+                    pth = inp.parse_xfp_path(sp)
+                    psbt_item += "%s:\n%s\n\n" % (
+                        keypath_to_str(pth, prefix="%s/" % xfp2str(pth[0])),
+                        b2a_hex(k).decode(),
+                    )
 
         if inp.is_miniscript:
             ks_coord = inp.witness_script or inp.redeem_script

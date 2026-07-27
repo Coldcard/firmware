@@ -1713,7 +1713,13 @@ def test_spend_paper_wallet_addr_only_p2sh_segwit_signed_psbt_finalizes(
     goto_home()
 
 
-def test_spend_paper_wallet_addr_only_wif_input_details(
+@pytest.mark.parametrize("addr_fmt,with_paths", [
+    ("p2sh-p2wpkh", False),
+    ("p2tr", False),
+    ("p2tr", True),
+])
+def test_spend_paper_wallet_wif_input_details(
+        addr_fmt, with_paths,
         fake_txn, settings_set, settings_remove, start_sign, cap_story,
         pick_menu_item, need_keypress, press_cancel):
     settings_remove("wifs")
@@ -1724,21 +1730,31 @@ def test_spend_paper_wallet_addr_only_wif_input_details(
     settings_set("wifs", [(pubkey_hex, bytes(n.node.private_key).hex())])
 
     def hack(psbt):
-        psbt.inputs[0].bip32_paths = None
-        psbt.inputs[0].redeem_script = None
+        if with_paths:
+            return
 
-    psbt = fake_txn(1, 1, addr_fmt="p2sh-p2wpkh", master_xpub=node.hwif(),
+        if addr_fmt == "p2tr":
+            inp = psbt.inputs[0]
+            inp.taproot_internal_key, = inp.taproot_bip32_paths.keys()
+            inp.taproot_bip32_paths = None
+        else:
+            psbt.inputs[0].bip32_paths = None
+            psbt.inputs[0].redeem_script = None
+
+    psbt = fake_txn(1, 1, addr_fmt=addr_fmt, master_xpub=node.hwif(),
                     psbt_hacker=hack)
 
     po = BasicPSBT().parse(psbt)
     for inp in po.inputs:
-        assert not inp.bip32_paths
-        assert inp.redeem_script is None
+        paths = inp.taproot_bip32_paths if addr_fmt == "p2tr" else inp.bip32_paths
+        assert bool(paths) == with_paths
+        if addr_fmt == "p2sh-p2wpkh":
+            assert inp.redeem_script is None
 
     start_sign(psbt, finalize=False)
     time.sleep(.1)
     title, story = cap_story()
-    assert title == "OK TO SEND?"
+    assert title == "OK TO SEND?", story
     assert "WIF store: 0" in story
     assert "Press (2) to explore transaction" in story
 
