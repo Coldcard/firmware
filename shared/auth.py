@@ -19,7 +19,8 @@ from ux import show_qr_code, OK, X, abort_and_push, AbortInteraction, ux_enter_n
 from usb import CCBusyError
 from utils import (HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A, node_from_privkey,
                    show_single_address, keypath_to_str, seconds2human_readable)
-from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
+from psbt import (psbtObject, FatalPSBTIssue, FraudulentChangeOutput,
+                  CHANGE_PATH_ISSUES, CHANGE_PATH_ISSUE_MASK)
 from files import CardSlot, CardMissingError
 from exceptions import HSMDenied, QRTooBigError
 from version import MAX_TXN_LEN
@@ -1714,6 +1715,27 @@ class TXOutExplorer(TXExplorer):
             qr_items.append(addr_or_script)
             if outp.is_change:
                 change_idxs.append(i)
+
+            path_issues = (outp.is_change or 0) & CHANGE_PATH_ISSUE_MASK
+            if path_issues:
+                item += "\nChange derivation warning:\n"
+                for flag, label in CHANGE_PATH_ISSUES:
+                    if path_issues & flag:
+                        item += " - %s\n" % label
+
+                item += "\nOutput derivation path%s:\n" % (
+                    "s" if len(outp.sp_idxs) > 1 else ""
+                )
+                for path_idx in outp.sp_idxs:
+                    if outp.taproot_subpaths:
+                        sp = outp.taproot_subpaths[path_idx][1][2]
+                    else:
+                        sp = outp.subpaths[path_idx][1]
+
+                    pth = outp.parse_xfp_path(sp)
+                    item += " %s\n" % keypath_to_str(
+                        pth, prefix="%s/" % xfp2str(pth[0])
+                    )
             item += "\n"
             yield idx, item
 

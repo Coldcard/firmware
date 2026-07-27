@@ -1122,19 +1122,21 @@ def test_finalization_vs_bitcoind(match_key, use_regtest, check_against_bitcoind
 
 
 # Correct change path is: (m=4369050F)/44'/1'/0'/1/5
-@pytest.mark.parametrize('try_path,expect', [
-    ("44'/1'/0'/1/40000", 'last component beyond'),
-    ("44'/1'/0'/1/405", 'last component beyond'),
-    ("44'/1'/0'/1'/5", 'hardening'),
-    ("44'/1'/0'/1/5'", 'hardening'),
-    ("44'/1/0'/1/5'", 'hardening'),
-    ("45'/1'/0'/1/5", 'diff path prefix'),
-    ("44'/2'/0'/1/5", 'diff path prefix'),
-    ("44'/1'/1'/1/5", 'diff path prefix'),
-    # ("44'/1'/0'/3000/5", '2nd last component'),
-    # ("44'/1'/0'/3/5", '2nd last component'),
+@pytest.mark.parametrize('try_path,expected', [
+    ("44'/1'/0'/1/40000", ('gap',)),
+    ("44'/1'/0'/1/405", ('gap',)),
+    ("44'/1'/0'/1'/5", ('hardening',)),
+    ("44'/1'/0'/1/5'", ('hardening',)),
+    ("44'/1/0'/1/5'", ('hardening', 'prefix')),
+    ("45'/1'/0'/1/5", ('prefix',)),
+    ("44'/2'/0'/1/5", ('prefix',)),
+    ("44'/1'/1'/1/5", ('prefix',)),
+    ("44'/1'/0'/3/5", ('branch',)),
+    ("44'/1'/0'/5", ('length',)),
+    ("45'/2/1'/3/40000'", ('hardening', 'prefix', 'branch', 'gap')),
 ])
-def test_change_troublesome(dev, start_sign, cap_story, try_path, expect, sim_root_dir):
+def test_change_troublesome(dev, start_sign, cap_story, try_path, expected, sim_root_dir,
+                            need_keypress, pick_menu_item, press_cancel):
     # NOTE: out#1 is change:
     # addr = 'mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'
     # path = (m=4369050F)/44'/1'/0'/1/5
@@ -1168,9 +1170,48 @@ def test_change_troublesome(dev, start_sign, cap_story, try_path, expect, sim_ro
     assert 'OK TO SEND' in title
     assert '(1 warning below)' in story, "no warning shown"
 
-    assert expect in story, story
+    assert "Some output derivation paths deviate from input paths by:" in story
+    for issue in expected:
+        assert "\n - %s" % issue in story
+    for issue in {"length", "hardening", "prefix", "branch", "gap"} - set(expected):
+        assert "\n - %s" % issue not in story
+    assert "Output#" not in story
 
     assert parse_change_back(story) == (Decimal('1.09997082'), ['mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'])
+
+    need_keypress("2")
+    time.sleep(.1)
+    pick_menu_item("Outputs")
+    time.sleep(.1)
+    _, story = cap_story()
+
+    assert "Output 1 (change):" in story
+    assert "Change derivation warning:" in story
+    for issue in expected:
+        assert "\n - %s" % issue in story
+    assert try_path.replace("'", "h") in story
+
+    press_cancel()
+    press_cancel()
+    press_cancel()
+
+
+def test_many_troublesome_change_warnings_are_bounded(fake_txn, start_sign, cap_story,
+                                                       press_cancel):
+    num_outputs = 250
+    outputs = [["p2wpkh", None, True] for _ in range(num_outputs)]
+    psbt = fake_txn(1, outputs, addr_fmt="p2wpkh", subpath="44/1/0/0/%d")
+
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+
+    assert title == "OK TO SEND?"
+    assert story.count("Troublesome Change Outs:") == 1
+    assert "Some output derivation paths deviate from input paths by:\n - length" in story
+    assert "Output#" not in story
+    press_cancel()
+
 
 def test_bip143_attack(try_sign, sim_exec, set_xfp, settings_set, settings_get):
     # cleanup prev runs

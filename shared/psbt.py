@@ -72,6 +72,25 @@ PSBT_ATTESTATION_SUBTYPE = const(0)
 # Amounts over 5% are warned regardless.
 DEFAULT_MAX_FEE_PERCENTAGE = const(10)
 
+# is_change is a bitmask so validation results remain available to the explorer
+CHANGE_OUTPUT = const(1 << 0)
+CHANGE_PATH_LENGTH = const(1 << 1)
+CHANGE_PATH_HARDENING = const(1 << 2)
+CHANGE_PATH_PREFIX = const(1 << 3)
+CHANGE_PATH_BRANCH = const(1 << 4)
+CHANGE_PATH_GAP = const(1 << 5)
+CHANGE_PATH_ISSUES = (
+    (CHANGE_PATH_LENGTH, "length"),
+    (CHANGE_PATH_HARDENING, "hardening"),
+    (CHANGE_PATH_PREFIX, "prefix"),
+    (CHANGE_PATH_BRANCH, "branch"),
+    (CHANGE_PATH_GAP, "gap"),
+)
+CHANGE_PATH_ISSUE_MASK = const(
+    CHANGE_PATH_LENGTH | CHANGE_PATH_HARDENING | CHANGE_PATH_PREFIX |
+    CHANGE_PATH_BRANCH | CHANGE_PATH_GAP
+)
+
 # print some things, sometimes
 DEBUG = ckcc.is_simulator()
 
@@ -417,8 +436,8 @@ class psbtOutputProxy(psbtProxy):
         #self.amount = None
         #self.musig_pubkeys = None
 
-        # this flag is set when we are assuming output will be change (same wallet)
-        #self.is_change = False
+        # Nonzero when output is change; higher bits record derivation-path issues.
+        #self.is_change = 0
 
         self.parse(fd)
 
@@ -582,7 +601,7 @@ class psbtOutputProxy(psbtProxy):
                     # but also not a fraud
                     if msc.matching_subpaths(xfp_paths):
                         msc.validate_script_pubkey(txo.scriptPubKey, xfp_paths)
-                        self.is_change = True
+                        self.is_change = CHANGE_OUTPUT
                 except AssertionError as e:
                     # sys.print_exception(e)
                     fraud(out_idx, af, e)
@@ -608,7 +627,7 @@ class psbtOutputProxy(psbtProxy):
                     xfp_paths = [v[1:] for v in parsed_subpaths.values()]
                     if msc.matching_subpaths(xfp_paths):
                         msc.validate_script_pubkey(txo.scriptPubKey, xfp_paths)
-                        self.is_change = True
+                        self.is_change = CHANGE_OUTPUT
                 except AssertionError as e:
                     fraud(out_idx, af, e)
                 return af
@@ -626,7 +645,7 @@ class psbtOutputProxy(psbtProxy):
             fraud(out_idx, af)
 
         # We will check pubkey value at the last second, during signing.
-        self.is_change = True
+        self.is_change = CHANGE_OUTPUT
         return af
 
 
@@ -1929,6 +1948,7 @@ class psbtObject(psbtProxy):
         validate_inp_pths = False
         path_len = None
         max_gap = idx_max + 200
+        troublesome_change_issues = 0
 
         # We aren't seeing shared input path lengths.
         # They are probably doing weird stuff, so leave them alone
@@ -1980,35 +2000,21 @@ class psbtObject(psbtProxy):
                         if i not in output.sp_idxs: continue
                         p = xpath[2:] if output.taproot_subpaths else xpath[1:]
 
-                        iss = None
+                        issues = 0
                         if len(p) != path_len:
-                            iss = "has wrong path length (%d not %d)" % (len(p), path_len)
-                        elif tuple(bool(i & 0x80000000) for i in p) not in hard_p:
-                            iss = "has different hardening pattern"
-                        elif tuple(p[:-2]) not in prefix_pths:
-                            iss = "goes to diff path prefix"
-                        elif not is_cmplx and ((p[-2] & 0x7fffffff) not in {0,1}):
-                            iss = "2nd last component not 0 or 1"
-                        elif (p[-1] & 0x7fffffff) > max_gap:
-                            iss = "last component beyond reasonable gap"
+                            issues |= CHANGE_PATH_LENGTH
+                        else:
+                            if tuple(bool(i & 0x80000000) for i in p) not in hard_p:
+                                issues |= CHANGE_PATH_HARDENING
+                            if tuple(p[:-2]) not in prefix_pths:
+                                issues |= CHANGE_PATH_PREFIX
+                            if not is_cmplx and ((p[-2] & 0x7fffffff) not in {0,1}):
+                                issues |= CHANGE_PATH_BRANCH
+                            if (p[-1] & 0x7fffffff) > max_gap:
+                                issues |= CHANGE_PATH_GAP
 
-                        if iss:
-                            msg = "Output#%d: %s: %s" % (idx, iss, keypath_to_str(p, skip=0))
-                            if len(hard_p) == 1 and len(prefix_pths) == 1:
-                                # message can be more verbose
-                                # fastest way to get first element from the set
-                                # without modifying the set is for-loop
-                                for hp in hard_p:
-                                    break
-                                for pp in prefix_pths:
-                                    break
-                                msg += " not %s/{0~1}%s/{0~%d}%s expected" % (
-                                    keypath_to_str(pp, skip=0),
-                                    "'" if hp[-2] else "",
-                                    max_gap,
-                                    "'" if hp[-1] else ""
-                                )
-                            self.warnings.append(('Troublesome Change Outs', msg))
+                        output.is_change |= issues
+                        troublesome_change_issues |= issues
 
             if af == OP_RETURN:
                 num_op_return += 1
@@ -2019,6 +2025,13 @@ class psbtObject(psbtProxy):
 
             elif af is None:
                 num_unknown_scripts += 1
+
+        if troublesome_change_issues:
+            msg = "Some output derivation paths deviate from input paths by:"
+            for flag, label in CHANGE_PATH_ISSUES:
+                if troublesome_change_issues & flag:
+                    msg += "\n - %s" % label
+            self.warnings.append(('Troublesome Change Outs', msg))
 
         if self.total_value_out is None:
             self.total_value_out = total_out
