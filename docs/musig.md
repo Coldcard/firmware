@@ -26,6 +26,7 @@ COLDCARD implements all following BIPs, further restricting their scope (read mo
   * hardened derivation not allowed for `musig()` expression
   * derivation must end with `*` - only ranged `musig()` expression allowed, if `musig()` derivation is omitted, `/<0;1>/*` is implied
 * PSBT must contain all the data required by BIP-373
+* `PSBT_IN_TAP_INTERNAL_KEY` is required and MUST contain the derived MuSig2 aggregate internal key
 * COLDCARD strictly differentiate between 1st & 2nd MuSig2 round. If COLDCARD provides nonce, it will not attempt to sign even if it could (a.k.a enough nonces from cosigners are available).
   To provide both nonce(s) & signature(s) signing needs to be preformed twice.
 * keys from WIF Store cannot be used for MuSig2 signing
