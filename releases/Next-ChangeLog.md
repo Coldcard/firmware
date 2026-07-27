@@ -10,6 +10,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Wipe seed in Delta Mode when saved BIP-39 passphrases are listed, instead of revealing them.
 - Bugfix: BIP-322 message signing now rejects non-ASCII and other unsupported
   message text before approval. Thanks to @KirillCherikov for reporting.
+- Bugfix: Prevent duplicate WIF Store entries after restarting
 
 # Mk Specific Changes
 
