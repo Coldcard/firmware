@@ -1790,7 +1790,7 @@ class TXInpExplorer(TXExplorer):
             if ks_coord:
                 ks = inp.get(ks_coord)
 
-                from psbt import disassemble_multisig_mn
+                from serializations import disassemble_multisig_mn
                 try:
                     M, N = disassemble_multisig_mn(ks)
                     psbt_item += "Multisig: %dof%d\n\n" % (M, N)

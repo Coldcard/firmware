@@ -17,10 +17,10 @@ from wallet import MiniScriptWallet, TRUST_PSBT, TRUST_VERIFY
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160
 from serializations import CTransaction, CTxIn, CTxInWitness, CTxOut, ser_string, COutPoint
-from serializations import ser_sig_der, uint256_from_str, ser_push_data
+from serializations import ser_sig_der, uint256_from_str, ser_push_data, disassemble_multisig_mn
 from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_ANYONECANPAY
 from serializations import ALL_SIGHASH_FLAGS, SIGHASH_DEFAULT
-from opcodes import OP_1, OP_16, OP_CHECKMULTISIG, OP_RETURN
+from opcodes import OP_CHECKMULTISIG, OP_RETURN
 from glob import settings
 from precomp_tag_hash import TAP_TWEAK_H, TAP_SIGHASH_H, BIP322_TAG_HASH
 from desc_utils import MusigKey, MUSIG_CHAIN_CODE
@@ -121,36 +121,6 @@ def _skip_n_objs(fd, n, cls):
                 fd.seek(p, 1)
 
     return rv
-
-def disassemble_multisig_mn(redeem_script):
-    # pull out just M and N from script. Simple, faster, no memory.
-
-    if not redeem_script or len(redeem_script) < 4 or \
-            (redeem_script[-1] != OP_CHECKMULTISIG):
-        return None, None
-
-    if OP_1 <= redeem_script[0] <= OP_16:
-        M = redeem_script[0] - OP_1 + 1
-    elif redeem_script[0] == 1:
-        M = redeem_script[1]
-        if not 17 <= M <= 20:
-            return None, None
-    else:
-        return None, None
-
-    if OP_1 <= redeem_script[-2] <= OP_16:
-        N = redeem_script[-2] - OP_1 + 1
-    elif redeem_script[-3] == 1:
-        N = redeem_script[-2]
-        if not 17 <= N <= 20:
-            return None, None
-    else:
-        return None, None
-
-    if not 1 <= M <= N <= 20:
-        return None, None
-
-    return M, N
 
 def calc_txid(fd, poslen, body_poslen=None):
     # Given the (pos,len) of a transaction in a file, return the txid for that txn.

@@ -2,8 +2,7 @@
 #
 from uio import BytesIO
 from serializations import ser_push_data, ser_push_int, ser_string_vector, deser_string_vector
-from serializations import ser_compact_size, deser_compact_size, disassemble
-from psbt import disassemble_multisig_mn
+from serializations import ser_compact_size, deser_compact_size, disassemble, disassemble_multisig_mn
 
 test_data = [
     # data,  result
@@ -63,6 +62,10 @@ nonminimal_M = b"\x01\x01" + (b"\x21" + pk) + ser_push_int(17) + b"\xae"
 nonminimal_N = ser_push_int(1) + (b"\x21" + pk) + b"\x01\x10\xae"
 assert disassemble_multisig_mn(nonminimal_M) == (None, None)
 assert disassemble_multisig_mn(nonminimal_N) == (None, None)
+
+# pushed data must not be reinterpreted as an opcode
+pushed_opcode_M = b"\x01\x51" + (b"\x21" + pk) + ser_push_int(17) + b"\xae"
+assert disassemble_multisig_mn(pushed_opcode_M) == (None, None)
 
 for M, N in ((2, 1), (1, 21)):
     script = ser_push_int(M) + ((b"\x21" + pk) * N)
