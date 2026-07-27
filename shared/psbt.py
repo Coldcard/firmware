@@ -1067,28 +1067,32 @@ class psbtInputProxy(psbtProxy):
             else:
                 self.is_miniscript = True
 
-                for i, (xonly_pubkey, lhs_path) in enumerate(parsed_subpaths.items()):
-                    if i not in self.sp_idxs:
-                        # # ignore keys that does not have correct xfp specified in PSBT
-                        continue
+                internal_key = None
+                if self.taproot_internal_key is not None:
+                    internal_key = self.get(self.taproot_internal_key)
 
-                    if psbt.key_in_wif_store(xonly_pubkey):
-                        assert i in self.sp_idxs
+                # Prefer key-path spending when we control the sole internal key.
+                if self.ik_idx and len(self.ik_idx) == 1:
+                    internal_idx = self.ik_idx[0]
 
-                    lhs, path = lhs_path[0], lhs_path[1:]
-                    # assert merkle_root is not None, "Merkle root not defined"
-                    if self.ik_idx and len(self.ik_idx) == 1 and self.ik_idx[0] == i:
-                        assert not lhs
-                        output_key = taptweak(xonly_pubkey, merkle_root)
-                        if output_key == addr_or_pubkey:
-                            # if we find a possibility to spend keypath (internal_key) - we do keypath
-                            # even though script path is available
+                    for i, (candidate, lhs_path) in enumerate(parsed_subpaths.items()):
+                        if i != internal_idx:
+                            continue
+
+                        assert not lhs_path[0]
+
+                        if internal_key is None:
+                            internal_key = candidate
+                            if i in self.sp_idxs:
+                                self.sp_idxs = [i]
+                        elif candidate == internal_key and i in self.sp_idxs:
                             self.sp_idxs = [i]
-                            break  # done ignoring all other possibilities
-                    else:
-                        internal_key = self.get(self.taproot_internal_key)
-                        output_pubkey = taptweak(internal_key, merkle_root)
-                        assert addr_or_pubkey == output_pubkey
+
+                        break
+
+                assert internal_key is not None, "Taproot internal key missing"
+                assert taptweak(internal_key, merkle_root) == addr_or_pubkey, \
+                    "Taproot output key mismatch"
 
         if self.is_miniscript:
             if not self.sp_idxs: return
