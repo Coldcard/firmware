@@ -494,7 +494,7 @@ def test_visualize_wif_store_capacity(is_q1, goto_home, use_testnet, settings_re
 
 
 def test_wif_store_import_duplicate(settings_remove, import_wif_to_store, settings_get, cap_menu, cap_story,
-                                    goto_home):
+                                    goto_home, sim_exec):
     goto_home()
     settings_remove("wifs")
 
@@ -502,6 +502,10 @@ def test_wif_store_import_duplicate(settings_remove, import_wif_to_store, settin
 
     import_wif_to_store(wif_list)
     b4 = cap_menu()
+    sim_exec(
+        "import ujson\n"
+        "settings.set('wifs', ujson.loads(ujson.dumps(settings.get('wifs'))))"
+    )
     saved = settings_get("wifs")
     assert len(saved) == 4
     assert all(isinstance(item, list) for item in saved)
