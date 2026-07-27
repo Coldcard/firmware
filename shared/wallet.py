@@ -1082,8 +1082,9 @@ class MiniscriptMenu(MenuSystem):
         from multisig import create_ms_step1
 
         rv = []
-        for i, msc in enumerate(MiniScriptWallet.iter_wallets()):
-            rv.append(MenuItem('%s' % msc.name, menu=make_miniscript_wallet_menu, arg=(i,msc)))
+        for msc in MiniScriptWallet.iter_wallets():
+            rv.append(MenuItem('%s' % msc.name, menu=make_miniscript_wallet_menu,
+                               arg=(msc.storage_idx, msc)))
 
         rv = rv or [MenuItem("(none setup yet)")]
 

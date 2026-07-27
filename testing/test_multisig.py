@@ -2514,7 +2514,7 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
 
 def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
                          clear_miniscript, goto_home, cap_menu, pick_menu_item,
-                         need_keypress, import_ms_wallet):
+                         need_keypress, import_ms_wallet, enter_complex, is_q1):
     clear_miniscript()
     use_regtest()
 
@@ -2551,6 +2551,18 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
     m = cap_menu()
     assert on_mainnet == m[0]
     assert on_regtest not in m
+
+    # The mainnet wallet is second in storage, but first in this filtered menu.
+    # Renaming it must not modify the hidden regtest wallet at storage index zero.
+    pick_menu_item(on_mainnet)
+    pick_menu_item("Rename")
+    for _ in range(len(on_mainnet) - (0 if is_q1 else 1)):
+        need_keypress(KEY_DELETE if is_q1 else "x")
+    renamed = "bbbb"
+    enter_complex(renamed if is_q1 else renamed[1:], apply=False, b39pass=False)
+    res = settings_get("miniscript")
+    assert res[0][0] == on_regtest
+    assert res[1][0] == renamed
 
     goto_home()
     settings_set("chain", "XTN")
