@@ -8,7 +8,7 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from uhashlib import sha256
 from public_constants import MSG_SIGNING_MAX_LENGTH
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 from ux import (ux_show_story, OK, ux_enter_bip32_index, ux_input_text, the_ux,
                 import_export_prompt, ux_aborted)
@@ -422,7 +422,7 @@ async def ux_sign_msg(txt, approved_cb=None, kill_menu=True):
     # pick address format
     rv = [
         MenuItem(chains.addr_fmt_label(af), f=done, arg=(txt, af))
-        for af in chains.SINGLESIG_AF
+        for af in chains.SINGLESIG_AF if af != AF_P2TR
     ]
     the_ux.push(MenuSystem(rv))
 

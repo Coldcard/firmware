@@ -253,7 +253,7 @@ class WIFStoreMenu(MenuSystem):
         privkey = a2b_hex(item.arg)
         rv = [
             MenuItem(chains.addr_fmt_label(af), f=self.sign_msg_step2, arg=(privkey, af))
-            for af in chains.SINGLESIG_AF
+            for af in chains.SINGLESIG_AF if af != AF_P2TR
         ]
         the_ux.push(MenuSystem(rv))
 

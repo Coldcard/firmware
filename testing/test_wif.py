@@ -587,6 +587,7 @@ def test_sign_msg_with_wif_store_key(way, af, settings_remove, import_wif_to_sto
     assert len(menu) == 2
     pick_menu_item(menu[1])
     pick_menu_item("Sign MSG")
+    assert "Taproot P2TR" not in cap_menu()
     pick_menu_item(af)
 
     if way == "input":

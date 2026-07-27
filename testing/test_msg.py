@@ -174,7 +174,7 @@ def msg_sign_export(cap_story, press_nfc, nfc_read_text, press_select, press_can
 
 
 @pytest.fixture
-def sign_msg_from_text(pick_menu_item, enter_number, press_select,
+def sign_msg_from_text(pick_menu_item, enter_number, press_select, cap_menu,
                        cap_story, need_keypress, settings_set, is_q1,
                        addr_vs_path, bitcoind, msg_sign_export,
                        verify_msg_sign_story, OK):
@@ -185,6 +185,8 @@ def sign_msg_from_text(pick_menu_item, enter_number, press_select,
     def doit(msg, addr_fmt, acct, change, idx, way, chain="XTN", qr_only=False):
         settings_set("chain", chain)
         path = "m"
+        assert "Taproot P2TR" not in cap_menu()
+
         # pick address format from menu
         if addr_fmt == AF_CLASSIC:
             path += "/44h"
