@@ -13,6 +13,8 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
+- Bugfix: Renaming a MiniScript wallet could rename a different stored wallet when wallets from multiple chains were present
+
 # Mk4 Specific Changes
 
 ## 6.5.1X - 2026-xx-xx

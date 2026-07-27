@@ -380,13 +380,14 @@ class CCCConfigMenu(MenuSystem):
 
         # look for wallets that are defined related to CCC feature, shortcut to them
         count = 0
-        for i, ms in enumerate(MiniScriptWallet.iter_wallets()):
+        for ms in MiniScriptWallet.iter_wallets():
             if not ms.m_n:  # basic multisig check
                 continue
             if my_xfp in [i[0] for i in ms.xfp_paths()]:
                 M, N = ms.m_n
                 items.append(MenuItem('↳ %d/%d: %s' % (M, N, ms.name),
-                                      menu=make_miniscript_wallet_menu, arg=(i,ms)))
+                                      menu=make_miniscript_wallet_menu,
+                                      arg=(ms.storage_idx, ms)))
                 count += 1
 
         items.append(MenuItem('↳ Build 2-of-N', f=self.build_2ofN, arg=count))
