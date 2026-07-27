@@ -72,7 +72,8 @@ PSBT_ATTESTATION_SUBTYPE = const(0)
 # Amounts over 5% are warned regardless.
 DEFAULT_MAX_FEE_PERCENTAGE = const(10)
 
-# is_change is a bitmask so validation results remain available to the explorer
+# is_change bitmask: bit 0 marks change; bits 1-5 record derivation-path
+# issues for the explorer. Issue bits are only set with bit 0 (max 0x3f).
 CHANGE_OUTPUT = const(1 << 0)
 CHANGE_PATH_LENGTH = const(1 << 1)
 CHANGE_PATH_HARDENING = const(1 << 2)
