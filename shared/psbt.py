@@ -2627,16 +2627,6 @@ class psbtObject(psbtProxy):
         # verify aggregate key is correct
         assert keyagg_cache.agg_pubkey().to_bytes() == agg_k
 
-        musig_index = None  # index of musig expression in key list
-        for i, k in enumerate(self.active_miniscript.to_descriptor().keys):
-            if not isinstance(k, MusigKey):
-                continue
-            if k.node.pubkey() == agg_k:
-                musig_index = i
-                break
-
-        assert musig_index is not None  # important, must be there
-
         # get derivation we need to use for musig
         sp = inp.get_tr_der_coords_by_key(der_agg_k)
         assert sp
@@ -2674,11 +2664,17 @@ class psbtObject(psbtProxy):
             if not round1:
                 raise FatalPSBTIssue("resign")
 
-        # sec_rand is pseudo random, derived from session true randomness
-        sec_rand = ngu.hash.sha256s(session_rand + pack("<I", inp_idx) + pack("<I", musig_index))
+        # Different BIP-328 derivations can share agg_k and its descriptor index.
+        # Bind the session entropy to the exact participant/aggregate/leaf tuple.
+        sec_rand = ngu.hash.sha256s(b"".join((
+            session_rand, pack("<I", inp_idx),
+            my_participant_key, der_agg_k, leaf_hash
+        )))
 
         # generate musig2 secnonce & pubnonce
-        sn, pn = ngu.secp256k1.musig_nonce_gen(keypair.pubkey(), sec_rand, keypair.privkey(), digest)
+        sn, pn = ngu.secp256k1.musig_nonce_gen(
+            keypair.pubkey(), sec_rand, keypair.privkey(), digest, keyagg_cache
+        )
 
         if my_musig_pubnonces_key not in musig_pubnonces:
             # I haven't added my pubnoce yet - adding now

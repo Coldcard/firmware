@@ -398,6 +398,8 @@ def musig_signing(start_sign, end_sign, microsd_path, garbage_collector, cap_sto
         if coldcard_first and finalized:
             assert res == cc_txid1
 
+        return res_psbt
+
     return doit
 
 
@@ -830,7 +832,7 @@ def test_identical_musig_subder(use_regtest, bitcoin_core_signer, get_cc_key, cl
     # TODO bitcoin-core bitching that this descriptor is not sane because it contains duplicate public keys
     # needs https://github.com/bitcoin/bitcoin/pull/34697 (or something less buggy)
     # identical musig in one tapleaf, but musig subderivation differs, i.e. different key
-    raise pytest.skip("needs updated bitcoind")
+    # raise pytest.skip("needs updated bitcoind")
     use_regtest()
 
     core_pubkeys = []
@@ -876,9 +878,12 @@ def test_identical_musig_subder(use_regtest, bitcoin_core_signer, get_cc_key, cl
         for o in res:
             assert o["success"]
 
+    res_psbt = musig_signing(name, wo, signers, True, 0, 3, finalized=False,
+                             split_to=2)
 
-    musig_signing(name, wo, signers, True, 0, 3, finalized=False,
-                  split_to=2)
+    pubnonces = BasicPSBT().parse(res_psbt).inputs[0].musig_pubnonces
+    assert len(pubnonces) == 2
+    assert len(set(pubnonces.values())) == 2
 
     # check addresses are correct
     address_explorer_check("sd", "bech32m", wo, name)

@@ -33,6 +33,7 @@ to be safe, and please be careful not to cut corners or rush this process.
 - Change: The main transaction approval story no longer lists every affected input or output for repeated warnings,
   relative timelocks, or unusual change derivation paths. It now shows compact summaries; use the transaction
   explorer to review individual details.
+- Bugfix: Generate distinct MuSig2 nonces for different aggregate-key derivations of the same participant set
 - Bugfix: Renaming a MiniScript wallet could rename a different stored wallet when wallets from multiple chains were present
 - Bugfix: Generate unique names when creating multisig wallets from PSBTs with the same M-of-N parameters
 - Bugfix: Correctly identify consolidations containing zero-value OP_RETURN outputs without misclassifying other zero-value external outputs
