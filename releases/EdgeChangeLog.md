@@ -30,6 +30,8 @@ to be safe, and please be careful not to cut corners or rush this process.
 - New Feature: Allow uncompressed WIF keys in WIF Store
 - Enhancement: Faster multisig address generation and PSBT input verification
 - Enhancement: Use predictable sequential filenames for PSBTs processed multiple times via MicroSD or Virtual Disk
+- Change: Spending Policy mode prevents USB hosts from enrolling, deleting, listing, or exporting
+  Multisig/Miniscript wallet configurations
 - Change: The main transaction approval story no longer lists every affected input or output for repeated warnings,
   relative timelocks, or unusual change derivation paths. It now shows compact summaries; use the transaction
   explorer to review individual details.

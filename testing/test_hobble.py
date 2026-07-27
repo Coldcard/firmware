@@ -409,7 +409,8 @@ def test_h_usbcmds(en_okeys, set_hobble, dev):
 
     set_hobble(True, {'okeys'} if en_okeys else {})
 
-    block_list = [ 'back', 'enrl', 'bagi', 'hsms', 'user', 'nwur', 'rmur' ]
+    block_list = ['back', 'enrl', 'mins', 'msdl', 'msls', 'msgt', 'mspl',
+                  'bagi', 'hsms', 'user', 'nwur', 'rmur']
 
     if not en_okeys:
         block_list.insert(0, 'pass')

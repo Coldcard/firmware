@@ -72,7 +72,9 @@ HSM_DISABLE_CMDS = frozenset({
 # spending policy active: blacklist some commands
 # - 'pass' may be allowed if 'okeys' is enabled
 HOBBLED_CMDS = frozenset({
-    'enrl',             # no new multisigs during policy enforcement
+    'enrl', 'mins',     # no new wallets during policy enforcement
+    'msdl',             # no deleting miniscript wallets
+    'msls', 'msgt', 'mspl',     # no listing or exporting wallet configurations
     'back',             # no backups
     'bagi', 'dfu_',     # just in case
 }) | HSM_DISABLE_CMDS
