@@ -193,15 +193,6 @@ def ser_push_int(n):
 
     raise ValueError(n)
 
-def decode_multisig_count(value, pushed=False):
-    if pushed:
-        return value if 17 <= value <= 20 else None
-
-    if OP_1 <= value <= OP_16:
-        return value - OP_1 + 1
-
-    return None
-
 def disassemble_multisig_mn(redeem_script):
     # pull out just M and N from script. Simple, faster, no memory.
 
@@ -209,15 +200,27 @@ def disassemble_multisig_mn(redeem_script):
             redeem_script[-1] != OP_CHECKMULTISIG:
         return None, None
 
-    M = decode_multisig_count(redeem_script[0])
-    if M is None and redeem_script[0] == 1:
-        M = decode_multisig_count(redeem_script[1], pushed=True)
+    m = redeem_script[0]
+    if OP_1 <= m <= OP_16:
+        M = m - OP_1 + 1
+    elif m == 1:
+        M = redeem_script[1]
+        if not 17 <= M <= 20:
+            return None, None
+    else:
+        return None, None
 
-    N = decode_multisig_count(redeem_script[-2])
-    if N is None and redeem_script[-3] == 1:
-        N = decode_multisig_count(redeem_script[-2], pushed=True)
+    n = redeem_script[-2]
+    if OP_1 <= n <= OP_16:
+        N = n - OP_1 + 1
+    elif redeem_script[-3] == 1:
+        N = n
+        if not 17 <= N <= 20:
+            return None, None
+    else:
+        return None, None
 
-    if M is None or N is None or not 1 <= M <= N <= 20:
+    if M > N:
         return None, None
 
     return M, N
