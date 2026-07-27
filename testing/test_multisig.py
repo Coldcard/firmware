@@ -2859,6 +2859,27 @@ def test_import_duplicate_shuffled_keys(clear_miniscript, make_multisig, import_
     press_cancel()
 
 
+def test_import_duplicate_after_json_roundtrip(clear_miniscript, make_multisig,
+                                               import_ms_wallet, settings_get,
+                                               settings_set, press_cancel):
+    clear_miniscript()
+    M, N = 2, 3
+    keys = make_multisig(M, N)
+    import_ms_wallet(M, N, addr_fmt="p2wsh", name="ms0",
+                     accept=True, keys=keys)
+
+    # JSON restores the M/N pair as a list.
+    wallets = settings_get("miniscript")
+    wallets[0][-1]["m_n"] = list(wallets[0][-1]["m_n"])
+    settings_set("miniscript", wallets)
+
+    with pytest.raises(AssertionError):
+        import_ms_wallet(M, N, addr_fmt="p2wsh", name="ms1",
+                         accept=True, keys=keys)
+
+    press_cancel()
+
+
 @pytest.mark.parametrize("int_ext", [True, False])
 def test_multi_sortedmulti_duplicate(clear_miniscript, make_multisig, import_ms_wallet, OK,
                                      cap_story, press_cancel, int_ext, offer_minsc_import,

@@ -1430,7 +1430,7 @@ async def multisig_640_migration(multisig_wallets):
 
         new_opts = {
             "af": af,
-            "m_n": (M, N),
+            "m_n": [M, N],
             "b67": bip67
         }
         if ct != "BTC":
