@@ -2732,6 +2732,29 @@ def test_locktime_ux(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign,
     assert txid == story_txid
 
 
+def test_relative_locktime_summary_is_bounded(fake_txn, start_sign, cap_story, press_cancel):
+    num_each = 125
+    max_lock = num_each
+    sequences = list(range(1, num_each + 1))
+    sequences += [SEQUENCE_LOCKTIME_TYPE_FLAG | i for i in range(1, num_each + 1)]
+
+    psbt = fake_txn(len(sequences), 2, addr_fmt="p2wpkh", sequences=sequences)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+
+    assert title == "OK TO SEND?"
+    assert "Block height RTL: %d input(s), maximum %d blocks" % (
+        num_each, max_lock
+    ) in story
+    assert "Time-based RTL: %d input(s), maximum %s" % (
+        num_each, seconds2human_readable(max_lock << 9)
+    ) in story
+    assert "Showing only" not in story
+    assert "0.  1 blocks" not in story
+    press_cancel()
+
+
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("num_ins", [1, 4, 11])
 @pytest.mark.parametrize("differ", [True, False])
@@ -2802,16 +2825,8 @@ def test_nsequence_blockheight_relative_locktime_ux(sequence, use_regtest, bitco
     if sequence:
         assert "TX LOCKTIMES" in story
         assert "Block height RTL" in story
-        if num_ins_locked == 1:
-            assert ("has relative block height timelock of %d" % lock) in story
-        else:
-            if differ:
-                assert ("%d inputs have relative block height timelock." % num_ins_locked) in story
-                for i in range(num_ins_locked):
-                    if not (("%d.  " % i) in story):
-                        assert "only 10 with highest values" in story
-            else:
-                assert ("%d inputs have relative block height timelock of %d" % (num_ins_locked, lock)) in story
+        assert ("%d input(s), maximum %d blocks" %
+                (num_ins_locked, max(locks))) in story
     else:
         assert "TX LOCKTIMES" not in story
 
@@ -2871,7 +2886,6 @@ def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind
 
     ins = []
     num_ins_locked = 0
-    locked_indexes = []
     for i, utxo in enumerate(utxos):
         # time-based RTL
         if i and differ and (seconds > 512):
@@ -2886,7 +2900,6 @@ def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind
 
         if nSeq > 0:
             num_ins_locked += 1
-            locked_indexes.append((i, secs))
 
         inp = {
             "txid": utxo["txid"],
@@ -2914,17 +2927,8 @@ def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind
     assert "TX LOCKTIMES" in story
     assert "Time-based RTL" in story
     t_from_seq = (sequence & 0x0000ffff) << 9
-    base_msg = "relative time-based timelock of:\n %s" % seconds2human_readable(t_from_seq)
-    if num_ins_locked == 1:
-        assert ("has " + base_msg) in story
-    else:
-        if differ and (seconds > 512):
-            assert ("%d inputs have relative time-based timelock." % num_ins_locked) in story
-            for i, _ in sorted(locked_indexes, key=lambda i: i[1], reverse=True)[:10]:
-                assert ("%d.  " % i) in story
-        else:
-            msg1 = "%d inputs have " % num_ins_locked
-            assert (msg1 + base_msg) in story
+    assert ("%d input(s), maximum %s" %
+            (num_ins_locked, seconds2human_readable(t_from_seq))) in story
 
     press_select()  # confirm signing
     time.sleep(0.1)
@@ -3020,11 +3024,10 @@ def test_mixed_locktimes(num_rtl, use_regtest, bitcoind_d_sim_watch, start_sign,
     assert "TX LOCKTIMES" in story
     assert "Time-based RTL" in story
     t_from_seq = (sequence & 0x0000ffff) << 9
-    base_msg = "relative time-based timelock of:\n %s" % seconds2human_readable(t_from_seq)
-    msg1 = "%d inputs have " % tb
-    assert (msg1 + base_msg) in story
+    assert ("%d input(s), maximum %s" %
+            (tb, seconds2human_readable(t_from_seq))) in story
     assert "Block height RTL" in story
-    assert ("%d inputs have relative block height timelock of %d" % (bb, 21)) in story
+    assert ("%d input(s), maximum %d blocks" % (bb, 21)) in story
 
     if abs_lock:
         assert "Abs Locktime" in story
@@ -3139,9 +3142,9 @@ def test_timelocks_visualize(start_sign, end_sign, dev, bitcoind, use_regtest,
     story = story.decode('ascii')
     assert datetime.datetime.utcfromtimestamp(nLockTime).strftime("%Y-%m-%d %H:%M:%S") == expect_ux
     assert f"Abs Locktime: This tx can only be spent after {expect_ux} UTC (MTP)" in story
-    assert "Block height RTL: 5 inputs have relative block height timelock" in story
+    assert "Block height RTL: 5 input(s), maximum" in story
     # when i=0 in loop time based RTL is zero
-    assert "Time-based RTL: 4 inputs have relative time-based timelock" in story
+    assert "Time-based RTL: 4 input(s), maximum" in story
 
 
 @pytest.mark.parametrize('in_out', [(4,1),(2,2),(2,1)])

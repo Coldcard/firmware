@@ -1721,71 +1721,15 @@ class psbtObject(psbtProxy):
         # must have wallet at this point
         assert self.active_miniscript
 
-    def ux_relative_timelocks(self, tb, bb):
-        # visualize 10 largest timelock to user
-        # when signing a tx
-        MAX_SHOW = 10
-        num_tb = len(tb)
-        num_bb = len(bb)
-
-        if (num_tb + num_bb) > MAX_SHOW:
-            # 10 from each is enough for us to have in memory
-            tb = sorted(tb, key=lambda item: item[1], reverse=True)[:10]
-            bb = sorted(bb, key=lambda item: item[1], reverse=True)[:10]
-            if (num_tb >= 5) and (num_bb >= 5):
-                # 5 biggest from each
-                tb = tb[:5]
-                bb = bb[:5]
-            else:
-                if num_tb < num_bb:
-                    tb = tb[:num_tb]
-                    bb = bb[:(MAX_SHOW - num_tb)]
-                else:
-                    bb = bb[:num_bb]
-                    tb = tb[:(MAX_SHOW - num_bb)]
-
+    def ux_relative_timelocks(self, num_tb, max_tb, num_bb, max_bb):
         if num_bb:
-            # Block height relative lock-time
-            if num_bb == 1:
-                idx, val = bb[0]
-                msg = "Input %d. has relative block height timelock of %d blocks\n" % (
-                        idx, val
-                    )
-            elif all(bb[0][1] == i[1] for i in bb):
-                msg = "%d inputs have relative block height timelock of %d blocks\n" % (
-                        num_bb, bb[0][1]
-                    )
-            else:
-                msg = "%d inputs have relative block height timelock." % num_bb
-                if num_bb > len(bb):
-                    msg += " Showing only %d with highest values." % len(bb)
-                msg += "\n\n"
-                for idx, num_blocks in bb:
-                    msg += " %d.  %d blocks\n" % (idx, num_blocks)
-
+            msg = "%d input(s), maximum %d blocks\n" % (num_bb, max_bb)
             self.ux_notes.append(("Block height RTL", msg))
 
         if num_tb:
-            # Block height relative lock-time
-            if num_tb == 1:
-                idx, val = tb[0]
-                val = seconds2human_readable(val)
-                msg = "Input %d. has relative time-based timelock of:\n %s\n" % (
-                    idx, val
-                )
-            elif all(tb[0][1] == i[1] for i in tb):
-                msg = "%d inputs have relative time-based timelock of:\n %s\n" % (
-                        num_tb, seconds2human_readable(tb[0][1])
-                    )
-            else:
-                msg = "%d inputs have relative time-based timelock." % num_tb
-                if num_tb > len(tb):
-                    msg += " Showing only %d with highest values." % len(tb)
-                msg += "\n\n"
-                for idx, seconds in tb:
-                    hr = seconds2human_readable(seconds)
-                    msg += " %d.  %s\n" % (idx, hr)
-
+            msg = "%d input(s), maximum %s\n" % (
+                num_tb, seconds2human_readable(max_tb)
+            )
             self.ux_notes.append(("Time-based RTL", msg))
 
     def validate_unkonwn(self, obj, label):
@@ -2158,10 +2102,8 @@ class psbtObject(psbtProxy):
         unverified_witness_utxo = 0
         total_in = 0
         presigned_inputs = 0
-        # time based relative locks
-        tb_rel_locks = []
-        # block height based relative locks
-        bb_rel_locks = []
+        num_tb_rel_locks = max_tb_rel_lock = 0
+        num_bb_rel_locks = max_bb_rel_lock = 0
         smallest_nsequence = 0xffffffff
 
         # collect some input path data from subapths
@@ -2223,9 +2165,13 @@ class psbtObject(psbtProxy):
                 has_rtl = inp.has_relative_timelock(txi)
                 if has_rtl:
                     if has_rtl[0]:
-                        tb_rel_locks.append((i, has_rtl[1]))
+                        num_tb_rel_locks += 1
+                        if has_rtl[1] > max_tb_rel_lock:
+                            max_tb_rel_lock = has_rtl[1]
                     else:
-                        bb_rel_locks.append((i, has_rtl[1]))
+                        num_bb_rel_locks += 1
+                        if has_rtl[1] > max_bb_rel_lock:
+                            max_bb_rel_lock = has_rtl[1]
 
             if txi.nSequence < smallest_nsequence:
                 smallest_nsequence = txi.nSequence
@@ -2422,7 +2368,9 @@ class psbtObject(psbtProxy):
                 self.ux_notes.append(("Abs Locktime", msg))
 
         # create UX for users about tx level relative timelocks (nSequence)
-        self.ux_relative_timelocks(tb_rel_locks, bb_rel_locks)
+        self.ux_relative_timelocks(
+            num_tb_rel_locks, max_tb_rel_lock, num_bb_rel_locks, max_bb_rel_lock
+        )
 
         if MiniScriptWallet.disable_checks:
             self.warnings.append(('Danger', 'Some miniscript checks are disabled.'))
