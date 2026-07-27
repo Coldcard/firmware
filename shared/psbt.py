@@ -8,7 +8,7 @@ from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
 from utils import (xfp2str, B2A, keypath_to_str, validate_derivation_path_length,
                    problem_file_line, node_from_privkey, max_signers)
-from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str, swab32
+from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str
 from uhashlib import sha256
 from uio import BytesIO
 from sffile import SizerFile

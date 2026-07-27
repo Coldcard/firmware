@@ -13,9 +13,9 @@ from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, SUPPORTED_ADDR_
 from public_constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED, AF_P2SH, AF_P2WPKH_P2SH
 from sffile import SFFile
 from menu import MenuSystem, MenuItem
-from serializations import ser_uint256, SIGHASH_ALL
+from serializations import ser_uint256, disassemble_multisig_mn
 from ux import ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys, ux_confirm, the_ux
-from ux import show_qr_code, OK, X, abort_and_push, AbortInteraction, ux_input_text, ux_enter_number
+from ux import show_qr_code, OK, X, abort_and_push, AbortInteraction, ux_enter_number
 from usb import CCBusyError
 from utils import (HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A, node_from_privkey,
                    show_single_address, keypath_to_str, seconds2human_readable)
@@ -1789,8 +1789,6 @@ class TXInpExplorer(TXExplorer):
             ks_coord = inp.witness_script or inp.redeem_script
             if ks_coord:
                 ks = inp.get(ks_coord)
-
-                from serializations import disassemble_multisig_mn
                 try:
                     M, N = disassemble_multisig_mn(ks)
                     psbt_item += "Multisig: %dof%d\n\n" % (M, N)
