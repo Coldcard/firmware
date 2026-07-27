@@ -2666,15 +2666,12 @@ class psbtObject(psbtProxy):
 
         # Different BIP-328 derivations can share agg_k and its descriptor index.
         # Bind the session entropy to the exact participant/aggregate/leaf tuple.
-        sec_rand = ngu.hash.sha256s(b"".join((
-            session_rand, pack("<I", inp_idx),
-            my_participant_key, der_agg_k, leaf_hash
-        )))
+        sec_rand = ngu.hash.sha256s(b"".join((session_rand, pack("<I", inp_idx),
+                                              my_participant_key, der_agg_k, leaf_hash)))
 
         # generate musig2 secnonce & pubnonce
-        sn, pn = ngu.secp256k1.musig_nonce_gen(
-            keypair.pubkey(), sec_rand, keypair.privkey(), digest, keyagg_cache
-        )
+        sn, pn = ngu.secp256k1.musig_nonce_gen(keypair.pubkey(), sec_rand, keypair.privkey(),
+                                               digest, keyagg_cache)
 
         if my_musig_pubnonces_key not in musig_pubnonces:
             # I haven't added my pubnoce yet - adding now
