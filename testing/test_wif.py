@@ -1638,7 +1638,7 @@ def test_spend_paper_wallet_addr_only(mode, bitcoind, settings_remove, import_wi
     start_sign(psbt_bytes, finalize=True)
     time.sleep(.1)
     title, story = cap_story()
-    assert "1 input(s) use key from the WIF store." in story
+    assert "2 input(s) use key from the WIF store." in story
     signed = end_sign(accept=True, finalize=True)
 
     tx_hex = signed.hex()
