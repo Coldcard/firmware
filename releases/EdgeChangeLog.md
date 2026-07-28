@@ -40,5 +40,6 @@ to be safe, and please be careful not to cut corners or rush this process.
 - Bugfix: Generate unique names when creating multisig wallets from PSBTs with the same M-of-N parameters
 - Bugfix: Correctly identify consolidations containing zero-value OP_RETURN outputs without misclassifying other zero-value external outputs
 - Bugfix: Prevent duplicate WIF Store keys and multisig wallets after restarting
+- Bugfix: Fixed PSBT uploads being mistaken for partial firmware uploads
 
 - [`History-Edge.md`](History-Edge.md)
