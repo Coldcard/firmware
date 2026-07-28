@@ -876,7 +876,7 @@ class USBHandler:
             #   length and appends hdr, but that's kinda a bug, so support both
             is_trailer = (pos == (total_size - FW_HEADER_SIZE) or pos == total_size)
 
-            if pos == (FW_HEADER_OFFSET & ~255):
+            if pos == (FW_HEADER_OFFSET & ~255) and len(here) == 256:
                 hdr = memoryview(here)[-128:]
                 magic, = unpack_from('<I', hdr[0:4])
                 if magic == FW_HEADER_MAGIC:
