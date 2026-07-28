@@ -819,7 +819,7 @@ def test_ccc_velocity(velocity_mi, setup_ccc, ccc_ms_setup, bitcoind, settings_s
                                                    init_block_height)  # nLockTime set to current block height
     psbt = psbt_resp.get("psbt")
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == init_block_height
+    assert po.get_locktime() == init_block_height
     policy_sign(bitcoind_wo, psbt)  # success as this is first tx that sets block height from 0
 
     assert settings_get("ccc")["pol"]["block_h"] == init_block_height
@@ -832,7 +832,7 @@ def test_ccc_velocity(velocity_mi, setup_ccc, ccc_ms_setup, bitcoind, settings_s
                                                    block_height)
     psbt = psbt_resp.get("psbt")
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == block_height
+    assert po.get_locktime() == block_height
     policy_sign(bitcoind_wo, psbt, violation="velocity")
 
     assert settings_get("ccc")["pol"]["block_h"] == init_block_height  # still initial block height as above failed
@@ -844,7 +844,7 @@ def test_ccc_velocity(velocity_mi, setup_ccc, ccc_ms_setup, bitcoind, settings_s
                                                    block_height)
     psbt = psbt_resp.get("psbt")
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == block_height
+    assert po.get_locktime() == block_height
     policy_sign(bitcoind_wo, psbt)  # success
 
     assert settings_get("ccc")["pol"]["block_h"] == block_height  # updated block height
@@ -922,7 +922,7 @@ def test_ccc_warnings(setup_ccc, ccc_ms_setup, bitcoind, settings_set, policy_si
                                                    init_block_height, {"fee_rate":39000})
     psbt = psbt_resp.get("psbt")
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == init_block_height
+    assert po.get_locktime() == init_block_height
     policy_sign(bitcoind_wo, psbt, violation="has warnings", num_warn=2, warn_list=["Big Fee"])
 
     # invalidate nLockTime with use of nSequence max values
@@ -940,9 +940,8 @@ def test_ccc_warnings(setup_ccc, ccc_ms_setup, bitcoind, settings_set, policy_si
     psbt_resp = bitcoind_wo.walletcreatefundedpsbt(ins, [{whitelist[0]: 0.06},{whitelist[1]: 0.01},{whitelist[2]: 0.03}],
                                                    0, {"fee_rate":2, "replaceable": False})  # locktime needs to be zero, otherwise exception from core (contradicting parameters)
     po = BasicPSBT().parse(base64.b64decode(psbt_resp.get("psbt")))
-    assert po.parsed_txn.nLockTime == 0
-    po.parsed_txn.nLockTime = init_block_height  # add locktime
-    po.txn = po.parsed_txn.serialize_with_witness()
+    assert po.get_locktime() == 0
+    po.set_locktime(init_block_height)  # add locktime
     policy_sign(bitcoind_wo, po.as_b64_str(), violation="has warnings", num_warn=2, warn_list=["Bad Locktime"])
 
     # exotic sighash warning

@@ -375,6 +375,19 @@ class BasicPSBT:
     def is_v2(self):
         return (self.version == 2) or (not self.txn)
 
+    def get_locktime(self):
+        if self.is_v2():
+            return self.fallback_locktime or 0
+
+        return self.parsed_txn.nLockTime
+
+    def set_locktime(self, locktime):
+        if self.is_v2():
+            self.fallback_locktime = locktime
+        else:
+            self.parsed_txn.nLockTime = locktime
+            self.txn = self.parsed_txn.serialize_with_witness()
+
     def parse(self, raw):
         if isinstance(raw, str):
             raw = raw.encode('ascii')
