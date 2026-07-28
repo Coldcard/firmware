@@ -3230,6 +3230,7 @@ def test_specific_wallet_signing_xpubs(orig_der, get_cc_key, bitcoin_core_signer
                                      0, {"fee_rate": 2})["psbt"]
 
     po = BasicPSBT().parse(base64.b64decode(psbt))
+    po.xpubs = []
     for ke in [bk, ck, dk, ak]:
         if "]" in ke:
             a, b = ke.split("]")
@@ -3256,7 +3257,7 @@ def test_specific_wallet_signing_xpubs(orig_der, get_cc_key, bitcoin_core_signer
 
     item = po.xpubs[0]
     # wrong key
-    key_wrong = item[0][:-1] + b"\x10"
+    key_wrong = po.xpubs[1][0]
     po.xpubs[0] = (key_wrong, item[1])
 
     start_sign(po.as_bytes(), miniscript="msc")
@@ -3268,7 +3269,8 @@ def test_specific_wallet_signing_xpubs(orig_der, get_cc_key, bitcoin_core_signer
     if orig_der:
         # wrong derivation path
         # do not check if we only have xfp as derivation, because blinded keys allowed
-        pth_wrong = item[1][:-1] + b"\x10"
+        last_idx = struct.unpack("<I", item[1][-4:])[0]
+        pth_wrong = item[1][:-4] + struct.pack("<I", last_idx ^ 1)
         po.xpubs[0] = (item[0], pth_wrong)
 
         start_sign(po.as_bytes(), miniscript="msc")
