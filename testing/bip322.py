@@ -9,7 +9,7 @@ from io import BytesIO
 from helpers import hash160, str_to_path, taptweak
 from bip32 import BIP32Node, PublicKey
 from constants import simulator_fixed_tprv, AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH
-from ctransaction import CTransaction, COutPoint, CTxIn, CTxOut, uint256_from_str
+from ctransaction import CTransaction, COutPoint, CTxIn, CTxOut, uint256_from_str, ser_uint256
 from sighash import legacy_sighash, segwit_v0_sighash, taproot_sighash, SIGHASH_DEFAULT, SIGHASH_ALL
 from pysecp256k1 import ec_pubkey_parse, ecdsa_signature_parse_der, ecdsa_verify
 from pysecp256k1.extrakeys import xonly_pubkey_parse
@@ -427,16 +427,27 @@ def bip322_from_classic_tx(psbt, msg=b"POR"):
     po = BasicPSBT().parse(psbt)
     po.bip322_msg = msg
 
-    to_sign = CTransaction()
-    to_sign.deserialize(BytesIO(po.txn))
-    to_sign.nVersion = 0
-    to_sign.vout = [CTxOut(0, b'\x6a')]
-    po.outputs = [BasicPSBTOutput(idx=0)]
+    if po.is_v2():
+        # PSBTv2 stores unsigned transaction data in global/input/output fields.
+        prevout_idx = po.inputs[0].prevout_idx
+        po.txn_version = 0
+        po.output_count = 1
+        op_return_out = BasicPSBTOutput(idx=0)
+        op_return_out.amount = 0
+        op_return_out.script = b'\x6a'
+        po.outputs = [op_return_out]
+    else:
+        to_sign = CTransaction()
+        to_sign.deserialize(BytesIO(po.txn))
+        prevout_idx = to_sign.vin[0].prevout.n
+        to_sign.nVersion = 0
+        to_sign.vout = [CTxOut(0, b'\x6a')]
+        po.outputs = [BasicPSBTOutput(idx=0)]
 
     if po.inputs[0].utxo:
         i0_utxo = CTransaction()
         i0_utxo.deserialize(BytesIO(po.inputs[0].utxo))
-        script_pubkey = i0_utxo.vout[to_sign.vin[0].prevout.n].scriptPubKey
+        script_pubkey = i0_utxo.vout[prevout_idx].scriptPubKey
     else:
         assert po.inputs[0].witness_utxo
         i0_wutxo = CTxOut()
@@ -451,11 +462,16 @@ def bip322_from_classic_tx(psbt, msg=b"POR"):
     to_spend.vout = [CTxOut(0, script_pubkey)]
     to_spend.calc_sha256()
 
-    sequence = 0 if len(to_sign.vin) == 1 else 0xffffffff
-    to_sign.vin[0] = CTxIn(COutPoint(to_spend.sha256, 0), nSequence=sequence)
+    sequence = 0 if len(po.inputs) == 1 else 0xffffffff
+    if po.is_v2():
+        po.inputs[0].previous_txid = ser_uint256(to_spend.sha256)
+        po.inputs[0].prevout_idx = 0
+        po.inputs[0].sequence = sequence
+    else:
+        to_sign.vin[0] = CTxIn(COutPoint(to_spend.sha256, 0), nSequence=sequence)
+        po.txn = to_sign.serialize_with_witness()
     po.inputs[0].utxo = to_spend.serialize_with_witness()
     po.inputs[0].witness_utxo = None
-    po.txn = to_sign.serialize_with_witness()
 
     rv = BytesIO()
     po.serialize(rv)
