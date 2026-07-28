@@ -63,6 +63,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Prevent duplicate WIF Store entries after restarting
 - Change: Block `SIGHASH_SINGLE` and `SIGHASH_SINGLE|ANYONECANPAY` by default because they can leave later transaction outputs modifiable after signing. They remain available when Sighash Checks is set to Warn.
   Thanks to [@instagibbs](https://github.com/instagibbs) for reporting this issue.
+- Bugfix: Fixed PSBT uploads being mistaken for partial firmware uploads.
 
 # Mk Specific Changes
 
