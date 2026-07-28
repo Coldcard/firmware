@@ -148,6 +148,10 @@ def test_upload_long(dev, pkt_len, count=5, data=None):
     # clear screen / test a degerate case
     dev.send_recv(CCProtocolPacker.upload(256, 256, b''))
 
+@pytest.mark.parametrize('data_len', [0x3f01, 0x3f02, 0x3f03])
+def test_upload_psbt_at_firmware_probe_boundary(dev, data_len):
+    dev.upload_file(b'psbt\xff' + bytes(data_len - 5))
+
 def test_upload_fails(dev):
     # incorrect file upload cases
 
