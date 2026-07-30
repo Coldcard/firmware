@@ -1502,7 +1502,6 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False,
                 if "name" in j_conf:
                     # name from json has preference over filenames and desc checksum
                     name = j_conf["name"]
-                    assert 2 <= len(name) <= 40, "'name' length"
             except ValueError: pass
 
             # this call will raise on parsing errors, so let them rise up

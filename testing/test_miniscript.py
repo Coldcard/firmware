@@ -2340,6 +2340,64 @@ def test_miniscript_name_validation(microsd_path, offer_minsc_import):
         assert "must be ascii" in e.value.args[0]
 
 
+@pytest.mark.parametrize("name, error", [
+    ("a", None),
+    ("a" * 30, None),
+    ("", "name len"),
+    ("a" * 31, "name len"),
+])
+def test_miniscript_name_length(name, error, offer_minsc_import, press_cancel):
+    config = json.dumps({"name": name, "desc": CHANGE_BASED_DESCS[0]})
+
+    if error:
+        with pytest.raises(Exception) as exc:
+            offer_minsc_import(config)
+        assert error in exc.value.args[0]
+    else:
+        _, story = offer_minsc_import(config)
+        assert "Create new" in story
+        press_cancel()
+
+
+@pytest.mark.parametrize("name, error", [
+    ("a", None),
+    ("a" * 30, None),
+    ("", "name len"),
+    ("a" * 31, "name len"),
+])
+def test_bip388_name_length(name, error, get_cc_key, offer_minsc_import,
+                            press_cancel):
+    key = get_cc_key("84h/1h/0h").replace("/<0;1>/*", "")
+    config = json.dumps({
+        "name": name,
+        "desc_template": "wpkh(@0/**)",
+        "keys_info": [key],
+    })
+
+    if error:
+        with pytest.raises(Exception) as exc:
+            offer_minsc_import(config)
+        assert error in exc.value.args[0]
+    else:
+        _, story = offer_minsc_import(config)
+        assert "Create new" in story
+        press_cancel()
+
+
+@pytest.mark.parametrize("name", ["bip388-ê", "bip388\tname"])
+def test_bip388_name_validation(name, get_cc_key, offer_minsc_import):
+    key = get_cc_key("84h/1h/0h").replace("/<0;1>/*", "")
+    config = json.dumps({
+        "name": name,
+        "desc_template": "wpkh(@0/**)",
+        "keys_info": [key],
+    })
+
+    with pytest.raises(Exception) as exc:
+        offer_minsc_import(config)
+    assert "must be ascii printable" in exc.value.args[0]
+
+
 def test_bug_fill_policy(set_seed_words, goto_home, pick_menu_item, need_keypress,
                          microsd_path, cap_story, press_select, clear_miniscript,
                          cap_menu, bitcoind, start_sign, end_sign):

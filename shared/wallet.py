@@ -161,8 +161,6 @@ class MiniScriptWallet(WalletABC):
     def __init__(self, name, desc_tmplt, keys_info, af, ik_u=None,
                  desc=None, m_n=None, bip67=None, chain_type=None):
 
-        assert 1 <= len(name) <= MAX_NAME_LEN, "name len"
-
         self.storage_idx = -1
         self.name = name
         self.desc_tmplt = desc_tmplt
@@ -507,6 +505,8 @@ class MiniScriptWallet(WalletABC):
 
     @classmethod
     def from_descriptor_obj(cls, name, desc_obj, desc_tmplt=None, keys_info=None):
+        name = to_ascii_printable(name)
+        assert 1 <= len(name) <= MAX_NAME_LEN, "name len"
         if not desc_tmplt or not keys_info:
             # BIP388 wasn't generated yet - generating from descriptor upon import/enroll
             desc_tmplt, keys_info = desc_obj.bip388_wallet_policy()
@@ -536,7 +536,6 @@ class MiniScriptWallet(WalletABC):
                 desc_obj, cs = Descriptor.from_string(config.strip(), checksum=True)
                 name = cs
             else:
-                name = to_ascii_printable(name)
                 desc_obj = Descriptor.from_string(config.strip())
 
             desc_obj.validate(cls.disable_checks)

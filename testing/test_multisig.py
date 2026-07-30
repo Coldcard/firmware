@@ -2687,9 +2687,19 @@ def test_same_key_account_based_multisig(goto_home, need_keypress, pick_menu_ite
     assert "Create new multisig wallet" in story
 
 
-def test_multisig_name_validation(microsd_path, offer_minsc_import):
+def test_multisig_name_validation(microsd_path, offer_minsc_import, press_cancel):
     with open("data/multisig/desc-p2wsh-myself.txt", "r") as f:
         config = f.read()
+
+    for name in ["a", "a" * 30]:
+        _, story = offer_minsc_import(json.dumps({"name": name, "desc": config}))
+        assert "Create new multisig wallet?" in story
+        press_cancel()
+
+    for name in ["", "a" * 31]:
+        with pytest.raises(Exception) as e:
+            offer_minsc_import(json.dumps({"name": name, "desc": config}))
+        assert "name len" in e.value.args[0]
 
     with pytest.raises(Exception) as e:
         offer_minsc_import(json.dumps({"name": "eê", "desc": config}), allow_non_ascii=True)
