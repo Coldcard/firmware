@@ -14,7 +14,7 @@ from ux import ux_show_story, ux_confirm, ux_dramatic_pause, OK, X, ux_enter_bip
 from files import CardSlot, CardMissingError, needs_microsd
 from utils import (problem_file_line, xfp2str, to_ascii_printable, swab32,
                    show_single_address, max_signers)
-from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC, KEY_ENTER
+from charcodes import KEY_QR, KEY_NFC
 from glob import settings, DESC_CACHE
 
 # Arbitrary value, not 0 or 1, used to derive a pubkey from preshared xpub in Key Teleport
