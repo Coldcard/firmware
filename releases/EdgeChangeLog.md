@@ -42,5 +42,6 @@ to be safe, and please be careful not to cut corners or rush this process.
 - Bugfix: Prevent duplicate WIF Store keys and multisig wallets after restarting
 - Bugfix: Fixed PSBT uploads being mistaken for partial firmware uploads
 - Bugfix: Reject BIP388 wallet policy imports with non-ASCII or non-printable names
+- Bugfix: Reject duplicate singleton keys in PSBT maps
 
 - [`History-Edge.md`](History-Edge.md)

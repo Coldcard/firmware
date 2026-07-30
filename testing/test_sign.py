@@ -7,6 +7,7 @@ import time, pytest, os, random, pdb, struct, base64, binascii, itertools, datet
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
 from binascii import b2a_hex, a2b_hex
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
+from psbt import PSBT_GLOBAL_VERSION, PSBT_IN_WITNESS_UTXO, PSBT_OUT_AMOUNT
 from io import BytesIO
 from pprint import pprint
 from decimal import Decimal
@@ -59,6 +60,27 @@ def test_psbt_parse_fails(try_sign, fn):
 
     msg = ee.value.args[0]
     assert ('PSBT parse failed' in msg) or ('Invalid PSBT' in msg)
+
+@pytest.mark.parametrize('scope', ['global', 'input', 'output'])
+def test_psbt_duplicate_singleton_key(try_sign, fake_txn, scope):
+    def add_duplicate(psbt):
+        if scope == 'global':
+            psbt.unknown = [
+                (bytes([PSBT_GLOBAL_VERSION]), struct.pack('<I', psbt.version))
+            ]
+        elif scope == 'input':
+            inp = psbt.inputs[0]
+            inp.unknown = [(bytes([PSBT_IN_WITNESS_UTXO]), inp.witness_utxo)]
+        else:
+            out = psbt.outputs[0]
+            out.unknown = [(bytes([PSBT_OUT_AMOUNT]), struct.pack('<q', out.amount))]
+
+    psbt = fake_txn(1, 1, psbt_v2=True, psbt_hacker=add_duplicate)
+
+    with pytest.raises(CCProtoError) as ee:
+        try_sign(psbt, accept=False)
+
+    assert 'PSBT parse failed' in ee.value.args[0]
 
 @pytest.mark.parametrize('fn', [
 	'data/2-of-2.psbt',
