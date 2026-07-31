@@ -4,7 +4,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 
 ## 2026-07-31 Hotfix Versions: 5.6.0 & 1.5.0Q
 
-**Urgent hotfix to correct a limited entropy bug.**
+**Urgent hotfix to correct a limited entropy bug**
 
 Please regenerate seeds only with this version of the firmware and any
 later updates from today onwards.
