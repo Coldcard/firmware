@@ -7,6 +7,27 @@
 - for experimental use.  DO NOT use for large Bitcoin amounts.
 ```
 
+# Shared Improvements - Both Mk4 and Q
+
+- New Feature: Ability to sign MuSig2 UTXOs. Read more [here](https://github.com/Coldcard/firmware/blob/new_edge/docs/musig.md)
+- New Feature: BIP-322 Proof of Reserves for Miniscript & MuSig2 UTXOs
+- Bugfix: PSBT global XPUBs validation when signing with specific wallet
+- Bugfix: Do not allow sighash DEFAULT outside taproot context
+
+# Mk4 Specific Changes
+
+## 6.5.0X - 2026-03-24
+
+- synced with master up to `5.5.0`
+
+
+# Q Specific Changes
+
+## 6.5.0QX - 2026-03-24
+
+- synced with master up to `1.4.0Q`
+
+
 ## 6.4.1X & 6.4.1QX
 
 -Bugfix: Multisig migration only worked for K of K multisig wallets (those where M is the same as N)
