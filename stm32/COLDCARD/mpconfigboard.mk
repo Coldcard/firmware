@@ -66,6 +66,13 @@ COPT += -g
 # bugfix IIRC
 build-COLDCARD/boards/COLDCARD/modckcc.o: COPT = -O0 -DNDEBUG
 
+# Do not compile MicroPython's fallback PRNG. The board-specific rng.c
+# provides rng_get(), and this empty object satisfies the upstream object list.
+$(BUILD)/rng.o: CFLAGS += -Dpyb_rng_yasmarang=error-do-not-want-this
+$(BUILD)/rng.o: $(BOARD_DIR)/mpconfigboard.mk
+	$(ECHO) "SKIP stm32/rng.c"
+	$(Q)$(CC) $(CFLAGS) -x c -c /dev/null -o $@
+
 files:
 	# SRC_C: $(SRC_C)
 	@echo
