@@ -12,9 +12,11 @@ PYTHON_DO_DFU = $(MPY_TOP)/tools/pydfu.py
 SIGNIT = signit
 
 MAKE_ARGS = BOARD=COLDCARD -j 4 EXCLUDE_NGU_TESTS=1
+BUILD_DIR = l-port/build-COLDCARD
 
 all: COLDCARD/file_time.c
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
+	$(MAKE) rng-code-check
 
 clean:
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) clean
@@ -43,6 +45,27 @@ firmware-signed.bin: l-port/build-COLDCARD/firmware0.bin l-port/build-COLDCARD/f
 	$(SIGNIT) sign $(VERSION_STRING) -o $@
 firmware-signed.dfu: firmware-signed.bin Makefile
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):$< $@
+
+#
+# Verify correct RNG code was built in.
+#
+NM = arm-none-eabi-nm
+.PHONY: rng-code-check
+rng-code-check:
+	@upstream_symbols="$$($(NM) --defined-only $(BUILD_DIR)/rng.o)" || exit $$?; \
+	if test -n "$$upstream_symbols"; then \
+		echo "ERROR: micropython's stm32/rng.o must not define any symbols"; \
+		printf '%s\n' "$$upstream_symbols"; \
+		exit 1; \
+	fi; \
+	board_symbols="$$($(NM) --defined-only \
+		$(BUILD_DIR)/boards/COLDCARD/rng.o)" || exit $$?; \
+	if ! printf '%s\n' "$$board_symbols" \
+		| grep -Eq '^[[:xdigit:]]+[[:space:]]+T[[:space:]]+rng_get$$'; then \
+		echo "ERROR: board rng.o does not define global rng_get"; \
+		printf '%s\n' "$$board_symbols"; \
+		exit 1; \
+	fi
 
 # make the DFU file which is shared for upgrades
 dfu: firmware-signed.dfu
