@@ -1,10 +1,14 @@
 *See ChangeLog.md for more recent changes, these are historic versions*
 
-**July 30/2026: Do not generate seeds on Mk3 hardware. Move funds to new seeds or a BIP-39
-derived secret.**
+**July 2026: Do not generate seeds on Mk3 hardware without 4.2.0 fixed version.
+Move funds to new seeds or a BIP-39 derived secret.**
 
 Follow the steps listed in 
 [our blog announcement](https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/)
+
+## 4.2.0 - July 31, 2026
+
+- Hotfix to correct entropy bug and allow new seed generation on old hardware.
 
 ## 4.1.9 - Jun 26, 2023
 
