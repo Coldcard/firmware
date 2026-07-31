@@ -28,6 +28,7 @@ MAKE_ARGS = BOARD=$(BOARD) -j 4 EXCLUDE_NGU_TESTS=1 DEBUG_BUILD=$(DEBUG_BUILD)
 
 all: $(BOARD)/file_time.c
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
+	$(SUBMAKE) rng-code-check
 
 clean:
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) clean
@@ -52,6 +53,27 @@ firmware-signed.bin: $(BUILD_DIR)/firmware0.bin $(BUILD_DIR)/firmware1.bin
 	$(SIGNIT) sign -b $(BUILD_DIR) -m $(HW_MODEL) $(VERSION_STRING) -o $@
 firmware-signed.dfu: firmware-signed.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):$< $@
+
+#
+# Verify correct RNG code was built in.
+#
+NM = arm-none-eabi-nm
+.PHONY: rng-code-check
+rng-code-check:
+	@upstream_symbols="$$($(NM) --defined-only $(BUILD_DIR)/rng.o)" || exit $$?; \
+	if test -n "$$upstream_symbols"; then \
+		echo "ERROR: micropython's stm32/rng.o must not define any symbols"; \
+		printf '%s\n' "$$upstream_symbols"; \
+		exit 1; \
+	fi; \
+	board_symbols="$$($(NM) --defined-only \
+		$(BUILD_DIR)/boards/$(BOARD)/rng.o)" || exit $$?; \
+	if ! printf '%s\n' "$$board_symbols" \
+		| grep -Eq '^[[:xdigit:]]+[[:space:]]+T[[:space:]]+rng_get$$'; then \
+		echo "ERROR: board rng.o does not define global rng_get"; \
+		printf '%s\n' "$$board_symbols"; \
+		exit 1; \
+	fi
 
 # make the DFU file which is shared for upgrades
 dfu: firmware-signed.dfu

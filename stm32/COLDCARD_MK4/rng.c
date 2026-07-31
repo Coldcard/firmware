@@ -79,6 +79,11 @@ static uint32_t rng_get_or_fault(void)
     return last_value;
 }
 
+uint32_t rng_get(void)
+{
+    return rng_get_or_fault();
+}
+
 /// \function pyb_rng_get()
 //
 /// Return a 30-bit hardware generated random number: or fail!
@@ -149,4 +154,3 @@ random_buffer(uint8_t *p, size_t count)
         last = next;
     }
 }
-
