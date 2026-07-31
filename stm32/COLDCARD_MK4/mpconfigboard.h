@@ -75,6 +75,7 @@
 
 
 // We have our own version of this code.
+// LATER: when zero, this selected some PRNG code we really didnt want.
 #define MICROPY_HW_ENABLE_RNG       (0)
 
 extern void ckcc_early_init(void);

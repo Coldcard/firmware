@@ -92,7 +92,13 @@ build-COLDCARD_MK4/flashbdev.o: CFLAGS += -Dled_state=led_state_OMIT
 build-COLDCARD_MK4/spibdev.o: CFLAGS += -Dled_state=led_state_OMIT
 build-COLDCARD_MK4/factoryreset.o: CFLAGS += -Dled_state=led_state_OMIT
 build-COLDCARD_MK4/boardctrl.o: CFLAGS += -Dled_state=led_state_OMIT
-	
+
+# Do not compile MicroPython's fallback PRNG.  The board-specific rng.c
+# provides rng_get(), and this empty object satisfies the upstream object list.
+$(BUILD)/rng.o: CFLAGS += -Dpyb_rng_yasmarang=error-do-not-want-this
+$(BUILD)/rng.o:
+	$(ECHO) "SKIP stm32/rng.c"
+	$(Q)$(CC) $(CFLAGS) -x c -c /dev/null -o $@
 
 files:
 	# SRC_C: $(SRC_C)
