@@ -11,7 +11,7 @@
 
 This lists the changes in the most recent EDGE firmware, for each hardware platform.
 
-## 2026-07-31 Hotfix Versions: 6.5.1X & 6.5.1QX
+## 2026-07-31 Hotfix Versions: 6.6.0X & 6.6.0QX
 
 **Urgent hotfix to correct a limited entropy bug**
 
@@ -28,21 +28,5 @@ to be safe, and please be careful not to cut corners or rush this process.
 # Shared Improvements - Both Mk4 and Q
 
 - Bugfix: Renaming a MiniScript wallet could rename a different stored wallet when wallets from multiple chains were present
-
-# Mk4 Specific Changes
-
-## 6.5.1X - 2026-xx-xx
-
-- todo
-
-
-# Q Specific Changes
-
-## 6.5.1QX - 2026-xx-xx
-
-- todo
-
-
-# Release History
 
 - [`History-Edge.md`](History-Edge.md)
