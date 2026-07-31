@@ -2,20 +2,20 @@
 
 This lists the changes in the most recent firmware, for each hardware platform.
 
-## 5.5.2 - 2026-07-30 & 1.4.2Q - 2026-07-30
+## 2026-07-31 Hotfix Versions: 5.5.2 & 1.4.2Q
 
 **Urgent hotfix to correct a limited entropy bug.**
 
 Please regenerate seeds only with this version of the firmware and any
-later updates from today.
+later updates from today onwards.
 
-**Mk3 users must regenerate any seeds** made on Mk3 hardware after
-version 4.0.1 as their entropy is critically low at just ~40 bits.
-We are not planning to update Mk3 firmware at this time, so please
-use newer hardware or add a BIP-39 passphrase.
+**Mk3 users must regenerate any seeds** made on version 4.0.1 or
+later as their entropy is critically low at just ~40 bits.  We are
+not planning to update Mk3 firmware at this time, so please use
+newer hardware or add a BIP-39 passphrase as a stopgap.
 
-On Mk4, Mk5 and Q entropy may be as low as ~72 bits. This is well below
-our target of 256 bits.
+On **Mk4, Mk5 and Q entropy** may be as low as ~72 bits. This is
+well below our target of 128 bits.
 
 Follow the steps listed in 
 [our blog announcement](https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/)
