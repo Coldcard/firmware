@@ -1,5 +1,4 @@
-```diff
-## Security Advisory
+# Security Advisory
 
 - Versions from 2021 to July 2026 had a bug which produced poor entropy.
 - Any secrets generated on a COLDCARD in that period should be regenerated and 
@@ -14,7 +13,8 @@
   provide 2.5 bits of entropy per roll.
 - [Blog post and updates](https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/)
 - [Technical background on the bug](https://blog.coinkite.com/entropy-technical-backgrounder/)
-```
+
+---
 
 # COLDCARD Hardware Wallet
 
