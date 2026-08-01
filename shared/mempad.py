@@ -81,7 +81,12 @@ class MembraneNumpad(NumpadBase):
         # reset and re-start scanning keys
         self.waiting_for_any = False
         self.lp_time = utime.ticks_ms()
-        shuffle(self.scan_order)
+        try:
+            shuffle(self.scan_order)
+        except OSError:
+            # An RNG fault may reduce scan-order randomization, but must not
+            # leave the keypad disabled before the user can log in.
+            pass
 
         self._scan_count = 0
         self._history = bytearray(NUM_ROWS * NUM_COLS)
