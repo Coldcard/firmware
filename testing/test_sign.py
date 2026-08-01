@@ -2333,6 +2333,17 @@ def test_sighash_disallowed_NONE(sighash, _test_single_sig_sighash):
                              consolidation=False, sh_checks=True)
 
 
+@pytest.mark.parametrize("sighash", ["SINGLE", "SINGLE|ANYONECANPAY"])
+def test_sighash_disallowed_SINGLE(sighash, fake_txn, start_sign, end_sign,
+                                   settings_remove):
+    settings_remove("sighshchk")
+    psbt = fake_txn(1, 2, segwit_in=True, change_outputs=[1], sighashes=[sighash])
+    start_sign(psbt, False, stxn_flags=STXN_VISUALIZE)
+    with pytest.raises(Exception) as e:
+        end_sign(accept=None, expect_txn=False)
+    assert "Sighash SINGLE is not allowed as some outputs could be changed" in e.value.args[0]
+
+
 @pytest.mark.bitcoind
 def test_sighash_nonexistent(_test_single_sig_sighash):
     # invalid sighash value
