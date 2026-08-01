@@ -1195,6 +1195,7 @@ se2_encrypt_secret(const uint8_t secret[], int secret_len, int offset,
 
     if(check_value) {
         // encrypt the check value: 32 zeros
+        nonce[15] = 0x80;       // separate counter range from encrypted secrets
         aes_init(&ctx);
         ctx.num_pending = 32;
         aes_done(&ctx, check_value, 32, aes_key, nonce);
@@ -1239,6 +1240,7 @@ se2_decrypt_secret(uint8_t secret[], int secret_len, int offset,
 
     if(check_value) {
         // decrypt the check value
+        nonce[15] = 0x80;       // separate counter range from encrypted secrets
         aes_init(&ctx);
         aes_add(&ctx, check_value, 32);
         uint8_t got[32];
@@ -1254,6 +1256,7 @@ se2_decrypt_secret(uint8_t secret[], int secret_len, int offset,
     }
 
     // decrypt the real data
+    nonce[15] = offset / AES_BLOCK_SIZE;
     aes_init(&ctx);
     aes_add(&ctx, main_slot, secret_len);
     aes_done(&ctx, secret, secret_len, aes_key, nonce);

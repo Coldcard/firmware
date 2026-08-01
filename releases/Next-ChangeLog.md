@@ -103,6 +103,8 @@ This lists the new changes that have not yet been published in a normal release.
   before signing, so the signature covered a different transaction than shown.
   Staged bytes are now re-verified before signing; any change aborts with
   "Transaction modified". Thanks to FreeZ Agent for the report and PoC.
+- Bugfix: Separate the SE1 check nonce from the PIN digest. Thanks to
+  [@instagibbs](https://github.com/instagibbs) for reporting this issue.
 
 # Mk Specific Changes
 
