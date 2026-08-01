@@ -54,6 +54,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Ignore `bkpw` if added to backup. Thanks, [@dmonakhov](https://github.com/dmonakhov)!
 - Bugfix: Keep NFC export tag live for repeated probes.
 - Bugfix: Fix 1-of-1 multisig signing failure.
+- Bugfix: Detect RNG_SR_SEIS and RNG_SR_SECS, retry safely, and fail closed on persistent faults.
 
 # Mk Specific Changes
 

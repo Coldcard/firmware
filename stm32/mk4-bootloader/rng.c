@@ -6,7 +6,21 @@
 #include "basics.h"
 #include "stm32l4xx_hal.h"
 
+#define RNG_MAX_ATTEMPTS (3)
+#define RNG_SEED_ERROR_MASK (RNG_SR_SEIS | RNG_SR_SECS)
 
+// Recover from a seed error.
+static void
+rng_recover(void)
+{
+    // Ensure the peripheral is clocked before touching its registers.
+    __HAL_RCC_RNG_CLK_ENABLE();
+
+    // Clear sticky SEIS, then cycle RNGEN per the STM32L4 recovery sequence.
+    RNG->SR &= ~RNG_SR_SEIS;
+    RNG->CR &= ~RNG_CR_RNGEN;
+    RNG->CR |= RNG_CR_RNGEN;
+}
 
 // rng_setup()
 //
@@ -47,25 +61,43 @@ rng_sample(void)
 {
     static uint32_t last_rng_result;
 
-    while(1) {
-        // Check if data register contains valid random data
-        while(!(RNG->SR & RNG_FLAG_DRDY)) {
-            // busy wait; okay to get stuck here... better than failing.
+    // Attempts bound seed-error recovery; DRDY polling remains intentionally unbounded.
+    for(int attempt = 0; attempt < RNG_MAX_ATTEMPTS; attempt++) {
+        while(1) {
+            uint32_t sr = RNG->SR;
+
+            if(sr & RNG_SEED_ERROR_MASK) {
+                break;
+            }
+
+            if(!(sr & RNG_FLAG_DRDY)) {
+                // Missing clocks are a hard failure. Preserve the existing
+                // fail-closed behaviour and wait rather than use bad data.
+                continue;
+            }
+
+            uint32_t rv = RNG->DR;
+
+            // Recheck after reading DR to close the documented polling race.
+            if(RNG->SR & RNG_SEED_ERROR_MASK) {
+                break;
+            }
+
+            if(rv != last_rng_result && rv) {
+                last_rng_result = rv;
+
+                return rv;
+            }
+
+            // Zero or repeat: poll for another word without consuming an attempt.
         }
 
-        // Get the new number
-        uint32_t rv = RNG->DR;
-
-        if(rv != last_rng_result && rv) {
-            last_rng_result = rv;
-
-            return rv;
+        if(attempt + 1 < RNG_MAX_ATTEMPTS) {
+            rng_recover();
         }
-
-        // keep trying if not a new number
     }
 
-    // NOT-REACHED
+    fatal_error("rng");
 }
 
 // rng_buffer()
