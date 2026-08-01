@@ -38,13 +38,15 @@ COLDCARD Virtual Disk
 
 def rng_seeding():
     # seed our RNG with entropy from secure elements
-    import callgate, ngu, ustruct
+    import callgate, ngu
 
     a = callgate.read_rng(1)        # SE1
     b = callgate.read_rng(2)        # SE2
 
+    # Feed the FULL 32-byte digest into the PRNG state. Truncating to 4 bytes
+    # (n[0:4]) throttled the secure-element contribution to 2**32 and left most
+    # of the generator's state words at fixed constants: see ngu.random.reseed().
     n = ngu.hash.sha256d(a+b)
-    n, = ustruct.unpack('I', n[0:4])
 
     ngu.random.reseed(n)
         
