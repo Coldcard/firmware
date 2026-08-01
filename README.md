@@ -1,3 +1,21 @@
+```diff
+## Security Advisory
+
+- Versions from 2021 to July 2026 had a bug which produced poor entropy.
+- Any secrets generated on a COLDCARD in that period should be regenerated and 
+  funds moved on chain **immediately**.
+- Master seeds can only be trusted from releases after these levels:
+    - 5.6.0 (Mk4, MK5) 
+    - 1.5.0Q (Q1) 
+    - 4.2.0 (Mk3)
+    - 6.6.0 (Edge Mk/Q)
+- Using a BIP-39 passphrase mitigates some of the risk, although it relies
+  on the entropy your passphrase adds. Dice rolls introduced into the secret
+  provide 2.5 bits of entropy per roll.
+- [Blog post and updates](https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/)
+- [Technical background on the bug](https://blog.coinkite.com/entropy-technical-backgrounder/)
+```
+
 # COLDCARD Hardware Wallet
 
 Coldcard is an Affordable, Ultra-secure & Verifiable Hardware Wallet for Bitcoin.
