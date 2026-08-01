@@ -97,7 +97,12 @@ class FullKeyboard(NumpadBase):
     def _start_scan(self):
         # reset and re-start scanning keys
         self.lp_time = utime.ticks_ms()
-        shuffle(self.scan_order)
+        try:
+            shuffle(self.scan_order)
+        except OSError:
+            # An RNG fault may reduce scan-order randomization, but must not
+            # prevent the keyboard from accepting input before login.
+            pass
 
         self._scan_count = 0
         self.waiting_for_any = False

@@ -31,6 +31,7 @@
  */
 
 #include <string.h>
+#include <stdbool.h>
 
 #include "py/obj.h"
 #include "py/runtime.h"
@@ -46,36 +47,81 @@ void random_buffer(uint8_t *p, size_t count);
 static void rng_init(void) {
     if (!(RNG->CR & RNG_CR_RNGEN)) {
         __HAL_RCC_RNG_CLK_ENABLE();
-
         RNG->CR |= RNG_CR_RNGEN;
-
-        // TODO: throw out some samples?
     }
 }
 
-
-#define RNG_TIMEOUT_MS (10)
+#define RNG_TIMEOUT_MS      (10)
+#define RNG_MAX_ATTEMPTS    (3)
+#define RNG_SEED_ERROR_MASK (RNG_SR_SEIS | RNG_SR_SECS)
 
 static uint32_t last_value;
 
-static uint32_t rng_get_or_fault(void)
+// Recover from a seed error.
+static void rng_recover(void)
 {
-    // Enable the RNG peripheral if it's not already enabled
-    rng_init();
+    // Ensure the peripheral is clocked before touching its registers.
+    __HAL_RCC_RNG_CLK_ENABLE();
 
-    // Wait for a new random number to be ready, takes on the order of 10us
+    // Clear sticky SEIS, then cycle RNGEN per the STM32L4 recovery sequence.
+    RNG->SR &= ~RNG_SR_SEIS;
+    RNG->CR &= ~RNG_CR_RNGEN;
+    RNG->CR |= RNG_CR_RNGEN;
+}
+
+// Make one bounded attempt to obtain a trustworthy, non-zero word.
+static bool rng_try_once(uint32_t *value)
+{
     uint32_t start = HAL_GetTick();
 
-    while (!(RNG->SR & RNG_SR_DRDY)) {
+    // Seed errors can suppress DRDY, so check for them while polling.
+    while (1) {
+        uint32_t sr = RNG->SR;
+
+        if (sr & RNG_SEED_ERROR_MASK) {
+            return false;
+        }
+
+        if (sr & RNG_SR_DRDY) {
+            break;
+        }
+
         if (HAL_GetTick() - start >= RNG_TIMEOUT_MS) {
-            // hardware failure... do not return anything!
-            mp_raise_OSError(MP_EFAULT);
+            return false;
         }
     }
 
-    // Get and return the new random number
-    last_value = RNG->DR;
+    uint32_t sample = RNG->DR;
 
+    // Recheck after reading DR to close the polling race; zero is also suspect.
+    if (!sample || (RNG->SR & RNG_SEED_ERROR_MASK)) {
+        return false;
+    }
+
+    *value = sample;
+    return true;
+}
+
+static uint32_t rng_get_or_fault(void)
+{
+    rng_init();
+
+    // Retry transient failures, recovering only between attempts.
+    for (int attempt = 0; attempt < RNG_MAX_ATTEMPTS; attempt++) {
+        uint32_t value;
+
+        if (rng_try_once(&value)) {
+            last_value = value;
+            return last_value;
+        }
+
+        if (attempt + 1 < RNG_MAX_ATTEMPTS) {
+            rng_recover();
+        }
+    }
+
+    // Persistent hardware failure: never return suspect randomness.
+    mp_raise_OSError(MP_EFAULT);
     return last_value;
 }
 
