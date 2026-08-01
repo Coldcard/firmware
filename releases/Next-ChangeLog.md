@@ -55,6 +55,8 @@ This lists the new changes that have not yet been published in a normal release.
   "Transaction modified". Thanks to FreeZ Agent for the report and PoC.
 - Bugfix: Reject duplicate cosigner keys, and cosigner keys the device already holds,
   during multisig wallet enrollment. Thanks to drk1wi for reporting this.
+- Bugfix: Separate the SE1 check nonce from the PIN digest. Thanks to
+  [@instagibbs](https://github.com/instagibbs) for reporting this issue.
 
 # Mk Specific Changes
 
