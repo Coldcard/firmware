@@ -2410,6 +2410,7 @@ class psbtObject(psbtProxy):
         # can only be run after consider_outputs is done
         sh_unusual = False
         none_sh = False
+        single_sh = False
         for inp in self.inputs:
             if inp.sp_idxs and not inp.fully_signed:
                 if inp.sighash is not None and inp.sighash not in ALL_SIGHASH_FLAGS:
@@ -2429,6 +2430,8 @@ class psbtObject(psbtProxy):
 
                         if inp.sighash in (SIGHASH_NONE, SIGHASH_NONE | SIGHASH_ANYONECANPAY):
                             none_sh = True
+                        elif inp.sighash in (SIGHASH_SINGLE, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY):
+                            single_sh = True
 
         if sh_unusual and not settings.get("sighshchk"):
             if self.consolidation_tx:
@@ -2439,6 +2442,9 @@ class psbtObject(psbtProxy):
             if none_sh:
                 # sighash NONE or NONE|ANYONECANPAY is proposed: block
                 raise FatalPSBTIssue("Sighash NONE is not allowed as funds could be going anywhere.")
+
+            if single_sh:
+                raise FatalPSBTIssue("Sighash SINGLE is not allowed as some outputs could be changed.")
 
         if none_sh:
             self.warnings.append(

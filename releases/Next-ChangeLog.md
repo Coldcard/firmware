@@ -61,6 +61,8 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: BIP-322 message signing now rejects non-ASCII and other unsupported
   message text before approval. Thanks to @KirillCherikov for reporting.
 - Bugfix: Prevent duplicate WIF Store entries after restarting
+- Change: Block `SIGHASH_SINGLE` and `SIGHASH_SINGLE|ANYONECANPAY` by default because they can leave later transaction outputs modifiable after signing. They remain available when Sighash Checks is set to Warn.
+  Thanks to [@instagibbs](https://github.com/instagibbs) for reporting this issue.
 
 # Mk Specific Changes
 
