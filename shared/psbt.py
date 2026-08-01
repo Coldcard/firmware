@@ -1725,6 +1725,7 @@ class psbtObject(psbtProxy):
 
         sh_unusual = False
         none_sh = False
+        single_sh = False
 
         for input in self.inputs:
             # only if it is our input - one that will be eventually sign
@@ -1742,6 +1743,8 @@ class psbtObject(psbtProxy):
 
                     if input.sighash in (SIGHASH_NONE, SIGHASH_NONE|SIGHASH_ANYONECANPAY):
                         none_sh = True
+                    elif input.sighash in (SIGHASH_SINGLE, SIGHASH_SINGLE|SIGHASH_ANYONECANPAY):
+                        single_sh = True
 
         if sh_unusual and not settings.get("sighshchk"):
             if self.consolidation_tx:
@@ -1751,6 +1754,9 @@ class psbtObject(psbtProxy):
             if none_sh:
                 # sighash NONE or NONE|ANYONECANPAY is proposed: block
                 raise FatalPSBTIssue("Sighash NONE is not allowed as funds could be going anywhere.")
+
+            if single_sh:
+                raise FatalPSBTIssue("Sighash SINGLE is not allowed as some outputs could be changed.")
 
         if none_sh:
             self.warnings.append(
