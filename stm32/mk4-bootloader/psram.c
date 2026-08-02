@@ -308,6 +308,7 @@ psram_recover_firmware(void)
 psram_do_upgrade(const uint8_t *start, uint32_t size)
 {
     ASSERT(size >= FW_MIN_LENGTH);
+    ASSERT(size <= FW_MAX_LENGTH_MK4);
 
     // In case of reset/crash, we can recover, so save
     // what we need for that -- yes, we will re-verify signatures
