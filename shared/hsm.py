@@ -10,7 +10,7 @@ from utils import cleanup_payment_address
 from pincodes import AE_LONG_SECRET_LEN
 from stash import blank_object
 from users import Users, MAX_NUMBER_USERS, calc_local_pincode
-from public_constants import MAX_USERNAME_LEN
+from public_constants import MAX_USERNAME_LEN, AF_CLASSIC, AF_P2WPKH, AF_P2TR, AF_P2WPKH_P2SH
 from multisig import MultisigWallet
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
@@ -30,6 +30,29 @@ MAX_SATS = const(2100000000000000)
 
 # too many refusals will cause reset
 ABSOLUTE_MAX_REFUSALS = const(100)
+
+# Weight units of one of our inputs, for max_fee_per_kvbyte. Base is always
+# 32 txid + 4 index + 1 empty scriptSig + 4 sequence = 41 bytes.
+#
+# The witness figures are deliberate floors: a smaller estimate means a smaller vsize, which means
+# a higher computed feerate, which means the rule refuses sooner. Erring the other way would let a
+# transaction slip past a limit it actually exceeds. Signatures are counted at 71 bytes because
+# that is what this firmware produces - it grinds the nonce until the low-S DER form fits.
+INPUT_WEIGHT = {
+    AF_P2WPKH:      (41 * 4) + (1 + 1 + 71 + 1 + 33),      # marker, sig, pubkey
+    AF_P2TR:        (41 * 4) + (1 + 1 + 64),               # marker, schnorr sig
+    AF_P2WPKH_P2SH: ((41 + 1 + 22) * 4) + (1 + 1 + 71 + 1 + 33),
+    AF_CLASSIC:     (41 + 106) * 4,                        # scriptSig carries sig + pubkey
+}
+
+
+def input_weight(addr_fmt):
+    # Refuse rather than guess. A wrong weight here silently mis-scales the feerate, and this rule
+    # exists precisely because the transaction-wide fee cannot be checked in a coinjoin.
+    try:
+        return INPUT_WEIGHT[addr_fmt]
+    except KeyError:
+        raise AssertionError('max_fee_per_kvbyte cannot size a 0x%x input' % (addr_fmt or 0))
 
 # you have this many seconds after boot to escape HSM
 # mode, if you enable the boot_to_hsm feature
@@ -181,6 +204,12 @@ class ApprovalRule:
     # - local_conf: local user must also confirm w/ code
     # - wallet: which multisig wallet to restrict to, or '1' for single signer only
     # - min_pct_self_transfer: minimum percentage of own input value that must go back to self
+    # - max_fee_per_kvbyte: most we will pay per 1000 vbytes of our own contribution, in sats.
+    #   Our loss (own inputs minus own outputs) over the vsize of our own inputs and outputs. In a
+    #   coinjoin the other participants' input amounts are unknown, so the transaction-wide fee
+    #   cannot be computed at all and upstream's fee check is skipped; this one needs only our own
+    #   values and so still works. It is an upper bound: our loss also covers coordinator fees and
+    #   any value genuinely leaving, so the mining feerate we actually pay is at most this.
     # - min_inputs: fewest inputs the whole transaction may have, ours and everyone else's.
     #   Meant for coinjoins: a round with only a couple of participants tells the coordinator
     #   almost everything, so refuse to sign one. Note this counts inputs, which a coordinator
@@ -213,6 +242,7 @@ class ApprovalRule:
         self.wallet = pop_string(j, 'wallet', 1, 20)
         self.min_pct_self_transfer = pop_float(j, 'min_pct_self_transfer', 0, 100.0)
         self.max_sats_leaving = pop_int(j, 'max_sats_leaving', 0, MAX_SATS)
+        self.max_fee_per_kvbyte = pop_int(j, 'max_fee_per_kvbyte', 0, MAX_SATS)
         self.max_txn = pop_int(j, 'max_txn', 1, 10000)
         self.max_txn_per_period = pop_int(j, 'max_txn_per_period', 1, 10000)
         self.min_inputs = pop_int(j, 'min_inputs', 1, 10000)
@@ -252,7 +282,7 @@ class ApprovalRule:
         # cleaned up data
         flds = [ 'per_period', 'max_amount', 'users', 'min_users',
                     'local_conf', 'whitelist', 'wallet',
-                    'min_pct_self_transfer', 'max_sats_leaving', 'max_txn',
+                    'min_pct_self_transfer', 'max_sats_leaving', 'max_fee_per_kvbyte', 'max_txn',
                     'max_txn_per_period', 'min_inputs', 'patterns' ]
         rv = OrderedDict()
         for f in flds:
@@ -314,6 +344,9 @@ class ApprovalRule:
 
         if self.max_sats_leaving is not None:
             rv += ', and at most %s may leave the wallet per txn' % render(self.max_sats_leaving)
+
+        if self.max_fee_per_kvbyte is not None:
+            rv += ', paying at most %s per 1000 vbytes of our own' % render(self.max_fee_per_kvbyte)
 
         if self.max_txn is not None:
             rv += ', for at most %d transaction(s)' % self.max_txn
@@ -409,15 +442,24 @@ class ApprovalRule:
         if self.max_txn_per_period is not None:
             assert self.txn_this_period < self.max_txn_per_period, 'too many transactions this period'
 
-        # what we put in versus what comes back: the ratio and the absolute loss are both checked
-        # against it, so walk the PSBT once.
-        if self.min_pct_self_transfer or self.max_sats_leaving is not None:
+        # what we put in versus what comes back: the ratio, the absolute loss and the feerate are
+        # all checked against it, so walk the PSBT once.
+        if self.min_pct_self_transfer or self.max_sats_leaving is not None \
+                or self.max_fee_per_kvbyte is not None:
             own_in_value = sum([i.amount for i in psbt.inputs if i.num_our_keys])
             own_out_value = 0
+            own_weight = 0
+
+            for i in psbt.inputs:
+                if i.num_our_keys:
+                    own_weight += input_weight(i.addr_fmt)
+
             for idx, txo in psbt.output_iter():
                 o = psbt.outputs[idx]
                 if o.num_our_keys:
                     own_out_value += txo.nValue
+                    # 8 value + 1 script-length + the script itself; ours are never over 252 bytes
+                    own_weight += (8 + 1 + len(txo.scriptPubKey)) * 4
 
             # None of our own inputs means the ratio is undefined; refuse rather than divide by zero.
             assert own_in_value, 'no inputs of ours to compare against'
@@ -429,6 +471,15 @@ class ApprovalRule:
             if self.max_sats_leaving is not None:
                 leaving = own_in_value - own_out_value
                 assert leaving <= self.max_sats_leaving, 'too much value leaving: %d sats, limit is %d' % (leaving, self.max_sats_leaving)
+
+            if self.max_fee_per_kvbyte is not None:
+                # Rounding down the vsize rounds the feerate up, so the limit is never exceeded by
+                # a transaction this passes. Same reason the witness estimate above is a floor.
+                vsize = own_weight // 4
+                assert vsize, 'no weight of ours to divide by'
+                feerate = ((own_in_value - own_out_value) * 1000) // vsize
+                assert feerate <= self.max_fee_per_kvbyte, \
+                    'feerate too high: %d sats/kvB of ours, limit is %d' % (feerate, self.max_fee_per_kvbyte)
 
         # check various patterns
 
