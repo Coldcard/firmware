@@ -31,6 +31,7 @@
  */
 
 #include <string.h>
+#include <stdbool.h>
 
 #include "py/obj.h"
 #include "py/runtime.h"
@@ -43,38 +44,95 @@
 
 void random_buffer(uint8_t *p, size_t count);
 
+#define RNG_TIMEOUT_MS      (10)
+#define RNG_MAX_ATTEMPTS    (3)
+
+// Bits we must be able to see and clear. Same names/positions on L4 and L4+.
+#ifndef RNG_SR_SEIS
+# define RNG_SR_SEIS    (1u << 6)
+#endif
+#ifndef RNG_SR_CEIS
+# define RNG_SR_CEIS    (1u << 5)
+#endif
+#ifndef RNG_SR_SECS
+# define RNG_SR_SECS    (1u << 2)
+#endif
+#ifndef RNG_SR_CECS
+# define RNG_SR_CECS    (1u << 1)
+#endif
+
+#define RNG_SR_ERRORS   (RNG_SR_SEIS | RNG_SR_CEIS | RNG_SR_SECS | RNG_SR_CECS)
+
+// rng_reset()
+//
+// Full re-init of the peripheral. Required after any seed or clock error:
+// per RM0432 (and RM0351) the SEIS flag must be cleared *and* RNGEN toggled
+// off->on, otherwise DRDY never asserts again and every later read times out
+// forever. Simply testing RNGEN (as the previous code did) is a no-op in that
+// state, which turned a transient glitch into a permanently dead device.
+static void rng_reset(void) {
+    __HAL_RCC_RNG_CLK_ENABLE();
+
+    RNG->CR &= ~RNG_CR_RNGEN;
+    RNG->SR &= ~(RNG_SR_SEIS | RNG_SR_CEIS);    // rc_w0: write 0 to clear
+    RNG->CR |= RNG_CR_RNGEN;
+
+    // RM: the first word produced after enabling may be invalid; discard it.
+    uint32_t start = HAL_GetTick();
+    while (!(RNG->SR & RNG_SR_DRDY)) {
+        if (HAL_GetTick() - start >= RNG_TIMEOUT_MS) return;
+    }
+    (void)RNG->DR;
+}
+
 static void rng_init(void) {
-    if (!(RNG->CR & RNG_CR_RNGEN)) {
-        __HAL_RCC_RNG_CLK_ENABLE();
-
-        RNG->CR |= RNG_CR_RNGEN;
-
-        // TODO: throw out some samples?
+    if (!(RNG->CR & RNG_CR_RNGEN) || (RNG->SR & RNG_SR_ERRORS)) {
+        rng_reset();
     }
 }
 
-
-#define RNG_TIMEOUT_MS (10)
-
 static uint32_t last_value;
 
-static uint32_t rng_get_or_fault(void)
+// rng_try_once()
+//
+// One attempt. Returns true and stores the word on success. Never throws.
+static bool rng_try_once(uint32_t *out)
 {
-    // Enable the RNG peripheral if it's not already enabled
-    rng_init();
-
-    // Wait for a new random number to be ready, takes on the order of 10us
     uint32_t start = HAL_GetTick();
 
     while (!(RNG->SR & RNG_SR_DRDY)) {
-        if (HAL_GetTick() - start >= RNG_TIMEOUT_MS) {
-            // hardware failure... do not return anything!
-            mp_raise_OSError(MP_EFAULT);
-        }
+        if (HAL_GetTick() - start >= RNG_TIMEOUT_MS) return false;
     }
 
-    // Get and return the new random number
-    last_value = RNG->DR;
+    // Data is only trustworthy if no error latched while we were waiting.
+    if (RNG->SR & RNG_SR_ERRORS) {
+        (void)RNG->DR;              // drain the suspect word
+        return false;
+    }
+
+    *out = RNG->DR;
+
+    return true;
+}
+
+static uint32_t rng_get_or_fault(void)
+{
+    uint32_t value = 0;
+
+    for (int attempt = 0; attempt < RNG_MAX_ATTEMPTS; attempt++) {
+        rng_init();
+
+        if (rng_try_once(&value)) {
+            last_value = value;
+            return last_value;
+        }
+
+        // Transient fault: recover the peripheral properly and try again.
+        rng_reset();
+    }
+
+    // Persistent hardware failure... do not return anything!
+    mp_raise_OSError(MP_EFAULT);
 
     return last_value;
 }

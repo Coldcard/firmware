@@ -97,7 +97,14 @@ class FullKeyboard(NumpadBase):
     def _start_scan(self):
         # reset and re-start scanning keys
         self.lp_time = utime.ticks_ms()
-        shuffle(self.scan_order)
+        # Scan order randomization is anti-Tempest hygiene, not a secret: it must
+        # never be able to take down the keypad. Since the RNG became fallible
+        # (it now reads the hardware TRNG and can raise OSError), a single glitch
+        # here would kill the scan task -- before login, so unrecoverable.
+        try:
+            shuffle(self.scan_order)
+        except Exception:
+            pass
 
         self._scan_count = 0
         self.waiting_for_any = False
