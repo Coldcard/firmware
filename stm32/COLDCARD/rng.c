@@ -48,6 +48,8 @@ static void rng_init(void) {
     if (!(RNG->CR & RNG_CR_RNGEN)) {
         __HAL_RCC_RNG_CLK_ENABLE();
         RNG->CR |= RNG_CR_RNGEN;
+
+        // first samples after enable are discarded by rng_selftest() at boot
     }
 }
 
@@ -63,6 +65,14 @@ static void rng_init(void) {
 #define RNG_SEED_ERROR_MASK (RNG_SR_SEIS | RNG_SR_SECS)
 
 static uint32_t last_value;
+
+// Counting is armed only by rng_selftest() for a few words at boot, then
+// disabled permanently. Not exposed anywhere (no Python, no USB).
+static bool rng_count_active;
+static uint32_t rng_count;
+
+// Set when rng_selftest() passes; read-only proof the check ran.
+bool rng_boot_selftest_ok;
 
 // Recover from a seed error.
 static void rng_recover(void)
@@ -121,6 +131,7 @@ static uint32_t rng_get_or_fault(void)
 
         if (rng_try_once(&value)) {
             last_value = value;
+            if (rng_count_active) rng_count++;
             return last_value;
         }
 
@@ -137,6 +148,53 @@ static uint32_t rng_get_or_fault(void)
 uint32_t rng_get(void)
 {
     return rng_get_or_fault();
+}
+
+// rng_selftest()
+//
+// Boot-time proof that rng_get() -- the exact symbol libngu's
+// CHIP_TRNG_32() and the rest of the firmware's entropy consumers link
+// against -- enters the hardware read path above. Peripheral health
+// itself is enforced per-call by rng_get_or_fault(); here we only check
+// linkage. Runs before the Python VM exists, so failure is fatal.
+//
+extern void __fatal_error(const char *msg);     // NORETURN, ports/stm32/main.c
+
+void rng_selftest(void)
+{
+    rng_init();
+
+    // Wait at register level for the first word: proves entropy is flowing,
+    // and guarantees the rng_get() calls below find DRDY set and can never
+    // reach their mp_raise() timeout path (no VM/nlr handler installed
+    // yet, so an exception here would be an uncontrolled crash).
+    uint32_t start = HAL_GetTick();
+    while(!(RNG->SR & RNG_SR_DRDY)) {
+        if(HAL_GetTick() - start >= RNG_TIMEOUT_MS) {
+            __fatal_error("rng: no entropy");
+        }
+    }
+
+    rng_count_active = true;
+
+    // discard these warm-up words; not exposed anywhere
+    for(int i = 0; i < 8; i++) {
+        (void)rng_get();
+    }
+
+    rng_count_active = false;
+
+    if(rng_count != 8) {
+        // rng_get() did not pass through the hardware read path: it must
+        // have resolved to a non-hardware implementation
+        __fatal_error("rng: bad linkage");
+    }
+
+    // Reaching Python at all proves this passed (failures above are fatal),
+    // but record it so main.py can print "RNG selftest: PASS" once the
+    // console exists (mp_hal_stdout_tx_strn has no attached sink this
+    // early in boot).
+    rng_boot_selftest_ok = true;
 }
 
 /// \function pyb_rng_get()

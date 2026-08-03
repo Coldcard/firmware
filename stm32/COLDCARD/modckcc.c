@@ -186,6 +186,14 @@ STATIC mp_obj_t is_stm32l496(void)
 }
 MP_DEFINE_CONST_FUN_OBJ_0(is_stm32l496_obj, is_stm32l496);
 
+/// \function rng_ok()
+/// True if the boot-time RNG linkage self-test ran and passed.
+STATIC mp_obj_t rng_ok(void)
+{
+    return mp_obj_new_bool(rng_boot_selftest_ok);
+}
+MP_DEFINE_CONST_FUN_OBJ_0(rng_ok_obj, rng_ok);
+
 
 
 STATIC mp_obj_t vcp_enabled(mp_obj_t new_val)
@@ -262,6 +270,7 @@ STATIC const mp_rom_map_elem_t ckcc_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_oneway),              MP_ROM_PTR(&sec_oneway_gate_obj) },
     { MP_ROM_QSTR(MP_QSTR_is_simulator),        MP_ROM_PTR(&is_simulator_obj) },
     { MP_ROM_QSTR(MP_QSTR_is_stm32l496),        MP_ROM_PTR(&is_stm32l496_obj) },
+    { MP_ROM_QSTR(MP_QSTR_rng_ok),              MP_ROM_PTR(&rng_ok_obj) },
     { MP_ROM_QSTR(MP_QSTR_vcp_enabled),         MP_ROM_PTR(&vcp_enabled_obj) },
     { MP_ROM_QSTR(MP_QSTR_wipe_fs),             MP_ROM_PTR(&wipe_fs_obj) },
     { MP_ROM_QSTR(MP_QSTR_presume_green),       MP_ROM_PTR(&presume_green_obj) },
@@ -282,6 +291,10 @@ MP_REGISTER_MODULE(MP_QSTR_ckcc, ckcc_module, 1);
 void ckcc_early_init(void)
 {
     // Add system-wide init code here.
+
+    // Prove rng_get() is wired to the hardware TRNG before anything can
+    // consume entropy; hard-faults (no boot) otherwise.
+    rng_selftest();
 
     // Disable ^C to interrupt code.
     // cannot find where this might be set by other code to ^C.

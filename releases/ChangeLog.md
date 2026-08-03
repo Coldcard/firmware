@@ -1,6 +1,7 @@
 ## 4.2.1 - TBD
 
 - Bugfix: Detect RNG_SR_SEIS and RNG_SR_SECS, retry safely, and fail closed on persistent faults.
+- Enhancement: RNG self-test proving rng_get() enter the hardware read path. Brick device otherwise.
 
 ## 4.2.0 - Jul 31, 2026
 

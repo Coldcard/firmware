@@ -26,6 +26,12 @@ if 0:
 
 print("---\nColdcard Wallet from Coinkite Inc. (c) 2018-2021.\n")
 
+# boot-time RNG linkage self-test passed (device hard-faults otherwise);
+# printed here because the serial console has no sink earlier in boot
+import ckcc
+if hasattr(ckcc, 'rng_ok') and ckcc.rng_ok():
+    print("RNG selftest: PASS")
+
 # Setup OLED and get something onto it.
 from display import Display
 dis = Display()
