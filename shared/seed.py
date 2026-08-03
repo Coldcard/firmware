@@ -600,13 +600,19 @@ async def ephemeral_seed_generate_from_dice(nwords):
         await set_ephemeral_seed_words(words, origin='Dice')
 
 def generate_seed():
-    # Generate 32 bytes of best-quality high entropy TRNG bytes.
+    # Generate 32 bytes of best-quality high entropy from independent sources.
+    import callgate
 
     seed = ngu.random.bytes(32)
     assert len(set(seed)) > 4       # TRNG failure
 
-    # hash to mitigate any possible bias in TRNG
-    return ngu.hash.sha256d(seed)
+    a = callgate.read_rng(1)        # SE1
+    b = callgate.read_rng(2)        # SE2
+    assert len(a) == 32
+    assert len(b) == 8
+
+    # hash to combine the sources and mitigate any possible bias
+    return ngu.hash.sha256d(seed + a + b)
 
 async def make_new_wallet(nwords):
     # Pick a new random seed.
