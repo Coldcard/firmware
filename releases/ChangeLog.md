@@ -1,3 +1,24 @@
+## 4.2.1 - TBD
+
+- Bugfix: Detect RNG_SR_SEIS and RNG_SR_SECS, retry safely, and fail closed on persistent faults.
+
+## 4.2.0 - Jul 31, 2026
+
+**Urgent hotfix to correct a limited entropy bug**
+
+Please regenerate seeds only with this new version of the firmware and any
+later updates from today onwards.
+
+**Mk3 users must regenerate any seeds** made on earlier versions
+as their entropy is critically low at just ~40 bits.
+
+On **Mk4, Mk5 and Q entropy** may be as low as ~72 bits. This is
+well below our target of 128 bits.
+
+Follow the steps listed in
+[our blog announcement](https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/)
+to be safe, and please be careful not to cut corners or rush this process.
+
 ## 4.1.9 - Jun 26, 2023
 
 - Bugfix: QR codes could not be rendered in 4.1.8 release due to a regression.
