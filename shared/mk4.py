@@ -38,15 +38,15 @@ COLDCARD Virtual Disk
 
 def rng_seeding():
     # seed our RNG with entropy from secure elements
-    import callgate, ngu, ustruct
+    import callgate, ngu
 
     a = callgate.read_rng(1)        # SE1
     b = callgate.read_rng(2)        # SE2
 
-    n = ngu.hash.sha256d(a+b)
-    n, = ustruct.unpack('I', n[0:4])
-
-    ngu.random.reseed(n)
+    # Pass full sha256d digest. Truncating to 32 bits left most SE entropy
+    # on the floor and libngu reseed(int) only overwrote one yasmarang word.
+    # Requires libngu reseed(bytes) support (switck/libngu#65).
+    ngu.random.reseed(ngu.hash.sha256d(a+b))
         
 
 def init0():
