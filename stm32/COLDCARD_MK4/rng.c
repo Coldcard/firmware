@@ -53,6 +53,13 @@ static void rng_init(void) {
 
 #define RNG_TIMEOUT_MS      (10)
 #define RNG_MAX_ATTEMPTS    (3)
+
+// Clock-error flags (CEIS/CECS) are intentionally ignored: per RM0432
+// section 32.3.7, "the clock error has no impact on generated random
+// numbers", and ST's errata (ES0250/ES0335) confirm a clock error neither
+// stops generation nor invalidates RNG_DR when DRDY is set. A dead clock
+// still fails closed via the DRDY timeout below. CEIS is left set on
+// purpose: clearing it is a no-op while RNG interrupts stay disabled.
 #define RNG_SEED_ERROR_MASK (RNG_SR_SEIS | RNG_SR_SECS)
 
 static uint32_t last_value;
