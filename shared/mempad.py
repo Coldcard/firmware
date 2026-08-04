@@ -77,7 +77,13 @@ class MembraneNumpad(NumpadBase):
         # reset and re-start scanning keys
         self.waiting_for_any = False
         self.lp_time = utime.ticks_ms()
-        shuffle(self.scan_order)
+        # Scan-order randomisation is anti-Tempest hygiene, not a secret.
+        # rng_get() can now raise, and this runs from an IRQ callback before
+        # login, so a TRNG hiccup must not be able to take the keypad down.
+        try:
+            shuffle(self.scan_order)
+        except OSError:
+            pass
 
         self._scan_count = 0
         self._history = bytearray(NUM_ROWS * NUM_COLS)

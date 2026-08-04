@@ -31,6 +31,7 @@
  */
 
 #include <string.h>
+#include <stdbool.h>
 
 #include "py/obj.h"
 #include "py/runtime.h"
@@ -46,36 +47,113 @@ void random_buffer(uint8_t *p, size_t count);
 static void rng_init(void) {
     if (!(RNG->CR & RNG_CR_RNGEN)) {
         __HAL_RCC_RNG_CLK_ENABLE();
-
         RNG->CR |= RNG_CR_RNGEN;
-
-        // TODO: throw out some samples?
     }
 }
 
+#define RNG_TIMEOUT_MS      (10)
+#define RNG_MAX_ATTEMPTS    (3)
 
-#define RNG_TIMEOUT_MS (10)
+// Note on references: the Mk3 is an STM32L475, covered by RM0351, which
+// documents the shorter recovery sequence (clear SEIS, then clear and set
+// RNGEN). The 12-word pipeline flush below comes from the newer RM0432
+// wording and is a superset: harmless here, and it keeps this file
+// identical to the Mk4/Q version on master.
+
+// Clock-error flags (CEIS/CECS) are intentionally ignored: per RM0432
+// section 32.3.7 (the L4+ part; the Mk3 is an L475, see note below), "the clock error has no impact on generated random
+// numbers", and ST's errata (ES0250/ES0335) confirm a clock error neither
+// stops generation nor invalidates RNG_DR when DRDY is set. A dead clock
+// still fails closed via the DRDY timeout below. CEIS is left set on
+// purpose: clearing it is a no-op while RNG interrupts stay disabled.
+#define RNG_SEED_ERROR_MASK (RNG_SR_SEIS | RNG_SR_SECS)
 
 static uint32_t last_value;
 
-static uint32_t rng_get_or_fault(void)
+// Recover from a seed error.
+static void rng_recover(void)
 {
-    // Enable the RNG peripheral if it's not already enabled
-    rng_init();
+    // Ensure the peripheral is clocked before touching its registers.
+    __HAL_RCC_RNG_CLK_ENABLE();
 
-    // Wait for a new random number to be ready, takes on the order of 10us
+    // Clear sticky SEIS and cycle RNGEN (ST HAL recommendation).
+    RNG->SR &= ~RNG_SR_SEIS;
+    RNG->CR &= ~RNG_CR_RNGEN;
+    RNG->CR |= RNG_CR_RNGEN;
+
+    // Per RM0432 32.3.7: after clearing SEIS, read out 12 words from RNG_DR and
+    // discard each of them to clean the pipeline of pre-error residue.
+    // Bounded: if the error recurs or DRDY stops arriving, bail out and let
+    // the next attempt's flag checks and DRDY timeout handle it.
+    for (int i = 0; i < 12; i++) {
+        uint32_t start = HAL_GetTick();
+
+        while (!(RNG->SR & RNG_SR_DRDY)) {
+            if (RNG->SR & RNG_SEED_ERROR_MASK) {
+                return;
+            }
+            if (HAL_GetTick() - start >= RNG_TIMEOUT_MS) {
+                return;
+            }
+        }
+
+        (void)RNG->DR;
+    }
+}
+
+// Make one bounded attempt to obtain a trustworthy, non-zero word.
+static bool rng_try_once(uint32_t *value)
+{
     uint32_t start = HAL_GetTick();
 
-    while (!(RNG->SR & RNG_SR_DRDY)) {
+    // Seed errors can suppress DRDY, so check for them while polling.
+    while (1) {
+        uint32_t sr = RNG->SR;
+
+        if (sr & RNG_SEED_ERROR_MASK) {
+            return false;
+        }
+
+        if (sr & RNG_SR_DRDY) {
+            break;
+        }
+
         if (HAL_GetTick() - start >= RNG_TIMEOUT_MS) {
-            // hardware failure... do not return anything!
-            mp_raise_OSError(MP_EFAULT);
+            return false;
         }
     }
 
-    // Get and return the new random number
-    last_value = RNG->DR;
+    uint32_t sample = RNG->DR;
 
+    // Recheck after reading DR to close the polling race; zero is also suspect.
+    if (!sample || (RNG->SR & RNG_SEED_ERROR_MASK)) {
+        return false;
+    }
+
+    *value = sample;
+    return true;
+}
+
+static uint32_t rng_get_or_fault(void)
+{
+    rng_init();
+
+    // Retry transient failures, recovering only between attempts.
+    for (int attempt = 0; attempt < RNG_MAX_ATTEMPTS; attempt++) {
+        uint32_t value;
+
+        if (rng_try_once(&value)) {
+            last_value = value;
+            return last_value;
+        }
+
+        if (attempt + 1 < RNG_MAX_ATTEMPTS) {
+            rng_recover();
+        }
+    }
+
+    // Persistent hardware failure: never return suspect randomness.
+    mp_raise_OSError(MP_EFAULT);
     return last_value;
 }
 
