@@ -70,10 +70,29 @@ static void rng_recover(void)
     // Ensure the peripheral is clocked before touching its registers.
     __HAL_RCC_RNG_CLK_ENABLE();
 
-    // Clear sticky SEIS, then cycle RNGEN per the STM32L4 recovery sequence.
+    // Clear sticky SEIS and cycle RNGEN (ST HAL recommendation).
     RNG->SR &= ~RNG_SR_SEIS;
     RNG->CR &= ~RNG_CR_RNGEN;
     RNG->CR |= RNG_CR_RNGEN;
+
+    // RM0432 32.3.7: after clearing SEIS, read out 12 words from RNG_DR and
+    // discard each of them to clean the pipeline of pre-error residue.
+    // Bounded: if the error recurs or DRDY stops arriving, bail out and let
+    // the next attempt's flag checks and DRDY timeout handle it.
+    for (int i = 0; i < 12; i++) {
+        uint32_t start = HAL_GetTick();
+
+        while (!(RNG->SR & RNG_SR_DRDY)) {
+            if (RNG->SR & RNG_SEED_ERROR_MASK) {
+                return;
+            }
+            if (HAL_GetTick() - start >= RNG_TIMEOUT_MS) {
+                return;
+            }
+        }
+
+        (void)RNG->DR;
+    }
 }
 
 // Make one bounded attempt to obtain a trustworthy, non-zero word.
