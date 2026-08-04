@@ -270,7 +270,7 @@ STATIC const mp_rom_map_elem_t ckcc_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_oneway),              MP_ROM_PTR(&sec_oneway_gate_obj) },
     { MP_ROM_QSTR(MP_QSTR_is_simulator),        MP_ROM_PTR(&is_simulator_obj) },
     { MP_ROM_QSTR(MP_QSTR_is_stm32l496),        MP_ROM_PTR(&is_stm32l496_obj) },
-    { MP_ROM_QSTR(MP_QSTR_rng_ok),              MP_ROM_PTR(&rng_ok_obj) },
+    { MP_ROM_QSTR(MP_QSTR_rng_ok),               MP_ROM_PTR(&rng_ok_obj) },
     { MP_ROM_QSTR(MP_QSTR_vcp_enabled),         MP_ROM_PTR(&vcp_enabled_obj) },
     { MP_ROM_QSTR(MP_QSTR_wipe_fs),             MP_ROM_PTR(&wipe_fs_obj) },
     { MP_ROM_QSTR(MP_QSTR_presume_green),       MP_ROM_PTR(&presume_green_obj) },
