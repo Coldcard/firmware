@@ -42,9 +42,10 @@ def rng_seeding():
 
     a = callgate.read_rng(1)        # SE1
     b = callgate.read_rng(2)        # SE2
+    assert len(a) == 32
+    assert len(b) == 8
 
     n = ngu.hash.sha256d(a+b)
-    n, = ustruct.unpack('I', n[0:4])
 
     ngu.random.reseed(n)
         
