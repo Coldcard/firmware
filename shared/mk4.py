@@ -38,7 +38,7 @@ COLDCARD Virtual Disk
 
 def rng_seeding():
     # seed our RNG with entropy from secure elements
-    import callgate, ngu, ustruct
+    import callgate, ngu
 
     a = callgate.read_rng(1)        # SE1
     b = callgate.read_rng(2)        # SE2

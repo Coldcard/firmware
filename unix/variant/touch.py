@@ -52,6 +52,12 @@ class Touch:
                 for kn in range(NUM_ROWS * NUM_COLS):
                     numpad.is_pressed[kn] = (0 if kn not in pressed else 1)
 
+                if new_presses and numpad._mash_mode and numpad.waiting_for_any:
+                    # Emulate the raw column edge that real Q hardware captures
+                    # before process_chg_state receives its debounced state.
+                    numpad._mash_press_irq(None)
+                    numpad.waiting_for_any = False
+
                 # Q1 simulator sends keynumbers, from shared/charcodes.py
                 numpad.process_chg_state(new_presses)
             else:

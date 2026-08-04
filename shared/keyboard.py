@@ -87,8 +87,20 @@ class FullKeyboard(NumpadBase):
         # Begin scanning for events
         self._wait_any()
 
+    def start_mash(self):
+        super().start_mash()
+        self._wait_any()
+        for c in self.cols:
+            c.irq(self._mash_press_irq, Pin.IRQ_FALLING, hard=True)
+
+    def stop_mash(self):
+        super().stop_mash()
+        for c in self.cols:
+            c.irq(self.anypress_irq, Pin.IRQ_FALLING|Pin.IRQ_RISING)
+
     def _wait_any(self):
         # wait for any press.
+        self._mash_press_timestamp = None
         self.waiting_for_any = True
 
         for r in self.rows:
@@ -111,8 +123,13 @@ class FullKeyboard(NumpadBase):
         # CHALLENGE: Called at high rate (61Hz), but can do memory alloc.
         # - sample all keys once, record any that are pressed
         if self.waiting_for_any:
-            # do nothing in that mode
-            return
+            if not self._mash_mode or self._mash_press_timestamp is None:
+                # do nothing in that mode
+                return
+
+            # The hard column IRQ captured the edge. This soft LCD interrupt
+            # may now perform the normal allocation-heavy scan setup.
+            self._start_scan()
 
         for i in range(NUM_ROWS):
             row = self.scan_order[i]
@@ -184,10 +201,17 @@ class FullKeyboard(NumpadBase):
                 #print("KEYNUM %d is no-op (in this state)" % kn)
                 continue
 
+            if self._mash_mode and self._mash_press_timestamp is None:
+                # One raw edge is one timing sample, even if multiple Q1 keys
+                # are held during the same scan cycle.
+                continue
+
             if ch not in self._char_reported:
                 #print("KEY: event=%d => %c=0x%x" % (kn, ch, ord(ch)))
                 self._char_reported.add(ch)
-                self._key_event(ch)
+                timestamp = self._mash_press_timestamp if self._mash_mode else None
+                self._key_event(ch, timestamp)
+                self._mash_press_timestamp = None
 
                 self.lp_time = utime.ticks_ms()
 
@@ -226,7 +250,8 @@ class FullKeyboard(NumpadBase):
                 self._char_reported.clear()
                 self._key_event('')
 
-        if (utime.ticks_diff(utime.ticks_ms(), self.lp_time) > 250) and not any(self.is_pressed):
+        if (self._mash_mode or
+                utime.ticks_diff(utime.ticks_ms(), self.lp_time) > 250) and not any(self.is_pressed):
             # stop scanning now... nothing happening
             self._wait_any()
     
