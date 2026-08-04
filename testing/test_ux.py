@@ -3,7 +3,7 @@
 import pytest, time, os, re, hashlib, shutil, functools, ndef
 from binascii import b2a_hex
 from helpers import xfp2str, prandom
-from charcodes import KEY_QR, KEY_NFC, KEY_DELETE
+from charcodes import KEY_QR, KEY_NFC, KEY_DELETE, KEY_ENTER
 from constants import AF_CLASSIC, simulator_fixed_words, simulator_fixed_xfp
 from mnemonic import Mnemonic
 from bip32 import BIP32Node
@@ -241,6 +241,10 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
         gave += ch
         
     time.sleep(0.1)
+    screen = cap_screen()
+    digest = sha256(gave.encode('ascii')).hexdigest()
+    assert digest[:32] in screen
+    assert digest[32:] in screen
     press_select()
 
     time.sleep(0.1)
@@ -263,6 +267,7 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
         title, body = cap_story()
 
     target = f'Record these {nwords}'
+    assert 'Press (4)' not in body
     if is_q1:
         assert target in title
         words = [i[:4].upper() for i in seed_story_to_words(body)]
@@ -303,15 +308,128 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
 
 @pytest.mark.parametrize('multiple_runs', range(3))
 @pytest.mark.parametrize('nwords', [12, 24])
+@pytest.mark.parametrize('entropy_method', ['mash', 'dice', 'coin'])
 def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, expect_ftux,
                     cap_menu, get_secrets, unit_test, pass_word_quiz, multiple_runs,
-                    reset_seed_words, is_q1, seed_story_to_words):
+                    reset_seed_words, is_q1, seed_story_to_words, need_keypress,
+                    cap_screen, entropy_method, sim_exec, press_select):
     # generate a random wallet, and check seeds are what's shown to user, etc
     
     unit_test('devtest/clear_seed.py')
     m = cap_menu()
     pick_menu_item('New Seed Words')
     pick_menu_item(f'{nwords} Words')
+
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips', 'CANCEL']
+
+    def finish_entropy():
+        # Queue a finishing ENTER plus a lagging ENTER before the UX can run.
+        # collect_*_entropy must clear the second event before showing the words.
+        key = KEY_ENTER if is_q1 else 'y'
+        sim_exec("from glob import numpad; numpad.inject(%r); numpad.inject(%r)" % (key, key))
+
+    label, intro = {
+        'mash': ('Mash Keys', 'Your key choices and timing will be mixed into the seed.'),
+        'dice': ('Dice Rolls', 'Physical die rolls will be mixed into the seed.'),
+        'coin': ('Coin Flips', 'Physical coin flips will be mixed into the seed.'),
+    }[entropy_method]
+    pick_menu_item(label)
+    _, story = cap_story()
+    assert intro in story
+    press_select()
+    time.sleep(0.1)
+
+    if entropy_method == 'mash':
+        screen = cap_screen()
+        assert 'Mash Keys' in screen
+        assert ('0 / 50 mashes' if is_q1 else '0 / 50') in screen
+        if is_q1:
+            assert 'Press random keys' in screen
+
+        for i in range(49):
+            need_keypress(str(i % 10))
+
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert 'Mash Keys' in screen
+        assert ('49 / 50 mashes' if is_q1 else '49 / 50') in screen
+        need_keypress('9')
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert ('50 / 50 mashes' in screen and
+                'Keep mashing or ENTER when done' in screen) if is_q1 else \
+               '50  OK=Done' in screen
+        need_keypress('8')
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert ('51 / 50 mashes' in screen and
+                'Keep mashing or ENTER when done' in screen) if is_q1 else \
+               '51  OK=Done' in screen
+        finish_entropy()
+
+    elif entropy_method == 'dice':
+        screen = cap_screen()
+        assert ('Dice Rolls' if is_q1 else 'Roll Dice') in screen
+        assert ('0 / 50 rolls' if is_q1 else '0 / 50') in screen
+        if is_q1:
+            assert 'Enter each roll: 1-6' in screen
+
+        gave = ''
+        for i in range(49):
+            ch = str(1 + (i % 6))
+            need_keypress(ch)
+            gave += ch
+
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert ('49 / 50 rolls' if is_q1 else '49 / 50') in screen
+        digest = hashlib.sha256(gave.encode('ascii')).hexdigest()
+        assert digest[:32] not in screen
+        assert digest[32:] not in screen
+
+        need_keypress('2')
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert ('50 / 50 rolls' in screen and
+                'Keep rolling or ENTER when done' in screen) if is_q1 else \
+               '50  OK=Done' in screen
+        need_keypress('3')
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert ('51 / 50 rolls' in screen and
+                'Keep rolling or ENTER when done' in screen) if is_q1 else \
+               '51  OK=Done' in screen
+        finish_entropy()
+
+    elif entropy_method == 'coin':
+        screen = cap_screen()
+        assert ('Coin Flips' if is_q1 else 'Coin: 1=H 0=T') in screen
+        if is_q1:
+            assert '1 = Heads, 0 = Tails' in screen
+        assert ('0 / 128 flips' if is_q1 else '0 / 128') in screen
+
+        for i in range(127):
+            need_keypress('1' if i % 2 else '0')
+
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert ('Coin Flips' if is_q1 else 'Coin: 1=H 0=T') in screen
+        assert ('127 / 128 flips' if is_q1 else '127 / 128') in screen
+        need_keypress('1')
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert ('128 / 128 flips' in screen and
+                'Keep flipping or ENTER when done' in screen) if is_q1 else \
+               '128  OK=Done' in screen
+        need_keypress('0')
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert ('129 / 128 flips' in screen and
+                'Keep flipping or ENTER when done' in screen) if is_q1 else \
+               '129  OK=Done' in screen
+        finish_entropy()
+
+    time.sleep(0.1)
 
     title, body = cap_story()
     target = f'Record these {nwords} secret words!'
@@ -320,6 +438,7 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, expect_ftux,
     else:
         assert title == 'NO-TITLE'
         assert target in body
+    assert 'Press (4)' not in body
 
     if is_q1:
         words = seed_story_to_words(body)
@@ -340,6 +459,74 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, expect_ftux,
     assert v['mnemonic'].split(' ') == words
 
     reset_seed_words()
+
+
+def test_new_wallet_entropy_cancel(pick_menu_item, cap_menu, cap_story,
+                                   unit_test, press_cancel):
+    unit_test('devtest/clear_seed.py')
+    pick_menu_item('New Seed Words')
+    pick_menu_item('12 Words')
+
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips', 'CANCEL']
+    pick_menu_item('Mash Keys')
+    _, story = cap_story()
+    assert 'Your key choices and timing will be mixed into the seed.' in story
+    press_cancel()
+    time.sleep(0.1)
+
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips', 'CANCEL']
+    pick_menu_item('CANCEL')
+    time.sleep(0.1)
+
+    assert cap_menu()[0] == '12 Words'
+
+
+def test_new_wallet_rejects_biased_dice(pick_menu_item, cap_menu, unit_test,
+                                        need_keypress, press_select, cap_story):
+    unit_test('devtest/clear_seed.py')
+    pick_menu_item('New Seed Words')
+    pick_menu_item('12 Words')
+    pick_menu_item('Dice Rolls')
+    press_select()
+    time.sleep(0.1)
+
+    for _ in range(50):
+        need_keypress('1')
+    press_select()
+    time.sleep(0.1)
+
+    _, story = cap_story()
+    assert 'Distribution of dice rolls is not random' in story
+    assert 'Some numbers occurred more than 30% of the time' in story
+    press_select()
+    time.sleep(0.1)
+
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips', 'CANCEL']
+    pick_menu_item('CANCEL')
+
+
+def test_new_wallet_rejects_biased_coin(pick_menu_item, cap_menu, unit_test,
+                                        need_keypress, press_select, cap_story):
+    unit_test('devtest/clear_seed.py')
+    pick_menu_item('New Seed Words')
+    pick_menu_item('12 Words')
+    pick_menu_item('Coin Flips')
+    press_select()
+    time.sleep(0.1)
+
+    for _ in range(128):
+        need_keypress('1')
+    press_select()
+    time.sleep(0.1)
+
+    _, story = cap_story()
+    assert 'Distribution of coin flips is not random' in story
+    assert 'Heads or tails occurred more than 65% of the time' in story
+    press_select()
+    time.sleep(0.1)
+
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips', 'CANCEL']
+    pick_menu_item('CANCEL')
 
 
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
