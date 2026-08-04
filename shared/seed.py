@@ -17,9 +17,9 @@ from utils import xfp2str, parse_extended_key, swab32
 from utils import deserialize_secret, problem_file_line, wipe_if_deltamode
 from uhashlib import sha256
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, OK, X
-from ux import PressRelease, ux_input_text, show_qr_code
+from ux import PressRelease, ux_input_text, show_qr_code, ux_clear_keys
 from actions import goto_top_menu
-from stash import SecretStash, SensitiveValues
+from stash import SecretStash, SensitiveValues, blank_object
 from ubinascii import hexlify as b2a_hex
 from pwsave import PassphraseSaver, PassphraseSaverMenu
 from glob import settings, dis
@@ -27,11 +27,56 @@ from pincodes import pa
 from nvstore import SettingsObject
 from files import CardMissingError, needs_microsd
 from charcodes import KEY_QR, KEY_ENTER, KEY_CANCEL, KEY_NFC
+from exceptions import AbortInteraction
 from uasyncio import sleep_ms
 from ucollections import namedtuple
+from utime import ticks_diff
+from ustruct import pack
 
 # seed words lengths we support: 24=>256 bits, and recommended
 VALID_LENGTHS = (24, 18, 12)
+
+# Physical key-down events required before generating a new master seed.
+# The first press establishes the timing reference. Each of the following 64
+# inter-press gaps is conservatively credited with two bits; key choice gets
+# no entropy credit. The user may continue mashing beyond this minimum.
+MIN_MASH_PRESSES = const(65)
+MIN_DICE_ROLLS = const(50)
+MIN_COIN_FLIPS = const(128)
+
+# Versioned domain separators and entropy-method identifiers.
+# - per-method domain separator is derived: b'CC\x01' + method
+DOMAIN_SEED = b'CC\x01S'
+METHOD_MASH = b'M'
+METHOD_DICE = b'D'
+METHOD_COIN = b'C'
+
+BAD_DICE_MSG = ('Distribution of dice rolls is not random. '
+                'Some numbers occurred more than 30% of the time.')
+
+BAD_COIN_MSG = ('Distribution of coin flips is not random. '
+                'Heads or tails occurred more than 65% of the time.')
+
+MASH_ENTROPY_STORY = '''\
+Only the timing between presses is credited as entropy. Key choices are also mixed in, but are not counted, so repeating one key is valid. Do not enter a PIN or words.
+
+Each press after the first adds one timing gap, credited with two bits. Press at least 65 keys. You may keep mashing to add more timing entropy.
+
+Use unpredictable gaps when possible. After 65 presses, press ENTER/OK when done.'''
+
+DICE_ENTROPY_STORY = '''\
+Physical die rolls will be mixed into the seed.
+
+Use a real six-sided die and roll it again before every entry. Enter only the result shown. Do not make up rolls or use an app or computer. Reroll unclear or cocked rolls.
+
+You must enter at least 50 dice rolls.'''
+
+COIN_ENTROPY_STORY = '''\
+Physical coin flips will be mixed into the seed.
+
+Flip a real coin again before every entry. Press 1 for heads or 0 for tails. Do not alternate, choose results, or use an app or computer. Reflip unclear results.
+
+You must enter at least 128 coin flips.'''
 
 # maximum length for BIP-39 passphrase
 MAX_PASS_LEN = 100
@@ -387,7 +432,7 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
         low_entropy_msg += ", which is considered the minimum for %d word seeds," % nwords
     low_entropy_msg += " you need at least %d rolls."
 
-    # None is for papaer wallet private key - as it is 32 bytes of entropy we need 99 D6
+    # None is for paper wallet private key - as it is 32 bytes of entropy we need 99 D6
     if nwords in (24, None):
         threshold = 99
         sec_bit = 256
@@ -424,9 +469,7 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
             md.update(ch)
 
         elif ch in KEY_CANCEL+"x":
-            # Because the change (roll) has already been applied,
-            # only let them abort if it's early still
-            if count < 10 and judge_them:
+            if judge_them and count < 10:
                 return 0, seed
         elif ch in KEY_ENTER+"y":
             if count < threshold and judge_them:
@@ -451,13 +494,11 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
             if judge_them:
                 bad_dist = any((v / count) > 0.30 for _, v in counter.items())
                 if bad_dist:
-                    bad_dist_msg = ("Distribution of dice rolls is not random. "
-                                    "Some numbers occurred more than 30% of the time.")
                     if enforce:
-                        await ux_show_story(bad_dist_msg)
+                        await ux_show_story(BAD_DICE_MSG)
                         return 0, seed  # exit
                     else:
-                        ok = await ux_confirm(bad_dist_msg)
+                        ok = await ux_confirm(BAD_DICE_MSG)
                         if not ok:
                             redraw = True
                             continue
@@ -614,10 +655,189 @@ def generate_seed():
     # hash to combine the sources and mitigate any possible bias
     return ngu.hash.sha256d(seed + a + b)
 
+def update_entropy_screen(title, count, target, unit, action, prompt, mk_title=None):
+    # progress display while collecting user entropy
+    if version.has_qwerty:
+        line2 = '%d / %d %s' % (count, target, unit)
+        line3 = ('Keep %s or ENTER when done' % action) if count >= target else prompt
+        dis.fullscreen(title, percent=count / target, line2=line2, line3=line3)
+        return
+
+    line2 = ('%d  OK=Done' % count) if count >= target else ('%d / %d' % (count, target))
+    dis.fullscreen(mk_title or title, percent=count / target, line2=line2)
+
+# Specs for user-supplied entropy from dice rolls and coin flips; they share
+# collect_symbol_entropy() since their differences are pure data (menu label
+# is the title). Key mashing is not covered here: it has its own collector,
+# since its entropy comes from raw key timing, not symbols.
+SymbolEntropy = namedtuple('SymbolEntropy',
+    ('title', 'story', 'alphabet', 'min_events', 'method',
+     'max_freq', 'bad_msg', 'unit', 'action', 'prompt', 'mk_title'))
+
+DICE_ENTROPY = SymbolEntropy(
+    'Dice Rolls', DICE_ENTROPY_STORY, '123456', MIN_DICE_ROLLS, METHOD_DICE,
+    0.30, BAD_DICE_MSG, 'rolls', 'rolling', 'Enter each roll: 1-6', 'Roll Dice')
+
+COIN_ENTROPY = SymbolEntropy(
+    'Coin Flips', COIN_ENTROPY_STORY, '10', MIN_COIN_FLIPS, METHOD_COIN,
+    0.65, BAD_COIN_MSG, 'flips', 'flipping', '1 = Heads, 0 = Tails', 'Coin: 1=H 0=T')
+
+async def collect_symbol_entropy(spec):
+    # Collect supplemental user entropy from physical dice rolls or coin
+    # flips (spec: DICE_ENTROPY or COIN_ENTROPY). Supplemental only: the
+    # primary seed (TRNG + both SEs) is independent, so even zero bits here
+    # is safe.
+    md = sha256(b'CC\x01' + spec.method)
+    count = 0
+    counter = {}
+    done_keys = (KEY_ENTER + KEY_CANCEL) if version.has_qwerty else 'yx'
+    press = PressRelease(spec.alphabet + done_keys)
+
+    update_entropy_screen(spec.title, 0, spec.min_events,
+                          spec.unit, spec.action, spec.prompt, spec.mk_title)
+    ux_clear_keys()
+
+    while True:
+        ch = await press.wait()
+        if ch == (KEY_CANCEL if version.has_qwerty else "x"): return
+
+        if count >= spec.min_events and ch == (KEY_ENTER if version.has_qwerty else "y"):
+            break
+
+        if ch not in spec.alphabet: continue
+
+        counter[ch] = counter.get(ch, 0) + 1
+        md.update(ch.encode())
+        count += 1
+
+        update_entropy_screen(spec.title, count, spec.min_events,
+                              spec.unit, spec.action, spec.prompt, spec.mk_title)
+
+    if (max(counter.values()) / count) > spec.max_freq:
+        # Catch obviously invented or badly-biased sequences. This does not
+        # prove randomness; the independently-generated seed remains primary.
+        await ux_show_story(spec.bad_msg)
+        return None
+
+    await ux_dramatic_pause('Wait...', 1)
+    ux_clear_keys()
+
+    return md.digest()
+
+async def collect_mash_entropy():
+    # Peter Todd's push-button RNG: hash each raw press time delta.
+    # <https://petertodd.org/2014/push-button-rng>
+    # Supplemental entropy only: the primary seed (TRNG + both SEs) is
+    # independent, so even zero bits here is safe. The keypad drivers latch
+    # the raw GPIO edge in a hard IRQ before their ~50ms debounce, at CPU
+    # cycle resolution (~8.33ns at 120MHz). The first press receives no
+    # entropy credit; each following inter-press gap is conservatively credited
+    # with two bits. Human key-choice distribution receives no entropy credit.
+    from glob import numpad
+
+    md = sha256(b'CC\x01' + METHOD_MASH)
+    count = 0
+
+    cancel_key = KEY_CANCEL if version.has_qwerty else "x"
+    done_key = KEY_ENTER if version.has_qwerty else "y"
+
+    update_entropy_screen('Mash Keys', 0, MIN_MASH_PRESSES,
+                          'mashes', 'mashing', 'Press random keys')
+    ux_clear_keys()
+
+    try:
+        numpad.start_mash()
+        last = numpad.mash_ticks()
+        while True:
+            while numpad.empty():
+                await sleep_ms(2)
+            ch, now = await numpad.get_with_timestamp()
+            if ch == numpad.ABORT_KEY: raise AbortInteraction()
+            if ch == cancel_key: return
+
+            if count >= MIN_MASH_PRESSES and ch == done_key:
+                break
+
+            if not ch:
+                # release event: refresh progress display when idle
+                if numpad.empty():
+                    update_entropy_screen('Mash Keys', count, MIN_MASH_PRESSES,
+                                          'mashes', 'mashing', 'Press random keys')
+                continue
+
+            # Todd's construction uses raw edge timing, not the debounced
+            # release interval. The start-to-first-press delta is hashed but
+            # receives no entropy credit; later deltas are inter-press gaps.
+            # Count, interval and one-byte key code make every event framing
+            # explicit. Key identity is mixed in but receives no entropy credit.
+            gap = ticks_diff(now, last)
+            last = now
+            md.update(pack('<IIB', count, gap & 0xffffffff, ord(ch)))
+            count += 1
+
+            if numpad.empty():
+                update_entropy_screen('Mash Keys', count, MIN_MASH_PRESSES,
+                                      'mashes', 'mashing', 'Press random keys')
+    finally:
+        numpad.stop_mash()
+
+    await ux_dramatic_pause('Wait...', 1)
+    ux_clear_keys()
+
+    return md.digest()
+
 async def make_new_wallet(nwords):
-    # Pick a new random seed.
+    # Generate the primary seed first, then require one human entropy source.
     await ux_dramatic_pause('Generating...', 3)
-    seed = generate_seed()
+    base_seed = None
+    extra_entropy = None
+    mix = None
+    choices = MenuSystem([
+        MenuItem('Mash Keys', arg=METHOD_MASH),
+        MenuItem(DICE_ENTROPY.title, arg=DICE_ENTROPY),
+        MenuItem(COIN_ENTROPY.title, arg=COIN_ENTROPY),
+        MenuItem('CANCEL'),
+    ])
+    try:
+        base_seed = generate_seed()
+
+        while extra_entropy is None:
+            the_ux.push(choices)
+            try:
+                picked = await choices.wait_choice()
+            finally:
+                the_ux.pop()
+
+            # Handles both the CANCEL key and the displayed CANCEL item.
+            if picked is None or picked.arg is None:
+                return
+
+            if picked.arg == METHOD_MASH:
+                method = METHOD_MASH
+                spec = None
+                story = MASH_ENTROPY_STORY
+            else:
+                spec = picked.arg
+                method = spec.method
+                story = spec.story
+
+            prompt = '\n\nPress %s to start, %s to exit.' % (OK, X)
+            if await ux_show_story(story + prompt, title=picked.label) == 'x':
+                continue
+
+            if spec is None:
+                extra_entropy = await collect_mash_entropy()
+            else:
+                extra_entropy = await collect_symbol_entropy(spec)
+
+        mix = DOMAIN_SEED + method + base_seed + extra_entropy
+        seed = ngu.hash.sha256d(mix)
+
+    finally:
+        blank_object(base_seed)
+        blank_object(extra_entropy)
+        blank_object(mix)
+
     words = await approve_word_list(seed, nwords)
     if words:
         await commit_new_words(words)
@@ -665,29 +885,20 @@ async def approve_word_list(seed, nwords, ephemeral=False):
 
     words = bip39.b2a_words(seed).split(' ')
     assert len(words) == nwords
-    extra_msg = 'Press (4) to add some dice rolls into the mix. '
+    extra_msg = ''
     if ephemeral:
         # document quiz skipping if generating ephemeral seed
-        extra_msg += "Press (6) to skip word quiz. "
+        extra_msg = "Press (6) to skip word quiz. "
 
     while 1:
         # show the seed words
-        ch = await show_words(words, escape='46', extra=extra_msg, ephemeral=ephemeral)
+        ch = await show_words(words, escape='6', extra=extra_msg, ephemeral=ephemeral)
         if ch == 'x': 
             # user abort, but confirm it!
             if await ux_confirm("Throw away those words and stop this process?"):
                 return
             else:
                 continue
-
-        if ch == '4':
-            # dice roll mode
-            count, new_seed = await add_dice_rolls(0, seed, False)
-            if count:
-                seed = new_seed[0:16] if nwords == 12 else new_seed
-                words = bip39.b2a_words(seed).split(' ')
-
-            continue
 
         if ch == '6':
             # wants to skip the quiz (undocumented)

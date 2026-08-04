@@ -8,6 +8,18 @@ This lists the new changes that have not yet been published in a normal release.
   Elements with the STM32 TRNG (previously TRNG only).
 - Security Improvement: RNG is seeded with the full 256-bit digest of entropy
   from both Secure Elements (previously truncated to 32 bits).
+- Change: New master seeds now require extra user supplied entropy.
+    - Choose key mashing (based on [Peter Todd's Push-Button RNG](https://petertodd.org/2014/push-button-rng)),
+      physical dice rolls or physical coin flips.
+    - TRNG, SE1 and SE2 randomness is also mixed into the generated seed.
+    - Dice and coin results are checked for obviously bad distribution.
+    - Key mashing hashes raw GPIO press timing captured at CPU cycle
+      resolution (~8.33ns at 120MHz) before keypad debounce. Releases are ignored,
+      repeating one key is valid, and at least 65 presses are required. The first
+      press establishes the timing reference; each of the following 64 inter-press
+      gaps is conservatively credited with two bits. The full timing delta and key
+      identity are mixed in, but key identity receives no entropy credit. Users may
+      continue mashing beyond 65 presses to contribute additional timing entropy.
 - Bugfix: Detect RNG_SR_SEIS and RNG_SR_SECS, retry safely, and fail closed on persistent faults.
 - Bugfix: Prevent access to Seed Vault entries through Seed XOR restore in Delta Mode. Thanks to
   Rety for reporting this.
