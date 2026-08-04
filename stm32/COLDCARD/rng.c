@@ -70,7 +70,9 @@ static void rng_recover(void)
     // Ensure the peripheral is clocked before touching its registers.
     __HAL_RCC_RNG_CLK_ENABLE();
 
-    // Clear sticky SEIS, then cycle RNGEN per the STM32L4 recovery sequence.
+    // RM0351 27.3.7 recovery in full: clear sticky SEIS, then cycle RNGEN to
+    // reinitialize and restart the RNG. Unlike RM0432 (L4R/S), no pipeline
+    // flush is prescribed here.
     RNG->SR &= ~RNG_SR_SEIS;
     RNG->CR &= ~RNG_CR_RNGEN;
     RNG->CR |= RNG_CR_RNGEN;
