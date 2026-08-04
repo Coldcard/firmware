@@ -24,10 +24,22 @@ rng_recover(void)
     // Ensure the peripheral is clocked before touching its registers.
     __HAL_RCC_RNG_CLK_ENABLE();
 
-    // Clear sticky SEIS, then cycle RNGEN per the STM32L4 recovery sequence.
+    // Clear sticky SEIS and cycle RNGEN (ST HAL recommendation).
     RNG->SR &= ~RNG_SR_SEIS;
     RNG->CR &= ~RNG_CR_RNGEN;
     RNG->CR |= RNG_CR_RNGEN;
+
+    // RM0432 32.3.7: discard 12 words to clean the pipeline. The DRDY wait
+    // stays unbounded like rng_sample(): a dead clock remains a hard
+    // fail-closed wait; a recurring seed error bails to the next attempt.
+    for(int i = 0; i < 12; i++) {
+        while(!(RNG->SR & RNG_FLAG_DRDY)) {
+            if(RNG->SR & RNG_SEED_ERROR_MASK) {
+                return;
+            }
+        }
+        (void)RNG->DR;
+    }
 }
 
 // rng_setup()
