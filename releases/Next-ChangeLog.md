@@ -6,6 +6,8 @@ This lists the new changes that have not yet been published in a normal release.
 
 - Security Improvement: Master seed generation mixes entropy from both Secure
   Elements with the STM32 TRNG (previously TRNG only).
+- Security Improvement: RNG is seeded with the full 256-bit digest of entropy
+  from both Secure Elements (previously truncated to 32 bits).
 - Bugfix: Detect RNG_SR_SEIS and RNG_SR_SECS, retry safely, and fail closed on persistent faults.
 
 # Mk Specific Changes
