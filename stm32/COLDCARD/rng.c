@@ -175,6 +175,7 @@ void rng_selftest(void)
         }
     }
 
+    rng_count = 0;
     rng_count_active = true;
 
     // discard these warm-up words; not exposed anywhere
