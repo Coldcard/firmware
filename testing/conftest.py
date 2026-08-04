@@ -699,6 +699,21 @@ def press_select(dev, has_qwerty):
     return f
 
 @pytest.fixture
+def enter_mash_entropy(pick_menu_item, press_select, need_keypress):
+    def doit():
+        pick_menu_item('Mash Keys')
+        time.sleep(.1)
+        press_select()
+        time.sleep(.1)
+        for i in range(128):
+            need_keypress(str(i % 10))
+
+        time.sleep(.2)
+        press_select()  # done
+
+    return doit
+
+@pytest.fixture
 def press_cancel(need_keypress, has_qwerty):
     def doit(**kws):
         need_keypress(KEY_CANCEL if has_qwerty else 'x', **kws)
