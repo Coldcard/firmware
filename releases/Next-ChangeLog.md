@@ -8,8 +8,11 @@ This lists the new changes that have not yet been published in a normal release.
   Elements with the STM32 TRNG (previously TRNG only).
 - Security Improvement: RNG is seeded with the full 256-bit digest of entropy
   from both Secure Elements (previously truncated to 32 bits).
+- Security Improvement: libngu now uses a SHA-256 Hash_DRBG (NIST SP 800-90A)
+  instead of the Yasmarang PRNG.
 - Change: New master seeds now require extra user supplied entropy.
-    - Choose key mashing, physical dice rolls or physical coin flips.
+    - Choose key mashing (thanks to [@Roasbeef](https://github.com/Roasbeef)
+      for the idea), physical dice rolls or physical coin flips.
     - TRNG, SE1 and SE2 randomness is also mixed into the generated seed.
     - Dice, coin and key mash results are checked for obviously bad distribution.
 - Enhancement: Dice-only seed generation now warns that no hardware randomness is
