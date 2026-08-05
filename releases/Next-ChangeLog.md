@@ -8,6 +8,8 @@ This lists the new changes that have not yet been published in a normal release.
   Elements with the STM32 TRNG (previously TRNG only).
 - Security Improvement: RNG is seeded with the full 256-bit digest of entropy
   from both Secure Elements (previously truncated to 32 bits).
+- Security Improvement: libngu now uses a SHA-256 Hash_DRBG (NIST SP 800-90A)
+  instead of the Yasmarang PRNG.
 - Change: New master seeds now require extra user supplied entropy.
     - Choose key mashing (based on [Peter Todd's Push-Button RNG](https://petertodd.org/2014/push-button-rng)),
       physical dice rolls or physical coin flips.
