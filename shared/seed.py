@@ -50,6 +50,9 @@ DOMAIN_SEED = b'CC\x01S'
 METHOD_MASH = b'M'
 METHOD_DICE = b'D'
 METHOD_COIN = b'C'
+PURPOSE_MASTER = b'M'
+PURPOSE_EPHEMERAL = b'T'
+PURPOSE_CCC = b'C'
 
 BAD_DICE_MSG = ('Distribution of dice rolls is not random. '
                 'Some numbers occurred more than 30% of the time.')
@@ -812,9 +815,8 @@ async def collect_coin_entropy():
 
     return md.digest()
 
-async def make_new_wallet(nwords):
-    # Generate the primary seed first, then require one human entropy source.
-    await ux_dramatic_pause('Generating...', 3)
+async def generate_seed_with_user_entropy(purpose):
+    # Require one human entropy source and mix it with device-generated entropy.
     base_seed = None
     extra_entropy = None
     mix = None
@@ -829,6 +831,7 @@ async def make_new_wallet(nwords):
     ])
     try:
         base_seed = generate_seed()
+        await ux_dramatic_pause('Generating...', 3)
 
         while extra_entropy is None:
             the_ux.push(choices)
@@ -848,13 +851,19 @@ async def make_new_wallet(nwords):
 
             extra_entropy = await collector()
 
-        mix = DOMAIN_SEED + method + base_seed + extra_entropy
-        seed = ngu.hash.sha256d(mix)
+        mix = DOMAIN_SEED + purpose + method + base_seed + extra_entropy
+        return ngu.hash.sha256d(mix)
 
     finally:
         blank_object(base_seed)
         blank_object(extra_entropy)
         blank_object(mix)
+
+
+async def make_new_wallet(nwords):
+    seed = await generate_seed_with_user_entropy(PURPOSE_MASTER)
+    if seed is None:
+        return
 
     words = await approve_word_list(seed, nwords)
     if words:
@@ -873,12 +882,14 @@ async def ephemeral_seed_import(nwords):
         return WordNestMenu(nwords, done_cb=import_done_cb)
 
 async def ephemeral_seed_generate(nwords):
-    await ux_dramatic_pause('Generating...', 3)
-    seed = generate_seed()
+    seed = await generate_seed_with_user_entropy(PURPOSE_EPHEMERAL)
+    if seed is None:
+        return
+
     words = await approve_word_list(seed, nwords, ephemeral=True)
     if words:
         dis.fullscreen("Applying...")
-        await set_ephemeral_seed_words(words, origin="TRNG Words")
+        await set_ephemeral_seed_words(words, origin="Generated Words")
 
 async def set_seed_extended_key(extended_key):
     encoded, chain = xprv_to_encoded_secret(extended_key)
