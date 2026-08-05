@@ -55,7 +55,7 @@ firmware-signed.dfu: firmware-signed.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):$< $@
 
 #
-# Verify correct RNG code was built in.
+# Verify correct RNG code was built in and the bytes consumer reaches it.
 #
 NM = arm-none-eabi-nm
 .PHONY: rng-code-check
@@ -72,6 +72,31 @@ rng-code-check:
 		| grep -Eq '^[[:xdigit:]]+[[:space:]]+T[[:space:]]+rng_get$$'; then \
 		echo "ERROR: board rng.o does not define global rng_get"; \
 		printf '%s\n' "$$board_symbols"; \
+		exit 1; \
+	fi; \
+	libngu_random="$(BUILD_DIR)/libngu/random.o"; \
+	random_bytes_refs="$$($(OBJDUMP) -r -j .text.random_bytes \
+		"$$libngu_random")" || exit $$?; \
+	if ! printf '%s\n' "$$random_bytes_refs" \
+		| grep -Eq '[[:space:]]R_ARM_(THM_)?CALL[[:space:]]+my_random_bytes([+-].*)?$$'; then \
+		echo "ERROR: ngu.random.bytes does not call my_random_bytes"; \
+		printf '%s\n' "$$random_bytes_refs"; \
+		exit 1; \
+	fi; \
+	my_random_bytes_refs="$$($(OBJDUMP) -r -j .text.my_random_bytes \
+		"$$libngu_random")" || exit $$?; \
+	if ! printf '%s\n' "$$my_random_bytes_refs" \
+		| grep -Eq '[[:space:]]R_ARM_(THM_)?CALL[[:space:]]+checked_chip_trng_read([+-].*)?$$'; then \
+		echo "ERROR: my_random_bytes does not call checked_chip_trng_read"; \
+		printf '%s\n' "$$my_random_bytes_refs"; \
+		exit 1; \
+	fi; \
+	checked_trng_refs="$$($(OBJDUMP) -r -j .text.checked_chip_trng_read \
+		"$$libngu_random")" || exit $$?; \
+	if ! printf '%s\n' "$$checked_trng_refs" \
+		| grep -Eq '[[:space:]]R_ARM_(THM_)?CALL[[:space:]]+rng_get([+-].*)?$$'; then \
+		echo "ERROR: checked_chip_trng_read does not reach rng_get"; \
+		printf '%s\n' "$$checked_trng_refs"; \
 		exit 1; \
 	fi
 
