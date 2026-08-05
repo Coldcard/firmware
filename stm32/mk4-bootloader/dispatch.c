@@ -33,6 +33,19 @@
 #include "stm32l4xx_hal.h"
 
 
+// range_is_inside()
+//
+    static bool
+range_is_inside(uint32_t addr, uint32_t len, uint32_t base, uint32_t size)
+{
+    if(addr < base) return false;
+
+    uint32_t offset = addr - base;
+
+    // Subtraction-based bounds checks avoid overflow in addr + len.
+    return (offset < size) && (len <= (size - offset));
+}
+
 // good_addr()
 //
     static int
@@ -40,12 +53,10 @@ good_addr(const uint8_t *b, int minlen, int len, bool readonly)
 {
     uint32_t x = (uint32_t)b;
 
-    if(minlen) {
-        if(!b) return EFAULT;               // gave no buffer
-        if(len < minlen) return ERANGE;     // too small
-    }
-        
-    if((x >= SRAM1_BASE) && ((x+len) <= BL_SRAM_BASE)) {
+    if(!b) return EFAULT;                   // gave no buffer
+    if(len < minlen) return ERANGE;         // too small (also rejects negative lengths)
+
+    if(range_is_inside(x, (uint32_t)len, SRAM1_BASE, BL_SRAM_BASE - SRAM1_BASE)) {
         // ok: it's inside the SRAM areas, up to where we start
         return 0;
     }
@@ -54,7 +65,7 @@ good_addr(const uint8_t *b, int minlen, int len, bool readonly)
         return EPERM;
     }
 
-    if((x >= FIRMWARE_START) && (x - FIRMWARE_START) < FW_MAX_LENGTH_MK4) {
+    if(range_is_inside(x, (uint32_t)len, FIRMWARE_START, FW_MAX_LENGTH_MK4)) {
         // inside flash of main firmware (happens for QSTR's)
         return 0;
     }
@@ -111,7 +122,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
     // - mpy may provide a pointer to flash if we give it a qstr or small value, and if
     //   we're reading only, that's fine.
 
-    if(len_in > 1024) {     // arbitrary max, increase as needed
+    if((len_in < 0) || (len_in > 1024)) {     // arbitrary max, increase as needed
         rv = ERANGE;
         goto fail;
     }
@@ -565,7 +576,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
         case 25: {
             // mk4: usage of mcu key slots
-            REQUIRE_OUT(8);
+            REQUIRE_OUT(3 * sizeof(uint32_t));
 
             int *avail = (int *)(buf_io+0);
             int *consumed = (int *)(buf_io+4);
