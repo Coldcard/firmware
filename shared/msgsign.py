@@ -384,6 +384,11 @@ def sign_message_digest(digest, subpath, prompt, addr_fmt=AF_CLASSIC, pk=None):
             dis.progress_sofar(50, 100)
             pk = node.privkey()
             addr = ch.address(node, addr_fmt)
+
+            if sv.deltamode:
+                # Silently invalidate signatures made under the Delta PIN,
+                # matching transaction-signing behavior.
+                digest = ngu.hash.sha256d(digest)
     else:
         # if private key is provided, derivation subpath is ignored
         # and given private key is used for signing.
