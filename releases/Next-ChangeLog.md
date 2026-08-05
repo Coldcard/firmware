@@ -20,6 +20,8 @@ This lists the new changes that have not yet been published in a normal release.
       gaps is conservatively credited with two bits. The full timing delta and key
       identity are mixed in, but key identity receives no entropy credit. Users may
       continue mashing beyond 65 presses to contribute additional timing entropy.
+- Enhancement: Dice-only seed generation now warns that no hardware randomness is
+  included and the final hash shown on-screen must be kept secret.
 - New Feature: Allow uncompressed WIF keys in WIF Store
 - Enhancement: Can export WIF Store watch-only descriptor.
 - Enhancement: WIF Store address detection without the need

@@ -78,6 +78,13 @@ Flip a real coin again before every entry. Press 1 for heads or 0 for tails. Do 
 
 You must enter at least 128 coin flips.'''
 
+DICE_ONLY_WARNING = '''\
+These dice rolls will be the only source of randomness for your seed. No hardware-generated randomness is mixed in.
+
+The hash shown while rolling is SECRET. Anyone who sees or photographs the final hash can recreate your wallet and steal the funds.
+
+Keep the screen hidden from people and cameras. If you verify the hash elsewhere, use only a trusted offline device and erase all traces afterward.'''
+
 # maximum length for BIP-39 passphrase
 MAX_PASS_LEN = 100
 
@@ -513,6 +520,10 @@ async def new_from_dice(nwords):
     # Use lots of (D6) dice rolls to create seed entropy.
     # Note: only 2.585 bits of entropy per roll, so need lots!
     # 50 => 128bits, 99 => 256bits
+
+    prompt = '\n\nPress %s to continue, %s to exit.' % (OK, X)
+    if await ux_show_story(DICE_ONLY_WARNING + prompt, title='WARNING') == 'x':
+        return
 
     seed = b''
     count = 0
