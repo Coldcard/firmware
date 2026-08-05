@@ -15,6 +15,8 @@ This lists the new changes that have not yet been published in a normal release.
   Thanks to [@instagibbs](https://github.com/instagibbs) for reporting this issue.
 - Bugfix: Fixed PSBT uploads being mistaken for partial firmware uploads.
 - Bugfix: Prevent valid message signatures when using a Delta Mode PIN.
+- Bugfix: Harden callgate buffer validation against integer overflow and out-of-range access,
+  following a finding in the [Karma-X security review](https://karma-x.io/blog/post/75/).
 
 # Mk Specific Changes
 
