@@ -18,6 +18,8 @@ This lists the new changes that have not yet been published in a normal release.
       key is valid, and at least 128 presses are required. The full timing delta
       and key identity are mixed in, with a conservative one bit of entropy
       credited per accepted press.
+- Enhancement: Dice-only seed generation now warns that no hardware randomness is
+  included and the final hash shown on-screen must be kept secret.
 - Bugfix: Detect RNG_SR_SEIS and RNG_SR_SECS, retry safely, and fail closed on persistent faults.
 - Bugfix: Prevent access to Seed Vault entries through Seed XOR restore in Delta Mode. Thanks to
   Rety for reporting this.
