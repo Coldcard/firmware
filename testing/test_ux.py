@@ -229,6 +229,12 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
     pick_menu_item('Advanced')
 
     pick_menu_item(f'{nwords} Word Dice Roll')
+    title, warning = cap_story()
+    assert title == 'WARNING'
+    assert 'only source of randomness' in warning
+    assert 'final hash can recreate your wallet' in warning
+    press_select()
+    time.sleep(0.1)
 
     gave = ''
     for i in range(count):
