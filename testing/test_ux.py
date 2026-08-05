@@ -348,29 +348,29 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, expect_ftux,
     if entropy_method == 'mash':
         screen = cap_screen()
         assert 'Mash Keys' in screen
-        assert ('0 / 50 mashes' if is_q1 else '0 / 50') in screen
+        assert ('0 / 64 mashes' if is_q1 else '0 / 64') in screen
         if is_q1:
             assert 'Press random keys' in screen
 
-        for i in range(49):
+        for i in range(63):
             need_keypress(str(i % 10))
 
         time.sleep(0.1)
         screen = cap_screen()
         assert 'Mash Keys' in screen
-        assert ('49 / 50 mashes' if is_q1 else '49 / 50') in screen
+        assert ('63 / 64 mashes' if is_q1 else '63 / 64') in screen
         need_keypress('9')
         time.sleep(0.1)
         screen = cap_screen()
-        assert ('50 / 50 mashes' in screen and
+        assert ('64 / 64 mashes' in screen and
                 'Keep mashing or ENTER when done' in screen) if is_q1 else \
-               '50  OK=Done' in screen
+               '64  OK=Done' in screen
         need_keypress('8')
         time.sleep(0.1)
         screen = cap_screen()
-        assert ('51 / 50 mashes' in screen and
+        assert ('65 / 64 mashes' in screen and
                 'Keep mashing or ENTER when done' in screen) if is_q1 else \
-               '51  OK=Done' in screen
+               '65  OK=Done' in screen
         finish_entropy()
 
     elif entropy_method == 'dice':
@@ -533,6 +533,65 @@ def test_new_wallet_rejects_biased_coin(pick_menu_item, cap_menu, unit_test,
 
     assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips', 'CANCEL']
     pick_menu_item('CANCEL')
+
+
+def test_new_wallet_rejects_biased_mash(pick_menu_item, cap_menu, unit_test,
+                                        need_keypress, press_select, cap_story):
+    unit_test('devtest/clear_seed.py')
+    pick_menu_item('New Seed Words')
+    pick_menu_item('12 Words')
+    pick_menu_item('Mash Keys')
+    press_select()
+    time.sleep(0.1)
+
+    for _ in range(64):
+        need_keypress('1')
+    press_select()
+    time.sleep(0.1)
+
+    _, story = cap_story()
+    assert 'Distribution of keys is not random' in story
+    assert 'Some keys occurred more than 30% of the time' in story
+    press_select()
+    time.sleep(0.1)
+
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips', 'CANCEL']
+    pick_menu_item('CANCEL')
+
+
+def test_mash_entropy_includes_timing(goto_home, pick_menu_item, cap_story,
+                                      need_keypress, press_select, sim_exec,
+                                      unit_test, expect_ftux):
+    # Identical base seed and identical key sequence, twice. Only press
+    # timing may differ, so the resulting words must differ: proves that
+    # timing reaches the hash and keys alone cannot regenerate the seed.
+    unit_test('devtest/clear_seed.py')
+    sim_exec("import seed; seed._orig_gs = seed.generate_seed;"
+             " seed.generate_seed = lambda: bytes(32)")
+    try:
+        stories = []
+        for _ in range(2):
+            goto_home()
+            pick_menu_item('New Seed Words')
+            pick_menu_item('12 Words')
+            pick_menu_item('Mash Keys')
+            press_select()
+            for i in range(64):
+                need_keypress(str(i % 10))
+            press_select()
+            time.sleep(0.1)
+
+            _, body = cap_story()
+            stories.append(body)
+
+            # throw the words away, do not commit them
+            need_keypress('x')
+            press_select()
+            time.sleep(0.1)
+
+        assert stories[0] != stories[1]
+    finally:
+        sim_exec("import seed; seed.generate_seed = seed._orig_gs")
 
 
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])

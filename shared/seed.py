@@ -37,7 +37,9 @@ from ustruct import pack
 VALID_LENGTHS = (24, 18, 12)
 
 # Physical key-down events required before generating a new master seed.
-MIN_MASH_PRESSES = const(50)
+# Mash presses are credited just 2 bits each (see collect_mash_entropy),
+# so 64 presses => 128 bits of credited entropy.
+MIN_MASH_PRESSES = const(64)
 MIN_DICE_ROLLS = const(50)
 MIN_COIN_FLIPS = const(128)
 
@@ -49,16 +51,22 @@ DOMAIN_SEED = b'CC\x01S'
 METHOD_MASH = b'M'
 METHOD_DICE = b'D'
 METHOD_COIN = b'C'
+PURPOSE_MASTER = b'M'
+PURPOSE_EPHEMERAL = b'T'
+PURPOSE_CCC = b'C'
 
 BAD_DICE_MSG = ('Distribution of dice rolls is not random. '
                 'Some numbers occurred more than 30% of the time.')
+
+BAD_MASH_MSG = ('Distribution of keys is not random. '
+                'Some keys occurred more than 30% of the time.')
 
 MASH_ENTROPY_STORY = '''\
 Your key choices and timing will be mixed into the seed.
 
 Press different keys unpredictably. Vary the gaps and how long you hold each key. Do not type words, a PIN, sequences, keypad shapes, or a repeated rhythm.
 
-You must press at least 50 keys.'''
+You must press at least 64 keys.'''
 
 DICE_ENTROPY_STORY = '''\
 Physical die rolls will be mixed into the seed.
@@ -675,18 +683,20 @@ def update_entropy_screen(title, count, target, unit, action, prompt, mk_title=N
 async def collect_mash_entropy():
     # Collect supplemental entropy from physical key choices and timing.
     # Supplemental entropy only: the primary seed (TRNG + both SEs) is
-    # independent, so even zero bits here is safe. Realistic budget per
-    # press: ~2-2.5 bits key choice on Mk4, ~3-4 on Q1 (humans mash
-    # patterns, not uniform), plus timing: ~1-1.5 bits/event on Mk4
-    # (hold + gap), Q1 reports keys at release so gaps only. Timestamps
-    # are us-resolution but quantize to ~50ms scan cadence on both, and
-    # tempo correlates gaps. Total ~3-5 bits/press => ~150-200 bits at
-    # 50 mashes; a metronomic masher degrades to tens of bits.
+    # independent, so even zero bits here is safe. Each press is credited
+    # just 2 bits (MIN_MASH_PRESSES => 128 bits), well under the nominal
+    # ~3.4 bits of key choice on Mk4 (more on Q1), because humans mash
+    # patterns, not uniform distributions. Timing (hold + inter-press gap;
+    # ~1-1.5 bits/event, us-resolution but quantized to ~50ms scan cadence
+    # and correlated by tempo; Q1 reports keys at release, so gaps only)
+    # is real entropy we do not count at all - it is the safety margin.
+    # A metronomic masher degrades everything above to tens of bits.
     from glob import numpad
 
     md = sha256(DOMAIN_MASH)
     count = 0
     event_count = 0
+    counter = {}
 
     update_entropy_screen('Mash Keys', count, MIN_MASH_PRESSES,
                           'mashes', 'mashing', 'Press random keys')
@@ -709,11 +719,16 @@ async def collect_mash_entropy():
 
         if not ch: continue
 
+        counter[ch] = counter.get(ch, 0) + 1
         md.update(ch.encode())
         count += 1
 
         update_entropy_screen('Mash Keys', count, MIN_MASH_PRESSES,
                               'mashes', 'mashing', 'Press random keys')
+
+    if any((v / count) > 0.30 for v in counter.values()):
+        await ux_show_story(BAD_MASH_MSG)
+        return None
 
     await ux_dramatic_pause('Wait...', 1)
     ux_clear_keys()
@@ -803,9 +818,8 @@ async def collect_coin_entropy():
 
     return md.digest()
 
-async def make_new_wallet(nwords):
-    # Generate the primary seed first, then require one human entropy source.
-    await ux_dramatic_pause('Generating...', 3)
+async def generate_seed_with_user_entropy(purpose):
+    # Require one human entropy source and mix it with device-generated entropy.
     base_seed = None
     extra_entropy = None
     mix = None
@@ -820,6 +834,7 @@ async def make_new_wallet(nwords):
     ])
     try:
         base_seed = generate_seed()
+        await ux_dramatic_pause('Generating...', 3)
 
         while extra_entropy is None:
             the_ux.push(choices)
@@ -839,13 +854,19 @@ async def make_new_wallet(nwords):
 
             extra_entropy = await collector()
 
-        mix = DOMAIN_SEED + method + base_seed + extra_entropy
-        seed = ngu.hash.sha256d(mix)
+        mix = DOMAIN_SEED + purpose + method + base_seed + extra_entropy
+        return ngu.hash.sha256d(mix)
 
     finally:
         blank_object(base_seed)
         blank_object(extra_entropy)
         blank_object(mix)
+
+
+async def make_new_wallet(nwords):
+    seed = await generate_seed_with_user_entropy(PURPOSE_MASTER)
+    if seed is None:
+        return
 
     words = await approve_word_list(seed, nwords)
     if words:
@@ -864,12 +885,14 @@ async def ephemeral_seed_import(nwords):
         return WordNestMenu(nwords, done_cb=import_done_cb)
 
 async def ephemeral_seed_generate(nwords):
-    await ux_dramatic_pause('Generating...', 3)
-    seed = generate_seed()
+    seed = await generate_seed_with_user_entropy(PURPOSE_EPHEMERAL)
+    if seed is None:
+        return
+
     words = await approve_word_list(seed, nwords, ephemeral=True)
     if words:
         dis.fullscreen("Applying...")
-        await set_ephemeral_seed_words(words, origin="TRNG Words")
+        await set_ephemeral_seed_words(words, origin="Generated Words")
 
 async def set_seed_extended_key(extended_key):
     encoded, chain = xprv_to_encoded_secret(extended_key)

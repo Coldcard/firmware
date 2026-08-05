@@ -14,6 +14,8 @@ This lists the new changes that have not yet been published in a normal release.
     - Dice, coin and key mash results are checked for obviously bad distribution.
 - Enhancement: Dice-only seed generation now warns that no hardware randomness is
   included and the final hash shown on-screen must be kept secret.
+- Change: Generated Temporary Seeds and generated CCC key C now require extra
+  user supplied entropy.
 - Bugfix: Detect RNG_SR_SEIS and RNG_SR_SECS, retry safely, and fail closed on persistent faults.
 
 # Mk Specific Changes
