@@ -14,7 +14,7 @@ from ubinascii import hexlify as b2a_hex
 from chains import NLOCK_IS_TIME
 from utils import swab32, xfp2str, truncate_address, deserialize_secret, show_single_address
 from glob import settings, dis
-from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number, ux_aborted
+from ux import ux_confirm, ux_show_story, the_ux, OK, ux_enter_number, ux_aborted
 from menu import MenuSystem, MenuItem, start_chooser
 from seed import seed_words_to_encoded_secret
 from stash import SecretStash
@@ -861,7 +861,8 @@ phone with Internet access and 2FA app holding correct shared-secret.''',
 
 async def gen_or_import():
     # returns 12 words, or None to abort
-    from seed import WordNestMenu, generate_seed, approve_word_list, SeedVaultChooserMenu
+    from seed import WordNestMenu, generate_seed_with_user_entropy, approve_word_list
+    from seed import SeedVaultChooserMenu, PURPOSE_CCC
 
     msg = "Press %s to generate a new 12-word seed phrase to be used "\
           "as the Coldcard Co-Signing Secret (key C).\n\nOr press (1) to import existing "\
@@ -900,8 +901,10 @@ async def gen_or_import():
 
     elif ch == 'y':
         # normal path: pick 12 words, quiz them
-        await ux_dramatic_pause('Generating...', 3)
-        seed = generate_seed()
+        seed = await generate_seed_with_user_entropy(PURPOSE_CCC)
+        if seed is None:
+            return None
+
         words = await approve_word_list(seed, 12)
     else:
         return None

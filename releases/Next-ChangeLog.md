@@ -22,6 +22,8 @@ This lists the new changes that have not yet been published in a normal release.
       continue mashing beyond 65 presses to contribute additional timing entropy.
 - Enhancement: Dice-only seed generation now warns that no hardware randomness is
   included and the final hash shown on-screen must be kept secret.
+- Change: Generated Temporary Seeds and generated CCC key C now require extra
+  user supplied entropy.
 - New Feature: Allow uncompressed WIF keys in WIF Store
 - Enhancement: Can export WIF Store watch-only descriptor.
 - Enhancement: WIF Store address detection without the need

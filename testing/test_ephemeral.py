@@ -367,7 +367,8 @@ def verify_ephemeral_secret_ui(cap_story, cap_menu, dev, fake_txn, goto_home,
 @pytest.fixture
 def generate_ephemeral_words(goto_eph_seed_menu, pick_menu_item, press_select,
                              need_keypress, cap_story, settings_set, seed_story_to_words,
-                             ephemeral_seed_disabled_ui, confirm_tmp_seed, is_q1):
+                             ephemeral_seed_disabled_ui, confirm_tmp_seed, is_q1,
+                             enter_mash_entropy):
     def doit(num_words, dice=False, from_main=False, seed_vault=None, testnet=True):
         if testnet:
             netcode = "XTN"
@@ -383,6 +384,7 @@ def generate_ephemeral_words(goto_eph_seed_menu, pick_menu_item, press_select,
         pick_menu_item("Generate Words")
         if not dice:
             pick_menu_item(f"{num_words} Words")
+            enter_mash_entropy()
             time.sleep(0.1)
         else:
             pick_menu_item(f"{num_words} Word Dice Roll")
@@ -1575,7 +1577,7 @@ def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
                               need_keypress, word_menu_entry, settings_set,
                               confirm_tmp_seed, cap_menu, microsd_path,
                               restore_main_seed, get_identity_story, press_select,
-                              press_cancel, settings_remove):
+                              press_cancel, settings_remove, enter_mash_entropy):
     
     
     reset_seed_words()
@@ -1608,6 +1610,7 @@ def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
     # random temporary seed
     pick_menu_item("Generate Words")
     pick_menu_item(f"12 Words")
+    enter_mash_entropy()
     need_keypress("6")  # skip quiz
     press_select()  # yes - I'm sure
     confirm_tmp_seed(seedvault=False)
@@ -1658,7 +1661,8 @@ def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
     assert xfp_str == parsed_ident["xfp"]
 
 def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_menu,
-                       settings_get, goto_eph_seed_menu, need_keypress):
+                       settings_get, goto_eph_seed_menu, need_keypress,
+                       enter_mash_entropy):
     goto_home()
     pick_menu_item("Settings")
     pick_menu_item("Buried Settings")
@@ -1676,6 +1680,7 @@ def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_m
     goto_eph_seed_menu()
     pick_menu_item("Generate Words")
     pick_menu_item(f"12 Words")
+    enter_mash_entropy()
     time.sleep(0.1)
     need_keypress("6")  # skip quiz
     press_select()
