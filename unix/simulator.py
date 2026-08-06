@@ -969,7 +969,16 @@ Q1 specials:
 
         xterm_args.extend(['-l', '-lf', logfile])
 
-    xterm = subprocess.Popen(xterm_args + ['-e'] + cc_cmd,
+    # xterm only hosts the REPL console; the simulated screen is drawn with SDL
+    # and needs no X11. Without a display (ie. macOS without XQuartz) xterm exits
+    # immediately and takes the firmware down with it, so run the child directly.
+    if os.environ.get('DISPLAY') and shutil.which('xterm'):
+        console_cmd = xterm_args + ['-e'] + cc_cmd
+    else:
+        print("No X11 DISPLAY: running without the REPL console window.")
+        console_cmd = cc_cmd
+
+    xterm = subprocess.Popen(console_cmd,
                                 env=env,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                 pass_fds=pass_fds, shell=False)
