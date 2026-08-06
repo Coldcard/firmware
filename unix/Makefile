@@ -25,7 +25,10 @@ tags:
 
 # Make a vanilla copy of micropython (unix) for use with upip and comparsion purposes
 tools:
-	cd $(PORT_TOP) && $(MAKE) clean deplibs all
+	# axtls, not deplibs: deplibs also builds the bundled libffi, which is
+	# unused here (MICROPY_STANDALONE=0 links the system libffi via pkg-config)
+	# and whose aarch64 sysv.S no longer assembles under recent clang.
+	cd $(PORT_TOP) && $(MAKE) clean axtls all
 	cp $(PORT_TOP)/micropython ./micropython
 	cd $(PORT_TOP) && $(MAKE) clean
 
