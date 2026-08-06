@@ -58,6 +58,8 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Prevent access to Seed Vault entries through Seed XOR restore in Delta Mode. Thanks to
   Rety for reporting this.
 - Bugfix: Wipe seed in Delta Mode when saved BIP-39 passphrases are listed, instead of revealing them.
+- Bugfix: BIP-322 message signing now rejects non-ASCII and other unsupported
+  message text before approval. Thanks to @KirillCherikov for reporting.
 
 # Mk Specific Changes
 
