@@ -15,7 +15,10 @@ CFLAGS_EXTRA += -DMP_CONFIGFILE=\"boards/$(BOARD)/ckcc-port.h\"
 CFLAGS_EXTRA += -DCOLDCARD_DEBUG=$(DEBUG_BUILD)
 
 # NgU and uQR libraries
-NGU_NEEDS_CIFRA = 1
+NGU_NEEDS_CIFRA  = 1
+# Include libngu secp256k1 features required by Edge
+NGU_INCL_SCHNORR = 1
+NGU_INCL_MUSIG   = 1
 USER_C_MODULES = boards/$(BOARD)/c-modules
 
 # the bulk of the COLDCARD-specific code
