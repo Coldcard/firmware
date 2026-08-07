@@ -17,8 +17,8 @@ MICROPY_USE_READLINE = 1
 # btree module using Berkeley DB 1.xx
 MICROPY_PY_BTREE = 1
 
-# _thread module using pthreads
-MICROPY_PY_THREAD = 1
+# ngu.random holds mutable DRBG and source-check state.
+MICROPY_PY_THREAD = 0
 
 # Subset of CPython termios module
 MICROPY_PY_TERMIOS = 1
