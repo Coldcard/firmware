@@ -22,12 +22,11 @@ bkpw_min_len = const(32)
 # - limited by size of LFS area of flash, since all settings are held there
 MAX_BACKUP_FILE_SIZE = const(128*1024)     # bytes
 
-def render_backup_contents(bypass_tmp=False):
+def render_backup_contents():
     # simple text format: 
     #   key = value
     # or #comments
     # but value is JSON
-    current_tmp = None
     rv = StringIO()
 
     def COMMENT(val=None):
@@ -45,7 +44,7 @@ def render_backup_contents(bypass_tmp=False):
 
     COMMENT('Private key details: ' + chain.name)
 
-    with stash.SensitiveValues(bypass_tmp=bypass_tmp, enforce_delta=True) as sv:
+    with stash.SensitiveValues(enforce_delta=True) as sv:
         if sv.mode == 'words':
             ADD('mnemonic', bip39.b2a_words(sv.raw))
 
@@ -72,20 +71,6 @@ def render_backup_contents(bypass_tmp=False):
             for k,v in pairs:
                 ADD(k, v)
 
-        if bypass_tmp and pa.tmp_value:
-            current_tmp = pa.tmp_value[:]
-            pa.tmp_value = None
-            # we also need correct settings from main seed
-            if sv.mode == 'words':
-                nv = stash.SecretStash.encode(seed_phrase=sv.raw)
-            else:
-                assert sv.mode == "xprv"
-                nv = stash.SecretStash.encode(xprv=sv.node)
-
-            settings.set_key(nv)
-            settings.load()
-            stash.blank_object(nv)
-    
     COMMENT('Firmware version (informational)')
     date, vers, timestamp = version.get_mpy_version()[0:3]
     ADD('fw_date', date)
@@ -118,13 +103,6 @@ def render_backup_contents(bypass_tmp=False):
             ADD('hsm_policy', hsm.capture_backup())
 
     rv.write('\n# EOF\n')
-
-    if bypass_tmp and current_tmp:
-        # go back to tmp secret and its settings
-        stash.SensitiveValues.clear_cache()
-        pa.tmp_value = current_tmp
-        settings.set_key()
-        settings.load()
 
     return rv.getvalue()
 
@@ -404,27 +382,21 @@ def encrypt_7z_data(password, body, ext="txt"):
     return zz, hdr, footer
 
 
+async def confirm_tmp_in_effect(what):
+    # We always capture the seed in effect, never the master seed underneath it.
+    # Passphrase can be applied on top of another temporary seed, so we cannot
+    # offer master seed as an alternative - be clear about whose secret leaves.
+    if not pa.tmp_value:
+        return True
+
+    name = "BIP-39 passphrase" if stash.bip39_passphrase else "temporary seed"
+    return await ux_confirm("A %s is in effect, so %s will be of that seed." % (name, what))
+
 async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
-    from stash import bip39_passphrase
-
     pwd = None
-    bypass_tmp = False
 
-    if bip39_passphrase and pa.tmp_value:
-        # this is a BIP39 password ephemeral wallet
-        msg = ("BIP39 passphrase is in effect. Backup ignores passphrases "
-               "and produces backup of main seed. Press %s to back-up main wallet,"
-               " press (2) to back-up BIP39 passphrase wallet "
-               "(extended private key created via seed + pass)" % OK)
-        ch = await ux_show_story(msg, escape="2")
-        if ch == "x": return
-        if ch == "y":
-            bypass_tmp = True
-
-    elif pa.tmp_value:
-        if not await ux_confirm("A temporary seed is in effect, "
-                                "so backup will be of that seed."):
-            return
+    if not await confirm_tmp_in_effect("backup"):
+        return
 
     # first check if bkpw already defined on tmp seed settings
     stored_pwd, skip_quiz = await bkpw_workflow()
@@ -450,18 +422,17 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
             settings.set('bkpw', pwd)  # if on tmp save to tmp, do not update master
             settings.save()
 
-    return await write_complete_backup(pwd, fname_pattern, write_sflash=write_sflash,
-                                       bypass_tmp=bypass_tmp)
+    return await write_complete_backup(pwd, fname_pattern, write_sflash=write_sflash)
 
 async def write_complete_backup(pwd, fname_pattern, write_sflash=False,
-                                allow_copies=True, bypass_tmp=False):
+                                allow_copies=True):
     # Just do the writing
     from glob import dis
     from files import CardSlot
 
     # Show progress:
     dis.fullscreen('Encrypting...' if pwd else 'Generating...')
-    body = render_backup_contents(bypass_tmp=bypass_tmp).encode()
+    body = render_backup_contents().encode()
 
     gc.collect()
 
@@ -858,6 +829,9 @@ async def clone_write_data(*a):
         await ux_show_story("Start this process on the other Coldcard, which will write a file onto MicroSD card as the first step.\n\nInsert that card and try again here.")
         return
 
+    if not await confirm_tmp_in_effect("clone"):
+        return
+
     # pick our own temp keys for this encryption
     pair = ngu.secp256k1.keypair()
     my_pubkey = pair.pubkey().to_bytes(False)
@@ -865,7 +839,7 @@ async def clone_write_data(*a):
 
     fname = b2a_hex(my_pubkey).decode() + '-ccbk.7z'
 
-    await write_complete_backup(b2a_hex(session_key).decode(), fname, allow_copies=False, bypass_tmp=True)
+    await write_complete_backup(b2a_hex(session_key).decode(), fname, allow_copies=False)
 
     await ux_show_story("Done.\n\nTake this MicroSD card back to other Coldcard and continue from there.")
 
