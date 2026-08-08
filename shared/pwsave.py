@@ -5,7 +5,7 @@
 import stash, ujson, ngu, pyb, os, version, aes256ctr
 from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_dramatic_pause, ux_confirm, ux_show_story, OK, X
-from utils import xfp2str, problem_file_line, B2A
+from utils import xfp2str, problem_file_line, B2A, wipe_if_deltamode
 from menu import MenuItem, MenuSystem
 from glob import settings
 
@@ -192,6 +192,9 @@ class PassphraseSaverMenu(MenuSystem):
         # We have a list of xfp+pw fields. Make a menu.
         # Read file, decrypt and make a menu to show; OR return None
         # if any error hit.
+        # - menu leaks passphrase text and XFP of each hidden wallet
+        wipe_if_deltamode()
+
         pw_saver = PassphraseSaver()
         with CardSlot() as card:
             pw_saver._calc_key(card)
