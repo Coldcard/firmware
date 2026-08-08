@@ -73,6 +73,7 @@ This lists the new changes that have not yet been published in a normal release.
   download (signed txn, visualization, backup), require an encrypted session,
   and are invalidated by any upload, newly staged transaction, or new session.
   Thanks to [@drk1wi](https://github.com/drk1wi).
+- Change: When a BIP-39 passphrase is active, View Seed Words now shows only the effective extended private key instead of the underlying seed words.
 
 # Mk Specific Changes
 

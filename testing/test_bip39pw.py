@@ -363,7 +363,7 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
     enter_complex(passphrase, apply=True)
 
     tmp_seed = Mnemonic.to_seed(" ".join(sec), passphrase=passphrase)
-    tmp_node = BIP32Node.from_master_secret(tmp_seed)
+    tmp_node = BIP32Node.from_master_secret(tmp_seed, netcode="XTN")
     tmp_fp = tmp_node.fingerprint().hex().upper()
 
     time.sleep(.2)
@@ -390,6 +390,24 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
             press_select()
         else:
             press_select()  # do not store
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Danger Zone")
+    pick_menu_item("Seed Functions")
+    pick_menu_item("View Seed Words")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "secret seed words" in story
+    press_select()
+    time.sleep(.1)
+    _, story = cap_story()
+    assert tmp_node.hwif(as_private=True) in story
+    assert story.startswith("BIP-39 Passphrase in effect\n\n")
+    assert passphrase not in story
+    assert "Seed words" not in story
+    press_select()
+    goto_home()
 
     if seed_vault:
         # check correct meta in seed vault

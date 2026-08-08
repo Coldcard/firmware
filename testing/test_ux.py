@@ -494,7 +494,12 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
     reset_seed_words()
     if mode == 'words':
         set_bip39_pw(b39_word, reset=False)
-        words = simulator_fixed_words.split(" ")
+        if b39_word:
+            seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=b39_word)
+            node = BIP32Node.from_master_secret(seed, netcode="XTN")
+            expect = node.hwif(as_private=True)
+        else:
+            words = simulator_fixed_words.split(" ")
 
     else:
         if b39_word: return
@@ -520,6 +525,8 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
     title, body = cap_story()
     where = title if is_q1 else body
     assert 'Are you SURE' in where
+    assert 'secret seed words' in body
+    assert 'or extended private key' in body
     assert 'can control all funds' in body
     press_select()      # skip warning
     time.sleep(0.01)
@@ -528,7 +535,7 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
     if not is_q1:
         assert title == 'NO-TITLE'
 
-    if mode == 'words':
+    if mode == 'words' and not b39_word:
         assert '24' in (title if is_q1 else body)
 
         lines = body.split('\n')
@@ -537,30 +544,18 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
         else:
             assert lines[1:25] == ['%2d: %s' % (n+1, w) for n,w in enumerate(words)]
 
-        if b39_word:
-            if is_q1:
-                assert lines[9] == 'BIP-39 Passphrase:'
-                assert "*" in lines[10]
-                assert "Seed+Passphrase" in lines[12]
-                ek = lines[13]
-            else:
-                assert lines[26] == 'BIP-39 Passphrase:'
-                assert "*" in lines[27]
-                assert "Seed+Passphrase" in lines[29]
-                ek = lines[30]
-
-            seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=b39_word)
-            expect = BIP32Node.from_master_secret(seed, netcode="XTN")
-            esk = expect.hwif(as_private=True)
-            assert esk == ek
-        else:
-            assert "BIP-39 Passphrase" not in body
-
+        assert "BIP-39 Passphrase" not in body
         qr_expect = ' '.join(w[0:4].upper() for w in words)
 
     else:
         assert expect in body
         qr_expect = expect
+        if b39_word:
+            assert body.startswith("BIP-39 Passphrase in effect\n\n")
+            assert b39_word not in body
+            assert "Seed words" not in body
+        else:
+            assert "BIP-39 Passphrase" not in body
 
     if not is_q1:
         assert '(1) to view as QR Code' in body

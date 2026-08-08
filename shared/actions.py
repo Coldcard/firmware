@@ -612,7 +612,7 @@ new wallet.''', 'AGAIN...', confirm_key='4'):
 
 def render_master_secrets(mode, raw, node):
     # Render list of words, or XPRV / master secret to text.
-    import stash, chains
+    import chains
 
     c = chains.current_chain()
     qr_alnum = False
@@ -634,12 +634,6 @@ def render_master_secrets(mode, raw, node):
 
         msg += ux_render_words(words)
 
-        if stash.bip39_passphrase:
-            msg += '\n\nBIP-39 Passphrase:\n    *****'
-            if node:
-                msg += '\n\nSeed+Passphrase:\n%s' % c.serialize_private(node)
-
-
     elif mode == 'xprv':
         title = "Extended Private Key" if version.has_qwerty else None
         msg = c.serialize_private(node)
@@ -656,9 +650,9 @@ def render_master_secrets(mode, raw, node):
     return title, msg, qr, qr_alnum
 
 async def view_seed_words(*a):
-    if not await ux_confirm('The next screen will show the seed words'
-                            ' (and if defined, your BIP-39 passphrase).'
-                            '\n\nAnyone with knowledge of those words '
+    if not await ux_confirm('The next screen will show the secret seed words'
+                            ' (or extended private key).'
+                            '\n\nAnyone with knowledge of the secret '
                             'can control all funds in this wallet.'):
         return
 
@@ -666,26 +660,19 @@ async def view_seed_words(*a):
     from glob import dis, NFC
 
     dis.fullscreen("Wait...")
-    dis.busy_bar(True)
 
-    # preserve old UI where we show words + passphrase
-    # instead of just calculated seed + passphrase = extended privkey
-    # new: calculated xprv is now also shown for BIP39 passphrase wallet
-    raw = mode = None
-    if stash.bip39_passphrase:
-        # get main secret - bypass tmp
-        with stash.SensitiveValues(bypass_tmp=True, enforce_delta=True) as sv:
-            assert sv.mode == "words"
-            raw = sv.raw[:]
-            mode = sv.mode
+    # CHANGED: old UI where we show words + passphrase
+    # instead just calculated seed + passphrase = extended privkey for all BIP39 passphrase wallets
 
-        stash.SensitiveValues.clear_cache()
+    with stash.SensitiveValues(enforce_delta=True) as sv:
+        msg = ""
+        if stash.bip39_passphrase:
+            # on the top of the page - so visible on Mk4/5
+            msg += "BIP-39 Passphrase in effect\n\n"
 
-    with stash.SensitiveValues(bypass_tmp=False, enforce_delta=True) as sv:
-        dis.busy_bar(False)
-        title, msg, qr, qr_alnum = render_master_secrets(mode or sv.mode,
-                                                         raw or sv.raw,
-                                                         sv.node)
+        title, sub_msg, qr, qr_alnum = render_master_secrets(sv.mode, sv.raw, sv.node)
+        msg += sub_msg
+
         esc = "1"
         if not version.has_qwerty:
             msg += '\n\nPress (1) to view as QR Code'
@@ -708,7 +695,6 @@ async def view_seed_words(*a):
 
     stash.blank_object(qr)
     stash.blank_object(msg)
-    stash.blank_object(raw)
 
 async def export_seedqr(*a):
     # see standard: <https://github.com/SeedSigner/seedsigner/blob/dev/docs/seed_qr/README.md>
