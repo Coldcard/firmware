@@ -1417,7 +1417,7 @@ def test_ccc_challenge_qr_bad_checksum_crash(setup_ccc, goto_ccc_menu, cap_story
     scan_a_qr(bad_seed_qr)
     time.sleep(.5)
     press_select()
-
+    time.sleep(.1)
     title, story = cap_story()
     assert 'Sorry, those words are incorrect' in story
 

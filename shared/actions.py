@@ -543,9 +543,10 @@ async def convert_ephemeral_to_master(*a):
     from stash import bip39_passphrase
 
     words = settings.get("words", True)
-    _type = 'BIP-39 passphrase' if bip39_passphrase else 'temporary seed'
+    master_words = settings.master_get("words", True)
+    _type = 'BIP-39 passphrase wallet' if bip39_passphrase else 'temporary seed'
     msg = 'Convert currently used %s to master seed. Old master seed' % _type
-    if words or bip39_passphrase:
+    if master_words:
         msg += ' words themselves are erased forever, '
     else:
         msg += ' is erased forever, '
@@ -712,7 +713,7 @@ async def export_seedqr(*a):
 
     # Note: cannot reach this menu item if no words. If they are tmp, that's cool.
 
-    with stash.SensitiveValues(bypass_tmp=False, enforce_delta=True) as sv:
+    with stash.SensitiveValues(enforce_delta=True) as sv:
         if sv.mode != 'words':
             raise ValueError(sv.mode)
 

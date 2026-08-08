@@ -40,14 +40,23 @@ called `ckcc-backup.txt`, but the filename is now picked randomly.
 
 ## BIP39 Passphrase
 
-If BIP39 passphrase is active the default behavior is to back-up
-main wallet - not BIP39 passphrase wallet. From version `5.2.0`
-users can choose to back-up also BIP39 passphrase wallet.
+If BIP39 passphrase is active, the passphrase wallet itself is backed-up,
+as extended private key created from seed words plus passphrase. Neither
+the seed words nor the passphrase are part of such backup.
+
+Older versions defaulted to backing-up main wallet, and offered a choice
+between the two. That option is gone, because passphrase can be applied
+on top of another temporary seed, in which case main wallet is not the
+wallet the passphrase was applied to.
 
 ## Ephemeral Seeds
 
 If ephemeral seed is active the default behavior is to always 
 back-up ephemeral wallet instead of the main wallet.
+
+This applies to every path that captures the whole device: `Backup System`,
+`Clone Coldcard` and Key Teleport's `Full COLDCARD Backup`. All of them
+capture the seed in effect, and warn about it beforehand.
 
 ## Limitations
 
