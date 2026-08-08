@@ -408,8 +408,6 @@ class PinAttempt:
 
         # invalidate descriptor cache - upon new secret load
         glob.DESC_CACHE.clear()
-
-        bypass_tmp = False
         stash.bip39_passphrase = bool(bip39pw)
 
         # capture values we have already
@@ -420,7 +418,6 @@ class PinAttempt:
 
         if raw_secret is None:
             assert pa.tmp_value
-            bypass_tmp = True
             pa.tmp_value = None
             if blank:
                 # wipe current ephemeral secret settings slot
@@ -438,7 +435,7 @@ class PinAttempt:
 
         # Recalculate xfp/xpub values (depends both on secret and chain)
         try:
-            with stash.SensitiveValues(raw_secret, bypass_tmp=bypass_tmp) as sv:
+            with stash.SensitiveValues(raw_secret) as sv:
                 if chain is not None:
                     sv.chain = chain
 

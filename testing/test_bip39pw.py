@@ -315,7 +315,7 @@ def test_lockdown_ux(stype, pick_menu_item, set_bip39_pw, goto_home, is_q1,
     assert 'Make sure all duress wallets associated with previous seed are deleted' in story
     assert 'carried forward without being properly generated from new master seed.' in story
     if stype == "bip39pw":
-        assert "Convert currently used BIP-39 passphrase to master seed" in story
+        assert "Convert currently used BIP-39 passphrase wallet to master seed" in story
         assert "but the passphrase itself is erased" in story
 
     assert "Press (4) to prove you read to the end of this message and accept all consequences" in story
@@ -334,7 +334,7 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
                                      reset_seed_words, goto_eph_seed_menu, stype,
                                      enter_complex, cap_story, cap_menu,
                                      settings_set, seed_vault, press_select,
-                                     go_to_passphrase):
+                                     go_to_passphrase, press_cancel):
     passphrase = "@coinkite rulez!!"
     reset_seed_words()
     settings_set("seedvault", 1)
@@ -407,6 +407,18 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
     assert passphrase not in story
     assert "Seed words" not in story
     press_select()
+    goto_home()
+
+    # backup must be of the wallet in effect, no offer to back-up main seed
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Backup")
+    pick_menu_item("Backup System")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "A BIP-39 passphrase is in effect" in story
+    assert "so backup will be of that seed" in story
+    assert "main seed" not in story
+    press_cancel()
     goto_home()
 
     if seed_vault:

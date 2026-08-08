@@ -3,7 +3,7 @@
 # teleport.py - Magically transport extremely sensitive data between the
 #               secure environment of two Q's.
 #
-import ngu, aes256ctr, bip39, json, ndef, chains
+import ngu, aes256ctr, bip39, json, ndef, chains, stash
 from utils import xfp2str, deserialize_secret
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
@@ -16,7 +16,7 @@ from menu import MenuItem, MenuSystem
 from notes import NoteContentBase
 from sffile import SFFile
 from wallet import MiniScriptWallet
-from stash import SensitiveValues, SecretStash, blank_object, bip39_passphrase
+from stash import SensitiveValues, SecretStash, blank_object
 
 # One page github-hosted static website that shows QR based on URL contents pushed by NFC
 KT_DOMAIN = 'keyteleport.com'
@@ -539,7 +539,7 @@ class SecretPickerMenu(MenuSystem):
             # tmp seed, or maybe bip39 is in effect 
             # - share the current master secret, not the real master
             msg = 'Temp Secret (words)' if word_based_seed() else (
-                        'XPRV from Words+Passphrase' if bip39_passphrase else 'Temp XPRV Secret')
+                        'XPRV from Seed+Passphrase' if stash.bip39_passphrase else 'Temp XPRV Secret')
         elif has_se_secrets():
             # sharing real master secret
             msg = 'Master Seed Words' if word_based_seed() else 'Master XPRV'
@@ -591,12 +591,21 @@ class SecretPickerMenu(MenuSystem):
 
     async def share_full_backup(self, *a):
         # context, and warn them
-        ch = await ux_show_story("Sending complete backup, including master secret, "
-            "seed vault (if any), miniscript wallets, notes/passwords, and all settings! "
-            "The receiving "
-            "COLDCARD must already have the master seed wiped to be able to install "
-            "everything, otherwise only master secret and miniscripts are saved into a tmp seed. "
-            "OK to proceed?")
+        from pincodes import pa
+
+        if pa.tmp_value:
+            if stash.bip39_passphrase:
+                what = "BIP-39 Passphrase wallet"
+            else:
+                what = "current active temporary secret"
+        else:
+            what = "master secret, seed vault (if any)"
+
+        ch = await ux_show_story("Sending complete backup, including %s, miniscript wallets,"
+                                 " notes/passwords, and all settings! The receiving COLDCARD"
+                                 " must already have the master seed wiped to be able to install"
+                                 " everything, otherwise only the transferred secret and miniscripts"
+                                 " are saved into a temporary seed. OK to proceed?" % what)
         if ch != 'y': return
 
         from backups import render_backup_contents
@@ -604,7 +613,7 @@ class SecretPickerMenu(MenuSystem):
         dis.fullscreen("Buiding Backup...")
 
         # renders a text file, with rather a lot of comments; strip them
-        bkup = render_backup_contents(bypass_tmp=True)
+        bkup = render_backup_contents()
         out = []
         for ln in bkup.split('\n'):
             if not ln: continue
@@ -619,7 +628,7 @@ class SecretPickerMenu(MenuSystem):
 
         dis.fullscreen("Wait...")
 
-        with SensitiveValues(bypass_tmp=False, enforce_delta=True) as sv:
+        with SensitiveValues(enforce_delta=True) as sv:
             raw = bytearray(sv.secret)
             xfp = xfp2str(sv.get_xfp())
 

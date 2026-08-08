@@ -762,7 +762,10 @@ def test_send_backup(testcase, rx_start, tx_start, cap_menu, enter_complex, pick
 
     title, body = cap_story()
 
-    assert 'Sending complete backup' in body
+    assert ('Sending complete backup, including master secret, seed vault (if any), '
+            'miniscript wallets' in body)
+    assert 'otherwise only the transferred secret and miniscripts' in body
+    assert ',,' not in body
 
     press_select()
 
@@ -801,6 +804,28 @@ def test_send_backup(testcase, rx_start, tx_start, cap_menu, enter_complex, pick
         restore_backup_unpacked()
         assert settings_get('notes') == notes
         settings_set('notes', [])
+
+
+def test_send_backup_tmp_story(rx_start, tx_start, pick_menu_item, cap_story, press_cancel,
+                               generate_ephemeral_words, set_bip39_pw, restore_main_seed):
+    def check_story(expected):
+        code, rx_pubkey = rx_start()
+        tx_start(rx_pubkey, code)
+        pick_menu_item('Full COLDCARD Backup')
+
+        _, body = cap_story()
+        assert ('Sending complete backup, including %s, miniscript wallets' % expected) in body
+        assert 'otherwise only the transferred secret and miniscripts' in body
+        assert ',,' not in body
+        press_cancel()
+
+    generate_ephemeral_words(num_words=12, from_main=True, seed_vault=False)
+    check_story('current active temporary secret')
+    restore_main_seed()
+
+    set_bip39_pw('teleport-test')
+    check_story('BIP-39 Passphrase wallet')
+    restore_main_seed()
 
 
 def test_teleport_backup_invalid_raw_secret(grab_payload, rx_complete, goto_home,

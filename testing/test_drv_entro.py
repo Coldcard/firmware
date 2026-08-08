@@ -43,7 +43,8 @@ def derive_bip85_secret(goto_home, press_select, pick_menu_item, cap_story, ente
         press_select()
         time.sleep(0.1)
         title, story = cap_story()
-        if "You have a temporary seed active - deriving from temporary" in story:
+        if (("You have a temporary seed active - deriving from temporary" in story)
+                or ("it will be wrapped into the new secret" in story)):
             press_select()
 
         time.sleep(0.1)
@@ -119,6 +120,24 @@ def derive_bip85_secret(goto_home, press_select, pick_menu_item, cap_story, ente
         return can_import, story
 
     return doit
+
+
+def test_bip39_passphrase_warning(set_bip39_pw, goto_home, pick_menu_item, cap_story,
+                                  press_select, press_cancel, reset_seed_words, is_q1):
+    set_bip39_pw("bip85-test")
+
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('Derive Seed B85' if not is_q1 else 'Derive Seeds (BIP-85)')
+    press_select()
+    time.sleep(.1)
+
+    _, story = cap_story()
+    assert "You have a BIP-39 passphrase set right now" in story
+    assert "it will be wrapped into the new secret" in story
+
+    press_cancel()
+    reset_seed_words()
 
 
 @pytest.fixture

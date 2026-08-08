@@ -108,13 +108,9 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
 
         title, body = cap_story()
         if st:
-            if st == "b39pass":
-                assert "BIP39 passphrase is in effect" in body
-                assert "ignores passphrases and produces backup of main seed" in body
-                assert "(2) to back-up BIP39 passphrase wallet" in body
-            if st == "eph":
-                assert "A temporary seed is in effect" in body
-                assert "so backup will be of that seed" in body
+            name = "BIP-39 passphrase" if st == "b39pass" else "temporary seed"
+            assert f"A {name} is in effect" in body
+            assert "so backup will be of that seed" in body
 
             press_select()
             time.sleep(.1)
@@ -267,8 +263,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     title, body = cap_story()
 
     if st == "b39pass" and multisig:
-        # correct settings switch back?
-        # multisig is only in main wallet
+        # miniscript wallet is only in main wallet
         # must not be copied from main to b39pass
         # must not be available after backup done
         assert not get_setting('miniscript', None)
@@ -308,7 +303,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     verify_backup_file(fn)
     decrypted = check_and_decrypt_backup(fn, words)
     avail_settings = []
-    if seedvault and (st in [None, "b39pass"]):
+    if seedvault and (st is None):
         assert "seedvault" in decrypted
         assert "seeds" in decrypted
         avail_settings.append("seeds")
@@ -322,7 +317,8 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         time.sleep(.01)
 
     # test verify on device (CRC check)
-    if multisig:
+    if multisig and (st != "b39pass"):
+        # miniscript wallet is in main wallet only, but backup is of the b39pass wallet
         avail_settings.append("miniscript")
 
     restore_backup_cs(files[0], words, avail_settings=avail_settings,
@@ -413,7 +409,7 @@ def test_backup_ephemeral_wallet(stype, pick_menu_item, press_select, goto_home,
 
 @pytest.mark.parametrize('seedvault', [False, True])
 @pytest.mark.parametrize("passphrase", ["@coinkite rulez!!", "!@#!@", "AAAAAAAAAAA"])
-def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keypress,
+def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, press_select,
                              goto_home, cap_story, pass_word_quiz, get_setting,
                              verify_backup_file, microsd_path, check_and_decrypt_backup,
                              sim_execfile, unit_test, word_menu_entry, cap_menu,
@@ -431,10 +427,9 @@ def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keyp
     pick_menu_item("Backup System")
     time.sleep(.1)
     title, story = cap_story()
-    assert "BIP39 passphrase is in effect" in story
-    assert "ignores passphrases and produces backup of main seed" in story
-    assert "(2) to back-up BIP39 passphrase wallet" in story
-    need_keypress("2")
+    assert "A BIP-39 passphrase is in effect" in story
+    assert "so backup will be of that seed" in story
+    press_select()
     time.sleep(.1)
     title, story = cap_story()
     if "Use same backup file password as last time?" in story:
@@ -465,7 +460,7 @@ def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keyp
     assert "seeds" not in contents
     assert simulator_fixed_words not in contents
     assert simulator_fixed_tprv not in contents
-    assert target == contents
+    assert sorted(target.splitlines()) == sorted(contents.splitlines())
     seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=passphrase)
     expect = BIP32Node.from_master_secret(seed, netcode="XTN")
     esk = expect.hwif(as_private=True)
@@ -592,6 +587,57 @@ def test_clone_start(reset_seed_words, pick_menu_item, cap_story, goto_home, src
     os.remove(f"{sd_dir}/{fname}")
 
     # TODO check file made is a good backup, with correct password
+
+
+@pytest.mark.parametrize("b39pass", [False, True])
+def test_clone_start_tmp_seed(b39pass, reset_seed_words, pick_menu_item, cap_story, goto_home,
+                              src_root_dir, sim_root_dir, generate_ephemeral_words, set_bip39_pw,
+                              press_cancel, press_select, settings_set):
+    # clone is of the seed in effect, and says so before writing anything
+    sd_dir = f"{sim_root_dir}/MicroSD"
+    fname = "ccbk-start.json"
+    reset_seed_words()
+    settings_set("seedvault", 0)
+    sec = generate_ephemeral_words(24, from_main=True, seed_vault=False)
+    if b39pass:
+        # passphrase on top of the temporary seed - master seed is not its parent
+        set_bip39_pw("coinkite", reset=False, on_tmp=True)
+
+    goto_home()
+    shutil.copy(f"{src_root_dir}/testing/data/{fname}", sd_dir)
+    before = {i for i in os.listdir(sd_dir) if i.endswith(".7z")}
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Backup")
+    pick_menu_item("Clone Coldcard")
+    time.sleep(.2)
+    title, story = cap_story()
+    name = "BIP-39 passphrase" if b39pass else "temporary seed"
+    assert f"A {name} is in effect" in story
+    assert "so clone will be of that seed" in story
+    assert "main seed" not in story
+
+    press_cancel()
+    time.sleep(.2)
+    # nothing written when refused (stale clone files are purged before this point)
+    after = {i for i in os.listdir(sd_dir) if i.endswith(".7z")}
+    assert not (after - before)
+
+    # accept, and the file is written from the seed in effect
+    pick_menu_item("Clone Coldcard")
+    time.sleep(.2)
+    press_select()
+    time.sleep(1)
+    title, story = cap_story()
+    assert "Done" in story
+    assert "Take this MicroSD card back to other Coldcard" in story
+    after = {i for i in os.listdir(sd_dir) if i.endswith(".7z")}
+    assert len(after - before) == 1
+
+    goto_home()
+    for fn in (after - before):
+        os.remove(f"{sd_dir}/{fn}")
+    os.remove(f"{sd_dir}/{fname}")
+    reset_seed_words()
 
 
 def test_bkpw_override(reset_seed_words, override_bkpw, goto_home, pick_menu_item,

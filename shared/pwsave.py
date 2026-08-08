@@ -112,7 +112,7 @@ class PassphraseSaverMenu(MenuSystem):
         from seed import set_bip39_passphrase
         from pincodes import pa
 
-        bypass_tmp = True
+        bypass_tmp = bool(pa.tmp_value)
         pw, expect_xfp = item.arg
         if pa.tmp_value and settings.get("words", True):
             xfp = settings.get("xfp", 0)
