@@ -25,6 +25,7 @@ This lists the new changes that have not yet been published in a normal release.
   Thanks to [@drk1wi](https://github.com/drk1wi).
 - Change: When a BIP-39 passphrase is active, View Seed Words now shows only the effective extended private key instead of the underlying seed words.
 - Change: Backup System, Clone Coldcard, and Key Teleport’s Full COLDCARD Backup now capture the wallet secret currently in effect, including temporary seeds and BIP-39 passphrase wallets, and warn before export.
+- Bugfix: View Seed Words and backup workflows incorrectly treated the master seed as the parent of every BIP-39 passphrase wallet. When a passphrase was applied to a temporary seed, they could not access that immediate parent seed.
 
 # Mk Specific Changes
 
