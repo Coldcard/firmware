@@ -278,7 +278,7 @@ class ColdcardSimulator:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        time.sleep(start_wait or SIM_INIT_WAIT)
+        time.sleep(SIM_INIT_WAIT if start_wait is None else start_wait)
         if self.segregate:
             self.socket = "/tmp/ckcc-simulator-%d.sock" % self.proc.pid
         atexit.register(self.stop)
@@ -471,7 +471,22 @@ def main():
 
                     q_chunks.append((sim, mn, mod_add, k, ld))
 
-                time.sleep(5)
+                deadline = time.monotonic() + 30
+                for sim, mn, mod_add, _, log_dir in q_chunks:
+                    try:
+                        while not os.path.exists(sim.socket):
+                            if sim.proc.poll() is not None:
+                                raise RuntimeError(f"Simulator exited before creating {sim.socket}")
+                            if time.monotonic() >= deadline:
+                                raise TimeoutError(f"Simulator did not create {sim.socket}")
+                            time.sleep(0.1)
+                    except (RuntimeError, TimeoutError) as exc:
+                        out_log_path = f"{log_dir}/%s.log" % (mn + mod_add)
+                        with open(out_log_path, "w") as out_fd:
+                            out_fd.write("short test summary info\n")
+                            out_fd.write(f"ERROR {mn + mod_add} - {type(exc).__name__}: {exc}\n")
+                        raise
+
                 for sim, mn, mod_add, k, log_dir in q_chunks:
                     assert sim.socket
                     out_log_path = f"{log_dir}/%s.log" % (mn + mod_add)
