@@ -41,13 +41,14 @@ called `ckcc-backup.txt`, but the filename is now picked randomly.
 ## BIP39 Passphrase
 
 If BIP39 passphrase is active, the passphrase wallet itself is backed-up,
-as extended private key created from seed words plus passphrase. Neither
-the seed words nor the passphrase are part of such backup.
+as an extended private key (ie. a XPRV) created from seed words plus
+passphrase. Neither the seed words nor the passphrase are part of such backup.
 
-Older versions defaulted to backing-up main wallet, and offered a choice
-between the two. That option is gone, because passphrase can be applied
-on top of another temporary seed, in which case main wallet is not the
-wallet the passphrase was applied to.
+Before versions 5.6.1 (Mk4/Mk5) and 1.5.1Q (Q1), backups defaulted to the
+main wallet. Versions supporting passphrase-wallet backups offered a choice
+between the two. That option is gone, because passphrase can be applied on
+top of another temporary seed, in which case main wallet is not the wallet
+the passphrase was applied to.
 
 ## Ephemeral Seeds
 
@@ -229,4 +230,3 @@ setting.terms_ok = 1
 As you can see, it is a simple text file and if you needed to access your funds
 without the help of a Coldcard, it would be a simple matter to import either the `xprv`
 (BIP32 master) or the mnemonic (BIP39) into another wallet system.
-
