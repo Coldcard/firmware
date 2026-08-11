@@ -6,16 +6,9 @@ Please report security vulnerabilities **privately**. Do not open a public issue
 or pull request describing a suspected vulnerability, as that can expose users
 before a fix is available.
 
-Preferred channels, in order:
-
-1. **GitHub private vulnerability reporting** for this repository
-   (the repository *Security* tab, "Report a vulnerability"). Enabling this gives
-   researchers a private, authenticated channel with no shared inbox.
-2. If that is not available, email the security contact below and, where possible,
-   encrypt the report with the project's PGP key.
-
-- Security contact: `<add address>`
-- PGP key / fingerprint: `<add link or fingerprint>`
+Email security@coinkite.com, following the
+[responsible disclosure policy](https://coinkite.com/responsible-disclosure)
+(PGP: start with a cleartext message containing your public key).
 
 ## What to include
 
