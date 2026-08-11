@@ -864,7 +864,18 @@ class MultisigWallet(WalletABC):
 
         # serialize xpub w/ BIP-32 standard now.
         # - this has effect of stripping SLIP-132 confusion away
-        xpubs.append((xfp, deriv, chain.serialize_public(node, AF_P2SH)))
+        here = chain.serialize_public(node, AF_P2SH)
+
+        # reject a key we already have, even under a different fingerprint
+        # - dedup in __init__ is keyed on XFP, which is just text in the config file
+        # - compare pubkeys, not the serialization: depth, parent_fp and child_num
+        #   are unchecked at depth>1, so one key has many valid spellings
+        here_pk = node.pubkey()
+        for _, _, prev in xpubs:
+            prev_node = chain.deserialize_node(prev, AF_P2SH)
+            assert here_pk != prev_node.pubkey(), 'dup xpub'
+
+        xpubs.append((xfp, deriv, here))
 
         return (xfp == my_xfp)
 
@@ -1816,6 +1827,30 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
             dis.fullscreen("Wait...")
             xpubs.append(add_own_xpub(chain, acct, addr_fmt))
             num_mine += 1
+
+    # dedup again, over the merged list
+    # - check_xpub saw slot A only; slot B and our own key arrive after it
+    # - the filters above are keyed on xfp, which the file gets to pick
+    seen = []
+    for _, _, xpub in xpubs:
+        pk = chain.deserialize_node(xpub, AF_P2SH).pubkey()
+        if pk in seen:
+            await ux_show_story("Same key offered twice, under two fingerprints.")
+            return
+        seen.append(pk)
+
+    # ...and no leg may be a key we already hold: xfp is just text from the file,
+    # so derive at the offered path and compare instead of trusting it
+    for sec in ([None, secret] if for_ccc else [None]):
+        with stash.SensitiveValues(secret=sec) as sv:
+            mine = sv.get_xfp()
+            for xfp, deriv, xpub in xpubs:
+                if xfp == mine: continue        # we put that one there ourselves
+                if sv.derive_path(deriv).pubkey() == \
+                        chain.deserialize_node(xpub, AF_P2SH).pubkey():
+                    await ux_show_story("Co-signer [%s] is a key this Coldcard has."
+                                        % xfp2str(xfp))
+                    return
 
     N = len(xpubs)
 
