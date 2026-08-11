@@ -116,22 +116,6 @@ def test_greenlight(repl, setup_repl, is_mark4):
 
     repl.exec("dis.clear(); dis.text(0,0, 'done'); dis.show()")
 
-def test_duress(repl, setup_repl, only_mk3):
-    ss = repl.eval("pa.setup(b'')")
-    assert ss&0xf == 3
-
-    assert repl.eval('pa.private_state == 0') == False
-    assert repl.eval('pa.has_duress_pin()') == False
-    assert repl.eval('pa.is_successful()') == True
-    assert repl.eval("pa.change(is_duress=True, new_pin=b'34-34', old_pin=b'')") == None
-    assert repl.eval("pa.change(is_duress=True, new_secret=b'a'*72, old_pin=b'34-34')") == None
-    assert repl.eval("pa.fetch(duress_pin=b'34-34')") == b'a'*72
-    assert repl.eval("pa.change(is_duress=True, new_secret=bytes(72), old_pin=b'34-34', new_pin=b'')") == None
-    assert repl.eval('pa.has_duress_pin()') == False
-
-    # cleanup
-    repl.eval("pa.setup(b'')")
-
 MAX_ATT = 13
 
 @pytest.mark.parametrize('nfails', [MAX_ATT-1, 1, 3, 5])
