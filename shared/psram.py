@@ -10,6 +10,10 @@ class PSRAMWrapper:
     base = 0x9000_0000     # OCTOSPI1
     length = 0x40_0000     # 4 meg (lower half)
 
+    # bumped on every write into the TXN input region (below MAX_TXN_LEN);
+    # used to detect post-review mutation of the transaction being signed
+    txn_write_count = 0
+
     def __init__(self):
         self._wr = uctypes.bytearray_at(self.base, self.length)
 
@@ -22,7 +26,10 @@ class PSRAMWrapper:
         assert offset % 4 == 0, offset
         assert ln % 4 == 0, ln
         assert offset + ln <= self.length, (offset+ln)
-        
+
+        if offset < version.MAX_TXN_LEN:
+            self.txn_write_count += 1
+
         return memoryview(self._wr)[offset:offset+ln]
 
     # Be compatible with SPIFlash class...

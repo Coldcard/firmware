@@ -4654,4 +4654,85 @@ def test_op_return_zero_val(fake_txn, start_sign, cap_story, end_sign, settings_
     end_sign()
 
 
+def test_upload_during_approval(dev, fake_txn, start_sign, end_sign, cap_story,
+                                need_keypress, press_cancel):
+    # the PSBT in PSRAM must be immutable from review to signing;
+    # a USB host rewriting it mid-approval must not get a signature over
+    # transaction details that were never shown (TOCTOU)
+    in_psbt = fake_txn(3, 3)
+    assert len(in_psbt) > 600
+    start_sign(in_psbt, finalize=True)
+
+    # wait for the approval screen
+    for _ in range(100):
+        title, story = cap_story()
+        if title == 'OK TO SEND?':
+            break
+        time.sleep(.1)
+    else:
+        raise pytest.fail('no approval screen')
+
+    # attacker host rewrites an aligned block mid-approval: allowed at USB
+    # layer (a new upload may supersede a pending request), but must be
+    # caught before any signature is produced
+    rv = dev.send_recv(CCProtocolPacker.upload(256, len(in_psbt), bytes(256)))
+    assert rv == 256
+
+    # user approves what was originally displayed; must not sign
+    need_keypress('y')
+    with pytest.raises(CCProtoError) as ee:
+        while True:
+            time.sleep(.1)
+            done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
+            if done is not None:
+                break
+
+    assert 'Transaction modified' in str(ee)
+
+    # dismiss failure screen
+    title, story = cap_story()
+    assert 'Transaction modified' in story
+    press_cancel()
+
+    # normal flow still works afterwards: fresh upload + sign
+    in_psbt = fake_txn(2, 2, segwit_in=True)
+    start_sign(in_psbt, finalize=True)
+    end_sign(accept=True, finalize=True)
+
+
+def test_psbt_mutation_before_signing(dev, fake_txn, start_sign, cap_story,
+                                      need_keypress, sim_exec, press_cancel):
+    # second layer: even if the PSBT bytes in PSRAM are rewritten by
+    # any means after review, signing must abort before producing a signature
+    in_psbt = fake_txn(3, 3)
+    start_sign(in_psbt, finalize=True)
+
+    # wait for the approval screen
+    for _ in range(100):
+        title, story = cap_story()
+        if title == 'OK TO SEND?':
+            break
+        time.sleep(.1)
+    else:
+        raise pytest.fail('no approval screen')
+
+    # rewrite part of the PSBT in PSRAM, bypassing the USB layer entirely
+    sim_exec("from glob import PSRAM; PSRAM.write(256, bytes(100))")
+
+    # user approves what was originally displayed; must not sign
+    need_keypress('y')
+    with pytest.raises(CCProtoError) as ee:
+        while True:
+            time.sleep(.1)
+            done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
+            if done is not None:
+                break
+
+    assert 'Transaction modified' in str(ee)
+
+    # dismiss failure screen
+    title, story = cap_story()
+    assert 'Transaction modified' in story
+    press_cancel()
+
 # EOF

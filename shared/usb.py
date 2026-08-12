@@ -862,11 +862,20 @@ class USBHandler:
         from glob import dis, hsm_active
         from utils import check_firmware_hdr
         from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_HEADER_MAGIC
+        from auth import UserAuthorizedAction, FirmwareUpgradeRequest, ApproveTransaction
+
+        # PSRAM transaction region must be read-only while an approval flow is using it
+        # - blocks TOCTOU attack on in-progress transaction signing
+        # - firmware upgrade approval starts only after its upload is done
+        # - a new upload may supersede a pending transaction approval (host can
+        #   abandon and replace it via stxn); that case is caught by the
+        #   staged-bytes digest re-check in ApproveTransaction before signing
+        UserAuthorizedAction.check_busy((FirmwareUpgradeRequest, ApproveTransaction))
+
         import glob
 
-        # any upload block repurposes the staging area, so it invalidates any
-        # previous download lease - uploads always complete before a new
-        # result is produced and leased
+        # any accepted upload block repurposes the staging area, so it
+        # invalidates any previous download lease
         glob.ALLOWED_DOWNLOAD = None
 
         # maintain a running SHA256 over what's received
