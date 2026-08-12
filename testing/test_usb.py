@@ -219,8 +219,72 @@ def test_remote_up_download(f_len, dev, mk_num):
     ll, sha = dev.upload_file(data, verify=True)
     assert ll == len(data) == f_len
 
-    rb = dev.download_file(ll, sha, file_number=0)
-    assert rb == data
+    # arbitrary readback of uploaded content is not allowed;
+    # only results explicitly produced for download can be fetched
+    with pytest.raises(CCProtoError) as e:
+        dev.download_file(ll, sha, file_number=0)
+    assert 'not allowed' in str(e.value)
+
+
+def test_download_lease(dev, fake_txn, start_sign, end_sign):
+    # a malicious USB host must not be able to re-download content that was
+    # previously staged in PSRAM (uploaded PSBT, multisig enroll file, ...);
+    # only the single most recent result produced for download is readable
+    data = os.urandom(1024)
+    dev.upload_file(data)
+
+    # nothing produced for download yet: all reads blocked
+    for file_no in (0, 1):
+        with pytest.raises(CCProtoError) as e:
+            dev.send_recv(CCProtocolPacker.download(0, 256, file_no))
+        assert 'not allowed' in str(e.value)
+
+    # sign: signed result (file 1) becomes downloadable (end_sign fetches it)
+    in_psbt = fake_txn(1, 2, segwit_in=True)
+    start_sign(in_psbt, finalize=False)
+    signed = end_sign(accept=True, finalize=False)
+
+    # uploaded input (file 0) must not be downloadable
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 0))
+    assert 'not allowed' in str(e.value)
+
+    # reads past the end of the produced result are blocked
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.download(len(signed), 1, 1))
+    assert 'not allowed' in str(e.value)
+
+    # in-bounds partial re-read of the result still works
+    part = dev.send_recv(CCProtocolPacker.download(0, 256, 1))
+    assert part == signed[:256]
+
+    # a plaintext (unencrypted) link may not read PSRAM, even with a lease
+    msg = struct.pack('<4sIII', b'dwld', 0, 256, 1)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'must encrypt' in str(e.value)
+
+    # a new encrypted session voids the previous session's lease
+    dev.start_encryption()
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 1))
+    assert 'not allowed' in str(e.value)
+
+    # a new upload clears the lease: result no longer downloadable
+    dev.upload_file(b'next')
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 1))
+    assert 'not allowed' in str(e.value)
+
+    # same for a partial re-upload at a nonzero offset (no offset-zero block)
+    in_psbt = fake_txn(1, 2, segwit_in=True)
+    start_sign(in_psbt, finalize=False)
+    end_sign(accept=True, finalize=False)
+    rv = dev.send_recv(CCProtocolPacker.upload(256, 1024, bytes(256)))
+    assert rv == 256
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 1))
+    assert 'not allowed' in str(e.value)
 
 
 def test_dwld_offset_at_max(dev, mk_num):

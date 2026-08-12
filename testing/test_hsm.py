@@ -1888,4 +1888,27 @@ def test_rmur_ul_exceeds_payload(dev):
         dev.send_recv(msg, encrypt=False)
     assert 'badlen' in str(e.value)
 
+def test_hsm_sign_download_lease(dev, quick_start_hsm, fake_txn, load_hsm_users,
+                                 auth_user, start_sign):
+    # HSM-mode signed result must be downloadable via the dwld lease (file 1),
+    # while the uploaded input must never be downloadable (file 0)
+    policy = DICT(warnings_ok=True, rules=[dict(users=['pw'])])
+    load_hsm_users()
+    quick_start_hsm(policy)
+
+    psbt = fake_txn(1, 2, dev.master_xpub, change_outputs=[0], segwit_in=True)
+    auth_user.psbt_hash = sha256(psbt).digest()
+    auth_user("pw")
+    start_sign(psbt)
+    resp_len, chk = wait_til_signed(dev)
+
+    # lease covers the signed result
+    out = dev.download_file(resp_len, chk)
+    assert len(out) == resp_len
+
+    # uploaded input must not be downloadable
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 0))
+    assert 'not allowed' in str(e.value)
+
 # EOF

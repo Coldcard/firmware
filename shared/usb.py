@@ -766,6 +766,10 @@ class USBHandler:
         if version == 0x2:
             self.bound = True
 
+        # new session: any download lease from a previous session is void
+        import glob
+        glob.ALLOWED_DOWNLOAD = None
+
         # pick a random key pair, just for this session
         pair = ngu.secp256k1.keypair()
         my_pubkey = pair.pubkey().to_bytes(True)        # un-compressed
@@ -812,6 +816,10 @@ class USBHandler:
     async def handle_download(self, offset, length, file_number):
         # let them read from where we store the signed txn
         # - filenumber can be 0 or 1: uploaded txn, or result
+        # - but only the single most recent result explicitly produced for
+        #   download (a lease); arbitrary readback of whatever was last
+        #   staged in PSRAM (eg. uploaded PSBT, multisig enroll file)
+        #   is not allowed
 
         # limiting memory use here, should be MAX_BLK_LEN really
         length = min(length, MAX_BLK_LEN)
@@ -820,6 +828,17 @@ class USBHandler:
         assert 0 <= offset < MAX_TXN_LEN, "bad offset"
         assert offset + length <= MAX_TXN_LEN, "bad offset"
         assert 1 <= length, 'len'
+
+        # a plaintext link may not read PSRAM at all
+        assert self.encrypted_req, 'must encrypt'
+
+        import glob
+        ad = glob.ALLOWED_DOWNLOAD
+        assert ad, 'not allowed'
+        fn, start, size = ad
+        assert file_number == fn, 'not allowed: file no'
+        assert start <= offset and (offset + length) <= (start + size), \
+                                                'not allowed: out of bounds'
 
         # maintain a running SHA256 over what's sent
         if offset == 0:
@@ -843,6 +862,12 @@ class USBHandler:
         from glob import dis, hsm_active
         from utils import check_firmware_hdr
         from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_HEADER_MAGIC
+        import glob
+
+        # any upload block repurposes the staging area, so it invalidates any
+        # previous download lease - uploads always complete before a new
+        # result is produced and leased
+        glob.ALLOWED_DOWNLOAD = None
 
         # maintain a running SHA256 over what's received
         if offset == 0:
