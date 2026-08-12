@@ -296,6 +296,7 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
         # filter only those that are correct length and type from seed vault
         opt = []
         for i, rec in enumerate(seed_vault_iter()):
+            if pa.is_deltamode(): continue
             raw = deserialize_secret(rec.encoded)
 
             nw = SecretStash.is_words(raw)
