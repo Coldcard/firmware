@@ -55,6 +55,8 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Keep NFC export tag live for repeated probes.
 - Bugfix: Fix 1-of-1 multisig signing failure.
 - Bugfix: Detect RNG_SR_SEIS and RNG_SR_SECS, retry safely, and fail closed on persistent faults.
+- Bugfix: Prevent access to Seed Vault entries through Seed XOR restore in Delta Mode. Thanks to
+  Rety for reporting this.
 
 # Mk Specific Changes
 
