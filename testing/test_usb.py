@@ -262,6 +262,27 @@ def test_dwld_oob_psram_read(file_no, dev, mk_num):
         dev.send_recv(msg, encrypt=False)
     assert 'bad offset' in str(e.value)
 
+def test_dwld_needs_encryption(dev):
+    body = b'a' * 256
+    ll, sha = dev.upload_file(body)
+    msg = struct.pack('<4sIII', b'dwld', 0, ll, 0)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'must encrypt' in str(e.value)
+
+    # ... but the session that uploaded it can have it back
+    assert dev.download_file(ll, sha, file_number=0) == body
+
+@pytest.mark.parametrize("file_no", [0, 1])
+def test_dwld_other_session(file_no, dev):
+    # nothing staged by an earlier session is readable after a new 'ncry'
+    ll, _ = dev.upload_file(b'a' * 256)
+    dev.start_encryption()
+    msg = struct.pack('<4sIII', b'dwld', 0, ll, file_no)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg)
+    assert 'not staged' in str(e.value)
+
 def test_p2sh_truncated_xfp_paths(dev):
     AF_P2SH = 0x08
     header = struct.pack('<IBBH', AF_P2SH, 1, 2, 30)

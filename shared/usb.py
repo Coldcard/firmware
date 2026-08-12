@@ -135,6 +135,11 @@ class USBHandler:
         self.file_checksum = sha256()
         self.is_fw_upgrade = False
 
+        # How much of each of the two PSRAM files this session has staged.
+        # - 'dwld' serves nothing past this, so a session cannot read back
+        #   what some other session left in PSRAM
+        self.readable = [0, 0]
+
         # handle simulator
         self.blockable = getattr(self.dev, 'pipe', self.dev)
 
@@ -544,7 +549,7 @@ class USBHandler:
         if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok':
             # Have we finished (whatever) the transaction,
             # which needed user approval? If so, provide result.
-            from auth import UserAuthorizedAction
+            from auth import UserAuthorizedAction, RemoteBackup
 
             req = UserAuthorizedAction.active_request
             if not req:
@@ -577,6 +582,12 @@ class USBHandler:
                 # generic file response
                 resp_len, sha = req.result
                 UserAuthorizedAction.cleanup()
+
+                # allow it to be downloaded: backups are written to file zero,
+                # signing (and visualization) results to file one. Key off the
+                # request, since 'stok' and 'bkok' both reach here.
+                self.readable[0 if isinstance(req, RemoteBackup) else 1] = resp_len
+
                 return pack('<4sI32s', 'strx', resp_len, sha)
 
         if cmd == 'pass':
@@ -711,6 +722,9 @@ class USBHandler:
         if version == 0x2:
             self.bound = True
 
+        # new session: it has staged nothing yet, so it can download nothing
+        self.readable = [0, 0]
+
         # pick a random key pair, just for this session
         pair = ngu.secp256k1.keypair()
         my_pubkey = pair.pubkey().to_bytes(True)        # un-compressed
@@ -766,6 +780,11 @@ class USBHandler:
         assert offset + length <= MAX_TXN_LEN, "bad offset"
         assert 1 <= length, 'len'
 
+        # can only read back what this session staged, and only over the
+        # session that staged it (a new 'ncry' clears self.readable)
+        assert self.encrypted_req, 'must encrypt'
+        assert offset + length <= self.readable[file_number], 'not staged'
+
         # maintain a running SHA256 over what's sent
         if offset == 0:
             self.file_checksum = sha256()
@@ -793,6 +812,7 @@ class USBHandler:
         if offset == 0:
             self.file_checksum = sha256()
             self.is_fw_upgrade = False
+            self.readable[0] = 0
             dis.fullscreen("Receiving...", 0)
         else:
             dis.progress_sofar(offset, total_size)
@@ -846,6 +866,9 @@ class USBHandler:
 
             # write to PSRAM
             PSRAM.write(pos, here)
+
+        # they can read back what we just stored, but nothing beyond it
+        self.readable[0] = max(self.readable[0], offset + len(data))
 
         if offset+len(data) >= total_size and not hsm_active:
             # probably done
