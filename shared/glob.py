@@ -29,4 +29,9 @@ NFC = None
 # QR scanner (Q1 only)
 SCAN = None
 
+# the only region of PSRAM the USB host may download (dwld) right now:
+# tuple (file_number, offset, length), set by producers of downloadable
+# results only; None blocks all downloads
+ALLOWED_DOWNLOAD = None
+
 # EOF

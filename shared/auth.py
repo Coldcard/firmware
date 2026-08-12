@@ -3,7 +3,7 @@
 # Operations that require user authorization, like our core features: signing messages
 # and signing bitcoin transactions.
 #
-import stash, ure, chains, sys, gc, uio, version, ngu, ujson
+import stash, ure, chains, sys, gc, uio, version, ngu, ujson, glob
 from ubinascii import b2a_base64, a2b_base64
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
@@ -275,6 +275,10 @@ class ApproveTransaction(UserAuthorizedAction):
         super().__init__()
         self.offset = offset
         self.psbt_len = psbt_len
+
+        # a new transaction was just staged into the input region of PSRAM,
+        # so any previous download lease is now dangling
+        glob.ALLOWED_DOWNLOAD = None
 
         # do finalize is None if not USB, None = decide based on is_complete
         if flags is None:
@@ -626,7 +630,12 @@ class ApproveTransaction(UserAuthorizedAction):
                 fd.write(b2a_base64(sig).decode('ascii').strip())
                 fd.write('\n')
 
-            return fd.tell(), fd.checksum.digest()
+            rv = fd.tell(), fd.checksum.digest()
+
+            # lease the result region for download (dwld)
+            glob.ALLOWED_DOWNLOAD = (1, 0, rv[0])
+
+            return rv
 
     def output_summary_text(self, msg):
         # Produce text report of where their cash is going. This is what
@@ -791,6 +800,8 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
     if input_method == "usb":
         # return result over USB before going to all options
         tx_req.result = data_len, data_sha2
+        # lease the result region for download (dwld)
+        glob.ALLOWED_DOWNLOAD = (1, 0, data_len)
         if hsm_active:
             # it is enough to just return back via USB, other options
             # are pointless
@@ -1110,6 +1121,8 @@ class RemoteBackup(UserAuthorizedAction):
             if r:
                 # expect (length, sha)
                 self.result = r
+                # backup image sits at start of PSRAM; lease it for download (dwld)
+                glob.ALLOWED_DOWNLOAD = (0, 0, r[0])
             else:
                 self.refused = True
 
