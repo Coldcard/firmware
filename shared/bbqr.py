@@ -257,6 +257,7 @@ class BBQrStorage:
         self.hdr = None                 # could be any header in series
         self.runt_size = None
         self.final_size = None
+        self.parts = set()              # which parts we've written into buf
 
     def save_packet(self, blksize, hdr, which, data):
         # Record bytes (after deserialization, Base32/Hex decoding)
@@ -267,6 +268,14 @@ class BBQrStorage:
             self.hdr = hdr
         else:
             assert self.hdr.is_compat(hdr)
+
+        # Standard requires all parts to be equal size, except the final one which
+        # may be short. Enforce that, else final_size would count bytes we never
+        # write, and get_buffer() would hand those (uninitialized) bytes to caller.
+        assert len(data) <= blksize, 'part too big'
+        assert len(data) == blksize or which == hdr.num_parts-1, 'part too short'
+
+        self.parts.add(which)
 
         if which == hdr.num_parts-1:
             # size of runt determines final complete size
@@ -303,7 +312,8 @@ class BBQrStorage:
         self.final_size = len(self.buf)
 
     def _finalize(self):
-        pass
+        # every part must have arrived, or else buf holds bytes we never wrote
+        assert len(self.parts) == self.hdr.num_parts, 'missing part'
 
     def get_buffer(self):
         return self.buf
@@ -377,6 +387,8 @@ class BBQrPsramStorage(BBQrStorage):
     def _finalize(self):
         # flush out fragments to where they actually belong
         from glob import PSRAM
+
+        super()._finalize()
 
         while self.frags:
             off, data = self.frags.popitem()

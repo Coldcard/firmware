@@ -355,6 +355,49 @@ def test_split_unit(test_size, encoding, sim_exec, sim_eval):
                 assert target_ver == 40
 
 
+def test_part_sizes_unit(sim_exec):
+    # unit test for: bbqr.BBQrStorage.save_packet() part sizing rules
+    # - all parts must be blksize, except the final part which may be shorter
+    # - otherwise final_size counts bytes that were never written, and
+    #   get_buffer() hands that (uninitialized) PSRAM back as decoded data
+
+    setup = "import bbqr, ngu\nE = ngu.codecs.b32_encode\n" \
+            "st = bbqr.BBQrPsramStorage(); ss = bbqr.BBQrState(st)\n"
+
+    def attempt(body):
+        cmd = setup + "try:\n" + body + "\n    RV.write(b'accepted')\n" \
+                        "except AssertionError as exc:\n    RV.write(b'rejected: %s' % exc)"
+        print(f"CMD: {cmd}")
+        resp = sim_exec(cmd)
+        print(f"RESP: {resp}")
+        return resp
+
+    # middle part shorter than blksize
+    resp = attempt("    ss.collect('B$2U0300' + E(b'A'*15))\n"
+                   "    ss.collect('B$2U0301' + E(b'B'))")
+    assert resp.startswith('rejected'), resp
+
+    # final part longer than blksize
+    resp = attempt("    ss.collect('B$2U0300' + E(b'A'*15))\n"
+                   "    ss.collect('B$2U0302' + E(b'C'*99))")
+    assert resp.startswith('rejected'), resp
+
+    # a part never arrives: nothing may come back out
+    resp = attempt("    ss.collect('B$2U0300' + E(b'A'*15))\n"
+                   "    ss.collect('B$2U0302' + E(b'C'*4))\n"
+                   "    st.finalize()")
+    assert resp.startswith('rejected'), resp
+
+    # well formed: equal parts, short final part, arriving out of order
+    resp = sim_exec(setup + "ss.collect('B$2U0302' + E(b'C'*4))\n"
+                            "ss.collect('B$2U0301' + E(b'B'*15))\n"
+                            "ss.collect('B$2U0300' + E(b'A'*15))\n"
+                            "ty, sz, buf = st.finalize()\n"
+                            "RV.write(b'%r %d %r' % (ty, sz, bytes(buf)[0:sz]))")
+    print(f"RESP: {resp}")
+    assert resp.strip() == "'U' 34 %r" % (b'A'*15 + b'B'*15 + b'C'*4)
+
+
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("file", [
     "data/sim_conso.psbt",
