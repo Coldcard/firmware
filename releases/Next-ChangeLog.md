@@ -27,6 +27,10 @@ This lists the new changes that have not yet been published in a normal release.
 - Change: Backup System, Clone Coldcard, and Key Teleport’s Full COLDCARD Backup now capture the wallet secret currently in effect, including temporary seeds and BIP-39 passphrase wallets, and warn before export.
 - Bugfix: View Seed Words and backup workflows incorrectly treated the master seed as the parent of every BIP-39 passphrase wallet. When a passphrase was applied to a temporary seed, they could not access that immediate parent seed.
 - Enhancement: RNG self-test proving rng_get() enter the hardware read path. Brick device otherwise.
+- Bugfix: a compromised USB host could rewrite the staged PSBT after review but
+  before signing, so the signature covered a different transaction than shown.
+  Staged bytes are now re-verified before signing; any change aborts with
+  "Transaction modified". Thanks to FreeZ Agent for the report and PoC.
 
 # Mk Specific Changes
 

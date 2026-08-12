@@ -29,6 +29,26 @@ from msgsign import sign_message_digest
 TXN_INPUT_OFFSET = 0
 TXN_OUTPUT_OFFSET = MAX_TXN_LEN
 
+def psram_sha256(offset, length):
+    # SHA-256 over a region of PSRAM
+    # - read_at is zero-copy (a view), so no big RAM usage here
+    from glob import PSRAM
+
+    rv = sha256()
+    for pos in range(offset, offset+length, 4096):
+        rv.update(PSRAM.read_at(pos, min(4096, offset+length-pos)))
+
+    return rv.digest()
+
+def psram_wipe(offset, length):
+    # zero-out a region of PSRAM, in chunks
+    # - can zero up to 255 bytes past end: always still inside TXN staging area
+    from glob import PSRAM
+
+    z = bytes(256)
+    for pos in range(offset, offset+length, 256):
+        PSRAM.write(pos, z)
+
 class UserAuthorizedAction:
     active_request = None
 
@@ -367,6 +387,13 @@ class ApproveTransaction(UserAuthorizedAction):
 
             return await self.failure(msg, exc)
 
+        # bind this request to the exact bytes we just parsed
+        # - they are re-read from live PSRAM during display, signing & finalization,
+        #   and a USB host could rewrite them while we wait for approval
+        from glob import PSRAM
+        self.parsed_write_count = PSRAM.txn_write_count
+        self.parsed_sha = psram_sha256(self.offset, self.psbt_len)
+
         dis.fullscreen("Validating...")
 
         # Do some analysis/ validation
@@ -568,6 +595,19 @@ class ApproveTransaction(UserAuthorizedAction):
             except:
                 return await self.failure("2FA Failed")
 
+        # the parsed bytes must be unchanged since parse/approval; covers all
+        # input methods and the HSM auto-approval path, as both end up here
+        # - fast path: nothing wrote to the TXN region since we hashed it,
+        #   so there is no need to re-hash in that (common) case
+        from glob import PSRAM
+        if (PSRAM.txn_write_count != self.parsed_write_count) and \
+                (psram_sha256(self.offset, self.psbt_len) != self.parsed_sha):
+            # fail closed: wipe the txn, so no signature over modified data
+            psram_wipe(self.offset, self.psbt_len)
+            del self.psbt
+            gc.collect()
+            return await self.failure("Transaction modified")
+
         # do the actual signing.
         try:
             dis.fullscreen('Wait...')
@@ -591,6 +631,12 @@ class ApproveTransaction(UserAuthorizedAction):
             return await self.failure(msg)
         except BaseException as exc:
             return await self.failure("Signing failed late", exc)
+
+        # tripwire: no writer could have run since the re-check above, as
+        # there is no await between it and signing (single-threaded asyncio),
+        # so this cannot trigger today - it fails loudly if a future change
+        # adds an await or a new TXN-region writer on this path
+        assert PSRAM.txn_write_count == self.parsed_write_count
 
         try:
             await done_signing(self.psbt, self, self.input_method,
