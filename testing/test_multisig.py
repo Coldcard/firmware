@@ -1172,6 +1172,29 @@ def test_import_dup_xfp_fails(m_of_n, use_regtest, addr_fmt, clear_ms,
     #assert 'XFP' in str(ee)
     assert 'wrong pubkey' in str(ee)
 
+@pytest.mark.parametrize('case', ['dup_key_two_xfps', 'own_key_other_acct'])
+def test_import_dup_cosigner_key_fails(case, clear_ms, make_multisig, import_ms_wallet):
+    # cosigner dedup cannot be keyed on XFP: that is attacker-chosen text
+    M, N = 2, 3
+    keys = make_multisig(M, N, deriv="m/48h/1h/0h/2h")
+
+    if case == 'dup_key_two_xfps':
+        # same cosigner key offered twice, under two different fingerprints
+        keys[1] = (0x0badf00d, keys[0][1], keys[0][2])
+        derivs, msg = None, 'same key under two XFPs'
+    else:
+        # device's own key offered back under a fake XFP, at a different account
+        # - pubkeys differ from its real leg; only derive-and-compare catches it
+        dev_pk = BIP32Node.from_wallet_key(simulator_fixed_tprv)
+        keys[0] = (0x0badf00d, dev_pk, dev_pk.subkey_for_path("m/48h/1h/5h/2h"))
+        derivs = ["m/48h/1h/5h/2h"] + ["m/48h/1h/0h/2h"] * (N-1)
+        msg = 'is our key'
+
+    with pytest.raises(Exception) as ee:
+        import_ms_wallet(M, N, 'p2wsh', accept=1, keys=keys,
+                         common=None if derivs else "m/48h/1h/0h/2h", derivs=derivs)
+    assert msg in str(ee)
+
 @pytest.mark.parametrize('addr_fmt', [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH])
 @pytest.mark.parametrize('desc', ["multi", "sortedmulti"])
 def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, desc):
