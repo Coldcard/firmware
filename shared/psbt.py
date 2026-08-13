@@ -2964,7 +2964,7 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
         # round 2). Bind to session_digest instead: it commits to all inputs and outputs,
         # substituting value||sp_v0_info for SP-output scripts, so it is byte-identical in both rounds.
         if self.has_silent_payment_outputs():
-            nonce_msg = ngu.hash.sha256s(session_digest + der_agg_k + leaf_hash)
+            nonce_msg = ngu.hash.sha256s(self.session.digest() + der_agg_k + leaf_hash)
         else:
             nonce_msg = digest
 
@@ -3082,6 +3082,8 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
                     stash.blank_object(session_rand)
 
     def _sign_it(self, alternate_secret, my_xfp, musig_session):
+        musig_round1 = musig_session[1] if musig_session else False
+
         # txn is approved. sign all inputs we can sign. add signatures
         # - hash the txn first
         # - sign all inputs we have the key for
