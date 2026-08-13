@@ -787,6 +787,8 @@ class MultisigWallet(WalletABC):
         assert has_mine != 0, 'my key not included'
         assert has_mine == 1, 'my key included more than once'
 
+        cls.check_unique_cosigner_keys(xpubs)
+
         # done. have all the parts
         return cls(name, (M, N), xpubs, addr_fmt=addr_fmt,
                    chain_type=expect_chain, bip67=bip67)
@@ -867,6 +869,26 @@ class MultisigWallet(WalletABC):
         xpubs.append((xfp, deriv, chain.serialize_public(node, AF_P2SH)))
 
         return (xfp == my_xfp)
+
+    @classmethod
+    def check_unique_cosigner_keys(cls, xpubs):
+        # Final enrollment-time check over a complete cosigner list of (xfp, deriv, xpub):
+        # - no two legs may be the same key: XFP is attacker-chosen text in the config
+        #   file, and depth/parent_fp/child_num are unchecked at depth>1, so compare
+        #   pubkeys, not XFPs and not serialized xpubs (one key has many spellings)
+        # - no leg may be a key this device already holds, whatever XFP/account it
+        #   claims: derive at the offered path and compare. Legs claiming our XFP are
+        #   skipped here; check_xpub already derive-verified those against us.
+        chain = chains.current_chain()
+        pks = [chain.deserialize_node(xpub, AF_P2SH).pubkey() for _, _, xpub in xpubs]
+        assert len(set(pks)) == len(pks), 'same key under two XFPs'
+
+        with stash.SensitiveValues() as sv:
+            mine = sv.get_xfp()
+            for (xfp, deriv, _), pk in zip(xpubs, pks):
+                if xfp == mine: continue
+                assert sv.derive_path(deriv).pubkey() != pk, \
+                            '[%s] is our key' % xfp2str(xfp)
 
     def make_fname(self, prefix, suffix='txt'):
         rv = '%s-%s.%s' % (prefix, self.name, suffix)
@@ -1006,6 +1028,8 @@ class MultisigWallet(WalletABC):
                 has_mine += 1
 
         assert has_mine == 1         # 'my key not included'
+
+        cls.check_unique_cosigner_keys(xpubs)
 
         name = 'PSBT-%d-of-%d' % (M, N)
         # this will always create sortedmulti multisig (BIP-67)
@@ -1798,6 +1822,18 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
         got_xfps = [a[0], c[0]]
         xpubs = [x for x in xpubs if x[0] not in got_xfps]
 
+        # key C is also ours: no offered leg may be that key, whatever XFP or
+        # account it claims - derive at the offered path and compare (legs
+        # claiming its XFP were filtered above; key A is covered by the
+        # check_unique_cosigner_keys call below)
+        with stash.SensitiveValues(secret=secret) as sv:
+            for xfp, deriv, xpub in xpubs:
+                if sv.derive_path(deriv).pubkey() == \
+                        chain.deserialize_node(xpub, AF_P2SH).pubkey():
+                    await ux_show_story("Co-signer [%s] is this device's key C."
+                                        % xfp2str(xfp))
+                    return
+
         if not xpubs:
             await ux_show_story("Need at least one other co-signer (key B).")
             return
@@ -1816,6 +1852,12 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
             dis.fullscreen("Wait...")
             xpubs.append(add_own_xpub(chain, acct, addr_fmt))
             num_mine += 1
+
+    try:
+        MultisigWallet.check_unique_cosigner_keys(xpubs)
+    except AssertionError as exc:
+        await ux_show_story("Cosigner key rejected: %s." % exc)
+        return
 
     N = len(xpubs)
 

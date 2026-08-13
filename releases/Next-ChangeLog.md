@@ -31,6 +31,8 @@ This lists the new changes that have not yet been published in a normal release.
   before signing, so the signature covered a different transaction than shown.
   Staged bytes are now re-verified before signing; any change aborts with
   "Transaction modified". Thanks to FreeZ Agent for the report and PoC.
+- Bugfix: Reject duplicate cosigner keys, and cosigner keys the device already holds,
+  during multisig wallet enrollment. Thanks to drk1wi for reporting this.
 
 # Mk Specific Changes
 
