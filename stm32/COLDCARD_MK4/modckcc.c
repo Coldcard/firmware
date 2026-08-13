@@ -283,6 +283,10 @@ void ckcc_early_init(void)
 {
     // Add system-wide init code here.
 
+    // Prove rng_get() is wired to the hardware TRNG before anything can
+    // consume entropy; hard-faults (no boot) otherwise.
+    rng_selftest();
+
     // Disable ^C to interrupt code... but see mp_hal_set_interrupt_char()
     // for best disable code.
     mp_interrupt_char = -1;
