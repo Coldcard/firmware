@@ -11,6 +11,11 @@ from version import MAX_TXN_LEN
 b32encode = ngu.codecs.b32_encode
 b32decode = ngu.codecs.b32_decode
 
+
+class BBQrInvalidPart(QRDecodeExplained):
+    pass
+
+
 TYPE_LABELS = dict(P='PSBT File', T='Transaction', J='JSON', C='CBOR', U='Unicode Text',
                         X='Executable', B='Binary', 
                         R='KT Rx', S='KT Tx', E='KT PSBT')
@@ -227,17 +232,32 @@ class BBQrState:
             else:
                 # based on (required) assumption that all parts are equal, we know
                 # where to put this data, so do that.
-                self.parts.add(hdr.which)
-
                 if self.blksize is None:
                     self.blksize = len(raw)
 
-                self.storage.save_packet(self.blksize, hdr, hdr.which, raw)
+                try:
+                    self.storage.save_packet(self.blksize, hdr, hdr.which, raw)
+                except BBQrInvalidPart:
+                    # A successfully decoded QR can still violate BBQr's part-size
+                    # rules. Discard the series and keep scanning, just as for a
+                    # corrupt body, instead of escaping into the caller's UX task.
+                    dis.draw_bbqr_progress(hdr, self.parts, corrupt=True)
+                    self.reset()
+                    self.storage.reset()
+                    return True
+
+                self.parts.add(hdr.which)
 
         # seeing any other packet is enough to decide where to put the runt
         if self.runt and self.blksize:
             wh, raw = self.runt
-            self.storage.save_packet(self.blksize, hdr, wh, raw)
+            try:
+                self.storage.save_packet(self.blksize, hdr, wh, raw)
+            except BBQrInvalidPart:
+                dis.draw_bbqr_progress(hdr, self.parts, corrupt=True)
+                self.reset()
+                self.storage.reset()
+                return True
             self.runt = None
 
         # provide UX -- even if we didn't use it
@@ -257,21 +277,25 @@ class BBQrStorage:
         self.hdr = None                 # could be any header in series
         self.runt_size = None
         self.final_size = None
+        self.parts = set()              # which parts have been written into buf
 
     def save_packet(self, blksize, hdr, which, data):
         # Record bytes (after deserialization, Base32/Hex decoding)
         # - might be zlib compressed still, but certainly binary
-        assert blksize
+        if not blksize:
+            raise BBQrInvalidPart("Empty BBQr part")
+
+        if self.hdr:
+            assert self.hdr.is_compat(hdr)
+
+        # All decoded parts must be the same size, except the final part which
+        # may be shorter. Otherwise final_size can include bytes never written.
+        if len(data) > blksize or \
+                (which != hdr.num_parts-1 and len(data) != blksize):
+            raise BBQrInvalidPart("Invalid BBQr part size")
 
         if not self.hdr:
             self.hdr = hdr
-        else:
-            assert self.hdr.is_compat(hdr)
-
-        if which == hdr.num_parts-1:
-            # size of runt determines final complete size
-            self.runt_size = len(data)
-            self.final_size = (blksize * (hdr.num_parts-1)) + self.runt_size
 
         if not self.buf:
             # memory alloc now
@@ -280,6 +304,13 @@ class BBQrStorage:
 
         offset = which * blksize
         self.write_pkt(offset, data)
+
+        if which == hdr.num_parts-1:
+            # size of runt determines final complete size
+            self.runt_size = len(data)
+            self.final_size = (blksize * (hdr.num_parts-1)) + self.runt_size
+
+        self.parts.add(which)
 
     def alloc_buf(self, upper_bound):
         # set aside space needed for whole thing
@@ -305,12 +336,18 @@ class BBQrStorage:
     def _finalize(self):
         pass
 
+    def _check_complete(self):
+        # Never return bytes from a slot that save_packet() did not write.
+        if not self.hdr or len(self.parts) != self.hdr.num_parts:
+            raise QRDecodeExplained("Missing BBQr part")
+
     def get_buffer(self):
         return self.buf
 
     def finalize(self):
         # Got all the parts, so maybe decompress. Return details of what we got
         # - return: file type, exact final size
+        self._check_complete()
         self._finalize()
 
         if self.hdr.encoding == 'Z':
@@ -322,8 +359,8 @@ class BBQrStorage:
 class BBQrPsramStorage(BBQrStorage):
     # specialized verison for use on funky PSRAM chip of Q
 
-    def __init__(self):
-        super().__init__()
+    def reset(self):
+        super().reset()
         self.frags = dict()
         self.psr_offset = 0
 
@@ -440,6 +477,7 @@ class BBQrPsramStorage(BBQrStorage):
         return PSRAM.read_at(0, self.final_size)
 
     def finalize(self):
+        self._check_complete()
         self._finalize()
 
         if self.hdr.encoding == 'Z':
