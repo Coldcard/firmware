@@ -355,6 +355,102 @@ def test_split_unit(test_size, encoding, sim_exec, sim_eval):
                 assert target_ver == 40
 
 
+def test_reject_bad_part_sizes_unit(sim_exec):
+    setup = "import bbqr, ngu\nE = ngu.codecs.b32_encode\n" \
+            "st = bbqr.BBQrPsramStorage(); ss = bbqr.BBQrState(st)\n"
+
+    cases = [
+        # A non-final part shorter than the established block size.
+        "ss.collect('B$2U0300' + E(b'A'*15))\n" \
+        "more = ss.collect('B$2U0301' + E(b'B'))",
+
+        # The final part may be shorter, but never longer.
+        "ss.collect('B$2U0300' + E(b'A'*15))\n" \
+        "more = ss.collect('B$2U0302' + E(b'C'*99))",
+
+        # Apply the same rule when the final part arrives first as a runt.
+        "ss.collect('B$2U0302' + E(b'C'*99))\n" \
+        "more = ss.collect('B$2U0300' + E(b'A'*15))",
+
+        # A short first part cannot redefine the geometry of later parts.
+        "ss.collect('B$2U0300' + E(b'A'))\n" \
+        "more = ss.collect('B$2U0301' + E(b'B'*15))",
+    ]
+
+    for body in cases:
+        cmd = setup + body + "\nRV.write(repr((more, ss.hdr is None, " \
+                            "len(ss.parts), st.hdr is None, len(st.parts), " \
+                            "len(st.frags))))"
+        print(f"CMD: {cmd}")
+        resp = sim_exec(cmd)
+        print(f"RESP: {resp}")
+
+        # Invalid geometry is a recoverable corrupt scan: no exception escapes,
+        # and neither collector nor storage retains attacker-controlled state.
+        assert resp == '(True, True, 0, True, 0, 0)'
+
+
+def test_bbqr_storage_guards_unit(sim_exec):
+    setup = "import bbqr, ngu\nE = ngu.codecs.b32_encode\n"
+
+    # Storage enforces the sizing rule even when used without BBQrState.
+    resp = sim_exec(setup +
+        "st = bbqr.BBQrPsramStorage()\n"
+        "h0 = bbqr.BBQrHeader('B$2U0300')\n"
+        "h1 = bbqr.BBQrHeader('B$2U0301')\n"
+        "st.save_packet(15, h0, 0, b'A'*15)\n"
+        "try:\n"
+        "    st.save_packet(15, h1, 1, b'B')\n"
+        "except bbqr.BBQrInvalidPart as exc:\n"
+        "    RV.write(str(exc))")
+    assert resp == 'Invalid BBQr part size'
+
+    # Flushing alignment fragments is valid before completion, but public
+    # finalization must reject a missing part instead of returning PSRAM bytes.
+    resp = sim_exec(setup +
+        "st = bbqr.BBQrPsramStorage()\n"
+        "h0 = bbqr.BBQrHeader('B$2U0300')\n"
+        "h2 = bbqr.BBQrHeader('B$2U0302')\n"
+        "st.save_packet(15, h0, 0, b'A'*15)\n"
+        "st.save_packet(15, h2, 2, b'C'*4)\n"
+        "st._finalize()\n"
+        "try:\n"
+        "    st.finalize()\n"
+        "except bbqr.QRDecodeExplained as exc:\n"
+        "    RV.write(str(exc))")
+    assert resp == 'Missing BBQr part'
+
+    # Preserve valid out-of-order input, repeated frames and a short final part.
+    resp = sim_exec(setup +
+        "st = bbqr.BBQrPsramStorage(); ss = bbqr.BBQrState(st)\n"
+        "ss.collect('B$2U0302' + E(b'C'*4))\n"
+        "ss.collect('B$2U0301' + E(b'B'*15))\n"
+        "ss.collect('B$2U0301' + E(b'B'*15))\n"
+        "ss.collect('B$2U0300' + E(b'A'*15))\n"
+        "ty, sz, buf = st.finalize()\n"
+        "RV.write(b'%r %d %r' % (ty, sz, bytes(buf)[0:sz]))")
+    assert resp == "'U' 34 %r" % (b'A'*15 + b'B'*15 + b'C'*4)
+
+
+def test_bbqr_psram_reset_unit(sim_exec):
+    # An abandoned unaligned series must not leave fragments that are flushed
+    # into the next, otherwise valid, series.
+    cmd = "import bbqr, ngu\nE = ngu.codecs.b32_encode\n" \
+          "st = bbqr.BBQrPsramStorage(); ss = bbqr.BBQrState(st)\n" \
+          "ss.collect('B$2U0200' + E(b'A'*5))\n" \
+          "had_frags = bool(st.frags)\n" \
+          "ss.collect('B$2J0200' + E(b'B'*8))\n" \
+          "frags_after_reset = len(st.frags)\n" \
+          "ss.collect('B$2J0201' + E(b'C'*4))\n" \
+          "ty, sz, buf = st.finalize()\n" \
+          "RV.write(repr((had_frags, frags_after_reset, ty, sz, " \
+                         "bytes(buf)[0:sz])))"
+    print(f"CMD: {cmd}")
+    resp = sim_exec(cmd)
+    print(f"RESP: {resp}")
+    assert resp == repr((True, 0, 'J', 12, b'BBBBBBBBCCCC'))
+
+
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("file", [
     "data/sim_conso.psbt",

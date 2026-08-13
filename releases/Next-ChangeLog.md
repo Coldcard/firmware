@@ -20,4 +20,5 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 1.4.xQ - 2065-09-xx
 
-- tbd
+- Bugfix: Reject malformed multipart BBQrs that could include stale PSRAM bytes in decoded
+  results. Thanks to Piotr Duszynski for reporting this.
