@@ -172,6 +172,14 @@ class MembraneNumpad(NumpadBase):
             if sum(self._history) == 0:
                 # all are up, and debounced as such
                 self.scans.append(0xff)
+                if self._mash_mode:
+                    # Rearm raw-edge capture here, before the async scan
+                    # consumer or a synchronous display update can delay it.
+                    # Release is already fully debounced at this point.
+                    self._mash_press_timestamp = None
+                    self.waiting_for_any = True
+                    for r in self.rows:
+                        r.off()
             else:
                 for i in range(NUM_ROWS * NUM_COLS):
                     if self._history[i] == NUM_SAMPLES:
