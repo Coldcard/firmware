@@ -134,6 +134,34 @@ class SDCard:
         pass
 
 
+class Flash:
+    # Internal flash filesystem as a block device. Real mk4 has 512-byte
+    # sectors, and files.py asserts that. No real flash here, so - like
+    # SDCard above - this just pretends.
+    SEC_SIZE = 512
+    SEC_COUNT = 256         # nominal: only paces the wipe's progress bar here
+
+    def __init__(self, start=0, **kws):
+        # files.py/mk4.py pass start=0, which "does magic things" on-device
+        return
+
+    def ioctl(self, op, arg):
+        # opcodes from extmod/vfs.h
+        if op == 4:                 # BP_IOCTL_SEC_COUNT
+            return self.SEC_COUNT
+        if op == 5:                 # BP_IOCTL_SEC_SIZE
+            return self.SEC_SIZE
+        return 0
+
+    def readblocks(self, n, buf, off=0):
+        for i in range(len(buf)):
+            buf[i] = 0xff           # erased flash reads as ones
+
+    # so wipe_flash_filesystem() can pretend to work
+    def writeblocks(self, n, buf, off=0):
+        pass
+
+
 class ExtInt:
     def __init__(self, *a, **kw):
         return
