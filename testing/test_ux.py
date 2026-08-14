@@ -627,21 +627,28 @@ uasyncio.create_task(numpad._finish_scan())
         assert sim_eval('glob.numpad._test_mash_events') == "[('y', 123)]"
         assert sim_eval('glob.numpad._mash_press_timestamp') == 'None'
 
-        # Three all-up samples emit the release and re-arm raw-edge capture.
+        # Three all-up samples re-arm raw-edge capture immediately, before
+        # the async queue consumer emits the release event.
         assert sim_exec('''\
-import uasyncio
 from glob import numpad
 for c in numpad.cols:
     c.value(1)
 for i in range(3):
     numpad._measure_irq(numpad.timer)
+''') == ''
+        state = '(glob.numpad.waiting_for_any, glob.numpad._mash_press_timestamp, '
+        state += 'glob.numpad._scan_count, sum(glob.numpad._history))'
+        assert sim_eval(state) == '(True, None, 0, 0)'
+        assert sim_eval('glob.numpad._test_mash_events') == "[('y', 123)]"
+
+        assert sim_exec('''\
+import uasyncio
+from glob import numpad
 uasyncio.create_task(numpad._finish_scan())
 ''') == ''
         time.sleep(0.05)
         events = "[('y', 123), ('', None)]"
         assert sim_eval('glob.numpad._test_mash_events') == events
-        state = '(glob.numpad.waiting_for_any, glob.numpad._mash_press_timestamp, '
-        state += 'glob.numpad._scan_count, sum(glob.numpad._history))'
         assert sim_eval(state) == '(True, None, 0, 0)'
 
         # A falling-edge glitch that never debounces must eventually re-arm.
