@@ -397,9 +397,8 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
 
     counter = {}
     md = sha256(seed)
-    # no key-repeat on any key we act on: a held digit is one roll, not many
-    # - same idea as ux_mk4.ux_enter_number, which puts its digits in need_release
-    pr = PressRelease('123456' + KEY_ENTER + KEY_CANCEL + 'xy')
+    done_keys = (KEY_ENTER + KEY_CANCEL) if version.has_qwerty else 'yx'
+    pr = PressRelease('123456' + done_keys)
 
     # draws initial screen, and returns funct to update count and/or hash
     screen_updater = ux_dice_rolling()
