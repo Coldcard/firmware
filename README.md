@@ -152,10 +152,8 @@ virtualenv -p python3 ENV
 source ENV/bin/activate (or source ENV/bin/activate.csh based on shell preference)
 pip install -U pip
 pip install -r requirements.txt
-# apply micropython patch
-pushd external/micropython
-git apply ../../macos-mpy.patch
-popd
+# apply micropython patch (safe to repeat; later builds re-apply it if it goes missing)
+make -C unix mpy-patch
 make -C external/micropython/mpy-cross
 cd unix; make setup && make ngu-setup && make && ./simulator.py
 ```
@@ -208,10 +206,8 @@ cd firmware
 # not needed in current revision
 # git apply unix/linux_addr.patch
 
-#  * below is needed for ubuntu 24.04
-pushd external/micropython
-git apply ../../ubuntu24_mpy.patch
-popd
+#  * below is needed for ubuntu 24.04 (safe to repeat)
+make -C unix mpy-patch MPY_PATCH=ubuntu24_mpy.patch
 #  * 
 
 
