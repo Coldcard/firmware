@@ -232,9 +232,10 @@ class FullKeyboard(NumpadBase):
             meta_chg = True
 
         if meta_chg and symbol_down and shift_down:
-            # press SYM+SHIFT to toggle CAPS
-            self.caps_lock = not self.caps_lock
-            status_chg['caps'] = int(self.caps_lock)
+            # press SYM+SHIFT to toggle CAPS (not while mashing: state would leak into later UX)
+            if not self._mash_mode:
+                self.caps_lock = not self.caps_lock
+                status_chg['caps'] = int(self.caps_lock)
 
         if status_chg:
             from glob import dis
