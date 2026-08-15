@@ -187,11 +187,6 @@ apt install build-essential git python3 python3-pip libudev-dev gcc-arm-none-eab
 git clone --recursive https://github.com/Coldcard/firmware.git
 cd firmware
 
-# Apply address patch
-# if unix/linux_addr.patch exists use below command
-# not needed in current revision
-# git apply unix/linux_addr.patch
-
 # Ubuntu 24.04 only; omit this assignment on earlier releases
 MPY_CFLAGS='-Wno-error=dangling-pointer -Wno-error=enum-int-mismatch'
 
