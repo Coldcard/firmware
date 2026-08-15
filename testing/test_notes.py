@@ -1131,7 +1131,7 @@ def test_sign_note_body(msg, addr_fmt, acct, need_some_notes,
 
 def test_send_password_menu_item(need_some_passwords, goto_notes, cap_menu, pick_menu_item,
                                  settings_set, settings_remove, press_cancel):
-    # covers regression where "Send Password" menu item was only shown when USB was disabled
+    # temporary keyboard emulation works regardless of the normal USB setting
     settings_set("notes", [])
     need_some_passwords()
 
@@ -1140,7 +1140,7 @@ def test_send_password_menu_item(need_some_passwords, goto_notes, cap_menu, pick
     pick_menu_item([i for i in cap_menu() if i.endswith(': A')][0])
     time.sleep(.2)
     m = cap_menu()
-    assert 'Send Password' not in m
+    assert 'Send Password' in m
     press_cancel()
 
     settings_set('du', 0)
