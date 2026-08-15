@@ -187,13 +187,26 @@ def gate(method, buf_io, arg2):
 
     return ENOENT
 
+# what the bootloader does for each one-way callgate; all of them end firmware execution
+ONEWAY_WHAT = {
+    2: 'enter DFU',
+    3: 'wipe memory, logout & reboot',
+    23: 'wipe seed & reboot',
+    24: 'brick & reboot',
+}
+
 def oneway(method, arg2):
 
     # TODO: capture method/arg2 into an object so unit tests can read it back while we are dead
 
     print("\n\nNOTE: One-way callgate into bootloader: method=%d arg2=%d\n\n" % (method, arg2))
-    while 1:
-        utime.sleep(60)
+
+    # Real device: bootloader takes over here and this firmware never runs again. We
+    # can't reboot, and spinning forever just leaves the last frame on screen, which
+    # looks exactly like a crash - so stop, and say why.
+    print("Simulator: would %s. Exiting.\n" % ONEWAY_WHAT.get(method, 'halt'))
+
+    raise SystemExit
 
 def is_simulator():
     return True
