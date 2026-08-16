@@ -792,9 +792,7 @@ back and press %s to complete clone process.''' % OK)
         uos.remove(fname)       # ccbk-start.json
 
     # this will reset in successful case, no return (but delme is called)
-    # no need to ask for UX confirmation during clone - as user can see what is loaded on source CC
-    prob = await restore_complete_doit(incoming, words, file_cleanup=delme,
-                                       ux_confirm=False)
+    prob = await restore_complete_doit(incoming, words, file_cleanup=delme)
     if prob:
         await ux_show_story(prob, title='FAILED')
 
