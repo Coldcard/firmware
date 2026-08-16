@@ -8,7 +8,7 @@ from binascii import b2a_hex, a2b_hex
 import ndef
 from hashlib import sha256
 from txn import *
-from base64 import b64encode, b64decode
+from base64 import b64encode, b64decode, encodebytes
 
 
 def test_vd_basics(dev, virtdisk_path, is_simulator):
@@ -211,6 +211,75 @@ def test_virtdisk_signing(encoding, num_outs, partial, try_sign_virtdisk, fake_t
         assert _psbt == txn
     else:
         assert _txn == txn
+
+def test_virtdisk_oversized_psbt_rejected(press_select, virtdisk_path, cap_story, virtdisk_wipe,
+                                          press_cancel, goto_home, sd_cards_eject,
+                                          settings_set, sim_exec):
+    # files larger than MAX_TXN_LEN must be refused before staging into PSRAM,
+    # not staged past the TXN input region nor crashed on
+    max_txn_len = 2*1024*1024        # MAX_TXN_LEN_MK4
+    settings_set('vidsk', 2)         # enable + auto-consume
+    sim_exec("import glob, vdisk\nif not glob.VD: vdisk.VirtDisk()")
+    sd_cards_eject()
+    virtdisk_wipe()
+    time.sleep(.4)                   # let the vdisk monitor settle
+
+    goto_home()
+    with open(virtdisk_path('too-big.psbt'), 'wb') as f:
+        f.write(b'psbt\xff' + bytes(max_txn_len))
+
+    for _ in range(50):
+        title, story = cap_story()
+        if title == 'Sorry':
+            break
+        time.sleep(.2)
+    else:
+        raise pytest.fail('no rejection story')
+
+    assert 'too big' in story
+    press_cancel()
+
+def test_virtdisk_wrapped_base64_uses_decoded_size(fake_txn, virtdisk_path, cap_story,
+                                                    virtdisk_wipe, press_cancel, goto_home,
+                                                    sd_cards_eject, settings_set, sim_exec):
+    # Whitespace makes the encoded-size estimate exceed MAX_TXN_LEN, although
+    # the decoded PSBT still fits exactly in the input staging region.
+    max_txn_len = 2*1024*1024        # MAX_TXN_LEN_MK4
+    target_len = max_txn_len
+    psbt = BasicPSBT().parse(fake_txn(1, 1, segwit_in=True))
+    padding = 0
+    for _ in range(3):
+        psbt.unknown[b'\xfcsize-check'] = bytes(padding)
+        raw = psbt.as_bytes()
+        if len(raw) == target_len:
+            break
+        padding += target_len - len(raw)
+    assert len(raw) == target_len
+
+    encoded = encodebytes(raw)
+    assert (len(encoded) * 3 // 4) + 10 > max_txn_len
+    assert len(encoded) <= 2 * max_txn_len       # MAX_UPLOAD_LEN_MK4
+
+    settings_set('vidsk', 2)         # enable + auto-consume
+    sim_exec("import glob, vdisk\nif not glob.VD: vdisk.VirtDisk()")
+    sd_cards_eject()
+    virtdisk_wipe()
+    time.sleep(.4)                   # let the vdisk monitor settle
+
+    goto_home()
+    with open(virtdisk_path('wrapped.psbt'), 'wb') as f:
+        f.write(encoded)
+
+    for _ in range(150):
+        title, story = cap_story()
+        if title in {'OK TO SEND?', 'Sorry', 'Failure'}:
+            break
+        time.sleep(.2)
+    else:
+        raise pytest.fail('no signing story')
+
+    assert title == 'OK TO SEND?', story
+    press_cancel()
 
 if 0:
     @pytest.mark.parametrize('num_outs', [ 1, 20, 250])

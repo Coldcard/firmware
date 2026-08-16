@@ -4735,4 +4735,42 @@ def test_psbt_mutation_before_signing(dev, fake_txn, start_sign, cap_story,
     assert 'Transaction modified' in story
     press_cancel()
 
+def test_inactive_psram_region_write_before_signing(fake_txn, start_sign, end_sign,
+                                                     cap_story, sim_exec):
+    # A write to the inactive staging half must trigger a re-hash without
+    # tripping the post-check counter assertion when the active PSBT is intact.
+    in_psbt = fake_txn(2, 2, segwit_in=True)
+    start_sign(in_psbt, finalize=True)
+
+    for _ in range(100):
+        title, story = cap_story()
+        if title == 'OK TO SEND?':
+            break
+        time.sleep(.1)
+    else:
+        raise pytest.fail('no approval screen')
+
+    sim_exec("from glob import PSRAM; import version; "
+             "PSRAM.write(version.MAX_TXN_LEN, bytes(100))")
+
+    end_sign(accept=True, finalize=True)
+
+def test_psram_write_counter_covers_txn_output_region(sim_exec, sim_eval):
+    # any write into either TXN staging region of PSRAM (input below
+    # MAX_TXN_LEN, output at/above it) must bump the write counter that
+    # gates the pre-signing digest re-check -- otherwise a mutation
+    # staged in the output region (teleport re-sign path) is invisible
+    # to the fast path and never re-hashed
+    for _ in range(50):
+        if sim_eval("(__import__('glob').PSRAM is not None)") == 'True':
+            break
+        time.sleep(.2)
+    else:
+        raise pytest.fail('PSRAM not initialized')
+
+    start = int(sim_eval("__import__('glob').PSRAM.txn_write_count"))
+    sim_exec("from glob import PSRAM; import version; PSRAM.write(version.MAX_TXN_LEN, bytes(100))")
+    sim_exec("from glob import PSRAM; PSRAM.write(3 * 1024 * 1024, bytes(100))")
+    assert int(sim_eval("__import__('glob').PSRAM.txn_write_count")) == start + 2
+
 # EOF
