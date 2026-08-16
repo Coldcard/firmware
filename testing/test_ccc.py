@@ -1381,6 +1381,29 @@ def test_c_key_from_seed_vault(has_candidates, setup_ccc, build_test_seed_vault,
     press_select()
 
 
+def test_c_key_from_seed_vault_hidden_in_deltamode(
+        goto_home, goto_ccc_menu, settings_set, set_deltamode, press_select,
+        need_keypress, cap_story):
+    goto_home()
+    settings_set("ccc", None)
+    settings_set("seedvault", True)
+    set_deltamode(True)
+
+    goto_ccc_menu()
+    press_select()
+    time.sleep(.2)
+
+    title, story = cap_story()
+    assert title == "CCC Key C"
+    assert "import from Seed Vault" not in story
+
+    need_keypress("6")
+    time.sleep(.2)
+    new_title, new_story = cap_story()
+    assert new_title == title
+    assert new_story == story
+
+
 @pytest.mark.parametrize("way", ["sd", "qr"])
 @pytest.mark.parametrize("ftype", ["cc", "bsms"])
 @pytest.mark.parametrize("is_bbqr", [True, False])
