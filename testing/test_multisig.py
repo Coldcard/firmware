@@ -1112,8 +1112,7 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import,
 
 @pytest.mark.parametrize('N', [ 5])
 def test_import_dup_diff_xpub(N, clear_ms, make_multisig, offer_ms_import,
-                              press_select, cap_story, goto_home,
-                              pick_menu_item, cap_menu, is_q1):
+                              press_select, cap_story, pick_menu_item, cap_menu, is_q1):
     # import wallet, tweak xpub only, check that change detected
     clear_ms()
 
@@ -1148,15 +1147,18 @@ def test_import_dup_diff_xpub(N, clear_ms, make_multisig, offer_ms_import,
     assert 'xpubs' in story
 
     clear_ms()
+    press_select()
 
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('m_of_n', [(2,2), (2,3), (15,15)])
 @pytest.mark.parametrize('addr_fmt', ['p2sh-p2wsh', 'p2sh', 'p2wsh' ])
 def test_import_dup_xfp_fails(m_of_n, use_regtest, addr_fmt, clear_ms,
-                              make_multisig, import_ms_wallet, test_ms_show_addr):
+                              make_multisig, import_ms_wallet,
+                              test_ms_show_addr, goto_home):
 
     M, N = m_of_n
+    goto_home()
 
     keys = make_multisig(M, N)
 
@@ -1197,7 +1199,8 @@ def test_import_dup_cosigner_key_fails(case, clear_ms, make_multisig, import_ms_
 
 @pytest.mark.parametrize('addr_fmt', [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH])
 @pytest.mark.parametrize('desc', ["multi", "sortedmulti"])
-def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, desc):
+def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet,
+                addr_vs_path, desc, press_cancel):
     # exercise the p2sh command of ckcc:cli ... hard to do manually.
     M, N = 2, 3
     clear_ms()
@@ -1223,6 +1226,7 @@ def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, desc):
     assert scr2 == scr
 
     clear_ms()
+    press_cancel()
 
 
 @pytest.fixture
@@ -1528,9 +1532,10 @@ def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, impor
 
 
 @pytest.mark.parametrize("finalize", [True, False])
-def test_1of1_multisig_sign(finalize, clear_ms, import_ms_wallet, fake_ms_txn, start_sign,
-                            end_sign, cap_story):
+def test_1of1_multisig_sign(finalize, clear_ms, import_ms_wallet,
+                            fake_ms_txn, start_sign, end_sign, cap_story, goto_home):
     # Minimal 1-of-1 multisig: import the wallet, then sign a 1-in/1-out PSBT.
+    goto_home()
     clear_ms()
     M = N = 1
     keys = import_ms_wallet(M, N, accept=True)

@@ -1248,6 +1248,8 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
     # try importing duplicate does not work
     _, story = offer_ms_import(ms_conf)
     assert "Duplicate wallet" in story
+    press_select()
+    time.sleep(.1)
 
     # try rename
     ms_conf = ms_conf.replace(w_name, new_name)
