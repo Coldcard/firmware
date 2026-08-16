@@ -382,7 +382,7 @@ class USBHandler:
             if cmd in HOBBLED_CMDS:
                 raise SpendPolicyViolation
 
-            if cmd in {'pwok', 'pass'}:
+            if cmd in {'pwok', 'pass', 'rest'}:
                 from ccc import sssp_spending_policy
                 if not sssp_spending_policy('okeys'):
                     raise SpendPolicyViolation
