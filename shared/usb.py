@@ -142,10 +142,9 @@ class USBHandler:
     def __init__(self):
         self.dev = pyb.USB_HID()
 
-        # We keep a running hash over whatever has been uploaded
+        # We keep a running hash over whatever has been staged
         # - reset at offset zero, can be read back anytime
-        self.file_checksum = sha256()
-        self.is_fw_upgrade = False
+        self.reset_upload()
 
         # handle simulator
         self.blockable = getattr(self.dev, 'pipe', self.dev)
@@ -207,6 +206,7 @@ class USBHandler:
                 else:
                     # treat zero-length packets as a reset request
                     # do not echo anything back on link.. used to resync connection
+                    self.reset_upload()
                     msg_len = 0
                     continue
 
@@ -279,6 +279,7 @@ class USBHandler:
             except FramingError as exc:
                 reason = exc.args[0]
                 # print("Framing: %s" % reason)
+                self.reset_upload()
                 await self.framing_error(reason)
                 msg_len = 0
 
@@ -286,7 +287,14 @@ class USBHandler:
                 # recover from general issues/keep going
                 #print("USB!")
                 #sys.print_exception(exc)
+                self.reset_upload()
                 msg_len = 0
+
+    def reset_upload(self):
+        self.file_checksum = sha256()
+        self.upload_total_size = 0
+        self.upload_next_offset = 0
+        self.is_fw_upgrade = False
 
     def decrypt_inplace(self, msg_len):
         # self.msg is encrypted. decode it in place
@@ -421,10 +429,13 @@ class USBHandler:
             return b'biny' + args
 
         if cmd == 'upld':
-            offset, total_size = unpack_from('<II', args)
-            data = memoryview(args)[4+4:]
-
-            return await self.handle_upload(offset, total_size, data)
+            try:
+                offset, total_size = unpack_from('<II', args)
+                data = memoryview(args)[4+4:]
+                return await self.handle_upload(offset, total_size, data)
+            except:
+                self.reset_upload()
+                raise
 
         if cmd == 'dwld':
             offset, length, fileno = unpack_from('<III', args)
@@ -592,7 +603,11 @@ class USBHandler:
                 if not ok:
                     return w
 
-            from auth import sign_transaction
+            from auth import sign_transaction, psram_sha256, TXN_INPUT_OFFSET
+            if txn_len != self.upload_total_size or \
+                    txn_sha != psram_sha256(TXN_INPUT_OFFSET, txn_len):
+                return b'err_Checksum'
+
             sign_transaction(txn_len, (flags & STXN_FLAGS_MASK), txn_sha,
                              input_method="usb", miniscript_wallet=w)
             return None
@@ -878,15 +893,15 @@ class USBHandler:
         # invalidates any previous download lease
         glob.ALLOWED_DOWNLOAD = None
 
-        # maintain a running SHA256 over what's received
+        # maintain a running SHA256 over what's staged
         if offset == 0:
-            self.file_checksum = sha256()
-            self.is_fw_upgrade = False
+            self.reset_upload()
             dis.fullscreen("Receiving...", 0)
         else:
             dis.progress_sofar(offset, total_size)
 
         assert offset % 256 == 0, 'alignment'
+        assert offset == self.upload_next_offset, 'offset'
         assert 1 <= total_size <= MAX_UPLOAD_LEN, 'long'
         assert offset + len(data) <= total_size, 'long'
 
@@ -896,7 +911,7 @@ class USBHandler:
             if offset == 0:
                 assert data[0:5] == b'psbt\xff', 'psbt'
 
-        self.file_checksum.update(data)
+        self.upload_total_size = total_size
 
         for pos in range(offset, offset+len(data), 256):
 
@@ -926,6 +941,12 @@ class USBHandler:
                 hdr = memoryview(here)[-128:]
                 assert hdr == self.is_fw_upgrade        # indicates hacking
 
+                # The legacy USB upgrade protocol includes this duplicate
+                # trailer in its running checksum, even though it is not
+                # written to PSRAM a second time.
+                self.file_checksum.update(here)
+                self.upload_next_offset = offset + len(data)
+
                 # but don't write it, instead offer user a chance to abort
                 from auth import authorize_upgrade
                 authorize_upgrade(self.is_fw_upgrade, pos, psram_offset=0)
@@ -935,6 +956,9 @@ class USBHandler:
 
             # write to PSRAM
             PSRAM.write(pos, here)
+            self.file_checksum.update(here)
+
+        self.upload_next_offset = offset + len(data)
 
         if offset+len(data) >= total_size and not hsm_active:
             # probably done
