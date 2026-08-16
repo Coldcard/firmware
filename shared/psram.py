@@ -10,8 +10,9 @@ class PSRAMWrapper:
     base = 0x9000_0000     # OCTOSPI1
     length = 0x40_0000     # 4 meg (lower half)
 
-    # bumped on every write into the TXN input region (below MAX_TXN_LEN);
-    # used to detect post-review mutation of the transaction being signed
+    # bumped on every write into the TXN staging regions (input below
+    # MAX_TXN_LEN, output at/above it); used to detect post-review
+    # mutation of the transaction being signed
     txn_write_count = 0
 
     def __init__(self):
@@ -27,7 +28,8 @@ class PSRAMWrapper:
         assert ln % 4 == 0, ln
         assert offset + ln <= self.length, (offset+ln)
 
-        if offset < version.MAX_TXN_LEN:
+        if offset < 2 * version.MAX_TXN_LEN:
+            # covers both TXN staging regions (input and output)
             self.txn_write_count += 1
 
         return memoryview(self._wr)[offset:offset+ln]
