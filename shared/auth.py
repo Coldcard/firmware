@@ -393,6 +393,10 @@ class ApproveTransaction(UserAuthorizedAction):
         from glob import PSRAM
         self.parsed_write_count = PSRAM.txn_write_count
         self.parsed_sha = psram_sha256(self.offset, self.psbt_len)
+        if self.psbt_sha is not None and self.psbt_sha != self.parsed_sha:
+            del self.psbt
+            gc.collect()
+            return await self.failure("PSBT checksum mismatch")
 
         dis.fullscreen("Validating...")
 
