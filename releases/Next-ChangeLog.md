@@ -116,6 +116,7 @@ This lists the new changes that have not yet been published in a normal release.
   Coldcard and asks for confirmation before installing it.
 - Bugfix: CCC velocity policies created by older firmware now enforce the
   current chain's minimum block height before co-signing.
+- Bugfix: USB backup restore now respects the Spending Policy's Related Keys setting.
 
 # Mk Specific Changes
 

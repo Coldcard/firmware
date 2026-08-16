@@ -406,7 +406,7 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
 def test_h_usbcmds(en_okeys, set_hobble, dev):
     # test various usb commands are blocked during hobble
 
-    from ckcc_protocol.protocol import CCProtoError
+    from ckcc_protocol.protocol import CCProtoError, CCProtocolPacker
 
     set_hobble(True, {'okeys'} if en_okeys else {})
 
@@ -414,12 +414,18 @@ def test_h_usbcmds(en_okeys, set_hobble, dev):
                   'bagi', 'hsms', 'user', 'nwur', 'rmur']
 
     if not en_okeys:
-        block_list.insert(0, 'pass')
+        block_list[0:0] = ['pass', 'rest']
 
     for cmd in block_list:
         with pytest.raises(CCProtoError) as ee:
             got = dev.send_recv(cmd)
         assert 'Spending policy in effect' in str(ee)
+
+    if en_okeys:
+        msg = CCProtocolPacker.restore_backup(1, bytes(32))
+        with pytest.raises(CCProtoError) as ee:
+            dev.send_recv(msg)
+        assert 'Checksum' in str(ee)
 
 
 @pytest.mark.parametrize('en_okeys', [ True, False])
