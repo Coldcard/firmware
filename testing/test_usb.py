@@ -10,6 +10,7 @@ from binascii import b2a_hex
 from constants import simulator_fixed_tprv
 from ckcc_protocol.protocol import MAX_MSG_LEN, CCProtocolPacker, CCProtoError
 from ckcc_protocol.constants import MSG_SIGNING_MAX_LENGTH
+from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_HEADER_MAGIC
 
 @pytest.mark.skip
 def test_usb_fuzz(dev):
@@ -130,9 +131,6 @@ def test_upload_short(dev, data_len):
 
     assert chk == hashlib.sha256(data).digest(), 'bad hash'
 
-    # clear screen / test a degerate case
-    dev.send_recv(CCProtocolPacker.upload(256, 256, b''))
-
 @pytest.mark.parametrize('pkt_len', [256, 1024, 2048])
 def test_upload_long(dev, pkt_len, count=5, data=None):
     # upload a larger "file"
@@ -144,9 +142,6 @@ def test_upload_long(dev, pkt_len, count=5, data=None):
         assert v == pos
         chk = dev.send_recv(CCProtocolPacker.sha256())
         assert chk == hashlib.sha256(data[0:pos+pkt_len]).digest(), 'bad hash'
-
-    # clear screen / test a degerate case
-    dev.send_recv(CCProtocolPacker.upload(256, 256, b''))
 
 @pytest.mark.parametrize('data_len', [0x3f01, 0x3f02, 0x3f03])
 def test_upload_psbt_at_firmware_probe_boundary(dev, data_len):
@@ -164,6 +159,43 @@ def test_upload_fails(dev):
     with pytest.raises(CCProtoError):
         # bad position
         v = dev.send_recv(CCProtocolPacker.upload(1000, 3, data))
+
+def test_upload_rejects_sparse_offset(dev):
+    dev.send_recv(CCProtocolPacker.upload(0, 768, bytes(256)))
+
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.upload(512, 768, bytes(256)))
+    assert 'offset' in str(e.value)
+    assert dev.send_recv(CCProtocolPacker.sha256()) == hashlib.sha256(b'').digest()
+
+def test_upload_error_resets_checksum(dev):
+    # This block looks like a firmware header, but fails validation before
+    # it can be written to PSRAM. It must not remain in the upload checksum.
+    total_size = FW_HEADER_OFFSET + FW_HEADER_SIZE
+    for pos in range(0, FW_HEADER_OFFSET & ~255, 1024):
+        here = bytes(min(1024, (FW_HEADER_OFFSET & ~255) - pos))
+        dev.send_recv(CCProtocolPacker.upload(pos, total_size, here))
+
+    bad_hdr = bytearray(256)
+    struct.pack_into('<I', bad_hdr, FW_HEADER_OFFSET & 255, FW_HEADER_MAGIC)
+    with pytest.raises(CCProtoError):
+        dev.send_recv(CCProtocolPacker.upload(FW_HEADER_OFFSET & ~255, total_size, bad_hdr))
+
+    assert dev.send_recv(CCProtocolPacker.sha256()) == hashlib.sha256(b'').digest()
+
+def test_stxn_binds_uploaded_size_and_psram(dev, fake_txn, sim_exec):
+    psbt = fake_txn(1, 2, segwit_in=True)
+    txn_len, txn_sha = dev.upload_file(psbt)
+
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.sign_transaction(txn_len - 1, txn_sha))
+    assert 'Checksum' in str(e.value)
+
+    txn_len, txn_sha = dev.upload_file(psbt)
+    sim_exec("from glob import PSRAM; PSRAM.write(0, b'x')")
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.sign_transaction(txn_len, txn_sha))
+    assert 'Checksum' in str(e.value)
 
 def test_encryption(dev):
     "Setup session key and test link encryption works"
@@ -280,8 +312,9 @@ def test_download_lease(dev, fake_txn, start_sign, end_sign):
     in_psbt = fake_txn(1, 2, segwit_in=True)
     start_sign(in_psbt, finalize=False)
     end_sign(accept=True, finalize=False)
-    rv = dev.send_recv(CCProtocolPacker.upload(256, 1024, bytes(256)))
-    assert rv == 256
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.upload(256, 1024, bytes(256)))
+    assert 'offset' in str(e.value)
     with pytest.raises(CCProtoError) as e:
         dev.send_recv(CCProtocolPacker.download(0, 256, 1))
     assert 'not allowed' in str(e.value)
@@ -373,10 +406,12 @@ def test_upld_zero_total_size(dev):
     assert 'long' in str(e.value)
 
 def test_upld_short_args(dev):
+    dev.upload_file(b'previous upload')
     msg = b'upld' + struct.pack('<I', 0)
     with pytest.raises(CCProtoError) as e:
         dev.send_recv(msg, encrypt=False)
     assert 'buffer too small' in str(e.value)
+    assert dev.send_recv(CCProtocolPacker.sha256()) == hashlib.sha256(b'').digest()
 
 def test_ncry_short_args(dev):
     msg = b'ncry' + struct.pack('<I', 1)
