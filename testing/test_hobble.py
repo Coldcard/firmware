@@ -255,6 +255,7 @@ def test_h_seedvault(sv_empty, set_hobble, pick_menu_item, cap_menu, settings_se
     # clear keys from sv, should not be offered in menu, even if okeys set.
     settings_remove('seedvault')
     set_hobble(True, {'okeys'})
+    time.sleep(.1)
 
     m = cap_menu()
     assert 'Seed Vault' not in m

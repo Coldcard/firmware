@@ -1256,6 +1256,7 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
     _, story = offer_minsc_import(ms_conf)
     assert "Duplicate wallet" in story
     press_cancel()  # not importable - dupe
+    time.sleep(.1)
 
     # try rename
     pick_menu_item("Settings")

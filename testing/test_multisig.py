@@ -849,9 +849,11 @@ def test_import_dup_safe(N, clear_miniscript, make_multisig, offer_minsc_import,
 @pytest.mark.parametrize('m_of_n', [(2,2), (2,3), (15,15)])
 @pytest.mark.parametrize('addr_fmt', ['p2sh-p2wsh', 'p2sh', 'p2wsh' ])
 def test_import_dup_xfp_fails(m_of_n, use_regtest, addr_fmt, clear_miniscript,
-                              make_multisig, import_ms_wallet, test_ms_show_addr):
+                              make_multisig, import_ms_wallet,
+                              test_ms_show_addr, goto_home):
 
     M, N = m_of_n
+    goto_home()
 
     keys = make_multisig(M, N)
 
@@ -1239,8 +1241,9 @@ def test_ms_sign_20_xpubs(M, inp_addr_fmt, clear_miniscript, import_ms_wallet,
 
 @pytest.mark.parametrize("finalize", [True, False])
 def test_1of1_multisig_sign(finalize, clear_miniscript, import_ms_wallet, fake_ms_txn, start_sign,
-                            end_sign, cap_story):
+                            end_sign, cap_story, goto_home):
     # Minimal 1-of-1 multisig: import the wallet, then sign a 1-in/1-out PSBT.
+    goto_home()
     clear_miniscript()
     M = N = 1
     keys = import_ms_wallet(M, N, accept=True)
