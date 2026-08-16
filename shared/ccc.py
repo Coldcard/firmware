@@ -106,7 +106,7 @@ class SpendingPolicy(dict):
                 # this is unix timestamp - not allowed - fail
                 raise SpendPolicyViolation("nLockTime not height")
 
-            block_h = pol.get("block_h", chains.current_chain().ccc_min_block)
+            block_h = max(pol.get("block_h", 0), chains.current_chain().ccc_min_block)
             if psbt.lock_time <= block_h:
                 raise SpendPolicyViolation("rewound (%d)" % psbt.lock_time)
 
