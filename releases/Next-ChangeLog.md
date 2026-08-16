@@ -109,6 +109,8 @@ This lists the new changes that have not yet been published in a normal release.
   "Transaction modified". Thanks to FreeZ Agent for the report and PoC.
 - Bugfix: Separate the SE1 check nonce from the PIN digest. Thanks to
   [@instagibbs](https://github.com/instagibbs) for reporting this issue.
+- Enhancement: Clone Coldcard now shows the restored seed's master fingerprint on the receiving
+  Coldcard and asks for confirmation before installing it.
 
 # Mk Specific Changes
 
