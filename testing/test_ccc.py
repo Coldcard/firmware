@@ -8,7 +8,7 @@
 import pytest, pdb, requests, re, time, random, json, glob, os, hashlib, base64, uuid
 from base64 import urlsafe_b64encode
 from onetimepass import get_totp
-from helpers import prandom, slip132undo
+from helpers import prandom, slip132undo, str_to_path
 from pysecp256k1.ecdh import ecdh, ECDH_HASHFP_CLS
 from pysecp256k1 import ec_seckey_verify, ec_pubkey_parse, ec_pubkey_serialize, ec_pubkey_create
 from mnemonic import Mnemonic
@@ -182,6 +182,46 @@ def get_last_violation(settings_get):
     def doit():
         return settings_get('lfr')
     return doit
+
+
+def test_ccc_velocity_legacy_block_height_floor(
+        goto_home, settings_set, settings_get, setup_ccc, make_multisig,
+        import_ms_wallet, fake_ms_txn, policy_sign):
+    goto_home()
+    settings_set("ccc", None)
+    settings_set("chain", "BTC")
+    settings_set("multisig", [])
+
+    c_words = setup_ccc(vel="6 blocks (hour)")
+
+    M, N = 2, 3
+    deriv = "m/48h/0h/0h/2h"
+    keys = make_multisig(M, N, deriv=deriv, netcode="BTC")
+    c_master = BIP32Node.from_master_secret(
+        Mnemonic.to_seed(" ".join(c_words)), netcode="BTC")
+    # make_multisig provides B and the simulator's A key; replace the other B with C.
+    keys[0] = (
+        int.from_bytes(c_master.fingerprint(), "little"), c_master,
+        c_master.subkey_for_path(deriv))
+
+    goto_home()
+    import_ms_wallet(
+        M, N, addr_fmt="p2wsh", common=deriv, keys=keys, accept=True)
+
+    ccc = settings_get("ccc")
+    min_block_h = ccc["pol"]["block_h"]
+    assert min_block_h > ccc["pol"]["vel"]
+    ccc["pol"]["block_h"] = 0
+    settings_set("ccc", ccc)
+
+    psbt = fake_ms_txn(
+        1, 1, M, keys, lock_time=min_block_h - 1,
+        path_mapper=lambda _: str_to_path(deriv) + [0, 0])
+    policy_sign(None, base64.b64encode(psbt).decode(), violation="rewound")
+
+    # Enforce the floor at runtime without migrating the legacy policy.
+    assert settings_get("ccc")["pol"]["block_h"] == 0
+
 
 _skip_quiz = False
 

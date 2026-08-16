@@ -65,6 +65,8 @@ This lists the new changes that have not yet been published in a normal release.
   [@instagibbs](https://github.com/instagibbs) for reporting this issue.
 - Enhancement: Clone Coldcard now shows the restored seed's master fingerprint on the receiving
   Coldcard and asks for confirmation before installing it.
+- Bugfix: CCC velocity policies created by older firmware now enforce the
+  current chain's minimum block height before co-signing.
 
 # Mk Specific Changes
 
