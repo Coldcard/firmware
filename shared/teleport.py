@@ -764,6 +764,8 @@ async def kt_send_file_psbt(*a):
 
     # read into PSRAM from wherever
     psbt_len = await sign_psbt_file(input_psbt, just_read=True, **picked)
+    if psbt_len is None:
+        return
 
     dis.fullscreen("Validating...")
     try:
