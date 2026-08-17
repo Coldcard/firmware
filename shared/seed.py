@@ -1640,7 +1640,8 @@ async def apply_pass_value(new_pp):
 
     msg = ('Above is the master key fingerprint of the new wallet'
            ' created by adding passphrase to %s.'
-           '\n\nPassphrase: %s'
+           '\n\nScroll down to view and verify your passphrase.'
+           '\n\n\nPassphrase: %s'
            '\n\nPress %s to abort, %s to use the new wallet, (1) to apply'
            ' and save to MicroSD for future.') % (msg, new_pp, X, OK)
 

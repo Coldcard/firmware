@@ -246,7 +246,8 @@ def test_bip39_add_nums(target, backspaces, pick_menu_item, cap_story, is_q1,
 ])
 def test_bip39_complex(target, pick_menu_item, cap_story, goto_home,
                        press_select, enter_complex, restore_main_seed,
-                       verify_ephemeral_secret_ui, go_to_passphrase):
+                       verify_ephemeral_secret_ui, go_to_passphrase,
+                       cap_screen, is_q1, press_down, press_right):
     go_to_passphrase()
 
     from mnemonic import Mnemonic
@@ -255,6 +256,22 @@ def test_bip39_complex(target, pick_menu_item, cap_story, goto_home,
     expect = BIP32Node.from_master_secret(seed, netcode="XTN")
 
     enter_complex(target, apply=True)
+    scroll_down = press_down if is_q1 else press_right
+
+    for _ in range(3):
+        screen = cap_screen()
+        assert 'Passphrase:' not in screen
+        if 'Scroll down to' in screen:
+            break
+        scroll_down()
+        time.sleep(.01)
+    else:
+        pytest.fail('passphrase scroll notice not shown')
+
+    scroll_down()
+    time.sleep(.01)
+    assert 'Passphrase:' in cap_screen()
+
     press_select()
     time.sleep(.1)
     verify_ephemeral_secret_ui(xpub=expect.hwif(), is_b39pw=True)
