@@ -367,6 +367,9 @@ class BBQrPsramStorage(BBQrStorage):
     def alloc_buf(self, upper_bound):
         # using first part of PSRAM
 
+        import glob
+        glob.ALLOWED_DOWNLOAD = None
+
         if upper_bound >= MAX_TXN_LEN:
             raise QRDecodeExplained("Too big")
 
