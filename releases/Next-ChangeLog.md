@@ -57,6 +57,8 @@ This lists the new changes that have not yet been published in a normal release.
   during multisig wallet enrollment. Thanks to drk1wi for reporting this.
 - Bugfix: Separate the SE1 check nonce from the PIN digest. Thanks to
   [@instagibbs](https://github.com/instagibbs) for reporting this issue.
+- Bugfix: Reject firmware images that extend past the world-checksum-covered
+  flash region.
 
 # Mk Specific Changes
 
