@@ -520,7 +520,7 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
 
     return count, seed
 
-async def new_from_dice(nwords):
+async def new_from_dice(nwords, ephemeral=False):
     # Use lots of (D6) dice rolls to create seed entropy.
     # Note: only 2.585 bits of entropy per roll, so need lots!
     # 50 => 128bits, 99 => 256bits
@@ -535,9 +535,13 @@ async def new_from_dice(nwords):
     count, seed = await add_dice_rolls(count, seed, True, nwords, enforce=True)
     if count == 0: return
 
-    words = await approve_word_list(seed, nwords)
+    words = await approve_word_list(seed, nwords, ephemeral=ephemeral)
     if words:
-        await commit_new_words(words)
+        if ephemeral:
+            dis.fullscreen("Applying...")
+            await set_ephemeral_seed_words(words, origin='Dice')
+        else:
+            await commit_new_words(words)
 
 def in_seed_vault(encoded):
     # Test if indicated secret is in the seed vault already.
@@ -638,22 +642,6 @@ async def set_ephemeral_seed_words(words, origin):
     dis.progress_bar_show(0.5)
     await set_ephemeral_seed(encoded, origin=origin)
     goto_top_menu()
-
-async def ephemeral_seed_generate_from_dice(nwords):
-    # Use lots of (D6) dice rolls to create seed entropy.
-    # Note: only 2.585 bits of entropy per roll, so need lots!
-    # 50 => 128bits, 99 => 256bits
-
-    seed = b''
-    count = 0
-
-    count, seed = await add_dice_rolls(count, seed, True, nwords)
-    if count == 0: return
-
-    words = await approve_word_list(seed, nwords, ephemeral=True)
-    if words:
-        dis.fullscreen("Applying...")
-        await set_ephemeral_seed_words(words, origin='Dice')
 
 def generate_seed():
     # Generate 32 bytes of best-quality high entropy from independent sources.
@@ -1409,7 +1397,7 @@ class EphemeralSeedMenu(MenuSystem):
 
     @staticmethod
     async def ephemeral_seed_generate_from_dice(menu, label, item):
-        return await ephemeral_seed_generate_from_dice(item.arg)
+        return await new_from_dice(item.arg, ephemeral=True)
 
     @classmethod
     def construct(cls):
