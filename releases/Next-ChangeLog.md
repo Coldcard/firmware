@@ -36,6 +36,8 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: In Delta Mode, wipe the seed if anyone tries to view or activate a duress
   wallet's secret from the Trick PINs menu, instead of revealing it. Browsing the menu
   itself still works, so Delta Mode continues to look like normal operation.
+- Bugfix: Reject firmware images that extend past the world-checksum-covered
+  flash region.
 
 # Mk Specific Changes
 
