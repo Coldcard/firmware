@@ -4,6 +4,8 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk and Q
 
+- Change: Use TRNG-seeded SHA-256 Hash-DRBG for backup passwords,
+  encryption salt/IV, and 2FA secrets; use raw TRNG for non-secret uses only.
 - Improvements to Entropy Generation:
     - Master seed generation mixes entropy from both Secure Elements with
       the STM32 TRNG (previously TRNG only).
