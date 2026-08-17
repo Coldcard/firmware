@@ -1831,6 +1831,34 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
     press_cancel()
     press_cancel()
 
+
+def test_reject_oversized_airgapped_xpub_qr(goto_home, pick_menu_item, need_keypress,
+                                             press_select, scan_a_qr, cap_screen,
+                                             clear_ms, is_q1):
+    if not is_q1:
+        pytest.skip("needs scanner")
+
+    clear_ms()
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Create Airgapped')
+    need_keypress(KEY_QR)
+    time.sleep(.1)
+    press_select()
+
+    oversized = json.dumps({'junk': 'x' * 1100})
+    assert len(oversized) > 1100
+    _, parts = split_qrs(oversized, 'J', max_version=20)
+    for part in parts:
+        scan_a_qr(part)
+
+    time.sleep(.5)
+    assert 'Multisig export is too large' in cap_screen()
+
+    press_select()
+
+
 @pytest.mark.unfinalized
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('addr_style', ["legacy", "p2sh-segwit", "bech32"])
