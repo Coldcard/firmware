@@ -663,28 +663,38 @@ fail:
 
 // apply_pin_delta()
 //
-    static void
-apply_pin_delta(char *pin, int pin_len, uint16_t replacement, char *tmp_pin)
+    static bool
+apply_pin_delta(const char *pin, int pin_len, uint16_t replacement, char *tmp_pin)
 {
     // Starting with provided on pin as a string, change the last few digits
     // given to be replacement value which gives true pin.
     // - encoding: BCD with 0xf for unchanged
-    
+
+    // tmp_pin is exactly MAX_PIN_LEN bytes; reject unsafe copy lengths.
+    if((pin_len <= 0) || (pin_len > MAX_PIN_LEN)) return false;
+
     memcpy(tmp_pin, pin, pin_len);
-    tmp_pin[pin_len] = 0;
 
-    char *p = &tmp_pin[pin_len-1];
+    // cursor points one byte past the next character to inspect.
+    int cursor = pin_len;
+    for(int i=0; i<4; i++) {
+        while((cursor > 0) && (tmp_pin[cursor - 1] == '-')) {
+            cursor--;
+        }
 
-    for(int i=0; i<4; i++, p--) {
-        if(*p == '-') p--;
+        // A valid Delta Mode PIN must provide four digits.
+        if(cursor == 0) return false;
+        cursor--;
 
-        int here = replacement & 0xf;
+        int replacement_digit = replacement & 0xf;
         replacement >>= 4;
 
-        if((here >= 0) && (here <= 9)) {
-            *p = '0' + here; 
+        if(replacement_digit <= 9) {
+            tmp_pin[cursor] = '0' + replacement_digit;
         }
     }
+
+    return true;
 }
 
 // pin_login_attempt()
@@ -734,7 +744,9 @@ pin_login_attempt(pinAttempt_t *args)
             // and the mpy firmware can do tricky stuff to protect funds
             // even though the private key is known at that point.
             deltamode = true;
-            apply_pin_delta(args->pin, args->pin_len, slot.tc_arg, tmp_pin);
+            if(!apply_pin_delta(args->pin, args->pin_len, slot.tc_arg, tmp_pin)) {
+                return EPIN_RANGE_ERR;
+            }
 
             goto real_login;
         }
