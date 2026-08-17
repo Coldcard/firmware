@@ -4,14 +4,16 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk and Q
 
-- Security Improvements to Entropy Generation: 
+- Improvements to Entropy Generation:
     - Master seed generation mixes entropy from both Secure Elements with
       the STM32 TRNG (previously TRNG only).
-    - RNG is seeded with the full 256-bit digest of entropy
+    - On every boot, RNG is seeded with the full 256-bit digest of entropy
       from both Secure Elements (previously truncated to 32 bits).
-    - libngu now uses a `SHA-256 Hash_DRBG` (NIST SP 800-90A)
-      instead of the Yasmarang PRNG.
-- Change: New master seeds now **require** extra user supplied entropy.
+    - libngu now uses a `SHA-256 Hash_DRBG` (NIST SP 800-90A) instead of the Yasmarang PRNG.
+    - RNG self-test proves `rng_get()` enters the hardware read path. Brick device otherwise.
+    - Makefile compile-time checks, verifying included code is expanded beyond
+      those in the Hotfix.
+- New master seeds now **require** extra user supplied entropy (dice, coin flips, keyboard mashing):
     - Choose key mashing (based on [Peter Todd's Push-Button RNG](https://petertodd.org/2014/push-button-rng)),
       physical dice rolls or physical coin flips.
     - TRNG, SE1 and SE2 randomness is also mixed into the generated seed.
@@ -24,7 +26,6 @@ This lists the new changes that have not yet been published in a normal release.
       delta and key identity are mixed in, but key identity receives no entropy credit.
       Users may continue mashing beyond 65 presses to contribute additional timing entropy.
     - Generated Temporary Seeds and generated CCC key C now require extra user supplied entropy.
-    - RNG self-test proving `rng_get()` enters the hardware read path. Brick device otherwise.
 - Dice-Only Enhancements: 
     - Dice-only seed generation now warns that no hardware randomness is
       included and the final hash shown on-screen must be kept secret.
