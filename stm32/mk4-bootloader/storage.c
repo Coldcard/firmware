@@ -23,6 +23,7 @@
 #include "stm32l4xx_hal.h"
 #include "constant_time.h"
 #include "storage.h"
+#include "psram.h"
 
 // Number of flash pages to write-protect (ie. our size in flash pages)
 // - written into FLASH->WRP1AR
@@ -825,6 +826,9 @@ fast_wipe(void)
     // - lots of other code can and will detect a missing MCU key as "blank"
     // - and the check value on main seed will be garbage now
     mcu_key_clear(NULL);
+
+    // clear volatile application data that would survive the warm reset
+    psram_wipe();
 
     NVIC_SystemReset();
 
