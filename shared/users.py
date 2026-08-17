@@ -177,9 +177,7 @@ class Users:
     def pick_secret(cls, auth_mode):
         # always 10 bytes for no reason => 80 bits of entropy
         # return binary secret, and encoded value for new user to see
-        import ckcc
-        b = bytearray(10)
-        ckcc.rng_bytes(b)
+        b = ngu.random.bytes(10)
         picked = b32encode(b)
 
         if auth_mode == USER_AUTH_HMAC:
