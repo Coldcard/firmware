@@ -39,6 +39,8 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Prevent valid message signatures when using a Delta Mode PIN.
 - Bugfix: Harden callgate buffer validation against integer overflow and out-of-range access,
   following a finding in the [Karma-X security review](https://karma-x.io/blog/post/75/).
+- Bugfix: Reject out-of-range firmware highwater timestamps without triggering a
+  bootloader assertion.
 - Bugfix: USB `dwld` allowed readback of arbitrary staged PSRAM content (uploaded
   PSBT, multisig enroll file), also across sessions and over plaintext links.
   Downloads are now limited to the single most recent result produced for
