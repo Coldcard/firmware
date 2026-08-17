@@ -12,7 +12,7 @@ from decoders import decode_qr_result
 from ubinascii import hexlify as b2a_hex
 from ubinascii import b2a_base64
 
-from utils import problem_file_line, show_single_address
+from utils import problem_file_line, show_single_address, is_printable
 from public_constants import MSG_SIGNING_MAX_LENGTH
 from glob import numpad         # may be None depending on import order, careful
 
@@ -1133,6 +1133,8 @@ async def ux_visualize_bip21(proto, addr, args):
     for fn in ['label', 'message', 'lightning']:
         if fn in args:
             val = args.pop(fn)
+            if not is_printable(val):
+                val = '(corrupt)'
             msg += '%s%s: %s\n' % (fn[0].upper(), fn[1:], val)
 
     if args:
