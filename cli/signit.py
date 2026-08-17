@@ -329,7 +329,7 @@ def doit(keydir, outfn=None, build_dir=None, high_water=False,
     else:
         # new value for Mk4 and later: limited only by final binary size, not SPI flash
         assert FW_MIN_LENGTH <= hdr.firmware_length <= FW_MAX_LENGTH_MK4, hdr.firmware_length
-        USB_MAX_LEN = 1472 * 1024
+        USB_MAX_LEN = FW_MAX_LENGTH_MK4
 
     assert hdr.firmware_length <= USB_MAX_LEN, \
         "too big for our USB upgrades: %d = %d bytes too big" % (
