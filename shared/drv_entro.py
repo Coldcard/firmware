@@ -86,7 +86,7 @@ def bip85_derive(picked, index):
     else:
         raise ValueError(picked)
 
-    with stash.SensitiveValues() as sv:
+    with stash.SensitiveValues(enforce_delta=True) as sv:
         node = sv.derive_path(path)
         entropy = ngu.hmac.hmac_sha512(b'bip-entropy-from-k', node.privkey())
     
