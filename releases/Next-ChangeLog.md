@@ -83,3 +83,5 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Reject malformed multipart BBQrs that could include stale PSRAM bytes in decoded
   results. Thanks to Piotr Duszynski for reporting this.
 - Bugfix: Reject control characters in BIP-21 payment metadata before display.
+- Bugfix: Limit multisig coordinator BBQr imports before JSON parsing to prevent memory
+  exhaustion.
