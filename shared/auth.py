@@ -1123,6 +1123,9 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, just_read=Fal
     from glob import dis
     from ux import the_ux
 
+    # file staging replaces any previously leased PSRAM contents
+    glob.ALLOWED_DOWNLOAD = None
+
     tmp_buf = bytearray(4096)
 
     # copy file into PSRAM

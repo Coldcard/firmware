@@ -133,6 +133,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Reject control characters in BIP-21 payment metadata before display.
 - Bugfix: Limit multisig coordinator BBQr imports before JSON parsing to prevent memory
   exhaustion.
+- Bugfix: Revoke USB download access before staging PSBT and BBQr data in PSRAM.
 - New Feature: Secure Notes & Passwords UX groups. Thanks, [@Gen6G](https://x.com/Gen6G)!
 - New Feature: Apply Secure Note text, or Secure Note password as BIP-39 passphrase.
 - New Feature: Standalone encrypted backups for Secure Notes & Passwords.

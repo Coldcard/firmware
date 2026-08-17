@@ -1207,7 +1207,10 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
     from bbqr import TYPE_LABELS, int2base36, b32encode, num_qr_needed
     from glob import PSRAM, dis
     from ux import ux_wait_keydown
+    import glob
     import uqr
+
+    glob.ALLOWED_DOWNLOAD = None
 
     # put QR shenanigans at offset 1MB after TXN_OUTPUT_OFFSET
     TMP_OFFSET = const(3 * 1024 * 1024)

@@ -17,7 +17,7 @@ from test_backup import make_big_notes
 from ckcc.protocol import CCProtocolPacker
 from test_hobble import set_hobble
 from test_notes import goto_notes
-
+from ckcc_protocol.protocol import CCProtoError
 
 # All tests in this file are exclusively meant for Q
 #
@@ -659,7 +659,7 @@ def test_teleport_file_psbt_uses_loaded_file(clear_miniscript, fake_ms_txn, cap_
                                              need_keypress, cap_menu, pick_menu_item,
                                              grab_payload, rx_complete, set_master_key,
                                              goto_home, open_microsd, import_ms_wallet,
-                                             press_cancel):
+                                             press_cancel, remote_backup_lease, dev):
     clear_miniscript()
     M, N = 2, 4
     keys = import_ms_wallet(M, N, name="ms-tp", unique=11, accept=True, bip67=True)
@@ -668,6 +668,7 @@ def test_teleport_file_psbt_uses_loaded_file(clear_miniscript, fake_ms_txn, cap_
     fname = "ms-tp.psbt"
     open_microsd(fname, "wb").write(psbt)
 
+    remote_backup_lease()
     goto_home()
     pick_menu_item("Advanced/Tools")
     pick_menu_item("File Management")
@@ -679,6 +680,9 @@ def test_teleport_file_psbt_uses_loaded_file(clear_miniscript, fake_ms_txn, cap_
         pass
 
     menu = cap_menu()
+    with pytest.raises(CCProtoError) as exc:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 0))
+    assert 'not allowed' in str(exc.value)
     assert len(menu) == N
     target = next(item for item in menu if "YOU" not in item)
     target_xfp = str2xfp(target[1:9])

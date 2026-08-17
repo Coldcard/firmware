@@ -704,6 +704,32 @@ def press_select(dev, has_qwerty):
     f = functools.partial(_press_select, dev, has_qwerty)
     return f
 
+
+@pytest.fixture
+def remote_backup_lease(dev, settings_set, press_select):
+    def doit():
+        settings_set('bkpw',
+                     'charge bottom tired when romance blind treat afford bus salute degree anchor')
+
+        assert dev.send_recv(CCProtocolPacker.start_backup()) is None
+        press_select()
+
+        done = None
+        for _ in range(100):
+            time.sleep(.05)
+            done = dev.send_recv(CCProtocolPacker.get_backup_file(), timeout=5000)
+            if done:
+                break
+        assert done
+
+        ll, sha = done
+        backup = dev.download_file(ll, sha, file_number=0)
+        assert backup[0:2] == b'7z'
+        return ll
+
+    return doit
+
+
 @pytest.fixture
 def enter_mash_entropy(pick_menu_item, press_select, need_keypress):
     def doit():
