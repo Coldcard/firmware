@@ -120,9 +120,14 @@ class SecretStash:
             seed_bits = secret[1:1+ll]
 
             # slow: 2+ seconds
-            ms = bip39.master_secret(bip39.b2a_words(seed_bits), _bip39pw)
-
-            hd.from_master(ms)
+            words = bip39.b2a_words(seed_bits)
+            ms = None
+            try:
+                ms = bip39.master_secret(words, _bip39pw)
+                hd.from_master(ms)
+            finally:
+                blank_object(ms)
+                blank_object(words)
 
             return 'words', seed_bits, hd
 
