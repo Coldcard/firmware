@@ -26,7 +26,7 @@ This lists the new changes that have not yet been published in a normal release.
       delta and key identity are mixed in, but key identity receives no entropy credit.
       Users may continue mashing beyond 65 presses to contribute additional timing entropy.
     - Generated Temporary Seeds and generated CCC key C now require extra user supplied entropy.
-- Dice-Only Enhancements: 
+- Dice-Only Enhancements:
     - Dice-only seed generation now warns that no hardware randomness is
       included and the final hash shown on-screen must be kept secret.
     - Temporary dice-only seeds now use the same warning and mandatory
