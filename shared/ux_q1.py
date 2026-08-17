@@ -1139,7 +1139,8 @@ async def ux_visualize_bip21(proto, addr, args):
             msg += '%s%s: %s\n' % (fn[0].upper(), fn[1:], val)
 
     if args:
-        msg += 'And values for: ' + ', '.join(args)
+        msg += 'And values for: ' + \
+               ', '.join(k if is_printable(k) else '(corrupt)' for k in args)
         msg += "\n"
 
     msg += '\nPress (1) to verify ownership.'
