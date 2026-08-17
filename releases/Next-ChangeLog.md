@@ -4,13 +4,14 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk and Q
 
-- Security Improvement: Master seed generation mixes entropy from both Secure
-  Elements with the STM32 TRNG (previously TRNG only).
-- Security Improvement: RNG is seeded with the full 256-bit digest of entropy
-  from both Secure Elements (previously truncated to 32 bits).
-- Security Improvement: libngu now uses a SHA-256 Hash_DRBG (NIST SP 800-90A)
-  instead of the Yasmarang PRNG.
-- Change: New master seeds now require extra user supplied entropy.
+- Security Improvements to Entropy Generation: 
+    - Master seed generation mixes entropy from both Secure Elements with
+      the STM32 TRNG (previously TRNG only).
+    - RNG is seeded with the full 256-bit digest of entropy
+      from both Secure Elements (previously truncated to 32 bits).
+    - libngu now uses a `SHA-256 Hash_DRBG` (NIST SP 800-90A)
+      instead of the Yasmarang PRNG.
+- Change: New master seeds now **require** extra user supplied entropy.
     - Choose key mashing (based on [Peter Todd's Push-Button RNG](https://petertodd.org/2014/push-button-rng)),
       physical dice rolls or physical coin flips.
     - TRNG, SE1 and SE2 randomness is also mixed into the generated seed.
@@ -19,79 +20,33 @@ This lists the new changes that have not yet been published in a normal release.
       resolution (~8.33ns at 120MHz) before keypad debounce. Releases are ignored,
       repeating one key is valid, and at least 65 presses are required. The first
       press establishes the timing reference; each of the following 64 inter-press
-      gaps is conservatively credited with two bits. The full timing delta and key
-      identity are mixed in, but key identity receives no entropy credit. Users may
-      continue mashing beyond 65 presses to contribute additional timing entropy.
-- Enhancement: Dice-only seed generation now warns that no hardware randomness is
-  included and the final hash shown on-screen must be kept secret.
-- Change: Temporary dice-only seeds now use the same warning and mandatory
-  entropy checks as master dice-only seeds.
-- Change: Generated Temporary Seeds and generated CCC key C now require extra
-  user supplied entropy.
-- New Feature: Allow uncompressed WIF keys in WIF Store
-- Enhancement: Can export WIF Store watch-only descriptor.
-- Enhancement: WIF Store address detection without the need
-  for `PSBT_IN_BIP32_DERIVATION` (improves Electrum support)
-- Enhancement: BIP-322 Proof of Reserves and Message Signing PSBT
-  requires `PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE` field
-  (read more [BIP-322 Proof of Reserves documentation](../docs/proof-of-reserves-bip-322.md) )
-- Bugfix: Fixes legacy input amount spoofing by rejecting witness-utxo-only
-  PSBT inputs when Coldcard is expected to sign a non-segwit input.  When both
-  UTXO fields are present the full `non_witness_utxo` is now preferred for
-  amount/script lookup. Thanks, @Damir!
-- Bugfix: Emit warning and do not calculate fee for legacy UTXOs with only witness utxo.
-- Bugfix: Disable Virtual Disk and NFC before activating HSM.
-- Bugfix: P2PK signing was broken. Now supports both compressed and uncompressed P2PK spend.
-- Bugfix: Custom address default menu position was wrong.
-- Bugfix: Delta Mode Trick PIN was never restored from backup.
-- Bugfix: Proper error message for incorrect 7z headers.
-- Bugfix: Exiting nickname entry with nickname already saved deleted previous nickname.
-- Bugfix: "Send Password" menu item inside Notes & Passwords visibility reversed.
-- Bugfix: Yikes when using "Send Password" on entry with password None field.
-- Bugfix: Do not show "Saving..." UX after failed Notes & Passwords import.
-- Bugfix: Incorrect error message caused by error in Verify/Decrypt Backup.
-- Bugfix: NFC Verify Address raised incorrect error message.
-- Bugfix: Notes & Passwords bulk import JSON with BBQr encoded as text.
-- Bugfix: CCC key C challenge handled bad BIP-39 checksum by crashing the UX. Now treated
-  as a wrong attempt (counts toward 3-strike lockout).
-- Bugfix: CCC magnitude reset from CANCEL on empty input.
-- Bugfix: `OP_RETURN` in CCC with whitelist enabled caused Yikes.
-- Bugfix: TX Explorer crashed on foreign input with non-standard sighash.
-- Bugfix: Malformed JSON message-sign request crashed signing UX.
-- Bugfix: Reject UI-control bytes in JSON / QR text message-signing.
-- Bugfix: Non-standard `OP_RETURN` outputs shown as "null-data", hiding part of the script.
-- Bugfix: Over-limit CCC address-whitelist import was rejected but still modified the policy.
-- Bugfix: Deleting a file right after renaming it (List Files) blanked the old name,
-  leaving the renamed file.
-- Bugfix: Reordered `multi(...)` multisig with same keys was misreported as name-only
-  change. Now blocked as duplicate.
-- Bugfix: Max WIF store capacity limit was ignored if saving via QR WIF visualization.
-- Bugfix: Force Seed XOR restore from Temporary Seed menu to remain temporary even when
-  master seed is blank.
-- Bugfix: Binary signed-transaction (.txn) failed in NFC/QR file share.
-- Bugfix: Yikes in transaction explorer for goto index for tx with only one output.
-- Bugfix: Sending `signmessage` payload encoded as BBQr caused Yikes.
-- Bugfix: CCC/SSSP NFC whitelist import caused Yikes.
-- Bugfix: Stricter address ownership validation rejects unrecognized payment
-  addresses before wallet search.
-- Bugfix: Handle malformed NDEF records robustly. Thanks, @Damir!
-- Bugfix: Ignore `bkpw` if added to backup. Thanks, [@dmonakhov](https://github.com/dmonakhov)!
-- Bugfix: Keep NFC export tag live for repeated probes.
-- Bugfix: Fix 1-of-1 multisig signing failure.
-- Bugfix: Detect RNG_SR_SEIS and RNG_SR_SECS, retry safely, and fail closed on persistent faults.
-- Bugfix: Prevent access to Seed Vault entries through Seed XOR restore in Delta Mode. Thanks to
-  Rety for reporting this.
-- Bugfix: Wipe seed in Delta Mode when saved BIP-39 passphrases are listed, instead of revealing them.
-- Bugfix: Block Key Teleport’s secret picker and CCC key-C import from Seed
-  Vault in Delta Mode.
-- Bugfix: Wipe seed before BIP-85 derivation in Delta Mode.
+      gaps is conservatively credited with two bits of entropy credit. The full timing
+      delta and key identity are mixed in, but key identity receives no entropy credit.
+      Users may continue mashing beyond 65 presses to contribute additional timing entropy.
+    - Generated Temporary Seeds and generated CCC key C now require extra user supplied entropy.
+    - RNG self-test proving `rng_get()` enters the hardware read path. Brick device otherwise.
+- Dice-Only Enhancements: 
+    - Dice-only seed generation now warns that no hardware randomness is
+      included and the final hash shown on-screen must be kept secret.
+    - Temporary dice-only seeds now use the same warning and mandatory
+      entropy checks as master dice-only seeds.
+- Delta Mode hardening:
+    - Wipe seed in Delta Mode when saved BIP-39 passphrases are listed, instead of revealing them.
+    - Block Key Teleport’s secret picker and CCC key-C import from Seed
+      Vault in Delta Mode.
+    - Prevent access to Seed Vault entries through Seed XOR restore in Delta Mode.
+      Thanks to "Rety" for reporting this.
+    - Wipe seed before BIP-85 derivation in Delta Mode.
+    - Prevent valid message signatures when using a Delta Mode PIN.
+- Bugfix: Detect `RNG_SR_SEIS` and `RNG_SR_SECS`, retry safely, and fail closed on persistent faults.
 - Bugfix: BIP-322 message signing now rejects non-ASCII and other unsupported
-  message text before approval. Thanks to @KirillCherikov for reporting.
+  message text before approval. Thanks to [@KirillCherikov](https://github.com/KirillCherikov) for reporting.
 - Bugfix: Prevent duplicate WIF Store entries after restarting
-- Change: Block `SIGHASH_SINGLE` and `SIGHASH_SINGLE|ANYONECANPAY` by default because they can leave later transaction outputs modifiable after signing. They remain available when Sighash Checks is set to Warn.
+- Change: Block `SIGHASH_SINGLE` and `SIGHASH_SINGLE|ANYONECANPAY` by default because they can
+  leave later transaction outputs modifiable after signing. They remain available when Sighash
+  Checks is set to Warn.
   Thanks to [@instagibbs](https://github.com/instagibbs) for reporting this issue.
 - Bugfix: Fixed PSBT uploads being mistaken for partial firmware uploads.
-- Bugfix: Prevent valid message signatures when using a Delta Mode PIN.
 - Bugfix: Harden callgate buffer validation against integer overflow and out-of-range access,
   following a finding in the [Karma-X security review](https://karma-x.io/blog/post/75/).
 - Bugfix: Reject out-of-range firmware highwater timestamps without triggering a
@@ -102,14 +57,20 @@ This lists the new changes that have not yet been published in a normal release.
   download (signed txn, visualization, backup), require an encrypted session,
   and are invalidated by any upload, newly staged transaction, or new session.
   Thanks to [@drk1wi](https://github.com/drk1wi).
-- Change: When a BIP-39 passphrase is active, View Seed Words now shows only the effective extended private key instead of the underlying seed words.
-- Change: Backup System, Clone Coldcard, and Key Teleport’s Full COLDCARD Backup now capture the wallet secret currently in effect, including temporary seeds and BIP-39 passphrase wallets, and warn before export.
-- Bugfix: View Seed Words and backup workflows incorrectly treated the master seed as the parent of every BIP-39 passphrase wallet. When a passphrase was applied to a temporary seed, they could not access that immediate parent seed.
-- Enhancement: RNG self-test proving rng_get() enter the hardware read path. Brick device otherwise.
-- Bugfix: a compromised USB host could rewrite the staged PSBT after review but
+- Change: When a BIP-39 passphrase is active, View Seed Words now shows only the effective
+  extended private key instead of the underlying seed words.
+    - Bugfix: View Seed Words and backup workflows incorrectly treated the master seed as the
+      parent of every BIP-39 passphrase wallet. When a passphrase was applied to a temporary seed,
+      they could not access that immediate parent seed.
+    - Change: Backup System, Clone Coldcard, and Key Teleport’s Full COLDCARD Backup now capture
+      the wallet secret currently in effect, including temporary seeds and BIP-39 passphrase
+      wallets, and warn before export.
+- Bugfix: a compromised USB host could rewrite the staged PSBT after review, but
   before signing, so the signature covered a different transaction than shown.
   Staged bytes are now re-verified before signing; any change aborts with
-  "Transaction modified". Thanks to FreeZ Agent for the report and PoC.
+  "Transaction modified". Thanks to "FreeZ Agent" for the report and PoC.
+- Bugfix: Reject duplicate cosigner keys, and cosigner keys the device already holds,
+  during multisig wallet enrollment. Thanks to [@drk1wi](https://github.com/drk1wi) for reporting this.
 - Bugfix: Separate the SE1 check nonce from the PIN digest. Thanks to
   [@instagibbs](https://github.com/instagibbs) for reporting this issue.
 - Enhancement: Clone Coldcard now shows the restored seed's master fingerprint on the receiving
@@ -120,42 +81,19 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Mk Specific Changes
 
-## 5.5.x - 2065-09-xx
+## 6.6.0X - 2026-08-18
 
-- All bug fixes and enhancements listed above.
+- all of the above.
 
 
 # Q Specific Changes
 
-## 1.4.xQ - 2065-09-xx
+## 6.6.0QX - 2026-08-18
 
-- Bugfix: Reject malformed multipart BBQrs that could include stale PSRAM bytes in decoded
-  results. Thanks to Piotr Duszynski for reporting this.
-- Bugfix: Reject control characters in BIP-21 payment metadata before display.
-- Bugfix: Limit multisig coordinator BBQr imports before JSON parsing to prevent memory
-  exhaustion.
-- Bugfix: Revoke USB download access before staging PSBT and BBQr data in PSRAM.
-- New Feature: Secure Notes & Passwords UX groups. Thanks, [@Gen6G](https://x.com/Gen6G)!
-- New Feature: Apply Secure Note text, or Secure Note password as BIP-39 passphrase.
-- New Feature: Standalone encrypted backups for Secure Notes & Passwords.
-- Bugfix: Major scanner robustness improvements!
-  - Recover scanner setup failures by retrying configuration and reinitializing on
-    the next scan when needed.
-  - Prevent delayed scanner sleep commands from racing with a newly started scan.
-  - Improve scanner shutdown/recovery after scan cancel or command timeout.
-  - Bottom line: should be less "stuck" QR scanners, with the light left on.
-- Bugfix: Teleporting a multisig PSBT file (without signing it first) sent stale data
-  instead of the selected file.
-- Bugfix: Fix export message shown after teleport PSBT import & sign.
-- Bugfix: BIP-21 QR `amount` rendered with wrong decimal scaling on the Payment Address
-  screen (e.g. `amount=1.1` was shown as `1.00000001 BTC`).
-- Bugfix: Q1 seed word entry cursor alignment for 12-word seeds and preserve visible words
-  after failed QR scans.
-- Bugfix: QR scan import (Scan Any QR Code, master/temp seed via QR) now shows a clear
-  error message on any parser or seed-loading failure (e.g. wordlist-valid but bad-checksum
-  SeedQR) instead of Yikes.
-- Bugfix: Yikes when showing "QR too big" for a transaction output alone on
-  an output-explorer page.
-- Bugfix: Yikes receiving a malformed full-backup via Key Teleport.
-- Bugfix: Keyboard debounce could leave a key stuck as "pressed" after release, when another
-  key was held (sometimes).
+- Bugfix: Reject malformed multipart BBQrs that could include stale PSRAM bytes
+  in decoded results. Thanks to [@drk1wi](https://github.com/drk1wi) for reporting this.
+- Hardening & Defence in depth:
+    - Reject control characters in BIP-21 payment metadata before display.
+    - Limit multisig coordinator BBQr imports before JSON parsing to prevent memory
+      exhaustion.
+    - Revoke USB download access before staging PSBT and BBQr data in PSRAM.
