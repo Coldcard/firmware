@@ -8,6 +8,7 @@ from charcodes import *
 from constants import AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2WPKH, simulator_fixed_words
 from bbqr import split_qrs
 from ckcc.protocol import CCProtocolPacker
+from ckcc_protocol.protocol import CCProtoError
 from bip32 import BIP32Node
 from mnemonic import Mnemonic
 
@@ -569,6 +570,22 @@ def test_top_export(way, encrypted, settings_set, settings_remove, need_some_pas
     obj = json.loads(data)
     assert obj.keys() == {'coldcard_notes'}
     assert obj['coldcard_notes'] == notes
+
+
+def test_qr_export_revokes_download_lease(remote_backup_lease, settings_set, settings_get,
+                                          need_some_notes, backup_notes, dev, press_select):
+    settings_set('notes', [])
+    need_some_notes('Private note', 'not for the USB host')
+    notes = settings_get('notes')
+    remote_backup_lease()
+
+    data, _, _ = backup_notes('qr')
+    assert json.loads(data)['coldcard_notes'] == notes
+
+    with pytest.raises(CCProtoError) as exc:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 0))
+    assert 'not allowed' in str(exc.value)
+    press_select()
 
 
 def test_sort_by_title(goto_notes, pick_menu_item, cap_story, need_keypress, settings_get,
