@@ -211,7 +211,7 @@ async def microsd_upgrade(menu, label, item):
     from glob import dis, PSRAM
     from files import dfu_parse
     from utils import check_firmware_hdr
-    from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_MAX_LENGTH_MK4
+    from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_MAX_DFU_SIZE_MK4
 
     if version.has_battery:
         import battery
@@ -222,7 +222,7 @@ async def microsd_upgrade(menu, label, item):
             return
 
     force_vdisk = item.arg
-    fn = await file_picker(suffix='.dfu', min_size=0x7800, max_size=FW_MAX_LENGTH_MK4,
+    fn = await file_picker(suffix='.dfu', min_size=0x7800, max_size=FW_MAX_DFU_SIZE_MK4,
                            force_vdisk=force_vdisk)
 
     if not fn: return

@@ -33,9 +33,13 @@ FW_MIN_LENGTH = (256*1024)
 # - but practical limit for our-protocol USB upgrades: 786432 (or else settings damaged)
 FW_MAX_LENGTH = (0x100000 - 0x8000)
 
-# Mk4/Q1: 2MB less 128k bootrom and 512k LFS2.
-# Leave one 512-byte block for the DFU wrapper.
-FW_MAX_LENGTH_MK4 = (0x200000 - 0x20000 - 0x80000 - 512)
+# Mk4/Q1: 2MB less 128k bootrom and 512k LFS2, so firmware stays
+# inside the world-checksum-covered flash region. 4k aligned.
+FW_MAX_LENGTH_MK4 = (0x200000 - 0x20000 - 0x80000)
+
+# Max .dfu file size for the MicroSD file picker: above limit, plus the
+# bootloader element (BL_FLASH_SIZE) and DFU wrapper of a -factory.dfu image.
+FW_MAX_DFU_SIZE_MK4 = (FW_MAX_LENGTH_MK4 + 0x1c000 + 0x400)
 
 # Arguments to be used w/ python's struct module.
 FWH_PY_FORMAT = "<I8s8sIIII8s20s64s"
