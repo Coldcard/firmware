@@ -563,6 +563,9 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                 mcu_key_clear(NULL);
                 oled_show(screen_wiped);
 
+                psram_wipe();
+                wipe_all_sram();
+
                 LOCKUP_FOREVER();
             }
             rv = EPERM;

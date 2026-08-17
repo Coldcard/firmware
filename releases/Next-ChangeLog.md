@@ -77,6 +77,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Reject backup files that request excessive password-derivation work.
 - Bugfix: Separate the SE1 check nonce from the PIN digest. Thanks to
   [@instagibbs](https://github.com/instagibbs) for reporting this issue.
+- Bugfix: Clear volatile application data when the seed is wiped.
 - Enhancement: Clone Coldcard now shows the restored seed's master fingerprint on the receiving
   Coldcard and asks for confirmation before installing it.
 - Bugfix: CCC velocity policies created by older firmware now enforce the
