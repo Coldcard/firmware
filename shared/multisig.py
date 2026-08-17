@@ -19,7 +19,10 @@ async def ms_coordinator_qr(af_str, my_xfp):
     from ux_q1 import QRScannerInteraction, decode_qr_result, QRDecodeExplained
 
     def convertor(got):
-        file_type, _, data = decode_qr_result(got, expect_bbqr=True)
+        file_type, file_size, data = decode_qr_result(got, expect_bbqr=True)
+        if file_size > 1100:
+            raise QRDecodeExplained('Multisig export is too large')
+
         if isinstance(data, bytes):
             # we expect BBQr, but simple QR also possible here
             data = data.decode()

@@ -1490,6 +1490,34 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
     press_cancel()
 
 
+def test_reject_oversized_airgapped_xpub_qr(goto_home, pick_menu_item, need_keypress,
+                                             press_select, scan_a_qr, cap_screen,
+                                             clear_miniscript, is_q1):
+    if not is_q1:
+        pytest.skip("needs scanner")
+
+    clear_miniscript()
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig/Miniscript')
+    pick_menu_item('Create Airgapped')
+    time.sleep(.1)
+    need_keypress(KEY_QR)
+    time.sleep(.1)
+    press_select()
+
+    oversized = json.dumps({'junk': 'x' * 1100})
+    assert len(oversized) > 1100
+    _, parts = split_qrs(oversized, 'J', max_version=20)
+    for part in parts:
+        scan_a_qr(part)
+
+    time.sleep(.5)
+    assert 'Multisig export is too large' in cap_screen()
+
+    press_select()
+
+
 @pytest.mark.parametrize('addr_fmt', [AF_P2WSH] )
 @pytest.mark.parametrize('num_ins', [ 3])
 @pytest.mark.parametrize('out_style', ['p2wsh'])
