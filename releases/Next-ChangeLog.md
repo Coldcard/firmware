@@ -93,6 +93,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 1.5.1Q - 2026-08-18
 
+- Security Improvement: Require scrolling to reveal locally entered BIP-39 passphrases.
 - Bugfix: Reject malformed multipart BBQrs that could include stale PSRAM bytes
   in decoded results. Thanks to [@drk1wi](https://github.com/drk1wi) for reporting this.
 - Hardening & Defence in depth:
