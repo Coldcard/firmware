@@ -1695,6 +1695,26 @@ def test_bip21_metadata_control_chars(field, scan_a_qr, cap_story, goto_home,
     press_cancel()
 
 
+def test_bip21_parameter_name_control_chars(scan_a_qr, cap_story, goto_home,
+                                             need_keypress, press_cancel):
+    addr = 'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R'
+    fake_addr = 'tb1qupyd58ndsh7lut0et0vtrq432jvu9jtdyws9n9'
+    bad_key = OUT_CTRL_ADDRESS + fake_addr
+    url = 'bitcoin:%s?amount=1&%s=1' % (addr, bad_key)
+
+    goto_home()
+    need_keypress(KEY_QR)
+    time.sleep(.1)
+    scan_a_qr(url)
+    time.sleep(.5)
+
+    title, body = cap_story()
+    assert title == 'Payment Address'
+    assert 'And values for: (corrupt)' in body
+    assert fake_addr not in body
+    press_cancel()
+
+
 @pytest.mark.onetime
 def test_dump_menutree(sim_execfile):
     # saves to ../unix/work/menudump.txt
