@@ -238,6 +238,11 @@ def restore_from_dict_ll(vals, raw):
         # above will be done in ftux
         need_ftux = True
 
+    # backups made before 5.4.1/1.3.1Q carry notes but predate 'secnap' flag
+    if version.has_qwerty and (settings.get('notes') is not None) \
+            and not settings.get('secnap'):
+        settings.set('secnap', True)
+
     # write out
     settings.save()
     dis.progress_bar_show(1)

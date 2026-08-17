@@ -749,6 +749,12 @@ async def version_migration():
     # version 5.0.6 is installed
     settings.remove_key('vdsk')
 
+    # Secure notes gate moved from 'notes' key presence to 'secnap' opt-in
+    # flag in 5.4.1/1.3.1Q; keep feature enabled for pre-existing notes
+    if version.has_qwerty and not pa.is_deltamode():
+        if (settings.get('notes') is not None) and not settings.get('secnap'):
+            settings.set('secnap', True)
+
 async def version_migration_prelogin():
     # same, but for setting before login
     # these have moved into SE2 for Mk4 and so can be removed
