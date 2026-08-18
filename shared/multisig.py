@@ -356,6 +356,10 @@ class MultisigWallet(WalletABC):
         return cls.iter_wallets()
 
     @classmethod
+    def name_is_used(cls, name, exclude_idx=-1):
+        return any(cls.iter_wallets(name=name, not_idx=exclude_idx))
+
+    @classmethod
     def exists(cls):
         # are there any wallets defined?
         return bool(settings.get('multisig', False))
@@ -374,6 +378,7 @@ class MultisigWallet(WalletABC):
     def commit(self):
         # data to save
         # - important that this fails immediately when nvram overflows
+        assert not self.name_is_used(self.name, self.storage_idx), 'duplicate wallet name'
         obj = self.serialize()
 
         v = settings.get('multisig', [])
@@ -431,8 +436,13 @@ class MultisigWallet(WalletABC):
                 return None, ["key order"], 1
             elif self.name == c.name:
                 return None, [], 1
+            elif self.name_is_used(self.name, c.storage_idx):
+                return None, ['name already exists'], 1
             else:
                 return c, ['name'], 0
+
+        if self.name_is_used(self.name, self.storage_idx):
+            return None, ['name already exists'], 1
 
         similar = MultisigWallet.find_candidates(lst)
         if not similar:
