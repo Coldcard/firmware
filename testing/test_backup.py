@@ -1025,4 +1025,33 @@ def test_check_file_headers_errors(microsd_path, src_root_dir, verify_backup_fil
     title, story = cap_story()
     assert "Trailing header has wrong CRC" in story
 
+
+def test_excessive_kdf_rounds(microsd_path, src_root_dir, verify_backup_file):
+    from binascii import crc32 as host_crc32
+
+    fname = "backup.7z"
+    fn = microsd_path(fname)
+
+    with open(f'{src_root_dir}/docs/backup.7z', "rb") as f:
+        corrupted = bytearray(f.read())
+
+    sh_offset, sh_size = struct.unpack_from('<QQ', corrupted, 12)
+    th_start = 0x20 + sh_offset
+    th_end = th_start + sh_size
+    marker = b'\x07\x0b\x01\x00\x01\x24\x06\xf1\x07\x01'
+    props_len_at = corrupted.index(marker, th_start, th_end) + len(marker)
+    assert corrupted[props_len_at] < 0x80
+    rounds_at = props_len_at + 1
+    corrupted[rounds_at] = (corrupted[rounds_at] & 0xc0) | 20
+
+    struct.pack_into('<L', corrupted, 28,
+                     host_crc32(corrupted[th_start:th_end]) & 0xffffffff)
+    struct.pack_into('<L', corrupted, 8,
+                     host_crc32(corrupted[12:32]) & 0xffffffff)
+    with open(fn, "wb") as f:
+        f.write(corrupted)
+
+    with pytest.raises(AssertionError):
+        verify_backup_file(fname)
+
 # EOF
