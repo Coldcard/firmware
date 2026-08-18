@@ -227,6 +227,8 @@ class OwnershipCache:
             res = list(MiniScriptWallet.iter_wallets(name=named_wal))
             if not res:
                 raise UnknownAddressExplained("Wallet '%s' not defined." % named_wal)
+            if len(res) > 1:
+                raise UnknownAddressExplained("Wallet '%s' is ambiguous." % named_wal)
 
             # only return desired named wallet, no other wallets are searched
             return res

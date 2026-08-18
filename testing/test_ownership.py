@@ -679,6 +679,40 @@ def test_named_wallet_search_fail(load_shared_mod, goto_home, pick_menu_item, nf
     assert "Wallet 'unknown' not defined." in story
 
 
+def test_named_wallet_search_ambiguous(clear_miniscript, import_ms_wallet,
+                                       settings_get, settings_set, load_shared_mod,
+                                       goto_home, pick_menu_item, nfc_write,
+                                       cap_story, sim_root_dir):
+    name = 'ambiguous'
+    clear_miniscript()
+    import_ms_wallet(2, 3, 'p2wsh', name=name, accept=True)
+
+    wallets = settings_get('miniscript')
+    assert len(wallets) == 1
+    settings_set('miniscript', wallets + wallets)
+
+    addr = fake_address(AF_P2WSH, True)
+    addr = "%s?wallet=%s" % (addr, name)
+    cc_ndef = load_shared_mod('cc_ndef', '../shared/ndef.py')
+    n = cc_ndef.ndefMaker()
+    n.add_text(addr)
+    ccfile = n.bytes()
+
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('NFC Tools')
+    pick_menu_item('Verify Address')
+    with open('%s/debug/nfc-addr.ndef' % sim_root_dir, 'wb') as f:
+        f.write(ccfile)
+    nfc_write(ccfile)
+
+    time.sleep(1)
+    title, story = cap_story()
+    clear_miniscript()
+    assert title == 'Unknown Address'
+    assert "Wallet '%s' is ambiguous." % name in story
+
+
 @pytest.mark.parametrize('valid', [True, False])
 @pytest.mark.parametrize('method', ["qr", "nfc"])
 @pytest.mark.parametrize('wname', ["msnm", "Longer Wallet Name"])
