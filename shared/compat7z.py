@@ -438,8 +438,9 @@ class Builder(object):
 
         first, second = rv.read(2)
         self.rounds_pow = first & 0x3f
+        assert self.rounds_pow <= 19  # excessive KDF rounds
 
-        assert first & 0xc0 == 0xc0, "require salt+iv"
+        assert first & 0xc0 == 0xc0  # require salt+iv
 
         salt_len = ((second >> 4) & 0xf) + 1
         iv_len = (second & 0xf) + 1
