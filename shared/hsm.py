@@ -223,7 +223,7 @@ class ApprovalRule:
         # if specified, 'wallet' must be an existing multisig wallet's name
         if self.wallet and self.wallet != '1':
             names = [ms.name for ms in MultisigWallet.get_all()]
-            assert self.wallet in names, "unknown MS wallet: "+self.wallet
+            assert names.count(self.wallet) == 1, "unknown or ambiguous MS wallet: "+self.wallet
 
         # patterns must be valid
         for p in self.patterns:

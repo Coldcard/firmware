@@ -985,8 +985,8 @@ def test_overflow(N, import_ms_wallet, clear_ms, press_select, cap_story, mk_num
 
     clear_ms()
     M = N
-    name = 'a'*20       # longest possible
     for count in range(1, 10):
+        name = ('a'*19) + str(count)       # unique, longest possible
         keys = import_ms_wallet(M, N, name=name, addr_fmt='p2wsh', unique=count, accept=0,
                                     common="m/45h/0h/34h")
 
@@ -1011,6 +1011,42 @@ def test_overflow(N, import_ms_wallet, clear_ms, press_select, cap_story, mk_num
 
     press_select()
     clear_ms()
+
+
+def test_unique_wallet_names(clear_ms, make_multisig, offer_ms_import, press_select,
+                             press_cancel, settings_get, OK):
+    clear_ms()
+    M, N = 2, 3
+    name = 'same-name'
+
+    def config(unique, wallet_name=name):
+        keys = make_multisig(M, N, unique=unique)
+        rv = 'name: %s\npolicy: %d / %d\nformat: P2WSH\n\n' % (wallet_name, M, N)
+        return rv + '\n'.join('%s: %s' % (xfp2str(xfp), sk.hwif(as_private=False))
+                              for xfp, _, sk in keys)
+
+    _, story = offer_ms_import(config(1))
+    assert 'Create new multisig wallet' in story
+    press_select()
+    time.sleep(.1)
+
+    _, story = offer_ms_import(config(2))
+    assert 'Duplicate wallet. name already exists' in story
+    assert ('%s to approve' % OK) not in story
+    press_cancel()
+
+    other_name = 'other-name'
+    _, story = offer_ms_import(config(2, other_name))
+    assert 'Create new multisig wallet' in story
+    press_select()
+    time.sleep(.1)
+
+    # Renaming the first wallet must not overwrite the second or delete the first.
+    _, story = offer_ms_import(config(1, other_name))
+    assert 'Duplicate wallet. name already exists' in story
+    assert ('%s to approve' % OK) not in story
+    press_cancel()
+    assert [rec[0] for rec in settings_get('multisig')] == [name, other_name]
 
 @pytest.fixture
 def test_make_example_file(microsd_path, make_multisig):
