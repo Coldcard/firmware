@@ -4675,8 +4675,10 @@ def test_upload_during_approval(dev, fake_txn, start_sign, end_sign, cap_story,
     # attacker host rewrites an aligned block mid-approval: allowed at USB
     # layer (a new upload may supersede a pending request), but must be
     # caught before any signature is produced
-    rv = dev.send_recv(CCProtocolPacker.upload(256, len(in_psbt), bytes(256)))
-    assert rv == 256
+    rv = dev.send_recv(CCProtocolPacker.upload(
+        0, len(in_psbt), in_psbt[:256] + bytes(256)
+    ))
+    assert rv == 0
 
     # user approves what was originally displayed; must not sign
     need_keypress('y')
