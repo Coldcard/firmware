@@ -222,7 +222,8 @@ class ApprovalRule:
         # if specified, 'wallet' must be an existing miniscript wallet's name
         if self.wallet and self.wallet != '1':
             msc_names = [msc.name for msc in MiniScriptWallet.iter_wallets()]
-            assert self.wallet in msc_names, "unknown wallet: " + self.wallet
+            assert msc_names.count(self.wallet) == 1, \
+                "unknown or ambiguous wallet: " + self.wallet
 
         # patterns must be valid
         for p in self.patterns:
