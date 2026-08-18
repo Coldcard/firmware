@@ -226,6 +226,20 @@ class MiniScriptWallet(WalletABC):
         return bool(settings.get(cls.skey, []))
 
     @classmethod
+    def make_unique_name(cls, base):
+        assert 1 <= len(base) <= MAX_NAME_LEN
+        names = [rec[0] for rec in settings.get(cls.skey, [])]
+        if base not in names:
+            return base
+
+        prefix = base + ' #'
+        nums = [int(n[len(prefix):]) for n in names
+                if n.startswith(prefix) and n[len(prefix):].isdigit()]
+        name = prefix + str(max([1] + nums) + 1)
+        assert len(name) <= MAX_NAME_LEN
+        return name
+
+    @classmethod
     def iter_wallets(cls, name=None, addr_fmts=None):
         # - this is only place we should be searching this list, please!!
         lst = settings.get(cls.skey, [])
@@ -578,7 +592,7 @@ class MiniScriptWallet(WalletABC):
         # multiple same MofN multisigs from PSBT
         cs = desc_obj.to_string().split("#")[-1]
         # last 4 chars from checksum are used
-        name = 'PSBT-%dof%d-%s' % (M, N, cs[4:])
+        name = cls.make_unique_name('PSBT-%dof%d-%s' % (M, N, cs[4:]))
         return cls.from_descriptor_obj(name, desc_obj)
 
     def validate_psbt_xpubs(self, psbt_xpubs):
