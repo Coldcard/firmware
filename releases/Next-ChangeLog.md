@@ -79,6 +79,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: CCC velocity policies created by older firmware now enforce the
   current chain's minimum block height before co-signing.
 - Bugfix: USB backup restore now respects the Spending Policy's Related Keys setting.
+- Bugfix: Reject overlong Base58Check payloads before decoding beyond the destination buffer.
 
 # Mk Specific Changes
 
