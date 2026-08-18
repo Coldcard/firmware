@@ -360,6 +360,20 @@ class MultisigWallet(WalletABC):
         return any(cls.iter_wallets(name=name, not_idx=exclude_idx))
 
     @classmethod
+    def make_unique_name(cls, base):
+        assert 1 <= len(base) <= 20
+        names = [rec[0] for rec in settings.get('multisig', [])]
+        if base not in names:
+            return base
+
+        prefix = base + ' #'
+        nums = [int(n[len(prefix):]) for n in names
+                if n.startswith(prefix) and n[len(prefix):].isdigit()]
+        name = prefix + str(max([1] + nums) + 1)
+        assert len(name) <= 20
+        return name
+
+    @classmethod
     def exists(cls):
         # are there any wallets defined?
         return bool(settings.get('multisig', False))
@@ -780,7 +794,7 @@ class MultisigWallet(WalletABC):
 
         if not name:
             # provide a default name
-            name = '%d-of-%d' % (M, N)
+            name = cls.make_unique_name('%d-of-%d' % (M, N))
 
         try:
             name = to_ascii_printable(name)
@@ -1041,7 +1055,7 @@ class MultisigWallet(WalletABC):
 
         cls.check_unique_cosigner_keys(xpubs)
 
-        name = 'PSBT-%d-of-%d' % (M, N)
+        name = cls.make_unique_name('PSBT-%d-of-%d' % (M, N))
         # this will always create sortedmulti multisig (BIP-67)
         # because BIP-174 came years after wide spread acceptance of BIP-67 policy
         ms = cls(name, (M, N), xpubs, chain_type=expect_chain, addr_fmt=af)
@@ -1819,7 +1833,7 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
         return
 
     if for_ccc:
-        secret, ccc_ms_count = for_ccc
+        secret, _ = for_ccc
         # Always include 2 keys from CCC: own master (key A) and key C
         # - force them to same derivation.
         acct = await ux_enter_bip32_index('CCC Account Number:')
@@ -1892,11 +1906,9 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
 
     if for_ccc:
         name = "Coldcard Co-sign" if version.has_qwerty else "CCC"
-        if ccc_ms_count:
-            # make name unique for each CCC wallet, but they can edit
-            name += " #%d" % (ccc_ms_count+1)
     else:
         name = 'CC-%d-of-%d' % (M, N)
+    name = MultisigWallet.make_unique_name(name)
 
     ms = MultisigWallet(name, (M, N), xpubs, chain_type=chain.ctype, addr_fmt=addr_fmt)
 
