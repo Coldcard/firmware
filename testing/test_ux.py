@@ -3,7 +3,7 @@
 import pytest, time, os, re, hashlib, shutil, functools, ndef
 from binascii import b2a_hex
 from helpers import xfp2str, prandom
-from charcodes import KEY_QR, KEY_NFC, KEY_DELETE, KEY_ENTER
+from charcodes import KEY_QR, KEY_NFC, KEY_DELETE, KEY_ENTER, OUT_CTRL_ADDRESS
 from constants import AF_CLASSIC, simulator_fixed_words, simulator_fixed_xfp
 from mnemonic import Mnemonic
 from bip32 import BIP32Node

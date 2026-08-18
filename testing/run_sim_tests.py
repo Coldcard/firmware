@@ -493,6 +493,8 @@ def main():
                     out_fd = open(out_log_path, "w")
                     cmd_list = ["pytest", "--cache-clear", "-m", DEFAULT_PYTEST_MARKS, "--sim",
                                 mn, "--sim-socket", sim.socket]
+                    if args.psbt2:
+                        cmd_list.append("--psbt2")
                     if k:
                         cmd_list.extend(["-k", k])
                     p = subprocess.Popen(cmd_list, preexec_fn=os.setsid, stdout=out_fd, stderr=out_fd)
