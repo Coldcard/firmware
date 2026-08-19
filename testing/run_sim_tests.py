@@ -10,6 +10,7 @@ python run_sim_tests.py --help
 python run_sim_tests.py --veryslow                             # run ONLY very slow tests
 python run_sim_tests.py --onetime                              # run ONLY onetime tests (each will get its own simulator)
 python run_sim_tests.py --onetime --veryslow                   # run both onetime and very slow
+python run_sim_tests.py --ncry3                                # run ncry v3 simulator/client tests
 python run_sim_tests.py -m test_nfc.py                         # run only nfc tests
 python run_sim_tests.py -m test_nfc.py -m test_hsm.py          # run nfc and hsm tests
 python run_sim_tests.py -m all                                 # run all tests but not onetime and not very slow (cca 40 minutes)
@@ -183,7 +184,7 @@ def _run_pytest_tests(test_module: str, pytest_marks: str, pytest_k: str, pdb: b
     if psbt2:
         cmd_list.append("--psbt2")
     if is_Q:
-        cmd_list.insert(0, "--Q")  # only changes behavior in login_settings_test
+        cmd_list.insert(0, "--Q")
     if headless:
         cmd_list.append("--headless")
     if sim_socket:
@@ -312,6 +313,8 @@ def main():
                         help="run 'clone_tests'")
     parser.add_argument("--seedless", action="store_true", default=False,
                         help="run 'seedless_tests'")
+    parser.add_argument("--ncry3", action="store_true", default=False,
+                        help="run 'ncry_tests'")
     parser.add_argument("--collect", type=str, metavar="MARK",
                         help="Collect marked test and print them to stdout")
     parser.add_argument("-k", "--pytest-k", type=str, metavar="EXPRESSION", default=None,
@@ -339,7 +342,8 @@ def main():
                                 and args.veryslow is False
                                 and args.login is False
                                 and args.clone is False
-                                and args.seedless is False):
+                                and args.seedless is False
+                                and args.ncry3 is False):
         args.module = ["all"]
 
     DEFAULT_SIMULATOR_ARGS = ["--eff", "--set", "nfc=1"]
@@ -598,8 +602,17 @@ def main():
         print("start seedless tests")
         ec, failed_tests = run_coldcard_tests(test_module="seedless_tests.py", pdb=args.pdb,
                                               failed_first=args.ff, pytest_k=args.pytest_k,
+                                              is_Q=True if args.q1 else False,
                                               headless=args.headless)
         result.append((f"seedless_tests", ec, failed_tests))
+
+    if args.ncry3:
+        print("start ncry3 tests")
+        ec, failed_tests = run_coldcard_tests(test_module="ncry_tests.py", pdb=args.pdb,
+                                              failed_first=args.ff, pytest_k=args.pytest_k,
+                                              is_Q=True if args.q1 else False,
+                                              headless=args.headless)
+        result.append((f"ncry_tests", ec, failed_tests))
 
     print("All done")
 
