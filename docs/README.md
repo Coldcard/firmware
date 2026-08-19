@@ -11,6 +11,7 @@ wants to understand why it's safe to put your moneys into Coldcard.
 - [`notes-on-repro.md`](notes-on-repro.md) Detailed breakdown of the reproducible build process.
 - [`upgrade-recovery.md`](upgrade-recovery.md) Firmware upgrade and recovery process.
 - [`backup-files.md`](backup-files.md) Some details of our encrypted backup files.
+- [`usb-ncry-v3.md`](usb-ncry-v3.md) Details of USB ncry v3 encrypted sessions and MITM-check best practices.
 - [`temporary-seeds.md`](temporary-seeds.md) Temporary (ephemeral) seeds and the Seed Vault.
 - [`seed-xor.md`](seed-xor.md) More about _Seed XOR_ feature, including fully worked Seed XOR example, and useful XOR lookup chart.
 - [`key-teleport.md`](key-teleport.md) Key Teleport: encrypted transfer of seeds and secrets between Q devices.
@@ -31,4 +32,3 @@ wants to understand why it's safe to put your moneys into Coldcard.
 - [`limitations.md`](limitations.md) Documented limitations, policy choices, and TODO items.
 - [`paperwallet.pdf`](paperwallet.pdf) Example paper wallet template file.
 - [`menu-tree.txt`](menu-tree.txt) Dump of the menu system. Incomplete, may be out of date.
-
