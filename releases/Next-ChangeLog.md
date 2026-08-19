@@ -76,6 +76,9 @@ This lists the new changes that have not yet been published in a normal release.
   during multisig wallet enrollment. Thanks to [@drk1wi](https://github.com/drk1wi) for reporting this.
 - Bugfix: Reject backup files that request excessive password-derivation work.
 - Bugfix: Reject duplicate multisig wallet names.
+- Change: Multisig wallet names can now be changed with a dedicated `Rename`
+  action in the wallet menu. Reimporting an enrollment file or descriptor no
+  longer renames an existing wallet.
 - Bugfix: Separate the SE1 check nonce from the PIN digest. Thanks to
   [@instagibbs](https://github.com/instagibbs) for reporting this issue.
 - Bugfix: Clear volatile application data when the seed is wiped.

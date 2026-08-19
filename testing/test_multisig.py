@@ -22,7 +22,7 @@ from io import BytesIO
 from hashlib import sha256
 from bbqr import split_qrs
 from descriptor import MULTI_FMT_TO_SCRIPT, MultisigDescriptor, parse_desc_str
-from charcodes import KEY_QR, KEY_DELETE
+from charcodes import KEY_CLEAR, KEY_QR, KEY_DELETE
 
 
 def HARD(n=0):
@@ -842,6 +842,51 @@ def test_import_dup_safe(N, clear_miniscript, make_multisig, offer_minsc_import,
 
         has_name(newer_name, 2)
 
+    clear_miniscript()
+
+
+def test_rename_wallet_collision_and_cancel(clear_miniscript, import_ms_wallet,
+                                            goto_home, pick_menu_item, cap_menu,
+                                            cap_story, need_keypress, enter_text,
+                                            press_select, press_cancel, settings_get,
+                                            is_q1):
+    clear_miniscript()
+    import_ms_wallet(2, 3, name='123', unique=0, accept=True)
+    import_ms_wallet(2, 3, name='125', unique=1, accept=True)
+
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig/Miniscript')
+    pick_menu_item('123')
+    pick_menu_item('Rename')
+
+    if is_q1:
+        need_keypress(KEY_CLEAR)
+        enter_text('125')
+    else:
+        # Change the final digit from 3 to 5.
+        need_keypress('5')
+        need_keypress('5')
+    press_select()
+
+    title, story = cap_story()
+    assert title == 'FAILED'
+    assert "wallet with name '125' already exists" in story
+    press_select()
+
+    menu = cap_menu()
+    assert '"123"' in menu
+    pick_menu_item('Rename')
+    if is_q1:
+        press_cancel()
+    else:
+        # Delete all three characters; confirm_exit=False exits immediately.
+        for _ in range(3):
+            press_cancel()
+
+    menu = cap_menu()
+    assert '"123"' in menu
+    assert [rec[0] for rec in settings_get('miniscript')] == ['123', '125']
     clear_miniscript()
 
 
