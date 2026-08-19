@@ -422,10 +422,7 @@ class MultisigWallet(WalletABC):
 
     def has_similar(self):
         # check if we already have a saved duplicate to this proposed wallet
-        # - return (name_change, diff_items, count_similar) where:
-        #   - name_change is existing wallet that has exact match, different name
-        #   - diff_items: text list of similarity/differences
-        #   - count_similar: same N, same xfp+paths
+        # - returns (is_duplicate, differences)
 
         lst = self.get_xfp_paths()
         c = self.find_match(self.M, self.N, lst, addr_fmts=[self.addr_fmt])
@@ -436,32 +433,31 @@ class MultisigWallet(WalletABC):
                 # multi(2,A,B) is treated as duplicate of multi(2,B,A)
                 # consensus-wise they are different script/wallet but CC
                 # don't allow to import one if other already imported
-                return None, ['xpubs'], 0
+                return False, ['xpubs']
             elif self.bip67 != c.bip67:
                 # treat same keys inside different desc multi/sortedmulti as duplicates
                 # sortedmulti(2,A,B) is considered same as multi(2,A,B) or multi(2,B,A)
                 # do not allow to import multi if sortedmulti with the same set of keys
                 # already imported and vice-versa
-                return None, ["BIP-67 clash"], 1
+                return True, ["BIP-67 clash"]
             elif not self.bip67 and self.xpubs != c.xpubs:
                 # multi(2,A,B) and multi(2,B,A) are consensus-different scripts;
                 # treat as duplicates -- don't allow either if a same-keys variant
                 # in a different order is already enrolled
-                return None, ["key order"], 1
-            elif self.name == c.name:
-                return None, [], 1
-            elif self.name_is_used(self.name, c.storage_idx):
-                return None, ['name already exists'], 1
-            else:
-                return c, ['name'], 0
+                return True, ["key order"]
+
+            if self.name_is_used(self.name, c.storage_idx):
+                return True, ['Name already exists.']
+
+            return True, ['All details are the same as existing!']
 
         if self.name_is_used(self.name, self.storage_idx):
-            return None, ['name already exists'], 1
+            return True, ['Name already exists.']
 
         similar = MultisigWallet.find_candidates(lst)
         if not similar:
             # no matches, good.
-            return None, [], 0
+            return False, None
 
         # See if the xpubs are changing, which is risky... other differences like
         # name are okay.
@@ -471,12 +467,10 @@ class MultisigWallet(WalletABC):
                 diffs.add('M differs')
             if c.addr_fmt != self.addr_fmt:
                 diffs.add('address type')
-            if c.name != self.name:
-                diffs.add('name')
             if c.xpubs != self.xpubs:
                 diffs.add('xpubs')
 
-        return None, diffs, len(similar)
+        return False, diffs
 
     def delete(self):
         # remove saved entry
@@ -1128,19 +1122,13 @@ class MultisigWallet(WalletABC):
             exp = '{M} signatures, from {N} possible co-signers, will be required to approve spends.'.format(M=M, N=N)
 
         # Look for duplicate stuff
-        name_change, diff_items, num_dups = self.has_similar()
+        is_dup, diff_items = self.has_similar()
 
-        is_dup = False
-        if name_change:
-            story = 'Update NAME only of existing multisig wallet?'
-        elif num_dups and isinstance(diff_items, list):
+        if is_dup:
             # failures only
-            story = "Duplicate wallet. "
+            story = "Duplicate wallet."
             if diff_items:
-                story += diff_items[0]
-            else:
-                story += 'All details are the same as existing!'
-            is_dup = True
+                story += ' ' + diff_items[0]
         elif diff_items:
             # Concern here is overwrite when similar, but we don't overwrite anymore, so 
             # more of a warning about funny business.
@@ -1187,9 +1175,6 @@ Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=
 
             if ch == 'y' and not is_dup:
                 # save to nvram, may raise MultisigOutOfSpace
-                if name_change:
-                    name_change.delete()
-
                 assert self.storage_idx == -1
                 self.commit()
                 await ux_dramatic_pause("Saved.", 2)
@@ -1489,6 +1474,7 @@ async def make_ms_wallet_menu(menu, label, item):
     rv = [
         MenuItem('"%s"' % ms.name, f=ms_wallet_detail, arg=ms),
         MenuItem('View Details', f=ms_wallet_detail, arg=ms),
+        MenuItem('Rename', f=ms_wallet_rename, arg=ms),
         MenuItem('Delete', f=ms_wallet_delete, arg=ms),
     ]
     if ms.bip67:
@@ -1499,6 +1485,22 @@ async def make_ms_wallet_menu(menu, label, item):
     # only way to export non-BIP-67 ms wallet is descriptors (+core export)
     rv.append(MenuItem('Descriptors', menu=make_ms_wallet_descriptor_menu, arg=ms))
     return rv
+
+async def ms_wallet_rename(menu, label, item):
+    from ux import ux_input_text, the_ux
+
+    ms = item.arg
+    name = await ux_input_text(ms.name, max_len=20)
+    if not name or name == ms.name:
+        return
+
+    if ms.name_is_used(name, ms.storage_idx):
+        return await ux_show_story('Name in use.')
+
+    ms.name = name
+    ms.commit()
+    the_ux.pop()
+    the_ux.top_of_stack().update_contents()
 
 async def make_ms_wallet_descriptor_menu(menu, label, item):
     # descriptor menu
