@@ -24,7 +24,7 @@ from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint, uint256_from_st
 from io import BytesIO
 from hashlib import sha256
 from bbqr import split_qrs
-from charcodes import KEY_QR
+from charcodes import KEY_CLEAR, KEY_QR
 
 
 def HARD(n=0):
@@ -1031,7 +1031,7 @@ def test_unique_wallet_names(clear_ms, make_multisig, offer_ms_import, press_sel
     time.sleep(.1)
 
     _, story = offer_ms_import(config(2))
-    assert 'Duplicate wallet. name already exists' in story
+    assert 'Duplicate wallet. Name already exists.' in story
     assert ('%s to approve' % OK) not in story
     press_cancel()
 
@@ -1041,9 +1041,9 @@ def test_unique_wallet_names(clear_ms, make_multisig, offer_ms_import, press_sel
     press_select()
     time.sleep(.1)
 
-    # Renaming the first wallet must not overwrite the second or delete the first.
+    # Reimporting the first wallet cannot rename it to the second wallet's name.
     _, story = offer_ms_import(config(1, other_name))
-    assert 'Duplicate wallet. name already exists' in story
+    assert 'Duplicate wallet. Name already exists.' in story
     assert ('%s to approve' % OK) not in story
     press_cancel()
     assert [rec[0] for rec in settings_get('multisig')] == [name, other_name]
@@ -1074,8 +1074,8 @@ def test_make_example_file(microsd_path, make_multisig):
 @pytest.mark.parametrize('N', [ 5, 10])
 def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import,
                          need_keypress, cap_story, goto_home, pick_menu_item,
-                         cap_menu, is_q1, press_select, OK):
-    # import wallet, rename it, (check that indicated, works), attempt same w/ addr fmt different
+                         cap_menu, is_q1, press_select, press_cancel, OK):
+    # import wallet, reject duplicate, attempt same keys w/ addr fmt different
 
     M = N
 
@@ -1108,13 +1108,11 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import,
     press_select()
     has_name('xxx-orig')
 
-    # just simple rename
+    # importing the same wallet under another name is still a duplicate
     title, story = offer_ms_import(make_named('xxx-new'))
-    assert 'update name only' in story.lower()
-    assert 'xxx-new' in story
-
-    press_select()
-    has_name('xxx-new')
+    assert 'Duplicate wallet' in story
+    press_cancel()
+    has_name('xxx-orig')
 
     assert N < 15, 'cant make more, no space'
 
@@ -3611,8 +3609,9 @@ def test_import_reorder_different_name_multi(clear_ms, make_multisig, offer_ms_i
 
 
 @pytest.mark.parametrize("is_sorted", [True, False])
-def test_import_same_keys_same_order_rename(is_sorted, clear_ms, make_multisig, offer_ms_import,
-                                            settings_set, cap_story, press_select, press_cancel):
+def test_import_same_keys_same_order_different_name(is_sorted, clear_ms, make_multisig,
+                                                    offer_ms_import, settings_set, cap_story,
+                                                    press_select, press_cancel):
     settings_set("unsort_ms", 1)
     clear_ms()
     M, N = 2, 3
@@ -3627,13 +3626,12 @@ def test_import_same_keys_same_order_rename(is_sorted, clear_ms, make_multisig, 
     time.sleep(.1)
 
     title, story = offer_ms_import(json.dumps({"name": "renamed", "desc": desc}))
-    assert "Update NAME only" in story
-    assert "Duplicate wallet" not in story
+    assert "Duplicate wallet. All details are the same as existing!" in story
     press_cancel()
 
 
-def test_import_sortedmulti_reorder_rename(clear_ms, make_multisig, offer_ms_import,
-                                           cap_story, press_select, press_cancel):
+def test_import_sortedmulti_reorder_different_name(clear_ms, make_multisig, offer_ms_import,
+                                                   cap_story, press_select, press_cancel):
     clear_ms()
     M, N = 2, 3
     keys = make_multisig(M, N)
@@ -3650,9 +3648,102 @@ def test_import_sortedmulti_reorder_rename(clear_ms, make_multisig, offer_ms_imp
 
     keys[0], keys[1] = keys[1], keys[0]
     title, story = offer_ms_import(json.dumps({"name": "renamed", "desc": build_desc(keys)}))
-    assert "Update NAME only" in story
-    assert "Duplicate wallet" not in story
+    assert "Duplicate wallet" in story
     press_cancel()
+
+
+def test_reimport_unnamed_descriptor(clear_ms, make_multisig, offer_ms_import,
+                                     press_select, press_cancel):
+    clear_ms()
+    M, N = 2, 3
+
+    def make_desc(unique):
+        keys = make_multisig(M, N, unique=unique)
+        key_list = [(xfp, "m/45h", sk.hwif(as_private=False)) for xfp, _, sk in keys]
+        return MultisigDescriptor(M=M, N=N, keys=key_list, addr_fmt=AF_P2WSH,
+                                  is_sorted=True).serialize()
+
+    desc = make_desc(0)
+    _, story = offer_ms_import(desc)
+    assert "Create new multisig" in story
+    assert "2-of-3" in story
+    press_select()
+    time.sleep(.1)
+
+    _, story = offer_ms_import(desc)
+    assert "Duplicate wallet" in story
+    press_cancel()
+
+    _, story = offer_ms_import(make_desc(1))
+    assert "Create new multisig" in story
+    assert "2-of-3 #2" in story
+    press_cancel()
+
+
+def test_rename_wallet(clear_ms, import_ms_wallet, goto_home, pick_menu_item, cap_menu,
+                       cap_story, need_keypress, enter_text, press_select, press_cancel,
+                       settings_get, is_q1):
+    clear_ms()
+    import_ms_wallet(2, 3, name='123', unique=0, accept=True)
+    import_ms_wallet(2, 3, name='125', unique=1, accept=True)
+
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+    pick_menu_item('2/3: 123')
+    pick_menu_item('Rename')
+
+    if is_q1:
+        need_keypress(KEY_CLEAR)
+        enter_text('124')
+    else:
+        need_keypress('5')       # change final digit from 3 to 4
+        press_select()
+
+    menu = cap_menu()
+    assert '2/3: 124' in menu
+    assert '2/3: 123' not in menu
+
+    pick_menu_item('2/3: 124')
+    menu = cap_menu()
+    assert '"124"' in menu
+    assert '"123"' not in menu
+    assert 'View Details' in menu
+    assert 'Rename' in menu
+
+    pick_menu_item('Rename')
+    if is_q1:
+        need_keypress(KEY_CLEAR)
+        enter_text('125')
+    else:
+        need_keypress('5')       # change final digit from 4 to 5
+        press_select()
+
+    title, story = cap_story()
+    assert 'Name in use.' in title + story
+    press_select()
+
+    menu = cap_menu()
+    assert '"124"' in menu
+    pick_menu_item('Rename')
+    if is_q1:
+        press_cancel()
+    else:
+        # Delete the name and confirm leaving it unchanged.
+        press_cancel()
+        press_cancel()
+        press_cancel()
+        _, story = cap_story()
+        assert 'leave without any changes' in story
+        press_select()
+
+    menu = cap_menu()
+    assert '"124"' in menu
+    press_cancel()
+    menu = cap_menu()
+    assert '2/3: 124' in menu
+    assert '2/3: 125' in menu
+    assert [rec[0] for rec in settings_get('multisig')] == ['124', '125']
 
 
 @pytest.mark.parametrize("order", list(itertools.product([True, False], repeat=2)))

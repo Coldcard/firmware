@@ -14,7 +14,7 @@ from pysecp256k1 import ec_seckey_verify, ec_pubkey_parse, ec_pubkey_serialize, 
 from mnemonic import Mnemonic
 from bip32 import BIP32Node
 from constants import AF_P2WSH
-from charcodes import KEY_QR, KEY_NFC
+from charcodes import KEY_CLEAR, KEY_QR, KEY_NFC
 from bbqr import split_qrs
 from psbt import BasicPSBT
 
@@ -1214,7 +1214,8 @@ def test_ccc_xpub_export(chain, c_num_words, acct, settings_set, load_export, se
 def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
                                    bitcoind_create_watch_only_wallet, cap_story, bitcoind,
                                    policy_sign, settings_get, cap_menu, pick_menu_item,
-                                   press_select, load_export, offer_ms_import, goto_home):
+                                   press_select, load_export, offer_ms_import, goto_home,
+                                   need_keypress, enter_text, is_q1):
     # - 'build 2-of-N' path
     goto_home()
     settings_set("ccc", None)
@@ -1278,8 +1279,7 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
     assert mi not in m
 
     # export one of the wallets
-    w_mn, w_name = ami.rsplit(" ", 1)
-    new_name = "new"
+    mi_prefix, old_name = ami.split(": ", 1)
     pick_menu_item(ami)  # just another ms wallet
     pick_menu_item("Coldcard Export")
     ms_conf = load_export("sd", label="Coldcard multisig setup", is_json=False)
@@ -1290,16 +1290,21 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
     press_select()
     time.sleep(.1)
 
-    # try rename
-    ms_conf = ms_conf.replace(w_name, new_name)
-    _, story = offer_ms_import(ms_conf)
-    assert "Update NAME only of existing multisig wallet?" in story
-    press_select()
-    time.sleep(.1)
-
+    # rename from the wallet menu
     enter_enabled_ccc(words)
+    pick_menu_item(ami)
+    pick_menu_item("Rename")
+    if is_q1:
+        new_name = "new"
+        need_keypress(KEY_CLEAR)
+        enter_text(new_name)
+    else:
+        new_name = old_name[:-1] + str(int(old_name[-1]) + 1)
+        need_keypress("5")
+        press_select()
+
     m = cap_menu()
-    assert f"{w_mn} {new_name}" in m
+    assert f"{mi_prefix}: {new_name}" in m
 
 
 def test_remove_ccc(settings_set, setup_ccc, ccc_ms_setup, settings_get, policy_sign,
