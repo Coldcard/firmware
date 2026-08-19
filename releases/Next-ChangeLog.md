@@ -117,5 +117,6 @@ This lists the new changes that have not yet been published in a normal release.
       parameter names before display.
     - Reject oversized multisig coordinator BBQr imports before JSON parsing to prevent memory
       exhaustion.
+    - Revoke USB download access before staging PSBT and BBQr data in PSRAM.
 - Bugfix: Allow Send Password to temporarily enable USB keyboard emulation when
   USB is disabled in settings.
