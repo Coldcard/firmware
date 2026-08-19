@@ -97,6 +97,29 @@ def pop_count(i):
 
     return (((i + (i >> 4) & 0xF0F0F0F) * 0x1010101) & 0xffffffff) >> 24
 
+def consteq(a, b):
+    # Constant-time compare for equal-length byte strings.
+    if len(a) != len(b):
+        return False
+
+    diff = 0
+    for idx in range(len(a)):
+        diff |= a[idx] ^ b[idx]
+    return diff == 0
+
+def hkdf_expand(prk, info, length):
+    # RFC5869 HKDF-Expand with HMAC-SHA256.
+    out = bytearray()
+    t = b''
+    counter = 1
+
+    while len(out) < length:
+        t = ngu.hmac.hmac_sha256(prk, t + info + bytes([counter]))
+        out.extend(t)
+        counter += 1
+
+    return bytes(out[0:length])
+
 def get_filesize(fn):
     # like os.path.getsize()
     try:
