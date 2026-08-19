@@ -11,13 +11,12 @@ from public_constants import MAX_USERNAME_LEN, PBKDF2_ITER_COUNT
 from menu import MenuSystem, MenuItem
 from ucollections import namedtuple
 from ux import ux_dramatic_pause, ux_show_story, ux_confirm
+from utils import consteq
 from glob import settings
 
 # accepting strings and strings, returning bytes when decoding, str when encoding (ie. correct)
 b32encode = ngu.codecs.b32_encode
 b32decode = ngu.codecs.b32_decode
-
-hmac_sha256 = ngu.hmac.hmac_sha256
 
 # to keep menus and such to a reasonable size
 MAX_NUMBER_USERS = const(30)
@@ -65,7 +64,7 @@ def calc_local_pincode(psbt_sha, hmac_secret):
     from ubinascii import a2b_base64
     key = a2b_base64(hmac_secret)
     assert len(psbt_sha) == 32
-    digest = hmac_sha256(key, psbt_sha)
+    digest = ngu.hmac.hmac_sha256(key, psbt_sha)
 
     num = ustruct.unpack('>I', digest[-4:])[0] & 0x7fffffff
     return '%06d' % (num % 1000000)
@@ -201,8 +200,8 @@ class Users:
         secret = b32decode(secret)
 
         if auth_mode == USER_AUTH_HMAC:
-            expect = hmac_sha256(secret, psbt_hash or bytes(32))
-            if expect != token:
+            expect = ngu.hmac.hmac_sha256(secret, psbt_hash or bytes(32))
+            if not consteq(expect, token):
                 return 'mismatch'
 
             if last_counter == 0:
@@ -240,7 +239,7 @@ class Users:
 
             #print('expect=%r got=%r cnt=%d last=%d' % (expect, token, c, last_counter))
 
-            if expect == token:
+            if consteq(expect, token):
                 # success, need to update last counter level seen (especially for HOTP,
                 # but also to resist replay for TOTP)
                 cls.update_counter(username, c)

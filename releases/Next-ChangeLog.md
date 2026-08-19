@@ -6,6 +6,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 - Change: Use TRNG-seeded SHA-256 Hash-DRBG for backup passwords,
   encryption salt/IV, and 2FA secrets; use raw TRNG for non-secret uses only.
+- New Feature: Added USB ncry v3 authenticated encryption with direction-separated keys and replay protection
 - Improvements to Entropy Generation:
     - Master seed generation mixes entropy from both Secure Elements with
       the STM32 TRNG (previously TRNG only).
