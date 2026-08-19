@@ -5,11 +5,14 @@
 import ckcc, pyb, callgate, sys, ux, ngu, stash, aes256ctr
 from uasyncio import sleep_ms, core
 from uhashlib import sha256
-from public_constants import MAX_MSG_LEN, MAX_BLK_LEN, AFC_SCRIPT
-from public_constants import STXN_FLAGS_MASK
+from public_constants import (
+    AFC_SCRIPT, MAX_BLK_LEN, MAX_MSG_LEN, STXN_FLAGS_MASK,
+    USB_V3_C2D, USB_V3_D2C, USB_V3_KDF_LABEL,
+    USB_V3_MAX_WIRE_MSG_LEN, USB_V3_TAG_LEN,
+)
 from ustruct import pack, unpack_from
 from ckcc import watchpoint, is_simulator
-from utils import problem_file_line, call_later_ms, to_ascii_printable
+from utils import problem_file_line, call_later_ms, consteq, hkdf_expand, to_ascii_printable
 from version import supports_hsm, is_devmode, MAX_TXN_LEN, MAX_UPLOAD_LEN
 from exceptions import FramingError, CCBusyError, HSMDenied, HSMCMDDisabled, SpendPolicyViolation
 from pincodes import pa
@@ -77,6 +80,32 @@ HOBBLED_CMDS = frozenset({
     'bagi', 'dfu_',     # just in case
 }) | HSM_DISABLE_CMDS
 
+def usb_v3_keys(session_key, host_pubkey, dev_pubkey):
+    # Bind derived keys to v3 and to both ephemeral public keys. This prevents
+    # key reuse across directions and across any future ncry transcript shape.
+    transcript = ngu.hash.sha256s(
+        USB_V3_KDF_LABEL +
+        pack('<I', 0x3) +
+        host_pubkey +
+        dev_pubkey
+    )
+
+    prk = ngu.hmac.hmac_sha256(transcript, session_key)
+    okm = hkdf_expand(prk, USB_V3_KDF_LABEL, 128)
+
+    return (
+        okm[0:32],       # host -> device AES-CTR key
+        okm[32:64],      # host -> device HMAC key
+        okm[64:96],      # device -> host AES-CTR key
+        okm[96:128],     # device -> host HMAC key
+    )
+
+
+def usb_v3_tag(mac_key, direction, seq, ciphertext):
+    mac_msg = pack('<4sII', direction, seq, len(ciphertext)) + bytes(ciphertext)
+    return ngu.hmac.hmac_sha256(mac_key, mac_msg)[0:USB_V3_TAG_LEN]
+
+
 # singleton instance of USBHandler()
 handler = None
 
@@ -137,8 +166,8 @@ class USBHandler:
         # handle simulator
         self.blockable = getattr(self.dev, 'pipe', self.dev)
 
-        self.msg = bytearray(2048+12)
-        assert len(self.msg) == MAX_MSG_LEN
+        self.msg = bytearray(USB_V3_MAX_WIRE_MSG_LEN)
+        assert len(self.msg) == USB_V3_MAX_WIRE_MSG_LEN
 
         self.encrypted_req = False
 
@@ -148,6 +177,12 @@ class USBHandler:
         # these will be objects later
         self.encrypt = None
         self.decrypt = None
+        self.ncry_ver = 0
+        self.rx_mac_key = None
+        self.tx_mac_key = None
+        self.rx_seq = 0
+        self.tx_seq = 0
+        self.v3_failed = False
 
     def get_packet(self):
         # read next packet (64 bytes) waiting on the wire. Unframe it and return
@@ -177,6 +212,9 @@ class USBHandler:
         msg_len = 0
 
         while 1:
+            if self.v3_failed:
+                return
+
             success = False
             yield core._io_queue.queue_read(self.blockable)
 
@@ -186,7 +224,9 @@ class USBHandler:
                 #print('Rx[%d]' % len(here))
                 if here:
                     lh = len(here)
-                    if msg_len+lh > MAX_MSG_LEN:
+                    max_wire_len = (USB_V3_MAX_WIRE_MSG_LEN
+                                    if self.ncry_ver == 0x3 else MAX_MSG_LEN)
+                    if msg_len+lh > max_wire_len:
                         raise FramingError('xlong')
 
                     self.msg[msg_len:msg_len + lh] = here
@@ -202,7 +242,10 @@ class USBHandler:
                     # need more content
                     continue
 
-                if not(4 <= msg_len <= MAX_MSG_LEN):
+                max_wire_len = (USB_V3_MAX_WIRE_MSG_LEN
+                                if self.ncry_ver == 0x3 and is_encrypted
+                                else MAX_MSG_LEN)
+                if not(4 <= msg_len <= max_wire_len):
                     raise FramingError('badsz')
 
                 if not is_encrypted and self.bound:
@@ -213,7 +256,7 @@ class USBHandler:
                         raise FramingError('no key')
 
                     self.encrypted_req = True
-                    self.decrypt_inplace(msg_len)
+                    msg_len = self.decrypt_inplace(msg_len)
                 else:
                     self.encrypted_req = False
 
@@ -268,8 +311,23 @@ class USBHandler:
                 reason = exc.args[0]
                 # print("Framing: %s" % reason)
                 self.reset_upload()
-                await self.framing_error(reason)
+                if self.ncry_ver == 0x3:
+                    try:
+                        await self.framing_error(reason)
+                    except FramingError:
+                        # A v3 error response can fail when tx sequence
+                        # is exhausted. The v3 session is terminal anyway.
+                        pass
+                else:
+                    await self.framing_error(reason)
                 msg_len = 0
+
+                # Authentication/framing failure consumes or invalidates the
+                # peer's stateful v3 stream. Never process another command in
+                # this session; a reboot is required to create a fresh one.
+                if self.ncry_ver == 0x3:
+                    self.v3_failed = True
+                    return
 
             except BaseException as exc:
                 # recover from general issues/keep going
@@ -288,10 +346,43 @@ class USBHandler:
         # self.msg is encrypted. decode it in place
         # - seems dangerous to use memview here, but works
         # - some memory alloc still happens here tho
+        if self.ncry_ver == 0x3:
+            if self.rx_seq > 0xffffffff:
+                raise FramingError('seq')
+
+            if msg_len <= USB_V3_TAG_LEN:
+                raise FramingError('auth')
+
+            ct_len = msg_len - USB_V3_TAG_LEN
+            if ct_len < 4:
+                raise FramingError('badsz')
+
+            ciphertext = memoryview(self.msg)[0:ct_len]
+            got_tag = memoryview(self.msg)[ct_len:msg_len]
+
+            expect_tag = usb_v3_tag(
+                self.rx_mac_key, USB_V3_C2D, self.rx_seq, ciphertext)
+            if not consteq(got_tag, expect_tag):
+                raise FramingError('auth')
+
+            self.msg[0:ct_len] = self.decrypt(ciphertext)
+            self.rx_seq += 1
+            return ct_len
+
         self.msg[0:msg_len] = self.decrypt(memoryview(self.msg)[0:msg_len])
+        return msg_len
 
     def encrypt_response(self, msg):
         # encrypt what we'll send to desktop
+        if self.ncry_ver == 0x3:
+            if self.tx_seq > 0xffffffff:
+                raise FramingError('seq')
+
+            ciphertext = self.encrypt(msg)
+            tag = usb_v3_tag(
+                self.tx_mac_key, USB_V3_D2C, self.tx_seq, ciphertext)
+            self.tx_seq += 1
+            return bytes(ciphertext) + tag
 
         return self.encrypt(msg)
 
@@ -717,13 +808,13 @@ class USBHandler:
     def handle_crypto_setup(self, version, his_pubkey):
         # pick a one-time key pair for myself, and return the pubkey for that
         # determine what the session key will be for this connection
-        if version not in [0x1, 0x2]:
+        if version not in [0x1, 0x2, 0x3]:
             raise FramingError('bad ncry version')
         assert len(his_pubkey) == 64
 
         if self.bound:
             raise FramingError('crypto already set up')
-        if version == 0x2:
+        if version in [0x2, 0x3]:
             self.bound = True
 
         # new session: any download lease from a previous session is void
@@ -740,13 +831,36 @@ class USBHandler:
         self.session_key = pair.ecdh_multiply(b'\x04' + his_pubkey)
         del pair
 
-        #print("session = " + str(b2a_hex(self.session_key)))
+        self.ncry_ver = version
+        self.rx_seq = 0
+        self.tx_seq = 0
+        self.v3_failed = False
+        self.rx_mac_key = None
+        self.tx_mac_key = None
 
-        # Would be nice to have nonce in addition to the counter, but
-        # harder on the desktop side.
-        ctr = aes256ctr.new(self.session_key)
-        self.encrypt = ctr.cipher
-        self.decrypt = ctr.copy().cipher
+        if version == 0x3:
+            # ncry v3 derives independent keys for each direction
+            # and authenticates every encrypted message before decrypting it:
+            #
+            #   wire = AES-CTR(plaintext) || HMAC(direction, seq, len, ciphertext)
+            #
+            # The sequence number makes replay/reordering detectable within a
+            # session, the direction label prevents cross-direction reflection,
+            # and the MAC removes CTR's normal bit-flipping malleability.
+            h2d_enc, h2d_mac, d2h_enc, d2h_mac = usb_v3_keys(
+                self.session_key,
+                his_pubkey,
+                my_pubkey[1:],
+            )
+            self.decrypt = aes256ctr.new(h2d_enc).cipher
+            self.encrypt = aes256ctr.new(d2h_enc).cipher
+            self.rx_mac_key = h2d_mac
+            self.tx_mac_key = d2h_mac
+        else:
+            # v1/v2 legacy wire format. Kept unchanged for compatibility.
+            ctr = aes256ctr.new(self.session_key)
+            self.encrypt = ctr.cipher
+            self.decrypt = ctr.copy().cipher
 
         from glob import settings
         xfp = settings.get('xfp', 0)
