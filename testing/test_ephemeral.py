@@ -1652,7 +1652,9 @@ def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
     pick_menu_item("Generate Words")
     pick_menu_item(f"12 Words")
     enter_mash_entropy()
+    time.sleep(0.1)
     need_keypress("6")  # skip quiz
+    time.sleep(0.1)
     press_select()  # yes - I'm sure
     confirm_tmp_seed(seedvault=False)
 

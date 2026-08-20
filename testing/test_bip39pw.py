@@ -260,16 +260,16 @@ def test_bip39_complex(target, pick_menu_item, cap_story, goto_home,
 
     for _ in range(3):
         screen = cap_screen()
-        assert 'Passphrase:' not in screen
         if 'Scroll down to' in screen:
             break
-        scroll_down()
         time.sleep(.01)
     else:
         pytest.fail('passphrase scroll notice not shown')
 
+    assert 'Passphrase:' not in screen
+
     scroll_down()
-    time.sleep(.01)
+    time.sleep(.1)
     assert 'Passphrase:' in cap_screen()
 
     press_select()

@@ -20,6 +20,17 @@ def test_status_bar_rewrite_after_restore_master():
     _need_keypress(device, "4")
     _pick_menu_item(device, True, "Generate Words")
     _pick_menu_item(device, True, "12 Words")
+
+    _pick_menu_item(device, True, "Mash Keys")
+    time.sleep(.1)
+    _press_select(device, True)
+
+    for i in range(65):
+        _need_keypress(device, str(i % 10))
+
+    time.sleep(.2)
+    _press_select(device, True)
+
     _need_keypress(device, "6")
     _press_select(device, True)
     _press_select(device, True)
