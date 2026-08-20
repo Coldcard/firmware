@@ -4,7 +4,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk and Q
 
-- tbd
+- New Feature: Added USB ncry v3 authenticated encryption with direction-separated keys and replay protection.
 
 # Mk Specific Changes
 
