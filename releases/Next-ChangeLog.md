@@ -16,6 +16,9 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Simulator crashed on Bless Firmware, due to a desynced LED pipe. Thanks to
   [@hitechhayekian](https://github.com/hitechhayekian).
 - Bugfix: With an empty master wallet and an active temporary seed, keep imports and backup restores temporary instead of treating them as master-seed changes.
+- Bugfix: Reject PSRAM virtual-disk files whose FAT cluster chain covers more bytes than the
+  file size, fixing an integer underflow in `psram_copy_file`/`psram_mmap_file` that allowed
+  out-of-bounds PSRAM writes from a compromised USB host.
 
 # Mk Specific Changes
 

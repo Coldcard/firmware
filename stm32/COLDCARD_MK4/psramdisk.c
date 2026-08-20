@@ -648,10 +648,19 @@ mp_obj_t psram_mmap_file(mp_obj_t unused_self, mp_obj_t fname_in)
         }
         uint32_t len = num_clusters*BLOCK_SIZE;
 
+        // hostile/corrupt FAT metadata could describe a cluster chain that
+        // covers more bytes than the file size; refuse the underflow below
+        if(so_far > fp.obj.objsize) {
+            mp_raise_ValueError(MP_ERROR_TEXT("bad file size"));
+        }
+
         if(i == num_used-1) {
             // final cluster might include some bytes past the EOF
             len = fp.obj.objsize - so_far;
         } else {
+            if(len > fp.obj.objsize - so_far) {
+                mp_raise_ValueError(MP_ERROR_TEXT("bad file size"));
+            }
             so_far += len;
         }
 
@@ -716,7 +725,9 @@ mp_obj_t psram_copy_file(mp_obj_t unused_self, mp_obj_t offset_in, mp_obj_t fnam
     if(((uint32_t)dest) % 4) mp_raise_ValueError(NULL);
     if(dest < PSRAM_BOT_BASE) mp_raise_ValueError(NULL);
     if(dest >= PSRAM_TOP_BASE) mp_raise_ValueError(NULL);
-    if(dest+actual_len+3 >= PSRAM_TOP_BASE) mp_raise_ValueError(NULL);
+    if((uint64_t)(uintptr_t)dest + actual_len + 3 >= (uint64_t)(uintptr_t)PSRAM_TOP_BASE) {
+        mp_raise_ValueError(NULL);
+    }
 
     uint32_t so_far = 0;
     DWORD *ptr = &mapping[1];
@@ -732,19 +743,31 @@ mp_obj_t psram_copy_file(mp_obj_t unused_self, mp_obj_t offset_in, mp_obj_t fnam
         }
         uint32_t len = num_clusters*BLOCK_SIZE;
 
+        // hostile/corrupt FAT metadata could describe a cluster chain that
+        // covers more bytes than the file size; refuse the underflow below
+        if(so_far > actual_len) {
+            mp_raise_ValueError(MP_ERROR_TEXT("bad file size"));
+        }
+
         if(i == num_used-1) {
             // final cluster might include some bytes past the EOF
             len = actual_len - so_far;
             // align4
             len = (len + 3) & ~0x3;
         } else {
+            if(len > actual_len - so_far) {
+                mp_raise_ValueError(MP_ERROR_TEXT("bad file size"));
+            }
             so_far += len;
+        }
+
+        // check bounds *before* writing (64-bit math to avoid wrap-around)
+        if((uint64_t)(uintptr_t)dest + len >= (uint64_t)(uintptr_t)PSRAM_TOP_BASE) {
+            mp_raise_ValueError(NULL);
         }
 
         memcpy(dest, spot, len);
         dest += len;
-
-        if(dest >= PSRAM_TOP_BASE) mp_raise_ValueError(NULL);
     }
     f_close(&fp);
 
