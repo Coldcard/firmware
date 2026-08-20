@@ -775,7 +775,19 @@ def test_wrong_p2sh_p2wpkh(bitcoind, start_sign, end_sign, bitcoind_d_sim_watch,
     utxos = sim.listunspent()
     assert len(utxos) == 1
     conso_addr = sim.getnewaddress("", "legacy")
-    psbt_resp = sim.walletcreatefundedpsbt([], [{conso_addr: 1}], 0, {"fee_rate": 2, "change_type": "bech32"})
+    try:
+        # new in Core v32 - default PSBT version is now 2
+        # old core version fails with "too many arguemnts"
+        # does not know the last one "psbt_version=0"
+        psbt_resp = sim.walletcreatefundedpsbt([], [{conso_addr: 1}], 0,
+                                               {"fee_rate": 2, "change_type": "bech32"},
+                                               True,  # BIP-32 paths
+                                               2,     # txn version
+                                               0)     # PSBT version
+    except:
+        psbt_resp = sim.walletcreatefundedpsbt([], [{conso_addr: 1}], 0,
+                                               {"fee_rate": 2, "change_type": "bech32"})
+
     psbt = psbt_resp.get("psbt")
     b4 = BasicPSBT().parse(base64.b64decode(psbt))
     t = CTransaction()
@@ -1900,8 +1912,16 @@ def test_bitcoind_missing_foreign_utxo(bitcoind, bitcoind_d_sim_watch, microsd_p
     psbt_list = []
     for w in (alice, bob, cc):
         assert w.listunspent()
-        psbt = w.walletcreatefundedpsbt([], [{dest_address: 1.0}], 0, {"fee_rate": 20})["psbt"]
-        psbt_list.append(psbt)
+        try:
+            # TODO when joinpsbt is fixed to operate on PSBT v2 - remove
+            res = w.walletcreatefundedpsbt([], [{dest_address: 1.0}], 0, {"fee_rate": 20},
+                                            True,  # BIP-32 paths
+                                            2,  # txn version
+                                            0)  # PSBT version
+        except:
+            res = w.walletcreatefundedpsbt([], [{dest_address: 1.0}], 0, {"fee_rate": 20})
+
+        psbt_list.append(res["psbt"])
 
     # join PSBTs to one
     the_psbt = bitcoind.supply_wallet.joinpsbts(psbt_list)
@@ -3404,7 +3424,6 @@ def test_txout_explorer_qr_too_big_single_item(fake_txn, start_sign, cap_story, 
 def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_ms_import,
                         cap_story, try_sign, reset_seed_words, clear_ms):
     reset_seed_words()
-    clear_ms()
     desc = "sh(sortedmulti(2,[6ba6cfd0/45h]tpubD9429UXFGCTKJ9NdiNK4rC5ygqSUkginycYHccqSg5gkmyQ7PZRHNjk99M6a6Y3NY8ctEUUJvCu6iCCui8Ju3xrHRu3Ez1CKB4ZFoRZDdP9/0/*,[747b698e/45h]tpubD97nVL37v5tWyMf9ofh5rznwhh1593WMRg6FT4o6MRJkKWANtwAMHYLrcJFsFmPfYbY1TE1LLQ4KBb84LBPt1ubvFwoosvMkcWJtMwvXgSc/0/*,[7bb026be/45h]tpubD9ArfXowvGHnuECKdGXVKDMfZVGdephVWg8fWGWStH3VKHzT4ph3A4ZcgXWqFu1F5xGTfxncmrnf3sLC86dup2a8Kx7z3xQ3AgeNTQeFxPa/0/*,[0f056943/45h]tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n/0/*))#up0sw2xp"
     # PSBT created via fake_ms_txn, grinded in test_ms_sign_myself
     psbt_fname = "myself-72sig.psbt"
@@ -3425,11 +3444,11 @@ def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_ms_imp
 
     assert "[747B698E]" in title
     press_select()
+    clear_ms()
 
     time.sleep(.1)
     _, story = offer_ms_import(desc)
-    assert "Create new multisig wallet?" in story \
-                or 'Update NAME only of existing multisig' in story
+    assert "Create new multisig wallet?" in story
     time.sleep(.1)
     press_select()
 
@@ -3580,8 +3599,15 @@ def test_finalize_with_foreign_inputs(bitcoind, bitcoind_d_sim_watch, start_sign
     psbt_list = []
     for w in (alice, bob, cc):
         assert w.listunspent()
-        psbt = w.walletcreatefundedpsbt([], [{dest_address: 1.0}], 0, {"fee_rate": 20})["psbt"]
-        psbt_list.append(psbt)
+        try:
+            # TODO when joinpsbt is fixed to operate on PSBT v2 - remove
+            res = w.walletcreatefundedpsbt([], [{dest_address: 1.0}], 0, {"fee_rate": 20},
+                                            True,  # BIP-32 paths
+                                            2,  # txn version
+                                            0)  # PSBT version
+        except:
+            res = w.walletcreatefundedpsbt([], [{dest_address: 1.0}], 0, {"fee_rate": 20})
+        psbt_list.append(res["psbt"])
 
     # join PSBTs to one
     the_psbt = bitcoind.supply_wallet.joinpsbts(psbt_list)

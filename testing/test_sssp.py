@@ -380,7 +380,7 @@ def test_velocity(velocity_mi, setup_sssp, bitcoind, settings_set, pick_menu_ite
                                           init_block_height)  # nLockTime set to current block height
     psbt = psbt_resp.get("psbt")
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == init_block_height
+    assert po.get_locktime() == init_block_height
     policy_sign(wo, psbt)  # success as this is first tx that sets block height from 0
 
     assert settings_get("sssp")["pol"]["block_h"] == init_block_height
@@ -393,7 +393,7 @@ def test_velocity(velocity_mi, setup_sssp, bitcoind, settings_set, pick_menu_ite
                                           block_height)
     psbt = psbt_resp.get("psbt")
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == block_height
+    assert po.get_locktime() == block_height
     policy_sign(wo, psbt, violation="velocity")
 
     assert settings_get("sssp")["pol"]["block_h"] == init_block_height  # still initial block height as above failed
@@ -405,7 +405,7 @@ def test_velocity(velocity_mi, setup_sssp, bitcoind, settings_set, pick_menu_ite
                                                    block_height)
     psbt = psbt_resp.get("psbt")
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == block_height
+    assert po.get_locktime() == block_height
     policy_sign(wo, psbt)  # success
 
     assert settings_get("sssp")["pol"]["block_h"] == block_height  # updated block height
@@ -470,7 +470,7 @@ def test_warnings(setup_sssp, bitcoind, settings_set, policy_sign, pick_menu_ite
                                           init_block_height, {"fee_rate":48000})
     psbt = psbt_resp.get("psbt")
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == init_block_height
+    assert po.get_locktime() == init_block_height
     policy_sign(wo, psbt, violation="has warnings")
 
     # invalidate nLockTime with use of nSequence max values
@@ -488,9 +488,8 @@ def test_warnings(setup_sssp, bitcoind, settings_set, policy_sign, pick_menu_ite
     psbt_resp = wo.walletcreatefundedpsbt(ins, [{whitelist[0]: 0.06},{whitelist[1]: 0.01},{whitelist[2]: 0.03}],
                                           0, {"fee_rate":2, "replaceable": False})  # locktime needs to be zero, otherwise exception from core (contradicting parameters)
     po = BasicPSBT().parse(base64.b64decode(psbt_resp.get("psbt")))
-    assert po.parsed_txn.nLockTime == 0
-    po.parsed_txn.nLockTime = init_block_height  # add locktime
-    po.txn = po.parsed_txn.serialize_with_witness()
+    assert po.get_locktime() == 0
+    po.set_locktime(init_block_height)  # add locktime
     # num_warn=2, warn_list=["Bad Locktime"]
     policy_sign(wo, po.as_b64_str(), violation="has warnings")
 
@@ -608,7 +607,7 @@ def test_deltamode_signature(active_policy, setup_sssp, bitcoind, settings_set,
     psbt = psbt_resp.get("psbt")
 
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == init_block_height
+    assert po.get_locktime() == init_block_height
 
     start_sign(base64.b64decode(psbt), finalize=True)
     signed = end_sign(accept=True, finalize=True)

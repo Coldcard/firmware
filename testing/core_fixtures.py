@@ -23,8 +23,17 @@ def _sim_eval(device, cmd, binary=False, timeout=None):
     return s.decode('utf-8')
 
 def _cap_story(device):
-    cmd = "RV.write('\0'.join(sim_display.story or []))"
-    rv = _sim_exec(device, cmd)
+    chunks = []
+    offset = 0
+    while True:
+        cmd = ("data = '\0'.join(sim_display.story or []).encode(); "
+               f"RV.write(data[{offset}:{offset + 2048}])")
+        here = _sim_exec(device, cmd, binary=True)
+        chunks.append(here)
+        if len(here) < 2048:
+            break
+        offset += 2048
+    rv = b''.join(chunks).decode()
     return rv.split('\0', 1) if rv else ('','')
 
 def _cap_menu(device):

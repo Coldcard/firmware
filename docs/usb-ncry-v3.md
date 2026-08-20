@@ -160,11 +160,9 @@ session.
 
 ## Operational Notes
 
-First supported in:
-
-- ckcc-protocol client: `1.6.0`
-- COLDCARD Mk4/Mk5 firmware: `5.6.1`
-- COLDCARD Q firmware: `1.5.1Q`
+Client support is implemented in ckcc-protocol source version `1.6.0`.
+Firmware support is unreleased and planned for the next standard Mk4/Mk5 and
+Q firmware releases.
 
 Use v3 only when both the client and firmware are known to support it. The
 default client encryption version remains `USB_NCRY_V1` for compatibility, so a

@@ -2,12 +2,12 @@
 //
 // AUTO-generated.
 //
-//   built: 2026-07-31
-// version: 1.5.0Q
+//   built: 2026-08-20
+// version: 1.5.1Q
 //
 #include <stdint.h>
 
 // this overrides ports/stm32/fatfs_port.c
 uint32_t get_fattime(void) {
-    return 0x5cff08a0UL;
+    return 0x5d1408a0UL;
 }
