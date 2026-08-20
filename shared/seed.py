@@ -84,7 +84,7 @@ You must enter at least 128 coin flips.'''
 DICE_ONLY_WARNING = '''\
 These dice rolls will be the only source of randomness for your seed. No hardware-generated randomness is mixed in.
 
-The hash shown while rolling is SECRET. Anyone who sees or photographs the final hash can recreate your wallet and steal the funds.
+The hash shown while rolling is SECRET. Anyone who sees or photographs one can recreate the wallet derived from the rolls entered so far and steal its funds.
 
 Keep the screen hidden from people and cameras. If you verify the hash elsewhere, use only a trusted offline device and erase all traces afterward.'''
 

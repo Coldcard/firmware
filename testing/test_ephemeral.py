@@ -538,7 +538,7 @@ def test_ephemeral_dice_security_checks(reset_seed_words, goto_eph_seed_menu,
     title, warning = cap_story()
     assert title == 'WARNING'
     assert 'only source of randomness' in warning
-    assert 'final hash can recreate your wallet' in warning
+    assert 'wallet derived from the rolls entered so far' in warning
     press_select()
 
     for ch in '123456':
