@@ -1196,9 +1196,10 @@ def test_rename_from_list_files(goto_home, cap_story, pick_menu_item, need_keypr
     assert not os.path.exists(fpath)
 
 
-def test_bip39_pw_signing_xfp_ux(pick_menu_item, press_select, cap_story, enter_complex,
+def test_bip39_pw_signing_xfp_ux(pick_menu_item, press_select, cap_story, enter_complex, enable_nfc,
                                  reset_seed_words, cap_menu, go_to_passphrase, microsd_wipe):
     microsd_wipe()  # need to wipe all PSBT on SD card so we do not proceed to signing
+    enable_nfc()
     go_to_passphrase()
     enter_complex("21coinkite21", apply=True)
     time.sleep(0.3)
