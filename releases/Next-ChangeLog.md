@@ -38,6 +38,9 @@ This lists the new changes that have not yet been published in a normal release.
   itself still works, so Delta Mode continues to look like normal operation.
 - Bugfix: Reject firmware images that extend past the world-checksum-covered
   flash region.
+- Bugfix: Reject PSRAM virtual-disk files whose FAT cluster chain covers more bytes than the
+  file size, fixing an integer underflow in `psram_copy_file`/`psram_mmap_file` that allowed
+  out-of-bounds PSRAM writes from a compromised USB host.
 
 # Mk Specific Changes
 
