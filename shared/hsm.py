@@ -10,7 +10,7 @@ from utils import cleanup_payment_address
 from pincodes import AE_LONG_SECRET_LEN
 from stash import blank_object
 from users import Users, MAX_NUMBER_USERS, calc_local_pincode
-from public_constants import MAX_USERNAME_LEN
+from public_constants import MAX_USERNAME_LEN, AF_CLASSIC, AF_P2WPKH, AF_P2TR, AF_P2WPKH_P2SH
 from multisig import MultisigWallet
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
@@ -30,6 +30,29 @@ MAX_SATS = const(2100000000000000)
 
 # too many refusals will cause reset
 ABSOLUTE_MAX_REFUSALS = const(100)
+
+# Weight units of one of our inputs, for max_fee_per_kvbyte. Base is always
+# 32 txid + 4 index + 1 empty scriptSig + 4 sequence = 41 bytes.
+#
+# The witness figures are deliberate floors: a smaller estimate means a smaller vsize, which means
+# a higher computed feerate, which means the rule refuses sooner. Erring the other way would let a
+# transaction slip past a limit it actually exceeds. Signatures are counted at 71 bytes because
+# that is what this firmware produces - it grinds the nonce until the low-S DER form fits.
+INPUT_WEIGHT = {
+    AF_P2WPKH:      (41 * 4) + (1 + 1 + 71 + 1 + 33),      # marker, sig, pubkey
+    AF_P2TR:        (41 * 4) + (1 + 1 + 64),               # marker, schnorr sig
+    AF_P2WPKH_P2SH: ((41 + 1 + 22) * 4) + (1 + 1 + 71 + 1 + 33),
+    AF_CLASSIC:     (41 + 106) * 4,                        # scriptSig carries sig + pubkey
+}
+
+
+def input_weight(addr_fmt):
+    # Refuse rather than guess. A wrong weight here silently mis-scales the feerate, and this rule
+    # exists precisely because the transaction-wide fee cannot be checked in a coinjoin.
+    try:
+        return INPUT_WEIGHT[addr_fmt]
+    except KeyError:
+        raise AssertionError('max_fee_per_kvbyte cannot size a 0x%x input' % (addr_fmt or 0))
 
 # you have this many seconds after boot to escape HSM
 # mode, if you enable the boot_to_hsm feature
@@ -181,6 +204,17 @@ class ApprovalRule:
     # - local_conf: local user must also confirm w/ code
     # - wallet: which multisig wallet to restrict to, or '1' for single signer only
     # - min_pct_self_transfer: minimum percentage of own input value that must go back to self
+    # - max_fee_per_kvbyte: most we will pay per 1000 vbytes of our own contribution, in sats.
+    #   Our loss (own inputs minus own outputs) over the vsize of our own inputs and outputs. In a
+    #   coinjoin the other participants' input amounts are unknown, so the transaction-wide fee
+    #   cannot be computed at all and upstream's fee check is skipped; this one needs only our own
+    #   values and so still works. It is an upper bound: our loss also covers coordinator fees and
+    #   any value genuinely leaving, so the mining feerate we actually pay is at most this.
+    # - min_inputs: fewest inputs the whole transaction may have, ours and everyone else's.
+    #   Meant for coinjoins: a round with only a couple of participants tells the coordinator
+    #   almost everything, so refuse to sign one. Note this counts inputs, which a coordinator
+    #   willing to add its own can inflate at will -- it rules out the degenerate round, it is
+    #   not an anonymity set.
     # - patterns: list of transaction patterns to check for. Valid values:
     #       * EQ_NUM_INS_OUTS:      the number of inputs and outputs must be equal
     #       * EQ_NUM_OWN_INS_OUTS:  the number of **own** inputs and outputs must be equal
@@ -189,6 +223,8 @@ class ApprovalRule:
     def __init__(self, j, idx):
         # read json dict provided
         self.spent_so_far = 0       # for velocity
+        self.txn_count = 0          # for max_txn
+        self.txn_this_period = 0    # for max_txn_per_period
 
         def check_user(u):
             if not Users.valid_username(u):
@@ -205,6 +241,11 @@ class ApprovalRule:
         self.local_conf = pop_bool(j, 'local_conf')
         self.wallet = pop_string(j, 'wallet', 1, 20)
         self.min_pct_self_transfer = pop_float(j, 'min_pct_self_transfer', 0, 100.0)
+        self.max_sats_leaving = pop_int(j, 'max_sats_leaving', 0, MAX_SATS)
+        self.max_fee_per_kvbyte = pop_int(j, 'max_fee_per_kvbyte', 0, MAX_SATS)
+        self.max_txn = pop_int(j, 'max_txn', 1, 10000)
+        self.max_txn_per_period = pop_int(j, 'max_txn_per_period', 1, 10000)
+        self.min_inputs = pop_int(j, 'min_inputs', 1, 10000)
         self.patterns = pop_list(j, 'patterns')
 
         assert sorted(set(self.users)) == sorted(self.users), 'dup users'
@@ -233,14 +274,16 @@ class ApprovalRule:
 
     @property
     def has_velocity(self):
-        return self.per_period is not None
+        # Anything measured per period needs the policy to define one.
+        return self.per_period is not None or self.max_txn_per_period is not None
 
     def to_json(self):
         # remote users need to know what's happening, and we save this
         # cleaned up data
         flds = [ 'per_period', 'max_amount', 'users', 'min_users',
                     'local_conf', 'whitelist', 'wallet',
-                    'min_pct_self_transfer', 'patterns' ]
+                    'min_pct_self_transfer', 'max_sats_leaving', 'max_fee_per_kvbyte', 'max_txn',
+                    'max_txn_per_period', 'min_inputs', 'patterns' ]
         rv = OrderedDict()
         for f in flds:
             val = getattr(self, f, None)
@@ -299,6 +342,21 @@ class ApprovalRule:
         if self.min_pct_self_transfer:
             rv += ' if self-transfer percentage is at least %.2f' % self.min_pct_self_transfer
 
+        if self.max_sats_leaving is not None:
+            rv += ', and at most %s may leave the wallet per txn' % render(self.max_sats_leaving)
+
+        if self.max_fee_per_kvbyte is not None:
+            rv += ', paying at most %s per 1000 vbytes of our own' % render(self.max_fee_per_kvbyte)
+
+        if self.max_txn is not None:
+            rv += ', for at most %d transaction(s)' % self.max_txn
+
+        if self.max_txn_per_period is not None:
+            rv += ', no more than %d transaction(s) per period' % self.max_txn_per_period
+
+        if self.min_inputs is not None:
+            rv += ', only in transactions with %d or more inputs' % self.min_inputs
+
         if self.patterns:
             rv += ' with the following patterns: '
             for p in self.patterns:
@@ -319,6 +377,15 @@ class ApprovalRule:
 
         if self.max_amount is not None:
             assert total_out <= self.max_amount, 'amount exceeded'
+
+        if self.max_txn is not None:
+            assert self.txn_count < self.max_txn, 'transaction count exceeded'
+
+        if self.min_inputs is not None:
+            # every participant's inputs, not just ours: a coinjoin round is only worth joining
+            # if enough others are in it.
+            assert psbt.num_inputs >= self.min_inputs, \
+                'too few inputs: %d, need %d' % (psbt.num_inputs, self.min_inputs)
 
         attest_mode = self.whitelist_opts and self.whitelist_opts.attest
         allow_zeroval = self.whitelist_opts and self.whitelist_opts.allow_zeroval_outs
@@ -372,16 +439,47 @@ class ApprovalRule:
             # check this txn would not exceed the velocity limit
             assert self.spent_so_far + total_out <= self.per_period, 'would exceed period spending'
 
-        # check the self-transfer percentage
-        if self.min_pct_self_transfer:
+        if self.max_txn_per_period is not None:
+            assert self.txn_this_period < self.max_txn_per_period, 'too many transactions this period'
+
+        # what we put in versus what comes back: the ratio, the absolute loss and the feerate are
+        # all checked against it, so walk the PSBT once.
+        if self.min_pct_self_transfer or self.max_sats_leaving is not None \
+                or self.max_fee_per_kvbyte is not None:
             own_in_value = sum([i.amount for i in psbt.inputs if i.num_our_keys])
             own_out_value = 0
+            own_weight = 0
+
+            for i in psbt.inputs:
+                if i.num_our_keys:
+                    own_weight += input_weight(i.addr_fmt)
+
             for idx, txo in psbt.output_iter():
                 o = psbt.outputs[idx]
                 if o.num_our_keys:
                     own_out_value += txo.nValue
-            percentage = (float(own_out_value) / own_in_value) * 100.0
-            assert percentage >= self.min_pct_self_transfer, 'does not meet self transfer threshold, expected: %.2f, actual: %.2f' % (self.min_pct_self_transfer, percentage)
+                    # 8 value + 1 script-length + the script itself; ours are never over 252 bytes
+                    own_weight += (8 + 1 + len(txo.scriptPubKey)) * 4
+
+            # None of our own inputs means the ratio is undefined; refuse rather than divide by zero.
+            assert own_in_value, 'no inputs of ours to compare against'
+
+            if self.min_pct_self_transfer:
+                percentage = (float(own_out_value) / own_in_value) * 100.0
+                assert percentage >= self.min_pct_self_transfer, 'does not meet self transfer threshold, expected: %.2f, actual: %.2f' % (self.min_pct_self_transfer, percentage)
+
+            if self.max_sats_leaving is not None:
+                leaving = own_in_value - own_out_value
+                assert leaving <= self.max_sats_leaving, 'too much value leaving: %d sats, limit is %d' % (leaving, self.max_sats_leaving)
+
+            if self.max_fee_per_kvbyte is not None:
+                # Rounding down the vsize rounds the feerate up, so the limit is never exceeded by
+                # a transaction this passes. Same reason the witness estimate above is a floor.
+                vsize = own_weight // 4
+                assert vsize, 'no weight of ours to divide by'
+                feerate = ((own_in_value - own_out_value) * 1000) // vsize
+                assert feerate <= self.max_fee_per_kvbyte, \
+                    'feerate too high: %d sats/kvB of ours, limit is %d' % (feerate, self.max_fee_per_kvbyte)
 
         # check various patterns
 
@@ -489,6 +587,7 @@ class HSMPolicy:
 
         # a list of paths we can accept for signing
         self.msg_paths = pop_deriv_list(j, 'msg_paths')
+        self.slip19_paths = pop_deriv_list(j, 'slip19_paths')   # SLIP-19 ownership proofs (coinjoin)
         self.share_xpubs = pop_deriv_list(j, 'share_xpubs')
         self.share_addrs = pop_deriv_list(j, 'share_addrs', 'p2sh')
 
@@ -528,7 +627,7 @@ class HSMPolicy:
         
     def save(self):
         # Create JSON document for next time.
-        simple = ['must_log', 'never_log', 'msg_paths', 'share_xpubs', 'share_addrs',
+        simple = ['must_log', 'never_log', 'msg_paths', 'slip19_paths', 'share_xpubs', 'share_addrs',
                     'notes', 'period', 'allow_sl', 'warnings_ok', 'boot_to_hsm', 'priv_over_ux']
         rv = OrderedDict()
         for fn in simple:
@@ -686,11 +785,15 @@ class HSMPolicy:
             for r in self.rules:
                 if r.per_period:
                     self.record_spend(r, r.per_period)
+                if r.max_txn_per_period:
+                    r.txn_this_period = r.max_txn_per_period
+                    self.record_spend(r, 0)
 
     def reset_period(self):
         # new period has begun
         for r in self.rules:
             r.spent_so_far = 0
+            r.txn_this_period = 0
         self.period_started = 0
 
     def record_spend(self, rule, amt):
@@ -817,6 +920,12 @@ class HSMPolicy:
             return ('p2sh' in self.share_addrs)
 
         return match_deriv_path(self.share_addrs, subpath)
+
+    def approve_slip19(self, subpath=None):
+        # Are we allowing SLIP-19 ownership proofs (coinjoin remote signing) over USB?
+        if not self.slip19_paths:
+            return False
+        return match_deriv_path(self.slip19_paths, subpath)
 
     @property
     def uptime(self):
@@ -964,6 +1073,14 @@ class HSMPolicy:
 
                 if rule.per_period is not None:
                     self.record_spend(rule, total_out)
+
+                if rule.max_txn is not None:
+                    rule.txn_count += 1
+
+                if rule.max_txn_per_period is not None:
+                    rule.txn_this_period += 1
+                    # starts the period clock without recording a spend
+                    self.record_spend(rule, 0)
 
                 return 'y'
             except BaseException as exc:

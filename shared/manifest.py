@@ -46,6 +46,7 @@ freeze_as_mpy('', [
 	'seed.py',
 	'selftest.py',
 	'serializations.py',
+	'slip19.py',
 	'sffile.py',
 	'stash.py',
 	'tapsigner.py',

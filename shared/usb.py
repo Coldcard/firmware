@@ -55,9 +55,13 @@ HSM_WHITELIST = frozenset({
     'stok', 'smok',             # completion check: sign txn or msg
     'xpub', 'msck',             # quick status checks
     'p2sh', 'show',             # limited by HSM policy
+    'slp9',                     # SLIP-19 ownership proof; limited by slip19_paths policy
     'user',                     # auth HSM user, other user cmds not allowed
     'gslr',                     # read storage locker; hsm mode only, limited usage
 })
+
+# SLIP-19 proof flag asserting a human approved this input (mirrors slip19.FLAG_USER_CONFIRMATION).
+SLIP19_USER_CONFIRMATION = const(0x01)
 
 # HSM related commands that are not allowed if 'hsmcmd' is disabled.
 HSM_DISABLE_CMDS = frozenset({
@@ -366,10 +370,18 @@ class USBHandler:
 
         if is_devmode and cmd[0].isupper():
             # special hacky commands to support testing w/ the simulator
+            #
+            # EVAL/EXEC are arbitrary code execution and XKEY injects keypresses, so they must
+            # not also be a way around HSM mode. HSM exists so the device can be left unattended
+            # with a host that may be compromised - which is exactly what unattended coinjoin
+            # signing is. The simulator keeps them, because the test suite drives HSM over this
+            # same path.
+            if hsm_active and not is_simulator():
+                raise HSMDenied
             try:
                 from usb_test_commands import do_usb_command
                 return do_usb_command(cmd, args)
-            except: 
+            except:
                 pass
 
         if hsm_active:
@@ -469,6 +481,41 @@ class USBHandler:
             from auth import sign_msg
             sign_msg(msg, subpath, addr_fmt)
             return None
+
+        if cmd == 'slp9':
+            # SLIP-19 ownership proof, for coinjoin remote signing (Wasabi WabiSabi).
+            addr_fmt, flags, len_subpath, len_commit = unpack_from('<IIII', args)
+            assert len(args) == (16 + len_subpath + len_commit), 'badlen'
+            from utils import cleanup_deriv_path
+            # One canonical path is used for BOTH the policy check and the derivation below, so a
+            # caller cannot get one string approved and a different key signed.
+            subpath = cleanup_deriv_path(args[16:16+len_subpath])
+            commitment = bytes(args[16+len_subpath:])
+
+            from glob import dis, hsm_active
+            if hsm_active:
+                if not hsm_active.approve_slip19(subpath):
+                    raise HSMDenied
+            elif flags & SLIP19_USER_CONFIRMATION:
+                # The confirmation flag is an assertion to the coordinator that a human approved
+                # this input. Outside HSM mode nobody has, and the host picks the flag, so refuse
+                # rather than sign a claim we cannot back. Under HSM the approved policy is the
+                # standing consent, which is the whole point of the policy.
+                raise ValueError('user confirmation flag requires an approved HSM policy')
+
+            from slip19 import make_ownership_proof
+
+            # Say what the device is doing. Unattended signing is otherwise silent, so there is no
+            # way to tell a working coinjoin session from an idle one by looking at the Coldcard.
+            # In HSM mode this lands on the status screen's busy line; leave the normal UX alone.
+            if hsm_active:
+                dis.fullscreen('Signing ownership proof')
+            try:
+                return b'biny' + make_ownership_proof(subpath, addr_fmt, flags, commitment)
+            finally:
+                if hsm_active:
+                    # A finished progress bar is how the busy line gets cleared again.
+                    dis.progress_bar(1)
 
         if cmd == 'p2sh':
             # show P2SH (probably multisig) address on screen (also provides it back)
