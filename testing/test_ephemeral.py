@@ -382,14 +382,23 @@ def generate_ephemeral_words(goto_eph_seed_menu, pick_menu_item, press_select,
             ephemeral_seed_disabled_ui()
 
         pick_menu_item("Generate Words")
-        if not dice:
+        if dice:
+            pick_menu_item(f"{num_words} Word Dice Roll")
+            time.sleep(0.1)
+            title, _ = cap_story()
+            assert title == 'WARNING'
+            press_select()  # acknowledge dice-only warning
+            time.sleep(0.1)
+
+            num_rolls = 50 if num_words == 12 else 99
+            for i in range(num_rolls):
+                need_keypress(str((i % 6) + 1))
+                time.sleep(0.01)
+            press_select()
+        else:
             pick_menu_item(f"{num_words} Words")
             enter_mash_entropy()
             time.sleep(0.1)
-        else:
-            pick_menu_item(f"{num_words} Word Dice Roll")
-            for ch in '123456\r\r':
-                need_keypress(ch)
 
         time.sleep(0.2)
         title, story = cap_story()
@@ -493,7 +502,7 @@ def import_ephemeral_xprv(microsd_path, virtdisk_path, goto_eph_seed_menu,
 
 
 @pytest.mark.parametrize("num_words", [12, 24])
-@pytest.mark.parametrize("dice", [False, True])
+@pytest.mark.parametrize("dice", [False, True], ids=["generated", "dice"])
 @pytest.mark.parametrize("seed_vault", [False, True])
 @pytest.mark.parametrize("preserve_settings", [False, True])
 def test_ephemeral_seed_generate(num_words, generate_ephemeral_words, dice,
@@ -512,6 +521,38 @@ def test_ephemeral_seed_generate(num_words, generate_ephemeral_words, dice,
         seed_vault_delete(xfp, not preserve_settings)
     else:
         restore_main_seed(preserve_settings)
+
+
+@pytest.mark.parametrize("num_words,min_rolls", [(12, 50), (24, 99)])
+def test_ephemeral_dice_security_checks(reset_seed_words, goto_eph_seed_menu,
+                                        ephemeral_seed_disabled, pick_menu_item,
+                                        cap_story, press_select, press_cancel,
+                                        need_keypress, num_words, min_rolls):
+    reset_seed_words()
+    goto_eph_seed_menu()
+    ephemeral_seed_disabled()
+
+    pick_menu_item("Generate Words")
+    pick_menu_item(f"{num_words} Word Dice Roll")
+
+    title, warning = cap_story()
+    assert title == 'WARNING'
+    assert 'only source of randomness' in warning
+    assert 'wallet derived from the rolls entered so far' in warning
+    press_select()
+
+    for ch in '123456':
+        need_keypress(ch)
+    press_select()
+    time.sleep(0.1)
+
+    _, story = cap_story()
+    assert 'Not enough dice rolls' in story
+    assert f'minimum for {num_words} word seeds' in story
+    assert f'need at least {min_rolls} rolls' in story
+    press_cancel()
+    time.sleep(0.1)
+    ephemeral_seed_disabled()
 
 
 def test_ephemeral_seed_import_qr_bad_checksum(reset_seed_words, goto_eph_seed_menu,
@@ -1729,8 +1770,8 @@ def test_seed_vault_enable_on_tmp(generate_ephemeral_words, reset_seed_words,
     settings_remove("seeds")
     goto_eph_seed_menu()
     ephemeral_seed_disabled()
-    e_seed_words = generate_ephemeral_words(num_words=12, dice=False,
-                                            from_main=True, seed_vault=False)
+    e_seed_words = generate_ephemeral_words(num_words=12, from_main=True,
+                                            seed_vault=False)
     verify_ephemeral_secret_ui(mnemonic=e_seed_words, seed_vault=False)
     goto_home()
     pick_menu_item("Advanced/Tools")

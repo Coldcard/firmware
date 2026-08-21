@@ -8,6 +8,7 @@ from binascii import a2b_hex
 from bbqr import split_qrs, join_qrs
 from charcodes import KEY_QR
 from base64 import b32decode, b32encode
+from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
 
 # All tests in this file are exclusively meant for Q
 #
@@ -242,6 +243,7 @@ def test_show_bbqr_contents(src, cap_screen_qr, sim_exec, render_bbqr, load_shar
     assert data2 == data
     assert ft == 'B'
 
+
 @pytest.mark.bitcoind
 @pytest.mark.reexport
 @pytest.mark.parametrize('size', [ 2, 10 ] )
@@ -430,6 +432,24 @@ def test_bbqr_storage_guards_unit(sim_exec):
         "ty, sz, buf = st.finalize()\n"
         "RV.write(b'%r %d %r' % (ty, sz, bytes(buf)[0:sz]))")
     assert resp == "'U' 34 %r" % (b'A'*15 + b'B'*15 + b'C'*4)
+
+
+def test_scan_bbqr_revokes_download_lease(remote_backup_lease, split_scan_bbqr,
+                                          cap_story, dev, press_cancel):
+    remote_backup_lease()
+
+    msg = b'private scanner payload ' * 25
+    split_scan_bbqr(msg, 'U', max_version=10, encoding='2')
+    time.sleep(.5)
+
+    title, story = cap_story()
+    assert title == 'Simple Text'
+    assert msg[:50].decode() in story
+
+    with pytest.raises(CCProtoError) as exc:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 0))
+    assert 'not allowed' in str(exc.value)
+    press_cancel()
 
 
 def test_bbqr_psram_reset_unit(sim_exec):

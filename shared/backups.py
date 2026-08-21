@@ -2,7 +2,7 @@
 #
 # backups.py - Save and restore backup data.
 #
-import compat7z, stash, ckcc, chains, gc, sys, bip39, uos, ngu
+import compat7z, stash, chains, gc, sys, bip39, uos, ngu
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from utils import deserialize_secret, swab32, xfp2str
@@ -310,9 +310,8 @@ async def restore_from_dict(vals, raw):
 async def pick_backup_password(write_sflash=False, secret_opt=False, what="money for free"):
     # Pick a password: like bip39 but no checksum word
     #
-    b = bytearray(32)
     while 1:
-        ckcc.rng_bytes(b)
+        b = ngu.random.bytes(32)
         # b2a_words(32 bytes) gives 24 BIP39 words. Keep the leading 12 by dropping the tail,
         # which includes checksum bits; this is a wordlist password, not a valid BIP39 mnemonic.
         # * keep pwd as a string for the encryption/settings paths
@@ -792,9 +791,7 @@ back and press %s to complete clone process.''' % OK)
         uos.remove(fname)       # ccbk-start.json
 
     # this will reset in successful case, no return (but delme is called)
-    # no need to ask for UX confirmation during clone - as user can see what is loaded on source CC
-    prob = await restore_complete_doit(incoming, words, file_cleanup=delme,
-                                       ux_confirm=False)
+    prob = await restore_complete_doit(incoming, words, file_cleanup=delme)
     if prob:
         await ux_show_story(prob, title='FAILED')
 

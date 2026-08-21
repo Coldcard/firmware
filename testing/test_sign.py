@@ -775,7 +775,19 @@ def test_wrong_p2sh_p2wpkh(bitcoind, start_sign, end_sign, bitcoind_d_sim_watch,
     utxos = sim.listunspent()
     assert len(utxos) == 1
     conso_addr = sim.getnewaddress("", "legacy")
-    psbt_resp = sim.walletcreatefundedpsbt([], [{conso_addr: 1}], 0, {"fee_rate": 2, "change_type": "bech32"})
+    try:
+        # new in Core v32 - default PSBT version is now 2
+        # old core version fails with "too many arguemnts"
+        # does not know the last one "psbt_version=0"
+        psbt_resp = sim.walletcreatefundedpsbt([], [{conso_addr: 1}], 0,
+                                               {"fee_rate": 2, "change_type": "bech32"},
+                                               True,  # BIP-32 paths
+                                               2,     # txn version
+                                               0)     # PSBT version
+    except:
+        psbt_resp = sim.walletcreatefundedpsbt([], [{conso_addr: 1}], 0,
+                                               {"fee_rate": 2, "change_type": "bech32"})
+
     psbt = psbt_resp.get("psbt")
     b4 = BasicPSBT().parse(base64.b64decode(psbt))
     t = CTransaction()
@@ -1900,8 +1912,16 @@ def test_bitcoind_missing_foreign_utxo(bitcoind, bitcoind_d_sim_watch, microsd_p
     psbt_list = []
     for w in (alice, bob, cc):
         assert w.listunspent()
-        psbt = w.walletcreatefundedpsbt([], [{dest_address: 1.0}], 0, {"fee_rate": 20})["psbt"]
-        psbt_list.append(psbt)
+        try:
+            # TODO when joinpsbt is fixed to operate on PSBT v2 - remove
+            res = w.walletcreatefundedpsbt([], [{dest_address: 1.0}], 0, {"fee_rate": 20},
+                                            True,  # BIP-32 paths
+                                            2,  # txn version
+                                            0)  # PSBT version
+        except:
+            res = w.walletcreatefundedpsbt([], [{dest_address: 1.0}], 0, {"fee_rate": 20})
+
+        psbt_list.append(res["psbt"])
 
     # join PSBTs to one
     the_psbt = bitcoind.supply_wallet.joinpsbts(psbt_list)
@@ -3404,7 +3424,6 @@ def test_txout_explorer_qr_too_big_single_item(fake_txn, start_sign, cap_story, 
 def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_ms_import,
                         cap_story, try_sign, reset_seed_words, clear_ms):
     reset_seed_words()
-    clear_ms()
     desc = "sh(sortedmulti(2,[6ba6cfd0/45h]tpubD9429UXFGCTKJ9NdiNK4rC5ygqSUkginycYHccqSg5gkmyQ7PZRHNjk99M6a6Y3NY8ctEUUJvCu6iCCui8Ju3xrHRu3Ez1CKB4ZFoRZDdP9/0/*,[747b698e/45h]tpubD97nVL37v5tWyMf9ofh5rznwhh1593WMRg6FT4o6MRJkKWANtwAMHYLrcJFsFmPfYbY1TE1LLQ4KBb84LBPt1ubvFwoosvMkcWJtMwvXgSc/0/*,[7bb026be/45h]tpubD9ArfXowvGHnuECKdGXVKDMfZVGdephVWg8fWGWStH3VKHzT4ph3A4ZcgXWqFu1F5xGTfxncmrnf3sLC86dup2a8Kx7z3xQ3AgeNTQeFxPa/0/*,[0f056943/45h]tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n/0/*))#up0sw2xp"
     # PSBT created via fake_ms_txn, grinded in test_ms_sign_myself
     psbt_fname = "myself-72sig.psbt"
@@ -3425,11 +3444,11 @@ def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_ms_imp
 
     assert "[747B698E]" in title
     press_select()
+    clear_ms()
 
     time.sleep(.1)
     _, story = offer_ms_import(desc)
-    assert "Create new multisig wallet?" in story \
-                or 'Update NAME only of existing multisig' in story
+    assert "Create new multisig wallet?" in story
     time.sleep(.1)
     press_select()
 
@@ -3580,8 +3599,15 @@ def test_finalize_with_foreign_inputs(bitcoind, bitcoind_d_sim_watch, start_sign
     psbt_list = []
     for w in (alice, bob, cc):
         assert w.listunspent()
-        psbt = w.walletcreatefundedpsbt([], [{dest_address: 1.0}], 0, {"fee_rate": 20})["psbt"]
-        psbt_list.append(psbt)
+        try:
+            # TODO when joinpsbt is fixed to operate on PSBT v2 - remove
+            res = w.walletcreatefundedpsbt([], [{dest_address: 1.0}], 0, {"fee_rate": 20},
+                                            True,  # BIP-32 paths
+                                            2,  # txn version
+                                            0)  # PSBT version
+        except:
+            res = w.walletcreatefundedpsbt([], [{dest_address: 1.0}], 0, {"fee_rate": 20})
+        psbt_list.append(res["psbt"])
 
     # join PSBTs to one
     the_psbt = bitcoind.supply_wallet.joinpsbts(psbt_list)
@@ -4168,8 +4194,10 @@ def test_upload_during_approval(dev, fake_txn, start_sign, end_sign, cap_story,
     # attacker host rewrites an aligned block mid-approval: allowed at USB
     # layer (a new upload may supersede a pending request), but must be
     # caught before any signature is produced
-    rv = dev.send_recv(CCProtocolPacker.upload(256, len(in_psbt), bytes(256)))
-    assert rv == 256
+    rv = dev.send_recv(CCProtocolPacker.upload(
+        0, len(in_psbt), in_psbt[:256] + bytes(256)
+    ))
+    assert rv == 0
 
     # user approves what was originally displayed; must not sign
     need_keypress('y')
@@ -4227,5 +4255,43 @@ def test_psbt_mutation_before_signing(dev, fake_txn, start_sign, cap_story,
     title, story = cap_story()
     assert 'Transaction modified' in story
     press_cancel()
+
+def test_inactive_psram_region_write_before_signing(fake_txn, start_sign, end_sign,
+                                                     cap_story, sim_exec):
+    # A write to the inactive staging half must trigger a re-hash without
+    # tripping the post-check counter assertion when the active PSBT is intact.
+    in_psbt = fake_txn(2, 2, segwit_in=True)
+    start_sign(in_psbt, finalize=True)
+
+    for _ in range(100):
+        title, story = cap_story()
+        if title == 'OK TO SEND?':
+            break
+        time.sleep(.1)
+    else:
+        raise pytest.fail('no approval screen')
+
+    sim_exec("from glob import PSRAM; import version; "
+             "PSRAM.write(version.MAX_TXN_LEN, bytes(100))")
+
+    end_sign(accept=True, finalize=True)
+
+def test_psram_write_counter_covers_txn_output_region(sim_exec, sim_eval):
+    # any write into either TXN staging region of PSRAM (input below
+    # MAX_TXN_LEN, output at/above it) must bump the write counter that
+    # gates the pre-signing digest re-check -- otherwise a mutation
+    # staged in the output region (teleport re-sign path) is invisible
+    # to the fast path and never re-hashed
+    for _ in range(50):
+        if sim_eval("(__import__('glob').PSRAM is not None)") == 'True':
+            break
+        time.sleep(.2)
+    else:
+        raise pytest.fail('PSRAM not initialized')
+
+    start = int(sim_eval("__import__('glob').PSRAM.txn_write_count"))
+    sim_exec("from glob import PSRAM; import version; PSRAM.write(version.MAX_TXN_LEN, bytes(100))")
+    sim_exec("from glob import PSRAM; PSRAM.write(3 * 1024 * 1024, bytes(100))")
+    assert int(sim_eval("__import__('glob').PSRAM.txn_write_count")) == start + 2
 
 # EOF

@@ -6,7 +6,7 @@
 # always does AES-256. Not really expecting to be able to read any 7z file, except
 # those we created ourselves.
 #
-import os, sys, ckcc, ngu
+import os, sys, ngu
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import crc32
@@ -19,9 +19,7 @@ def masked_crc(bits):
     return crc32(bits) & 0xffffffff
 
 def urandom(l):
-    rv = bytearray(l)
-    ckcc.rng_bytes(rv)
-    return rv
+    return ngu.random.bytes(l)
 
 def encode_utf_16_le(s):
     # emulate: str.encode('utf-16-le')
@@ -438,8 +436,9 @@ class Builder(object):
 
         first, second = rv.read(2)
         self.rounds_pow = first & 0x3f
+        assert self.rounds_pow <= 19  # excessive KDF rounds
 
-        assert first & 0xc0 == 0xc0, "require salt+iv"
+        assert first & 0xc0 == 0xc0  # require salt+iv
 
         salt_len = ((second >> 4) & 0xf) + 1
         iv_len = (second & 0xf) + 1

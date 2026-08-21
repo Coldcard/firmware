@@ -4,7 +4,7 @@
 #               secure environment of two Q's.
 #
 import ngu, aes256ctr, bip39, json, ndef, chains, stash
-from utils import xfp2str, deserialize_secret
+from utils import xfp2str, deserialize_secret, wipe_if_deltamode
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from glob import settings, dis
@@ -516,6 +516,8 @@ class SecretPickerMenu(MenuSystem):
         from pincodes import pa
         assert not pa.hobbled_mode
 
+        wipe_if_deltamode()  # shouldn't be here in delta mode
+
         from flow import word_based_seed, is_tmp, has_se_secrets
         has_notes = bool(NoteContentBase.count())
         has_sv = bool(settings.get('seedvault', False))
@@ -764,6 +766,8 @@ async def kt_send_file_psbt(*a):
 
     # read into PSRAM from wherever
     psbt_len = await sign_psbt_file(input_psbt, just_read=True, **picked)
+    if psbt_len is None:
+        return
 
     dis.fullscreen("Validating...")
     try:

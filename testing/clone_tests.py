@@ -91,8 +91,8 @@ def _clone(source, target):
     #     _need_keypress(device, KEY_ENTER if target_is_Q else "y", timeout=1000)
     # except: pass
 
-    for _ in range(3):
-        # need 3 ENTERS - 1. start the process; 2.FTUX; 3. Success story
+    for _ in range(4):
+        # need 4 ENTERS - 1. start; 2. accept XFP; 3. FTUX; 4. Success story
         try:
             # somehow it works even if it timeouts
             # remember that we have only one .socket (fpath is compiled in pyb.py)

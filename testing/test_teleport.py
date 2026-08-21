@@ -13,6 +13,7 @@ from constants import *
 from test_ephemeral import SEEDVAULT_TEST_DATA
 from test_backup import make_big_notes
 from test_hobble import set_hobble
+from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
 
 # All tests in this file are exclusively meant for Q
 #
@@ -656,7 +657,8 @@ def test_teleport_big_ms(make_myself_wallet, clear_ms, fake_ms_txn, try_sign, ca
 def test_teleport_file_psbt_uses_loaded_file(make_myself_wallet, clear_ms, fake_ms_txn, cap_story,
                                              need_keypress, cap_menu, pick_menu_item, grab_payload,
                                              rx_complete, set_master_key, goto_home, settings_get,
-                                             settings_set, open_microsd, import_ms_wallet, press_cancel):
+                                             settings_set, open_microsd, import_ms_wallet, press_cancel,
+                                             remote_backup_lease, dev):
     clear_ms()
     M, N = 2, 4
     keys = import_ms_wallet(M, N, name='ms-tp', unique=11, accept=True,
@@ -666,6 +668,7 @@ def test_teleport_file_psbt_uses_loaded_file(make_myself_wallet, clear_ms, fake_
     fname = 'ms-tp.psbt'
     open_microsd(fname, 'wb').write(psbt)
 
+    remote_backup_lease()
     goto_home()
     pick_menu_item('Advanced/Tools')
     pick_menu_item('File Management')
@@ -677,6 +680,9 @@ def test_teleport_file_psbt_uses_loaded_file(make_myself_wallet, clear_ms, fake_
         pass
 
     m = cap_menu()
+    with pytest.raises(CCProtoError) as exc:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 0))
+    assert 'not allowed' in str(exc.value)
     assert len(m) == N
     target = next(i for i in m if 'YOU' not in i)
     target_xfp = str2xfp(target[1:9])

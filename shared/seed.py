@@ -84,7 +84,7 @@ You must enter at least 128 coin flips.'''
 DICE_ONLY_WARNING = '''\
 These dice rolls will be the only source of randomness for your seed. No hardware-generated randomness is mixed in.
 
-The hash shown while rolling is SECRET. Anyone who sees or photographs the final hash can recreate your wallet and steal the funds.
+The hash shown while rolling is SECRET. Anyone who sees or photographs one can recreate the wallet derived from the rolls entered so far and steal its funds.
 
 Keep the screen hidden from people and cameras. If you verify the hash elsewhere, use only a trusted offline device and erase all traces afterward.'''
 
@@ -520,7 +520,7 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
 
     return count, seed
 
-async def new_from_dice(nwords):
+async def new_from_dice(nwords, ephemeral=False):
     # Use lots of (D6) dice rolls to create seed entropy.
     # Note: only 2.585 bits of entropy per roll, so need lots!
     # 50 => 128bits, 99 => 256bits
@@ -535,9 +535,13 @@ async def new_from_dice(nwords):
     count, seed = await add_dice_rolls(count, seed, True, nwords, enforce=True)
     if count == 0: return
 
-    words = await approve_word_list(seed, nwords)
+    words = await approve_word_list(seed, nwords, ephemeral=ephemeral)
     if words:
-        await commit_new_words(words)
+        if ephemeral:
+            dis.fullscreen("Applying...")
+            await set_ephemeral_seed_words(words, origin='Dice')
+        else:
+            await commit_new_words(words)
 
 def in_seed_vault(encoded):
     # Test if indicated secret is in the seed vault already.
@@ -638,22 +642,6 @@ async def set_ephemeral_seed_words(words, origin):
     dis.progress_bar_show(0.5)
     await set_ephemeral_seed(encoded, origin=origin)
     goto_top_menu()
-
-async def ephemeral_seed_generate_from_dice(nwords):
-    # Use lots of (D6) dice rolls to create seed entropy.
-    # Note: only 2.585 bits of entropy per roll, so need lots!
-    # 50 => 128bits, 99 => 256bits
-
-    seed = b''
-    count = 0
-
-    count, seed = await add_dice_rolls(count, seed, True, nwords)
-    if count == 0: return
-
-    words = await approve_word_list(seed, nwords, ephemeral=True)
-    if words:
-        dis.fullscreen("Applying...")
-        await set_ephemeral_seed_words(words, origin='Dice')
 
 def generate_seed():
     # Generate 32 bytes of best-quality high entropy from independent sources.
@@ -1401,7 +1389,7 @@ class EphemeralSeedMenu(MenuSystem):
 
     @staticmethod
     async def ephemeral_seed_generate_from_dice(menu, label, item):
-        return await ephemeral_seed_generate_from_dice(item.arg)
+        return await new_from_dice(item.arg, ephemeral=True)
 
     @classmethod
     def construct(cls):
@@ -1644,7 +1632,8 @@ async def apply_pass_value(new_pp):
 
     msg = ('Above is the master key fingerprint of the new wallet'
            ' created by adding passphrase to %s.'
-           '\n\nPassphrase: %s'
+           '\n\nScroll down to view and verify your passphrase.'
+           '\n\n\nPassphrase: %s'
            '\n\nPress %s to abort, %s to use the new wallet, (1) to apply'
            ' and save to MicroSD for future.') % (msg, new_pp, X, OK)
 

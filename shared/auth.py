@@ -393,6 +393,10 @@ class ApproveTransaction(UserAuthorizedAction):
         from glob import PSRAM
         self.parsed_write_count = PSRAM.txn_write_count
         self.parsed_sha = psram_sha256(self.offset, self.psbt_len)
+        if self.psbt_sha is not None and self.psbt_sha != self.parsed_sha:
+            del self.psbt
+            gc.collect()
+            return await self.failure("PSBT checksum mismatch")
 
         dis.fullscreen("Validating...")
 
@@ -600,13 +604,17 @@ class ApproveTransaction(UserAuthorizedAction):
         # - fast path: nothing wrote to the TXN region since we hashed it,
         #   so there is no need to re-hash in that (common) case
         from glob import PSRAM
-        if (PSRAM.txn_write_count != self.parsed_write_count) and \
-                (psram_sha256(self.offset, self.psbt_len) != self.parsed_sha):
-            # fail closed: wipe the txn, so no signature over modified data
-            psram_wipe(self.offset, self.psbt_len)
-            del self.psbt
-            gc.collect()
-            return await self.failure("Transaction modified")
+        if PSRAM.txn_write_count != self.parsed_write_count:
+            if psram_sha256(self.offset, self.psbt_len) != self.parsed_sha:
+                # fail closed: wipe the txn, so no signature over modified data
+                psram_wipe(self.offset, self.psbt_len)
+                del self.psbt
+                gc.collect()
+                return await self.failure("Transaction modified")
+
+            # A writer touched the other TXN staging region. The active PSBT is
+            # unchanged, so make this successful re-check the new baseline.
+            self.parsed_write_count = PSRAM.txn_write_count
 
         # do the actual signing.
         try:
@@ -1094,6 +1102,9 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, just_read=Fal
     from glob import dis
     from ux import the_ux
 
+    # file staging replaces any previously leased PSRAM contents
+    glob.ALLOWED_DOWNLOAD = None
+
     tmp_buf = bytearray(4096)
 
     # copy file into PSRAM
@@ -1114,25 +1125,43 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, just_read=Fal
             decoder, output_encoder, psbt_len = psbt_encoding_taster(taste, psbt_len)
 
             total = 0
-            with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as out:
-                while 1:
-                    n = fd.readinto(tmp_buf)
-                    if not n: break
+            # Binary length is exact, so reject it without staging. Encoded
+            # lengths are estimates and must be checked as bytes are decoded.
+            too_big = not decoder and psbt_len > MAX_TXN_LEN
+            if not too_big:
+                with SFFile(TXN_INPUT_OFFSET, max_size=MAX_TXN_LEN) as out:
+                    while 1:
+                        n = fd.readinto(tmp_buf)
+                        if not n: break
 
-                    if n == len(tmp_buf):
-                        abuf = tmp_buf
-                    else:
-                        abuf = memoryview(tmp_buf)[0:n]
+                        if n == len(tmp_buf):
+                            abuf = tmp_buf
+                        else:
+                            abuf = memoryview(tmp_buf)[0:n]
 
-                    if not decoder:
-                        out.write(abuf)
-                        total += n
-                    else:
-                        for here in decoder.more(abuf):
-                            out.write(here)
-                            total += len(here)
+                        if not decoder:
+                            out.write(abuf)
+                            total += n
+                        else:
+                            for here in decoder.more(abuf):
+                                if total + len(here) > MAX_TXN_LEN:
+                                    too_big = True
+                                    break
+                                out.write(here)
+                                total += len(here)
 
-                    dis.progress_sofar(total, psbt_len)
+                            if too_big:
+                                break
+
+                        dis.progress_sofar(total, psbt_len)
+
+            if too_big:
+                size = " (%d bytes)" % psbt_len if not decoder else ""
+                await ux_show_story(
+                    "That transaction file is too big%s. "
+                    "Maximum supported is %d bytes." % (size, MAX_TXN_LEN),
+                    title='Sorry')
+                return
 
             # might have been whitespace inflating initial estimate of PSBT size
             assert total <= psbt_len

@@ -3,7 +3,7 @@
 import pytest, time, os, re, hashlib, shutil, functools, ndef
 from binascii import b2a_hex
 from helpers import xfp2str, prandom
-from charcodes import KEY_QR, KEY_NFC, KEY_DELETE, KEY_ENTER
+from charcodes import KEY_QR, KEY_NFC, KEY_DELETE, KEY_ENTER, OUT_CTRL_ADDRESS
 from constants import AF_CLASSIC, simulator_fixed_words, simulator_fixed_xfp
 from mnemonic import Mnemonic
 from bip32 import BIP32Node
@@ -232,7 +232,7 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
     title, warning = cap_story()
     assert title == 'WARNING'
     assert 'only source of randomness' in warning
-    assert 'final hash can recreate your wallet' in warning
+    assert 'wallet derived from the rolls entered so far' in warning
     press_select()
     time.sleep(0.1)
 
@@ -1672,6 +1672,46 @@ def test_bip21_amount_display_corrupt(amount, scan_a_qr, cap_story, goto_home,
     title, body = cap_story()
     assert title == 'Payment Address', title
     assert 'Amount: (corrupt)' in body
+    press_cancel()
+
+
+@pytest.mark.parametrize('field', ['label', 'message', 'lightning'])
+def test_bip21_metadata_control_chars(field, scan_a_qr, cap_story, goto_home,
+                                       need_keypress, press_cancel):
+    addr = 'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R'
+    fake_addr = 'tb1qupyd58ndsh7lut0et0vtrq432jvu9jtdyws9n9'
+    url = 'bitcoin:%s?%s=Pay%%20to%%3A%%0A%%02%s' % (addr, field, fake_addr)
+
+    goto_home()
+    need_keypress(KEY_QR)
+    time.sleep(.1)
+    scan_a_qr(url)
+    time.sleep(.5)
+
+    title, body = cap_story()
+    assert title == 'Payment Address', title
+    assert '%s: (corrupt)' % field.title() in body
+    assert fake_addr not in body
+    press_cancel()
+
+
+def test_bip21_parameter_name_control_chars(scan_a_qr, cap_story, goto_home,
+                                             need_keypress, press_cancel):
+    addr = 'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R'
+    fake_addr = 'tb1qupyd58ndsh7lut0et0vtrq432jvu9jtdyws9n9'
+    bad_key = OUT_CTRL_ADDRESS + fake_addr
+    url = 'bitcoin:%s?amount=1&%s=1' % (addr, bad_key)
+
+    goto_home()
+    need_keypress(KEY_QR)
+    time.sleep(.1)
+    scan_a_qr(url)
+    time.sleep(.5)
+
+    title, body = cap_story()
+    assert title == 'Payment Address'
+    assert 'And values for: (corrupt)' in body
+    assert fake_addr not in body
     press_cancel()
 
 

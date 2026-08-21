@@ -15,6 +15,18 @@ def test_remote_exec(sim_exec):
 def test_codecs(sim_execfile):
     assert sim_execfile('devtest/segwit_addr.py') == ''
 
+def test_b58decode_rejects_overlong_decoded_size(sim_exec):
+    result = sim_exec("""\
+import ngu
+try:
+    ngu.codecs.b58_decode('1' * 133)
+except ValueError:
+    RV.write('rejected')
+else:
+    RV.write('accepted')
+""")
+    assert result == 'rejected'
+
 def test_public(sim_execfile):
     "verify contents of public 'dump' file"
     import bech32

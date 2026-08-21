@@ -8,13 +8,13 @@
 import pytest, pdb, requests, re, time, random, json, glob, os, hashlib, base64, uuid
 from base64 import urlsafe_b64encode
 from onetimepass import get_totp
-from helpers import prandom, slip132undo
+from helpers import prandom, slip132undo, str_to_path
 from pysecp256k1.ecdh import ecdh, ECDH_HASHFP_CLS
 from pysecp256k1 import ec_seckey_verify, ec_pubkey_parse, ec_pubkey_serialize, ec_pubkey_create
 from mnemonic import Mnemonic
 from bip32 import BIP32Node
 from constants import AF_P2WSH
-from charcodes import KEY_QR, KEY_NFC
+from charcodes import KEY_CLEAR, KEY_QR, KEY_NFC
 from bbqr import split_qrs
 from psbt import BasicPSBT
 
@@ -182,6 +182,46 @@ def get_last_violation(settings_get):
     def doit():
         return settings_get('lfr')
     return doit
+
+
+def test_ccc_velocity_legacy_block_height_floor(
+        goto_home, settings_set, settings_get, setup_ccc, make_multisig,
+        import_ms_wallet, fake_ms_txn, policy_sign):
+    goto_home()
+    settings_set("ccc", None)
+    settings_set("chain", "BTC")
+    settings_set("multisig", [])
+
+    c_words = setup_ccc(vel="6 blocks (hour)")
+
+    M, N = 2, 3
+    deriv = "m/48h/0h/0h/2h"
+    keys = make_multisig(M, N, deriv=deriv, netcode="BTC")
+    c_master = BIP32Node.from_master_secret(
+        Mnemonic.to_seed(" ".join(c_words)), netcode="BTC")
+    # make_multisig provides B and the simulator's A key; replace the other B with C.
+    keys[0] = (
+        int.from_bytes(c_master.fingerprint(), "little"), c_master,
+        c_master.subkey_for_path(deriv))
+
+    goto_home()
+    import_ms_wallet(
+        M, N, addr_fmt="p2wsh", common=deriv, keys=keys, accept=True)
+
+    ccc = settings_get("ccc")
+    min_block_h = ccc["pol"]["block_h"]
+    assert min_block_h > ccc["pol"]["vel"]
+    ccc["pol"]["block_h"] = 0
+    settings_set("ccc", ccc)
+
+    psbt = fake_ms_txn(
+        1, 1, M, keys, lock_time=min_block_h - 1,
+        path_mapper=lambda _: str_to_path(deriv) + [0, 0])
+    policy_sign(None, base64.b64encode(psbt).decode(), violation="rewound")
+
+    # Enforce the floor at runtime without migrating the legacy policy.
+    assert settings_get("ccc")["pol"]["block_h"] == 0
+
 
 _skip_quiz = False
 
@@ -779,7 +819,7 @@ def test_ccc_velocity(velocity_mi, setup_ccc, ccc_ms_setup, bitcoind, settings_s
                                                    init_block_height)  # nLockTime set to current block height
     psbt = psbt_resp.get("psbt")
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == init_block_height
+    assert po.get_locktime() == init_block_height
     policy_sign(bitcoind_wo, psbt)  # success as this is first tx that sets block height from 0
 
     assert settings_get("ccc")["pol"]["block_h"] == init_block_height
@@ -792,7 +832,7 @@ def test_ccc_velocity(velocity_mi, setup_ccc, ccc_ms_setup, bitcoind, settings_s
                                                    block_height)
     psbt = psbt_resp.get("psbt")
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == block_height
+    assert po.get_locktime() == block_height
     policy_sign(bitcoind_wo, psbt, violation="velocity")
 
     assert settings_get("ccc")["pol"]["block_h"] == init_block_height  # still initial block height as above failed
@@ -804,7 +844,7 @@ def test_ccc_velocity(velocity_mi, setup_ccc, ccc_ms_setup, bitcoind, settings_s
                                                    block_height)
     psbt = psbt_resp.get("psbt")
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == block_height
+    assert po.get_locktime() == block_height
     policy_sign(bitcoind_wo, psbt)  # success
 
     assert settings_get("ccc")["pol"]["block_h"] == block_height  # updated block height
@@ -882,7 +922,7 @@ def test_ccc_warnings(setup_ccc, ccc_ms_setup, bitcoind, settings_set, policy_si
                                                    init_block_height, {"fee_rate":39000})
     psbt = psbt_resp.get("psbt")
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == init_block_height
+    assert po.get_locktime() == init_block_height
     policy_sign(bitcoind_wo, psbt, violation="has warnings", num_warn=2, warn_list=["Big Fee"])
 
     # invalidate nLockTime with use of nSequence max values
@@ -900,9 +940,8 @@ def test_ccc_warnings(setup_ccc, ccc_ms_setup, bitcoind, settings_set, policy_si
     psbt_resp = bitcoind_wo.walletcreatefundedpsbt(ins, [{whitelist[0]: 0.06},{whitelist[1]: 0.01},{whitelist[2]: 0.03}],
                                                    0, {"fee_rate":2, "replaceable": False})  # locktime needs to be zero, otherwise exception from core (contradicting parameters)
     po = BasicPSBT().parse(base64.b64decode(psbt_resp.get("psbt")))
-    assert po.parsed_txn.nLockTime == 0
-    po.parsed_txn.nLockTime = init_block_height  # add locktime
-    po.txn = po.parsed_txn.serialize_with_witness()
+    assert po.get_locktime() == 0
+    po.set_locktime(init_block_height)  # add locktime
     policy_sign(bitcoind_wo, po.as_b64_str(), violation="has warnings", num_warn=2, warn_list=["Bad Locktime"])
 
     # exotic sighash warning
@@ -1175,7 +1214,8 @@ def test_ccc_xpub_export(chain, c_num_words, acct, settings_set, load_export, se
 def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup,
                                    bitcoind_create_watch_only_wallet, cap_story, bitcoind,
                                    policy_sign, settings_get, cap_menu, pick_menu_item,
-                                   press_select, load_export, offer_ms_import, goto_home):
+                                   press_select, load_export, offer_ms_import, goto_home,
+                                   need_keypress, enter_text, is_q1):
     # - 'build 2-of-N' path
     goto_home()
     settings_set("ccc", None)
@@ -1239,8 +1279,7 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
     assert mi not in m
 
     # export one of the wallets
-    w_mn, w_name = ami.rsplit(" ", 1)
-    new_name = "new"
+    mi_prefix, old_name = ami.split(": ", 1)
     pick_menu_item(ami)  # just another ms wallet
     pick_menu_item("Coldcard Export")
     ms_conf = load_export("sd", label="Coldcard multisig setup", is_json=False)
@@ -1248,17 +1287,24 @@ def test_multiple_multisig_wallets(settings_set, setup_ccc, enter_enabled_ccc, c
     # try importing duplicate does not work
     _, story = offer_ms_import(ms_conf)
     assert "Duplicate wallet" in story
-
-    # try rename
-    ms_conf = ms_conf.replace(w_name, new_name)
-    _, story = offer_ms_import(ms_conf)
-    assert "Update NAME only of existing multisig wallet?" in story
     press_select()
     time.sleep(.1)
 
+    # rename from the wallet menu
     enter_enabled_ccc(words)
+    pick_menu_item(ami)
+    pick_menu_item("Rename")
+    if is_q1:
+        new_name = "new"
+        need_keypress(KEY_CLEAR)
+        enter_text(new_name)
+    else:
+        new_name = old_name[:-1] + str(int(old_name[-1]) + 1)
+        need_keypress("5")
+        press_select()
+
     m = cap_menu()
-    assert f"{w_mn} {new_name}" in m
+    assert f"{mi_prefix}: {new_name}" in m
 
 
 def test_remove_ccc(settings_set, setup_ccc, ccc_ms_setup, settings_get, policy_sign,
@@ -1357,6 +1403,29 @@ def test_c_key_from_seed_vault(has_candidates, setup_ccc, build_test_seed_vault,
     assert "Key C is in your Seed Vault" in story
     assert "MUST delete" in story
     press_select()
+
+
+def test_c_key_from_seed_vault_hidden_in_deltamode(
+        goto_home, goto_ccc_menu, settings_set, set_deltamode, press_select,
+        need_keypress, cap_story):
+    goto_home()
+    settings_set("ccc", None)
+    settings_set("seedvault", True)
+    set_deltamode(True)
+
+    goto_ccc_menu()
+    press_select()
+    time.sleep(.2)
+
+    title, story = cap_story()
+    assert title == "CCC Key C"
+    assert "import from Seed Vault" not in story
+
+    need_keypress("6")
+    time.sleep(.2)
+    new_title, new_story = cap_story()
+    assert new_title == title
+    assert new_story == story
 
 
 @pytest.mark.parametrize("way", ["sd", "qr"])

@@ -107,7 +107,7 @@ class SpendingPolicy(dict):
                 # this is unix timestamp - not allowed - fail
                 raise SpendPolicyViolation("nLockTime not height")
 
-            block_h = pol.get("block_h", chains.current_chain().ccc_min_block)
+            block_h = max(pol.get("block_h", 0), chains.current_chain().ccc_min_block)
             if psbt.lock_time <= block_h:
                 raise SpendPolicyViolation("rewound (%d)" % psbt.lock_time)
 
@@ -858,15 +858,18 @@ async def gen_or_import():
     # returns 12 words, or None to abort
     from seed import WordNestMenu, generate_seed_with_user_entropy, approve_word_list
     from seed import SeedVaultChooserMenu, PURPOSE_CCC
+    from pincodes import pa
 
     msg = "Press %s to generate a new 12-word seed phrase to be used "\
           "as the Coldcard Co-Signing Secret (key C).\n\nOr press (1) to import existing "\
           "12-words or (2) for 24-words import." % OK
 
-    if settings.master_get("seedvault", False):
+    esc = "12"
+    if not pa.is_deltamode() and settings.master_get("seedvault", False):
+        esc += "6"
         msg += ' Press (6) to import from Seed Vault.'
 
-    ch = await ux_show_story(msg, escape='126', title="CCC Key C")
+    ch = await ux_show_story(msg, escape=esc, title="CCC Key C")
 
     if ch in '12':
         nwords = 24 if ch == '2' else 12

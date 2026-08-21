@@ -8,6 +8,7 @@ from charcodes import *
 from constants import AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2WPKH, simulator_fixed_words
 from bbqr import split_qrs
 from ckcc.protocol import CCProtocolPacker
+from ckcc_protocol.protocol import CCProtoError
 from bip32 import BIP32Node
 from mnemonic import Mnemonic
 
@@ -571,6 +572,22 @@ def test_top_export(way, encrypted, settings_set, settings_remove, need_some_pas
     assert obj['coldcard_notes'] == notes
 
 
+def test_qr_export_revokes_download_lease(remote_backup_lease, settings_set, settings_get,
+                                          need_some_notes, backup_notes, dev, press_select):
+    settings_set('notes', [])
+    need_some_notes('Private note', 'not for the USB host')
+    notes = settings_get('notes')
+    remote_backup_lease()
+
+    data, _, _ = backup_notes('qr')
+    assert json.loads(data)['coldcard_notes'] == notes
+
+    with pytest.raises(CCProtoError) as exc:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 0))
+    assert 'not allowed' in str(exc.value)
+    press_select()
+
+
 def test_sort_by_title(goto_notes, pick_menu_item, cap_story, need_keypress, settings_get,
                     settings_set, build_note, cap_menu, build_password):
 
@@ -1131,7 +1148,7 @@ def test_sign_note_body(msg, addr_fmt, acct, need_some_notes,
 
 def test_send_password_menu_item(need_some_passwords, goto_notes, cap_menu, pick_menu_item,
                                  settings_set, settings_remove, press_cancel):
-    # covers regression where "Send Password" menu item was only shown when USB was disabled
+    # temporary keyboard emulation works regardless of the normal USB setting
     settings_set("notes", [])
     need_some_passwords()
 
@@ -1140,7 +1157,7 @@ def test_send_password_menu_item(need_some_passwords, goto_notes, cap_menu, pick
     pick_menu_item([i for i in cap_menu() if i.endswith(': A')][0])
     time.sleep(.2)
     m = cap_menu()
-    assert 'Send Password' not in m
+    assert 'Send Password' in m
     press_cancel()
 
     settings_set('du', 0)

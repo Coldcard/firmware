@@ -466,7 +466,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                     if(buf_io[0] < 0x10 || buf_io[0] >= 0x40) {
                         // bad data
                         rv = ERANGE;
-                    } if(check_is_downgrade(buf_io, NULL)) {
+                    } else if(check_is_downgrade(buf_io, NULL)) {
                         // already at a higher version?
                         rv = EAGAIN;
                     } else {
@@ -562,6 +562,9 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                 // noisy, shows screen, halts
                 mcu_key_clear(NULL);
                 oled_show(screen_wiped);
+
+                psram_wipe();
+                wipe_all_sram();
 
                 LOCKUP_FOREVER();
             }

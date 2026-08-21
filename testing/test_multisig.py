@@ -24,7 +24,7 @@ from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint, uint256_from_st
 from io import BytesIO
 from hashlib import sha256
 from bbqr import split_qrs
-from charcodes import KEY_QR
+from charcodes import KEY_CLEAR, KEY_QR
 
 
 def HARD(n=0):
@@ -985,8 +985,8 @@ def test_overflow(N, import_ms_wallet, clear_ms, press_select, cap_story, mk_num
 
     clear_ms()
     M = N
-    name = 'a'*20       # longest possible
     for count in range(1, 10):
+        name = ('a'*19) + str(count)       # unique, longest possible
         keys = import_ms_wallet(M, N, name=name, addr_fmt='p2wsh', unique=count, accept=0,
                                     common="m/45h/0h/34h")
 
@@ -1011,6 +1011,42 @@ def test_overflow(N, import_ms_wallet, clear_ms, press_select, cap_story, mk_num
 
     press_select()
     clear_ms()
+
+
+def test_unique_wallet_names(clear_ms, make_multisig, offer_ms_import, press_select,
+                             press_cancel, settings_get, OK):
+    clear_ms()
+    M, N = 2, 3
+    name = 'same-name'
+
+    def config(unique, wallet_name=name):
+        keys = make_multisig(M, N, unique=unique)
+        rv = 'name: %s\npolicy: %d / %d\nformat: P2WSH\n\n' % (wallet_name, M, N)
+        return rv + '\n'.join('%s: %s' % (xfp2str(xfp), sk.hwif(as_private=False))
+                              for xfp, _, sk in keys)
+
+    _, story = offer_ms_import(config(1))
+    assert 'Create new multisig wallet' in story
+    press_select()
+    time.sleep(.1)
+
+    _, story = offer_ms_import(config(2))
+    assert 'Duplicate wallet. Name already exists.' in story
+    assert ('%s to approve' % OK) not in story
+    press_cancel()
+
+    other_name = 'other-name'
+    _, story = offer_ms_import(config(2, other_name))
+    assert 'Create new multisig wallet' in story
+    press_select()
+    time.sleep(.1)
+
+    # Reimporting the first wallet cannot rename it to the second wallet's name.
+    _, story = offer_ms_import(config(1, other_name))
+    assert 'Duplicate wallet. Name already exists.' in story
+    assert ('%s to approve' % OK) not in story
+    press_cancel()
+    assert [rec[0] for rec in settings_get('multisig')] == [name, other_name]
 
 @pytest.fixture
 def test_make_example_file(microsd_path, make_multisig):
@@ -1038,8 +1074,8 @@ def test_make_example_file(microsd_path, make_multisig):
 @pytest.mark.parametrize('N', [ 5, 10])
 def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import,
                          need_keypress, cap_story, goto_home, pick_menu_item,
-                         cap_menu, is_q1, press_select, OK):
-    # import wallet, rename it, (check that indicated, works), attempt same w/ addr fmt different
+                         cap_menu, is_q1, press_select, press_cancel, OK):
+    # import wallet, reject duplicate, attempt same keys w/ addr fmt different
 
     M = N
 
@@ -1072,13 +1108,11 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import,
     press_select()
     has_name('xxx-orig')
 
-    # just simple rename
+    # importing the same wallet under another name is still a duplicate
     title, story = offer_ms_import(make_named('xxx-new'))
-    assert 'update name only' in story.lower()
-    assert 'xxx-new' in story
-
-    press_select()
-    has_name('xxx-new')
+    assert 'Duplicate wallet' in story
+    press_cancel()
+    has_name('xxx-orig')
 
     assert N < 15, 'cant make more, no space'
 
@@ -1112,8 +1146,7 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import,
 
 @pytest.mark.parametrize('N', [ 5])
 def test_import_dup_diff_xpub(N, clear_ms, make_multisig, offer_ms_import,
-                              press_select, cap_story, goto_home,
-                              pick_menu_item, cap_menu, is_q1):
+                              press_select, cap_story, pick_menu_item, cap_menu, is_q1):
     # import wallet, tweak xpub only, check that change detected
     clear_ms()
 
@@ -1148,15 +1181,18 @@ def test_import_dup_diff_xpub(N, clear_ms, make_multisig, offer_ms_import,
     assert 'xpubs' in story
 
     clear_ms()
+    press_select()
 
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('m_of_n', [(2,2), (2,3), (15,15)])
 @pytest.mark.parametrize('addr_fmt', ['p2sh-p2wsh', 'p2sh', 'p2wsh' ])
 def test_import_dup_xfp_fails(m_of_n, use_regtest, addr_fmt, clear_ms,
-                              make_multisig, import_ms_wallet, test_ms_show_addr):
+                              make_multisig, import_ms_wallet,
+                              test_ms_show_addr, goto_home):
 
     M, N = m_of_n
+    goto_home()
 
     keys = make_multisig(M, N)
 
@@ -1197,7 +1233,8 @@ def test_import_dup_cosigner_key_fails(case, clear_ms, make_multisig, import_ms_
 
 @pytest.mark.parametrize('addr_fmt', [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH])
 @pytest.mark.parametrize('desc', ["multi", "sortedmulti"])
-def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, desc):
+def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet,
+                addr_vs_path, desc, press_cancel):
     # exercise the p2sh command of ckcc:cli ... hard to do manually.
     M, N = 2, 3
     clear_ms()
@@ -1223,6 +1260,7 @@ def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, desc):
     assert scr2 == scr
 
     clear_ms()
+    press_cancel()
 
 
 @pytest.fixture
@@ -1528,9 +1566,10 @@ def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, impor
 
 
 @pytest.mark.parametrize("finalize", [True, False])
-def test_1of1_multisig_sign(finalize, clear_ms, import_ms_wallet, fake_ms_txn, start_sign,
-                            end_sign, cap_story):
+def test_1of1_multisig_sign(finalize, clear_ms, import_ms_wallet,
+                            fake_ms_txn, start_sign, end_sign, cap_story, goto_home):
     # Minimal 1-of-1 multisig: import the wallet, then sign a 1-in/1-out PSBT.
+    goto_home()
     clear_ms()
     M = N = 1
     keys = import_ms_wallet(M, N, accept=True)
@@ -1825,6 +1864,34 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
     # abort import, good enough
     press_cancel()
     press_cancel()
+
+
+def test_reject_oversized_airgapped_xpub_qr(goto_home, pick_menu_item, need_keypress,
+                                             press_select, scan_a_qr, cap_screen,
+                                             clear_ms, is_q1):
+    if not is_q1:
+        pytest.skip("needs scanner")
+
+    clear_ms()
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Create Airgapped')
+    need_keypress(KEY_QR)
+    time.sleep(.1)
+    press_select()
+
+    oversized = json.dumps({'junk': 'x' * 1100})
+    assert len(oversized) > 1100
+    _, parts = split_qrs(oversized, 'J', max_version=20)
+    for part in parts:
+        scan_a_qr(part)
+
+    time.sleep(.5)
+    assert 'Multisig export is too large' in cap_screen()
+
+    press_select()
+
 
 @pytest.mark.unfinalized
 @pytest.mark.bitcoind
@@ -3542,8 +3609,9 @@ def test_import_reorder_different_name_multi(clear_ms, make_multisig, offer_ms_i
 
 
 @pytest.mark.parametrize("is_sorted", [True, False])
-def test_import_same_keys_same_order_rename(is_sorted, clear_ms, make_multisig, offer_ms_import,
-                                            settings_set, cap_story, press_select, press_cancel):
+def test_import_same_keys_same_order_different_name(is_sorted, clear_ms, make_multisig,
+                                                    offer_ms_import, settings_set, cap_story,
+                                                    press_select, press_cancel):
     settings_set("unsort_ms", 1)
     clear_ms()
     M, N = 2, 3
@@ -3558,13 +3626,12 @@ def test_import_same_keys_same_order_rename(is_sorted, clear_ms, make_multisig, 
     time.sleep(.1)
 
     title, story = offer_ms_import(json.dumps({"name": "renamed", "desc": desc}))
-    assert "Update NAME only" in story
-    assert "Duplicate wallet" not in story
+    assert "Duplicate wallet. All details are the same as existing!" in story
     press_cancel()
 
 
-def test_import_sortedmulti_reorder_rename(clear_ms, make_multisig, offer_ms_import,
-                                           cap_story, press_select, press_cancel):
+def test_import_sortedmulti_reorder_different_name(clear_ms, make_multisig, offer_ms_import,
+                                                   cap_story, press_select, press_cancel):
     clear_ms()
     M, N = 2, 3
     keys = make_multisig(M, N)
@@ -3581,9 +3648,102 @@ def test_import_sortedmulti_reorder_rename(clear_ms, make_multisig, offer_ms_imp
 
     keys[0], keys[1] = keys[1], keys[0]
     title, story = offer_ms_import(json.dumps({"name": "renamed", "desc": build_desc(keys)}))
-    assert "Update NAME only" in story
-    assert "Duplicate wallet" not in story
+    assert "Duplicate wallet" in story
     press_cancel()
+
+
+def test_reimport_unnamed_descriptor(clear_ms, make_multisig, offer_ms_import,
+                                     press_select, press_cancel):
+    clear_ms()
+    M, N = 2, 3
+
+    def make_desc(unique):
+        keys = make_multisig(M, N, unique=unique)
+        key_list = [(xfp, "m/45h", sk.hwif(as_private=False)) for xfp, _, sk in keys]
+        return MultisigDescriptor(M=M, N=N, keys=key_list, addr_fmt=AF_P2WSH,
+                                  is_sorted=True).serialize()
+
+    desc = make_desc(0)
+    _, story = offer_ms_import(desc)
+    assert "Create new multisig" in story
+    assert "2-of-3" in story
+    press_select()
+    time.sleep(.1)
+
+    _, story = offer_ms_import(desc)
+    assert "Duplicate wallet" in story
+    press_cancel()
+
+    _, story = offer_ms_import(make_desc(1))
+    assert "Create new multisig" in story
+    assert "2-of-3 #2" in story
+    press_cancel()
+
+
+def test_rename_wallet(clear_ms, import_ms_wallet, goto_home, pick_menu_item, cap_menu,
+                       cap_story, need_keypress, enter_text, press_select, press_cancel,
+                       settings_get, is_q1):
+    clear_ms()
+    import_ms_wallet(2, 3, name='123', unique=0, accept=True)
+    import_ms_wallet(2, 3, name='125', unique=1, accept=True)
+
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+    pick_menu_item('2/3: 123')
+    pick_menu_item('Rename')
+
+    if is_q1:
+        need_keypress(KEY_CLEAR)
+        enter_text('124')
+    else:
+        need_keypress('5')       # change final digit from 3 to 4
+        press_select()
+
+    menu = cap_menu()
+    assert '2/3: 124' in menu
+    assert '2/3: 123' not in menu
+
+    pick_menu_item('2/3: 124')
+    menu = cap_menu()
+    assert '"124"' in menu
+    assert '"123"' not in menu
+    assert 'View Details' in menu
+    assert 'Rename' in menu
+
+    pick_menu_item('Rename')
+    if is_q1:
+        need_keypress(KEY_CLEAR)
+        enter_text('125')
+    else:
+        need_keypress('5')       # change final digit from 4 to 5
+        press_select()
+
+    title, story = cap_story()
+    assert 'Name in use.' in title + story
+    press_select()
+
+    menu = cap_menu()
+    assert '"124"' in menu
+    pick_menu_item('Rename')
+    if is_q1:
+        press_cancel()
+    else:
+        # Delete the name and confirm leaving it unchanged.
+        press_cancel()
+        press_cancel()
+        press_cancel()
+        _, story = cap_story()
+        assert 'leave without any changes' in story
+        press_select()
+
+    menu = cap_menu()
+    assert '"124"' in menu
+    press_cancel()
+    menu = cap_menu()
+    assert '2/3: 124' in menu
+    assert '2/3: 125' in menu
+    assert [rec[0] for rec in settings_get('multisig')] == ['124', '125']
 
 
 @pytest.mark.parametrize("order", list(itertools.product([True, False], repeat=2)))

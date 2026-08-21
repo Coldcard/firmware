@@ -152,10 +152,14 @@ virtualenv -p python3 ENV
 source ENV/bin/activate (or source ENV/bin/activate.csh based on shell preference)
 pip install -U pip
 pip install -r requirements.txt
-# apply micropython patch (safe to repeat; later builds re-apply it if it goes missing)
-make -C unix mpy-patch
-make -C external/micropython/mpy-cross
-cd unix; make setup && make ngu-setup && make && ./simulator.py
+# Work around warnings in bundled MicroPython under current Apple Clang.
+MPY_CFLAGS='-Wno-unused-but-set-variable -Wno-array-bounds -Wno-error=unknown-warning-option -Wno-error=deprecated-non-prototype -Wno-error=bitwise-instead-of-logical -Wno-unterminated-string-initialization -Wno-gnu-folding-constant'
+make -C external/micropython/mpy-cross CFLAGS_EXTRA="$MPY_CFLAGS"
+cd unix
+make setup CFLAGS_EXTRA="$MPY_CFLAGS"
+make ngu-setup
+make CFLAGS_EXTRA="$MPY_CFLAGS"
+./simulator.py
 ```
 
 You may need to reboot to avoid a `DISPLAY is not set` error.
@@ -201,14 +205,8 @@ apt install build-essential git python3 python3-pip libudev-dev gcc-arm-none-eab
 git clone --recursive https://github.com/Coldcard/firmware.git
 cd firmware
 
-# Apply address patch
-# if unix/linux_addr.patch exists use below command
-# not needed in current revision
-# git apply unix/linux_addr.patch
-
-#  * below is needed for ubuntu 24.04 (safe to repeat)
-make -C unix mpy-patch MPY_PATCH=ubuntu24_mpy.patch
-#  * 
+# Ubuntu 24.04 only; omit this assignment on earlier releases
+MPY_CFLAGS='-Wno-error=dangling-pointer -Wno-error=enum-int-mismatch'
 
 
 # Create Python virtual environment and activate it
@@ -221,13 +219,11 @@ pip install -r requirements.txt #general requirements
 pip install pysdl2-dll # Ubuntu needs this dependency
 
 # Build the Coldcard simulator
+make -C external/micropython/mpy-cross CFLAGS_EXTRA="$MPY_CFLAGS"
 cd unix
-pushd ../external/micropython/mpy-cross/
-make  # mpy-cross
-popd
-make setup
+make setup CFLAGS_EXTRA="$MPY_CFLAGS"
 make ngu-setup
-make
+make CFLAGS_EXTRA="$MPY_CFLAGS"
 
 # Run the simulator in the active virtualenv
 ./simulator.py
@@ -300,4 +296,3 @@ Top-level dirs:
 ## Support
 
 Found a bug? Email: support@coinkite.com
-

@@ -1803,4 +1803,16 @@ def test_hsm_sign_download_lease(dev, quick_start_hsm, fake_txn, load_hsm_users,
         dev.send_recv(CCProtocolPacker.download(0, 256, 0))
     assert 'not allowed' in str(e.value)
 
+def test_hsm_rejects_psbt_sha_mismatch(dev, quick_start_hsm, fake_txn, sim_exec):
+    quick_start_hsm(DICT(warnings_ok=True, rules=[{}]))
+
+    psbt = fake_txn(1, 2, segwit_in=True)
+    txn_len, _ = dev.upload_file(psbt)
+    sim_exec("from auth import sign_transaction; "
+             "sign_transaction(%d, psbt_sha=bytes(32), input_method='usb')" % txn_len)
+
+    with pytest.raises(CCProtoError) as e:
+        wait_til_signed(dev)
+    assert 'PSBT checksum mismatch' in str(e.value)
+
 # EOF

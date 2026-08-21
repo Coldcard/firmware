@@ -522,7 +522,7 @@ class PasswordContent(NoteContentBase):
         # if self.misc: rv.append(MenuItem('↳ (notes)', f=self.view))
         rv += [
             MenuItem('View Password', f=self.view_pw),
-            MenuItem('Send Password', f=self.send_pw, predicate=lambda: not settings.get('du', 0)),
+            MenuItem('Send Password', f=self.send_pw),
         ]
         if not readonly:
             rv += [
