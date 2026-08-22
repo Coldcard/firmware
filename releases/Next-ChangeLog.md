@@ -4,7 +4,8 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk and Q
 
-- tbd
+- Bugfix: Simulator crashed on Bless Firmware, due to a desynced LED pipe. Thanks to
+  [@hitechhayekian](https://github.com/hitechhayekian).
 
 # Mk Specific Changes
 
