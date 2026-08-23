@@ -637,8 +637,14 @@ mp_obj_t psram_mmap_file(mp_obj_t unused_self, mp_obj_t fname_in)
 
     uint32_t so_far = 0;
     for(int i=0; i<num_used; i++) {
-        int num_clusters = *(ptr++);
+        uint32_t num_clusters = *(ptr++);
         uint32_t cluster = *(ptr++);
+
+        // num_clusters comes from hostile FAT metadata; validate it as u32
+        // before block_to_ptr() narrows it to uint16_t (65536 would wrap to 0)
+        if((num_clusters < 1) || (num_clusters > BLOCK_COUNT)) {
+            mp_raise_ValueError(MP_ERROR_TEXT("clstfck"));
+        }
 
         uint8_t *spot = block_to_ptr(clst2sect(&vfs.fatfs, cluster), num_clusters);
         if(!spot) {
@@ -646,7 +652,8 @@ mp_obj_t psram_mmap_file(mp_obj_t unused_self, mp_obj_t fname_in)
             //printf("0x%lx\n", clst2sect(&vfs.fatfs, cluster));
             mp_raise_ValueError(MP_ERROR_TEXT("clstfck"));
         }
-        uint32_t len = num_clusters*BLOCK_SIZE;
+        uint32_t capacity = num_clusters*BLOCK_SIZE;
+        uint32_t len = capacity;
 
         // hostile/corrupt FAT metadata could describe a cluster chain that
         // covers more bytes than the file size; refuse the underflow below
@@ -655,8 +662,12 @@ mp_obj_t psram_mmap_file(mp_obj_t unused_self, mp_obj_t fname_in)
         }
 
         if(i == num_used-1) {
-            // final cluster might include some bytes past the EOF
+            // final cluster might include some bytes past the EOF, but the
+            // declared remainder must fit in this fragment's real capacity
             len = fp.obj.objsize - so_far;
+            if(len > capacity) {
+                mp_raise_ValueError(MP_ERROR_TEXT("bad file size"));
+            }
         } else {
             if(len > fp.obj.objsize - so_far) {
                 mp_raise_ValueError(MP_ERROR_TEXT("bad file size"));
@@ -732,8 +743,14 @@ mp_obj_t psram_copy_file(mp_obj_t unused_self, mp_obj_t offset_in, mp_obj_t fnam
     uint32_t so_far = 0;
     DWORD *ptr = &mapping[1];
     for(int i=0; i<num_used; i++) {
-        int num_clusters = *(ptr++);
+        uint32_t num_clusters = *(ptr++);
         uint32_t cluster = *(ptr++);
+
+        // num_clusters comes from hostile FAT metadata; validate it as u32
+        // before block_to_ptr() narrows it to uint16_t (65536 would wrap to 0)
+        if((num_clusters < 1) || (num_clusters > BLOCK_COUNT)) {
+            mp_raise_ValueError(MP_ERROR_TEXT("clstfck"));
+        }
 
         uint8_t *spot = block_to_ptr(clst2sect(&vfs.fatfs, cluster), num_clusters);
         if(!spot) {
@@ -741,7 +758,8 @@ mp_obj_t psram_copy_file(mp_obj_t unused_self, mp_obj_t offset_in, mp_obj_t fnam
             //printf("0x%lx\n", clst2sect(&vfs.fatfs, cluster));
             mp_raise_ValueError(MP_ERROR_TEXT("clstfck"));
         }
-        uint32_t len = num_clusters*BLOCK_SIZE;
+        uint32_t capacity = num_clusters*BLOCK_SIZE;
+        uint32_t len = capacity;
 
         // hostile/corrupt FAT metadata could describe a cluster chain that
         // covers more bytes than the file size; refuse the underflow below
@@ -750,8 +768,12 @@ mp_obj_t psram_copy_file(mp_obj_t unused_self, mp_obj_t offset_in, mp_obj_t fnam
         }
 
         if(i == num_used-1) {
-            // final cluster might include some bytes past the EOF
+            // final cluster might include some bytes past the EOF, but the
+            // declared remainder must fit in this fragment's real capacity
             len = actual_len - so_far;
+            if(len > capacity) {
+                mp_raise_ValueError(MP_ERROR_TEXT("bad file size"));
+            }
             // align4
             len = (len + 3) & ~0x3;
         } else {
