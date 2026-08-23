@@ -41,6 +41,11 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Reject PSRAM virtual-disk files whose FAT cluster chain covers more bytes than the
   file size, fixing an integer underflow in `psram_copy_file`/`psram_mmap_file` that allowed
   out-of-bounds PSRAM writes from a compromised USB host.
+- Bugfix: Reject PSRAM virtual-disk files whose FAT metadata is inconsistent with the
+  declared file size (oversized cluster chains, oversized fragment counts, or final
+  remainders exceeding the final fragment's capacity), fixing an integer underflow in
+  `psram_copy_file`/`psram_mmap_file` that allowed out-of-bounds PSRAM writes, reads,
+  and mappings from a compromised USB host.
 
 # Mk Specific Changes
 
