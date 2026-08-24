@@ -829,10 +829,7 @@ def test_identical_musig_fragments(use_regtest, bitcoin_core_signer, get_cc_key,
 def test_identical_musig_subder(use_regtest, bitcoin_core_signer, get_cc_key, clear_miniscript,
                                 offer_minsc_import, press_select, create_core_wallet,
                                 musig_signing, address_explorer_check):
-    # TODO bitcoin-core bitching that this descriptor is not sane because it contains duplicate public keys
-    # needs https://github.com/bitcoin/bitcoin/pull/34697 (or something less buggy)
     # identical musig in one tapleaf, but musig subderivation differs, i.e. different key
-    # raise pytest.skip("needs updated bitcoind")
     use_regtest()
 
     core_pubkeys = []
