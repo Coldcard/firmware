@@ -583,6 +583,7 @@ class MiniScriptWallet(WalletABC):
             keys.append(k)
 
         assert has_mine == 1         # 'my key not included'
+        assert len(keys) == len(set(keys)), "duplicate cosigner key"
 
         # this will always create sortedmulti multisig (BIP-67)
         # because BIP-174 came years after wide-spread acceptance of BIP-67 policy

@@ -286,7 +286,7 @@ class ExtendedKey:
         version = node.deserialize(key_str)
         return node, chains.type_from_xpub_version(version)
 
-    def validate(self, my_xfp, disable_checks=False):
+    def validate(self, my_xfp, disable_checks=False, secret=None):
         assert self.chain_type == chains.current_key_chain().ctype, "wrong chain"
 
         # xfp is always available, even if key was serialized without origin info
@@ -322,15 +322,17 @@ class ExtendedKey:
                 target = swab32(self.node.parent_fp())
                 assert xfp == target, 'xfp depth=1 wrong'
 
-            if is_mine:
-                # it's supposed to be my key, so I should be able to generate pubkey
-                # - might indicate collision on xfp value between co-signers,
-                #   and that's not supported
-                deriv = self.origin.str_derivation()
-                with stash.SensitiveValues() as sv:
-                    chk_node = sv.derive_path(deriv)
+            # XFP is attacker-controlled text. Verify both directions: keys claiming
+            # our XFP must be ours, and our keys cannot claim a foreign XFP.
+            deriv = self.origin.str_derivation()
+            with stash.SensitiveValues(secret=secret) as sv:
+                chk_node = sv.derive_path(deriv)
+                if is_mine:
                     assert self.node.pubkey() == chk_node.pubkey(), \
                                 "[%s/%s] wrong pubkey" % (xfp2str(xfp), deriv[2:])
+                else:
+                    assert self.node.pubkey() != chk_node.pubkey(), \
+                                "[%s] is our key" % xfp2str(xfp)
 
         return is_mine
 

@@ -915,6 +915,31 @@ def test_import_dup_xfp_fails(m_of_n, use_regtest, addr_fmt, clear_miniscript,
     assert 'wrong pubkey' in str(ee)
 
 
+@pytest.mark.parametrize('case', ['dup_key_two_xfps', 'own_key_other_acct'])
+def test_import_dup_cosigner_key_fails(case, clear_miniscript, make_multisig,
+                                       import_ms_wallet):
+    M, N = 2, 3
+    common = "m/48h/1h/0h/2h"
+    keys = make_multisig(M, N, deriv=common)
+
+    if case == 'dup_key_two_xfps':
+        # Same xpub and ranged derivation, but a different claimed fingerprint.
+        keys[1] = (0x0badf00d, keys[0][1], keys[0][2])
+        derivs, msg = None, 'Insane'
+    else:
+        # Device key from another account, relabeled with a foreign fingerprint.
+        deriv = "m/48h/1h/5h/2h"
+        dev_pk = BIP32Node.from_wallet_key(simulator_fixed_tprv)
+        keys[0] = (0x0badf00d, dev_pk, dev_pk.subkey_for_path(deriv))
+        derivs = [deriv] + [common] * (N - 1)
+        msg = 'is our key'
+
+    with pytest.raises(Exception) as exc:
+        import_ms_wallet(M, N, 'p2wsh', accept=True, keys=keys,
+                         common=None if derivs else common, derivs=derivs)
+    assert msg in str(exc.value)
+
+
 @pytest.fixture
 def make_myself_wallet(dev, set_bip39_pw, offer_minsc_import, press_select, clear_miniscript,
                        reset_seed_words, is_q1, cap_story, press_cancel):

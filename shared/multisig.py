@@ -205,6 +205,13 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
         a = add_own_xpub(chain, acct, addr_fmt)  # master: key A
         c = add_own_xpub(chain, acct, addr_fmt, secret=secret)
 
+        try:
+            for k in keys:
+                k.validate(c.origin.cc_fp, secret=secret)
+        except AssertionError as exc:
+            await ux_show_story("Cosigner key rejected: %s." % exc)
+            return
+
         # problem: above file searching may find xpub export from key C
         # (or our master seed, exported) .. we can't add them again,
         # since xfp are not unique and that's probably not what they wanted
