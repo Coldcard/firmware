@@ -607,6 +607,13 @@ mp_obj_t psram_mmap_file(mp_obj_t unused_self, mp_obj_t fname_in)
         mp_raise_ValueError(MP_ERROR_TEXT("unmountable"));
     }
 
+    // The USB host can rewrite the BPB, so a mountable filesystem might
+    // use more than one sector per cluster; the fragment math below works
+    // on 512-byte sectors, so refuse anything else.
+    if(vfs.fatfs.csize != 1) {
+        mp_raise_ValueError(MP_ERROR_TEXT("bad clus size"));
+    }
+
     // open the file directly
     FIL fp = {0};
     if(f_open(&vfs.fatfs, &fp, fname, FA_READ) != FR_OK) {
@@ -665,7 +672,10 @@ mp_obj_t psram_mmap_file(mp_obj_t unused_self, mp_obj_t fname_in)
             // final cluster might include some bytes past the EOF, but the
             // declared remainder must fit in this fragment's real capacity
             len = fp.obj.objsize - so_far;
-            if(len > capacity) {
+            if((len < 1) || (len > capacity)) {
+                // len==0: earlier fragments already cover the whole file, so
+                // this trailing fragment (e.g. chain of a zero-size file) is
+                // oversized metadata; reject it
                 mp_raise_ValueError(MP_ERROR_TEXT("bad file size"));
             }
         } else {
@@ -703,6 +713,13 @@ mp_obj_t psram_copy_file(mp_obj_t unused_self, mp_obj_t offset_in, mp_obj_t fnam
     FRESULT res = f_mount(&vfs.fatfs);
     if (res != FR_OK) {
         mp_raise_ValueError(MP_ERROR_TEXT("unmountable"));
+    }
+
+    // The USB host can rewrite the BPB, so a mountable filesystem might
+    // use more than one sector per cluster; the fragment math below works
+    // on 512-byte sectors, so refuse anything else.
+    if(vfs.fatfs.csize != 1) {
+        mp_raise_ValueError(MP_ERROR_TEXT("bad clus size"));
     }
 
     // open the file directly
@@ -771,7 +788,10 @@ mp_obj_t psram_copy_file(mp_obj_t unused_self, mp_obj_t offset_in, mp_obj_t fnam
             // final cluster might include some bytes past the EOF, but the
             // declared remainder must fit in this fragment's real capacity
             len = actual_len - so_far;
-            if(len > capacity) {
+            if((len < 1) || (len > capacity)) {
+                // len==0: earlier fragments already cover the whole file, so
+                // this trailing fragment (e.g. chain of a zero-size file) is
+                // oversized metadata; reject it
                 mp_raise_ValueError(MP_ERROR_TEXT("bad file size"));
             }
             // align4
