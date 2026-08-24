@@ -1896,7 +1896,8 @@ def test_hsm_sign_download_lease(dev, quick_start_hsm, fake_txn, load_hsm_users,
     load_hsm_users()
     quick_start_hsm(policy)
 
-    psbt = fake_txn(1, 2, dev.master_xpub, change_outputs=[0], segwit_in=True)
+    psbt = fake_txn(1, [["p2wpkh", None, True], ["p2wpkh"]],
+                    dev.master_xpub, addr_fmt="p2wpkh")
     auth_user.psbt_hash = sha256(psbt).digest()
     auth_user("pw")
     start_sign(psbt)
@@ -1914,7 +1915,7 @@ def test_hsm_sign_download_lease(dev, quick_start_hsm, fake_txn, load_hsm_users,
 def test_hsm_rejects_psbt_sha_mismatch(dev, quick_start_hsm, fake_txn, sim_exec):
     quick_start_hsm(DICT(warnings_ok=True, rules=[{}]))
 
-    psbt = fake_txn(1, 2, segwit_in=True)
+    psbt = fake_txn(1, 2, addr_fmt="p2wpkh")
     txn_len, _ = dev.upload_file(psbt)
     sim_exec("from auth import sign_transaction; "
              "sign_transaction(%d, psbt_sha=bytes(32), input_method='usb')" % txn_len)

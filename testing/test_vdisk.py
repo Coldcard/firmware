@@ -246,7 +246,7 @@ def test_virtdisk_wrapped_base64_uses_decoded_size(fake_txn, virtdisk_path, cap_
     # the decoded PSBT still fits exactly in the input staging region.
     max_txn_len = 2*1024*1024        # MAX_TXN_LEN_MK4
     target_len = max_txn_len
-    psbt = BasicPSBT().parse(fake_txn(1, 1, segwit_in=True))
+    psbt = BasicPSBT().parse(fake_txn(1, 1, addr_fmt="p2wpkh"))
     padding = 0
     for _ in range(3):
         psbt.unknown[b'\xfcsize-check'] = bytes(padding)

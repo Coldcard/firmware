@@ -184,7 +184,7 @@ def test_upload_error_resets_checksum(dev):
     assert dev.send_recv(CCProtocolPacker.sha256()) == hashlib.sha256(b'').digest()
 
 def test_stxn_binds_uploaded_size_and_psram(dev, fake_txn, sim_exec):
-    psbt = fake_txn(1, 2, segwit_in=True)
+    psbt = fake_txn(1, 2, addr_fmt="p2wpkh")
     txn_len, txn_sha = dev.upload_file(psbt)
 
     with pytest.raises(CCProtoError) as e:
@@ -272,7 +272,7 @@ def test_download_lease(dev, fake_txn, start_sign, end_sign):
         assert 'not allowed' in str(e.value)
 
     # sign: signed result (file 1) becomes downloadable (end_sign fetches it)
-    in_psbt = fake_txn(1, 2, segwit_in=True)
+    in_psbt = fake_txn(1, 2, addr_fmt="p2wpkh")
     start_sign(in_psbt, finalize=False)
     signed = end_sign(accept=True, finalize=False)
 
@@ -309,7 +309,7 @@ def test_download_lease(dev, fake_txn, start_sign, end_sign):
     assert 'not allowed' in str(e.value)
 
     # same for a partial re-upload at a nonzero offset (no offset-zero block)
-    in_psbt = fake_txn(1, 2, segwit_in=True)
+    in_psbt = fake_txn(1, 2, addr_fmt="p2wpkh")
     start_sign(in_psbt, finalize=False)
     end_sign(accept=True, finalize=False)
     with pytest.raises(CCProtoError) as e:

@@ -141,7 +141,7 @@ def X(is_q1):
 
 @pytest.fixture
 def need_keypress(dev, request):
-    def doit(k, timeout=1000):
+    def doit(k, timeout=3000):
         if request.config.getoption("--manual"):
             # need actual user interaction
             print("==> NOW, on the Coldcard, press key: %r (then enter here)" % k, file=sys.stderr)

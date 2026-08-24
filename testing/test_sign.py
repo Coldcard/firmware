@@ -2498,7 +2498,8 @@ def test_sighash_disallowed_NONE(sighash, num_outs, _test_single_sig_sighash):
 def test_sighash_disallowed_SINGLE(sighash, fake_txn, start_sign, end_sign,
                                    settings_remove):
     settings_remove("sighshchk")
-    psbt = fake_txn(1, 2, segwit_in=True, change_outputs=[1], sighashes=[sighash])
+    psbt = fake_txn(1, [["p2wpkh"], ["p2wpkh", None, True]],
+                    addr_fmt="p2wpkh", sighashes=[sighash])
     start_sign(psbt, False, stxn_flags=STXN_VISUALIZE)
     with pytest.raises(Exception) as e:
         end_sign(accept=None, expect_txn=False)
@@ -4697,7 +4698,7 @@ def test_upload_during_approval(dev, fake_txn, start_sign, end_sign, cap_story,
     press_cancel()
 
     # normal flow still works afterwards: fresh upload + sign
-    in_psbt = fake_txn(2, 2, segwit_in=True)
+    in_psbt = fake_txn(2, 2, addr_fmt="p2wpkh")
     start_sign(in_psbt, finalize=True)
     end_sign(accept=True, finalize=True)
 
@@ -4741,7 +4742,7 @@ def test_inactive_psram_region_write_before_signing(fake_txn, start_sign, end_si
                                                      cap_story, sim_exec):
     # A write to the inactive staging half must trigger a re-hash without
     # tripping the post-check counter assertion when the active PSBT is intact.
-    in_psbt = fake_txn(2, 2, segwit_in=True)
+    in_psbt = fake_txn(2, 2, addr_fmt="p2wpkh")
     start_sign(in_psbt, finalize=True)
 
     for _ in range(100):
