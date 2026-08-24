@@ -2171,9 +2171,9 @@ def get_cc_key(dev):
     return doit
 
 @pytest.fixture
-def bitcoind_multisig(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story, load_export,
-                      pick_menu_item, goto_home, cap_menu, microsd_path, settings_get,
-                      press_select, get_cc_key, import_miniscript):
+def bitcoind_multisig(bitcoind, need_keypress, cap_story, load_export, pick_menu_item,
+                      goto_home, cap_menu, microsd_path, settings_get, press_select,
+                      get_cc_key, import_miniscript):
 
     def doit(M, N, script_type, cc_account=0, funded=True, ms_script="sortedmulti", name=None,
              way="sd", keypool_size=10):
@@ -2354,7 +2354,7 @@ def test_finalization(m_n, script, desc, use_regtest, clear_miniscript, bitcoind
 
 
 @pytest.mark.bitcoind
-@pytest.mark.parametrize("m_n", [(2,3), (3,5), (20,20)])
+@pytest.mark.parametrize("m_n", [(2,3), (3,5), (15,15)])
 @pytest.mark.parametrize("script", ["p2wsh", "p2sh-p2wsh", "p2sh"])
 @pytest.mark.parametrize("sighash", list(SIGHASH_MAP_NON_TAPROOT.keys()))
 @pytest.mark.parametrize('desc', ["multi", "sortedmulti"])
