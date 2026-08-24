@@ -3917,8 +3917,7 @@ def test_fully_signed(addr_fmt, num_ins, import_ms_wallet, fake_ms_txn, start_si
 @pytest.mark.parametrize("M_N", [(2, 3), (15, 15)])
 def test_import_multiple_similar_from_psbt(M_N, clear_miniscript, fake_ms_txn, import_ms_wallet,
                                            start_sign, cap_story, end_sign, press_select,
-                                           settings_set, settings_get, usb_miniscript_get,
-                                           press_cancel):
+                                           settings_set, settings_get, press_cancel):
     M, N = M_N
     clear_miniscript()
     settings_set('pms', 1)  # TRUST_OFFER
@@ -3943,8 +3942,9 @@ def test_import_multiple_similar_from_psbt(M_N, clear_miniscript, fake_ms_txn, i
     start_sign(psbt)
     time.sleep(.1)
     title, story = cap_story()
+    base_name = f"PSBT-{M}of{N}"
     assert 'Create new multisig wallet?' in story
-    assert f"PSBT-{M}of{N}" in story
+    assert base_name in story
     press_select()  # import ms
     time.sleep(.1)
     press_select()  # OK TO SIGN
@@ -3960,17 +3960,12 @@ def test_import_multiple_similar_from_psbt(M_N, clear_miniscript, fake_ms_txn, i
     title, story = cap_story()
     # here would be duplicate msg and multisig would not be import-able (unpatched version)
     assert 'Create new multisig wallet?' in story
+    assert f"{base_name} #2" in story
     press_select()  # import ms
     time.sleep(.1)
     press_select()  # OK TO SIGN
-    assert f"PSBT-{M}of{N}" in story
     msc_names = [msc[0] for msc in settings_get("miniscript")]
-    assert len(msc_names) == 2
-    for name in msc_names:
-        res = usb_miniscript_get(name)
-        desc_cs = res["desc"].split("#")[-1]
-        name_cs = name.split("-")[-1]
-        assert desc_cs[4:] == name_cs
+    assert msc_names == [base_name, f"{base_name} #2"]
 
     press_cancel()
 

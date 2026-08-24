@@ -589,11 +589,7 @@ class MiniScriptWallet(WalletABC):
         # because BIP-174 came years after wide-spread acceptance of BIP-67 policy
         desc_obj = Descriptor(miniscript=Sortedmulti(Number(M), *keys),
                               addr_fmt=addr_fmt)
-        # multipath descriptor checkusm added to name so users can import
-        # multiple same MofN multisigs from PSBT
-        cs = desc_obj.to_string().split("#")[-1]
-        # last 4 chars from checksum are used
-        name = cls.make_unique_name('PSBT-%dof%d-%s' % (M, N, cs[4:]))
+        name = cls.make_unique_name('PSBT-%dof%d' % (M, N))
         return cls.from_descriptor_obj(name, desc_obj)
 
     def validate_psbt_xpubs(self, psbt_xpubs):
