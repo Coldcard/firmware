@@ -7,6 +7,24 @@
 - for experimental use.  DO NOT use for large Bitcoin amounts.
 ```
 
+## 2026-07-31 Hotfix Versions: 6.6.0X & 6.6.0QX
+
+**Urgent hotfix to correct a limited entropy bug**
+
+Please regenerate seeds only with this version of the firmware and any
+later updates from today onwards.
+
+On **Mk4 and Q**, entropy may be as low as ~72 bits. This is
+well below our target of 128 bits.
+
+Follow the steps listed in
+[our blog announcement](https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/)
+to be safe, and please be careful not to cut corners or rush this process.
+
+### Shared Improvements - Both Mk4 and Q
+
+- Bugfix: Renaming a MiniScript wallet could rename a different stored wallet when wallets from multiple chains were present
+
 # Shared Improvements - Both Mk4 and Q
 
 - New Feature: Ability to sign MuSig2 UTXOs. Read more [here](https://github.com/Coldcard/firmware/blob/new_edge/docs/musig.md)

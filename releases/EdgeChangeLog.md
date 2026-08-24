@@ -11,20 +11,6 @@
 
 This lists the changes in the most recent EDGE firmware, for each hardware platform.
 
-## 2026-07-31 Hotfix Versions: 6.6.0X & 6.6.0QX
-
-**Urgent hotfix to correct a limited entropy bug**
-
-Please regenerate seeds only with this version of the firmware and any
-later updates from today onwards.
-
-On **Mk4 and Q**, entropy may be as low as ~72 bits. This is
-well below our target of 128 bits.
-
-Follow the steps listed in 
-[our blog announcement](https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/)
-to be safe, and please be careful not to cut corners or rush this process.
-
 # Shared Improvements - Both Mk4 and Q
 
 - New Feature: Allow uncompressed WIF keys in WIF Store
@@ -36,12 +22,27 @@ to be safe, and please be careful not to cut corners or rush this process.
   relative timelocks, or unusual change derivation paths. It now shows compact summaries; use the transaction
   explorer to review individual details.
 - Bugfix: Generate distinct MuSig2 nonces for different aggregate-key derivations of the same participant set
-- Bugfix: Renaming a MiniScript wallet could rename a different stored wallet when wallets from multiple chains were present
 - Bugfix: Generate unique names when creating multisig wallets from PSBTs with the same M-of-N parameters
 - Bugfix: Correctly identify consolidations containing zero-value OP_RETURN outputs without misclassifying other zero-value external outputs
 - Bugfix: Prevent duplicate WIF Store keys and multisig wallets after restarting
 - Bugfix: Fixed PSBT uploads being mistaken for partial firmware uploads
 - Bugfix: Reject BIP388 wallet policy imports with non-ASCII or non-printable names
 - Bugfix: Reject duplicate singleton keys in PSBT maps
+
+# Mk4 Specific Changes
+
+## 6.6.xX - 2026-0x-xx
+
+- tbd
+
+
+# Q Specific Changes
+
+## 6.6.xQX - 2026-0x-xx
+
+- tbd
+
+
+# Release History
 
 - [`History-Edge.md`](History-Edge.md)
