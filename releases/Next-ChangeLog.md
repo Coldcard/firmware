@@ -17,8 +17,9 @@ This lists the new changes that have not yet been published in a normal release.
   [@hitechhayekian](https://github.com/hitechhayekian).
 - Bugfix: With an empty master wallet and an active temporary seed, keep imports and backup restores temporary instead of treating them as master-seed changes.
 - Bugfix: Reject PSRAM virtual-disk files whose FAT metadata is inconsistent with the
-  declared file size (oversized cluster chains, oversized fragment counts, or final
-  remainders exceeding the final fragment's capacity), fixing an integer underflow in
+  declared file size (oversized cluster chains, oversized fragment counts, spurious
+  trailing fragments, final remainders exceeding the final fragment's capacity, or
+  filesystems with more than one sector per cluster), fixing an integer underflow in
   `psram_copy_file`/`psram_mmap_file` that allowed out-of-bounds PSRAM writes, reads,
   and mappings from a compromised USB host.
 
