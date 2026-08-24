@@ -468,6 +468,8 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
             assert addr in story
             assert addr == bitcoind_addrs_change[i]
 
+        goto_home()
+
     return doit
 
 
@@ -2243,6 +2245,7 @@ def test_unique_name(clear_miniscript, use_regtest, offer_minsc_import,
     title, story = import_miniscript(fname=fname, way=way, data=nfc_data)
     assert ("'%s' already exists" % name) in story
     assert "MUST have unique names" in story
+    goto_home()
 
 
 @pytest.mark.qrcode
