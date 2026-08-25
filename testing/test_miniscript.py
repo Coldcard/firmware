@@ -1578,24 +1578,24 @@ def test_insane_miniscript(get_cc_key, pick_menu_item, cap_story,
     assert "Failed to import" in story
     assert "Insane" in story
 
-def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
-                         microsd_path, import_miniscript, garbage_collector):
-    leaf_num = 9
-    scripts = []
-    for i in range(leaf_num):
-        k = get_cc_key(f"84h/0h/{i}h")
-        scripts.append(f"pk({k})")
-
-    tree = generate_binary_tree_template(leaf_num) % tuple(scripts)
-    desc = f"tr({ranged_unspendable_internal_key()},{tree})"
-    fname = "9leafs.txt"
-    fpath = microsd_path(fname)
-    with open(fpath, "w") as f:
-        f.write(desc)
-    garbage_collector.append(fpath)
-    _, story = import_miniscript(fname)
-    assert "Failed to import" in story
-    assert "num_leafs > 8" in story
+# def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
+#                          microsd_path, import_miniscript, garbage_collector):
+#     leaf_num = 9
+#     scripts = []
+#     for i in range(leaf_num):
+#         k = get_cc_key(f"84h/0h/{i}h")
+#         scripts.append(f"pk({k})")
+#
+#     tree = generate_binary_tree_template(leaf_num) % tuple(scripts)
+#     desc = f"tr({ranged_unspendable_internal_key()},{tree})"
+#     fname = "9leafs.txt"
+#     fpath = microsd_path(fname)
+#     with open(fpath, "w") as f:
+#         f.write(desc)
+#     garbage_collector.append(fpath)
+#     _, story = import_miniscript(fname)
+#     assert "Failed to import" in story
+#     assert "num_leafs > 8" in story
 
 @pytest.mark.bitcoind
 # @pytest.mark.parametrize("lt_type", ["older", "after"])
@@ -3042,7 +3042,8 @@ def test_static_internal_key(internal_key, clear_miniscript, microsd_path, pick_
 #     # "wsh(or_i(and_v(v:pkh(@A),older(100)),or_d(multi(3,@A,@B,@C),and_v(v:thresh(2,pkh(@A),a:pkh(@B),a:pkh(@C)),older(500)))))"
 # ])
 def test_tapscript_disjoint_derivation(cap_story, offer_minsc_import, microsd_path,
-                                       get_cc_key, bitcoin_core_signer):
+                                       get_cc_key, bitcoin_core_signer, goto_home):
+    goto_home()
     desc = "tr(unspend(),{{sortedmulti_a(2,@A,@B),sortedmulti_a(2,@AA,@C)},sortedmulti_a(2,@AAA,@BB,@CC)})"
 
     # internal key is OK

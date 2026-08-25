@@ -867,7 +867,7 @@ def test_rename_wallet_collision_and_cancel(clear_miniscript, import_ms_wallet,
         # Change the final digit from 3 to 5.
         need_keypress('5')
         need_keypress('5')
-    press_select()
+        press_select()
 
     title, story = cap_story()
     assert title == 'FAILED'
@@ -2782,13 +2782,15 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
 def test_same_key_account_based_multisig(goto_home, need_keypress, pick_menu_item, cap_story,
                                          clear_miniscript, microsd_path, load_export, desc,
                                          offer_minsc_import):
+    goto_home()
     clear_miniscript()
     _, story = offer_minsc_import(desc)
     # this is allowed now
     assert "Create new multisig wallet" in story
 
 
-def test_multisig_name_validation(microsd_path, offer_minsc_import, press_cancel):
+def test_multisig_name_validation(microsd_path, offer_minsc_import, press_cancel, goto_home):
+    goto_home()
     with open("data/multisig/desc-p2wsh-myself.txt", "r") as f:
         config = f.read()
 
@@ -2914,8 +2916,8 @@ def test_scan_any_qr(fpath, is_q1, scan_a_qr, clear_miniscript, goto_home,
     ([("p2wsh-p2sh", 1000000, 1)] * 18 + [("p2wsh", 50000000, 0)] * 12, "p2sh-p2wsh"),
     ([("p2sh", 1000000, 0), ("p2wsh-p2sh", 50000000, 0), ("p2wsh", 800000, 1)] * 14, "p2wsh"),
 ])
-def test_txout_explorer(data, af, desc, clear_miniscript, import_ms_wallet, fake_ms_txn,
-                        start_sign, txout_explorer, pytestconfig):
+def test_txout_explorer(data, af, desc, clear_miniscript, import_ms_wallet,
+                        fake_ms_txn, start_sign, txout_explorer, pytestconfig):
     # TODO This test MUST be run with --psbt2 flag on and off
 
     outstyles = []
@@ -3072,14 +3074,15 @@ def test_import_multisig_usb_json(use_regtest, cs, way, cap_menu, clear_miniscri
         "'desc' key required",
         {"name": "my_miniscript", "random": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
     ),
-    (
-        "'name' length",
-        {"name": "a" * 41, "desc": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
-    ),
-    (
-        "'name' length",
-        {"name": "a", "desc": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
-    ),
+    # tested properly in test_multisig_name_validation
+    # (
+    #     "'name' length",
+    #     {"name": "a" * 41, "desc": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+    # ),
+    # (
+    #     "'name' length",
+    #     {"name": "", "desc": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+    # ),
     (
         "'desc' empty",
         {"name": "ab", "desc": "", "random": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
