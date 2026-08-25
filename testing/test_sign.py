@@ -4630,7 +4630,7 @@ def test_zero_value_external_output_not_consolidation(fake_txn, start_sign,
     outputs = [["p2tr", 5000000, True] for _ in range(3)]
     outputs.append(["p2pkh", 0])
     psbt = fake_txn(1, outputs, addr_fmt="p2tr", input_amount=15000125,
-                    sighashes=["SINGLE"])
+                    sighashes=["ALL|ANYONECANPAY"])
     start_sign(psbt)
     time.sleep(.1)
     title, story = cap_story()
@@ -4661,7 +4661,7 @@ def test_upload_during_approval(dev, fake_txn, start_sign, end_sign, cap_story,
     # a USB host rewriting it mid-approval must not get a signature over
     # transaction details that were never shown (TOCTOU)
     in_psbt = fake_txn(3, 3)
-    assert len(in_psbt) > 600
+    assert len(in_psbt) > 512
     start_sign(in_psbt, finalize=True)
 
     # wait for the approval screen

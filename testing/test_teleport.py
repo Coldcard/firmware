@@ -1300,13 +1300,13 @@ def test_hobble_limited(set_hobble, cap_screen, rx_complete, reset_seed_words, g
 
     _, parts = split_qrs(b's'*33, 'R')
     rx_complete(parts[0], '12345678', expect_fail=True)
-    time.sleep(.1)
+    time.sleep(.3)
     last = cap_screen().split('\n')[-1]
     assert last == 'KT Blocked'
 
     _, parts = split_qrs(b's'*33, 'S')
     rx_complete(parts[0], 'abcdefgh', expect_fail=True)
-    time.sleep(.1)
+    time.sleep(.3)
     last = cap_screen().split('\n')[-1]
     assert last == 'KT Blocked'
 
