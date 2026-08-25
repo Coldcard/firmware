@@ -1045,7 +1045,7 @@ def test_bitcoind_tapscript_address(M_N, clear_miniscript, bitcoind_miniscript,
 def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, bitcoind, goto_home, cap_menu,
                             pick_menu_item, cap_story, microsd_path, load_export, microsd_wipe, dev, way,
                             bitcoind_miniscript, clear_miniscript, get_cc_key, press_cancel, press_select,
-                            skip_if_useless_way, garbage_collector, file_tx_signing_done):
+                            skip_if_useless_way, garbage_collector, file_tx_signing_done, wait_for_story):
     skip_if_useless_way(way)
     M, N = m_n
     clear_miniscript()
@@ -1082,14 +1082,7 @@ def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, 
     time.sleep(0.1)
     # CC signing
     pick_menu_item("Ready To Sign")
-    time.sleep(.1)
-    title, story = cap_story()
-    if "OK TO SEND?" not in title:
-        time.sleep(0.1)
-        pick_menu_item(fname)
-        time.sleep(0.1)
-        title, story = cap_story()
-    assert title == "OK TO SEND?"
+    title, story = wait_for_story("OK TO SEND?", check_title=True)
     press_select()
     time.sleep(0.1)
     title, story = cap_story()

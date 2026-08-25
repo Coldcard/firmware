@@ -12,6 +12,7 @@ from core_fixtures import _pass_word_quiz, _word_menu_entry
 mnem = Mnemonic('english')
 wordlist = mnem.wordlist
 
+
 @pytest.fixture
 def enable_hw_ux(pick_menu_item, cap_story, press_select, goto_home):
     def doit(way, disable=False):
@@ -474,7 +475,8 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, expect_ftux,
 
 @pytest.mark.parametrize('nwords', [12, 24])
 def test_view_trng_words_verifies_dice_mix(nwords, pick_menu_item, cap_menu, cap_story, unit_test,
-                                           press_select, need_keypress, seed_story_to_words, is_q1):
+                                           press_select, need_keypress, seed_story_to_words, is_q1,
+                                           wait_for_story):
     unit_test('devtest/clear_seed.py')
     pick_menu_item('New Seed Words')
     pick_menu_item(f'{nwords} Words')
@@ -497,15 +499,17 @@ def test_view_trng_words_verifies_dice_mix(nwords, pick_menu_item, cap_menu, cap
 
     pick_menu_item('Dice Rolls')
     press_select()
+    time.sleep(.5)
     rolls = ('123456' * 8) + '12'
     for ch in rolls:
         need_keypress(ch)
+        time.sleep(0.01)
     time.sleep(0.1)
     done_key = KEY_ENTER if is_q1 else 'y'
     need_keypress(done_key)
     time.sleep(0.1)
 
-    _, body = cap_story()
+    _, body = wait_for_story(f'Record these {nwords} secret words!', check_title=is_q1)
     words = seed_story_to_words(body) if is_q1 else \
         [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
 
@@ -523,7 +527,8 @@ def test_view_trng_words_verifies_dice_mix(nwords, pick_menu_item, cap_menu, cap
 
 @pytest.mark.parametrize('nwords', [12, 24])
 def test_view_trng_words_verifies_coin_mix(nwords, pick_menu_item, cap_menu, cap_story, unit_test,
-                                           press_select, need_keypress, seed_story_to_words, is_q1):
+                                           press_select, need_keypress, seed_story_to_words, is_q1,
+                                           wait_for_story):
     unit_test('devtest/clear_seed.py')
     pick_menu_item('New Seed Words')
     pick_menu_item(f'{nwords} Words')
@@ -542,15 +547,17 @@ def test_view_trng_words_verifies_coin_mix(nwords, pick_menu_item, cap_menu, cap
 
     pick_menu_item('Coin Flips')
     press_select()
+    time.sleep(.5)
     flips = '01' * 64
     for ch in flips:
         need_keypress(ch)
+        time.sleep(0.01)
     time.sleep(0.1)
     done_key = KEY_ENTER if is_q1 else 'y'
     need_keypress(done_key)
     time.sleep(0.1)
 
-    _, body = cap_story()
+    _, body = wait_for_story(f'Record these {nwords} secret words!', check_title=is_q1)
     words = seed_story_to_words(body) if is_q1 else \
         [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
 

@@ -432,6 +432,19 @@ def cap_story(dev):
 
 
 @pytest.fixture
+def wait_for_story(cap_story):
+    def doit(expected, check_title=False):
+        for _ in range(50):
+            title, story = cap_story()
+            if expected in (title if check_title else story):
+                return title, story
+            time.sleep(0.1)
+        pytest.fail(f'Timed out waiting for: {expected!r}')
+
+    return doit
+
+
+@pytest.fixture
 def cap_image(request, sim_exec, is_q1, is_headless, sim_root_dir):
 
     def flip(raw):

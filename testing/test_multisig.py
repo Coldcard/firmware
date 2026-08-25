@@ -1562,7 +1562,7 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
 
 def test_reject_oversized_airgapped_xpub_qr(goto_home, pick_menu_item, need_keypress,
                                              press_select, scan_a_qr, cap_screen,
-                                             clear_miniscript, is_q1):
+                                             clear_miniscript, is_q1, wait_for_story):
     if not is_q1:
         pytest.skip("needs scanner")
 
@@ -1571,13 +1571,17 @@ def test_reject_oversized_airgapped_xpub_qr(goto_home, pick_menu_item, need_keyp
     pick_menu_item('Settings')
     pick_menu_item('Multisig/Miniscript')
     pick_menu_item('Create Airgapped')
-    time.sleep(.1)
+
+    title, story = wait_for_story('QR or SD Card?', check_title=True)
+    assert 'scan multisig XPUBs from QR codes' in story
     need_keypress(KEY_QR)
-    time.sleep(.1)
+
+    title, story = wait_for_story('Address Format', check_title=True)
+    assert 'default address format' in story
     press_select()
 
-    oversized = json.dumps({'junk': 'x' * 1100})
-    assert len(oversized) > 1100
+    oversized = json.dumps({'junk': 'x' * 1500})
+    assert len(oversized) > 1500
     _, parts = split_qrs(oversized, 'J', max_version=20)
     for part in parts:
         scan_a_qr(part)

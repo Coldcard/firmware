@@ -789,7 +789,7 @@ def test_ux_changing_pins(true_pin, repl, force_main_pin, goto_trick_menu,
     clear_all_tricks()
 
 def test_se2_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
-        new_trick_pin, new_pin_confirmed, pick_menu_item, press_select):
+        new_trick_pin, new_pin_confirmed, pick_menu_item, press_select, clear_miniscript):
     def decode_backup(txt):
         import json
         vals = dict()
@@ -810,6 +810,7 @@ def test_se2_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
 
         return vals, trimmed
 
+    clear_miniscript()
     clear_all_tricks()
 
     # - make wallets of all duress types (x2 each)
