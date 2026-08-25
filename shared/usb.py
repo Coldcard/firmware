@@ -87,7 +87,7 @@ def enable_keyboard_emulation():
         enable_usb()
     else:
         # real device
-        pyb.usb_mode('VCP+HID', hid=pyb.hid_keyboard)
+        pyb.usb_mode('HID', hid=pyb.hid_keyboard)
         global handler
         if not handler:
             handler = USBHandler()
@@ -101,7 +101,7 @@ def enable_usb():
     else:
         # subclass, protocol, max packet length, polling interval, report descriptor
         hid_info = (0x0, 0x0, 64, 5, hid_descp)
-        classes = 'VCP+MSC+HID'
+        classes = 'MSC+HID'
         pyb.usb_mode(classes, vid=COINKITE_VID, pid=CKCC_PID, hid=hid_info)
 
     global handler

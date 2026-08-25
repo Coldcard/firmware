@@ -11,6 +11,8 @@ This lists the new changes that have not yet been published in a normal release.
   verification of dice-roll or coin-flip mixing.
 - Bugfix: Simulator crashed on Bless Firmware, due to a desynced LED pipe. Thanks to
   [@hitechhayekian](https://github.com/hitechhayekian).
+- Security hardening: Remove the unused USB CDC/VCP serial interface from normal
+  operation and keyboard emulation.
 
 # Mk Specific Changes
 
