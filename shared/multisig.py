@@ -12,6 +12,8 @@ from glob import settings
 from charcodes import KEY_QR
 from desc_utils import ExtendedKey, KeyOriginInfo
 
+MAX_XPUBS_SIZE = const(1500)
+
 
 async def ms_coordinator_qr(af_str, my_xfp):
     # Scan a number of JSON files from BBQr w/ derive, xfp and xpub details.
@@ -20,7 +22,7 @@ async def ms_coordinator_qr(af_str, my_xfp):
 
     def convertor(got):
         file_type, file_size, data = decode_qr_result(got, expect_bbqr=True)
-        if file_size > 1100:
+        if file_size > MAX_XPUBS_SIZE:
             raise QRDecodeExplained('Multisig export is too large')
 
         if isinstance(data, bytes):
@@ -99,7 +101,7 @@ async def ms_coordinator_file(af_str, my_xfp, slot_b=None):
                     # sigh, OS/filesystem variations
                     file_size = var[1] if len(var) == 2 else get_filesize(full_fname)
 
-                    if not (0 <= file_size <= 1500):
+                    if not (0 <= file_size <= MAX_XPUBS_SIZE):
                         # out of range size
                         continue
 
