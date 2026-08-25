@@ -30,6 +30,8 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Hide Change Main PIN while a temporary seed or BIP-39 passphrase wallet is active.
 - Bugfix: Reject firmware images that extend past the world-checksum-covered
   flash region.
+- Security hardening: Remove the unused USB CDC/VCP serial interface from normal
+  operation and keyboard emulation.
 
 # Mk Specific Changes
 
