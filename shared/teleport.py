@@ -653,7 +653,7 @@ class SecretPickerMenu(MenuSystem):
         await kt_do_send(self.rx_pubkey, 's', raw=raw)
 
 
-async def kt_send_psbt(psbt, psbt_len, psbt_offset):
+async def kt_send_psbt(psbt, psbt_len, source_offset):
     # We just finished adding our signature to an incomplete PSBT.
     # User wants to send to one or more other senders for them to complete signing.
 
@@ -673,7 +673,7 @@ async def kt_send_psbt(psbt, psbt_len, psbt_offset):
         return
 
     # (TXN_OUTPUT_OFFSET after signing, TXN_INPUT_OFFSET for the file-teleport path)
-    with SFFile(psbt_offset, psbt_len) as fd:
+    with SFFile(source_offset, psbt_len) as fd:
         bin_psbt = fd.read(psbt_len)
 
     my_xfp = settings.get('xfp')
@@ -701,12 +701,17 @@ async def kt_send_psbt(psbt, psbt_len, psbt_offset):
             f = None
             if x in need:
                 # we haven't signed ourselves yet, so allow that
-                from auth import sign_transaction
+                from auth import sign_transaction, TXN_INPUT_OFFSET
 
                 async def sign_now(*a):
                     # this will reset the UX stack:
                     # flags=None --> whether to finalize is decided based on psbt.is_complete
-                    sign_transaction(psbt_len, flags=None, input_method="kt", offset=psbt_offset)
+                    # Signing writes the updated PSBT to TXN_OUTPUT_OFFSET, so its source
+                    # must be staged in the separate input region.
+                    with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as fd:
+                        fd.write(bin_psbt)
+                    sign_transaction(psbt_len, flags=None, input_method="kt",
+                                     offset=TXN_INPUT_OFFSET)
                 
                 f = sign_now
 
@@ -800,6 +805,6 @@ async def kt_send_file_psbt(*a):
         await ux_show_story("We are not part of this wallet.", "Cannot Teleport PSBT")
         return
 
-    await kt_send_psbt(psbt, psbt_len=psbt_len, psbt_offset=TXN_INPUT_OFFSET)
+    await kt_send_psbt(psbt, psbt_len=psbt_len, source_offset=TXN_INPUT_OFFSET)
     
 # EOF

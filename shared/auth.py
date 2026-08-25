@@ -965,7 +965,7 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
             # there is no need to teleport PSBT if txn is already complete & ready to be broadcast
             # updated PSBT is at TXN_OUTPUT_OFFSET (at TXN_INPUT_OFFSET is PSBT that is NOT updated)
             from teleport import kt_send_psbt
-            ok = await kt_send_psbt(psbt, data_len, psbt_offset=TXN_OUTPUT_OFFSET)
+            ok = await kt_send_psbt(psbt, data_len, source_offset=TXN_OUTPUT_OFFSET)
             if ok is None:
                 title = "Failed to Teleport"
             else:
