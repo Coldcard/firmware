@@ -222,7 +222,7 @@ def breakpoint():
 def watchpoint():
     pass
 
-def vcp_enabled(_):
+def repl_enabled(_):
     return True
 
 def usb_active():

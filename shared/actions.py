@@ -153,7 +153,7 @@ async def dev_enable_vcp(*a):
         pyb.usb_mode('VCP+HID')
 
     # allow REPL access
-    ckcc.vcp_enabled(True)
+    ckcc.repl_enabled(True)
 
     await ux_show_story("""\
 The USB virtual serial port has now been enabled. Use a real computer to connect to it.""")
@@ -197,7 +197,7 @@ async def dev_enable_protocol(*a):
     enable_usb()
 
     # enable REPL
-    ckcc.vcp_enabled(True)
+    ckcc.repl_enabled(True)
 
     await ux_show_story('Back to normal USB mode.')
 

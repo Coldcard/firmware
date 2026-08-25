@@ -80,7 +80,7 @@ async def dev_enable_repl(*a):
     if not version.is_devmode: return
 
     # allow REPL access
-    ckcc.vcp_enabled(True)
+    ckcc.repl_enabled(True)
 
     print("REPL enabled.")
     await ux_show_story("""\
