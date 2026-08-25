@@ -186,21 +186,21 @@ STATIC mp_obj_t get_cpu_id(void)
 MP_DEFINE_CONST_FUN_OBJ_0(get_cpu_id_obj, get_cpu_id);
 
 
-STATIC mp_obj_t vcp_enabled(mp_obj_t new_val)
+STATIC mp_obj_t repl_enabled(mp_obj_t new_val)
 {
     // see vcp_lockdown.c where this is used
-    extern bool ckcc_vcp_enabled;
+    extern bool ckcc_repl_enabled;
 
-    // Report/Control the VCP lockout. Call with None to readback.
+    // Report/control the REPL lockout. Call with None to read back.
     if(mp_obj_is_integer(new_val)) {
-        ckcc_vcp_enabled = !!(mp_obj_get_int_truncated(new_val));
+        ckcc_repl_enabled = !!(mp_obj_get_int_truncated(new_val));
 
-        mp_interrupt_char = ckcc_vcp_enabled ? 3 : -1;
+        mp_interrupt_char = ckcc_repl_enabled ? 3 : -1;
     }
 
-    return MP_OBJ_NEW_SMALL_INT(ckcc_vcp_enabled);
+    return MP_OBJ_NEW_SMALL_INT(ckcc_repl_enabled);
 }
-MP_DEFINE_CONST_FUN_OBJ_1(vcp_enabled_obj, vcp_enabled);
+MP_DEFINE_CONST_FUN_OBJ_1(repl_enabled_obj, repl_enabled);
 
 
 STATIC mp_obj_t stack_limit(mp_obj_t new_val)
@@ -261,7 +261,7 @@ STATIC const mp_rom_map_elem_t ckcc_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_is_simulator),        MP_ROM_PTR(&is_simulator_obj) },
     { MP_ROM_QSTR(MP_QSTR_is_debug_build),      MP_ROM_PTR(&is_debug_build_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_cpu_id),          MP_ROM_PTR(&get_cpu_id_obj) },
-    { MP_ROM_QSTR(MP_QSTR_vcp_enabled),         MP_ROM_PTR(&vcp_enabled_obj) },
+    { MP_ROM_QSTR(MP_QSTR_repl_enabled),        MP_ROM_PTR(&repl_enabled_obj) },
     { MP_ROM_QSTR(MP_QSTR_presume_green),       MP_ROM_PTR(&presume_green_obj) },
     { MP_ROM_QSTR(MP_QSTR_breakpoint),          MP_ROM_PTR(&breakpoint_obj) },
     { MP_ROM_QSTR(MP_QSTR_watchpoint),          MP_ROM_PTR(&watchpoint_obj) },

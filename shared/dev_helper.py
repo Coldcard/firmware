@@ -57,7 +57,7 @@ async def usb_keypad_emu():
                 numpad.inject(remap_q1.get(k, k))
             else:
                 if k == 'T':
-                    ckcc.vcp_enabled(True)
+                    ckcc.repl_enabled(True)
                     print("Repl")
                     continue
 

@@ -121,7 +121,7 @@ def disable_usb():
 
 def is_vcp_active():
     # VCP = Virtual Comm Port
-    en = ckcc.vcp_enabled(None)
+    en = ckcc.repl_enabled(None)
     cur = pyb.usb_mode()
 
     return cur and ('VCP' in cur) and en
