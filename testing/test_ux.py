@@ -327,7 +327,8 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, expect_ftux,
     pick_menu_item('New Seed Words')
     pick_menu_item(f'{nwords} Words')
 
-    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips', 'CANCEL']
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips',
+                          'View TRNG Words', 'CANCEL']
 
     def finish_entropy():
         # Queue a finishing ENTER plus a lagging ENTER before the UX can run.
@@ -471,6 +472,100 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, expect_ftux,
     reset_seed_words()
 
 
+@pytest.mark.parametrize('nwords', [12, 24])
+def test_view_trng_words_verifies_dice_mix(nwords, pick_menu_item, cap_menu, cap_story, unit_test,
+                                           press_select, need_keypress, seed_story_to_words, is_q1):
+    unit_test('devtest/clear_seed.py')
+    pick_menu_item('New Seed Words')
+    pick_menu_item(f'{nwords} Words')
+
+    assert cap_menu()[-2:] == ['View TRNG Words', 'CANCEL']
+    pick_menu_item('View TRNG Words')
+    title, body = cap_story()
+    base_words = seed_story_to_words(body)
+    base_seed = bytes(mnem.to_entropy(' '.join(base_words)))
+    assert title == 'TRNG Words'
+    assert len(base_words) == 24
+    assert 'full 256-bit device seed' in body
+    assert 'All 256 bits are used' in body
+    assert 'STM32 TRNG + SE1 + SE2' in body
+    assert 'KEEP SECRET' in body
+
+    press_select()
+    time.sleep(0.1)
+    assert cap_menu()[-2:] == ['View TRNG Words', 'CANCEL']
+
+    pick_menu_item('Dice Rolls')
+    press_select()
+    rolls = ('123456' * 8) + '12'
+    for ch in rolls:
+        need_keypress(ch)
+    time.sleep(0.1)
+    done_key = KEY_ENTER if is_q1 else 'y'
+    need_keypress(done_key)
+    time.sleep(0.1)
+
+    _, body = cap_story()
+    words = seed_story_to_words(body) if is_q1 else \
+        [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
+
+    dice_hash = hashlib.sha256(b'CC\x01D' + rolls.encode()).digest()
+    mix = b'CC\x01SMD' + base_seed + dice_hash
+    final_seed = hashlib.sha256(hashlib.sha256(mix).digest()).digest()
+    expected_seed = final_seed[:16] if nwords == 12 else final_seed
+    assert words == mnem.to_mnemonic(expected_seed).split()
+
+    # Throw away the test words instead of committing them.
+    need_keypress('x')
+    press_select()
+    time.sleep(0.1)
+
+
+@pytest.mark.parametrize('nwords', [12, 24])
+def test_view_trng_words_verifies_coin_mix(nwords, pick_menu_item, cap_menu, cap_story, unit_test,
+                                           press_select, need_keypress, seed_story_to_words, is_q1):
+    unit_test('devtest/clear_seed.py')
+    pick_menu_item('New Seed Words')
+    pick_menu_item(f'{nwords} Words')
+
+    assert cap_menu()[-2:] == ['View TRNG Words', 'CANCEL']
+    pick_menu_item('View TRNG Words')
+    title, body = cap_story()
+    base_words = seed_story_to_words(body)
+    base_seed = bytes(mnem.to_entropy(' '.join(base_words)))
+    assert title == 'TRNG Words'
+    assert len(base_words) == 24
+
+    press_select()
+    time.sleep(0.1)
+    assert cap_menu()[-2:] == ['View TRNG Words', 'CANCEL']
+
+    pick_menu_item('Coin Flips')
+    press_select()
+    flips = '01' * 64
+    for ch in flips:
+        need_keypress(ch)
+    time.sleep(0.1)
+    done_key = KEY_ENTER if is_q1 else 'y'
+    need_keypress(done_key)
+    time.sleep(0.1)
+
+    _, body = cap_story()
+    words = seed_story_to_words(body) if is_q1 else \
+        [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
+
+    coin_hash = hashlib.sha256(b'CC\x01C' + flips.encode()).digest()
+    mix = b'CC\x01SMC' + base_seed + coin_hash
+    final_seed = hashlib.sha256(hashlib.sha256(mix).digest()).digest()
+    expected_seed = final_seed[:16] if nwords == 12 else final_seed
+    assert words == mnem.to_mnemonic(expected_seed).split()
+
+    # Throw away the test words instead of committing them.
+    need_keypress('x')
+    press_select()
+    time.sleep(0.1)
+
+
 def test_new_wallet_entropy_cancel(pick_menu_item, cap_menu, cap_story,
                                    unit_test, press_cancel, press_select,
                                    sim_eval):
@@ -478,14 +573,16 @@ def test_new_wallet_entropy_cancel(pick_menu_item, cap_menu, cap_story,
     pick_menu_item('New Seed Words')
     pick_menu_item('12 Words')
 
-    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips', 'CANCEL']
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips',
+                          'View TRNG Words', 'CANCEL']
     pick_menu_item('Mash Keys')
     _, story = cap_story()
     assert 'Only the timing between presses is credited as entropy.' in story
     press_cancel()
     time.sleep(0.1)
 
-    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips', 'CANCEL']
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips',
+                          'View TRNG Words', 'CANCEL']
 
     # Also cancel after raw-edge capture has been enabled. The collector's
     # finally block must restore normal keypad IRQ handling.
@@ -496,7 +593,8 @@ def test_new_wallet_entropy_cancel(pick_menu_item, cap_menu, cap_story,
     press_cancel()
     time.sleep(0.1)
     assert sim_eval("__import__('glob').numpad._mash_mode") == 'False'
-    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips', 'CANCEL']
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips',
+                          'View TRNG Words', 'CANCEL']
 
     pick_menu_item('CANCEL')
     time.sleep(0.1)
@@ -524,7 +622,8 @@ def test_new_wallet_rejects_biased_dice(pick_menu_item, cap_menu, unit_test,
     press_select()
     time.sleep(0.1)
 
-    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips', 'CANCEL']
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips',
+                          'View TRNG Words', 'CANCEL']
     pick_menu_item('CANCEL')
 
 
@@ -548,7 +647,8 @@ def test_new_wallet_rejects_biased_coin(pick_menu_item, cap_menu, unit_test,
     press_select()
     time.sleep(0.1)
 
-    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips', 'CANCEL']
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips',
+                          'View TRNG Words', 'CANCEL']
     pick_menu_item('CANCEL')
 
 

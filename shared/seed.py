@@ -789,27 +789,52 @@ async def collect_mash_entropy():
 
     return md.digest()
 
+async def view_trng_words(_menu, _idx, item):
+    from ux import ux_render_words
+
+    words = bip39.b2a_words(item.arg).split(' ')
+    msg = ('These 24 words encode the full 256-bit device seed (STM32 TRNG + SE1 + SE2) '
+           'before user entropy is mixed in.\n\nAll 256 bits are used, even for a 12-word wallet.'
+           '\n\nUse them to verify dice-roll or coin-flip mixing.\n\nKEEP SECRET: Anyone with '
+           'these words and your complete user entropy can recreate your wallet seed.'
+           '\n\n%s' % ux_render_words(words))
+    try:
+        await ux_show_story(msg, title='TRNG Words', sensitive=True)
+    finally:
+        blank_object(msg)
+
+
+async def pick_user_entropy(base_seed):
+    picked = []
+
+    async def selected(_menu, _idx, item):
+        picked.append(item)
+        the_ux.pop()
+
+    menu = MenuSystem([
+        MenuItem('Mash Keys', f=selected, arg=METHOD_MASH),
+        MenuItem(DICE_ENTROPY.title, f=selected, arg=DICE_ENTROPY),
+        MenuItem(COIN_ENTROPY.title, f=selected, arg=COIN_ENTROPY),
+        MenuItem('View TRNG Words', f=view_trng_words, arg=base_seed),
+        MenuItem('CANCEL', f=selected),
+    ])
+    the_ux.push(menu)
+    await menu.interact()
+
+    return picked[0] if picked else None
+
+
 async def generate_seed_with_user_entropy(purpose):
     # Require one human entropy source and mix it with device-generated entropy.
     base_seed = None
     extra_entropy = None
     mix = None
-    choices = MenuSystem([
-        MenuItem('Mash Keys', arg=METHOD_MASH),
-        MenuItem(DICE_ENTROPY.title, arg=DICE_ENTROPY),
-        MenuItem(COIN_ENTROPY.title, arg=COIN_ENTROPY),
-        MenuItem('CANCEL'),
-    ])
     try:
         base_seed = generate_seed()
         await ux_dramatic_pause('Generating...', 3)
 
         while extra_entropy is None:
-            the_ux.push(choices)
-            try:
-                picked = await choices.wait_choice()
-            finally:
-                the_ux.pop()
+            picked = await pick_user_entropy(base_seed)
 
             # Handles both the CANCEL key and the displayed CANCEL item.
             if picked is None or picked.arg is None:
