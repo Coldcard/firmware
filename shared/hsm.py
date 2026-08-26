@@ -897,14 +897,21 @@ class HSMPolicy:
                             continue
 
                         paths = []
-                        for sp_idx in inp.sp_idxs:
-                            if inp.taproot_subpaths:
-                                path_coords = inp.taproot_subpaths[sp_idx][1][2]
-                            else:
-                                path_coords = inp.subpaths[sp_idx][1]
-                            paths.append(keypath_to_str(inp.parse_xfp_path(path_coords)))
+                        uses_wif = bool(inp.wif_key)
+                        if not uses_wif:
+                            for sp_idx in inp.sp_idxs:
+                                if inp.taproot_subpaths:
+                                    key, path_coords = inp.taproot_subpaths[sp_idx]
+                                    path_coords = path_coords[2]
+                                else:
+                                    key, path_coords = inp.subpaths[sp_idx]
 
-                        if not any(match_deriv_path(self.msg_paths, p) for p in paths):
+                                uses_wif |= bool(psbt.key_in_wif_store(inp.get(key)))
+                                paths.append(keypath_to_str(inp.parse_xfp_path(path_coords)))
+
+                        if uses_wif and 'any' not in self.msg_paths:
+                            raise ValueError("WIF Store message signing requires any path")
+                        if not uses_wif and not any(match_deriv_path(self.msg_paths, p) for p in paths):
                             raise ValueError("Message signing not enabled for that path")
 
                     self.approve(log, "BIP-322 message signing allowed")
