@@ -1585,6 +1585,10 @@ class FirmwareUpgradeRequest(UserAuthorizedAction):
                 self.pop_menu()
                 return
 
+        # bind this request to the exact bytes staged in PSRAM right now;
+        # a second upload may land while the consent screen is up
+        self.staged_sha = psram_sha256(self.psram_offset, self.length)
+
         # Get informed consent to upgrade.
         date, version, _ = decode_firmware_header(self.hdr)
 
@@ -1601,6 +1605,9 @@ Binary checksum and signature will be further verified before any changes are ma
             ch = await ux_show_story(msg)
 
             if ch == 'y':
+                # re-verify the staged bytes are unchanged since approval
+                assert psram_sha256(self.psram_offset, self.length) == self.staged_sha
+
                 # Accepted:
                 # - write final file header, so bootloader will see it
                 # - reboot to start process
