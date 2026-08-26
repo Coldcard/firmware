@@ -3961,6 +3961,40 @@ def test_input_explorer_foreign_bad_sighash(fake_txn, start_sign, cap_story,
     press_cancel()
 
 
+def test_taproot_anyonecanpay_with_pathless_foreign_input(
+        fake_txn, start_sign, end_sign, cap_story):
+    def hack(psbt):
+        foreign = psbt.inputs[1]
+        foreign.taproot_bip32_paths.clear()
+        foreign.utxo = None
+        foreign.witness_utxo = None
+        foreign.sighash = SIGHASH_MAP["NONE|ANYONECANPAY"]
+
+    psbt = fake_txn(
+        2, 2,
+        addr_fmt="p2tr",
+        sighashes=["ALL|ANYONECANPAY", "DEFAULT"],
+        psbt_hacker=hack,
+    )
+
+    start_sign(psbt, finalize=False)
+    time.sleep(.1)
+    _, story = cap_story()
+
+    assert "Limited Signing" in story
+    assert "Unable to calculate fee" in story
+    assert "Some inputs have unusual SIGHASH values" in story
+    assert "Destination address can be changed" not in story
+
+    signed = BasicPSBT().parse(end_sign(accept=True, finalize=False))
+
+    owned_sig = signed.inputs[0].taproot_key_sig
+    assert len(owned_sig) == 65
+    assert owned_sig[-1] == SIGHASH_MAP["ALL|ANYONECANPAY"]
+    assert not signed.inputs[1].taproot_key_sig
+    assert not signed.inputs[1].taproot_script_sigs
+
+
 @pytest.mark.parametrize("segwit", [True, False])
 def test_txn_nVersion_zero(segwit, fake_txn, start_sign, cap_story, goto_home):
     goto_home()
