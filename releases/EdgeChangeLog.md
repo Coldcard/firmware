@@ -13,7 +13,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
-- New Feature: Allow uncompressed WIF keys in WIF Store
+- Enhancement: Allow uncompressed WIF keys in WIF Store
 - Enhancement: Faster multisig address generation and PSBT input verification
 - Enhancement: Use predictable sequential filenames for PSBTs processed multiple times via MicroSD or Virtual Disk
 - Change: Spending Policy mode prevents USB hosts from enrolling, deleting, listing, or exporting
@@ -29,19 +29,28 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 - Bugfix: Fixed PSBT uploads being mistaken for partial firmware uploads
 - Bugfix: Reject BIP388 wallet policy imports with non-ASCII or non-printable names
 - Bugfix: Reject duplicate singleton keys in PSBT maps
+- Bugfix: Restore the ability to view the device-generated seed before adding user
+  entropy, which was available in the previous dice-roll workflow but was inadvertently
+  removed in 5.6.1/1.5.1Q. The new **View TRNG Words** menu item displays the full
+  256-bit seed from the STM32 TRNG, SE1, and SE2 as 24 BIP39 words, allowing independent
+  verification of dice-roll or coin-flip mixing.
+- Bugfix: Simulator crashed on Bless Firmware, due to a desynced LED pipe. Thanks to
+  [@hitechhayekian](https://github.com/hitechhayekian).
+- Security hardening: Remove the unused USB CDC/VCP serial interface from normal
+  operation and keyboard emulation.
 
 # Mk4 Specific Changes
 
-## 6.6.xX - 2026-0x-xx
+## 6.6.1X - 2026-0x-xx
 
-- tbd
+- all of the above.
 
 
 # Q Specific Changes
 
-## 6.6.xQX - 2026-0x-xx
+## 6.6.1QX - 2026-0x-xx
 
-- tbd
+- all of the above.
 
 
 # Release History
