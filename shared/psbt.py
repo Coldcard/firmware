@@ -2844,6 +2844,7 @@ class psbtObject(psbtProxy):
 
                 if not inp.sp_idxs:
                     # we don't know the key for this input
+                    # Taproot leaf metadata alone must never make an input signable.
                     continue
 
                 if inp.fully_signed:

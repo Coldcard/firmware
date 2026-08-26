@@ -3,6 +3,7 @@
 # Miniscript-related tests.
 #
 import pytest, json, time, itertools, struct, random, os, base64, re, copy
+from pysecp256k1 import tagged_sha256
 from ckcc.protocol import CCProtocolPacker
 from constants import AF_P2TR
 from psbt import BasicPSBT
@@ -10,7 +11,8 @@ from charcodes import KEY_QR, KEY_RIGHT, KEY_CANCEL, KEY_DELETE
 from bbqr import split_qrs
 from bip32 import BIP32Node, ranged_unspendable_internal_key
 from constants import BIP_341_H
-from helpers import generate_binary_tree_template, str_to_path
+from helpers import generate_binary_tree_template, str_to_path, taptweak
+from ctransaction import CTxOut
 
 
 @pytest.fixture
@@ -1011,6 +1013,66 @@ def test_tapscript(M_N, cc_first, clear_miniscript, goto_home, pick_menu_item,
     assert accept_res["allowed"] is True
     txid = wo.sendrawtransaction(res["hex"])
     assert len(txid) == 64
+
+
+def test_pathless_tapscript_input_not_signed(clear_miniscript, offer_minsc_import,
+                                              press_select, get_cc_key, dev, fake_txn,
+                                              start_sign, end_sign, cap_story,
+                                              settings_remove, use_testnet):
+    clear_miniscript()
+    settings_remove("wifs")
+    use_testnet()
+
+    name = "pathless-ts"
+    account = "m/86h/1h/0h"
+    cc_key = get_cc_key(account)
+    internal_expr = ranged_unspendable_internal_key()
+    desc = f"tr({internal_expr},pk({cc_key}))"
+
+    _, story = offer_minsc_import(json.dumps(dict(name=name, desc=desc)))
+    assert "Create new miniscript wallet?" in story
+    press_select()
+
+    internal_root = BIP32Node.from_chaincode_pubkey(
+        32 * b"\x01", b"\x02" + bytes.fromhex(BIP_341_H)
+    )
+    internal_key = internal_root.subkey_for_path("0/0").sec()[1:]
+    account_xpub = dev.send_recv(CCProtocolPacker.get_xpub(account), timeout=None)
+    signing_key = BIP32Node.from_hwif(account_xpub).subkey_for_path("0/0").sec()[1:]
+    script = b"\x20" + signing_key + b"\xac"
+    merkle_root = tagged_sha256(b"TapLeaf", b"\xc0\x22" + script)
+
+    psbt = BasicPSBT().parse(fake_txn(2, 1, addr_fmt="p2tr"))
+    for inp in psbt.inputs:
+        inp.witness_utxo = CTxOut(
+            100_000_000, b"\x51\x20" + taptweak(internal_key, merkle_root)
+        ).serialize()
+        inp.taproot_internal_key = internal_key
+        inp.taproot_merkle_root = merkle_root
+        inp.taproot_scripts = {(script, 0xc0): {b"\xc0" + internal_key}}
+        inp.taproot_bip32_paths = {
+            internal_key: b"\x00" + internal_root.fingerprint() + struct.pack("<2I", 0, 0),
+            signing_key: b"\x01" + merkle_root
+                         + struct.pack("<I", dev.master_fingerprint)
+                         + struct.pack("<5I", 86 | 0x80000000, 1 | 0x80000000,
+                                       0x80000000, 0, 0),
+        }
+
+    pathless = psbt.inputs[1]
+    pathless.taproot_bip32_paths = {}
+    pathless.taproot_merkle_root = os.urandom(32)
+    pathless.taproot_scripts = {(b"\x51", 0xc0): {b"\xc0" + os.urandom(32)}}
+
+    start_sign(psbt.as_bytes(), miniscript=name)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "Limited Signing" in story
+
+    signed = BasicPSBT().parse(end_sign(finalize=False))
+    assert signed.inputs[0].taproot_script_sigs
+    assert not signed.inputs[0].taproot_key_sig
+    assert not signed.inputs[1].taproot_script_sigs
+    assert not signed.inputs[1].taproot_key_sig
 
 
 @pytest.mark.bitcoind
