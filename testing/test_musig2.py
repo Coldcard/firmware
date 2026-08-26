@@ -525,7 +525,7 @@ def test_musig(tapscript, ts_level, cc_first, clear_miniscript, microsd_path, us
 
 @pytest.mark.veryslow
 @pytest.mark.bitcoind
-@pytest.mark.parametrize("N_K", [(5,3),(6,4), (10,9)])
+@pytest.mark.parametrize("N_K", [(5,3),(6,4), (32,31)])
 @pytest.mark.parametrize("tapscript", [True, False])
 @pytest.mark.parametrize("cc_first", [True, False])
 def test_musig_big(N_K, cc_first, tapscript, clear_miniscript, use_regtest, address_explorer_check,
@@ -1400,6 +1400,37 @@ def test_only_unique_keys_in_musig(get_cc_key, offer_minsc_import):
         with pytest.raises(Exception) as e:
             offer_minsc_import(desc)
         assert e.value.args[0] == "Coldcard Error: musig keys not unique"
+
+
+def test_musig_participant_limit(get_cc_key, offer_minsc_import):
+    path = "88h/0h/0h"
+    cc_key = get_cc_key(path).replace("/<0;1>/*", "")
+    keys = random_keys(32, path=path)
+    desc = "tr(musig(%s))" % ",".join([cc_key] + keys)
+
+    with pytest.raises(Exception) as e:
+        offer_minsc_import(desc)
+    assert e.value.args[0] == "Coldcard Error: too many musig keys"
+
+
+@pytest.mark.bitcoind
+def test_musig_psbt_participant_limit(use_regtest, clear_miniscript, build_musig_wallet,
+                                       start_sign, cap_story):
+    use_regtest()
+    clear_miniscript()
+    wo, _, _ = build_musig_wallet("musig_limit", 2)
+    resp = wo.walletcreatefundedpsbt([], [{wo.getnewaddress("", "bech32m"): 5}], 0,
+                                     {"fee_rate": 2, "change_type": "bech32m"})
+    po = BasicPSBT().parse(base64.b64decode(resp["psbt"]))
+    participants = next(iter(po.inputs[0].musig_pubkeys.values()))
+    assert len(participants) == 2
+    participants += [participants[0]] * 31
+
+    start_sign(po.as_bytes())
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Invalid PSBT" in story
+    assert "too many musig keys" in story
 
 
 @pytest.mark.bitcoind

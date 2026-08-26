@@ -23,7 +23,7 @@ from serializations import ALL_SIGHASH_FLAGS, SIGHASH_DEFAULT
 from opcodes import OP_CHECKMULTISIG, OP_RETURN
 from glob import settings
 from precomp_tag_hash import TAP_TWEAK_H, TAP_SIGHASH_H, BIP322_TAG_HASH
-from desc_utils import MusigKey, MUSIG_CHAIN_CODE
+from desc_utils import MusigKey, MUSIG_CHAIN_CODE, MAX_MUSIG_PARTICIPANTS
 from wif import WIFStore
 
 from public_constants import (
@@ -1775,6 +1775,7 @@ class psbtObject(psbtProxy):
             assert k[1] == 33  #  compressed pubkey len 33
             assert v[1]  # list of pubkeys cannot be empty
             assert (v[1] % 33 == 0)  # each pubkey len 33
+            assert v[1] <= (33 * MAX_MUSIG_PARTICIPANTS), "too many musig keys"
 
     async def validate(self):
         # Do a first pass over the txn. Raise assertions, be terse tho because
@@ -2696,7 +2697,7 @@ class psbtObject(psbtProxy):
 
         pubnonces = set()
         for (pk, ak, lh), pnonce in musig_pubnonces.items():
-            if (ak == der_agg_k) and (lh == leaf_hash):
+            if (pk in cosigners) and (ak == der_agg_k) and (lh == leaf_hash):
                 # this is the nonce belonging to our aggregate key
                 pubnonces.add(pnonce)
                 if pk == my_participant_key:
@@ -2732,7 +2733,7 @@ class psbtObject(psbtProxy):
         self.allow_cache_store = False
 
         for (pk, ak, lh), sig in musig_partial_sigs.items():
-            if (ak == der_agg_k) and (lh == leaf_hash):
+            if (pk in cosigners) and (ak == der_agg_k) and (lh == leaf_hash):
                 # good for debug - verify validity of cosigner musig partial signatures
                 # other_pn = ngu.secp256k1.MusigPubNonce(musig_pubnonces[(pk,ak,lh)])
                 # psig = ngu.secp256k1.MusigPartSig(sig)

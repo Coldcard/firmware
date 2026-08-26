@@ -16,6 +16,7 @@ PROVABLY_UNSPENDABLE = b'\x02P\x92\x9bt\xc1\xa0IT\xb7\x8bK`5\xe9z^\x07\x8aZ\x0f(
 
 # sha256(b"MuSig2MuSig2MuSig2")
 MUSIG_CHAIN_CODE = b'\x86\x80\x87\xca\x02\xa6\xf9t\xc4Y\x89$\xc3kWv-2\xcbEqqg\xe3\x00b,qg\xe3\x89e'
+MAX_MUSIG_PARTICIPANTS = const(32)
 
 INPUT_CHARSET = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ "
 CHECKSUM_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
@@ -455,6 +456,7 @@ class ExtendedKey:
 
 class MusigKey:
     def __init__(self, keys, der=None, node=None):
+        assert len(keys) <= MAX_MUSIG_PARTICIPANTS, "too many musig keys"
         self.keys = keys
         self.derivation = der or KeyDerivationInfo()
         self._node = node

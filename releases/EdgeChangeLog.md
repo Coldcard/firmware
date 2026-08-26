@@ -23,6 +23,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
   explorer to review individual details.
 - Bugfix: Generate distinct MuSig2 nonces for different aggregate-key derivations of the same participant set
 - Bugfix: Prevent PSBT corruption when the same MuSig2 participant performs multiple signing rounds via Key Teleport
+- Change: Limit MuSig2 participant lists to 32
 - Bugfix: Generate unique names when creating multisig wallets from PSBTs with the same M-of-N parameters
 - Bugfix: Correctly identify consolidations containing zero-value OP_RETURN outputs without misclassifying other zero-value external outputs
 - Bugfix: Prevent duplicate WIF Store keys and multisig wallets after restarting
