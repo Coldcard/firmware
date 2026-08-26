@@ -511,7 +511,9 @@ def main():
                         cmd_list.append("--psbt2")
                     if k:
                         cmd_list.extend(["-k", k])
-                    p = subprocess.Popen(cmd_list, preexec_fn=os.setsid, stdout=out_fd, stderr=out_fd)
+                    env = dict(os.environ, CKCC_DEFAULT_TIMEOUT="10000")
+                    p = subprocess.Popen(cmd_list, preexec_fn=os.setsid, stdout=out_fd,
+                                         stderr=out_fd, env=env)
                     if "q1" in log_dir:
                         mark = "Q"
                     elif "mk5" in log_dir:
