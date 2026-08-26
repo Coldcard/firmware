@@ -17,6 +17,7 @@ This lists the new changes that have not yet been published in a normal release.
   proceeding to approval.
 - Bugfix: Abort a pending firmware upgrade if its staged image is overwritten before
   approval. Thanks to Huzaifa Jawaid.
+- Bugfix: Reject cyclic FAT chains in virtual-disk file imports instead of hanging.
 - Bugfix: Restore the ability to view the device-generated seed before adding user
   entropy, which was available in the previous dice-roll workflow but was inadvertently
   removed in 5.6.1/1.5.1Q. The new **View TRNG Words** menu item displays the full
