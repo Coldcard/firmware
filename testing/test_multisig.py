@@ -12,6 +12,7 @@ from descriptor import MultisigDescriptor, append_checksum, MULTI_FMT_TO_SCRIPT,
 import time, pytest, os, random, json, shutil, pdb, io, base64, struct, bech32, itertools, re
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from ckcc.protocol import CCProtocolPacker, MAX_TXN_LEN
+from ckcc_protocol.protocol import CCProtoError
 from pprint import pprint
 from base64 import b64encode, b64decode
 from base58 import encode_base58_checksum
@@ -1503,6 +1504,23 @@ def fake_ms_txn(pytestconfig):
         return rv.getvalue()
 
     return doit
+
+def test_missing_p2sh_p2wsh_redeem_script_rejected(clear_ms, import_ms_wallet,
+                                                    fake_ms_txn, try_sign):
+    clear_ms()
+    M, N = 2, 3
+    keys = import_ms_wallet(M, N, addr_fmt="p2sh-p2wsh", accept=True)
+
+    def remove_redeem_script(psbt):
+        psbt.inputs[0].redeem_script = None
+
+    psbt = fake_ms_txn(1, 1, M, keys, fee=99_000_000, inp_af=AF_P2WSH_P2SH,
+                       hack_psbt=remove_redeem_script)
+
+    with pytest.raises(CCProtoError) as exc:
+        try_sign(psbt, False)
+
+    assert "Missing redeem script for input #0" in str(exc.value)
 
 @pytest.mark.veryslow
 @pytest.mark.unfinalized
