@@ -1015,6 +1015,8 @@ class psbtInputProxy(psbtProxy):
                 redeem_script = self.get(ks)
 
             native_v0 = (self.af == AF_P2WSH)
+            if self.witness_script and not native_v0 and not self.redeem_script:
+                raise FatalPSBTIssue('Missing redeem script for input #%d' % my_idx)
 
             if not native_v0 and (len(redeem_script) == 22) and \
                     redeem_script[0] == 0 and redeem_script[1] == 20:
