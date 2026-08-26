@@ -8,6 +8,8 @@ This lists the new changes that have not yet been published in a normal release.
   disguised with forged key-path metadata or partial signatures.
 - Bugfix: Detect and abort transaction signing if a Virtual Disk firmware import
   overwrites the reviewed PSBT. Thanks to Huzaifa Jawaid.
+- Bugfix: Reject malformed PSBTs containing P2SH-P2WSH inputs without a redeem
+  script, preventing transactions with an unknown fee from proceeding to approval.
 - Bugfix: Restore the ability to view the device-generated seed before adding user
   entropy, which was available in the previous dice-roll workflow but was inadvertently
   removed in 5.6.1/1.5.1Q. The new **View TRNG Words** menu item displays the full

@@ -836,6 +836,9 @@ class psbtInputProxy(psbtProxy):
 
                 redeem_script = self.get(ks)
 
+            if self.addr_fmt == AF_P2SH and self.witness_script and not self.redeem_script:
+                raise FatalPSBTIssue('Missing redeem script for input #%d' % my_idx)
+
             self.scriptSig = redeem_script
 
             if not addr_is_segwit and len(redeem_script) == 22 and \
