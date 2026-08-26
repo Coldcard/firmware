@@ -80,12 +80,16 @@ def test_home_menu(cap_menu, cap_story, cap_screen, need_keypress, reset_seed_wo
         assert scr == chk
     else:
         # does not fit to single screen on mk4
+        # Ignore status text (such as the vertical EDGE label) captured alongside
+        # the menu rows by sim_display.
+        scr = '\n'.join(line for line in scr.splitlines() if line in m)
         assert scr in chk
         # go down to the bottom
         for i in range(6):
             press_down()
 
         scr = cap_screen().rstrip()
+        scr = '\n'.join(line for line in scr.splitlines() if line in m)
         assert scr in chk
 
     # pick first item, expect a story
