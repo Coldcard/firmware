@@ -9,6 +9,7 @@ import ndef
 from hashlib import sha256
 from txn import *
 from base64 import b64encode, b64decode, encodebytes
+from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
 
 
 def test_vd_basics(dev, virtdisk_path, is_simulator):
@@ -211,6 +212,46 @@ def test_virtdisk_signing(encoding, num_outs, partial, try_sign_virtdisk, fake_t
         assert _psbt == txn
     else:
         assert _txn == txn
+
+def test_virtdisk_import_invalidates_pending_psbt(
+        dev, fake_txn, start_sign, cap_story, virtdisk_path,
+        virtdisk_wipe, settings_set, sim_eval, need_keypress, press_cancel):
+    settings_set('vidsk', 2)         # enable + auto-consume
+    virtdisk_wipe()
+    time.sleep(.4)                   # let the vdisk monitor settle
+
+    start_sign(fake_txn(3, 3), finalize=True)
+    for _ in range(100):
+        title, _ = cap_story()
+        if title == 'OK TO SEND?':
+            break
+        time.sleep(.1)
+    else:
+        pytest.fail('no approval screen')
+
+    before = int(sim_eval("__import__('glob').PSRAM.txn_write_count"))
+
+    # A firmware import uses the native PSRAM copy and overwrites the pending
+    # transaction before its own authorization attempt is rejected as busy.
+    with open(virtdisk_path('replacement.dfu'), 'wb') as f:
+        f.write(bytes(0x50000))
+
+    for _ in range(50):
+        if int(sim_eval("__import__('glob').PSRAM.txn_write_count")) != before:
+            break
+        time.sleep(.1)
+    else:
+        pytest.fail('VirtDisk import did not invalidate staged PSRAM')
+
+    need_keypress('y')
+    with pytest.raises(CCProtoError, match='Transaction modified'):
+        while True:
+            time.sleep(.1)
+            done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
+            if done is not None:
+                break
+
+    press_cancel()
 
 def test_virtdisk_oversized_psbt_rejected(press_select, virtdisk_path, cap_story, virtdisk_wipe,
                                           press_cancel, goto_home, sd_cards_eject,

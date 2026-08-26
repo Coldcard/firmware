@@ -29,6 +29,18 @@ class SimBlockDev:
     def wipe(self):
         print("sim-virtdisk: wipe (not implemented)")
 
+    def copy_file(self, offset, filename):
+        # Match the native implementation: copy directly into the lower
+        # PSRAM mapping without going through PSRAMWrapper.write_at().
+        print("sim-virtdisk: read %s" % filename)
+        with open(SIMDIR_PATH + filename, 'rb') as f:
+            contents = f.read()
+
+        from glob import PSRAM
+        assert offset + len(contents) <= PSRAM.length
+        PSRAM._wr[offset:offset+len(contents)] = contents
+        return len(contents)
+
     @classmethod
     async def monitor_task(cls, self):
         # works, but hard to manage the atask
@@ -71,17 +83,6 @@ class SimulatedVirtDisk(vdisk.VirtDisk):
         #print("sim-virtdisk: CC unmounted; ready to view")
         for fn in written_files:
             self.ignore.add(fn.split('/')[-1])
-
-    def import_file(self, filename, sz):
-        # copy file into another area of PSRAM where rest of system can use it
-        print("sim-virtdisk: read %s" % filename)
-        with open(filename, 'rb') as f:
-            contents = f.read(sz)
-        from glob import PSRAM
-        runt = (4 - sz % 4)
-        sz = sz + runt
-        PSRAM.write_at(0, sz)[:] = contents + bytes(runt)
-        return sz
 
 vdisk.VirtDisk = SimulatedVirtDisk
 
