@@ -256,20 +256,28 @@ def test_bip39_complex(target, pick_menu_item, cap_story, goto_home,
     expect = BIP32Node.from_master_secret(seed, netcode="XTN")
 
     enter_complex(target, apply=True)
-    scroll_down = press_down if is_q1 else press_right
 
     for _ in range(3):
         screen = cap_screen()
-        if 'Scroll down to' in screen:
+        if 'Above is the' in screen:
             break
         time.sleep(.01)
     else:
         pytest.fail('passphrase scroll notice not shown')
 
     assert 'Passphrase:' not in screen
+    if is_q1:
+        # bigger display
+        assert "Scroll down to view" in screen
+        n = 1
+    else:
+        # more scrolling is needed for Mk
+        n = 14
 
-    scroll_down()
-    time.sleep(.1)
+    for i in range(n):
+        press_down()
+        time.sleep(.1)
+
     assert 'Passphrase:' in cap_screen()
 
     press_select()
