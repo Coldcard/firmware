@@ -2754,8 +2754,9 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
     pick_menu_item("Rename")
     for _ in range(len(on_mainnet) - (0 if is_q1 else 1)):
         need_keypress(KEY_DELETE if is_q1 else "x")
-    renamed = "bbbb"
-    enter_complex(renamed if is_q1 else renamed[1:], apply=False, b39pass=False)
+    # Mk4 retains one character; selecting the number group overwrites it.
+    renamed = "1234"
+    enter_complex(renamed, apply=False, b39pass=False)
     res = settings_get("miniscript")
     assert res[0][0] == on_regtest
     assert res[1][0] == renamed
