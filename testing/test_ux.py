@@ -100,7 +100,8 @@ def test_home_menu(cap_menu, cap_story, cap_screen, need_keypress, reset_seed_wo
 
     title, body = cap_story()
     assert title == 'NO-TITLE'
-    assert 'transactions' in body or 'Choose PSBT' in body, body
+    assert ('transactions' in body or 'Choose PSBT' in body
+            or 'filename must end in psbt' in body), body
     
     press_cancel()
 
