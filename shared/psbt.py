@@ -3596,7 +3596,7 @@ class psbtObject(psbtProxy):
 
                 for i, (k, v) in enumerate(inp.taproot_subpaths):
                     xpk = self.get(k)
-                    if inp.ik_idx == i:
+                    if inp.ik_idx and i in inp.ik_idx:
                         # internal key
                         if self.active_miniscript.ik_u:
                             # no way to sign with unspend
