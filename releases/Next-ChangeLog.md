@@ -11,6 +11,8 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Reject malformed PSBTs containing P2SH-P2WSH inputs with a missing or
   incorrect redeem script, preventing transactions with an unknown fee from
   proceeding to approval.
+- Bugfix: Abort a pending firmware upgrade if its staged image is overwritten before
+  approval. Thanks to Huzaifa Jawaid.
 - Bugfix: Restore the ability to view the device-generated seed before adding user
   entropy, which was available in the previous dice-roll workflow but was inadvertently
   removed in 5.6.1/1.5.1Q. The new **View TRNG Words** menu item displays the full
