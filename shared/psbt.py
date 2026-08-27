@@ -2812,7 +2812,7 @@ class psbtObject(psbtProxy):
             session_rand = MUSIG_SESSION_CACHE.pop(session_id, None)
             musig_round1 = session_rand is None
             if musig_round1:
-                session_rand = bytearray(ngu.random.bytes(32))
+                session_rand = ngu.random.bytes(32)
 
             musig_session = (session_rand, musig_round1)
 
