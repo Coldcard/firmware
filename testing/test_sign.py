@@ -351,6 +351,50 @@ def test_mixed_segwit_v0_taproot_signatures(input_types, use_regtest, bitcoind_d
     assert acceptance["allowed"] is True, acceptance
 
 
+@pytest.mark.bitcoind
+def test_foreign_musig_metadata_does_not_block_singlesig(
+        use_regtest, bitcoind, bitcoind_d_sim_watch, bitcoind_d_wallet_w_sk, try_sign):
+    use_regtest()
+    cc = bitcoind_d_sim_watch
+    foreign = bitcoind_d_wallet_w_sk
+    destination = bitcoind.supply_wallet.getnewaddress()
+
+    for wallet in (cc, foreign):
+        bitcoind.supply_wallet.sendtoaddress(wallet.getnewaddress("", "bech32"), 2)
+    bitcoind.supply_wallet.generatetoaddress(1, destination)
+
+    psbts = []
+    for wallet in (cc, foreign):
+        try:
+            result = wallet.walletcreatefundedpsbt(
+                [], [{destination: 1}], 0, {"fee_rate": 20}, True, 2, 0)
+        except:
+            result = wallet.walletcreatefundedpsbt(
+                [], [{destination: 1}], 0, {"fee_rate": 20})
+        psbts.append(result["psbt"])
+
+    psbt = BasicPSBT().parse(bitcoind.supply_wallet.joinpsbts(psbts))
+
+    def is_ours(inp):
+        return any(path[:4].hex().upper() == xfp2str(simulator_fixed_xfp)
+                   for path in inp.bip32_paths.values())
+
+    foreign_inp, = [inp for inp in psbt.inputs if not is_ours(inp)]
+    participant = next(iter(foreign_inp.bip32_paths))
+    foreign_inp.musig_pubnonces[(participant, participant, b"")] = participant * 2
+
+    _, signed = try_sign(psbt.as_bytes(), accept=True, finalize=False)
+    signed = BasicPSBT().parse(signed)
+    ours, = [inp for inp in signed.inputs if is_ours(inp)]
+    assert ours.part_sigs
+
+    result = foreign.walletprocesspsbt(signed.as_b64_str())
+    finalized = foreign.finalizepsbt(result["psbt"])
+    assert finalized["complete"] is True
+    acceptance = foreign.testmempoolaccept([finalized["hex"]])[0]
+    assert acceptance["allowed"] is True, acceptance
+
+
 @pytest.mark.unfinalized        # iff we_finalize=F
 @pytest.mark.parametrize('we_finalize', [ False, True ])
 @pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])

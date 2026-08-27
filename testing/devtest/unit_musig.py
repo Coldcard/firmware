@@ -6,6 +6,9 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from desc_utils import musig_synthetic_node
 from descriptor import Descriptor
+from psbt import make_musig_session_id
+from public_constants import AF_P2TR
+from wallet import MiniScriptWallet
 
 settings.set("chain", "BTC")
 chain = chains.get_chain("BTC")
@@ -53,5 +56,27 @@ for musig_keys, aggregate_key, synthetic_xpub in bip_328_test_vectors:
     assert agg_pubkey == agg_pubkey_target
     node = musig_synthetic_node(agg_pubkey)
     assert chain.serialize_public(node) == synthetic_xpub
+
+
+# A cached nonce root is specific to both the transaction and wallet policy.
+txn_digest = bytes(range(32))
+witness_digest = bytes(range(32, 64))
+xfp = 0x12345678
+policy_a = MiniScriptWallet("Policy A", "tr(musig(@0,@1)/**)",
+                            ["key-a", "key-b"], AF_P2TR)
+policy_a_renamed = MiniScriptWallet("Renamed", "tr(musig(@0,@1)/**)",
+                                    ["key-a", "key-b"], AF_P2TR)
+policy_b = MiniScriptWallet("Policy B", "tr(musig(@0,@1)/**)",
+                            ["key-a", "key-c"], AF_P2TR)
+session_id = make_musig_session_id(txn_digest, witness_digest, xfp, policy_a)
+assert session_id == make_musig_session_id(txn_digest, witness_digest, xfp,
+                                           policy_a_renamed)
+assert session_id != make_musig_session_id(txn_digest, witness_digest, xfp,
+                                           policy_b)
+assert session_id != make_musig_session_id(bytes(reversed(txn_digest)),
+                                           witness_digest, xfp, policy_a)
+assert session_id != make_musig_session_id(txn_digest,
+                                           bytes(reversed(witness_digest)),
+                                           xfp, policy_a)
 
 # EOF

@@ -98,6 +98,24 @@ DEBUG = ckcc.is_simulator()
 
 MUSIG_SESSION_CACHE = {}
 
+
+def make_musig_session_id(txn_digest, witness_digest, my_xfp, wallet):
+    # Bind the cached nonce root to the supplied transaction digest, the
+    # witness_utxo commitments (BIP341 granularity), and the wallet policy.
+    # NUL is not valid in policy or key-info strings; witness_digest folds
+    # as empty bytes when no input bears a UTXO.
+    session = sha256()
+    session.update(txn_digest)
+    session.update(witness_digest or b"")
+    session.update(pack('<I', my_xfp))
+    session.update(wallet.desc_tmplt.encode())
+    session.update(b'\0')
+    for key_info in wallet.keys_info:
+        session.update(key_info.encode())
+        session.update(b'\0')
+    return session.digest()
+
+
 class HashNDump:
     def __init__(self, d=None):
         self.rv = sha256()
@@ -1420,6 +1438,7 @@ class psbtObject(psbtProxy):
 
         # musig related
         self.session = None
+        self.witness_session = None
         self.allow_cache_store = False
 
         # Proof of Reserves
@@ -2235,6 +2254,15 @@ class psbtObject(psbtProxy):
             # needed for each input if we sign at least one P2TR input
             inp.utxo_spk = utxo.scriptPubKey
 
+            if self.session:
+                # parallel accumulator: witness_utxo (amount+scriptPubKey)
+                # committed at BIP341 granularity, so the session id binds
+                # value data, not just the tx skeleton
+                if self.witness_session is None:
+                    self.witness_session = sha256()
+                self.witness_session.update(pack("<q", inp.amount))
+                self.witness_session.update(ser_string(inp.utxo_spk))
+
             if inp.sighash == SIGHASH_DEFAULT and inp.af != AF_P2TR:
                 raise FatalPSBTIssue("SIGHASH_DEFAULT outside taproot context")
 
@@ -2631,7 +2659,7 @@ class psbtObject(psbtProxy):
                             digest, leaf_hash=b""):
 
         assert session  # needed
-        session_digest, session_rand, round1 = session
+        session_rand, round1 = session
         my_participant_key = keypair.pubkey().to_bytes()
         musig_pubkeys = inp.get_musig_pubkeys()
         cosigners = musig_pubkeys.get(agg_k, None)
@@ -2767,6 +2795,39 @@ class psbtObject(psbtProxy):
         return agg_sig, der_agg_k
 
     def sign_it(self, alternate_secret=None, my_xfp=None):
+        if my_xfp is None:
+            my_xfp = self.my_xfp
+
+        musig_session = None
+        session_id = None
+        session_rand = None
+        musig_round1 = False
+        self.allow_cache_store = False
+        if self.session and self.active_miniscript:
+            session_id = make_musig_session_id(self.session.digest(),
+                                                self.witness_session.digest()
+                                                if self.witness_session else None,
+                                                my_xfp,
+                                                self.active_miniscript)
+            session_rand = MUSIG_SESSION_CACHE.pop(session_id, None)
+            musig_round1 = session_rand is None
+            if musig_round1:
+                session_rand = bytearray(ngu.random.bytes(32))
+
+            musig_session = (session_rand, musig_round1)
+
+        store_session = False
+        try:
+            self._sign_it(alternate_secret, my_xfp, musig_session)
+            store_session = musig_round1 and self.allow_cache_store
+        finally:
+            if musig_session:
+                if store_session:
+                    MUSIG_SESSION_CACHE[session_id] = session_rand
+                else:
+                    stash.blank_object(session_rand)
+
+    def _sign_it(self, alternate_secret, my_xfp, musig_session):
         # txn is approved. sign all inputs we can sign. add signatures
         # - hash the txn first
         # - sign all inputs we have the key for
@@ -2775,25 +2836,6 @@ class psbtObject(psbtProxy):
         # - update our state with new partial sigs
         from glob import dis
         from ownership import OWNERSHIP
-
-        if my_xfp is None:
-            my_xfp = self.my_xfp
-
-        musig_session = None
-        musig_round1 = False
-        if self.session:
-            # initialize MuSig2 session
-            session_digest = self.session.digest() + pack('<I', my_xfp)  # to differentiate tmp keys
-            # if we already have it stored, this is 2nd round
-            # remove it - only one chance to make it right, as consequences for re-use are catastrophic
-            session_rand = MUSIG_SESSION_CACHE.pop(session_digest, None)
-            if session_rand is None:
-                musig_round1 = True
-                # first round - create new session rand and (maybe) store it for 2nd round
-                session_rand = ngu.random.bytes(32)
-
-            # initialized Musig2 session tuple
-            musig_session = (session_digest, session_rand, musig_round1)
 
         with stash.SensitiveValues(secret=alternate_secret) as sv:
             # Double-check the change outputs are right. This is slow, but critical because
@@ -3169,11 +3211,6 @@ class psbtObject(psbtProxy):
 
                 del to_sign
                 gc.collect()
-
-        # store musig session - only at the end of this function execution
-        # if any exceptions were raised - just do not store
-        if musig_session and musig_round1 and self.allow_cache_store:
-            MUSIG_SESSION_CACHE[session_digest] = session_rand
 
         # done.
         dis.progress_bar_show(1)
