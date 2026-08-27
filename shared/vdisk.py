@@ -109,6 +109,9 @@ class VirtDisk:
         glob.ALLOWED_DOWNLOAD = None
         glob.PSRAM.txn_write_count += 1
 
+        # native copy bypasses PSRAMWrapper.write_at()
+        glob.PSRAM.upgrade_write_count += 1
+
         # I could not resist doing this in C... since we already have the
         # data in memory, why mess around with file concepts?
         actual = VBLKDEV.copy_file(0, filename.split('/')[-1])

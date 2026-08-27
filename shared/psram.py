@@ -15,6 +15,10 @@ class PSRAMWrapper:
     # mutation of the transaction being signed
     txn_write_count = 0
 
+    # kept separate from transaction signing: firmware approval captures this
+    # value and aborts if its staged image is overwritten
+    upgrade_write_count = 0
+
     def __init__(self):
         self._wr = uctypes.bytearray_at(self.base, self.length)
 
@@ -31,6 +35,7 @@ class PSRAMWrapper:
         if offset < 2 * version.MAX_TXN_LEN:
             # covers both TXN staging regions (input and output)
             self.txn_write_count += 1
+            self.upgrade_write_count += 1
 
         return memoryview(self._wr)[offset:offset+ln]
 
