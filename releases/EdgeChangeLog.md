@@ -13,6 +13,8 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
+- Bugfix: Detect and abort transaction signing if a Virtual Disk firmware import
+  overwrites the reviewed PSBT. Thanks to Huzaifa Jawaid.
 - Enhancement: Allow uncompressed WIF keys in WIF Store
 - Enhancement: Faster multisig address generation and PSBT input verification
 - Enhancement: Use predictable sequential filenames for PSBTs processed multiple times via MicroSD or Virtual Disk
