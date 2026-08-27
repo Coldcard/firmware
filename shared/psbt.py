@@ -1849,6 +1849,7 @@ class psbtObject(psbtProxy):
         total_in = 0
         from_wif_store = []
         prevouts = set()
+        foreign_por = False
 
         for i, txi in self.input_iter():
             # check for duplicate inputs
@@ -1884,6 +1885,9 @@ class psbtObject(psbtProxy):
             # - also finds appropriate multisig wallet to be used
             inp.determine_my_signing_key(i, utxo, self.my_xfp, self, cosign_xfp)
 
+            if self.por322 and i and not inp.num_our_keys:
+                foreign_por = True
+
             if inp.required_key and not inp.is_segwit and not inp.utxo:
                 raise FatalPSBTIssue('Legacy input #%d requires non-witness UTXO' % i)
 
@@ -1918,6 +1922,9 @@ class psbtObject(psbtProxy):
             del utxo
 
         # XXX scan witness data provided, and consider those ins signed if not multisig?
+
+        if foreign_por:
+            raise FatalPSBTIssue("Foreign inputs not allowed in BIP-322 Proof of Reserves")
 
         if not foreign and not unverified_witness_utxo:
             # no foreign inputs, we can calculate the total input value
