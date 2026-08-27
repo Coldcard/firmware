@@ -16,7 +16,8 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 5.6.x - 2026-0x-xx
 
-- tbd
+- Bugfix: Require unrestricted HSM message-signing policy when signing BIP-322
+  messages with WIF Store keys.
 
 
 # Q Specific Changes

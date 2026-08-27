@@ -953,6 +953,23 @@ def test_bip322_psbt_uses_msg_sign_policy(quick_start_hsm, change_hsm, attempt_p
     attempt_psbt(psbt, "Message signing not permitted")
 
 
+def test_bip322_wif_requires_any_msg_path(quick_start_hsm, change_hsm, attempt_psbt,
+                                           bip322_txn, settings_set, settings_remove):
+    settings_remove("wifs")
+    key = PrivateKey(prandom(32))
+    pubkey = key.K.sec()
+    settings_set("wifs", [(pubkey.hex(), bytes(key).hex())])
+    psbt, _ = bip322_txn(
+        [["p2wpkh", None, None, pubkey]], msg=b"HSM WIF BIP-322")
+
+    quick_start_hsm(DICT(msg_paths=["m/0"], warnings_ok=True))
+    attempt_psbt(psbt, "WIF Store message signing requires any path")
+
+    change_hsm(DICT(msg_paths=["any"], warnings_ok=True))
+    attempt_psbt(psbt)
+    settings_remove("wifs")
+
+
 def test_bip322_por_psbt_uses_msg_sign_policy(quick_start_hsm, change_hsm, attempt_psbt,
                                               bip322_txn):
     psbt, _ = bip322_txn([

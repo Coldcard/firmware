@@ -897,6 +897,12 @@ class HSMPolicy:
                         if not inp.required_key:
                             continue
 
+                        required_keys = inp.required_key if inp.is_multisig else [inp.required_key]
+                        if any(pk in psbt.wif_store for pk in required_keys):
+                            if 'any' not in self.msg_paths:
+                                raise ValueError("WIF Store message signing requires any path")
+                            continue
+
                         if inp.is_multisig:
                             paths = [
                                 keypath_to_str(inp.subpaths[pk])
