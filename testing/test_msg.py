@@ -66,6 +66,26 @@ def test_sign_msg_good(dev, press_select, msg, path, addr_fmt, addr_vs_path):
     assert verify_message(addr, sig, msg.decode("ascii")) is True
 
 
+def test_sign_msg_deltamode(dev, press_select, set_deltamode):
+    msg = b'testing 123'
+
+    for is_delta, is_valid in [(False, True), (True, False), (False, True)]:
+        set_deltamode(is_delta)
+        dev.send_recv(CCProtocolPacker.sign_message(msg, 'm'), timeout=None)
+
+        press_select()
+
+        done = None
+        while done == None:
+            time.sleep(0.050)
+            done = dev.send_recv(CCProtocolPacker.get_signed_msg(), timeout=None)
+
+        addr, raw = done
+        sig = str(b64encode(raw), 'ascii').replace('\n', '')
+
+        assert verify_message(addr, sig, msg.decode('ascii')) is is_valid
+
+
 def test_sign_msg_refused(dev, press_cancel):
     # user can refuse to sign (cancel)
 
