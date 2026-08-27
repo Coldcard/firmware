@@ -26,11 +26,12 @@ def upload_file(dev):
 
 @pytest.fixture
 def make_firmware(src_root_dir):
-    def doit(hw_compat, fname=f'{src_root_dir}/stm32/firmware-signed.bin', outname='tmp-firmware.bin'):
+    def doit(hw_compat, fname=f'{src_root_dir}/stm32/firmware-signed.bin',
+             outname='tmp-firmware.bin', version='3.0.99'):
         # os.system(f'signit sign 3.0.99 --keydir ../stm32/keys -r {fname} -o {outname} --hw-compat=0x{hw_compat:02x}')
         p = subprocess.run(
             [
-                'signit', 'sign', '3.0.99',
+                'signit', 'sign', version,
                  '--keydir', f'{src_root_dir}/stm32/keys',
                  '-r', f'{fname}',
                  '-o', f'{outname}',
@@ -136,34 +137,41 @@ def test_hacky_upgrade(mode, cap_story, transport, dev, sim_exec, make_firmware,
     #         assert a == data[pos:pos+128], repr(pos)
 
 
-def test_upgrade_staged_image_tamper(dev, make_firmware, upload_file, cap_story,
-                                     need_keypress, sim_exec, is_q1, is_mark5):
+def test_upgrade_staged_image_tamper(make_firmware, upload_file, cap_story,
+                                     press_select, sim_exec, sim_eval, is_q1, is_mark5):
     # a second upload may land while the upgrade approval is on screen
     # (check_busy allow-lists FirmwareUpgradeRequest); the staged bytes
     # must be re-verified before flashing, not just the header snapshot
     hw = "q1" if is_q1 else (5 if is_mark5 else 4)
-    data_a = make_firmware(hw)
+    data_a = make_firmware(hw, version='3.0.98')
     hdr_a = data_a[FW_HEADER_OFFSET:FW_HEADER_OFFSET+FW_HEADER_SIZE]
+
+    sim_exec("import glob; from pincodes import pa; "
+             "glob._fw_upgrade = pa.firmware_upgrade; "
+             "glob._fw_upgrade_called = False; "
+             "pa.firmware_upgrade = lambda *a: setattr(glob, '_fw_upgrade_called', True)")
 
     # upload image A with trailer -> fires authorize_upgrade
     upload_file(data_a + hdr_a)
-    _, story = cap_story()
-    assert "Install this new firmware?" in story
 
     # upload image B as a raw image (no trailer) -> no re-auth, but
     # overwrites the staging area via PSRAM.write
-    data_b = make_firmware(hw, outname='tmp-firmware-b.bin')
+    data_b = make_firmware(hw, outname='tmp-firmware-b.bin', version='3.0.99')
     assert len(data_b) == len(data_a)
+    assert data_b != data_a
     upload_file(data_b)
 
-    # approve what was displayed (image A); the pre-flash assert fires,
-    # caught by interact()'s except -> self.failed, cleanup, pop_menu
-    need_keypress('y')
-    time.sleep(1)
-    # must not have upgraded: request done and cleaned up, no reboot
-    rv = sim_exec("from auth import UserAuthorizedAction; "
-                  "print(UserAuthorizedAction.active_request is None)")
-    assert 'True' in rv
+    _, story = cap_story()
+    assert "Install this new firmware?" in story
+    assert "3.0.98" in story
+
+    try:
+        press_select()
+        time.sleep(1)
+        assert sim_eval("glob._fw_upgrade_called") == 'False'
+    finally:
+        sim_exec("from pincodes import pa; import glob; "
+                 "pa.firmware_upgrade = glob._fw_upgrade")
 
 
 # EOF

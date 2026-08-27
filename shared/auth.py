@@ -1617,6 +1617,7 @@ class FirmwareUpgradeRequest(UserAuthorizedAction):
         self.length = length
         self.hdr_check = hdr_check
         self.psram_offset = psram_offset
+        self.upgrade_write_count = glob.PSRAM.upgrade_write_count
 
     async def interact(self):
         from version import decode_firmware_header
@@ -1634,10 +1635,6 @@ class FirmwareUpgradeRequest(UserAuthorizedAction):
                 self.pop_menu()
                 return
 
-        # bind this request to the exact bytes staged in PSRAM right now;
-        # a second upload may land while the consent screen is up
-        self.staged_sha = psram_sha256(self.psram_offset, self.length)
-
         # Get informed consent to upgrade.
         date, version, _ = decode_firmware_header(self.hdr)
 
@@ -1654,8 +1651,7 @@ Binary checksum and signature will be further verified before any changes are ma
             ch = await ux_show_story(msg)
 
             if ch == 'y':
-                # re-verify the staged bytes are unchanged since approval
-                assert psram_sha256(self.psram_offset, self.length) == self.staged_sha
+                assert glob.PSRAM.upgrade_write_count == self.upgrade_write_count
 
                 # Accepted:
                 # - write final file header, so bootloader will see it
