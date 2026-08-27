@@ -38,6 +38,8 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
   verification of dice-roll or coin-flip mixing.
 - Bugfix: Simulator crashed on Bless Firmware, due to a desynced LED pipe. Thanks to
   [@hitechhayekian](https://github.com/hitechhayekian).
+- Bugfix: Fixed invalid signatures when signing transactions containing both
+  SegWit v0 and Taproot inputs
 - Security hardening: Remove the unused USB CDC/VCP serial interface from normal
   operation and keyboard emulation.
 
