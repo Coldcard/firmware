@@ -1357,7 +1357,7 @@ class psbtObject(psbtProxy):
     short_values = { PSBT_GLOBAL_TX_MODIFIABLE }
     no_keys = { PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE }
     blank_flds = ("hashPrevouts", "hashSequence", "hashOutputs", "hashValues", "hashScriptPubKeys",
-                  "my_tr_in", "unknown")
+                  "tr_hashPrevouts", "tr_hashSequence", "tr_hashOutputs", "my_tr_in", "unknown")
 
     def __init__(self):
         super().__init__()
@@ -3276,21 +3276,21 @@ class psbtObject(psbtProxy):
                 hashValues.update(pack("<q", inp.amount))
                 hashScriptPubKeys.update(ser_string(inp.utxo_spk))
 
-            self.hashPrevouts = hashPrevouts.digest()
-            self.hashSequence = hashSequence.digest()
+            self.tr_hashPrevouts = hashPrevouts.digest()
+            self.tr_hashSequence = hashSequence.digest()
             self.hashValues = hashValues.digest()
             self.hashScriptPubKeys = hashScriptPubKeys.digest()
 
             del hashPrevouts, hashSequence, hashValues, hashScriptPubKeys, txi
             gc.collect()
 
-        if not self.hashOutputs and out_type == SIGHASH_ALL:
+        if not self.tr_hashOutputs and out_type == SIGHASH_ALL:
             # output side
             hashOutputs = sha256()
             for out_idx, txo in self.output_iter():
                 hashOutputs.update(txo.serialize())
 
-            self.hashOutputs = hashOutputs.digest()
+            self.tr_hashOutputs = hashOutputs.digest()
 
             del hashOutputs, txo
             gc.collect()
@@ -3301,17 +3301,17 @@ class psbtObject(psbtProxy):
 
         if in_type != SIGHASH_ANYONECANPAY:
             # sha_prevouts
-            msg += self.hashPrevouts
+            msg += self.tr_hashPrevouts
             # sha_amounts
             msg += self.hashValues
             # sha_scriptpubkeys
             msg += self.hashScriptPubKeys
             # sha_sequences
-            msg += self.hashSequence
+            msg += self.tr_hashSequence
 
         if out_type == SIGHASH_ALL:
             # sha_outputs
-            msg += self.hashOutputs
+            msg += self.tr_hashOutputs
 
         # spend type
         spend_type = 0
