@@ -304,6 +304,53 @@ def test_real_signing(fake_txn, use_regtest, try_sign, dev, num_ins,
     assert all(x['txinwitness'] for x in decoded['vin'])
 
 
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("input_types", [
+    ("bech32m", "bech32"),
+    ("bech32", "bech32m"),
+], ids=["taproot-first", "segwit-v0-first"])
+def test_mixed_segwit_v0_taproot_signatures(input_types, use_regtest, bitcoind_d_sim_watch,
+                                             bitcoind, try_sign):
+    use_regtest()
+    sim = bitcoind_d_sim_watch
+
+    addresses = {
+        addr_type: sim.getnewaddress("", addr_type)
+        for addr_type in ("bech32", "bech32m")
+    }
+    for address in addresses.values():
+        bitcoind.supply_wallet.sendtoaddress(address, 1)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    utxos = {utxo["address"]: utxo for utxo in sim.listunspent()}
+    ordered_utxos = [utxos[addresses[addr_type]] for addr_type in input_types]
+    inputs = [
+        {"txid": utxo["txid"], "vout": utxo["vout"]}
+        for utxo in ordered_utxos
+    ]
+
+    destination = bitcoind.supply_wallet.getnewaddress()
+    psbt = sim.walletcreatefundedpsbt(
+        inputs, [{destination: 1.9}], 0, {"add_inputs": False, "fee_rate": 20}
+    )["psbt"]
+
+    decoded = sim.decodepsbt(psbt)
+    assert [
+        (txin["txid"], txin["vout"])
+        for txin in decoded["tx"]["vin"]
+    ] == [
+        (utxo["txid"], utxo["vout"])
+        for utxo in ordered_utxos
+    ]
+
+    _, signed_psbt = try_sign(b64decode(psbt), accept=True, finalize=False)
+    finalized = sim.finalizepsbt(b64encode(signed_psbt).decode())
+    assert finalized["complete"] is True
+
+    acceptance = sim.testmempoolaccept([finalized["hex"]])[0]
+    assert acceptance["allowed"] is True, acceptance
+
+
 @pytest.mark.unfinalized        # iff we_finalize=F
 @pytest.mark.parametrize('we_finalize', [ False, True ])
 @pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
