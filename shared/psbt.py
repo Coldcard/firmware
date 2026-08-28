@@ -3635,14 +3635,12 @@ class psbtObject(psbtProxy):
 
                 for i, (k, v) in enumerate(inp.taproot_subpaths):
                     xpk = self.get(k)
-                    if inp.ik_idx and i in inp.ik_idx:
+                    if inp.ik_idx and i in inp.ik_idx and self.active_miniscript.ik_u:
                         # internal key
-                        if self.active_miniscript.ik_u:
-                            # no way to sign with unspend
-                            continue
-                    else:
-                        if xpk in done_keys:
-                            continue
+                        # no way to sign with unspend
+                        continue
+                    if xpk in done_keys:
+                        continue
 
                     # add xfp
                     xfp = self.handle_zero_xfp(self.parse_xfp_path(v[2]), self.my_xfp, None)[0]
