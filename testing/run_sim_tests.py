@@ -399,11 +399,11 @@ def main():
         start_time = time.time()
         def add_to_queue(module_name, simulator_args, queue):
             if module_name == "test_miniscript.py":
-                queue.append((2, [module_name, simulator_args, "not liana_miniscripts_simple and not test_tapscript and not test_bitcoind_tapscript_address and not test_minitapscript", ""]))
+                queue.append((1, [module_name, simulator_args, "not liana_miniscripts_simple and not test_tapscript and not test_bitcoind_tapscript_address and not test_minitapscript", ""]))
                 queue.append((0, [module_name, simulator_args, "liana_miniscripts_simple", "-sep1"]))
-                queue.append((2, [module_name, simulator_args, "test_tapscript", "-sep2"]))
-                queue.append((0, [module_name, simulator_args, "test_bitcoind_tapscript_address", "-sep3"]))
-                queue.append((0, [module_name, simulator_args, "test_minitapscript", "-sep4"]))
+                queue.append((0, [module_name, simulator_args, "test_tapscript", "-sep2"]))
+                queue.append((2, [module_name, simulator_args, "test_bitcoind_tapscript_address", "-sep3"]))
+                queue.append((1, [module_name, simulator_args, "test_minitapscript", "-sep4"]))
 
             elif module_name == "test_musig2.py":
                 queue.append((0, [module_name, simulator_args, None, ""]))
@@ -411,20 +411,21 @@ def main():
             elif module_name == "test_multisig.py":
                 # split takes too much time
                 queue.append((0, [module_name, simulator_args, "not tutorial and not airgapped and not ms_address and not descriptor_export", ""]))
-                queue.append((0, [module_name, simulator_args, "airgapped", "-sep1"]))
+                queue.append((2, [module_name, simulator_args, "airgapped", "-sep1"]))
                 queue.append((0, [module_name, simulator_args, "tutorial", "-sep2"]))
-                queue.append((0, [module_name, simulator_args, "ms_address", "-sep3"]))
-                queue.append((0, [module_name, simulator_args, "descriptor_export", "-sep4"]))
+                queue.append((1, [module_name, simulator_args, "ms_address", "-sep3"]))
+                queue.append((2, [module_name, simulator_args, "descriptor_export", "-sep4"]))
 
             elif module_name == "test_seed_xor.py":
                 # split takes too much time
-                queue.append((0, [module_name, simulator_args, "test_import_xor", "-sep1"]))
-                queue.append((0, [module_name, simulator_args, "not test_import_xor", ""]))
+                queue.append((1, [module_name, simulator_args, "test_import_xor", "-sep1"]))
+                queue.append((2, [module_name, simulator_args, "not test_import_xor", ""]))
 
             elif module_name in ["test_export.py", "test_ephemeral.py", "test_sign.py", "test_msg.py",
                                  "test_backup.py", "test_bsms.py"]:
                 # higher priority
-                queue.append((1, [module_name, simulator_args, None, ""]))
+                queue.append((1 if module_name == "test_export.py" else 0,
+                              [module_name, simulator_args, None, ""]))
 
             else:
                 # standard priority
