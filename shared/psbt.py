@@ -3623,9 +3623,9 @@ class psbtObject(psbtProxy):
                             else:
                                 key_signed_num_map[pk] += 1
 
-                    for key, num in key_signed_num_map.items():
+                    for key, num in key_musig_num_map.items():
                         xkey = key[1:]
-                        if key_musig_num_map.get(key) == num:
+                        if key_signed_num_map.get(key, 0) == num:
                             # all musig expressions signed
                             done_keys.add(xkey)
                         else:
