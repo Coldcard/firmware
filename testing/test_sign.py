@@ -335,10 +335,17 @@ def test_mixed_segwit_v0_taproot_signatures(input_types, use_regtest, bitcoind_d
     )["psbt"]
 
     decoded = sim.decodepsbt(psbt)
-    assert [
-        (txin["txid"], txin["vout"])
-        for txin in decoded["tx"]["vin"]
-    ] == [
+    if "tx" in decoded:  # PSBTv0
+        decoded_inputs = [
+            (txin["txid"], txin["vout"])
+            for txin in decoded["tx"]["vin"]
+        ]
+    else:  # PSBTv2
+        decoded_inputs = [
+            (psbt_input["previous_txid"], psbt_input["previous_vout"])
+            for psbt_input in decoded["inputs"]
+        ]
+    assert decoded_inputs == [
         (utxo["txid"], utxo["vout"])
         for utxo in ordered_utxos
     ]
