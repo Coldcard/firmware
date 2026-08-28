@@ -22,6 +22,7 @@ This lists the new changes that have not yet been published in a normal release.
   filesystems with more than one sector per cluster), fixing an integer underflow in
   `psram_copy_file`/`psram_mmap_file` that allowed out-of-bounds PSRAM writes, reads,
   and mappings from a compromised USB host.
+- Bugfix: Hide Change Main PIN while a temporary seed or BIP-39 passphrase wallet is active.
 
 # Mk Specific Changes
 

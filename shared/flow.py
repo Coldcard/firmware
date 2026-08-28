@@ -151,7 +151,7 @@ with the Coldcard.''',
 # Mostly pre-login values here.
 LoginPrefsMenu = [
     #         xxxxxxxxxxxxxxxx
-    MenuItem('Change Main PIN', f=main_pin_changer),
+    MenuItem('Change Main PIN', f=main_pin_changer, predicate=is_not_tmp),
     NonDefaultMenuItem('Trick PINs', 'tp', menu=TrickPinMenu.make_menu, predicate=has_real_secret),
     NonDefaultMenuItem('Set Nickname', 'nick', prelogin=True, f=pick_nickname),
     NonDefaultMenuItem('Scramble Keys', 'rngk', prelogin=True, f=pick_scramble, default_value=0),
