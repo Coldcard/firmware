@@ -181,4 +181,10 @@ def test_main_pin(goto_pin_options, pick_menu_item, cap_story, cap_screen,
     change_pin(new_pin, DEF_PIN, 'Main PIN')
     verify_pin_set(DEF_PIN)
 
+
+def test_main_pin_hidden_with_passphrase(set_bip39_pw, goto_pin_options, cap_menu):
+    set_bip39_pw('temporary wallet')
+    goto_pin_options()
+    assert 'Change Main PIN' not in cap_menu()
+
 # EOF
