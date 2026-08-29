@@ -186,6 +186,15 @@ def import_multisig(request, is_q1, need_keypress, offer_ms_import, press_nfc):
             goto_home = request.getfixturevalue('goto_home')
             pick_menu_item = request.getfixturevalue('pick_menu_item')
 
+            # Write before the picker opens: the device scans the card when
+            # Import is chosen, so a later write leaves the picker empty.
+            if (way in ("sd", "vdisk")) and not fname:
+                path_f = request.getfixturevalue(
+                        'microsd_path' if way == "sd" else 'virtdisk_path')
+                fname = (name or "ms_wal.txt") + ".txt"
+                with open(path_f(fname), "w") as f:
+                    f.write(config)
+
             if "Skip Checks?" not in cap_menu():
                 # we are not in multisig menu
                 goto_home()
@@ -221,15 +230,7 @@ def import_multisig(request, is_q1, need_keypress, offer_ms_import, press_nfc):
 
             else:
                 assert way in ("sd", "vdisk")
-                if way == "sd":
-                    path_f = request.getfixturevalue('microsd_path')
-                else:
-                    path_f = request.getfixturevalue('virtdisk_path')
-
-                if not fname:
-                    fname = (name or "ms_wal.txt") + ".txt"
-                    with open(path_f(fname), "w") as f:
-                        f.write(config)
+                # file already written above, before the picker opened
 
                 if way == "vdisk":
                     if "(2) to import from Virtual Disk" not in story:
