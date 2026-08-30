@@ -3577,10 +3577,10 @@ class psbtObject(psbtProxy):
         # provide the set of xfp's that still need to sign PSBT
         # - used to find which multisig-signer needs to go next
         rv = set()
-        done_keys = set()
         ignore_keys = set()
 
         for inp in self.inputs:
+            done_keys = set()
             if inp.fully_signed:
                 continue
 

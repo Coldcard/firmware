@@ -29,6 +29,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 - Bugfix: Generate distinct MuSig2 nonces for different aggregate-key derivations of the same participant set
 - Bugfix: Harden MuSig2 session handling for PSBTs with foreign MuSig2 inputs or differing witness UTXO data
 - Bugfix: Prevent PSBT corruption when the same MuSig2 participant performs multiple signing rounds via Key Teleport
+- Bugfix: Track remaining multisig and Tapscript signers independently for each PSBT input
 - Change: Limit MuSig2 participant lists to 32
 - Bugfix: Generate unique names when creating multisig wallets from PSBTs with the same M-of-N parameters
 - Bugfix: Correctly identify consolidations containing zero-value OP_RETURN outputs without misclassifying other zero-value external outputs
