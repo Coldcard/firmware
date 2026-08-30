@@ -2,7 +2,6 @@
 freeze_as_mpy('', [
 	'battery.py',
 	'bbqr.py',
-	'calc.py',
 	'decoders.py',
 	'gpu.py',
 	'keyboard.py',

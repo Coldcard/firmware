@@ -16,10 +16,18 @@
 
 ---
 
-# COLDCARD Hardware Wallet
+# COLDCARD Calculator
 
-Coldcard is an Affordable, Ultra-secure & Verifiable Hardware Wallet for Bitcoin.
-Get yours at [Coldcard.com](http://coldcard.com)
+Following the entropy failure described in the Security Advisory above --
+a firmware bug that went undetected for five years and led to well over
+$100M in bitcoin stolen from affected owners since July 2026 -- Coinkite
+has decided that private key custody is not a responsibility this codebase
+should keep holding. As of this release, COLDCARD ships as a standalone,
+offline four-function calculator. No seed, no PIN, no private keys are
+generated, stored, or required.
+
+Existing units can be repurposed with this firmware; no hardware changes are
+needed. Get yours at [Coldcard.com](http://coldcard.com)
 
 [Follow @COLDCARDwallet on Twitter](https://twitter.com/coldcardwallet) to keep up
 with the latest updates and security alerts.
@@ -247,6 +255,9 @@ Top-level dirs:
 - expected to be largely in python, and higher-level
 - code exclusive to the Mk4 or Mk5 will be listed in `manifest_mk4.py`, and
   to the Q will be listed in `manifest_q1.py`
+- `calculator.py` is the entire application now; `main.py` starts it directly
+  after boot. The old wallet code (seed, PSBT, multisig, etc) is still
+  present in this tree for reference but is no longer reachable at runtime.
 
 `unix`
 

@@ -17,6 +17,24 @@ This lists the changes in the most recent firmware, for each hardware platform.
 
 # Shared Improvements - Both Mk and Q
 
+- **Product pivot: COLDCARD is now a calculator.** Following the entropy
+  failure described above -- undetected for five years, and responsible for
+  well over $100M in bitcoin stolen from affected owners since July 2026 --
+  we're removing the part of this product whose job was to be trusted with
+  private keys.
+    - Boot flow no longer asks for a PIN, checks the secure elements, or
+      loads a wallet menu; `main.py` starts `calculator.py` directly.
+    - New four-function calculator app (`shared/calculator.py`), with a
+      short scrollback of recent operations shown on screen.
+    - Q1: operators are typed directly on the keyboard (`+ - * /`, `.`,
+      Enter for `=`, Backspace, and Ctrl-U/Esc to clear).
+    - Mk4/Mk5: the membrane numpad only has digits plus the X/Y buttons, so
+      X now cycles through the four operators and Y is `=`.
+    - Wallet/seed/PSBT/multisig code remains in the source tree for this
+      release but is dead code -- nothing in the new boot path imports it.
+      Removing it outright is planned for a later cleanup release.
+    - No seed material is generated, read, or required by this firmware.
+
 - Improvements to Entropy Generation:
     - Master seed generation now combines fresh entropy from the STM32 TRNG,
       SE1, and SE2. Previously, SE1 and SE2 contributed through boot-time RNG

@@ -7,6 +7,7 @@ freeze_as_mpy('', [
 	'auth.py',
 	'backups.py',
 	'block_height.py',
+	'calculator.py',
 	'callgate.py',
 	'ccc.py',
 	'chains.py',

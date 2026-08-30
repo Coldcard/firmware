@@ -30,7 +30,7 @@ except:
 # Sometimes useful: die early for debug
 #raise SystemExit
 
-print("---\nColdcard Wallet from Coinkite Inc. (c) 2018-2024.")
+print("---\nColdcard Calculator from Coinkite Inc. (c) 2018-2026.")
 
 import version
 datestamp,vers,_ = version.get_mpy_version()
@@ -81,58 +81,28 @@ glob.settings = settings
 
 async def more_setup():
     # Boot up code; splash screen is being shown
+    #
+    # As of this release, COLDCARD no longer holds secrets, so there is
+    # nothing here to unlock: no PIN prompt, no secure-element check, no
+    # wallet menu. We still bring up the microSD subsystem below because a
+    # follow-up release will add save/load of calculation history, but the
+    # login/menu machinery that used to run at this point (see git history
+    # of this file, and actions.start_login_sequence/goto_top_menu) is gone.
     try:
         from files import CardSlot
         CardSlot.setup()
-
-        # This "pa" object holds some state shared w/ bootloader about the PIN
-        try:
-            from pincodes import pa
-            # check for bricked system early
-            # bricked CC not going past this point
-            await pa.enforce_brick()
-
-            pa.setup(b'')       # just to see where we stand.
-            is_blank = pa.is_blank()
-        except RuntimeError as e:
-            is_blank = True
-            print("Problem: %r" % e)
 
         if version.is_factory_mode:
             print("factory mode")
             # in factory mode, turn on USB early to allow debug/setup
             from usb import enable_usb
             enable_usb()
-
-            # always start the self test.
-            if not settings.get('tested', False):
-                from actions import start_selftest
-                await start_selftest()
-
-        elif is_blank:
-            # force them to accept terms (unless marked as already done in settings)
-            # only if no main PIN chosen
-            from actions import accept_terms
-            await accept_terms()
-
-        # Prompt for PIN and then pick appropriate top-level menu,
-        # based on contents of secure chip (ie. is there a wallet defined)
-        from actions import start_login_sequence
-        await start_login_sequence()
     except BaseException as exc:
         die_with_debug(exc)
 
-    # define contents of main menu
-    from actions import goto_top_menu
-    goto_top_menu()
+    IMPT.start_task('mainline', mainline())
 
-    # fetch this function for mainline to use
-    from ux import the_ux
-    doit = the_ux.interact
-
-    IMPT.start_task('mainline', mainline(doit))
-
-async def mainline(doit):
+async def mainline():
     # Mainline of program, after startup. Never stops.
     #
     # - Do not add to this function, its vars are
@@ -141,8 +111,8 @@ async def mainline(doit):
     gc.collect()
     #print("Free mem: %d" % gc.mem_free())      # 515536 on mk4!
 
-    while 1:
-        await doit()
+    from calculator import calculator_main
+    await calculator_main()
 
 
 def go():
