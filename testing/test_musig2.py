@@ -754,20 +754,20 @@ def test_musig_incomplete_rounds(use_regtest, clear_miniscript, build_musig_wall
     assert not po.inputs[0].musig_part_sigs
     assert po.inputs[0].taproot_key_sig is None
 
-    # Nonces alone never finalize. With one participant partial missing, our
-    # partial may be added but an aggregate signature still must not appear.
-    start_sign(base64.b64decode(empty_psbt))
-    full_nonce_psbt = BasicPSBT().parse(end_sign()).as_b64_str()
-    for signer in signers:
-        full_nonce_psbt = signer.walletprocesspsbt(
-            full_nonce_psbt, True, "DEFAULT", True, False)["psbt"]
-    po = BasicPSBT().parse(base64.b64decode(full_nonce_psbt))
+    # Supplying the withheld nonce must resume the same signing round.
+    full_nonce_psbt = signers[1].walletprocesspsbt(
+        po.as_b64_str(), True, "DEFAULT", True, False)["psbt"]
+    start_sign(base64.b64decode(full_nonce_psbt))
+    po = BasicPSBT().parse(end_sign())
     assert len(po.inputs[0].musig_pubnonces) == 3
-    assert not po.inputs[0].musig_part_sigs
-    assert not wo.finalizepsbt(full_nonce_psbt)["complete"]
+    assert len(po.inputs[0].musig_part_sigs) == 1
+    assert po.inputs[0].taproot_key_sig is None
+    assert not wo.finalizepsbt(po.as_b64_str())["complete"]
 
+    # With one participant partial missing, an aggregate signature still
+    # must not appear.
     one_cosigner_partial = signers[0].walletprocesspsbt(
-        full_nonce_psbt, True, "DEFAULT", True, False)["psbt"]
+        po.as_b64_str(), True, "DEFAULT", True, False)["psbt"]
     start_sign(base64.b64decode(one_cosigner_partial))
     po = BasicPSBT().parse(end_sign())
     assert len(po.inputs[0].musig_part_sigs) == 2

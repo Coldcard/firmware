@@ -2741,6 +2741,8 @@ class psbtObject(psbtProxy):
 
             if len(pubnonces) < len(cosigners):
                 # cannot sign as number of pubnonces is insufficient
+                if self.allow_cache_store is None:
+                    self.allow_cache_store = True
                 return
 
             # all pubnonces are known - we can sign
@@ -2800,7 +2802,7 @@ class psbtObject(psbtProxy):
         session_id = None
         session_rand = None
         musig_round1 = False
-        self.allow_cache_store = False
+        self.allow_cache_store = None
         if self.session and self.active_miniscript:
             session_id = make_musig_session_id(self.session.digest(),
                                                 self.witness_session.digest()
@@ -2817,7 +2819,7 @@ class psbtObject(psbtProxy):
         store_session = False
         try:
             self._sign_it(alternate_secret, my_xfp, musig_session)
-            store_session = musig_round1 and self.allow_cache_store
+            store_session = self.allow_cache_store is True
         finally:
             if musig_session:
                 if store_session:
