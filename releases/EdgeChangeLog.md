@@ -50,6 +50,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 - Bugfix: Hide Change Main PIN while a temporary seed or BIP-39 passphrase wallet is active
 - Bugfix: Do not misidentify future-version SegWit outputs as Taproot change.
 - Bugfix: Reject unsupported Taproot leaf versions during PSBT signing (only Tapscript `0xc0` is supported).
+- Bugfix: Report the correct transaction ID when finalized MuSig transactions contain scriptSigs.
 - Security hardening: Remove the unused USB CDC/VCP serial interface from normal
   operation and keyboard emulation.
 

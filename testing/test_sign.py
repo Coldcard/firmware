@@ -1541,6 +1541,25 @@ def test_txid_calc(num_ins, fake_txn, try_sign, dev, decode_with_bitcoind, cap_s
     assert decoded['txid'] == txid
 
 
+@pytest.mark.parametrize("scripted_input", ["p2pkh", "p2sh-p2wpkh"])
+def test_musig_txid_with_final_scriptsig(scripted_input, fake_txn, try_sign, dev,
+                                         txid_from_export_prompt, press_cancel):
+    participant = BIP32Node.from_wallet_key(dev.master_xpub).subkey_for_path("0/0").sec()
+
+    def add_musig_metadata(psbt):
+        psbt.inputs[0].musig_pubnonces[(participant, participant, b"")] = participant * 2
+
+    psbt = fake_txn([["p2tr"], [scripted_input]], 1, psbt_hacker=add_musig_metadata)
+    _, txn = try_sign(psbt, accept=True, finalize=True, exit_export_loop=False)
+    txid = txid_from_export_prompt()
+    press_cancel()
+    press_cancel()
+
+    finalized = CTransaction()
+    finalized.deserialize(BytesIO(txn))
+    assert finalized.txid().hex() == txid
+
+
 @pytest.mark.unfinalized            # iff partial=1
 @pytest.mark.reexport
 @pytest.mark.parametrize('encoding', ['binary', 'hex', 'base64'])

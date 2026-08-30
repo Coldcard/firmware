@@ -3683,11 +3683,13 @@ class psbtObject(psbtProxy):
             fd.write(b'\x00\x01')
 
         body_start = fd.tell()
+        txid_session = self.session
 
         # inputs
         fd.write(ser_compact_size(self.num_inputs))
         for in_idx, txi in self.input_iter():
             inp = self.inputs[in_idx]
+            original_script_sig = txi.scriptSig
 
             # first check - if no signature(s) - fail soon
             if inp.is_miniscript and not inp.taproot_key_sig:
@@ -3728,6 +3730,8 @@ class psbtObject(psbtProxy):
                         # P2PKH: scriptSig is <sig> <pubkey>
                         txi.scriptSig = ser_push_data(der_sig) + ser_push_data(pubkey)
 
+            if txi.scriptSig != original_script_sig:
+                txid_session = None
             fd.write(txi.serialize())
 
         # outputs
@@ -3777,10 +3781,10 @@ class psbtObject(psbtProxy):
             # easy w/o witness data
             txid = ngu.hash.sha256s(fd.checksum.digest())
         else:
-            if self.session:
+            if txid_session:
                 # musig transaction with session already calculated, which is basically TXID
                 # just needs another single SHA256 + byte reverse done few lines below
-                txid = ngu.hash.sha256s(self.session.digest())
+                txid = ngu.hash.sha256s(txid_session.digest())
             else:
                 # legacy cost here for segwit: re-read what we just wrote
                 txid = calc_txid(fd, (0, fd.tell()), (body_start, body_end-body_start))
