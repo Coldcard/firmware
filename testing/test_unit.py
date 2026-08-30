@@ -171,6 +171,18 @@ def test_hmac(sim_exec, msg, key, hasher):
     assert got == expect
     #print(expect)
 
+def test_tapscript_leaf_version(sim_exec):
+    cmd = ("from chains import tapscript_serialize; "
+           "from ubinascii import hexlify; "
+           "RV.write(hexlify(tapscript_serialize(b'\\x51', 0xfe)))")
+    rv = sim_exec(cmd)
+    assert rv == "fe0151"
+
+    rv = sim_exec(
+        "from chains import tapscript_serialize; tapscript_serialize(b'\\x51', 0xc1)"
+    )
+    assert "Tapleaf ver 0xc1" in rv
+
 @pytest.mark.parametrize('secret,counter,expect', [
         ( b'abcdefghij', 1, '765705'),
         ( b'abcdefghij', 2, '816065'),

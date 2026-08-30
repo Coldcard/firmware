@@ -46,9 +46,8 @@ def taptweak(internal_key, tweak=None):
     return xo_pubkey_tweaked.to_bytes()
 
 def tapscript_serialize(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
-    # leaf version is only 7 msb
-    lv = leaf_version % TAPROOT_LEAF_MASK
-    return bytes([lv]) + ser_string(script)
+    assert (leaf_version & ~TAPROOT_LEAF_MASK) == 0, "Tapleaf ver 0x%02x" % leaf_version
+    return bytes([leaf_version]) + ser_string(script)
 
 def tapleaf_hash(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
     return ngu.hash.sha256t(TAP_LEAF_H, tapscript_serialize(script, leaf_version), True)
