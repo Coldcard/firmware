@@ -2714,39 +2714,45 @@ class psbtObject(psbtProxy):
         sec_rand = ngu.hash.sha256s(b"".join((session_rand, pack("<I", inp_idx),
                                               my_participant_key, der_agg_k, leaf_hash)))
 
-        # generate musig2 secnonce & pubnonce
-        sn, pn = ngu.secp256k1.musig_nonce_gen(keypair.pubkey(), sec_rand, keypair.privkey(),
-                                               digest, keyagg_cache)
+        sn = None
+        try:
+            # generate musig2 secnonce & pubnonce
+            sn, pn = ngu.secp256k1.musig_nonce_gen(keypair.pubkey(), sec_rand, keypair.privkey(),
+                                                   digest, keyagg_cache)
 
-        if my_musig_pubnonces_key not in musig_pubnonces:
-            # I haven't added my pubnoce yet - adding now
-            my_pn_bytes = pn.to_bytes()
-            inp.musig_added_pubnonces[my_musig_pubnonces_key] = my_pn_bytes
-            # we added nonce - done
-            # strict 1st & 2nd round separation
-            self.allow_cache_store = True
-            return
+            if my_musig_pubnonces_key not in musig_pubnonces:
+                # I haven't added my pubnoce yet - adding now
+                my_pn_bytes = pn.to_bytes()
+                inp.musig_added_pubnonces[my_musig_pubnonces_key] = my_pn_bytes
+                # we added nonce - done
+                # strict 1st & 2nd round separation
+                self.allow_cache_store = True
+                return
 
-        pubnonces = set()
-        for (pk, ak, lh), pnonce in musig_pubnonces.items():
-            if (pk in cosigners) and (ak == der_agg_k) and (lh == leaf_hash):
-                # this is the nonce belonging to our aggregate key
-                pubnonces.add(pnonce)
-                if pk == my_participant_key:
-                    # required, because if pubnonce is different from what was generated in 1st
-                    # round - signatures will be invalid
-                    assert pnonce == pn.to_bytes()
+            pubnonces = set()
+            for (pk, ak, lh), pnonce in musig_pubnonces.items():
+                if (pk in cosigners) and (ak == der_agg_k) and (lh == leaf_hash):
+                    # this is the nonce belonging to our aggregate key
+                    pubnonces.add(pnonce)
+                    if pk == my_participant_key:
+                        # required, because if pubnonce is different from what was generated in 1st
+                        # round - signatures will be invalid
+                        assert pnonce == pn.to_bytes()
 
-        if len(pubnonces) < len(cosigners):
-            # cannot sign as number of pubnonces is insufficient
-            return
+            if len(pubnonces) < len(cosigners):
+                # cannot sign as number of pubnonces is insufficient
+                return
 
-        # all pubnonces are known - we can sign
-        aggnonce = ngu.secp256k1.musig_nonce_agg([ngu.secp256k1.MusigPubNonce(pn) for pn in pubnonces])
-        session = ngu.secp256k1.musig_nonce_process(aggnonce, digest, keyagg_cache)
-        part_sig = ngu.secp256k1.musig_partial_sign(sn, keypair, keyagg_cache, session)
-        my_part_sig_bytes = part_sig.to_bytes()
-        self.sig_added = True
+            # all pubnonces are known - we can sign
+            aggnonce = ngu.secp256k1.musig_nonce_agg([ngu.secp256k1.MusigPubNonce(pn) for pn in pubnonces])
+            session = ngu.secp256k1.musig_nonce_process(aggnonce, digest, keyagg_cache)
+            part_sig = ngu.secp256k1.musig_partial_sign(sn, keypair, keyagg_cache, session)
+            my_part_sig_bytes = part_sig.to_bytes()
+            self.sig_added = True
+        finally:
+            if sn is not None:
+                sn.clear()
+            stash.blank_object(sec_rand)
 
         # good for debug - verification of partial musig signature CC created
         # assert part_sig.verify(pn, keypair.pubkey(), keyagg_cache, session)
