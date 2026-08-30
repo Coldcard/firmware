@@ -2008,6 +2008,25 @@ def test_nested_segwit_witness_utxo_only_fee_shown(dev, fake_txn, start_sign,
     assert "unverified witness UTXO" not in story
     end_sign(accept=True)
 
+def test_future_witness_output_not_p2tr_change(fake_txn, start_sign, cap_story,
+                                               press_cancel):
+    def hack(psbt):
+        txn = CTransaction()
+        txn.deserialize(BytesIO(psbt.txn))
+        assert txn.vout[0].scriptPubKey[:2] == bytes([0x51, 0x20])
+        txn.vout[0].scriptPubKey = bytes([0x52]) + txn.vout[0].scriptPubKey[1:]
+        psbt.txn = txn.serialize_with_witness()
+
+    psbt = fake_txn(1, [("p2tr", None, True)], addr_fmt="p2tr", psbt_hacker=hack)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "Change back" not in story
+    assert "Sending to 1 not well understood script(s)." in story
+    assert "- to address -" in story
+    press_cancel()
+
 def test_own_legacy_witness_utxo_only_fails(dev, fake_txn, start_sign, cap_story, press_cancel):
     def hack(psbt):
         _replace_input_utxo_with_witness_utxo(psbt, 0)

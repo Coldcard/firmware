@@ -48,6 +48,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 - Bugfix: Fixed invalid signatures when signing transactions containing both
   SegWit v0 and Taproot inputs
 - Bugfix: Hide Change Main PIN while a temporary seed or BIP-39 passphrase wallet is active
+- Bugfix: Do not misidentify future-version SegWit outputs as Taproot change.
 - Security hardening: Remove the unused USB CDC/VCP serial interface from normal
   operation and keyboard emulation.
 

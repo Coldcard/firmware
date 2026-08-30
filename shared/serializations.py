@@ -425,7 +425,7 @@ class CTxOut(object):
 
     def is_p2tr(self):
         return len(self.scriptPubKey) == 34 and \
-                (OP_1 <= self.scriptPubKey[0] <= OP_16) and self.scriptPubKey[1] == 0x20
+                self.scriptPubKey[0] == OP_1 and self.scriptPubKey[1] == 0x20
 
     def is_p2wpkh(self):
         return len(self.scriptPubKey) == 22 and \

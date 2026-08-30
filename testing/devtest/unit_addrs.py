@@ -4,7 +4,7 @@
 from h import a2b_hex, b2a_hex
 from serializations import CTxOut
 from uio import BytesIO
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2SH
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2SH, AF_P2TR
 
 
 cases = [
@@ -53,3 +53,12 @@ for raw_txo, expect_type, expect_hash in cases:
     assert addr_type == expect_type, addr_type
 
 
+program = bytes(range(32))
+p2tr = CTxOut(scriptPubKey=bytes([0x51, 0x20]) + program)
+assert p2tr.is_p2tr()
+assert p2tr.get_address() == (AF_P2TR, program)
+
+for witness_version in range(2, 17):
+    future = CTxOut(scriptPubKey=bytes([0x50 + witness_version, 0x20]) + program)
+    assert not future.is_p2tr()
+    assert future.get_address() == (None, future.scriptPubKey)
