@@ -1075,6 +1075,63 @@ def test_pathless_tapscript_input_not_signed(clear_miniscript, offer_minsc_impor
     assert not signed.inputs[1].taproot_key_sig
 
 
+def test_tapscript_leaf_version_mismatch(clear_miniscript, offer_minsc_import,
+                                         press_select, press_cancel, get_cc_key, dev,
+                                         fake_txn, start_sign, end_sign, cap_story,
+                                         settings_remove, use_testnet):
+    clear_miniscript()
+    settings_remove("wifs")
+    use_testnet()
+
+    name = "bad-leaf-ver"
+    account = "m/86h/1h/0h"
+    cc_key = get_cc_key(account)
+    internal_expr = ranged_unspendable_internal_key()
+    desc = f"tr({internal_expr},pk({cc_key}))"
+
+    _, story = offer_minsc_import(json.dumps(dict(name=name, desc=desc)))
+    assert "Create new miniscript wallet?" in story
+    press_select()
+
+    internal_root = BIP32Node.from_chaincode_pubkey(
+        32 * b"\x01", b"\x02" + bytes.fromhex(BIP_341_H)
+    )
+    internal_key = internal_root.subkey_for_path("0/0").sec()[1:]
+    account_xpub = dev.send_recv(CCProtocolPacker.get_xpub(account), timeout=None)
+    signing_key = BIP32Node.from_hwif(account_xpub).subkey_for_path("0/0").sec()[1:]
+    script = b"\x20" + signing_key + b"\xac"
+    merkle_root = tagged_sha256(b"TapLeaf", b"\xc0\x22" + script)
+
+    psbt = BasicPSBT().parse(fake_txn(1, 1, addr_fmt="p2tr"))
+    inp = psbt.inputs[0]
+    inp.witness_utxo = CTxOut(
+        100_000_000, b"\x51\x20" + taptweak(internal_key, merkle_root)
+    ).serialize()
+    inp.taproot_internal_key = internal_key
+    inp.taproot_merkle_root = merkle_root
+    inp.taproot_scripts = {(script, 0xc2): {b"\xc2" + internal_key}}
+    inp.taproot_bip32_paths = {
+        internal_key: b"\x00" + internal_root.fingerprint() + struct.pack("<2I", 0, 0),
+        signing_key: b"\x01" + merkle_root
+                     + struct.pack("<I", dev.master_fingerprint)
+                     + struct.pack("<5I", 86 | 0x80000000, 1 | 0x80000000,
+                                   0x80000000, 0, 0),
+    }
+
+    start_sign(psbt.as_bytes(), miniscript=name)
+    title, _ = cap_story()
+    assert title == "OK TO SEND?"
+    with pytest.raises(Exception) as err:
+        end_sign(finalize=False)
+    assert "Signing failed late" in err.value.args[0]
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Tapleaf ver 0xc2" in story
+    press_cancel()
+
+
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("csa", [True, False])
 @pytest.mark.parametrize("add_pk", [True, False])

@@ -2961,6 +2961,7 @@ class psbtObject(psbtProxy):
                                 scr = leaf.compile()
                                 if scr not in taproot_scripts:
                                     continue
+                                assert taproot_scripts[scr] == TAPROOT_LEAF_TAPSCRIPT, "Tapleaf ver 0x%02x" % taproot_scripts[scr]
 
                                 for k in leaf.keys:
                                     is_musig = False
