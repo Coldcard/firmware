@@ -776,6 +776,55 @@ def test_musig_incomplete_rounds(use_regtest, clear_miniscript, build_musig_wall
 
 
 @pytest.mark.bitcoind
+def test_musig_consumed_session_not_restored(use_regtest, clear_miniscript,
+                                              build_musig_wallet, start_sign, end_sign,
+                                              cap_story, press_cancel,
+                                              reset_musig_session_cache):
+    use_regtest()
+    clear_miniscript()
+    wo, signers, _ = build_musig_wallet(
+        "musig_consumed", 3, num_utxo_available=2)
+    psbt = wo.walletcreatefundedpsbt(
+        [], [{wo.getnewaddress("", "bech32m"): 43.4389}], 0,
+        {"fee_rate": 2, "change_type": "bech32m"})["psbt"]
+
+    # Coldcard and both cosigners publish nonces for both inputs.
+    start_sign(base64.b64decode(psbt))
+    po = BasicPSBT().parse(end_sign())
+    assert len(po.inputs) == 2
+    cc_pubkey = next(iter(po.inputs[1].musig_pubnonces))[0]
+    full_nonce_psbt = po.as_b64_str()
+    for signer in signers:
+        full_nonce_psbt = signer.walletprocesspsbt(
+            full_nonce_psbt, True, "DEFAULT", True, False)["psbt"]
+    po = BasicPSBT().parse(base64.b64decode(full_nonce_psbt))
+    for inp in po.inputs:
+        assert len(inp.musig_pubnonces) == 3
+        assert not inp.musig_part_sigs
+
+    # Input zero is ready, but withhold one cosigner nonce from input one.
+    withheld_key = next(k for k in po.inputs[1].musig_pubnonces
+                        if k[0] != cc_pubkey)
+    withheld_nonce = po.inputs[1].musig_pubnonces.pop(withheld_key)
+    start_sign(po.as_bytes())
+    po = BasicPSBT().parse(end_sign())
+    assert len(po.inputs[0].musig_part_sigs) == 1
+    assert not po.inputs[1].musig_part_sigs
+
+    # Input zero consumed the shared root, so input one's old nonce round
+    # cannot be resumed after the withheld nonce arrives.
+    po.inputs[1].musig_pubnonces[withheld_key] = withheld_nonce
+    start_sign(po.as_bytes())
+    with pytest.raises(Exception):
+        end_sign()
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "musig needs restart" in story
+    press_cancel()
+
+
+@pytest.mark.bitcoind
 def test_musig_metadata_scoping(use_regtest, clear_miniscript, build_musig_wallet,
                                 start_sign, end_sign, reset_musig_session_cache):
     use_regtest()
@@ -789,6 +838,7 @@ def test_musig_metadata_scoping(use_regtest, clear_miniscript, build_musig_walle
     # Foreign participant, aggregate and leaf contexts cannot fill the nonce set.
     start_sign(base64.b64decode(empty_psbt))
     po = BasicPSBT().parse(end_sign())
+    cc_nonce_psbt = po.as_b64_str()
     own_key, own_nonce = next(iter(po.inputs[0].musig_pubnonces.items()))
     _, participants = next(iter(po.inputs[0].musig_pubkeys.items()))
     others = [pk for pk in participants if pk != own_key[0]]
@@ -810,8 +860,7 @@ def test_musig_metadata_scoping(use_regtest, clear_miniscript, build_musig_walle
     assert po.inputs[0].taproot_key_sig is None
 
     # The same context checks apply to partial signatures.
-    start_sign(base64.b64decode(empty_psbt))
-    full_nonce_psbt = BasicPSBT().parse(end_sign()).as_b64_str()
+    full_nonce_psbt = cc_nonce_psbt
     for signer in signers:
         full_nonce_psbt = signer.walletprocesspsbt(
             full_nonce_psbt, True, "DEFAULT", True, False)["psbt"]
