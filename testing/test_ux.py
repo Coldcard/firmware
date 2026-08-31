@@ -481,7 +481,7 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, expect_ftux,
 @pytest.mark.parametrize('nwords', [12, 24])
 def test_view_trng_words_verifies_dice_mix(nwords, pick_menu_item, cap_menu, cap_story, unit_test,
                                            press_select, need_keypress, seed_story_to_words, is_q1,
-                                           wait_for_story):
+                                           wait_for_story, cap_screen, press_down):
     unit_test('devtest/clear_seed.py')
     pick_menu_item('New Seed Words')
     pick_menu_item(f'{nwords} Words')
@@ -497,6 +497,14 @@ def test_view_trng_words_verifies_dice_mix(nwords, pick_menu_item, cap_menu, cap
     assert 'All 256 bits are used' in body
     assert 'STM32 TRNG + SE1 + SE2' in body
     assert 'KEEP SECRET' in body
+    assert 'Scroll to see TRNG words.' in body
+
+    if is_q1:
+        press_down()
+        press_down()
+        time.sleep(0.1)
+        shown = {int(n) for n in re.findall(r'(?<!\d)(\d{1,2}):', cap_screen())}
+        assert shown == set(range(1, 25))
 
     press_select()
     time.sleep(0.1)
