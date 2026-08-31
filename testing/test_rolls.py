@@ -1,7 +1,9 @@
 import sys
+import pytest
 sys.path.append("..")
-from docs.rolls import entropy_to_mnemonic24
+from docs.rolls import entropy_to_mnemonic24, wl as rolls_wl
 from docs.rolls12 import entropy_to_mnemonic12
+from docs.verify_seed_mix import derive_seed, entropy_to_mnemonic, mnemonic24_to_entropy, wl as trng_wl
 
 
 bip39_vectors_12 = [
@@ -101,3 +103,42 @@ def test_entropy_to_mnemonic24():
     for entropy, target_mnemonic in bip39_vectors_24:
         entropy_bytes = bytes.fromhex(entropy)
         assert " ".join(entropy_to_mnemonic24(entropy_bytes)) == target_mnemonic
+
+
+def test_trng_words_report_unknown_word():
+    words = bip39_vectors_24[0][1].replace('art', 'notaword')
+    with pytest.raises(ValueError, match='unknown BIP39 word: notaword'):
+        mnemonic24_to_entropy(words)
+
+
+@pytest.mark.parametrize('nwords, expected', [
+    (12, '67c8b6d836d47f88dfb88a1bb5a534cf'),
+    (24, '67c8b6d836d47f88dfb88a1bb5a534cf28b437cd345e8c7fa59f1982f9248da5'),
+])
+def test_trng_dice_mix(nwords, expected):
+    assert trng_wl == rolls_wl
+    base_words = bip39_vectors_24[0][1]
+    base_seed = mnemonic24_to_entropy(base_words)
+    rolls = ('123456' * 8) + '12'
+
+    seed = derive_seed(base_seed, rolls, 'd', nwords)
+
+    assert seed.hex() == expected
+    convert = entropy_to_mnemonic12 if nwords == 12 else entropy_to_mnemonic24
+    assert entropy_to_mnemonic(seed) == convert(seed)
+
+
+@pytest.mark.parametrize('nwords, expected', [
+    (12, '8216d06056e31315bec14171d1f09345'),
+    (24, '8216d06056e31315bec14171d1f09345eef5cbba16fdd3498354951dd3356dab'),
+])
+def test_trng_coin_mix(nwords, expected):
+    base_words = bip39_vectors_24[0][1]
+    base_seed = mnemonic24_to_entropy(base_words)
+    flips = '01' * 64
+
+    seed = derive_seed(base_seed, flips, 'c', nwords)
+
+    assert seed.hex() == expected
+    convert = entropy_to_mnemonic12 if nwords == 12 else entropy_to_mnemonic24
+    assert entropy_to_mnemonic(seed) == convert(seed)
