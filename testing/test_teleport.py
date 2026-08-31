@@ -1075,7 +1075,8 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
 def test_teleport_multisig_signers_per_input(use_regtest, clear_miniscript, goto_home,
                                              make_myself_wallet, fake_ms_txn, try_sign,
                                              cap_story, need_keypress, cap_menu, cap_screen,
-                                             press_cancel):
+                                             press_cancel, reset_seed_words):
+    reset_seed_words()
     use_regtest()
     clear_miniscript()
     goto_home()
