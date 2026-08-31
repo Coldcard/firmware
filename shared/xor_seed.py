@@ -190,7 +190,8 @@ async def xor_all_done(data, force_tmp, done_cb):
 
             enc = SecretStash.encode(seed_phrase=seed)
 
-            if pa.is_secret_blank() and not force_tmp:
+            # A temporary wallet still counts as a secret when the SE is blank.
+            if not pa.has_secrets() and not force_tmp:
                 # save it since they have no other secret
                 set_seed_value(encoded=enc)
                 # update menu contents now that wallet defined
@@ -268,7 +269,8 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
     from glob import dis
 
     escape = ""
-    if not pa.is_secret_blank():
+    # Warn when either a stored or temporary secret is active.
+    if pa.has_secrets():
         msg = ("Since you have a seed already on this Coldcard, the reconstructed XOR seed will be "
                "temporary and not saved. Wipe the seed first if you want to commit the new value "
                "into the secure element.")
