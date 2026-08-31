@@ -14,32 +14,32 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 # Shared Improvements - Both Mk4 and Q
 
 - Bugfix: Reject cyclic FAT chains in virtual-disk file imports instead of hanging.
-- Bugfix: Abort a pending firmware upgrade if its staged image is overwritten before
-  approval. Thanks to Huzaifa Jawaid.
-- Bugfix: Detect and abort transaction signing if a Virtual Disk firmware import
-  overwrites the reviewed PSBT. Thanks to Huzaifa Jawaid.
-- Enhancement: Allow uncompressed WIF keys in WIF Store
-- Enhancement: Faster multisig address generation and PSBT input verification
-- Enhancement: Use predictable sequential filenames for PSBTs processed multiple times via MicroSD or Virtual Disk
+- Bugfix: Abort a pending firmware upgrade if its staged image is overwritten before approval. Thanks to Huzaifa Jawaid.
+- Bugfix: Detect and abort transaction signing if a Virtual Disk firmware import overwrites the reviewed PSBT. 
+  Thanks to Huzaifa Jawaid.
+- Enhancement: Allow uncompressed WIF keys in WIF Store.
+- Enhancement: Faster multisig address generation and PSBT input verification.
+- Enhancement: Use predictable sequential filenames for PSBTs processed multiple times via MicroSD or Virtual Disk.
 - Change: Spending Policy mode prevents USB hosts from enrolling, deleting, listing, or exporting
-  Multisig/Miniscript wallet configurations
+  Multisig/Miniscript wallet configurations.
 - Change: The main transaction approval story no longer lists every affected input or output for repeated warnings,
   relative timelocks, or unusual change derivation paths. It now shows compact summaries; use the transaction
   explorer to review individual details.
-- Bugfix: Generate distinct MuSig2 nonces for different aggregate-key derivations of the same participant set
-- Bugfix: Harden MuSig2 session handling for PSBTs with foreign MuSig2 inputs or differing witness UTXO data
-- Bugfix: Preserve MuSig2 signing sessions while waiting for cosigner public nonces
-- Bugfix: Prevent PSBT corruption when the same MuSig2 participant performs multiple signing rounds via Key Teleport
-- Bugfix: Track remaining multisig and Tapscript signers independently for each PSBT input
-- Change: Limit MuSig2 participant lists to 32
-- Bugfix: Generate unique names when creating multisig wallets from PSBTs with the same M-of-N parameters
-- Bugfix: Correctly identify consolidations containing zero-value OP_RETURN outputs without misclassifying other zero-value external outputs
-- Bugfix: Prevent duplicate WIF Store keys and multisig wallets after restarting
-- Bugfix: Require HSM policies to explicitly allow any path before signing BIP-322 messages with WIF Store keys
-- Bugfix: Reject foreign inputs in BIP-322 Proof of Reserves transactions
-- Bugfix: Fixed PSBT uploads being mistaken for partial firmware uploads
-- Bugfix: Reject BIP388 wallet policy imports with non-ASCII or non-printable names
-- Bugfix: Reject duplicate singleton keys in PSBT maps
+- Bugfix: Generate distinct MuSig2 nonces for different aggregate-key derivations of the same participant set.
+- Bugfix: Harden MuSig2 session handling for PSBTs with foreign MuSig2 inputs or differing witness UTXO data.
+- Bugfix: Preserve MuSig2 signing sessions while waiting for cosigner public nonces.
+- Bugfix: Prevent PSBT corruption when the same MuSig2 participant performs multiple signing rounds via Key Teleport.
+- Bugfix: Track remaining multisig and Tapscript signers independently for each PSBT input.
+- Change: Limit MuSig2 participant lists to 32.
+- Bugfix: Generate unique names when creating multisig wallets from PSBTs with the same M-of-N parameters.
+- Bugfix: Correctly identify consolidations containing zero-value OP_RETURN outputs 
+  without misclassifying other zero-value external outputs.
+- Bugfix: Prevent duplicate WIF Store keys and multisig wallets after restarting.
+- Bugfix: Require HSM policies to explicitly allow any path before signing BIP-322 messages with WIF Store keys.
+- Bugfix: Reject foreign inputs in BIP-322 Proof of Reserves transactions.
+- Bugfix: Fixed PSBT uploads being mistaken for partial firmware uploads.
+- Bugfix: Reject BIP388 wallet policy imports with non-ASCII or non-printable names.
+- Bugfix: Reject duplicate singleton keys in PSBT maps.
 - Bugfix: Restore the ability to view the device-generated seed before adding user
   entropy, which was available in the previous dice-roll workflow but was inadvertently
   removed in 5.6.1/1.5.1Q. The new **View TRNG Words** menu item displays the full
@@ -47,9 +47,8 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
   verification of dice-roll or coin-flip mixing.
 - Bugfix: Simulator crashed on Bless Firmware, due to a desynced LED pipe. Thanks to
   [@hitechhayekian](https://github.com/hitechhayekian).
-- Bugfix: Fixed invalid signatures when signing transactions containing both
-  SegWit v0 and Taproot inputs
-- Bugfix: Hide Change Main PIN while a temporary seed or BIP-39 passphrase wallet is active
+- Bugfix: Fixed invalid signatures when signing transactions containing both SegWit v0 and Taproot inputs.
+- Bugfix: Hide Change Main PIN while a temporary seed or BIP-39 passphrase wallet is active.
 - Bugfix: Do not misidentify future-version SegWit outputs as Taproot change.
 - Bugfix: Reject unsupported Taproot leaf versions during PSBT signing (only Tapscript `0xc0` is supported).
 - Bugfix: Correctly serialize future even TapLeaf versions.
@@ -61,14 +60,16 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 ## 6.6.1X - 2026-0x-xx
 
-- all of the above.
+- all of the above
+- synced with master up to and including `5.6.1`
 
 
 # Q Specific Changes
 
 ## 6.6.1QX - 2026-0x-xx
 
-- all of the above.
+- all of the above
+- synced with master up to and including `5.6.1`
 
 
 # Release History
