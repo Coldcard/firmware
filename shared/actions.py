@@ -1478,7 +1478,9 @@ async def restore_backup_dev(*a):
     if fn:
         words = False if fn[-3:] == ".7z" else None
         import backups
-        await backups.restore_complete(fn, not pa.is_secret_blank(), words)
+        # A temporary wallet makes master writes no-op, despite the restore reporting success.
+        # Route the backup to another temporary wallet whenever any secret is active.
+        await backups.restore_complete(fn, pa.has_secrets(), words)
 
 async def bkpw_override(*A):
     # allows user to:
