@@ -1228,13 +1228,12 @@ class RemoteRestoreBackup(UserAuthorizedAction):
     def to_tmp(self):
         # conversion to "temporary" argument of "restore_complete" function
         from pincodes import pa
-        if pa.is_secret_blank() and not self.force_tmp:
-            # no master secret & not forcing tmp
-            # will load backup as master seed
+        # A temporary wallet makes master writes no-op, so only select master restore
+        # when no secret is active and the caller did not force temporary mode.
+        if not pa.has_secrets() and not self.force_tmp:
             return False, "master"
 
-        # has master secret --> load backup as tmp
-        # secret is blank but user forcing tmp
+        # A master/temporary secret is active, or the caller forced temporary mode.
         return True, "temporary"
 
     async def interact(self):
