@@ -3599,6 +3599,7 @@ def test_bip388_policies(desc, way, offer_minsc_import, press_select, pick_menu_
 def test_miniscript_rename(offer_minsc_import, clear_miniscript, press_select, goto_home,
                            pick_menu_item, enter_complex, cap_menu, cap_screen, is_q1,
                            need_keypress, press_cancel):
+    goto_home()
     clear_miniscript()
     name = "old_name"
     title, story = offer_minsc_import(json.dumps(dict(name=name, desc=CHANGE_BASED_DESCS[0])))
@@ -3651,8 +3652,10 @@ def test_miniscript_rename(offer_minsc_import, clear_miniscript, press_select, g
     assert real_name == m[0]
 
 
-def test_legacy_sh_miniscript(offer_minsc_import, press_select, create_core_wallet, clear_miniscript):
+def test_legacy_sh_miniscript(offer_minsc_import, press_select, create_core_wallet,
+                              clear_miniscript, goto_home):
     clear_miniscript()
+    goto_home()
     desc = ("sh("
             "or_d(pk([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*),"
             "and_v("

@@ -1072,12 +1072,13 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
 
 
 @pytest.mark.unfinalized
-def test_teleport_multisig_signers_per_input(use_regtest, clear_miniscript,
+def test_teleport_multisig_signers_per_input(use_regtest, clear_miniscript, goto_home,
                                              make_myself_wallet, fake_ms_txn, try_sign,
                                              cap_story, need_keypress, cap_menu, cap_screen,
                                              press_cancel):
     use_regtest()
     clear_miniscript()
+    goto_home()
 
     M = 3
     keys, select_wallet = make_myself_wallet(M, addr_fmt="p2wsh")

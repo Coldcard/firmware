@@ -438,7 +438,7 @@ def wait_for_story(cap_story):
             title, story = cap_story()
             if expected in (title if check_title else story):
                 return title, story
-            time.sleep(0.1)
+            time.sleep(0.2)
         pytest.fail(f'Timed out waiting for: {expected!r}')
 
     return doit
