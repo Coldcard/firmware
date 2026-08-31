@@ -793,11 +793,12 @@ async def view_trng_words(_menu, _idx, item):
     from ux import ux_render_words
 
     words = bip39.b2a_words(item.arg).split(' ')
+    # Keep all story lines: their count makes the 24-word grid start on a fresh Q screen.
     msg = ('These 24 words encode the full 256-bit device seed (STM32 TRNG + SE1 + SE2) '
            'before user entropy is mixed in.\n\nAll 256 bits are used, even for a 12-word wallet.'
            '\n\nUse them to verify dice-roll or coin-flip mixing.\n\nKEEP SECRET: Anyone with '
            'these words and your complete user entropy can recreate your wallet seed.'
-           '\n\n%s' % ux_render_words(words))
+           '\n\nScroll to see TRNG words.\n\n%s' % ux_render_words(words))
     try:
         await ux_show_story(msg, title='TRNG Words', sensitive=True)
     finally:
