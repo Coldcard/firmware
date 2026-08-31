@@ -143,6 +143,8 @@ def restore_from_dict_ll(vals, raw):
     # - low-level version, factored out for better testing
     from glob import dis
 
+    assert not pa.tmp_value, "temporary seed active"
+
     need_ftux = False
 
     #print("Restoring from: %r" % vals)
