@@ -306,7 +306,7 @@ async def kt_accept_values(dtype, raw):
     - `p` - binary PSBT to be signed
     - `b` - complete system backup file (text, internal format)
     '''
-    from flow import has_se_secrets, goto_top_menu
+    from flow import has_secrets, goto_top_menu
     from pincodes import pa
 
     enc = None
@@ -416,7 +416,8 @@ async def kt_accept_values(dtype, raw):
 
     from seed import set_ephemeral_seed, set_seed_value
 
-    if not has_se_secrets():
+    # A temporary wallet still counts as a secret when the SE is blank.
+    if not has_secrets():
         # unit has nothing, so this will be the master seed
         set_seed_value(encoded=enc)
         ok = True
