@@ -2773,6 +2773,7 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
     # Mk4 retains one character; selecting the number group overwrites it.
     renamed = "1234"
     enter_complex(renamed, apply=False, b39pass=False)
+    time.sleep(.1)
     res = settings_get("miniscript")
     assert res[0][0] == on_regtest
     assert res[1][0] == renamed
