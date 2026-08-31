@@ -49,6 +49,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
   [@hitechhayekian](https://github.com/hitechhayekian).
 - Bugfix: Fixed invalid signatures when signing transactions containing both SegWit v0 and Taproot inputs.
 - Bugfix: Hide Change Main PIN while a temporary seed or BIP-39 passphrase wallet is active.
+- Bugfix: With an empty master wallet and an active temporary seed, keep imports and backup restores temporary instead of treating them as master-seed changes.
 - Bugfix: Do not misidentify future-version SegWit outputs as Taproot change.
 - Bugfix: Reject unsupported Taproot leaf versions during PSBT signing (only Tapscript `0xc0` is supported).
 - Bugfix: Correctly serialize future even TapLeaf versions.
