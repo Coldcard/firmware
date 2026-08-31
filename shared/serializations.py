@@ -193,6 +193,38 @@ def ser_push_int(n):
 
     raise ValueError(n)
 
+def disassemble_multisig_mn(redeem_script):
+    # pull out just M and N from script. Simple, faster, no memory.
+
+    if not redeem_script or len(redeem_script) < 4 or \
+            redeem_script[-1] != OP_CHECKMULTISIG:
+        return None, None
+
+    m = redeem_script[0]
+    if OP_1 <= m <= OP_16:
+        M = m - OP_1 + 1
+    elif m == 1:
+        M = redeem_script[1]
+        if not 17 <= M <= 20:
+            return None, None
+    else:
+        return None, None
+
+    n = redeem_script[-2]
+    if OP_1 <= n <= OP_16:
+        N = n - OP_1 + 1
+    elif redeem_script[-3] == 1:
+        N = n
+        if not 17 <= N <= 20:
+            return None, None
+    else:
+        return None, None
+
+    if M > N:
+        return None, None
+
+    return M, N
+
 def disassemble(script):
     # Very limited script disassembly
     # yeilds (int / bytes, opcode) for each part of the script
@@ -200,41 +232,43 @@ def disassemble(script):
 
     try:
         offset = 0
+        slen = len(script)
         while 1:
-            if offset >= len(script):
+            if offset >= slen:
                 #print('dis %d done' % offset)
                 return
             c = script[offset]
             offset += 1
 
             if 1 <= c <= 75:
-                #print('dis %d: bytes=%s' % (offset, b2a_hex(script[offset:offset+c])))
-                yield (script[offset:offset+c], None)
-                offset += c
+                cnt = c
             elif OP_1 <= c <= OP_16:
                 # OP_1 thru OP_16
-                #print('dis %d: number=%d' % (offset, (c - OP_1 + 1)))
                 yield (c - OP_1 + 1, None)
+                continue
             elif c == OP_PUSHDATA1:
                 cnt = script[offset]
                 offset += 1
-                yield (script[offset:offset+cnt], None)
-                offset += cnt
             elif c == OP_PUSHDATA2:
                 # up to 65535 bytes
                 cnt, = struct.unpack_from("H", script, offset)
                 offset += 2
-                yield (script[offset:offset+cnt], None)
-                offset += cnt
             elif c == OP_PUSHDATA4:
                 # no where to put so much data
                 raise NotImplementedError
             elif c == OP_1NEGATE:
                 yield (-1, None)
+                continue
             else:
                 # OP_0 included here
-                #print('dis %d: opcode=%d' % (offset, c))
                 yield (None, c)
+                continue
+
+            # a data push of `cnt` bytes - reject if it runs off the end
+            if offset + cnt > slen:
+                raise ValueError
+            yield (script[offset:offset+cnt], None)
+            offset += cnt
     except Exception as e:
         # import sys;sys.print_exception(e)
         raise ValueError("bad script")
@@ -379,17 +413,19 @@ class CTxOut(object):
             return AF_P2SH, self.scriptPubKey[2:2+20]
 
         if self.is_p2pk():
-            # rare, pay to full pubkey
-            return AF_BARE_PK, self.scriptPubKey[2:2+33]
+            # rare, pay to full pubkey: <push_op> <pubkey> OP_CHECKSIG
+            # push_op is 0x21 (33) for compressed, 0x41 (65) for uncompressed
+            pk_len = self.scriptPubKey[0]
+            return AF_BARE_PK, self.scriptPubKey[1:1+pk_len]
 
-        if self.scriptPubKey[0] == OP_RETURN:
+        if self.is_op_return():
             return OP_RETURN, self.scriptPubKey
 
         return None, self.scriptPubKey
 
     def is_p2tr(self):
         return len(self.scriptPubKey) == 34 and \
-                (OP_1 <= self.scriptPubKey[0] <= OP_16) and self.scriptPubKey[1] == 0x20
+                self.scriptPubKey[0] == OP_1 and self.scriptPubKey[1] == 0x20
 
     def is_p2wpkh(self):
         return len(self.scriptPubKey) == 22 and \
@@ -410,8 +446,11 @@ class CTxOut(object):
 
     def is_p2pk(self):
         return (len(self.scriptPubKey) == 35 or len(self.scriptPubKey) == 67) \
-                and (self.scriptPubKey[0] == 0x21 or self.scriptPubKey[0] == 0x41) \
-                and self.scriptPubKey[-1] == 0xac
+                and self.scriptPubKey[0] == len(self.scriptPubKey) - 2 \
+                and self.scriptPubKey[-1] == OP_CHECKSIG
+
+    def is_op_return(self):
+        return self.scriptPubKey and (self.scriptPubKey[0] == OP_RETURN)
 
     #def __repr__(self):
     #    return "CTxOut(nValue=%d scriptPubKey=%s)" \

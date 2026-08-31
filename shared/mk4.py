@@ -38,13 +38,14 @@ COLDCARD Virtual Disk
 
 def rng_seeding():
     # seed our RNG with entropy from secure elements
-    import callgate, ngu, ustruct
+    import callgate, ngu
 
     a = callgate.read_rng(1)        # SE1
     b = callgate.read_rng(2)        # SE2
+    assert len(a) == 32
+    assert len(b) == 8
 
     n = ngu.hash.sha256d(a+b)
-    n, = ustruct.unpack('I', n[0:4])
 
     ngu.random.reseed(n)
         
@@ -79,7 +80,7 @@ async def dev_enable_repl(*a):
     if not version.is_devmode: return
 
     # allow REPL access
-    ckcc.vcp_enabled(True)
+    ckcc.repl_enabled(True)
 
     print("REPL enabled.")
     await ux_show_story("""\

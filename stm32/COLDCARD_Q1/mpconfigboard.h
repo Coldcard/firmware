@@ -77,7 +77,10 @@
 
 
 // We have our own version of this code.
-#define MICROPY_HW_ENABLE_RNG       (0)
+// LATER: when zero, this selected some PRNG code we really didnt want.
+#define MICROPY_HW_ENABLE_RNG            (0)
+// Confirm that the board provides a hardware-backed rng_get().
+#define NGU_STM32_EXTERNAL_RNG_GET       (1)
 
 extern void ckcc_early_init(void);
 #define MICROPY_BOARD_EARLY_INIT        ckcc_early_init

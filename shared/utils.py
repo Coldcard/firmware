@@ -8,9 +8,16 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
 from charcodes import OUT_CTRL_ADDRESS, OUT_CTRL_NOWRAP
 from uhashlib import sha256
-from public_constants import MAX_PATH_DEPTH, AF_CLASSIC
+from public_constants import (MAX_PATH_DEPTH, MAX_SIGNERS, AF_CLASSIC, AF_P2SH,
+                              AF_P2WPKH, AF_P2WSH, AF_P2TR)
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
+
+
+def max_signers(addr_fmt=None):
+    # OP_CHECKMULTISIG allows 20 pubkeys, but legacy P2SH is limited to 15 by script size.
+    return MAX_SIGNERS if addr_fmt == AF_P2SH else 20
+
 
 try:
     from font_iosevka import FontIosevka
@@ -193,34 +200,31 @@ def str2xfp(txt):
     # Inverse of xfp2str
     return ustruct.unpack('<I', a2b_hex(txt))[0]
 
-def is_ascii(s):
-    if len(s) == len(s.encode()):
-        return True
-    return False
-
 def is_printable(s):
-    PRINTABLE = range(32, 127)
     for ch in s:
-        if ord(ch) not in PRINTABLE:
+        o = ord(ch)
+        if o < 32 or o > 126:
             return False
     return True
 
-def to_ascii_printable(s, strip=False, only_printable=True):
+def to_ascii_printable(s, allow_tab_nl=False):
     try:
-        s = str(s, 'ascii')
-        if strip:
-            s = s.strip()
-        assert is_ascii(s)
-        if only_printable:
+        # s must be a string!
+        assert len(s) == len(s.encode())
+        if not allow_tab_nl:
             assert is_printable(s)
+        else:
+            for ch in s:
+                o = ord(ch)
+                assert 32 <= o <= 126 or o == 9 or o == 10
         return s
     except:
-        raise AssertionError("must be ascii" + (" printable" if only_printable else ""))
-
+        err = "must be ascii printable" + (", tab, or newline" if allow_tab_nl else "")
+        raise AssertionError(err)
 
 def problem_file_line(exc):
     # return a string of just the filename.py and line number where
-    # an exception occured. Best used on AssertionError.
+    # an exception occurred. Best used on AssertionError.
 
     tmp = uio.StringIO()
     sys.print_exception(exc, tmp)
@@ -252,7 +256,7 @@ def cleanup_deriv_path(bin_path, allow_star=False):
     # - do not assume /// is m/0/0/0
     # - if allow_star, then final position can be * or *h (wildcard)
 
-    s = to_ascii_printable(bin_path, strip=True).lower()
+    s = to_ascii_printable(str(bin_path, "ascii").strip()).lower()
 
     # empty string is valid
     if s == '': return 'm'
@@ -343,10 +347,8 @@ def match_deriv_path(patterns, path):
 
     return False
 
-def validate_derivation_path_length(length, allow_master=False):
-    # force them to use a derived key, never the master
-    if not allow_master:
-        assert length >= 4, 'too short key path'
+def validate_derivation_path_length(length):
+    # assert length >= 4, 'too short key path'
     assert (length % 4) == 0, 'corrupt key path'
     assert (length // 4) <= MAX_PATH_DEPTH, 'too deep'
 
@@ -670,6 +672,36 @@ def decode_bip21_text(got):
         pass
 
     raise ValueError('not bip-21')
+
+def validate_own_address(addr):
+    ch = chains.current_chain()
+    addr_l = addr.lower()
+
+    if addr_l[:3] in ("bc1", "tb1") or addr_l[:5] == 'bcrt1':
+        try:
+            hrp, witver, data = ngu.codecs.segwit_decode(addr)
+
+            assert hrp == ch.bech32_hrp
+            if witver == 0 and len(data) == 20:
+                return addr_l, AF_P2WPKH
+            if witver == 0 and len(data) == 32:
+                return addr_l, AF_P2WSH
+            if witver == 1 and len(data) == 32:
+                return addr_l, AF_P2TR
+        except: pass
+
+    # Bitcoin main/test/reg base58 address prefixes.
+    elif addr and addr[0] in '123mn':
+        try:
+            raw = ngu.codecs.b58_decode(addr)
+            assert len(raw) == 21
+            if raw[0] == ch.b58_addr[0]:
+                return addr, AF_CLASSIC
+            if raw[0] == ch.b58_script[0]:
+                return addr, AF_P2SH
+        except: pass
+
+    assert False, ch.name
 
 def encode_seed_qr(words):
     return ''.join('%04d' % bip39.get_word_index(w) for w in words)

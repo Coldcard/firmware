@@ -246,7 +246,8 @@ def test_bip39_add_nums(target, backspaces, pick_menu_item, cap_story, is_q1,
 ])
 def test_bip39_complex(target, pick_menu_item, cap_story, goto_home,
                        press_select, enter_complex, restore_main_seed,
-                       verify_ephemeral_secret_ui, go_to_passphrase):
+                       verify_ephemeral_secret_ui, go_to_passphrase,
+                       cap_screen, is_q1, press_down, press_right):
     go_to_passphrase()
 
     from mnemonic import Mnemonic
@@ -255,6 +256,30 @@ def test_bip39_complex(target, pick_menu_item, cap_story, goto_home,
     expect = BIP32Node.from_master_secret(seed, netcode="XTN")
 
     enter_complex(target, apply=True)
+
+    for _ in range(3):
+        screen = cap_screen()
+        if 'Above is the' in screen:
+            break
+        time.sleep(.01)
+    else:
+        pytest.fail('passphrase scroll notice not shown')
+
+    assert 'Passphrase:' not in screen
+    if is_q1:
+        # bigger display
+        assert "Scroll down to view" in screen
+        n = 1
+    else:
+        # more scrolling is needed for Mk
+        n = 14
+
+    for i in range(n):
+        press_down()
+        time.sleep(.1)
+
+    assert 'Passphrase:' in cap_screen()
+
     press_select()
     time.sleep(.1)
     verify_ephemeral_secret_ui(xpub=expect.hwif(), is_b39pw=True)
@@ -315,7 +340,7 @@ def test_lockdown_ux(stype, pick_menu_item, set_bip39_pw, goto_home, is_q1,
     assert 'Make sure all duress wallets associated with previous seed are deleted' in story
     assert 'carried forward without being properly generated from new master seed.' in story
     if stype == "bip39pw":
-        assert "Convert currently used BIP-39 passphrase to master seed" in story
+        assert "Convert currently used BIP-39 passphrase wallet to master seed" in story
         assert "but the passphrase itself is erased" in story
 
     assert "Press (4) to prove you read to the end of this message and accept all consequences" in story
@@ -334,7 +359,7 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
                                      reset_seed_words, goto_eph_seed_menu, stype,
                                      enter_complex, cap_story, cap_menu,
                                      settings_set, seed_vault, press_select,
-                                     go_to_passphrase):
+                                     go_to_passphrase, press_cancel):
     passphrase = "@coinkite rulez!!"
     reset_seed_words()
     settings_set("seedvault", 1)
@@ -363,7 +388,7 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
     enter_complex(passphrase, apply=True)
 
     tmp_seed = Mnemonic.to_seed(" ".join(sec), passphrase=passphrase)
-    tmp_node = BIP32Node.from_master_secret(tmp_seed)
+    tmp_node = BIP32Node.from_master_secret(tmp_seed, netcode="XTN")
     tmp_fp = tmp_node.fingerprint().hex().upper()
 
     time.sleep(.2)
@@ -390,6 +415,36 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
             press_select()
         else:
             press_select()  # do not store
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Danger Zone")
+    pick_menu_item("Seed Functions")
+    pick_menu_item("View Seed Words")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "secret seed words" in story
+    press_select()
+    time.sleep(.1)
+    _, story = cap_story()
+    assert tmp_node.hwif(as_private=True) in story
+    assert story.startswith("BIP-39 Passphrase in effect\n\n")
+    assert passphrase not in story
+    assert "Seed words" not in story
+    press_select()
+    goto_home()
+
+    # backup must be of the wallet in effect, no offer to back-up main seed
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Backup")
+    pick_menu_item("Backup System")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "A BIP-39 passphrase is in effect" in story
+    assert "so backup will be of that seed" in story
+    assert "main seed" not in story
+    press_cancel()
+    goto_home()
 
     if seed_vault:
         # check correct meta in seed vault

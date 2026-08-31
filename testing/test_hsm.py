@@ -114,15 +114,13 @@ def compute_policy_hash(policy):
     return b2a_hex(sha256(json_.encode()).digest()).decode()
 
 @pytest.fixture(autouse=True)
-def enable_hsm_commands(dev, sim_exec, is_q1):
+def enable_hsm_commands(settings_remove, settings_set, is_q1):
     if is_q1:
         raise pytest.skip("Q does not have HSM support")
 
-    cmd = 'from glob import settings; settings.set("hsmcmd", 1)'
-    sim_exec(cmd)
+    settings_set("hsmcmd", 1)
     yield
-    cmd = 'from glob import settings; settings.remove_key("hsmcmd")'
-    sim_exec(cmd)
+    settings_remove("hsmcmd")
 
 
 @pytest.fixture
@@ -425,8 +423,8 @@ def start_hsm(request, dev, hsm_reset, hsm_status, need_keypress, press_select):
             assert 'Last chance' in body2
             assert 'Policy hash:' in body2
             ll = body2.split('\n')[-1]
-            assert ll.startswith("Press ")
-            ch = ll[6]
+            assert ll.startswith("Press (")
+            ch = ll[7]
 
             need_keypress(ch)
             time.sleep(.100)
@@ -1047,6 +1045,105 @@ def test_sign_msg_any(quick_start_hsm, attempt_msg_sign, addr_fmt=AF_CLASSIC):
 
     for p in permit+block: 
         attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
+
+
+def test_bip322_psbt_uses_msg_sign_policy(quick_start_hsm, change_hsm, attempt_psbt,
+                                          bip322_txn):
+    psbt, _ = bip322_txn([["p2wpkh", "0/0", None]], msg=b"HSM BIP-322 message")
+
+    quick_start_hsm(DICT(msg_paths=["m/0/0"]))
+    attempt_psbt(psbt)
+
+    change_hsm(DICT(msg_paths=["any"]))
+    attempt_psbt(psbt)
+
+    change_hsm(DICT(msg_paths=["m/9"]))
+    attempt_psbt(psbt, "Message signing not enabled for that path")
+
+    change_hsm(DICT(rules=[{}]))
+    attempt_psbt(psbt, "Message signing not permitted")
+
+
+@pytest.mark.parametrize("unrelated_path", [False, True])
+@pytest.mark.parametrize("addr_fmt", ["p2wpkh", "p2tr"])
+def test_bip322_wif_requires_any_msg_path(addr_fmt, unrelated_path, quick_start_hsm,
+                                           change_hsm, attempt_psbt, bip322_txn,
+                                           settings_set, settings_remove):
+    settings_remove("wifs")
+    key = PrivateKey(prandom(32))
+    pubkey = key.K.sec()
+    settings_set("wifs", [(pubkey.hex(), bytes(key).hex())])
+
+    def add_unrelated_path(psbt):
+        other_pubkey = PrivateKey(prandom(32)).K.sec()
+        path = struct.pack("<II", 0xdeadbeef, 0)
+        if addr_fmt == "p2tr":
+            psbt.inputs[0].taproot_internal_key = pubkey[1:]
+            psbt.inputs[0].taproot_bip32_paths = {other_pubkey[1:]: b"\x00" + path}
+        else:
+            psbt.inputs[0].bip32_paths = {other_pubkey: path}
+
+    psbt, _ = bip322_txn(
+        [[addr_fmt, None, None, pubkey]], msg=b"HSM WIF BIP-322",
+        psbt_hacker=add_unrelated_path if unrelated_path else None)
+
+    quick_start_hsm(DICT(msg_paths=["m/0"], warnings_ok=True))
+    attempt_psbt(psbt, "WIF Store message signing requires any path")
+
+    change_hsm(DICT(msg_paths=["any"], warnings_ok=True))
+    attempt_psbt(psbt)
+    settings_remove("wifs")
+
+
+def test_bip322_por_psbt_uses_msg_sign_policy(quick_start_hsm, change_hsm, attempt_psbt,
+                                              bip322_txn):
+    psbt, _ = bip322_txn([
+        ["p2wpkh", "0/0", None],
+        ["p2wpkh", "0/1", 1000000],
+        ["p2sh-p2wpkh", "0/2", 2000000],
+        ["p2pkh", "0/3", 3000000],
+    ], msg=b"HSM BIP-322 proof of reserves")
+
+    quick_start_hsm(DICT(msg_paths=["m/0/*"]))
+    attempt_psbt(psbt)
+
+    change_hsm(DICT(msg_paths=["any"]))
+    attempt_psbt(psbt)
+
+    change_hsm(DICT(msg_paths=["m/0/0", "m/0/1", "m/0/2"]))
+    attempt_psbt(psbt, "Message signing not enabled for that path")
+
+    change_hsm(DICT(msg_paths=["m/0/0", "m/0/1", "m/0/2", "m/0/3"]))
+    attempt_psbt(psbt)
+
+    change_hsm(DICT(rules=[{}]))
+    attempt_psbt(psbt, "Message signing not permitted")
+
+
+@pytest.mark.parametrize("M_N", [(2,3),(1,1)]) # TODO verify https://github.com/coinkite/afirmware/pull/653 fixes 1of 1case
+def test_bip322_ms_psbt_uses_msg_sign_policy(M_N, quick_start_hsm, change_hsm, attempt_psbt,
+                                             bip322_ms_txn, import_ms_wallet, clear_miniscript):
+    clear_miniscript()
+    deriv = "m/48h/1h/0h/2h"
+    M, N = M_N
+
+    def path_mapper(idx):
+        return [0x80000030, 0x80000001, 0x80000000, 0x80000002, 0, 0]
+
+    keys = import_ms_wallet(M, N, name="hsm_bip322_msg", accept=True, addr_fmt="p2wsh",
+                            common=deriv, do_import=True)
+    psbt, _ = bip322_ms_txn(1, M, keys, path_mapper=path_mapper, inp_af=AF_P2WSH,
+                            msg=b"HSM multisig BIP-322 message")
+
+    quick_start_hsm(DICT(msg_paths=[deriv + "/0/0"]))
+    attempt_psbt(psbt)
+
+    change_hsm(DICT(msg_paths=["any"]))
+    attempt_psbt(psbt)
+
+    change_hsm(DICT(msg_paths=["m/48h/1h/0h/2h/0/9"]))
+    attempt_psbt(psbt, "Message signing not enabled for that path")
+
 
 def test_must_log(dev, start_hsm, sd_cards_eject, attempt_msg_sign, fake_txn, attempt_psbt, is_simulator):
     # stop everything if can't log
@@ -1730,5 +1827,132 @@ def test_backup_policy_worst(unit_test, start_hsm, load_hsm_users):
     load_hsm_users(users)
     start_hsm(policy)
     unit_test('devtest/backups.py')
+
+# USB validation for HSM commands (hsmcmd=1 in this module)
+
+def test_nwur_short_args(dev):
+    msg = b'nwur' + struct.pack('<B', 1)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'buffer too small' in str(e.value)
+
+def test_nwur_trailing_garbage(dev):
+    msg = b'nwur' + struct.pack('<BBB', 3, 4, 0) + b'test' + b'\xff'
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_rmur_short_args(dev):
+    msg = b'rmur'
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'buffer too small' in str(e.value)
+
+def test_rmur_trailing_garbage(dev):
+    msg = b'rmur' + struct.pack('<B', 4) + b'test' + b'\xff'
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_user_short_args(dev):
+    msg = b'user' + struct.pack('<I', 0)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'buffer too small' in str(e.value)
+
+def test_user_trailing_garbage(dev):
+    msg = b'user' + struct.pack('<IBB', 0, 4, 6) + b'test' + b'123456' + b'\xff'
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_hsms_short_args(dev):
+    msg = b'hsms' + struct.pack('<I', 100)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'buffer too small' in str(e.value)
+
+def test_hsms_trailing_garbage(dev):
+    msg = b'hsms' + struct.pack('<I', 100) + bytes(32) + b'\xff'
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_nwur_ul_exceeds_payload(dev):
+    msg = struct.pack('<4sBBB', b'nwur', 1, 10, 0) + b'ab'
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_nwur_invalid_sl(dev):
+    msg = struct.pack('<4sBBB', b'nwur', 1, 5, 7) + b'alice' + b'x' * 7
+    with pytest.raises(CCProtoError):
+        dev.send_recv(msg, encrypt=False)
+
+def test_user_zero_ul(dev):
+    msg = struct.pack('<4sIBB', b'user', 0, 0, 6) + b'000000'
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_user_zero_tl(dev):
+    msg = struct.pack('<4sIBB', b'user', 0, 5, 0) + b'alice'
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_user_tl_exceeds_payload(dev):
+    msg = struct.pack('<4sIBB', b'user', 0, 5, 32) + b'alice' + b'000000'
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_rmur_zero_ul(dev):
+    msg = struct.pack('<4sB', b'rmur', 0)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_rmur_ul_exceeds_payload(dev):
+    msg = struct.pack('<4sB', b'rmur', 10) + b'ab'
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_hsm_sign_download_lease(dev, quick_start_hsm, fake_txn, load_hsm_users,
+                                 auth_user, start_sign):
+    # HSM-mode signed result must be downloadable via the dwld lease (file 1),
+    # while the uploaded input must never be downloadable (file 0)
+    policy = DICT(warnings_ok=True, rules=[dict(users=['pw'])])
+    load_hsm_users()
+    quick_start_hsm(policy)
+
+    psbt = fake_txn(1, [["p2wpkh", None, True], ["p2wpkh"]],
+                    dev.master_xpub, addr_fmt="p2wpkh")
+    auth_user.psbt_hash = sha256(psbt).digest()
+    auth_user("pw")
+    start_sign(psbt)
+    resp_len, chk = wait_til_signed(dev)
+
+    # lease covers the signed result
+    out = dev.download_file(resp_len, chk)
+    assert len(out) == resp_len
+
+    # uploaded input must not be downloadable
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 0))
+    assert 'not allowed' in str(e.value)
+
+def test_hsm_rejects_psbt_sha_mismatch(dev, quick_start_hsm, fake_txn, sim_exec):
+    quick_start_hsm(DICT(warnings_ok=True, rules=[{}]))
+
+    psbt = fake_txn(1, 2, addr_fmt="p2wpkh")
+    txn_len, _ = dev.upload_file(psbt)
+    sim_exec("from auth import sign_transaction; "
+             "sign_transaction(%d, psbt_sha=bytes(32), input_method='usb')" % txn_len)
+
+    with pytest.raises(CCProtoError) as e:
+        wait_til_signed(dev)
+    assert 'PSBT checksum mismatch' in str(e.value)
 
 # EOF

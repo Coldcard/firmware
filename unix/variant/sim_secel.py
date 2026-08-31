@@ -200,9 +200,9 @@ class SEState:
 
         elif submethod == 5:
             # greenlight firmware
-            from ckcc import genuine_led, led_pipe
-            genuine_led = True
-            led_pipe.write(b'\x01')
+            import ckcc
+            ckcc.genuine_led = True
+            ckcc.led_pipe.write(b'\x01\x01')     # [mask, state] - two bytes always
 
         elif submethod == 6:
             if not version.has_608:

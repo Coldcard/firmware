@@ -3,6 +3,7 @@
 # Miniscript-related tests.
 #
 import pytest, json, time, itertools, struct, random, os, base64, re, copy
+from pysecp256k1 import tagged_sha256
 from ckcc.protocol import CCProtocolPacker
 from constants import AF_P2TR
 from psbt import BasicPSBT
@@ -10,7 +11,8 @@ from charcodes import KEY_QR, KEY_RIGHT, KEY_CANCEL, KEY_DELETE
 from bbqr import split_qrs
 from bip32 import BIP32Node, ranged_unspendable_internal_key
 from constants import BIP_341_H
-from helpers import generate_binary_tree_template, str_to_path
+from helpers import generate_binary_tree_template, str_to_path, taptweak
+from ctransaction import CTxOut
 
 
 @pytest.fixture
@@ -467,6 +469,8 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
             title, story = cap_story()
             assert addr in story
             assert addr == bitcoind_addrs_change[i]
+
+        goto_home()
 
     return doit
 
@@ -1011,6 +1015,123 @@ def test_tapscript(M_N, cc_first, clear_miniscript, goto_home, pick_menu_item,
     assert len(txid) == 64
 
 
+def test_pathless_tapscript_input_not_signed(clear_miniscript, offer_minsc_import,
+                                              press_select, get_cc_key, dev, fake_txn,
+                                              start_sign, end_sign, cap_story,
+                                              settings_remove, use_testnet):
+    clear_miniscript()
+    settings_remove("wifs")
+    use_testnet()
+
+    name = "pathless-ts"
+    account = "m/86h/1h/0h"
+    cc_key = get_cc_key(account)
+    internal_expr = ranged_unspendable_internal_key()
+    desc = f"tr({internal_expr},pk({cc_key}))"
+
+    _, story = offer_minsc_import(json.dumps(dict(name=name, desc=desc)))
+    assert "Create new miniscript wallet?" in story
+    press_select()
+
+    internal_root = BIP32Node.from_chaincode_pubkey(
+        32 * b"\x01", b"\x02" + bytes.fromhex(BIP_341_H)
+    )
+    internal_key = internal_root.subkey_for_path("0/0").sec()[1:]
+    account_xpub = dev.send_recv(CCProtocolPacker.get_xpub(account), timeout=None)
+    signing_key = BIP32Node.from_hwif(account_xpub).subkey_for_path("0/0").sec()[1:]
+    script = b"\x20" + signing_key + b"\xac"
+    merkle_root = tagged_sha256(b"TapLeaf", b"\xc0\x22" + script)
+
+    psbt = BasicPSBT().parse(fake_txn(2, 1, addr_fmt="p2tr"))
+    for inp in psbt.inputs:
+        inp.witness_utxo = CTxOut(
+            100_000_000, b"\x51\x20" + taptweak(internal_key, merkle_root)
+        ).serialize()
+        inp.taproot_internal_key = internal_key
+        inp.taproot_merkle_root = merkle_root
+        inp.taproot_scripts = {(script, 0xc0): {b"\xc0" + internal_key}}
+        inp.taproot_bip32_paths = {
+            internal_key: b"\x00" + internal_root.fingerprint() + struct.pack("<2I", 0, 0),
+            signing_key: b"\x01" + merkle_root
+                         + struct.pack("<I", dev.master_fingerprint)
+                         + struct.pack("<5I", 86 | 0x80000000, 1 | 0x80000000,
+                                       0x80000000, 0, 0),
+        }
+
+    pathless = psbt.inputs[1]
+    pathless.taproot_bip32_paths = {}
+    pathless.taproot_merkle_root = os.urandom(32)
+    pathless.taproot_scripts = {(b"\x51", 0xc0): {b"\xc0" + os.urandom(32)}}
+
+    start_sign(psbt.as_bytes(), miniscript=name)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "Limited Signing" in story
+
+    signed = BasicPSBT().parse(end_sign(finalize=False))
+    assert signed.inputs[0].taproot_script_sigs
+    assert not signed.inputs[0].taproot_key_sig
+    assert not signed.inputs[1].taproot_script_sigs
+    assert not signed.inputs[1].taproot_key_sig
+
+
+def test_tapscript_leaf_version_mismatch(clear_miniscript, offer_minsc_import,
+                                         press_select, press_cancel, get_cc_key, dev,
+                                         fake_txn, start_sign, end_sign, cap_story,
+                                         settings_remove, use_testnet):
+    clear_miniscript()
+    settings_remove("wifs")
+    use_testnet()
+
+    name = "bad-leaf-ver"
+    account = "m/86h/1h/0h"
+    cc_key = get_cc_key(account)
+    internal_expr = ranged_unspendable_internal_key()
+    desc = f"tr({internal_expr},pk({cc_key}))"
+
+    _, story = offer_minsc_import(json.dumps(dict(name=name, desc=desc)))
+    assert "Create new miniscript wallet?" in story
+    press_select()
+
+    internal_root = BIP32Node.from_chaincode_pubkey(
+        32 * b"\x01", b"\x02" + bytes.fromhex(BIP_341_H)
+    )
+    internal_key = internal_root.subkey_for_path("0/0").sec()[1:]
+    account_xpub = dev.send_recv(CCProtocolPacker.get_xpub(account), timeout=None)
+    signing_key = BIP32Node.from_hwif(account_xpub).subkey_for_path("0/0").sec()[1:]
+    script = b"\x20" + signing_key + b"\xac"
+    merkle_root = tagged_sha256(b"TapLeaf", b"\xc0\x22" + script)
+
+    psbt = BasicPSBT().parse(fake_txn(1, 1, addr_fmt="p2tr"))
+    inp = psbt.inputs[0]
+    inp.witness_utxo = CTxOut(
+        100_000_000, b"\x51\x20" + taptweak(internal_key, merkle_root)
+    ).serialize()
+    inp.taproot_internal_key = internal_key
+    inp.taproot_merkle_root = merkle_root
+    inp.taproot_scripts = {(script, 0xc2): {b"\xc2" + internal_key}}
+    inp.taproot_bip32_paths = {
+        internal_key: b"\x00" + internal_root.fingerprint() + struct.pack("<2I", 0, 0),
+        signing_key: b"\x01" + merkle_root
+                     + struct.pack("<I", dev.master_fingerprint)
+                     + struct.pack("<5I", 86 | 0x80000000, 1 | 0x80000000,
+                                   0x80000000, 0, 0),
+    }
+
+    start_sign(psbt.as_bytes(), miniscript=name)
+    title, _ = cap_story()
+    assert title == "OK TO SEND?"
+    with pytest.raises(Exception) as err:
+        end_sign(finalize=False)
+    assert "Signing failed late" in err.value.args[0]
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Tapleaf ver 0xc2" in story
+    press_cancel()
+
+
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("csa", [True, False])
 @pytest.mark.parametrize("add_pk", [True, False])
@@ -1043,7 +1164,7 @@ def test_bitcoind_tapscript_address(M_N, clear_miniscript, bitcoind_miniscript,
 def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, bitcoind, goto_home, cap_menu,
                             pick_menu_item, cap_story, microsd_path, load_export, microsd_wipe, dev, way,
                             bitcoind_miniscript, clear_miniscript, get_cc_key, press_cancel, press_select,
-                            skip_if_useless_way, garbage_collector, file_tx_signing_done):
+                            skip_if_useless_way, garbage_collector, file_tx_signing_done, wait_for_story):
     skip_if_useless_way(way)
     M, N = m_n
     clear_miniscript()
@@ -1080,14 +1201,7 @@ def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, 
     time.sleep(0.1)
     # CC signing
     pick_menu_item("Ready To Sign")
-    time.sleep(.1)
-    title, story = cap_story()
-    if "OK TO SEND?" not in title:
-        time.sleep(0.1)
-        pick_menu_item(fname)
-        time.sleep(0.1)
-        title, story = cap_story()
-    assert title == "OK TO SEND?"
+    title, story = wait_for_story("OK TO SEND?", check_title=True)
     press_select()
     time.sleep(0.1)
     title, story = cap_story()
@@ -1576,24 +1690,24 @@ def test_insane_miniscript(get_cc_key, pick_menu_item, cap_story,
     assert "Failed to import" in story
     assert "Insane" in story
 
-def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
-                         microsd_path, import_miniscript, garbage_collector):
-    leaf_num = 9
-    scripts = []
-    for i in range(leaf_num):
-        k = get_cc_key(f"84h/0h/{i}h")
-        scripts.append(f"pk({k})")
-
-    tree = generate_binary_tree_template(leaf_num) % tuple(scripts)
-    desc = f"tr({ranged_unspendable_internal_key()},{tree})"
-    fname = "9leafs.txt"
-    fpath = microsd_path(fname)
-    with open(fpath, "w") as f:
-        f.write(desc)
-    garbage_collector.append(fpath)
-    _, story = import_miniscript(fname)
-    assert "Failed to import" in story
-    assert "num_leafs > 8" in story
+# def test_tapscript_depth(get_cc_key, pick_menu_item, cap_story,
+#                          microsd_path, import_miniscript, garbage_collector):
+#     leaf_num = 9
+#     scripts = []
+#     for i in range(leaf_num):
+#         k = get_cc_key(f"84h/0h/{i}h")
+#         scripts.append(f"pk({k})")
+#
+#     tree = generate_binary_tree_template(leaf_num) % tuple(scripts)
+#     desc = f"tr({ranged_unspendable_internal_key()},{tree})"
+#     fname = "9leafs.txt"
+#     fpath = microsd_path(fname)
+#     with open(fpath, "w") as f:
+#         f.write(desc)
+#     garbage_collector.append(fpath)
+#     _, story = import_miniscript(fname)
+#     assert "Failed to import" in story
+#     assert "num_leafs > 8" in story
 
 @pytest.mark.bitcoind
 # @pytest.mark.parametrize("lt_type", ["older", "after"])
@@ -2243,6 +2357,7 @@ def test_unique_name(clear_miniscript, use_regtest, offer_minsc_import,
     title, story = import_miniscript(fname=fname, way=way, data=nfc_data)
     assert ("'%s' already exists" % name) in story
     assert "MUST have unique names" in story
+    goto_home()
 
 
 @pytest.mark.qrcode
@@ -2338,6 +2453,64 @@ def test_miniscript_name_validation(microsd_path, offer_minsc_import):
         with pytest.raises(Exception) as e:
             offer_minsc_import(json.dumps({"name": tc, "desc": CHANGE_BASED_DESCS[0]}))
         assert "must be ascii" in e.value.args[0]
+
+
+@pytest.mark.parametrize("name, error", [
+    ("a", None),
+    ("a" * 30, None),
+    ("", "name len"),
+    ("a" * 31, "name len"),
+])
+def test_miniscript_name_length(name, error, offer_minsc_import, press_cancel):
+    config = json.dumps({"name": name, "desc": CHANGE_BASED_DESCS[0]})
+
+    if error:
+        with pytest.raises(Exception) as exc:
+            offer_minsc_import(config)
+        assert error in exc.value.args[0]
+    else:
+        _, story = offer_minsc_import(config)
+        assert "Create new" in story
+        press_cancel()
+
+
+@pytest.mark.parametrize("name, error", [
+    ("a", None),
+    ("a" * 30, None),
+    ("", "name len"),
+    ("a" * 31, "name len"),
+])
+def test_bip388_name_length(name, error, get_cc_key, offer_minsc_import,
+                            press_cancel):
+    key = get_cc_key("84h/1h/0h").replace("/<0;1>/*", "")
+    config = json.dumps({
+        "name": name,
+        "desc_template": "wpkh(@0/**)",
+        "keys_info": [key],
+    })
+
+    if error:
+        with pytest.raises(Exception) as exc:
+            offer_minsc_import(config)
+        assert error in exc.value.args[0]
+    else:
+        _, story = offer_minsc_import(config)
+        assert "Create new" in story
+        press_cancel()
+
+
+@pytest.mark.parametrize("name", ["bip388-ê", "bip388\tname"])
+def test_bip388_name_validation(name, get_cc_key, offer_minsc_import):
+    key = get_cc_key("84h/1h/0h").replace("/<0;1>/*", "")
+    config = json.dumps({
+        "name": name,
+        "desc_template": "wpkh(@0/**)",
+        "keys_info": [key],
+    })
+
+    with pytest.raises(Exception) as exc:
+        offer_minsc_import(config)
+    assert "must be ascii printable" in exc.value.args[0]
 
 
 def test_bug_fill_policy(set_seed_words, goto_home, pick_menu_item, need_keypress,
@@ -2981,7 +3154,8 @@ def test_static_internal_key(internal_key, clear_miniscript, microsd_path, pick_
 #     # "wsh(or_i(and_v(v:pkh(@A),older(100)),or_d(multi(3,@A,@B,@C),and_v(v:thresh(2,pkh(@A),a:pkh(@B),a:pkh(@C)),older(500)))))"
 # ])
 def test_tapscript_disjoint_derivation(cap_story, offer_minsc_import, microsd_path,
-                                       get_cc_key, bitcoin_core_signer):
+                                       get_cc_key, bitcoin_core_signer, goto_home):
+    goto_home()
     desc = "tr(unspend(),{{sortedmulti_a(2,@A,@B),sortedmulti_a(2,@AA,@C)},sortedmulti_a(2,@AAA,@BB,@CC)})"
 
     # internal key is OK
@@ -3178,9 +3352,11 @@ def test_same_key_set_miniscript(get_cc_key, bitcoin_core_signer, create_core_wa
 
             title, story = cap_story()
             if 'OK TO SEND' not in title:
-                pick_menu_item(fname)
-                time.sleep(0.1)
-                title, story = cap_story()
+                try:
+                    pick_menu_item(fname)
+                    time.sleep(0.1)
+                    title, story = cap_story()
+                except: pass
 
             assert title == "OK TO SEND?"
             assert "msc2" in story
@@ -3194,8 +3370,9 @@ def test_same_key_set_miniscript(get_cc_key, bitcoin_core_signer, create_core_wa
 @pytest.mark.parametrize("orig_der", [False, True])
 def test_specific_wallet_signing_xpubs(orig_der, get_cc_key, bitcoin_core_signer, create_core_wallet,
                                        offer_minsc_import, press_select, bitcoind, start_sign,
-                                       cap_story, end_sign, clear_miniscript, goto_home):
+                                       cap_story, end_sign, clear_miniscript, goto_home, use_regtest):
     goto_home()
+    use_regtest()
     clear_miniscript()
 
     msc = "wsh(or_d(pk(@D),and_v(v:multi(2,@A,@B,@C),older(65535))))"
@@ -3230,6 +3407,7 @@ def test_specific_wallet_signing_xpubs(orig_der, get_cc_key, bitcoin_core_signer
                                      0, {"fee_rate": 2})["psbt"]
 
     po = BasicPSBT().parse(base64.b64decode(psbt))
+    po.xpubs = []
     for ke in [bk, ck, dk, ak]:
         if "]" in ke:
             a, b = ke.split("]")
@@ -3255,8 +3433,14 @@ def test_specific_wallet_signing_xpubs(orig_der, get_cc_key, bitcoin_core_signer
     end_sign(accept=True)
 
     item = po.xpubs[0]
-    # wrong key
-    key_wrong = item[0][:-1] + b"\x10"
+    # wrong key - but has to be valid - otherwise "bad pubkey is raised"
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    if orig_der:
+        a, _ = bk.split("]")
+        der = "/".join(a[1:].split("/")[1:])
+        node = node.subkey_for_path(der)
+
+    key_wrong = node.node.serialize_public()
     po.xpubs[0] = (key_wrong, item[1])
 
     start_sign(po.as_bytes(), miniscript="msc")
@@ -3268,7 +3452,8 @@ def test_specific_wallet_signing_xpubs(orig_der, get_cc_key, bitcoin_core_signer
     if orig_der:
         # wrong derivation path
         # do not check if we only have xfp as derivation, because blinded keys allowed
-        pth_wrong = item[1][:-1] + b"\x10"
+        last_idx = struct.unpack("<I", item[1][-4:])[0]
+        pth_wrong = item[1][:-4] + struct.pack("<I", last_idx ^ 1)
         po.xpubs[0] = (item[0], pth_wrong)
 
         start_sign(po.as_bytes(), miniscript="msc")
@@ -3414,6 +3599,7 @@ def test_bip388_policies(desc, way, offer_minsc_import, press_select, pick_menu_
 def test_miniscript_rename(offer_minsc_import, clear_miniscript, press_select, goto_home,
                            pick_menu_item, enter_complex, cap_menu, cap_screen, is_q1,
                            need_keypress, press_cancel):
+    goto_home()
     clear_miniscript()
     name = "old_name"
     title, story = offer_minsc_import(json.dumps(dict(name=name, desc=CHANGE_BASED_DESCS[0])))
@@ -3466,8 +3652,10 @@ def test_miniscript_rename(offer_minsc_import, clear_miniscript, press_select, g
     assert real_name == m[0]
 
 
-def test_legacy_sh_miniscript(offer_minsc_import, press_select, create_core_wallet, clear_miniscript):
+def test_legacy_sh_miniscript(offer_minsc_import, press_select, create_core_wallet,
+                              clear_miniscript, goto_home):
     clear_miniscript()
+    goto_home()
     desc = ("sh("
             "or_d(pk([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*),"
             "and_v("

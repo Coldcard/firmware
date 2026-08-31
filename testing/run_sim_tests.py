@@ -278,7 +278,7 @@ class ColdcardSimulator:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        time.sleep(start_wait or SIM_INIT_WAIT)
+        time.sleep(SIM_INIT_WAIT if start_wait is None else start_wait)
         if self.segregate:
             self.socket = "/tmp/ckcc-simulator-%d.sock" % self.proc.pid
         atexit.register(self.stop)
@@ -399,11 +399,11 @@ def main():
         start_time = time.time()
         def add_to_queue(module_name, simulator_args, queue):
             if module_name == "test_miniscript.py":
-                queue.append((2, [module_name, simulator_args, "not liana_miniscripts_simple and not test_tapscript and not test_bitcoind_tapscript_address and not test_minitapscript", ""]))
+                queue.append((1, [module_name, simulator_args, "not liana_miniscripts_simple and not test_tapscript and not test_bitcoind_tapscript_address and not test_minitapscript", ""]))
                 queue.append((0, [module_name, simulator_args, "liana_miniscripts_simple", "-sep1"]))
-                queue.append((2, [module_name, simulator_args, "test_tapscript", "-sep2"]))
-                queue.append((0, [module_name, simulator_args, "test_bitcoind_tapscript_address", "-sep3"]))
-                queue.append((0, [module_name, simulator_args, "test_minitapscript", "-sep4"]))
+                queue.append((0, [module_name, simulator_args, "test_tapscript", "-sep2"]))
+                queue.append((2, [module_name, simulator_args, "test_bitcoind_tapscript_address", "-sep3"]))
+                queue.append((1, [module_name, simulator_args, "test_minitapscript", "-sep4"]))
 
             elif module_name == "test_musig2.py":
                 queue.append((0, [module_name, simulator_args, None, ""]))
@@ -411,20 +411,21 @@ def main():
             elif module_name == "test_multisig.py":
                 # split takes too much time
                 queue.append((0, [module_name, simulator_args, "not tutorial and not airgapped and not ms_address and not descriptor_export", ""]))
-                queue.append((0, [module_name, simulator_args, "airgapped", "-sep1"]))
+                queue.append((2, [module_name, simulator_args, "airgapped", "-sep1"]))
                 queue.append((0, [module_name, simulator_args, "tutorial", "-sep2"]))
-                queue.append((0, [module_name, simulator_args, "ms_address", "-sep3"]))
-                queue.append((0, [module_name, simulator_args, "descriptor_export", "-sep4"]))
+                queue.append((1, [module_name, simulator_args, "ms_address", "-sep3"]))
+                queue.append((2, [module_name, simulator_args, "descriptor_export", "-sep4"]))
 
             elif module_name == "test_seed_xor.py":
                 # split takes too much time
-                queue.append((0, [module_name, simulator_args, "test_import_xor", "-sep1"]))
-                queue.append((0, [module_name, simulator_args, "not test_import_xor", ""]))
+                queue.append((1, [module_name, simulator_args, "test_import_xor", "-sep1"]))
+                queue.append((2, [module_name, simulator_args, "not test_import_xor", ""]))
 
             elif module_name in ["test_export.py", "test_ephemeral.py", "test_sign.py", "test_msg.py",
                                  "test_backup.py", "test_bsms.py"]:
                 # higher priority
-                queue.append((1, [module_name, simulator_args, None, ""]))
+                queue.append((1 if module_name == "test_export.py" else 0,
+                              [module_name, simulator_args, None, ""]))
 
             else:
                 # standard priority
@@ -485,16 +486,35 @@ def main():
 
                     q_chunks.append((sim, mn, mod_add, k, ld))
 
-                time.sleep(5)
+                deadline = time.monotonic() + 30
+                for sim, mn, mod_add, _, log_dir in q_chunks:
+                    try:
+                        while not os.path.exists(sim.socket):
+                            if sim.proc.poll() is not None:
+                                raise RuntimeError(f"Simulator exited before creating {sim.socket}")
+                            if time.monotonic() >= deadline:
+                                raise TimeoutError(f"Simulator did not create {sim.socket}")
+                            time.sleep(0.1)
+                    except (RuntimeError, TimeoutError) as exc:
+                        out_log_path = f"{log_dir}/%s.log" % (mn + mod_add)
+                        with open(out_log_path, "w") as out_fd:
+                            out_fd.write("short test summary info\n")
+                            out_fd.write(f"ERROR {mn + mod_add} - {type(exc).__name__}: {exc}\n")
+                        raise
+
                 for sim, mn, mod_add, k, log_dir in q_chunks:
                     assert sim.socket
                     out_log_path = f"{log_dir}/%s.log" % (mn + mod_add)
                     out_fd = open(out_log_path, "w")
                     cmd_list = ["pytest", "--cache-clear", "-m", DEFAULT_PYTEST_MARKS, "--sim",
                                 mn, "--sim-socket", sim.socket]
+                    if args.psbt2:
+                        cmd_list.append("--psbt2")
                     if k:
                         cmd_list.extend(["-k", k])
-                    p = subprocess.Popen(cmd_list, preexec_fn=os.setsid, stdout=out_fd, stderr=out_fd)
+                    env = dict(os.environ, CKCC_DEFAULT_TIMEOUT="10000")
+                    p = subprocess.Popen(cmd_list, preexec_fn=os.setsid, stdout=out_fd,
+                                         stderr=out_fd, env=env)
                     if "q1" in log_dir:
                         mark = "Q"
                     elif "mk5" in log_dir:

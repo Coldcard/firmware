@@ -44,9 +44,10 @@ class MembraneNumpad(NumpadBase):
         self._char_reported = set()
 
         # internal state for timer irq handler
-        self._history = None        # see _start_scan
+        self._history = bytearray(NUM_ROWS * NUM_COLS)
         self._scan_count = 0
         self._cycle = 0
+        self._finish_scan_active = False
 
         self.waiting_for_any = True
 
@@ -68,9 +69,40 @@ class MembraneNumpad(NumpadBase):
         # begin scanning for events
         self._wait_any()
 
+    def start_mash(self):
+        super(MembraneNumpad, self).start_mash()
+        self.timer.deinit()
+        self._wait_any()
+        for c in self.cols:
+            c.irq(self._mash_press_irq, Pin.IRQ_FALLING, hard=True)
+        self.timer.init(freq=SAMPLE_FREQ, callback=self._measure_irq)
+        self._ensure_finish_scan()
+
+    def stop_mash(self):
+        super(MembraneNumpad, self).stop_mash()
+        for c in self.cols:
+            c.irq(self.anypress_irq, Pin.IRQ_FALLING|Pin.IRQ_RISING)
+
+    def _ensure_finish_scan(self):
+        if not self._finish_scan_active:
+            self._finish_scan_active = True
+            call_later_ms(Q_CHECK_RATE, self._finish_scan)
+
     def _wait_any(self):
         # wait for any press but stop continuously scanning for now
-        self.timer.deinit()
+        if not self._mash_mode:
+            self.timer.deinit()
+
+        self._mash_press_timestamp = None
+        self._scan_count = 0
+        for i in range(NUM_ROWS * NUM_COLS):
+            self._history[i] = 0
+
+        if self._mash_mode:
+            try:
+                shuffle(self.scan_order)
+            except OSError:
+                pass
 
         for r in self.rows:
             r.off()
@@ -81,22 +113,34 @@ class MembraneNumpad(NumpadBase):
         # reset and re-start scanning keys
         self.waiting_for_any = False
         self.lp_time = utime.ticks_ms()
-        shuffle(self.scan_order)
+        try:
+            shuffle(self.scan_order)
+        except OSError:
+            # An RNG fault may reduce scan-order randomization, but must not
+            # leave the keypad disabled before the user can log in.
+            pass
 
         self._scan_count = 0
-        self._history = bytearray(NUM_ROWS * NUM_COLS)
-
         self.timer.init(freq=SAMPLE_FREQ, callback=self._measure_irq)
-        call_later_ms(Q_CHECK_RATE, self._finish_scan)
+        self._ensure_finish_scan()
 
     def _measure_irq(self, _timer):
         # CHALLENGE: Called at high rate, and cannot do memory alloc.
         # - sample all keys once, record any that are pressed
 
         if self.waiting_for_any:
-            # stop
-            _timer.deinit()
-            return
+            if not self._mash_mode:
+                # stop
+                _timer.deinit()
+                return
+            if self._mash_press_timestamp is None:
+                return
+
+            # A hard column IRQ already captured the physical edge. Begin the
+            # existing slow scan only to debounce and identify that key.
+            self.waiting_for_any = False
+            self.lp_time = utime.ticks_ms()
+            self._scan_count = 0
 
         for i in range(NUM_ROWS):
             row = self.scan_order[i]
@@ -128,6 +172,14 @@ class MembraneNumpad(NumpadBase):
             if sum(self._history) == 0:
                 # all are up, and debounced as such
                 self.scans.append(0xff)
+                if self._mash_mode:
+                    # Rearm raw-edge capture here, before the async scan
+                    # consumer or a synchronous display update can delay it.
+                    # Release is already fully debounced at this point.
+                    self._mash_press_timestamp = None
+                    self.waiting_for_any = True
+                    for r in self.rows:
+                        r.off()
             else:
                 for i in range(NUM_ROWS * NUM_COLS):
                     if self._history[i] == NUM_SAMPLES:
@@ -150,16 +202,29 @@ class MembraneNumpad(NumpadBase):
             else:
                 # indicated key was found to be down
                 ch = DECODER[event]
+                if self._mash_mode and self._mash_press_timestamp is None:
+                    continue
                 if ch not in self._char_reported:
                     self._char_reported.add(ch)
-                    self._key_event(ch)
+                    timestamp = self._mash_press_timestamp if self._mash_mode else None
+                    self._key_event(ch, timestamp)
+                    self._mash_press_timestamp = None
 
                     self.lp_time = utime.ticks_ms()
 
-        if not self._char_reported and utime.ticks_diff(utime.ticks_ms(), self.lp_time) > 250:
-            # stop scanning now... nothing happening
-            self._wait_any()
-        else:
-            call_later_ms(Q_CHECK_RATE, self._finish_scan)
+        if not self._char_reported:
+            idle = utime.ticks_diff(utime.ticks_ms(), self.lp_time)
+            if self._mash_mode:
+                if (not self.waiting_for_any and
+                        (self._mash_press_timestamp is None or idle > 250)):
+                    # Release completed, or a raw edge failed to debounce.
+                    self._wait_any()
+            elif idle > 250:
+                # stop scanning now... nothing happening
+                self._finish_scan_active = False
+                self._wait_any()
+                return
+
+        call_later_ms(Q_CHECK_RATE, self._finish_scan)
     
 # EOF

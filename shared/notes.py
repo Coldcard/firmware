@@ -2,18 +2,19 @@
 #
 # notes.py - Store some short notes, securely.
 #
-import ngu, bip39
+import ngu, bip39, ujson
 from menu import MenuItem, MenuSystem, ShortcutItem
 from ux import ux_show_story, ux_dramatic_pause, ux_confirm, the_ux
-from ux import ux_input_text, show_qr_code, import_export_prompt
+from ux import ux_input_text, show_qr_code, import_export_prompt, OK
 from ux_q1 import QRScannerInteraction
 from actions import goto_top_menu
 from glob import settings, dis
 from files import CardMissingError, needs_microsd, CardSlot
+from public_constants import MSG_SIGNING_MAX_LENGTH
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 from charcodes import KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6
 from lcd_display import CHARS_W
-from utils import problem_file_line, url_unquote, wipe_if_deltamode
+from utils import problem_file_line, url_unquote, wipe_if_deltamode, is_printable
 
 # title, username and such are limited that they fit on the one line both in
 # text entry (W-2) and also in menu display (W-3)
@@ -130,9 +131,7 @@ class NotesMenu(MenuSystem):
         else:
             wipe_if_deltamode()
 
-            rv = []
-            for note in NoteContent.get_all():
-                rv.append(MenuItem('%d: %s' % (note.idx+1, note.title), menu=note.make_menu))
+            rv = cls.construct_note_items(readonly=False)
 
             rv.extend(news)
 
@@ -150,13 +149,31 @@ class NotesMenu(MenuSystem):
         # When only allowed to view, no export/add new/delete.
         wipe_if_deltamode()
 
-        rv = []
-        for note in NoteContent.get_all():
-            rv.append(MenuItem('%d: %s' % (note.idx+1, note.title),
-                               menu=note.make_menu, arg=True))  # readonly=True
+        rv = cls.construct_note_items(readonly=True)
 
         if not rv:
             rv.append(MenuItem('(none saved yet)'))
+
+        return rv
+
+    @classmethod
+    def construct_note_items(cls, readonly=False):
+        rv = []
+        by_group = {}
+
+        for note in NoteContent.get_all():
+            item = MenuItem('%d: %s' % (note.idx+1, note.title),
+                            menu=note.make_menu, arg=readonly)
+            group = note.group
+            if group:
+                if group not in by_group:
+                    by_group[group] = []
+                by_group[group].append(item)
+            else:
+                rv.append(item)
+
+        for group in sorted(by_group):
+            rv.append(MenuItem('↳ ' + group, menu=NoteGroupMenu(group, readonly)))
 
         return rv
 
@@ -211,7 +228,7 @@ class NotesMenu(MenuSystem):
     @classmethod
     async def disable_notes(cls, *a):
         # they don't want feature anymore; already checked no notes in effect
-        # - no need for confirm, they aren't loosing anything
+        # - no need for confirm, they aren't losing anything
         settings.remove_key('secnap')
         settings.remove_key('notes')
         settings.save()
@@ -230,9 +247,27 @@ class NotesMenu(MenuSystem):
     @classmethod
     async def drill_to(cls, menu, item):
         # make it so looks like we drilled down into the new note
-        menu.goto_idx(item.idx)
+        label = '%d: %s' % (item.idx+1, item.title)
+        group = item.group
+        if group:
+            cls.goto_exact_label(menu, '↳ ' + group)
+            gm = NoteGroupMenu(group)
+            cls.goto_exact_label(gm, label)
+            the_ux.push(gm)
+        else:
+            cls.goto_exact_label(menu, label)
+
         m = await item._make_menu()
         the_ux.push(MenuSystem(m))
+
+    @staticmethod
+    def goto_exact_label(menu, label):
+        for i, mi in enumerate(menu.items):
+            if mi.label == label:
+                menu.goto_idx(i)
+                return True
+
+        return False
 
 
 class NoteContentBase:
@@ -249,9 +284,15 @@ class NoteContentBase:
         return PasswordContent(j, idx) if 'user' in j else NoteContent(j, idx)
 
     def serialize(self):
-        return {fld:getattr(self, fld, '') for fld in self.flds}
+        res = {}
+        for fld in self.flds:
+            val = getattr(self, fld, '')
+            # user field is necessary for proper password identification in constructor
+            if not val and (fld != "user"):
+                continue
+            res[fld] = val
 
-    to_json = serialize
+        return res
 
     @classmethod
     def get_all(cls):
@@ -277,6 +318,15 @@ class NoteContentBase:
         settings.put('notes', [n.serialize() for n in notes])
         settings.save()
 
+    @classmethod
+    def get_groups(cls):
+        groups = set()
+        for note in cls.get_all():
+            if note.group:
+                groups.add(note.group)
+
+        return sorted(groups)
+
     async def delete(self, *a):
         # Remove note
         ok = await ux_confirm("Everything about this note/password will be lost.")
@@ -297,6 +347,11 @@ class NoteContentBase:
         the_ux.pop()
         m = the_ux.top_of_stack()
         m.update_contents()
+        parent = the_ux.parent_of(m)
+        if parent:
+            parent.update_contents()
+            if isinstance(m, NoteGroupMenu) and not m.has_notes():
+                the_ux.pop()
 
         await ux_dramatic_pause('Deleted.', 3)
 
@@ -334,6 +389,11 @@ class NoteContentBase:
             # update parent
             parent = the_ux.parent_of(menu)
             parent.update_contents()
+            grandparent = the_ux.parent_of(parent)
+            if grandparent:
+                grandparent.update_contents()
+            if isinstance(parent, NoteGroupMenu) and not parent.has_notes():
+                the_ux.stack.remove(parent)
         else:
             menu.update_contents()
 
@@ -363,12 +423,94 @@ class NoteContentBase:
         await ux_sign_msg(txt, approved_cb=msg_signing_done, kill_menu=False)
 
     def sign_misc_menu_item(self):
-        return MenuItem("Sign Note Text", f=self.sign_txt_msg, arg=self.misc)
+        return MenuItem("Sign Note Text", f=self.sign_txt_msg, arg=self.misc,
+                        predicate=2 <= len(self.misc) <= MSG_SIGNING_MAX_LENGTH)
+
+    @staticmethod
+    def is_b39pass_applicable(data, read_only):
+        from seed import MAX_PASS_LEN
+        from ccc import sssp_spending_policy
+        if read_only and not sssp_spending_policy('okeys'):
+            return False
+        return (len(data) <= MAX_PASS_LEN) and is_printable(data) and settings.get("words", True)
+
+    async def apply_as_b39_pass(self, a, b, item):
+        data, readonly = item.arg
+        # rstrip just trailing whitespaces/tabs/newlines
+        data = data.rstrip()
+        # do not allow any more tabs/newlines
+        assert self.is_b39pass_applicable(data, readonly)
+        from seed import apply_pass_value
+        await apply_pass_value(data)
+
+
+class NoteGroupMenu(MenuSystem):
+    def __init__(self, group, readonly=False):
+        self.group = group
+        self.readonly = readonly
+        super().__init__(self.construct())
+
+    def construct(self):
+        items = []
+        for note in NoteContent.get_all():
+            if note.group == self.group:
+                items.append(MenuItem('%d: %s' % (note.idx+1, note.title),
+                                      menu=note.make_menu, arg=self.readonly))
+
+        return items or [MenuItem('(none)')]
+
+    def has_notes(self):
+        return any(note.group == self.group for note in NoteContent.get_all())
+
+    def update_contents(self):
+        self.replace_items(self.construct())
+
+
+class GroupPickerMenu(MenuSystem):
+    def __init__(self, current=''):
+        self.result = None
+        self.current = current
+
+        groups = NoteContentBase.get_groups()
+        chosen = 0
+        items = [MenuItem('(none)', f=self.picked, arg='')]
+
+        for group in groups:
+            if group == self.current:
+                chosen = len(items)
+            items.append(MenuItem(group, f=self.picked, arg=group))
+
+        items.append(MenuItem('New Group', f=self.new_group))
+
+        super().__init__(items, chosen=chosen)
+
+    async def picked(self, menu, idx, mi):
+        assert menu == self
+        self.result = mi.arg
+        the_ux.pop()
+
+    async def new_group(self, menu, idx, mi):
+        group = await ux_input_text('', max_len=ONE_LINE, confirm_exit=False,
+                                    prompt='Group', placeholder='(optional)')
+        if group is None:
+            self.result = None
+        else:
+            self.result = group
+
+        the_ux.pop()
+
+    @classmethod
+    async def pick(cls, current=''):
+        m = cls(current)
+        the_ux.push(m)
+        await m.interact()
+
+        return current if m.result is None else m.result
 
 
 class PasswordContent(NoteContentBase):
     # "Passwords" have a few more fields and are more structured
-    flds = ['title', 'user', 'password', 'site', 'misc' ]
+    flds = ['title', 'user', 'password', 'site', 'misc', 'group']
     type_label = 'password'
 
     async def _make_menu(self, readonly=False):
@@ -380,7 +522,7 @@ class PasswordContent(NoteContentBase):
         # if self.misc: rv.append(MenuItem('↳ (notes)', f=self.view))
         rv += [
             MenuItem('View Password', f=self.view_pw),
-            MenuItem('Send Password', f=self.send_pw, predicate=lambda: settings.get('du', True)),
+            MenuItem('Send Password', f=self.send_pw),
         ]
         if not readonly:
             rv += [
@@ -394,6 +536,12 @@ class PasswordContent(NoteContentBase):
             ShortcutItem(KEY_QR, f=self.view_qr_menu, arg=self.type_label),
             ShortcutItem(KEY_NFC, f=self.share_nfc, arg=self.type_label),
         ]
+
+        # if password is less than MAX_PASS_LEN and only consist of printable ASCII characters
+        # and current seed (master or tmp) is word based - offer to apply pwd text as BIP-39 passphrase
+        if self.is_b39pass_applicable(self.password, readonly):
+            rv += [MenuItem('Apply as BIP-39 Passphrase',
+                            f=self.apply_as_b39_pass, arg=(self.password, readonly))]
 
         return rv
 
@@ -468,7 +616,8 @@ class PasswordContent(NoteContentBase):
 
         if self.idx == -1:
             # prompt for password only on new records.
-            self.password = await get_a_password(self.password)
+            # can be None if CANCEL is pressed - handle, Send Password requires string
+            self.password = await get_a_password(self.password) or ""
 
         site = await ux_input_text(self.site, max_len=ONE_LINE, scan_ok=True, confirm_exit=False,
                                    prompt='Website', placeholder='(optional)')
@@ -479,6 +628,8 @@ class PasswordContent(NoteContentBase):
                                    prompt='More Notes', placeholder='(optional)')
         if misc is None:
             misc = self.misc
+
+        group = await GroupPickerMenu.pick(self.group)
 
         if self.idx != -1:
             # confirm changes, don't for new records
@@ -491,6 +642,8 @@ class PasswordContent(NoteContentBase):
                 chgs.append('Username')
             if self.misc != misc:
                 chgs.append('Other Notes')
+            if self.group != group:
+                chgs.append('Group')
 
             if not chgs:
                 await ux_dramatic_pause('No changes.', 3)
@@ -504,6 +657,7 @@ class PasswordContent(NoteContentBase):
         self.user = user
         self.site = site
         self.misc = misc
+        self.group = group
 
         await self._save_ux(menu)
         return self
@@ -511,11 +665,12 @@ class PasswordContent(NoteContentBase):
 
 class NoteContent(NoteContentBase):
     # Pure "notes" have just a title and free-form text
-    flds = ['title', 'misc']
+    flds = ['title', 'misc', 'group']
     type_label = 'note'
 
     async def _make_menu(self, readonly=False):
         # Details and actions for this Note
+
         rv = [
             MenuItem('"%s"' % self.title, f=self.view),
             MenuItem('View Note', f=self.view),
@@ -526,11 +681,19 @@ class NoteContent(NoteContentBase):
                 MenuItem('Delete', f=self.delete),
                 MenuItem('Export', f=self.export),
             ]
+
         rv += [
             self.sign_misc_menu_item(),
             ShortcutItem(KEY_QR, f=self.view_qr_menu, arg="misc"),
             ShortcutItem(KEY_NFC, f=self.share_nfc, arg='misc'),
         ]
+
+        # if misc is less than MAX_PASS_LEN and only consist of printable ASCII characters
+        # and current seed (master or tmp) is word based - offer to apply note text as BIP-39 passphrase
+        if self.is_b39pass_applicable(self.misc, readonly):
+            rv += [MenuItem('Apply as BIP-39 Passphrase',
+                            f=self.apply_as_b39_pass, arg=(self.misc, readonly))]
+
         return rv
 
     async def make_menu(self, a, b, item):
@@ -557,6 +720,8 @@ class NoteContent(NoteContentBase):
         if misc is None:
             misc = self.misc
 
+        group = await GroupPickerMenu.pick(self.group)
+
         if self.idx != -1:
             # confirm changes, don't for new records
             chgs = []
@@ -564,6 +729,8 @@ class NoteContent(NoteContentBase):
                 chgs.append('Title')
             if self.misc != misc:
                 chgs.append('Note Text')
+            if self.group != group:
+                chgs.append('Group')
 
             if not chgs:
                 await ux_dramatic_pause('No changes.', 3)
@@ -576,6 +743,7 @@ class NoteContent(NoteContentBase):
 
         self.title = title
         self.misc = misc
+        self.group = group
 
         await self._save_ux(menu)
 
@@ -583,40 +751,69 @@ class NoteContent(NoteContentBase):
 
 async def start_export(notes):
     # Save out notes/passwords
-    from glob import NFC
+    import seed
     from msgsign import write_sig_file
-    import ujson as json
     from ux_q1 import show_bbqr_codes
+    from backups import encrypt_7z_data, bkpw_workflow, pick_backup_password
 
     singular = (len(notes) == 1)
 
     item = notes[0].type_label if singular else  'all notes & passwords'
+
     choice = await import_export_prompt(item, title="Data Export", no_nfc=True,
-                                        footnotes="WARNING: No encryption happens here."
-                                                  " Your secrets will be cleartext.")
+                                        footnotes="WARNING: QR exports are NOT encrypted!")
     if choice == KEY_CANCEL:
         return
 
     # render it
-    data = json.dumps(dict(coldcard_notes=[i.serialize() for i in notes]))
+    data = ujson.dumps(dict(coldcard_notes=[i.serialize() for i in notes]))
 
     if choice == KEY_QR:
         # Always do BBRq.
         await show_bbqr_codes('J', data, 'Notes & Passwords Export')
         return
 
+    pwd = None
+    stored_pwd, skip_quiz = await bkpw_workflow()
+    if skip_quiz:
+        pwd = stored_pwd
+
+    if not pwd:
+        pwd, abort = await pick_backup_password(secret_opt=True, what="notes & passwords")
+        if abort: return
+
+    if pwd and not skip_quiz:
+        # quiz them, but be nice and do a shorter test.
+        words = pwd.split(" ")
+        ch = await seed.word_quiz(words, limited=(len(words) // 3))
+        if ch == 'x': return
+
     # ideally, we'd use the title to make a filename, but meh...
     fname_pattern = 'cc-notes.json' if not singular else ('cc-%s.json' % notes[0].type_label)
+
+    zz = None
+    if pwd:
+        dis.fullscreen("Encrypting...")
+        fname_pattern = fname_pattern.replace(".json", ".7z")
+        zz, hdr, footer = encrypt_7z_data(pwd, data.encode(), "json")
 
     try:
         with CardSlot(**choice) as card:
             fname, nice = card.pick_filename(fname_pattern)
 
-            with open(fname, 'w+') as fp:
-                fp.write(data)
+            with open(fname, 'wb' if zz else 'w+') as fp:
+                if zz:
+                    fp.write(hdr)
+                    fp.write(zz.body)
+                    fp.write(footer)
+                else:
+                    fp.write(data)
 
-            h = ngu.hash.sha256s(data)
-            sig_nice = write_sig_file([(h, fname)])
+            sig_nice = None
+            if not zz:
+                # only unencrypted produces a signature file
+                h = ngu.hash.sha256s(data)
+                sig_nice = write_sig_file([(h, fname)])
 
     except CardMissingError:
         await needs_microsd()
@@ -625,9 +822,9 @@ async def start_export(notes):
         await ux_show_story('Failed to write!\n\n'+str(e))
         return
 
-    msg = 'Export file written:\n\n%s\n\nSignature file written:\n\n%s' % (
-        nice, sig_nice
-    )
+    msg = '%sxport file written:\n\n%s' % ("Encrypted e" if zz else "E", nice)
+    if sig_nice:
+        msg += "\n\nSignature file written:\n\n%s" % sig_nice
     await ux_show_story(msg)
 
 
@@ -635,37 +832,88 @@ async def import_from_other(menu, *a):
     # Suck in a bunch of notes/passwords. Has to be coming from a Coldcard
     # - but it's also just simple JSON
     from actions import file_picker
-    import json
+    from backups import bkpw_min_len, check_and_decrypt
 
     choice = await import_export_prompt('secure notes and/or passwords', no_nfc=True,
-                                            is_import=True, title='Data Import')
+                                        is_import=True, title='Data Import')
     if choice == KEY_CANCEL:
         return
 
     elif choice == KEY_QR:
         # Always do BBRq.
-        zz = QRScannerInteraction()
-        records = await zz.scan_json('Scan BBQr from other COLDCARD.')
+        qr = QRScannerInteraction()
+        records = await qr.scan_json('Scan BBQr from other COLDCARD.')
         if records is None: return
+        ok = await import_from_json(records)
+        if not ok: return
 
     else:
-        def contains_json(fname):
+        def suitable(fname):
+            if fname.endswith('.7z'): return True  # encrypted
             if not fname.endswith('.json'): return False
             try:
-                obj = json.load(open(fname, 'rt'))
+                obj = ujson.load(open(fname, 'rt'))
                 assert 'coldcard_notes' in obj
                 return True
             except: pass
 
-        fn = await file_picker(min_size=8, max_size=100000, taster=contains_json, **choice)
+        fn = await file_picker(min_size=8, max_size=100000, taster=suitable, **choice)
         if not fn: return
 
-        with CardSlot(readonly=True, **choice) as card:
-            records = json.load(open(fn, 'rt'))
+        if fn.endswith('.7z'):  # encrypted version
+            import seed, version
+            from backups import num_pw_words
 
-    # We have some JSON, parsed now.
-    await import_from_json(records)
+            ch = await ux_show_story("Press (1) if your password is custom string, press %s for"
+                                     " 12 word password." % OK, title="Custom PWD?",
+                                     escape="1")
+            if ch == "x": return
+            custom_pwd = (ch == "1")
 
+            # need password
+            async def enc_done(words):
+                # remove all pw-picking from menu stack
+                seed.WordNestMenu.pop_all()
+                password = ' '.join(words)
+
+                try:
+                    with CardSlot(readonly=True, **choice):
+                        with open(fn, "rb") as fd:
+                            contents = check_and_decrypt(fd, password, inner_ext=".json")
+                            ok = await import_from_json(ujson.loads(contents))
+                            if not ok: return False
+
+                except CardMissingError:
+                    await needs_microsd()
+                    return False
+                except Exception as e:
+                    await ux_show_story(str(e), title='FAILED')
+                    return False
+
+                return True
+
+            if custom_pwd:
+                ipw = await ux_input_text("", prompt="Your Backup Password",
+                                          min_len=bkpw_min_len, max_len=128)
+                if not ipw: return
+                if not await enc_done([ipw]): return
+
+            else:
+                from ux_q1 import seed_word_entry
+                words = await seed_word_entry('Enter Password:', num_pw_words,
+                                              has_checksum=False)
+                if not words: return
+                if not await enc_done(words): return
+
+        else:
+            with CardSlot(readonly=True, **choice) as card:
+                with open(fn, 'rt') as f:
+                    records = ujson.loads(f.read())
+
+            # We have some JSON, parsed now.
+            ok = await import_from_json(records)
+            if not ok: return
+        
     await ux_dramatic_pause('Saved.', 3)
     menu.update_contents()
 
@@ -683,6 +931,7 @@ async def import_from_json(records):
         settings.set('notes', was)
         settings.set('secnap', True)
         settings.save()
+        return True
 
     except Exception as e:
         await ux_show_story(title="Failure", msg=str(e) + '\n\n' + problem_file_line(e))

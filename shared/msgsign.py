@@ -8,7 +8,7 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from uhashlib import sha256
 from public_constants import MSG_SIGNING_MAX_LENGTH
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 from ux import (ux_show_story, OK, ux_enter_bip32_index, ux_input_text, the_ux,
                 import_export_prompt, ux_aborted)
@@ -179,14 +179,16 @@ async def msg_sign_ux_get_subpath(addr_fmt):
     purpose = chains.af_to_bip44_purpose(addr_fmt)
     chain_n = chains.current_chain().b44_cointype
 
-    acct = await ux_enter_bip32_index('Account Number:') or 0
+    acct = await ux_enter_bip32_index('Account Number:')
+    if acct is None: return
 
     ch = await ux_show_story(title="Change?",
                              msg="Press (0) to use internal/change address,"
                                  " %s to use external/receive address." % OK, escape="0")
     change = 1 if ch == '0' else 0
 
-    idx = await ux_enter_bip32_index('Index Number:') or 0
+    idx = await ux_enter_bip32_index('Index Number:')
+    if idx is None: return
 
     return "m/%dh/%dh/%dh/%d/%d" % (purpose, chain_n, acct, change, idx)
 
@@ -260,17 +262,18 @@ def write_sig_file(content_list, derive=None, addr_fmt=AF_CLASSIC, pk=None, sig_
 
     return sig_nice
 
-def validate_text_for_signing(text, only_printable=True):
+def validate_text_for_signing(text, allow_tab_nl=False,
+                              max_length=MSG_SIGNING_MAX_LENGTH):
     # Check for some UX/UI traps in the message itself.
     # - messages must be short and ascii only. Our charset is limited
     # - too many spaces, leading/trailing can be an issue
     # MSG_MAX_SPACES = 4      # impt. compared to -=- positioning
-
-    result = to_ascii_printable(text, only_printable=only_printable)
+    text = str(text, "ascii")  # handle memoryview coming from USB
+    result = to_ascii_printable(text, allow_tab_nl=allow_tab_nl)
 
     length = len(result)
     assert length >= 2, "msg too short (min. 2)"
-    assert length <= MSG_SIGNING_MAX_LENGTH, "msg too long (max. %d)" % MSG_SIGNING_MAX_LENGTH
+    assert length <= max_length, "msg too long (max. %d)" % max_length
     assert "   " not in result, 'too many spaces together in msg(max. 3)'
     # other confusion w/ whitepace
     assert result[0] != ' ', 'leading space(s) in msg'
@@ -313,6 +316,7 @@ def parse_msg_sign_request(data):
         if text is None:
             raise AssertionError("MSG required")
         subpath = data_dict.get("subpath", subpath)
+        assert isinstance(subpath, str), "subpath"
         addr_fmt = data_dict.get("addr_fmt", addr_fmt)
         is_json = True
     except ValueError:
@@ -331,11 +335,13 @@ def parse_msg_sign_request(data):
         addr_fmt = addr_fmt_from_subpath(subpath)
 
     if not subpath:
-        subpath = chains.STD_DERIVATIONS[addr_fmt]
-        subpath = subpath.format(
-            coin_type=chains.current_chain().b44_cointype,
-            account=0, change=0, idx=0
-        )
+        try:
+            subpath = chains.STD_DERIVATIONS[addr_fmt]
+            subpath = subpath.format(
+                coin_type=chains.current_chain().b44_cointype,
+                account=0, change=0, idx=0
+            )
+        except: pass
 
     return text, subpath, addr_fmt, is_json
 
@@ -378,6 +384,11 @@ def sign_message_digest(digest, subpath, prompt, addr_fmt=AF_CLASSIC, pk=None):
             dis.progress_sofar(50, 100)
             pk = node.privkey()
             addr = ch.address(node, addr_fmt)
+
+            if sv.deltamode:
+                # Silently invalidate signatures made under the Delta PIN,
+                # matching transaction-signing behavior.
+                digest = ngu.hash.sha256d(digest)
     else:
         # if private key is provided, derivation subpath is ignored
         # and given private key is used for signing.
@@ -408,14 +419,15 @@ async def ux_sign_msg(txt, approved_cb=None, kill_menu=True):
 
         text, af = item.arg
         subpath = await msg_sign_ux_get_subpath(af)
+        if subpath is None: return
 
         await approve_msg_sign(text, subpath, af, approved_cb=approved_cb,
-                               kill_menu=kill_menu, only_printable=False)
+                               kill_menu=kill_menu, allow_tab_nl=True)
 
     # pick address format
     rv = [
         MenuItem(chains.addr_fmt_label(af), f=done, arg=(txt, af))
-        for af in chains.SINGLESIG_AF
+        for af in chains.SINGLESIG_AF if af != AF_P2TR
     ]
     the_ux.push(MenuSystem(rv))
 

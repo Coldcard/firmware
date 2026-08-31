@@ -2,12 +2,14 @@
 #
 # MuSig2 tests.
 #
-import pytest, base64, itertools, time, json, copy, random, os
+import pytest, base64, itertools, time, json, copy, random, struct
 from txn import BasicPSBT
 from constants import SIGHASH_MAP
 from bip32 import random_keys, ranged_unspendable_internal_key, BIP32Node
 from helpers import generate_binary_tree_template
 from mnemonic import Mnemonic
+from psbt import (PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS, PSBT_IN_MUSIG2_PUB_NONCE,
+                  PSBT_IN_MUSIG2_PARTIAL_SIG, PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS)
 
 
 def sighash_check(psbt, sighash):
@@ -17,6 +19,13 @@ def sighash_check(psbt, sighash):
             assert inp.sighash == SIGHASH_MAP[sighash]
         else:
             assert inp.sighash is None
+
+
+@pytest.fixture
+def reset_musig_session_cache(sim_exec):
+    sim_exec("import psbt; psbt.MUSIG_SESSION_CACHE.clear()")
+    yield
+    sim_exec("import psbt; psbt.MUSIG_SESSION_CACHE.clear()")
 
 
 @pytest.fixture
@@ -398,6 +407,8 @@ def musig_signing(start_sign, end_sign, microsd_path, garbage_collector, cap_sto
         if coldcard_first and finalized:
             assert res == cc_txid1
 
+        return res_psbt
+
     return doit
 
 
@@ -521,8 +532,9 @@ def test_musig(tapscript, ts_level, cc_first, clear_miniscript, microsd_path, us
     address_explorer_check("sd", "bech32m", wo, name)
 
 
+@pytest.mark.veryslow
 @pytest.mark.bitcoind
-@pytest.mark.parametrize("N_K", [(5,3),(6,4), (10,9)])
+@pytest.mark.parametrize("N_K", [(5,3),(6,4), (32,31)])
 @pytest.mark.parametrize("tapscript", [True, False])
 @pytest.mark.parametrize("cc_first", [True, False])
 def test_musig_big(N_K, cc_first, tapscript, clear_miniscript, use_regtest, address_explorer_check,
@@ -721,6 +733,180 @@ def test_resign_musig_psbt_sig(use_regtest, clear_miniscript, build_musig_wallet
     assert len(res) == 64  # tx id
 
 
+@pytest.mark.bitcoind
+def test_musig_incomplete_rounds(use_regtest, clear_miniscript, build_musig_wallet,
+                                  start_sign, end_sign, reset_musig_session_cache):
+    use_regtest()
+    clear_miniscript()
+    wo, signers, _ = build_musig_wallet("musig_incomplete", 3)
+    empty_psbt = wo.walletcreatefundedpsbt(
+        [], [{wo.getnewaddress("", "bech32m"): 5}], 0,
+        {"fee_rate": 2, "change_type": "bech32m"})["psbt"]
+
+    # One participant nonce is missing: do not produce our partial signature.
+    start_sign(base64.b64decode(empty_psbt))
+    cc_nonce_psbt = BasicPSBT().parse(end_sign()).as_b64_str()
+    one_cosigner_nonce = signers[0].walletprocesspsbt(
+        cc_nonce_psbt, True, "DEFAULT", True, False)["psbt"]
+    start_sign(base64.b64decode(one_cosigner_nonce))
+    po = BasicPSBT().parse(end_sign())
+    assert len(po.inputs[0].musig_pubnonces) == 2
+    assert not po.inputs[0].musig_part_sigs
+    assert po.inputs[0].taproot_key_sig is None
+
+    # Supplying the withheld nonce must resume the same signing round.
+    full_nonce_psbt = signers[1].walletprocesspsbt(
+        po.as_b64_str(), True, "DEFAULT", True, False)["psbt"]
+    start_sign(base64.b64decode(full_nonce_psbt))
+    po = BasicPSBT().parse(end_sign())
+    assert len(po.inputs[0].musig_pubnonces) == 3
+    assert len(po.inputs[0].musig_part_sigs) == 1
+    assert po.inputs[0].taproot_key_sig is None
+    assert not wo.finalizepsbt(po.as_b64_str())["complete"]
+
+    # With one participant partial missing, an aggregate signature still
+    # must not appear.
+    one_cosigner_partial = signers[0].walletprocesspsbt(
+        po.as_b64_str(), True, "DEFAULT", True, False)["psbt"]
+    start_sign(base64.b64decode(one_cosigner_partial))
+    po = BasicPSBT().parse(end_sign())
+    assert len(po.inputs[0].musig_part_sigs) == 2
+    assert po.inputs[0].taproot_key_sig is None
+    assert not wo.finalizepsbt(po.as_b64_str())["complete"]
+
+
+@pytest.mark.bitcoind
+def test_musig_consumed_session_not_restored(use_regtest, clear_miniscript,
+                                              build_musig_wallet, start_sign, end_sign,
+                                              cap_story, press_cancel,
+                                              reset_musig_session_cache):
+    use_regtest()
+    clear_miniscript()
+    wo, signers, _ = build_musig_wallet(
+        "musig_consumed", 3, num_utxo_available=2)
+    psbt = wo.walletcreatefundedpsbt(
+        [], [{wo.getnewaddress("", "bech32m"): 43.4389}], 0,
+        {"fee_rate": 2, "change_type": "bech32m"})["psbt"]
+
+    # Coldcard and both cosigners publish nonces for both inputs.
+    start_sign(base64.b64decode(psbt))
+    po = BasicPSBT().parse(end_sign())
+    assert len(po.inputs) == 2
+    cc_pubkey = next(iter(po.inputs[1].musig_pubnonces))[0]
+    full_nonce_psbt = po.as_b64_str()
+    for signer in signers:
+        full_nonce_psbt = signer.walletprocesspsbt(
+            full_nonce_psbt, True, "DEFAULT", True, False)["psbt"]
+    po = BasicPSBT().parse(base64.b64decode(full_nonce_psbt))
+    for inp in po.inputs:
+        assert len(inp.musig_pubnonces) == 3
+        assert not inp.musig_part_sigs
+
+    # Input zero is ready, but withhold one cosigner nonce from input one.
+    withheld_key = next(k for k in po.inputs[1].musig_pubnonces
+                        if k[0] != cc_pubkey)
+    withheld_nonce = po.inputs[1].musig_pubnonces.pop(withheld_key)
+    start_sign(po.as_bytes())
+    po = BasicPSBT().parse(end_sign())
+    assert len(po.inputs[0].musig_part_sigs) == 1
+    assert not po.inputs[1].musig_part_sigs
+
+    # Input zero consumed the shared root, so input one's old nonce round
+    # cannot be resumed after the withheld nonce arrives.
+    po.inputs[1].musig_pubnonces[withheld_key] = withheld_nonce
+    start_sign(po.as_bytes())
+    with pytest.raises(Exception):
+        end_sign()
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "musig needs restart" in story
+    press_cancel()
+
+
+@pytest.mark.bitcoind
+def test_musig_metadata_scoping(use_regtest, clear_miniscript, build_musig_wallet,
+                                start_sign, end_sign, reset_musig_session_cache):
+    use_regtest()
+    clear_miniscript()
+    wo, signers, _ = build_musig_wallet("musig_scoping", 3)
+    empty_psbt = wo.walletcreatefundedpsbt(
+        [], [{wo.getnewaddress("", "bech32m"): 5}], 0,
+        {"fee_rate": 2, "change_type": "bech32m"})["psbt"]
+    invalid_pubkey = b"\x04" + b"\x11" * 32
+
+    # Foreign participant, aggregate and leaf contexts cannot fill the nonce set.
+    start_sign(base64.b64decode(empty_psbt))
+    po = BasicPSBT().parse(end_sign())
+    cc_nonce_psbt = po.as_b64_str()
+    own_key, own_nonce = next(iter(po.inputs[0].musig_pubnonces.items()))
+    _, participants = next(iter(po.inputs[0].musig_pubkeys.items()))
+    others = [pk for pk in participants if pk != own_key[0]]
+    assert len(others) == 2
+    foreign_keys = [
+        (invalid_pubkey, own_key[1], b""),
+        (others[0], invalid_pubkey, b""),
+        (others[1], own_key[1], b"\x22" * 32),
+    ]
+    po.inputs[0].musig_pubkeys[invalid_pubkey] = [invalid_pubkey]
+    next(o for o in po.outputs if o.musig_pubkeys).musig_pubkeys[invalid_pubkey] = [invalid_pubkey]
+    po.inputs[0].musig_pubnonces.update((key, own_nonce) for key in foreign_keys)
+    start_sign(po.as_bytes())
+    po = BasicPSBT().parse(end_sign())
+    matching = {k: v for k, v in po.inputs[0].musig_pubnonces.items()
+                if k[0] in participants and k[1:] == own_key[1:]}
+    assert len(matching) == 1
+    assert not po.inputs[0].musig_part_sigs
+    assert po.inputs[0].taproot_key_sig is None
+
+    # The same context checks apply to partial signatures.
+    full_nonce_psbt = cc_nonce_psbt
+    for signer in signers:
+        full_nonce_psbt = signer.walletprocesspsbt(
+            full_nonce_psbt, True, "DEFAULT", True, False)["psbt"]
+    po = BasicPSBT().parse(base64.b64decode(full_nonce_psbt))
+    own_key = next(k for k in po.inputs[0].musig_pubnonces if k[0] not in others)
+    po.inputs[0].musig_part_sigs.update(
+        (key, bytes([num]) * 32) for num, key in enumerate(foreign_keys, 1))
+    start_sign(po.as_bytes())
+    po = BasicPSBT().parse(end_sign())
+    matching = {k: v for k, v in po.inputs[0].musig_part_sigs.items()
+                if k[0] in participants and k[1:] == own_key[1:]}
+    assert len(matching) == 1
+    assert po.inputs[0].taproot_key_sig is None
+
+
+@pytest.mark.bitcoind
+def test_musig_nonce_fresh_after_restart(use_regtest, clear_miniscript, build_musig_wallet,
+                                         start_sign, end_sign, cap_story, press_cancel,
+                                         sim_exec, reset_musig_session_cache):
+    use_regtest()
+    clear_miniscript()
+    wo, _, _ = build_musig_wallet("musig_fresh_nonce", 2)
+    empty_psbt = wo.walletcreatefundedpsbt(
+        [], [{wo.getnewaddress("", "bech32m"): 5}], 0,
+        {"fee_rate": 2, "change_type": "bech32m"})["psbt"]
+
+    start_sign(base64.b64decode(empty_psbt))
+    first = BasicPSBT().parse(end_sign())
+    sim_exec("import psbt; psbt.MUSIG_SESSION_CACHE.clear()")
+    start_sign(base64.b64decode(empty_psbt))
+    second = BasicPSBT().parse(end_sign())
+    assert first.inputs[0].musig_pubnonces.keys() == second.inputs[0].musig_pubnonces.keys()
+    assert first.inputs[0].musig_pubnonces != second.inputs[0].musig_pubnonces
+
+    # The cache belongs to the second nonce. Substituting another valid nonce
+    # from a fresh session must fail before any partial signature is returned.
+    second.inputs[0].musig_pubnonces = first.inputs[0].musig_pubnonces.copy()
+    start_sign(second.as_bytes())
+    with pytest.raises(Exception):
+        end_sign()
+    time.sleep(.1)
+    title, _ = cap_story()
+    assert title == "Failure"
+    press_cancel()
+
+
 def test_identical_musig_fragments(use_regtest, bitcoin_core_signer, get_cc_key, clear_miniscript,
                                    offer_minsc_import, press_select, create_core_wallet, start_sign,
                                    end_sign, cap_story, bitcoind):
@@ -826,10 +1012,7 @@ def test_identical_musig_fragments(use_regtest, bitcoin_core_signer, get_cc_key,
 def test_identical_musig_subder(use_regtest, bitcoin_core_signer, get_cc_key, clear_miniscript,
                                 offer_minsc_import, press_select, create_core_wallet,
                                 musig_signing, address_explorer_check):
-    # TODO bitcoin-core bitching that this descriptor is not sane because it contains duplicate public keys
-    # needs https://github.com/bitcoin/bitcoin/pull/34697 (or something less buggy)
     # identical musig in one tapleaf, but musig subderivation differs, i.e. different key
-    raise pytest.skip("needs updated bitcoind")
     use_regtest()
 
     core_pubkeys = []
@@ -875,9 +1058,12 @@ def test_identical_musig_subder(use_regtest, bitcoin_core_signer, get_cc_key, cl
         for o in res:
             assert o["success"]
 
+    res_psbt = musig_signing(name, wo, signers, True, 0, 3, finalized=False,
+                             split_to=2)
 
-    musig_signing(name, wo, signers, True, 0, 3, finalized=False,
-                  split_to=2)
+    pubnonces = BasicPSBT().parse(res_psbt).inputs[0].musig_pubnonces
+    assert len(pubnonces) == 2
+    assert len(set(pubnonces.values())) == 2
 
     # check addresses are correct
     address_explorer_check("sd", "bech32m", wo, name)
@@ -1399,30 +1585,179 @@ def test_only_unique_keys_in_musig(get_cc_key, offer_minsc_import):
         assert e.value.args[0] == "Coldcard Error: musig keys not unique"
 
 
-@pytest.mark.bitcoind
-def test_tmp_seed_cosign(bitcoind, settings_set, end_sign, start_sign, restore_main_seed, use_regtest,
-                         cap_story, goto_eph_seed_menu, pick_menu_item, word_menu_entry,
-                         confirm_tmp_seed, usb_miniscript_get, offer_minsc_import, press_select,
-                         clear_miniscript, get_cc_key, create_core_wallet):
+def test_musig_participant_limit(get_cc_key, offer_minsc_import):
+    path = "88h/0h/0h"
+    cc_key = get_cc_key(path).replace("/<0;1>/*", "")
+    keys = random_keys(32, path=path)
+    desc = "tr(musig(%s))" % ",".join([cc_key] + keys)
 
-    # proves that we can hold secnonce for multiple seed types on one device (even for same txn where respective keys are co-signers)
+    with pytest.raises(Exception) as e:
+        offer_minsc_import(desc)
+    assert e.value.args[0] == "Coldcard Error: too many musig keys"
+
+
+@pytest.mark.bitcoind
+def test_musig_psbt_participant_limit(use_regtest, clear_miniscript, build_musig_wallet,
+                                       start_sign, cap_story, press_cancel):
+    use_regtest()
+    clear_miniscript()
+    wo, _, _ = build_musig_wallet("musig_limit", 2)
+    resp = wo.walletcreatefundedpsbt([], [{wo.getnewaddress("", "bech32m"): 5}], 0,
+                                     {"fee_rate": 2, "change_type": "bech32m"})
+    raw = base64.b64decode(resp["psbt"])
+    for section in ("input", "output"):
+        po = BasicPSBT().parse(raw)
+        obj = po.inputs[0] if section == "input" else next(o for o in po.outputs if o.musig_pubkeys)
+        participants = next(iter(obj.musig_pubkeys.values()))
+        assert len(participants) == 2
+        participants += [participants[0]] * 31
+
+        start_sign(po.as_bytes())
+        title, story = cap_story()
+        assert title == "Failure", section
+        assert "Invalid PSBT" in story, section
+        assert "too many musig keys" in story, section
+        press_cancel()
+
+
+@pytest.mark.bitcoind
+def test_musig_psbt_field_lengths(use_regtest, clear_miniscript, build_musig_wallet,
+                                   start_sign, cap_story, press_cancel):
+    use_regtest()
+    clear_miniscript()
+    wo, _, _ = build_musig_wallet("musig_field_lengths", 2)
+    resp = wo.walletcreatefundedpsbt([], [{wo.getnewaddress("", "bech32m"): 5}], 0,
+                                     {"fee_rate": 2, "change_type": "bech32m"})
+    raw = base64.b64decode(resp["psbt"])
+    pk = b"\x02" + b"\x33" * 32
+    composite = pk * 2
+    cases = [
+        ("input participant key", "input", PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS, pk[:-1], pk),
+        ("input participant long key", "input", PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS, pk + b"x", pk),
+        ("input empty participants", "input", PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS, pk, b""),
+        ("input participant value", "input", PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS, pk, pk[:-1]),
+        ("output participant key", "output", PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS, pk[:-1], pk),
+        ("output participant long key", "output", PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS, pk + b"x", pk),
+        ("output empty participants", "output", PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS, pk, b""),
+        ("output participant value", "output", PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS, pk, pk[:-1]),
+        ("pubnonce key", "input", PSBT_IN_MUSIG2_PUB_NONCE, composite[:-1], b"\x44" * 66),
+        ("pubnonce long key", "input", PSBT_IN_MUSIG2_PUB_NONCE, composite + b"x", b"\x44" * 66),
+        ("pubnonce value", "input", PSBT_IN_MUSIG2_PUB_NONCE, composite, b"\x44" * 65),
+        ("pubnonce long value", "input", PSBT_IN_MUSIG2_PUB_NONCE, composite, b"\x44" * 67),
+        ("partial key", "input", PSBT_IN_MUSIG2_PARTIAL_SIG, composite[:-1], b"\x55" * 32),
+        ("partial long key", "input", PSBT_IN_MUSIG2_PARTIAL_SIG, composite + b"x", b"\x55" * 32),
+        ("partial value", "input", PSBT_IN_MUSIG2_PARTIAL_SIG, composite, b"\x55" * 31),
+        ("partial long value", "input", PSBT_IN_MUSIG2_PARTIAL_SIG, composite, b"\x55" * 33),
+    ]
+    for label, section, field_type, key, value in cases:
+        po = BasicPSBT().parse(raw)
+        obj = po.inputs[0] if section == "input" else po.outputs[0]
+        obj.unknown = [(bytes([field_type]) + key, value)]
+        start_sign(po.as_bytes())
+        title, story = cap_story()
+        assert title == "Failure", label
+        assert "Invalid PSBT" in story, label
+        press_cancel()
+
+
+@pytest.mark.bitcoind
+def test_musig_untrusted_aggregate_metadata(use_regtest, clear_miniscript, build_musig_wallet,
+                                             start_sign, end_sign, cap_story, press_cancel,
+                                             sim_exec, reset_musig_session_cache):
+    use_regtest()
+    clear_miniscript()
+    wo, _, _ = build_musig_wallet("musig_untrusted", 2)
+    empty_psbt = wo.walletcreatefundedpsbt(
+        [], [{wo.getnewaddress("", "bech32m"): 5}], 0,
+        {"fee_rate": 2, "change_type": "bech32m"})["psbt"]
+    raw = base64.b64decode(empty_psbt)
+
+    # Learn which base participant is ours, then deliberately discard that session.
+    start_sign(raw)
+    nonce_psbt = BasicPSBT().parse(end_sign())
+    own_pubkey = next(iter(nonce_psbt.inputs[0].musig_pubnonces))[0]
+    sim_exec("import psbt; psbt.MUSIG_SESSION_CACHE.clear()")
+    outsider = BIP32Node.from_master_secret(b"\x66" * 32).sec()
+    invalid_pubkey = b"\x04" + b"\x77" * 32
+
+    mutations = []
+    for label, hardened in (("different aggregate path", False), ("hardened aggregate path", True)):
+        po = BasicPSBT().parse(raw)
+        inp = po.inputs[0]
+        path = bytearray(inp.taproot_bip32_paths[inp.taproot_internal_key])
+        index = struct.unpack("<I", path[-4:])[0]
+        index = index | 0x80000000 if hardened else index ^ 1
+        path[-4:] = struct.pack("<I", index)
+        inp.taproot_bip32_paths[inp.taproot_internal_key] = bytes(path)
+        mutations.append((label, po))
+
+    po = BasicPSBT().parse(raw)
+    inp = po.inputs[0]
+    path = bytearray(inp.taproot_bip32_paths[inp.taproot_internal_key])
+    path[1:5] = b"\xff" * 4
+    inp.taproot_bip32_paths[inp.taproot_internal_key] = bytes(path)
+    mutations.append(("foreign aggregate fingerprint", po))
+
+    for label, replacement in (("different participant aggregation", outsider),
+                               ("invalid participant pubkey", invalid_pubkey)):
+        po = BasicPSBT().parse(raw)
+        participants = next(iter(po.inputs[0].musig_pubkeys.values()))
+        participants[next(i for i, pk in enumerate(participants) if pk != own_pubkey)] = replacement
+        mutations.append((label, po))
+
+    po = BasicPSBT().parse(raw)
+    inp = po.inputs[0]
+    derivation = inp.taproot_bip32_paths.pop(inp.taproot_internal_key)
+    inp.taproot_bip32_paths[outsider[1:]] = derivation
+    mutations.append(("derived aggregate key mismatch", po))
+
+    for label, po in mutations:
+        sim_exec("import psbt; psbt.MUSIG_SESSION_CACHE.clear()")
+        start_sign(po.as_bytes())
+        title, _ = cap_story()
+        if title == "Failure":
+            press_cancel()
+            continue
+        try:
+            result = end_sign()
+        except Exception:
+            time.sleep(.1)
+            title, _ = cap_story()
+            assert title == "Failure", label
+            press_cancel()
+        else:
+            inp = BasicPSBT().parse(result).inputs[0]
+            assert not inp.musig_pubnonces, label
+            assert not inp.musig_part_sigs, label
+            assert inp.taproot_key_sig is None, label
+
+
+@pytest.mark.bitcoind
+def test_tmp_seed_cosign(bitcoind, restore_main_seed, use_regtest, cap_story,
+                         goto_eph_seed_menu, pick_menu_item, word_menu_entry,
+                         confirm_tmp_seed, offer_minsc_import, press_select,
+                         clear_miniscript, get_cc_key, create_core_wallet,
+                         microsd_path, goto_home, microsd_wipe):
+
+    # Proves that we can hold secnonce for multiple seed types on one device
+    # (even for the same txn where respective keys are co-signers), and that
+    # repeated SD-card passes keep a stable, incrementing filename.
     b_words = "sight will strike aspect nerve saddle young special dragon fence chest tattoo"
+    c_words = "able december recipe saddle cheese squirrel almost planet family cannon sight tattoo"
 
     use_regtest()
     clear_miniscript()
+    microsd_wipe()
 
     name = "tmp_musig_cosign"
     der_pth = "86h/1h/0h"
 
-    # it is string mnemonic
-    b39_seed = Mnemonic.to_seed(b_words)
-    b_node = BIP32Node.from_master_secret(b39_seed)
+    b_node = BIP32Node.from_master_secret(Mnemonic.to_seed(b_words))
     b_xfp = b_node.fingerprint().hex()
     b_key = b_node.subkey_for_path(der_pth).hwif()
     b_key_exp = f"[{b_xfp}/{der_pth}]{b_key}"
 
-    # C is just random key we won't use
-    c_node = BIP32Node.from_master_secret(os.urandom(32))
+    c_node = BIP32Node.from_master_secret(Mnemonic.to_seed(c_words))
     c_xfp = c_node.fingerprint().hex()
     c_key = c_node.subkey_for_path(der_pth).hwif()
     c_key_exp = f"[{c_xfp}/{der_pth}]{c_key}"
@@ -1435,90 +1770,162 @@ def test_tmp_seed_cosign(bitcoind, settings_set, end_sign, start_sign, restore_m
     s1 = f"pk(musig({cc_key},{c_key_exp}))"
     s2 = f"pk(musig({c_key_exp},{b_key_exp}))"
 
-
     inner += ","
     inner += "{%s,{%s,%s}}" % (s0,s1,s2)
     desc = f"tr({inner})"
 
     title, story = offer_minsc_import(json.dumps(dict(name=name, desc=desc)))
     assert "Create new miniscript wallet?" in story
-    # do some checks on policy --> helper function to replace keys with letters
     press_select()
 
     bitcoind_wo = create_core_wallet(name, "bech32m", "sd", True)
 
     psbt = bitcoind_wo.walletcreatefundedpsbt(
-        [], [{bitcoind.supply_wallet.getnewaddress(): 0.2},
-             {bitcoind.supply_wallet.getnewaddress(): 0.255}],
+        [], [{bitcoind.supply_wallet.getnewaddress(): 0.2}],
         0, {"fee_rate": 20, "change_type": "bech32m"}
     )['psbt']
 
-    start_sign(base64.b64decode(psbt))
+    fname = "the.psbt"
+    with open(microsd_path(fname), "w") as f:
+        f.write(psbt)
+
+    goto_home()
+    pick_menu_item("Ready To Sign")
     time.sleep(.1)
     title, story = cap_story()
-    assert 'OK TO SEND?' == title
+    if "OK TO SEND?" not in title:
+        time.sleep(.1)
+        pick_menu_item(fname)
+        time.sleep(.1)
+        title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "warning" not in story
+    press_select()
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "PSBT Updated"
 
-    signed = end_sign(accept=True)
-    po = BasicPSBT().parse(signed)
-    assert not po.inputs[0].musig_part_sigs
-    assert po.inputs[0].musig_pubnonces
+    fname = story.split("\n\n")[1]
+    assert fname == "the-part.psbt"
 
+    for i, words in [(2, b_words), (3, c_words)]:
+        goto_eph_seed_menu()
+        pick_menu_item("Import Words")
+        pick_menu_item("12 Words")
+        time.sleep(.1)
+        word_menu_entry(words.split())
+        confirm_tmp_seed(seedvault=False)
+        title, story = offer_minsc_import(desc)
+        assert "Create new miniscript wallet?" in story
+        press_select()
+
+        goto_home()
+        pick_menu_item("Ready To Sign")
+        time.sleep(.1)
+        title, story = cap_story()
+        if "OK TO SEND?" not in title:
+            time.sleep(.1)
+            pick_menu_item(fname)
+            time.sleep(.1)
+            title, story = cap_story()
+        assert title == "OK TO SEND?"
+        assert "warning" not in story
+        press_select()
+        time.sleep(.1)
+        title, story = cap_story()
+        assert title == "PSBT Updated"
+
+        fname = story.split("\n\n")[1]
+        assert fname == f"the-part-{i}.psbt"
+
+    # Still at C words: perform its second MuSig round.
+    goto_home()
+    pick_menu_item("Ready To Sign")
+    time.sleep(.1)
+    title, story = cap_story()
+    if "OK TO SEND?" not in title:
+        time.sleep(.1)
+        pick_menu_item(fname)
+        time.sleep(.1)
+        title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "warning" not in story
+    press_select()
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "PSBT Signed"
+
+    fname = story.split("\n\n")[1]
+    assert fname == "the-part-4.psbt"
+
+    # Back to B words; the miniscript wallet is already imported.
     goto_eph_seed_menu()
     pick_menu_item("Import Words")
     pick_menu_item("12 Words")
-    time.sleep(0.1)
+    time.sleep(.1)
     word_menu_entry(b_words.split())
     confirm_tmp_seed(seedvault=False)
-    title, story = offer_minsc_import(desc)
-    assert "Create new miniscript wallet?" in story
+
+    goto_home()
+    pick_menu_item("Ready To Sign")
+    time.sleep(.1)
+    title, story = cap_story()
+    if "OK TO SEND?" not in title:
+        time.sleep(.1)
+        pick_menu_item(fname)
+        time.sleep(.1)
+        title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "warning" not in story
     press_select()
-
-    start_sign(signed)
     time.sleep(.1)
     title, story = cap_story()
-    assert 'OK TO SEND?' == title
-    assert "warning" not in story
-    signed = end_sign(accept=True)
-    po = BasicPSBT().parse(signed)
-    # now we should have all pubnonces that we need
-    assert len(po.inputs[0].musig_part_sigs) == 0
-    assert po.inputs[0].musig_pubnonces
+    assert title == "PSBT Signed"
 
-    # 2nd round - get signature
-    start_sign(signed)
-    time.sleep(.1)
-    title, story = cap_story()
-    assert 'OK TO SEND?' == title
-    assert "warning" not in story
-    signed = end_sign(accept=True)
-    po = BasicPSBT().parse(signed)
-    # now we should have signature one signature
-    assert len(po.inputs[0].musig_part_sigs) == 1
+    fname = story.split("\n\n")[1]
+    assert fname == "the-part-5.psbt"
 
     try:
-        # this is run with --eff so number of settings may be incorrect - no prob
+        # This is run with --eff, so the number of settings may be incorrect.
         restore_main_seed()
-    except: pass
+    except Exception:
+        pass
 
-    start_sign(signed)
+    goto_home()
+    pick_menu_item("Ready To Sign")
     time.sleep(.1)
     title, story = cap_story()
-    assert 'OK TO SEND?' == title
+    if "OK TO SEND?" not in title:
+        time.sleep(.1)
+        pick_menu_item(fname)
+        time.sleep(.1)
+        title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "warning" not in story
+    press_select()
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "PSBT Signed"
+    split_story = story.split("\n\n")
+    fname_psbt = split_story[1]
+    assert fname_psbt == "the-signed.psbt"
+    fname_txn = split_story[3]
+    cc_txid = split_story[4].split("\n")[-1]
 
-    signed = end_sign(accept=True)
-    po = BasicPSBT().parse(signed)
-    assert len(po.inputs[0].musig_part_sigs) == 2
-    assert po.inputs[0].musig_pubnonces
-    # 1 aggregate sig for aggregated musig leaf
-    assert len(po.inputs[0].taproot_script_sigs) == 1
+    with open(microsd_path(fname_psbt), "r") as f:
+        psbt = f.read().strip()
 
-    res = bitcoind_wo.finalizepsbt(base64.b64encode(signed).decode())
+    with open(microsd_path(fname_txn), "r") as f:
+        txn = f.read().strip()
+
+    res = bitcoind_wo.finalizepsbt(psbt)
     assert res["complete"]
     tx_hex = res["hex"]
-    res = bitcoind_wo.testmempoolaccept([tx_hex])
+    assert tx_hex == txn
+    res = bitcoind_wo.testmempoolaccept([txn])
     assert res[0]["allowed"]
-    res = bitcoind_wo.sendrawtransaction(tx_hex)
-    assert len(res) == 64  # tx id
+    res = bitcoind_wo.sendrawtransaction(txn)
+    assert res == cc_txid
 
 
 @pytest.mark.bitcoind

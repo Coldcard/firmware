@@ -124,7 +124,7 @@ You have confirmed the details of the new split.''')
 # - stores encoded secret bytes (not word lists)
 import_xor_parts = []
 
-async def xor_all_done(data):
+async def xor_all_done(data, force_tmp, done_cb):
     # So we have another part, might be done or not.
     global import_xor_parts
 
@@ -178,9 +178,9 @@ async def xor_all_done(data):
             if version.has_qwerty:
                 from ux_q1 import seed_word_entry
                 await seed_word_entry("Part %s Words" % chr(65+len(import_xor_parts)),
-                                      target_words, done_cb=xor_all_done)
+                                      target_words, done_cb=done_cb)
             else:
-                nxt = XORWordNestMenu(num_words=target_words, done_cb=xor_all_done)
+                nxt = XORWordNestMenu(num_words=target_words, done_cb=done_cb)
                 the_ux.push(nxt)
 
         elif ch == '2':
@@ -190,7 +190,8 @@ async def xor_all_done(data):
 
             enc = SecretStash.encode(seed_phrase=seed)
 
-            if pa.is_secret_blank():
+            # A temporary wallet still counts as a secret when the SE is blank.
+            if not pa.has_secrets() and not force_tmp:
                 # save it since they have no other secret
                 set_seed_value(encoded=enc)
                 # update menu contents now that wallet defined
@@ -239,7 +240,7 @@ async def show_n_parts(parts, chk_word):
     return await ux_show_story(msg, title="Record these:", sensitive=True, escape="4",
                                hint_icons=KEY_QR)
 
-async def xor_restore_start(*a):
+async def xor_restore_start(*a, force_tmp=False):
     # shown on import menu when no seed of any kind yet
     # - or operational system
     ch = await ux_show_story('''\
@@ -261,11 +262,15 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
     global import_xor_parts
     import_xor_parts.clear()
 
+    async def done_cb(data):
+        return await xor_all_done(data, force_tmp=force_tmp, done_cb=done_cb)
+
     from pincodes import pa
     from glob import dis
 
     escape = ""
-    if not pa.is_secret_blank():
+    # Warn when either a stored or temporary secret is active.
+    if pa.has_secrets():
         msg = ("Since you have a seed already on this Coldcard, the reconstructed XOR seed will be "
                "temporary and not saved. Wipe the seed first if you want to commit the new value "
                "into the secure element.")
@@ -293,6 +298,7 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
         # filter only those that are correct length and type from seed vault
         opt = []
         for i, rec in enumerate(seed_vault_iter()):
+            if pa.is_deltamode(): continue
             raw = deserialize_secret(rec.encoded)
 
             nw = SecretStash.is_words(raw)
@@ -317,14 +323,17 @@ or press (2) for 18 words XOR.''' % OK, escape="12")
                 if selected:
                     import_xor_parts += [opt[i][-1] for i in range(len(opt)) if i in selected]
 
-                    return await xor_all_done(None)
+                    return await done_cb(None)
 
     if version.has_qwerty:
         from ux_q1 import seed_word_entry
         # if current loaded seed is added to xor - it is always A
         await seed_word_entry("Part %s Words" % (chr(65+len(import_xor_parts))),
-                              desired_num_words, done_cb=xor_all_done)
+                              desired_num_words, done_cb=done_cb)
     else:
-        return XORWordNestMenu(num_words=desired_num_words, done_cb=xor_all_done)
+        return XORWordNestMenu(num_words=desired_num_words, done_cb=done_cb)
+
+async def xor_restore_temporary(*a):
+    return await xor_restore_start(*a, force_tmp=True)
 
 # EOF

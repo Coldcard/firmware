@@ -5,8 +5,12 @@
 import pytest, time, json, random, os, pdb
 from helpers import prandom
 from charcodes import *
-from constants import AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2WPKH
+from constants import AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2WPKH, simulator_fixed_words
 from bbqr import split_qrs
+from ckcc.protocol import CCProtocolPacker
+from ckcc_protocol.protocol import CCProtoError
+from bip32 import BIP32Node
+from mnemonic import Mnemonic
 
 
 # All tests in this file are exclusively meant for Q
@@ -98,7 +102,7 @@ def build_note(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
                need_keypress, cap_screen_qr, readback_bbqr, nfc_read_text,
                press_select, press_cancel, is_headless, nfc_disabled):
 
-    def doit(n_title, n_body):
+    def doit(n_title, n_body, group=None):
         # we don't try to preserve leading/trailing spaces on note bodies
         n_body= n_body.strip()
 
@@ -107,6 +111,11 @@ def build_note(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
         # create
         enter_text(n_title)
         enter_text(n_body, multiline=True)
+        if group:
+            pick_menu_item('New Group')
+            enter_text(group)
+        else:
+            pick_menu_item('(none)')
 
         # view
         time.sleep(0.1)
@@ -160,7 +169,6 @@ def build_note(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
         assert 'to save note to SD' in story
         assert 'to show QR' in story
         assert 'WARNING' in story
-        assert 'will be cleartext' in story
 
         need_keypress(KEY_QR)
         file_type, data = readback_bbqr()
@@ -172,6 +180,10 @@ def build_note(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
         obj = obj[0]
         assert obj['title'] == n_title
         assert obj['misc'] == n_body
+        if group:
+            assert obj['group'] == group
+        else:
+            assert 'group' not in obj
 
         # back to top notes menu
         press_select()
@@ -185,7 +197,8 @@ def build_password(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
                    cap_text_box, settings_get, settings_set, scan_a_qr,
                    press_select, press_cancel, is_headless):
 
-    def doit(n_title, n_user=None, n_pw='secret', n_site=None, n_body=None, key_pw=None):
+    def doit(n_title, n_user=None, n_pw='secret', n_site=None, n_body=None,
+             key_pw=None, group=None):
         goto_notes('New Password')
         enter_text(n_title)
         if n_user:
@@ -221,6 +234,11 @@ def build_password(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
             enter_text(n_body, multiline=True)
         else:
             press_cancel()
+        if group:
+            pick_menu_item('New Group')
+            enter_text(group)
+        else:
+            pick_menu_item('(none)')
 
         # view
         time.sleep(0.1)
@@ -282,7 +300,7 @@ def change_password(goto_notes, pick_menu_item, enter_text, cap_story,
                     cap_menu):
 
     def doit(id_title, new_title=None, new_username=None, new_site=None,
-             new_misc=None, new_password=None, old_password=None):
+             new_misc=None, new_password=None, new_group=None):
         goto_notes()
         m = cap_menu()
         found = [i for i in m if f': {id_title}' in i]
@@ -311,6 +329,18 @@ def change_password(goto_notes, pick_menu_item, enter_text, cap_story,
             if new_misc:
                 enter_text(KEY_CLEAR + new_misc, multiline=True)
                 need_in_story.append('Other Notes')
+            else:
+                press_cancel()
+            if new_group is not None:
+                if new_group:
+                    if new_group in cap_menu():
+                        pick_menu_item(new_group)
+                    else:
+                        pick_menu_item('New Group')
+                        enter_text(new_group)
+                else:
+                    pick_menu_item('(none)')
+                need_in_story.append('Group')
             else:
                 press_cancel()
 
@@ -349,6 +379,8 @@ def change_password(goto_notes, pick_menu_item, enter_text, cap_story,
             assert note['misc'] == new_misc
         if new_password:
             assert note['password'] == new_password
+        if new_group is not None:
+            assert note.get('group', '') == new_group
 
     return doit
 
@@ -363,7 +395,7 @@ def test_build_note(n_title, n_body, build_note, delete_note):
 @pytest.mark.parametrize('size', [ 4000, 30000])
 @pytest.mark.parametrize('encoding', '2Z' )
 def test_huge_notes(size, encoding, goto_notes, enter_text, cap_menu, need_keypress,
-                    scan_a_qr, settings_set, settings_get):
+                    scan_a_qr, settings_set, settings_get, pick_menu_item):
 
     # Since we don't limit note sizes, by request of NVK ... test them
     
@@ -387,8 +419,9 @@ def test_huge_notes(size, encoding, goto_notes, enter_text, cap_menu, need_keypr
         time.sleep(2.0 / len(parts))       # just so we can watch
     
     time.sleep(.5)      # decompression time in some cases
+    pick_menu_item('(none)')
     m = cap_menu()
-    assert m[-2] == 'Export'
+    assert 'Export' in m
 
     notes = settings_get('notes')
     assert len(notes) == 1
@@ -427,30 +460,133 @@ def test_password_change_title(build_password, change_password):
     change_password(id_title="old_title", new_title="new_title")
 
 
-def test_top_export(goto_notes, pick_menu_item, cap_story, need_keypress, settings_get,
-                    readback_bbqr, need_some_notes):
+@pytest.fixture
+def backup_notes(goto_notes, pick_menu_item, cap_story, need_keypress, readback_bbqr, virtdisk_path,
+                 microsd_path, seed_story_to_words, press_select, pass_word_quiz, garbage_collector,
+                 check_and_decrypt_backup):
 
-    notes = settings_get('notes', [])
-    if not len(notes):
-        notes = need_some_notes()
+    def doit(way, encrypted=False, bkpw=None):
+        pth = words = None
+        goto_notes()
+        pick_menu_item('Export All')
 
-    goto_notes()
-    pick_menu_item('Export All')
+        title, story = cap_story()
+        assert 'Export' in title
+        assert 'to SD Card' in story
+        assert 'to show QR' in story
+        assert 'WARNING' in story
+        assert "QR exports are NOT encrypted!" in story
 
-    title, story = cap_story()
-    assert 'Export' in title
-    assert 'to SD Card' in story
-    assert 'to show QR' in story
-    assert 'WARNING' in story
-    assert 'will be cleartext' in story
+        if way == "qr":
+            need_keypress(KEY_QR)
+            file_type, data = readback_bbqr()
+            assert file_type == 'J'
 
-    need_keypress(KEY_QR)
-    file_type, data = readback_bbqr()
-    assert file_type == 'J'
+        else:
+            if way == "vdisk":
+                if "(2) to save to Virtual Disk" not in story:
+                    raise pytest.skip("vdisk disabled")
+                need_keypress("2")
+                path_f = virtdisk_path
+            else:
+                need_keypress("1")
+                path_f = microsd_path
+
+            if encrypted:
+                time.sleep(.1)
+                title, story = cap_story()
+                if bkpw:
+                    assert "Use same backup file password as last time?" in story
+                    assert f"{bkpw[0]}...{bkpw[-1]}" in story
+                    press_select()
+                    words = [bkpw]
+
+                else:
+                    assert 'Record this (12 word)' in story
+                    assert 'password:' in story
+                    assert "Press (6) for cleartext backup" in story
+
+                    words = seed_story_to_words(story)
+                    count, title, body = pass_word_quiz(words)
+                    assert count >= 4
+                    assert len(words) == 12
+
+                time.sleep(.1)
+                title, story = cap_story()
+                assert "Encrypted export file written" in story
+                fname = story.split("\n\n")[-1]
+                pth = path_f(fname)
+                data = check_and_decrypt_backup(fname, words, vdisk=(way == "vdisk"), notes=True)
+
+            else:
+                # unencrypted export
+                need_keypress("6")
+                time.sleep(.1)
+                title, story = cap_story()
+                assert "file will **NOT** be encrypted" in story
+                assert "anyone who finds the file will get all of your notes & passwords" in story
+                press_select()
+
+                time.sleep(.1)
+                title, story = cap_story()
+                split_story = story.split("\n\n")
+                pth = path_f(split_story[1])
+                garbage_collector.append(path_f(split_story[-1]))
+                with open(pth, "r") as f:
+                    data = f.read()
+
+        return data, pth, words
+
+    return doit
+
+
+@pytest.mark.parametrize('way', ["qr", "sd", "vdisk"])
+@pytest.mark.parametrize('encrypted', [True, False, "x"*32])
+def test_top_export(way, encrypted, settings_set, settings_remove, need_some_passwords, press_select,
+                    need_some_notes, backup_notes, garbage_collector):
+
+    if encrypted and (way == "qr"):
+        raise pytest.skip("QR export is not encrypted")
+
+
+    if isinstance(encrypted, str):
+        bkpw = encrypted
+        encrypted = True
+        settings_set('bkpw', bkpw)
+    else:
+        bkpw = None
+        settings_remove('bkpw')
+
+    #clear
+    settings_set('notes', [])
+    need_some_notes()
+    notes = need_some_passwords()
+
+    data, path, _ = backup_notes(way, encrypted, bkpw)
+    if path:
+        garbage_collector.append(path)
+
+    press_select()
     obj = json.loads(data)
     assert obj.keys() == {'coldcard_notes'}
     assert obj['coldcard_notes'] == notes
-    need_keypress(KEY_ENTER)
+
+
+def test_qr_export_revokes_download_lease(remote_backup_lease, settings_set, settings_get,
+                                          need_some_notes, backup_notes, dev, press_select):
+    settings_set('notes', [])
+    need_some_notes('Private note', 'not for the USB host')
+    notes = settings_get('notes')
+    remote_backup_lease()
+
+    data, _, _ = backup_notes('qr')
+    assert json.loads(data)['coldcard_notes'] == notes
+
+    with pytest.raises(CCProtoError) as exc:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 0))
+    assert 'not allowed' in str(exc.value)
+    press_select()
+
 
 def test_sort_by_title(goto_notes, pick_menu_item, cap_story, need_keypress, settings_get,
                     settings_set, build_note, cap_menu, build_password):
@@ -479,10 +615,193 @@ def test_sort_by_title(goto_notes, pick_menu_item, cap_story, need_keypress, set
     assert sorted((i['title'] for i in after), key=lambda i:i.lower()) \
                     == [i['title'] for i in after]
 
-def test_top_import(goto_notes, cap_menu, cap_story, need_keypress, settings_get,
-                    settings_set, scan_a_qr, need_some_notes):
+
+def test_grouped_note_menu(settings_set, settings_get, goto_notes, cap_menu,
+                           pick_menu_item, build_note, press_cancel, press_select):
+    settings_set('notes', [])
+    settings_set('secnap', True)
+
+    build_note('group-note', 'body', group='Work')
+    notes = settings_get('notes')
+    assert notes[-1]['group'] == 'Work'
+
+    goto_notes()
+    m = cap_menu()
+    assert '↳ Work' in m
+    assert not any(': group-note' in i for i in m)
+
+    press_select()
+    m = cap_menu()
+    assert '1: group-note' in m
+    press_cancel()
+
+
+def test_grouped_password_menu(settings_set, settings_get, goto_notes, cap_menu,
+                               pick_menu_item, build_password, press_cancel, press_select):
+    settings_set('notes', [])
+    settings_set('secnap', True)
+
+    build_password('group-pw', n_pw='secret', group='Accounts')
+    press_cancel()
+    notes = settings_get('notes')
+    assert notes[-1]['group'] == 'Accounts'
+
+    goto_notes()
+    m = cap_menu()
+    assert '↳ Accounts' in m
+    assert not any(': group-pw' in i for i in m)
+
+    press_select()
+    m = cap_menu()
+    assert '1: group-pw' in m
+    press_cancel()
+
+
+def test_grouped_and_ungrouped_menu(settings_set, goto_notes, cap_menu,
+                                    pick_menu_item, press_cancel):
+    settings_set('secnap', True)
+    settings_set('notes', [
+        {'title': 'loose-note', 'misc': 'aaa'},
+        {'title': 'work-note', 'misc': 'bbb', 'group': 'Work'},
+        {'title': 'work-pw', 'misc': '', 'password': 'secret', 'site': '',
+         'user': '', 'group': 'Work'},
+    ])
+
+    goto_notes()
+    m = cap_menu()
+    assert '1: loose-note' in m
+    assert '↳ Work' in m
+    assert not any(': work-note' in i for i in m)
+    assert not any(': work-pw' in i for i in m)
+
+    pick_menu_item('↳ Work')
+    m = cap_menu()
+    assert '2: work-note' in m
+    assert '3: work-pw' in m
+    press_cancel()
+
+
+def test_new_grouped_note_cancel_lands_in_group(settings_set, goto_notes, cap_menu,
+                                                pick_menu_item, enter_text, press_cancel):
+    settings_set('notes', [])
+    settings_set('secnap', True)
+
+    goto_notes('New Note')
+    enter_text('new-note')
+    enter_text('body', multiline=True)
+    pick_menu_item('New Group')
+    enter_text('Work')
+
+    assert '"new-note"' in cap_menu()
+
+    press_cancel()
+    m = cap_menu()
+    assert '1: new-note' in m
+    assert 'New Note' not in m
+
+    press_cancel()
+    m = cap_menu()
+    assert '↳ Work' in m
+    assert '1: new-note' not in m
+
+
+def test_edit_note_group_moves(settings_set, settings_get, goto_notes, cap_menu,
+                               pick_menu_item, enter_text, press_select,
+                               press_cancel, cap_story):
+
+    settings_set('secnap', True)
+    settings_set('notes', [{'title': 'move-note', 'misc': 'body'}])
+
+    goto_notes()
+    pick_menu_item('1: move-note')
+    pick_menu_item('Edit')
+    press_select()     # unchanged title
+    press_cancel()     # unchanged note body
+    pick_menu_item('New Group')
+    enter_text('Work')
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "SURE" in title
+    assert 'Group' in story
+    press_select()
+    time.sleep(.1)
+
+    goto_notes()
+    m = cap_menu()
+    assert '↳ Work' in m
+    assert '1: move-note' not in m
+
+    press_select()
+    pick_menu_item('1: move-note')
+    pick_menu_item('Edit')
+    press_select()
+    press_cancel()
+    pick_menu_item('New Group')
+    enter_text('Home')
+    time.sleep(.1)
+    title, story = cap_story()
+    assert 'SURE' in title
+    assert 'Group' in story
+    press_select()
+
+    goto_notes()
+    m = cap_menu()
+    assert '↳ Work' not in m
+    assert '↳ Home' in m
+
+    press_select()
+    pick_menu_item('1: move-note')
+    pick_menu_item('Edit')
+    press_select()
+    press_cancel()
+    pick_menu_item('(none)')
+    time.sleep(.1)
+    title, story = cap_story()
+    assert 'SURE' in title
+    assert 'Group' in story
+    press_select()
+
+    press_cancel()
+    m = cap_menu()
+    assert '↳ Home' not in m
+    assert '1: move-note' in m
+    assert '(none)' not in m
+
+
+def test_old_records_without_group(settings_set, settings_get, goto_notes, cap_menu):
+    settings_set('secnap', True)
+    settings_set('notes', [{'title': 'old-note', 'misc': 'body'}])
+
+    goto_notes()
+    assert '1: old-note' in cap_menu()
+    assert settings_get('notes')[0].get('group', '') == ''
+
+
+@pytest.mark.parametrize('way', ["qr", "sd", "vdisk"])
+@pytest.mark.parametrize('encrypted', [True, False, "x"*32])
+def test_top_import(way, encrypted, goto_notes, cap_menu, cap_story, need_keypress, settings_get,
+                    settings_set, scan_a_qr, need_some_notes, backup_notes, need_some_passwords,
+                    garbage_collector, settings_remove, pick_menu_item, press_select,
+                    word_menu_entry, enter_complex):
+
+    if encrypted and (way == "qr"):
+        raise pytest.skip("QR import is not encrypted")
+
     # make some
-    notes = need_some_notes()
+    need_some_notes()
+    notes = need_some_passwords()
+
+    if isinstance(encrypted, str):
+        bkpw = encrypted
+        encrypted = True
+        settings_set('bkpw', bkpw)
+    else:
+        bkpw = None
+        settings_remove('bkpw')
+
+    data, path, words = backup_notes(way, encrypted, bkpw)
+    if path:
+        garbage_collector.append(path)
 
     # wipe them
     settings_set('notes', [])
@@ -494,17 +813,40 @@ def test_top_import(goto_notes, cap_menu, cap_story, need_keypress, settings_get
     assert 'to scan QR' in story
     assert 'WARNING' not in story
 
-    jj = json.dumps(dict(coldcard_notes=notes))
+    if way == "qr":
+        need_keypress(KEY_QR)
+        _, parts = split_qrs(data, 'J', max_version=20)
+        random.shuffle(parts)
 
-    need_keypress(KEY_QR)
+        for p in parts:
+            scan_a_qr(p)
 
-    _, parts = split_qrs(jj, 'J', max_version=20)
-    random.shuffle(parts)
+        time.sleep(.5)  # decompression time in some cases
 
-    for p in parts:
-        scan_a_qr(p)
+    else:
+        if way == "vdisk":
+            if "(2) to import from Virtual Disk" not in story:
+                raise pytest.skip("vdisk disabled")
+            need_keypress("2")
+        else:
+            need_keypress("1")
 
-    time.sleep(.5)  # decompression time in some cases
+        fname = os.path.basename(path)
+        pick_menu_item(fname)
+        if encrypted:
+            time.sleep(.1)
+            title, story = cap_story()
+            assert title == "Custom PWD?"
+            assert "Press (1) if your password is custom string" in story
+            assert "press ENTER for 12 word password" in story
+            if bkpw:
+                need_keypress("1")
+                enter_complex(bkpw, b39pass=False)
+            else:
+                press_select()
+                # looking at word entry right now
+                word_menu_entry(words, has_checksum=False)
+
     m = cap_menu()
     for _ in range(3):
         if "1:" in m[0]:
@@ -518,6 +860,138 @@ def test_top_import(goto_notes, cap_menu, cap_story, need_keypress, settings_get
         assert note['title'] in mm
     assert settings_get('notes', 'MISSING') == notes
     goto_notes()
+
+
+def test_top_import_u_typed_json(goto_notes, cap_menu, cap_story, need_keypress,
+                                 settings_get, settings_set, scan_a_qr):
+    settings_set('notes', [])
+
+    goto_notes('Import')
+    need_keypress(KEY_QR)
+
+    notes = {"coldcard_notes": [{"title": "demo", "misc": "x"}]}
+    jj = json.dumps(notes)
+    _, parts = split_qrs(jj, 'U', max_version=20)   # deliberately U-typed
+    for p in parts:
+        scan_a_qr(p)
+
+    time.sleep(.5)
+    m = cap_menu()
+    for _ in range(3):
+        if "1:" in m[0]:
+            break
+        time.sleep(.2)
+        m = cap_menu()
+
+    assert settings_get('notes') == notes["coldcard_notes"]
+    goto_notes()
+
+
+@pytest.mark.parametrize('bkpw', [True, False])
+def test_top_import_wrong_pw(bkpw, goto_notes, cap_menu, cap_story, need_keypress,
+                             settings_set, need_some_notes, backup_notes, press_select,
+                             garbage_collector, settings_remove, pick_menu_item,
+                             word_menu_entry, enter_complex, need_some_passwords):
+
+    # make some
+    need_some_notes()
+    need_some_passwords()
+
+    if bkpw:
+        bkpw = 32*"g"
+        settings_set('bkpw', bkpw)
+    else:
+        settings_remove('bkpw')
+        bkpw = None
+
+    data, path, words = backup_notes("sd", True, bkpw)
+    if path:
+        garbage_collector.append(path)
+
+    # wipe them
+    settings_set('notes', [])
+
+    goto_notes('Import')
+    title, story = cap_story()
+    assert 'Import' in title
+    assert 'from SD Card' in story
+    assert 'to scan QR' in story
+    assert 'WARNING' not in story
+
+    need_keypress("1")
+    fname = os.path.basename(path)
+    pick_menu_item(fname)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Custom PWD?"
+    assert "Press (1) if your password is custom string" in story
+    assert "press ENTER for 12 word password" in story
+
+    # provide wrong password
+    if bkpw:
+        invalid_pwd = 32*"H"
+        need_keypress("1")
+        enter_complex(invalid_pwd, b39pass=False)
+    else:
+        invalid_pwd = 12 * ["abandon"]
+        press_select()
+        # looking at word entry right now
+        word_menu_entry(invalid_pwd, has_checksum=False)
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "FAILED"
+    assert "Unable to decrypt backup file. Incorrect password?" in story
+    if isinstance(invalid_pwd, list):
+        invalid_pwd = " ".join(invalid_pwd)
+    assert invalid_pwd in story
+
+    press_select()
+    assert len(cap_menu()) == 4  # nothing has been added
+
+
+def test_top_import_seed_backup_fails(goto_notes, cap_menu, cap_story, need_keypress,
+                                      settings_set, backup_system, press_select,
+                                      garbage_collector, microsd_path, pick_menu_item,
+                                      word_menu_entry, press_cancel, goto_home):
+    goto_home()
+    settings_set('notes', [])
+
+    words = backup_system()
+    time.sleep(.1)
+    title, story = cap_story()
+    assert 'written:' in story
+
+    fname = [ln.strip() for ln in story.split('\n') if ln.strip().endswith('.7z')][0]
+    garbage_collector.append(microsd_path(fname))
+
+    press_cancel()
+    time.sleep(.1)
+
+    goto_notes('Import')
+    title, story = cap_story()
+    assert 'Import' in title
+    assert 'from SD Card' in story
+    assert 'to scan QR' in story
+    assert 'WARNING' not in story
+
+    need_keypress("1")
+    pick_menu_item(fname)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Custom PWD?"
+    assert "Press (1) if your password is custom string" in story
+    assert "press ENTER for 12 word password" in story
+
+    press_select()
+    word_menu_entry(words, has_checksum=False)
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "FAILED"
+
+    press_select()
+    assert len(cap_menu()) == 4  # nothing has been added
 
 
 @pytest.mark.parametrize('qr,title', [
@@ -672,6 +1146,63 @@ def test_sign_note_body(msg, addr_fmt, acct, need_some_notes,
     sign_msg_from_text(msg, addr_fmt, acct, False, 0, way)
 
 
+def test_send_password_menu_item(need_some_passwords, goto_notes, cap_menu, pick_menu_item,
+                                 settings_set, settings_remove, press_cancel):
+    # temporary keyboard emulation works regardless of the normal USB setting
+    settings_set("notes", [])
+    need_some_passwords()
+
+    settings_set('du', 1)
+    goto_notes()
+    pick_menu_item([i for i in cap_menu() if i.endswith(': A')][0])
+    time.sleep(.2)
+    m = cap_menu()
+    assert 'Send Password' in m
+    press_cancel()
+
+    settings_set('du', 0)
+    goto_notes()
+    pick_menu_item([i for i in cap_menu() if i.endswith(': A')][0])
+    time.sleep(.2)
+    m = cap_menu()
+    assert 'Send Password' in m
+    for _ in range(3):
+        press_cancel()
+
+
+@pytest.mark.onetime
+def test_password_cancel_stores_empty_not_none(goto_notes, need_keypress, press_select,
+                                               press_cancel, enter_text, settings_get,
+                                               settings_set, cap_screen, pick_menu_item):
+    # canceling the password field when creating a new password entry stored
+    # None instead of ''. EmulatedKeyboard.can_type(None) then raised
+    # TypeError: 'NoneType' object is not iterable when "Send Password" was selected.
+    #
+    settings_set('secnap', True)
+    settings_set('notes', [])
+
+    goto_notes('New Password')
+    enter_text('cancel-pw-test')   # title
+    press_select()                 # skip username
+    press_cancel()                 # cancel password field - bug, stores None
+    press_select()                 # skip site
+    press_cancel()                 # exit misc
+    pick_menu_item('(none)')       # no group
+
+    time.sleep(0.2)
+
+    goto_notes()
+    pick_menu_item('1: cancel-pw-test')
+    pick_menu_item('Send Password')
+    time.sleep(.5)
+
+    scr = cap_screen()
+    assert 'Traceback' not in scr
+    assert "Place mouse at" in scr
+    for _ in range(5):
+        press_cancel()
+
+
 @pytest.mark.parametrize("chain", ["BTC", "XTN"])
 @pytest.mark.parametrize("change", [True, False])
 @pytest.mark.parametrize("idx", [None, 0, 9999])
@@ -691,5 +1222,169 @@ def test_sign_password_free_form(chain, change, idx, need_some_passwords, settin
     pick_menu_item(f"1: {title}")
     pick_menu_item("Sign Note Text")
     sign_msg_from_text(msg, AF_P2WPKH, None, change, idx, "qr", chain)
+
+
+@pytest.mark.parametrize("length", [1, 241])
+def test_sign_misc_length(length, settings_set, cap_menu, goto_notes,
+                          pick_menu_item, press_cancel):
+    msg = "a" * length
+    settings_set('notes', [
+        {'misc': msg,
+         'password': '89898989898989898989898989898',
+         'site': 'https://abaaba.com',
+         'title': "BA",
+         'user': 'BABA'},
+        {'title': "AB",
+         'misc': msg,}
+    ])
+    goto_notes()
+    pick_menu_item(f"1: BA")
+    assert "Sign Note Text" not in cap_menu()
+
+    press_cancel()
+    pick_menu_item(f"2: AB")
+    assert "Sign Note Text" not in cap_menu()
+
+
+@pytest.mark.parametrize("pw", [
+    "My secret BIP-39 passphrase!!",
+    "a" * 100,
+    "secret\n\t",  # newline+tab will be stripped
+    "secret1 ",    # space will be stripped
+    # below, not allowed
+    "a" * 101,  # too long
+    "aaaaaaa\nbbbbbbbbb",  # non-printable ASCII
+])
+@pytest.mark.parametrize("sv", [True, False])  # Seed Vault
+@pytest.mark.parametrize("pwd", [True, False])  # whether note or password
+def test_bip39_passphrase_from_note(dev, need_some_notes, settings_set, goto_notes, pick_menu_item,
+                                    cap_story, press_select, cap_menu, reset_seed_words, pw, sv, pwd,
+                                    seed_vault_enable, need_keypress, settings_remove):
+    reset_seed_words()
+
+    settings_remove("seeds")  # clear
+    seed_vault_enable(enable=sv)
+
+    settings_set('notes', [])  # clear
+    title = "A1"
+    if pwd:
+        settings_set('notes', [
+            {'misc': "some\nrandom\nnote",
+             'password': pw,
+             'site': 'https://a.com',
+             'title': title,
+             'user': 'AAA'}
+        ])
+        mi = "Apply as BIP-39 Passphrase"
+    else:
+        need_some_notes(title=title, body=pw)
+        mi = "Apply as BIP-39 Passphrase"
+
+    goto_notes()
+    pick_menu_item(f"1: {title}")
+    time.sleep(.1)
+
+    if len(pw) > 100 or "\n" in pw:
+        # not allowed - must be ASCII 32-127 and length <= 100
+        assert mi not in cap_menu()
+        return  # done
+
+    pick_menu_item(mi)
+
+    # firmware rstrips any note before using it
+    pw = pw.rstrip()
+    # what it should be
+    seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=pw)
+    expect = BIP32Node.from_master_secret(seed)
+
+    time.sleep(.1)
+    title, story = cap_story()
+    title_xfp = title[1:-1]
+
+    assert "created by adding passphrase to master seed [0F056943]" in story
+    assert expect.fingerprint().hex().upper() == title_xfp
+
+    press_select()
+    time.sleep(.2)
+
+    if sv:
+        title, story = cap_story()
+        assert "Press (1) to store temporary seed into Seed Vault" in story
+        time.sleep(.1)
+        need_keypress("1")  # store it
+        time.sleep(.1)
+        title, story = cap_story()
+        assert "Saved to Seed Vault" in story
+        assert title_xfp in story
+        press_select()
+
+    assert title_xfp in cap_menu()[0]
+
+    xpub = dev.send_recv(CCProtocolPacker.get_xpub("m"), timeout=None)
+    got = BIP32Node.from_wallet_key(xpub)
+    assert got.sec() == expect.sec()
+
+
+@pytest.mark.parametrize("words", [True, False])
+@pytest.mark.parametrize("pwd", [True, False])
+def test_b39_from_note_eph_seed(words, pwd, generate_ephemeral_words, set_bip39_pw, settings_remove,
+                                reset_seed_words, settings_set, need_some_notes, goto_notes,
+                                pick_menu_item, cap_menu, cap_story, press_select, dev):
+    reset_seed_words()
+    settings_remove("seeds")
+    settings_remove("seedvault")
+    if words:
+        e_seed_words = generate_ephemeral_words(num_words=12, seed_vault=False)
+        e_seed_words = " ".join(e_seed_words)
+    else:
+        set_bip39_pw('bdfhjkds', seed_vault=False, reset=False)
+
+    # enabling notes & pwds in temporary settings
+    settings_set('notes', [])  # clear
+    title = "A1"
+    pw = "abcdefg"  # allowed
+    if pwd:
+        settings_set('notes', [
+            {'misc': "some\nrandom\nnote",
+             'password': pw,
+             'site': 'https://a.com',
+             'title': title,
+             'user': 'AAA'}
+        ])
+        mi = "Apply as BIP-39 Passphrase"
+    else:
+        need_some_notes(title=title, body=pw)
+        mi = "Apply as BIP-39 Passphrase"
+
+    goto_notes()
+    pick_menu_item(f"1: {title}")
+    time.sleep(.1)
+
+    if not words:
+        # no way to apply passphrase on secret that is not word-based
+        assert mi not in cap_menu()
+        return  # done
+
+    pick_menu_item(mi)
+
+    # what it should be
+    e_xfp = BIP32Node.from_master_secret(Mnemonic.to_seed(e_seed_words)).fingerprint().hex().upper()
+    seed = Mnemonic.to_seed(e_seed_words, passphrase=pw)
+    expect = BIP32Node.from_master_secret(seed)
+
+    time.sleep(.1)
+    title, story = cap_story()
+    title_xfp = title[1:-1]
+
+    assert f"created by adding passphrase to current active temporary seed [{e_xfp}]" in story
+    assert expect.fingerprint().hex().upper() == title_xfp
+
+    press_select()
+    time.sleep(.2)
+
+    assert title_xfp in cap_menu()[0]
+    xpub = dev.send_recv(CCProtocolPacker.get_xpub("m"), timeout=None)
+    got = BIP32Node.from_wallet_key(xpub)
+    assert got.sec() == expect.sec()
 
 # EOF

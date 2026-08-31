@@ -5,13 +5,14 @@
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson, version
 from public_constants import AF_P2WSH, AF_P2WSH_P2SH
 from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, problem_file_line, get_filesize
+from utils import xfp2str, problem_file_line, get_filesize, max_signers
 from files import CardSlot, CardMissingError, needs_microsd
-from ux import ux_show_story, ux_dramatic_pause, ux_enter_number, ux_enter_bip32_index
-from public_constants import MAX_SIGNERS
+from ux import ux_show_story, ux_enter_number, ux_enter_bip32_index
 from glob import settings
 from charcodes import KEY_QR
 from desc_utils import ExtendedKey, KeyOriginInfo
+
+MAX_XPUBS_SIZE = const(1500)
 
 
 async def ms_coordinator_qr(af_str, my_xfp):
@@ -20,7 +21,10 @@ async def ms_coordinator_qr(af_str, my_xfp):
     from ux_q1 import QRScannerInteraction, decode_qr_result, QRDecodeExplained
 
     def convertor(got):
-        file_type, _, data = decode_qr_result(got, expect_bbqr=True)
+        file_type, file_size, data = decode_qr_result(got, expect_bbqr=True)
+        if file_size > MAX_XPUBS_SIZE:
+            raise QRDecodeExplained('Multisig export is too large')
+
         if isinstance(data, bytes):
             # we expect BBQr, but simple QR also possible here
             data = data.decode()
@@ -97,7 +101,7 @@ async def ms_coordinator_file(af_str, my_xfp, slot_b=None):
                     # sigh, OS/filesystem variations
                     file_size = var[1] if len(var) == 2 else get_filesize(full_fname)
 
-                    if not (0 <= file_size <= 1500):
+                    if not (0 <= file_size <= MAX_XPUBS_SIZE):
                         # out of range size
                         continue
 
@@ -193,14 +197,22 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
         return
 
     if for_ccc:
-        secret, ccc_ms_count = for_ccc
+        secret, _ = for_ccc
         # Always include 2 keys from CCC: own master (key A) and key C
         # - force them to same derivation.
-        acct = await ux_enter_bip32_index('CCC Account Number:') or 0
+        acct = await ux_enter_bip32_index('CCC Account Number:')
+        if acct is None: return
 
         dis.fullscreen("Wait...")
         a = add_own_xpub(chain, acct, addr_fmt)  # master: key A
         c = add_own_xpub(chain, acct, addr_fmt, secret=secret)
+
+        try:
+            for k in keys:
+                k.validate(c.origin.cc_fp, secret=secret)
+        except AssertionError as exc:
+            await ux_show_story("Cosigner key rejected: %s." % exc)
+            return
 
         # problem: above file searching may find xpub export from key C
         # (or our master seed, exported) .. we can't add them again,
@@ -221,42 +233,41 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, is_qr=False,
         ch = await ux_show_story("Add current Coldcard with above XFP ?",
                                  title="[%s]" % xfp2str(my_xfp))
         if ch == "y":
-            acct = await ux_enter_bip32_index('Account Number:') or 0
+            acct = await ux_enter_bip32_index('Account Number:')
+            if acct is None: return
             dis.fullscreen("Wait...")
             keys.append(add_own_xpub(chain, acct, addr_fmt))
             num_mine += 1
 
     N = len(keys)
+    limit = max_signers(addr_fmt)
 
-    if (N > MAX_SIGNERS) or (N < 2):
-        await ux_show_story("Invalid number of signers,min is 2 max is %d." % MAX_SIGNERS)
+    if (N > limit) or (N < 2):
+        await ux_show_story("Invalid number of signers,min is 2 max is %d." % limit)
         return
 
     if for_ccc:
         M = 2
     else:
         # pick useful M value to start
-        M = await ux_enter_number("How many need to sign?(M)", N, can_cancel=True)
-        if not M:
-            await ux_dramatic_pause('Aborted.', 2)
-            return  # user cancel
+        M = await ux_enter_number("How many need to sign?(M)", N)
+        if M is None: return
 
     dis.fullscreen("Wait...")
 
     # create appropriate object
-    assert 1 <= M <= N <= MAX_SIGNERS
+    assert 1 <= M <= N <= limit
 
     if for_ccc:
         name = "Coldcard Co-sign" if version.has_qwerty else "CCC"
-        if ccc_ms_count:
-            # make name unique for each CCC wallet, but they can edit
-            name += " #%d" % (ccc_ms_count + 1)
     else:
         name = 'CC-%d-of-%d' % (M, N)
 
     from miniscript import Sortedmulti, Number
     from wallet import MiniScriptWallet
     from descriptor import Descriptor
+
+    name = MiniScriptWallet.make_unique_name(name)
 
     desc_obj = Descriptor(miniscript=Sortedmulti(Number(M), *keys),
                           addr_fmt=addr_fmt)

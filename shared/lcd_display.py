@@ -479,7 +479,7 @@ class Display:
         self.dis.fill_rect(WIDTH-bw, TOP_MARGIN, bw, ACTIVE_H, COL_SCROLL_DARK)
         self.dis.fill_rect(WIDTH-bw, TOP_MARGIN+pos, bw, bh, COL_TEXT)
 
-    def fullscreen(self, msg, percent=None, line2=None):
+    def fullscreen(self, msg, percent=None, line2=None, line3=None):
         # show a simple message "fullscreen". 
         self.clear()
         y = CHARS_H // 3
@@ -487,6 +487,10 @@ class Display:
         if line2:
             y += 2
             for ln in word_wrap(line2, CHARS_W):
+                self.text(None, y, ln, dark=True)
+                y += 1
+        if line3:
+            for ln in word_wrap(line3, CHARS_W):
                 self.text(None, y, ln, dark=True)
                 y += 1
         if percent is not None:
@@ -734,7 +738,9 @@ class Display:
             lines = self.handle_qr_msg(msg, max_lines=True)
             self.draw_qr_lines(lines, False)
 
-        self.draw_qr_idx_hint(idx_hint)
+        if idx_hint:
+            self.draw_qr_idx_hint(idx_hint)
+
         self.show()
 
     def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, partial_bar=None,

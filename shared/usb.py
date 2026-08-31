@@ -72,17 +72,12 @@ HSM_DISABLE_CMDS = frozenset({
 # spending policy active: blacklist some commands
 # - 'pass' may be allowed if 'okeys' is enabled
 HOBBLED_CMDS = frozenset({
-    'enrl',             # no new multisigs during policy enforcement
+    'enrl', 'mins',     # no new wallets during policy enforcement
+    'msdl',             # no deleting miniscript wallets
+    'msls', 'msgt', 'mspl',     # no listing or exporting wallet configurations
     'back',             # no backups
     'bagi', 'dfu_',     # just in case
-
-    "user",             # same as HSM_DISABLE_CMDS
-    "rmur",
-    "nwur",
-    "gslr",
-    "hsts",
-    "hsms",
-})
+}) | HSM_DISABLE_CMDS
 
 # singleton instance of USBHandler()
 handler = None
@@ -92,7 +87,7 @@ def enable_keyboard_emulation():
         enable_usb()
     else:
         # real device
-        pyb.usb_mode('VCP+HID', hid=pyb.hid_keyboard)
+        pyb.usb_mode('HID', hid=pyb.hid_keyboard)
         global handler
         if not handler:
             handler = USBHandler()
@@ -106,7 +101,7 @@ def enable_usb():
     else:
         # subclass, protocol, max packet length, polling interval, report descriptor
         hid_info = (0x0, 0x0, 64, 5, hid_descp)
-        classes = 'VCP+MSC+HID'
+        classes = 'MSC+HID'
         pyb.usb_mode(classes, vid=COINKITE_VID, pid=CKCC_PID, hid=hid_info)
 
     global handler
@@ -128,7 +123,7 @@ def disable_usb():
 
 def is_vcp_active():
     # VCP = Virtual Comm Port
-    en = ckcc.vcp_enabled(None)
+    en = ckcc.repl_enabled(None)
     cur = pyb.usb_mode()
 
     return cur and ('VCP' in cur) and en
@@ -147,10 +142,9 @@ class USBHandler:
     def __init__(self):
         self.dev = pyb.USB_HID()
 
-        # We keep a running hash over whatever has been uploaded
+        # We keep a running hash over whatever has been staged
         # - reset at offset zero, can be read back anytime
-        self.file_checksum = sha256()
-        self.is_fw_upgrade = False
+        self.reset_upload()
 
         # handle simulator
         self.blockable = getattr(self.dev, 'pipe', self.dev)
@@ -212,6 +206,7 @@ class USBHandler:
                 else:
                     # treat zero-length packets as a reset request
                     # do not echo anything back on link.. used to resync connection
+                    self.reset_upload()
                     msg_len = 0
                     continue
 
@@ -284,6 +279,7 @@ class USBHandler:
             except FramingError as exc:
                 reason = exc.args[0]
                 # print("Framing: %s" % reason)
+                self.reset_upload()
                 await self.framing_error(reason)
                 msg_len = 0
 
@@ -291,7 +287,14 @@ class USBHandler:
                 # recover from general issues/keep going
                 #print("USB!")
                 #sys.print_exception(exc)
+                self.reset_upload()
                 msg_len = 0
+
+    def reset_upload(self):
+        self.file_checksum = sha256()
+        self.upload_total_size = 0
+        self.upload_next_offset = 0
+        self.is_fw_upgrade = False
 
     def decrypt_inplace(self, msg_len):
         # self.msg is encrypted. decode it in place
@@ -391,7 +394,7 @@ class USBHandler:
             if cmd in HOBBLED_CMDS:
                 raise SpendPolicyViolation
 
-            if cmd in {'pwok', 'pass'}:
+            if cmd in {'pwok', 'pass', 'rest'}:
                 from ccc import sssp_spending_policy
                 if not sssp_spending_policy('okeys'):
                     raise SpendPolicyViolation
@@ -426,17 +429,22 @@ class USBHandler:
             return b'biny' + args
 
         if cmd == 'upld':
-            offset, total_size = unpack_from('<II', args)
-            data = memoryview(args)[4+4:]
-
-            return await self.handle_upload(offset, total_size, data)
+            try:
+                offset, total_size = unpack_from('<II', args)
+                data = memoryview(args)[4+4:]
+                return await self.handle_upload(offset, total_size, data)
+            except:
+                self.reset_upload()
+                raise
 
         if cmd == 'dwld':
             offset, length, fileno = unpack_from('<III', args)
+            assert len(args) == 12, 'badlen'
             return await self.handle_download(offset, length, fileno)
 
         if cmd == 'ncry':
             version, his_pubkey = unpack_from('<I64s', args)
+            assert len(args) == 68, 'badlen'
 
             return self.handle_crypto_setup(version, his_pubkey)
 
@@ -466,9 +474,9 @@ class USBHandler:
         if cmd == 'smsg':
             # sign message
             addr_fmt, len_subpath, len_msg = unpack_from('<III', args)
+            assert len(args) == (12 + len_subpath + len_msg), 'badlen'
             subpath = args[12:12+len_subpath]
             msg = args[12+len_subpath:]
-            assert len(msg) == len_msg, "badlen"
 
             from auth import sign_msg
             sign_msg(msg, subpath, addr_fmt)
@@ -479,6 +487,7 @@ class USBHandler:
             from auth import usb_show_address
 
             addr_fmt, = unpack_from('<I', args)
+            assert len(args) >= 4, 'badlen'
             # regression patch of AFC_BECH32M flag
             # fixed here https://github.com/Coldcard/ckcc-protocol/commit/a6d901f9fca50755835eca895586ca74d0ca81ed
             if addr_fmt == 0x17:  # old P2TR
@@ -490,6 +499,7 @@ class USBHandler:
             # - text config file must already be uploaded
 
             file_len, file_sha = unpack_from('<I32s', args)
+            assert len(args) == 36, 'badlen'
             if file_sha != self.file_checksum.digest():
                 return b'err_Checksum'
             assert 100 < file_len <= (32*200), "badlen"
@@ -505,6 +515,7 @@ class USBHandler:
             # - descriptor text config file must already be uploaded
 
             file_len, file_sha = unpack_from('<I32s', args)
+            assert len(args) == 36, 'badlen'
             if file_sha != self.file_checksum.digest():
                 return b'err_Checksum'
             assert 100 < file_len <= (100 * 200), "badlen"
@@ -531,6 +542,7 @@ class USBHandler:
                     raise HSMDenied
 
                 change, idx, = unpack_from('<II', args)
+                assert len(args) <= 40, 'badlen'
                 assert change in (0, 1), "change not bool"
                 assert 0 <= idx < (2 ** 31), "child idx"
 
@@ -569,18 +581,21 @@ class USBHandler:
         if cmd == 'stxn':
             # sign transaction
             txn_len, flags, txn_sha = unpack_from('<II32s', args)
+
+            # optional miniscript wallet name
+            if len(args) > 40:
+                name_len = unpack_from('B', args, 40)[0]
+                assert len(args) == 41 + name_len, 'badlen'
+                assert 1 <= name_len <= 32, "name len"
+                name = str(args[41:41 + name_len], "ascii")
+            else:
+                assert len(args) == 40, 'badlen'
+                name = None
+
             if txn_sha != self.file_checksum.digest():
                 return b'err_Checksum'
 
             assert 50 < txn_len <= MAX_TXN_LEN, "badlen"
-
-            # optional miniscript wallet name
-            try:
-                name_len = unpack_from('B', args[40:])[0]
-                name = str(args[41:41 + name_len], "ascii")
-                assert 1 <= len(name) <= 32, "name len"
-            except:
-                name = None
 
             w = None
             if name:
@@ -588,8 +603,13 @@ class USBHandler:
                 if not ok:
                     return w
 
-            from auth import sign_transaction
-            sign_transaction(txn_len, (flags & STXN_FLAGS_MASK), txn_sha, miniscript_wallet=w)
+            from auth import sign_transaction, psram_sha256, TXN_INPUT_OFFSET
+            if txn_len != self.upload_total_size or \
+                    txn_sha != psram_sha256(TXN_INPUT_OFFSET, txn_len):
+                return b'err_Checksum'
+
+            sign_transaction(txn_len, (flags & STXN_FLAGS_MASK), txn_sha,
+                             input_method="usb", miniscript_wallet=w)
             return None
 
         if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok':
@@ -652,6 +672,8 @@ class USBHandler:
         if cmd == 'rest':
             # restore backup from what is already uploaded in PSRAM
             file_len, file_sha, bf = unpack_from('<I32sB', args)
+            assert len(args) == 37, 'badlen'
+            assert 0 < file_len <= MAX_TXN_LEN, "badlen"
             if file_sha != self.file_checksum.digest():
                 return b'err_Checksum'
 
@@ -674,6 +696,7 @@ class USBHandler:
                 # HSM mode "start" -- requires user approval
                 if args:
                     file_len, file_sha = unpack_from('<I32s', args)
+                    assert len(args) == 36, 'badlen'
                     if file_sha != self.file_checksum.digest():
                         return b'err_Checksum'
                     assert 2 <= file_len <= (200*1000), "badlen"
@@ -700,6 +723,8 @@ class USBHandler:
             if cmd == 'nwur':     # new user
                 from users import Users
                 auth_mode, ul, sl = unpack_from('<BBB', args)
+                assert len(args) == (3 + ul + sl), 'badlen'
+                assert ul and sl, "badlen"
                 username = bytes(args[3:3+ul]).decode('ascii')
                 secret = bytes(args[3+ul:3+ul+sl])
 
@@ -708,6 +733,8 @@ class USBHandler:
             if cmd == 'rmur':     # delete user
                 from users import Users
                 ul, = unpack_from('<B', args)
+                assert len(args) == (1 + ul), 'badlen'
+                assert ul, "badlen"
                 username = bytes(args[1:1+ul]).decode('ascii')
 
                 return Users.delete(username)
@@ -715,6 +742,8 @@ class USBHandler:
             if cmd == 'user':       # auth user (HSM mode)
                 from users import Users
                 totp_time, ul, tl = unpack_from('<IBB', args)
+                assert len(args) == (6 + ul + tl), 'badlen'
+                assert ul and tl, "badlen"
                 username = bytes(args[6:6+ul]).decode('ascii')
                 token = bytes(args[6+ul:6+ul+tl])
 
@@ -751,6 +780,10 @@ class USBHandler:
             raise FramingError('crypto already set up')
         if version == 0x2:
             self.bound = True
+
+        # new session: any download lease from a previous session is void
+        import glob
+        glob.ALLOWED_DOWNLOAD = None
 
         # pick a random key pair, just for this session
         pair = ngu.secp256k1.keypair()
@@ -798,13 +831,29 @@ class USBHandler:
     async def handle_download(self, offset, length, file_number):
         # let them read from where we store the signed txn
         # - filenumber can be 0 or 1: uploaded txn, or result
+        # - but only the single most recent result explicitly produced for
+        #   download (a lease); arbitrary readback of whatever was last
+        #   staged in PSRAM (eg. uploaded PSBT, multisig enroll file)
+        #   is not allowed
 
         # limiting memory use here, should be MAX_BLK_LEN really
         length = min(length, MAX_BLK_LEN)
 
         assert 0 <= file_number < 2, 'bad fnum'
-        assert 0 <= offset <= MAX_TXN_LEN, "bad offset"
+        assert 0 <= offset < MAX_TXN_LEN, "bad offset"
+        assert offset + length <= MAX_TXN_LEN, "bad offset"
         assert 1 <= length, 'len'
+
+        # a plaintext link may not read PSRAM at all
+        assert self.encrypted_req, 'must encrypt'
+
+        import glob
+        ad = glob.ALLOWED_DOWNLOAD
+        assert ad, 'not allowed'
+        fn, start, size = ad
+        assert file_number == fn, 'not allowed: file no'
+        assert start <= offset and (offset + length) <= (start + size), \
+                                                'not allowed: out of bounds'
 
         # maintain a running SHA256 over what's sent
         if offset == 0:
@@ -828,17 +877,33 @@ class USBHandler:
         from glob import dis, hsm_active
         from utils import check_firmware_hdr
         from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_HEADER_MAGIC
+        from auth import UserAuthorizedAction, FirmwareUpgradeRequest, ApproveTransaction
 
-        # maintain a running SHA256 over what's received
+        # PSRAM transaction region must be read-only while an approval flow is using it
+        # - blocks TOCTOU attack on in-progress transaction signing
+        # - firmware upgrade approval starts only after its upload is done
+        # - a new upload may supersede a pending transaction approval (host can
+        #   abandon and replace it via stxn); that case is caught by the
+        #   staged-bytes digest re-check in ApproveTransaction before signing
+        UserAuthorizedAction.check_busy((FirmwareUpgradeRequest, ApproveTransaction))
+
+        import glob
+
+        # any accepted upload block repurposes the staging area, so it
+        # invalidates any previous download lease
+        glob.ALLOWED_DOWNLOAD = None
+
+        # maintain a running SHA256 over what's staged
         if offset == 0:
-            self.file_checksum = sha256()
-            self.is_fw_upgrade = False
+            self.reset_upload()
             dis.fullscreen("Receiving...", 0)
         else:
             dis.progress_sofar(offset, total_size)
 
         assert offset % 256 == 0, 'alignment'
-        assert offset+len(data) <= total_size <= MAX_UPLOAD_LEN, 'long'
+        assert offset == self.upload_next_offset, 'offset'
+        assert 1 <= total_size <= MAX_UPLOAD_LEN, 'long'
+        assert offset + len(data) <= total_size, 'long'
 
         if hsm_active or pa.hobbled_mode:
             # additional restriction in HSM mode or hobbled: must be PSBT
@@ -846,7 +911,7 @@ class USBHandler:
             if offset == 0:
                 assert data[0:5] == b'psbt\xff', 'psbt'
 
-        self.file_checksum.update(data)
+        self.upload_total_size = total_size
 
         for pos in range(offset, offset+len(data), 256):
 
@@ -860,7 +925,7 @@ class USBHandler:
             #   length and appends hdr, but that's kinda a bug, so support both
             is_trailer = (pos == (total_size - FW_HEADER_SIZE) or pos == total_size)
 
-            if pos == (FW_HEADER_OFFSET & ~255):
+            if pos == (FW_HEADER_OFFSET & ~255) and len(here) == 256:
                 hdr = memoryview(here)[-128:]
                 magic, = unpack_from('<I', hdr[0:4])
                 if magic == FW_HEADER_MAGIC:
@@ -876,6 +941,12 @@ class USBHandler:
                 hdr = memoryview(here)[-128:]
                 assert hdr == self.is_fw_upgrade        # indicates hacking
 
+                # The legacy USB upgrade protocol includes this duplicate
+                # trailer in its running checksum, even though it is not
+                # written to PSRAM a second time.
+                self.file_checksum.update(here)
+                self.upload_next_offset = offset + len(data)
+
                 # but don't write it, instead offer user a chance to abort
                 from auth import authorize_upgrade
                 authorize_upgrade(self.is_fw_upgrade, pos, psram_offset=0)
@@ -885,6 +956,9 @@ class USBHandler:
 
             # write to PSRAM
             PSRAM.write(pos, here)
+            self.file_checksum.update(here)
+
+        self.upload_next_offset = offset + len(data)
 
         if offset+len(data) >= total_size and not hsm_active:
             # probably done

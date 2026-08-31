@@ -5,13 +5,13 @@ according to [BIP-85 PWD BASE64](https://github.com/bitcoin/bips/blob/master/bip
 Generated passwords can be sent as keystrokes via USB to the host computer,
 effectively using Coldcard as specialized password manager.
 
-In addition to deriving up to 10,000 distinct secure passwords, the Coldcard Mk4
+In addition to deriving up to 10,000 distinct secure passwords, the Coldcard
 can also type them into a computer by emulating a USB keyboard, and simulating the
 keystrokes needed to type the password.
 
 #### Requirements
 
-* Coldcard Mk4 with version 5.0.5 or newer
+* Coldcard Mk4 or Mk5 (firmware 5.0.5 or newer), or any Q
 * USB-C with data link (won't work with power only cable from Coinkite)
 
 ## Type Passwords over USB
@@ -32,11 +32,13 @@ to exit. Exiting from "Type Passwords" will cause Coldcard to turn off keyboard 
 1. Go to Advanced/Tools -> Derive Seed B85 -> Passwords
 2. Choose "Password/Index number" (BIP-85 index) and press OK to generate password.
 3. Screen shows generated password, path, and entropy from which password was derived
-4. A few different options are available at this point:
-   1. press 1 to save password backup file on MicroSD card (cleartext!)
-   2. press 2 to send keystrokes (this will first of all enable keyboard emulation, then send keystrokes + enter, and finally disables keyboard emulation)
-   3. press 3 to view password as QR code
-   4. press 4 to send over NFC (only appears when NFC is enabled)
+4. A few different options are available at this point (on Mk; on Q the NFC and
+   QR buttons are used instead of (3)/(4)):
+   1. press (1) to save password backup file on MicroSD card (cleartext!)
+   2. press (2) to save to Virtual Disk (only when available)
+   3. press (3) to send over NFC (only appears when NFC is enabled)
+   4. press (4) to view password as QR code
+   5. press (6) to send keystrokes over USB (this enables keyboard emulation, sends keystrokes + enter, then disables keyboard emulation)
 
 ## Keyboard language settings
 

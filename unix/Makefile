@@ -7,9 +7,6 @@ MPY_TOP = ../external/micropython
 PORT_TOP = $(MPY_TOP)/ports/unix
 V=0
 
-# bugfix for my Mac at least
-export PKG_CONFIG_PATH=/usr/local/opt/libffi/lib/pkgconfig
-
 CC_TOP := $(realpath ..)
 
 MAKE_ARGS = -j 4 VARIANT=coldcard-mpy VARIANT_DIR=$(PWD)/variant CC_TOP=$(CC_TOP) DEBUG=1
@@ -28,7 +25,10 @@ tags:
 
 # Make a vanilla copy of micropython (unix) for use with upip and comparsion purposes
 tools:
-	cd $(PORT_TOP) && $(MAKE) clean deplibs all
+	# axtls, not deplibs: deplibs also builds the bundled libffi, which is
+	# unused here (MICROPY_STANDALONE=0 links the system libffi via pkg-config)
+	# and whose aarch64 sysv.S no longer assembles under recent clang.
+	cd $(PORT_TOP) && $(MAKE) clean axtls all
 	cp $(PORT_TOP)/micropython ./micropython
 	cd $(PORT_TOP) && $(MAKE) clean
 

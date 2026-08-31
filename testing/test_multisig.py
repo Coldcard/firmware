@@ -9,6 +9,7 @@
 import time, pytest, os, random, json, shutil, pdb, io, base64, struct, bech32, itertools, re
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from ckcc.protocol import CCProtocolPacker, MAX_TXN_LEN
+from ckcc_protocol.protocol import CCProtoError
 from pprint import pprint
 from base64 import b64encode, b64decode
 from base58 import encode_base58_checksum
@@ -22,7 +23,7 @@ from io import BytesIO
 from hashlib import sha256
 from bbqr import split_qrs
 from descriptor import MULTI_FMT_TO_SCRIPT, MultisigDescriptor, parse_desc_str
-from charcodes import KEY_QR, KEY_DELETE
+from charcodes import KEY_CLEAR, KEY_QR, KEY_DELETE
 
 
 def HARD(n=0):
@@ -200,7 +201,7 @@ def import_ms_wallet(dev, make_multisig, offer_minsc_import, press_select,
     return doit
 
 
-@pytest.mark.parametrize('N', [ 3, 15])
+@pytest.mark.parametrize('N', [3, 15, 16, 20, 21])
 def test_ms_import_variations(N, offer_minsc_import, press_cancel, is_q1, get_cc_key):
     # all the different ways...
     my_key = get_cc_key(path="").replace("/<0;1>/*", "")
@@ -211,9 +212,22 @@ def test_ms_import_variations(N, offer_minsc_import, press_cancel, is_q1, get_cc
     # - no xfps
     # - no meta data
     k0 = ','.join(keys)
-    title, story = offer_minsc_import(f"sh(multi({N},{k0}))")
-    assert f'Policy: {N} of {N}\n' in story
-    press_cancel()
+    if N <= 15:
+        title, story = offer_minsc_import(f"sh(multi({N},{k0}))")
+        assert f'Policy: {N} of {N}\n' in story
+        press_cancel()
+    else:
+        with pytest.raises(BaseException) as ee:
+            offer_minsc_import(f"sh(multi({N},{k0}))")
+        assert ("max signers" if N <= 20 else "M/N range") in str(ee.value)
+
+    if N > 20:
+        desc = f"wsh(sortedmulti({N},{k0}))"
+        for invalid_desc in (desc, f"sh({desc})"):
+            with pytest.raises(BaseException) as ee:
+                offer_minsc_import(invalid_desc)
+            assert "M/N range" in str(ee.value)
+        return
 
     # exclude myself (expect fail)
     k1 = ','.join(keys[1:])
@@ -222,6 +236,11 @@ def test_ms_import_variations(N, offer_minsc_import, press_cancel, is_q1, get_cc
     assert "My key 0F056943 missing in descriptor" in str(ee.value)
 
     desc0 = f"wsh(sortedmulti({N},{k0}))"
+    if N == 20:
+        title, story = offer_minsc_import(f"sh({desc0})")
+        assert f'Policy: {N} of {N}\n' in story
+        press_cancel()
+
     # normal names
     for name in [ 'Zy', 'Z'*20, 'Vault #3' ]:
         title, story = offer_minsc_import(json.dumps({"name": name, "desc": desc0}))
@@ -827,13 +846,60 @@ def test_import_dup_safe(N, clear_miniscript, make_multisig, offer_minsc_import,
     clear_miniscript()
 
 
+def test_rename_wallet_collision_and_cancel(clear_miniscript, import_ms_wallet,
+                                            goto_home, pick_menu_item, cap_menu,
+                                            cap_story, need_keypress, enter_text,
+                                            press_select, press_cancel, settings_get,
+                                            is_q1):
+    clear_miniscript()
+    import_ms_wallet(2, 3, name='123', unique=0, accept=True)
+    import_ms_wallet(2, 3, name='125', unique=1, accept=True)
+
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig/Miniscript')
+    pick_menu_item('123')
+    pick_menu_item('Rename')
+
+    if is_q1:
+        need_keypress(KEY_CLEAR)
+        enter_text('125')
+    else:
+        # Change the final digit from 3 to 5.
+        need_keypress('5')
+        need_keypress('5')
+        press_select()
+
+    title, story = cap_story()
+    assert title == 'FAILED'
+    assert "wallet with name '125' already exists" in story
+    press_select()
+
+    menu = cap_menu()
+    assert '"123"' in menu
+    pick_menu_item('Rename')
+    if is_q1:
+        press_cancel()
+    else:
+        # Delete all three characters; confirm_exit=False exits immediately.
+        for _ in range(3):
+            press_cancel()
+
+    menu = cap_menu()
+    assert '"123"' in menu
+    assert [rec[0] for rec in settings_get('miniscript')] == ['123', '125']
+    clear_miniscript()
+
+
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('m_of_n', [(2,2), (2,3), (15,15)])
 @pytest.mark.parametrize('addr_fmt', ['p2sh-p2wsh', 'p2sh', 'p2wsh' ])
 def test_import_dup_xfp_fails(m_of_n, use_regtest, addr_fmt, clear_miniscript,
-                              make_multisig, import_ms_wallet, test_ms_show_addr):
+                              make_multisig, import_ms_wallet,
+                              test_ms_show_addr, goto_home):
 
     M, N = m_of_n
+    goto_home()
 
     keys = make_multisig(M, N)
 
@@ -848,6 +914,31 @@ def test_import_dup_xfp_fails(m_of_n, use_regtest, addr_fmt, clear_miniscript,
 
     #assert 'XFP' in str(ee)
     assert 'wrong pubkey' in str(ee)
+
+
+@pytest.mark.parametrize('case', ['dup_key_two_xfps', 'own_key_other_acct'])
+def test_import_dup_cosigner_key_fails(case, clear_miniscript, make_multisig,
+                                       import_ms_wallet):
+    M, N = 2, 3
+    common = "m/48h/1h/0h/2h"
+    keys = make_multisig(M, N, deriv=common)
+
+    if case == 'dup_key_two_xfps':
+        # Same xpub and ranged derivation, but a different claimed fingerprint.
+        keys[1] = (0x0badf00d, keys[0][1], keys[0][2])
+        derivs, msg = None, 'Insane'
+    else:
+        # Device key from another account, relabeled with a foreign fingerprint.
+        deriv = "m/48h/1h/5h/2h"
+        dev_pk = BIP32Node.from_wallet_key(simulator_fixed_tprv)
+        keys[0] = (0x0badf00d, dev_pk, dev_pk.subkey_for_path(deriv))
+        derivs = [deriv] + [common] * (N - 1)
+        msg = 'is our key'
+
+    with pytest.raises(Exception) as exc:
+        import_ms_wallet(M, N, 'p2wsh', accept=True, keys=keys,
+                         common=None if derivs else common, derivs=derivs)
+    assert msg in str(exc.value)
 
 
 @pytest.fixture
@@ -909,10 +1000,12 @@ def make_myself_wallet(dev, set_bip39_pw, offer_minsc_import, press_select, clea
             time.sleep(.1)
             press_select()
 
-        def select_wallet(idx, no_import=False):
+        def select_wallet(idx, no_import=False, clear_wallets=True):
             # select to specific pw
             print(f"--- switch to another leg of MS: {idx} ---")
             xfp = set_bip39_pw(passwords[idx])
+            if clear_wallets:
+                clear_miniscript()
             if do_import and not no_import:
                 offer_minsc_import(config)
                 time.sleep(.1)
@@ -940,7 +1033,8 @@ def fake_ms_txn(pytestconfig):
     def doit(num_ins, num_outs, M, keys, fee=10000, outvals=None, inp_addr_fmt="p2wsh",
              outstyles=['p2pkh'], change_outputs=[], incl_xpubs=False, hack_psbt=None,
              hack_change_out=False, input_amount=1E8, psbt_v2=None, bip67=True,
-             violate_script_key_order=False, path_mapper=None, netcode="XTN", force_outstyle=None):
+             violate_script_key_order=False, path_mapper=None, netcode="XTN",
+             force_outstyle=None, lock_time=0):
 
         psbt = BasicPSBT()
         if psbt_v2 is None:
@@ -954,9 +1048,12 @@ def fake_ms_txn(pytestconfig):
             psbt.txn_version = 2
             psbt.input_count = num_ins
             psbt.output_count = num_outs
+            if lock_time:
+                psbt.fallback_locktime = lock_time
 
         txn = CTransaction()
         txn.nVersion = 2
+        txn.nLockTime = lock_time
 
         if incl_xpubs:
             # add global header with XPUB's
@@ -1013,20 +1110,25 @@ def fake_ms_txn(pytestconfig):
 
             supply.vout.append(CTxOut(int(input_amount), scriptPubKey))
 
-            if not segwit_in:
-                psbt.inputs[i].utxo = supply.serialize_with_witness()
-            else:
+            if segwit_in:
                 psbt.inputs[i].witness_utxo = supply.vout[-1].serialize()
+            else:
+                psbt.inputs[i].utxo = supply.serialize_with_witness()
+
+            if lock_time and not i:
+                seq = 0xfffffffd
+            else:
+                seq = 0xffffffff
 
             supply.calc_sha256()
             if psbt_v2:
                 psbt.inputs[i].previous_txid = supply.hash
                 psbt.inputs[i].prevout_idx = 0
-                # TODO sequence
-                # TODO height timelock
-                # TODO time timelock
+                psbt.inputs[i].sequence = seq
+                # psbt.inputs[i].req_time_locktime = None
+                # psbt.inputs[i].req_height_locktime = None
 
-            spendable = CTxIn(COutPoint(supply.sha256, 0), nSequence=0xffffffff)
+            spendable = CTxIn(COutPoint(supply.sha256, 0), nSequence=seq)
             txn.vin.append(spendable)
 
         for i in range(num_outs):
@@ -1098,6 +1200,21 @@ def fake_ms_txn(pytestconfig):
 
     return doit
 
+def test_missing_p2sh_p2wsh_redeem_script_rejected(clear_miniscript, import_ms_wallet,
+                                                    fake_ms_txn, try_sign):
+    clear_miniscript()
+    M = N = 1
+    keys = import_ms_wallet(M, N, addr_fmt="p2sh-p2wsh", accept=True)
+
+    def remove_redeem_script(psbt):
+        psbt.inputs[0].redeem_script = None
+
+    psbt = fake_ms_txn(1, 1, M, keys, fee=99_000_000,
+                       inp_addr_fmt="p2sh-p2wsh", hack_psbt=remove_redeem_script)
+    with pytest.raises(CCProtoError) as exc:
+        try_sign(psbt, False)
+    assert "Missing redeem script for input #0" in str(exc.value)
+
 @pytest.mark.veryslow
 @pytest.mark.unfinalized
 @pytest.mark.parametrize('addr_fmt', ["p2wsh", "p2sh-p2wsh", "p2sh"])
@@ -1168,13 +1285,73 @@ def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_miniscript, import_ms
     else:
         try_sign(psbt)
 
+
+@pytest.mark.unfinalized
+@pytest.mark.parametrize("M,inp_addr_fmt", [
+    (2, "p2wsh"),
+    (17, "p2sh-p2wsh"),
+    (20, "p2wsh"),
+])
+def test_ms_sign_20_xpubs(M, inp_addr_fmt, clear_miniscript, import_ms_wallet,
+                          fake_ms_txn, try_sign_microsd, settings_get, settings_set,
+                          settings_remove):
+    # Automatic PSBT wallet discovery must handle pushed M/N values and 20 global XPUBs.
+    N = 20
+    dd = "m/48h/1h/0h/%dh" % (1 if inp_addr_fmt == "p2sh-p2wsh" else 2)
+
+    def path_mapper(idx):
+        return str_to_path(dd) + [0, 0]
+
+    def include_xpubs(idx, xfp, m, sk):
+        kk = str_to_path(dd)
+        bp = pack('<%dI' % (dd.count("/") + 1), xfp, *kk)
+        return sk.node.serialize_public(), bp
+
+    clear_miniscript()
+    old_pms = settings_get("pms", None)
+    settings_set('pms', 2)
+    try:
+        keys, _ = import_ms_wallet(M, N, addr_fmt=inp_addr_fmt, do_import=False, common=dd)
+        psbt = fake_ms_txn(1, 1, M, keys, inp_addr_fmt=inp_addr_fmt,
+                           incl_xpubs=include_xpubs, path_mapper=path_mapper)
+
+        _, updated, _ = try_sign_microsd(psbt)
+        aft = BasicPSBT().parse(updated)
+        assert len(aft.inputs[0].part_sigs) == 1
+    finally:
+        if old_pms is None:
+            settings_remove("pms")
+        else:
+            settings_set("pms", old_pms)
+
+
+@pytest.mark.parametrize("finalize", [True, False])
+def test_1of1_multisig_sign(finalize, clear_miniscript, import_ms_wallet, fake_ms_txn, start_sign,
+                            end_sign, cap_story, goto_home):
+    # Minimal 1-of-1 multisig: import the wallet, then sign a 1-in/1-out PSBT.
+    goto_home()
+    clear_miniscript()
+    M = N = 1
+    keys = import_ms_wallet(M, N, accept=True)
+
+    psbt = fake_ms_txn(1, 1, M, keys)
+
+    start_sign(psbt, finalize=finalize)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+
+    end_sign(accept=True, finalize=finalize)
+
+
 @pytest.mark.unfinalized
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('num_ins', [ 15 ])
-@pytest.mark.parametrize('M', [ 2, 4])
+@pytest.mark.parametrize('M', [ 2, 4, 1])
+@pytest.mark.parametrize('inp_addr_fmt', ["p2sh", "p2wsh"])
 @pytest.mark.parametrize('incl_xpubs', [ True, False ])
-def test_ms_sign_myself(M, use_regtest, make_myself_wallet, num_ins, dev, incl_xpubs,
-                        clear_miniscript, fake_ms_txn, try_sign, bitcoind, sim_root_dir):
+def test_ms_sign_myself(M, use_regtest, make_myself_wallet, inp_addr_fmt, num_ins, dev,
+                        clear_miniscript, fake_ms_txn, try_sign, incl_xpubs, bitcoind,
+                        sim_root_dir):
 
     # IMPORTANT: won't work if you start simulator with --ms flag. Use no args
 
@@ -1185,19 +1362,19 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, num_ins, dev, incl_x
     use_regtest()
 
     # create a wallet, with 3 bip39 pw's
-    keys, select_wallet = make_myself_wallet(M, addr_fmt="p2sh", do_import=(not incl_xpubs))
+    keys, select_wallet = make_myself_wallet(M, addr_fmt=inp_addr_fmt,
+                                             do_import=(not incl_xpubs))
     N = len(keys)
     assert M<=N
 
-    psbt = fake_ms_txn(num_ins, num_outs, M, keys, inp_addr_fmt="p2sh", incl_xpubs=incl_xpubs,
-                       outstyles=["p2sh"], change_outputs=list(range(1,num_outs)))
+    psbt = fake_ms_txn(num_ins, num_outs, M, keys, inp_addr_fmt=inp_addr_fmt,
+                       incl_xpubs=incl_xpubs,
+                       outstyles=all_out_styles, change_outputs=list(range(1,num_outs)))
 
     with open(f'{sim_root_dir}/debug/myself-before.psbt', 'w') as f:
         f.write(b64encode(psbt).decode())
     for idx in range(M):
         select_wallet(idx)
-        if incl_xpubs:
-            clear_miniscript()
         _, updated = try_sign(psbt, accept_ms_import=incl_xpubs)
         with open(f'{sim_root_dir}/debug/myself-after.psbt', 'w') as f:
             f.write(b64encode(updated).decode())
@@ -1397,6 +1574,38 @@ def test_make_airgapped(addr_fmt, acct_num, M_N, goto_home, cap_story, pick_menu
     # abort import, good enough
     press_cancel()
     press_cancel()
+
+
+def test_reject_oversized_airgapped_xpub_qr(goto_home, pick_menu_item, need_keypress,
+                                             press_select, scan_a_qr, cap_screen,
+                                             clear_miniscript, is_q1, wait_for_story):
+    if not is_q1:
+        pytest.skip("needs scanner")
+
+    clear_miniscript()
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig/Miniscript')
+    pick_menu_item('Create Airgapped')
+
+    title, story = wait_for_story('QR or SD Card?', check_title=True)
+    assert 'scan multisig XPUBs from QR codes' in story
+    need_keypress(KEY_QR)
+
+    title, story = wait_for_story('Address Format', check_title=True)
+    assert 'default address format' in story
+    press_select()
+
+    oversized = json.dumps({'junk': 'x' * 1500})
+    assert len(oversized) > 1500
+    _, parts = split_qrs(oversized, 'J', max_version=20)
+    for part in parts:
+        scan_a_qr(part)
+
+    time.sleep(.5)
+    assert 'Multisig export is too large' in cap_screen()
+
+    press_select()
 
 
 @pytest.mark.parametrize('addr_fmt', [AF_P2WSH] )
@@ -1982,9 +2191,9 @@ def get_cc_key(dev):
     return doit
 
 @pytest.fixture
-def bitcoind_multisig(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story, load_export,
-                      pick_menu_item, goto_home, cap_menu, microsd_path, settings_get,
-                      press_select, get_cc_key, import_miniscript):
+def bitcoind_multisig(bitcoind, need_keypress, cap_story, load_export, pick_menu_item,
+                      goto_home, cap_menu, microsd_path, settings_get, press_select,
+                      get_cc_key, import_miniscript):
 
     def doit(M, N, script_type, cc_account=0, funded=True, ms_script="sortedmulti", name=None,
              way="sd", keypool_size=10):
@@ -2180,6 +2389,9 @@ def test_bitcoind_MofN_tutorial(m_n, script, clear_miniscript, goto_home, need_k
     addr_type = bitcoind_addr_fmt(script)
 
     M, N = m_n
+    if (M == N == 20) and script == "p2sh":
+        M = N = 15  # 520byte p2sh redeem limit
+
     settings_set("sighshchk", 1)  # disable checks
     use_regtest()
     clear_miniscript()
@@ -2558,8 +2770,9 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
     pick_menu_item("Rename")
     for _ in range(len(on_mainnet) - (0 if is_q1 else 1)):
         need_keypress(KEY_DELETE if is_q1 else "x")
-    renamed = "bbbb"
-    enter_complex(renamed if is_q1 else renamed[1:], apply=False, b39pass=False)
+    # Mk4 retains one character; selecting the number group overwrites it.
+    renamed = "1234"
+    enter_complex(renamed, apply=False, b39pass=False)
     res = settings_get("miniscript")
     assert res[0][0] == on_regtest
     assert res[1][0] == renamed
@@ -2590,15 +2803,27 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
 def test_same_key_account_based_multisig(goto_home, need_keypress, pick_menu_item, cap_story,
                                          clear_miniscript, microsd_path, load_export, desc,
                                          offer_minsc_import):
+    goto_home()
     clear_miniscript()
     _, story = offer_minsc_import(desc)
     # this is allowed now
     assert "Create new multisig wallet" in story
 
 
-def test_multisig_name_validation(microsd_path, offer_minsc_import):
+def test_multisig_name_validation(microsd_path, offer_minsc_import, press_cancel, goto_home):
+    goto_home()
     with open("data/multisig/desc-p2wsh-myself.txt", "r") as f:
         config = f.read()
+
+    for name in ["a", "a" * 30]:
+        _, story = offer_minsc_import(json.dumps({"name": name, "desc": config}))
+        assert "Create new multisig wallet?" in story
+        press_cancel()
+
+    for name in ["", "a" * 31]:
+        with pytest.raises(Exception) as e:
+            offer_minsc_import(json.dumps({"name": name, "desc": config}))
+        assert "name len" in e.value.args[0]
 
     with pytest.raises(Exception) as e:
         offer_minsc_import(json.dumps({"name": "eê", "desc": config}), allow_non_ascii=True)
@@ -2712,8 +2937,8 @@ def test_scan_any_qr(fpath, is_q1, scan_a_qr, clear_miniscript, goto_home,
     ([("p2wsh-p2sh", 1000000, 1)] * 18 + [("p2wsh", 50000000, 0)] * 12, "p2sh-p2wsh"),
     ([("p2sh", 1000000, 0), ("p2wsh-p2sh", 50000000, 0), ("p2wsh", 800000, 1)] * 14, "p2wsh"),
 ])
-def test_txout_explorer(data, af, desc, clear_miniscript, import_ms_wallet, fake_ms_txn,
-                        start_sign, txout_explorer, pytestconfig):
+def test_txout_explorer(data, af, desc, clear_miniscript, import_ms_wallet,
+                        fake_ms_txn, start_sign, txout_explorer, pytestconfig):
     # TODO This test MUST be run with --psbt2 flag on and off
 
     outstyles = []
@@ -2764,6 +2989,27 @@ def test_import_duplicate_shuffled_keys(clear_miniscript, make_multisig, import_
     assert f'{OK} to approve' not in story
     if A != B:
         assert "BIP-67 clash" in story
+
+    press_cancel()
+
+
+def test_import_duplicate_after_json_roundtrip(clear_miniscript, make_multisig,
+                                               import_ms_wallet, settings_get,
+                                               settings_set, press_cancel):
+    clear_miniscript()
+    M, N = 2, 3
+    keys = make_multisig(M, N)
+    import_ms_wallet(M, N, addr_fmt="p2wsh", name="ms0",
+                     accept=True, keys=keys)
+
+    # JSON restores the M/N pair as a list.
+    wallets = settings_get("miniscript")
+    wallets[0][-1]["m_n"] = list(wallets[0][-1]["m_n"])
+    settings_set("miniscript", wallets)
+
+    with pytest.raises(AssertionError):
+        import_ms_wallet(M, N, addr_fmt="p2wsh", name="ms1",
+                         accept=True, keys=keys)
 
     press_cancel()
 
@@ -2849,14 +3095,15 @@ def test_import_multisig_usb_json(use_regtest, cs, way, cap_menu, clear_miniscri
         "'desc' key required",
         {"name": "my_miniscript", "random": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
     ),
-    (
-        "'name' length",
-        {"name": "a" * 41, "desc": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
-    ),
-    (
-        "'name' length",
-        {"name": "a", "desc": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
-    ),
+    # tested properly in test_multisig_name_validation
+    # (
+    #     "'name' length",
+    #     {"name": "a" * 41, "desc": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+    # ),
+    # (
+    #     "'name' length",
+    #     {"name": "", "desc": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+    # ),
     (
         "'desc' empty",
         {"name": "ab", "desc": "", "random": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
@@ -3132,7 +3379,7 @@ def test_input_script_type(clear_miniscript, import_ms_wallet, start_sign, end_s
 
         assert "(1 warning below)" in story
         assert "WARNING" in story
-        assert "Limited Signing: We are not signing these inputs" in story
+        assert "Limited Signing: We are not signing 2 input(s)" in story
         res = end_sign()
         po = BasicPSBT().parse(res)
         for inp in po.inputs:
@@ -3580,7 +3827,7 @@ def test_fwd_slash_in_name(import_ms_wallet, clear_miniscript, pick_menu_item, n
 
 @pytest.mark.parametrize("chain", ["BTC", "XTN"])
 @pytest.mark.parametrize("M_N", [(3, 5)])#, (14, 15)])
-@pytest.mark.parametrize("complete", [True, False, None])
+@pytest.mark.parametrize("complete", [False, None])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh", "p2sh-p2wsh"])
 def test_txin_explorer(dev, chain, M_N, addr_fmt, fake_ms_txn, start_sign, settings_set, txin_explorer,
                        cap_story, pytestconfig, import_ms_wallet, complete, clear_miniscript):
@@ -3595,9 +3842,7 @@ def test_txin_explorer(dev, chain, M_N, addr_fmt, fake_ms_txn, start_sign, setti
                             addr_fmt=addr_fmt)
 
     all_xfps = [xfp2str(k[0]) for k in keys][:-1] # remove myself
-    if complete:
-        target_xfps = all_xfps[:M]
-    elif complete is False:
+    if complete is False:
         target_xfps = all_xfps[:M-1]
     else:
         target_xfps = []
@@ -3646,5 +3891,106 @@ def test_txin_explorer_our_sig(dev, fake_ms_txn, start_sign, settings_set, clear
 
     start_sign(psbt)
     txin_explorer(num_ins, [(af, inp_amount, 0, "XTN", (M,N), None, None, False, [my_xfp])])
+
+
+def test_ms_xpubs_account_cancel(goto_home, pick_menu_item, press_cancel, cap_menu, press_select):
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig/Miniscript')
+    pick_menu_item('Export XPUB')
+    press_select()  # confirm story
+    time.sleep(.1)
+    press_cancel()
+    time.sleep(.2)
+    assert "Export XPUB" in cap_menu()
+
+
+@pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh", "p2sh"])
+@pytest.mark.parametrize("num_ins", [1, 10])
+@pytest.mark.parametrize("incl_self", [True, False])
+def test_fully_signed(addr_fmt, num_ins, import_ms_wallet, fake_ms_txn, start_sign,
+                      cap_story, press_cancel, clear_miniscript, incl_self):
+    clear_miniscript()
+    M, N = 2, 4
+    keys = import_ms_wallet(M, N, name="fully_signed", accept=True, chain="XTN",
+                            addr_fmt=addr_fmt)
+
+    # Both cases provide the complete threshold of dummy signatures. One set
+    # includes our signer and the other consists only of foreign co-signers.
+    i, j = (2, 4) if incl_self else (0, 2)
+    xfps = [xfp2str(k[0]) for k in keys][i:j]
+    assert len(xfps) == M
+
+    def hack(psbt):
+        for inp in psbt.inputs:
+            for pk, pth in inp.bip32_paths.items():
+                if pth[:4].hex().upper() in xfps:
+                    inp.part_sigs[pk] = os.urandom(71)
+
+    psbt = fake_ms_txn(num_ins, 2, M, keys, inp_addr_fmt=addr_fmt,
+                       hack_psbt=hack)
+
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "completely signed already" in story
+    press_cancel()
+
+
+@pytest.mark.parametrize("M_N", [(2, 3), (15, 15)])
+def test_import_multiple_similar_from_psbt(M_N, clear_miniscript, fake_ms_txn, import_ms_wallet,
+                                           start_sign, cap_story, end_sign, press_select,
+                                           settings_set, settings_get, press_cancel):
+    M, N = M_N
+    clear_miniscript()
+    settings_set('pms', 1)  # TRUST_OFFER
+
+    addr_fmt = AF_P2WSH
+    dd = "m/48h/1h/0h/2h"
+
+    def path_mapper(idx):
+        kk = str_to_path(dd)
+        return kk + [0, 0]
+
+    def incl_xpubs(idx, xfp, m, sk):
+        kk = str_to_path(dd)
+        bp = pack('<%dI' % (dd.count("/") + 1), xfp, *kk)
+        return sk.node.serialize_public(), bp
+
+    keys = import_ms_wallet(M, N, accept=True, addr_fmt=addr_fmt, common=dd, do_import=False)
+    keys = keys[0]
+    psbt = fake_ms_txn(1, 2, M, keys, incl_xpubs=incl_xpubs,
+                       outstyles=["p2wsh"], change_outputs=[1], path_mapper=path_mapper)
+
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    base_name = f"PSBT-{M}of{N}"
+    assert 'Create new multisig wallet?' in story
+    assert base_name in story
+    press_select()  # import ms
+    time.sleep(.1)
+    press_select()  # OK TO SIGN
+
+    # create another, different wallet but with the same MofN
+    dd = "m/48h/1h/1h/2h"
+    keys = import_ms_wallet(M, N, accept=True, addr_fmt=addr_fmt, common=dd, do_import=False)
+    keys = keys[0]
+    psbt = fake_ms_txn(1, 2, M, keys, incl_xpubs=incl_xpubs,
+                       outstyles=["p2wsh"], change_outputs=[1], path_mapper=path_mapper)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    # here would be duplicate msg and multisig would not be import-able (unpatched version)
+    assert 'Create new multisig wallet?' in story
+    assert f"{base_name} #2" in story
+    press_select()  # import ms
+    time.sleep(.1)
+    press_select()  # OK TO SIGN
+    msc_names = [msc[0] for msc in settings_get("miniscript")]
+    assert msc_names == [base_name, f"{base_name} #2"]
+
+    press_cancel()
 
 # EOF

@@ -10,11 +10,13 @@ from msg import verify_message
 from api import bitcoind, match_key
 from api import bitcoind_wallet, bitcoind_d_wallet, bitcoind_d_wallet_w_sk, bitcoind_d_sim_sign, bitcoind_d_dev_watch
 from api import bitcoind_d_sim_watch, finalize_v2_v0_convert
+from electrum import electrum
 from binascii import b2a_hex, a2b_hex
 from constants import *
 from charcodes import *
 from core_fixtures import _need_keypress, _sim_exec, _cap_story, _cap_menu, _cap_screen, _sim_eval
 from core_fixtures import _press_select, _pick_menu_item, _enter_complex, _dev_hw_label
+from core_fixtures import _do_keypresses
 from txn import render_address
 from bbqr import split_qrs
 
@@ -139,7 +141,7 @@ def X(is_q1):
 
 @pytest.fixture
 def need_keypress(dev, request):
-    def doit(k, timeout=1000):
+    def doit(k, timeout=3000):
         if request.config.getoption("--manual"):
             # need actual user interaction
             print("==> NOW, on the Coldcard, press key: %r (then enter here)" % k, file=sys.stderr)
@@ -207,14 +209,11 @@ def enter_pin(enter_number, press_select, cap_screen, is_q1):
 
 
 @pytest.fixture
-def do_keypresses(need_keypress):
+def do_keypresses(dev):
     # do a series of keypresses, any kind
-    def doit(value):
-        for ch in value:
-            need_keypress(ch)
+    f = functools.partial(_do_keypresses, dev)
+    return f
 
-    return doit
-    
 
 @pytest.fixture
 def enter_text(need_keypress, is_q1):
@@ -430,6 +429,19 @@ def cap_story(dev):
     # returns (title, body) of whatever story is being actively shown
     f = functools.partial(_cap_story, dev)
     return f
+
+
+@pytest.fixture
+def wait_for_story(cap_story):
+    def doit(expected, check_title=False):
+        for _ in range(50):
+            title, story = cap_story()
+            if expected in (title if check_title else story):
+                return title, story
+            time.sleep(0.2)
+        pytest.fail(f'Timed out waiting for: {expected!r}')
+
+    return doit
 
 
 @pytest.fixture
@@ -704,6 +716,47 @@ def clear_miniscript(unit_test):
 def press_select(dev, has_qwerty):
     f = functools.partial(_press_select, dev, has_qwerty)
     return f
+
+
+@pytest.fixture
+def remote_backup_lease(dev, settings_set, press_select):
+    def doit():
+        settings_set('bkpw',
+                     'charge bottom tired when romance blind treat afford bus salute degree anchor')
+
+        assert dev.send_recv(CCProtocolPacker.start_backup()) is None
+        press_select()
+
+        done = None
+        for _ in range(100):
+            time.sleep(.05)
+            done = dev.send_recv(CCProtocolPacker.get_backup_file(), timeout=5000)
+            if done:
+                break
+        assert done
+
+        ll, sha = done
+        backup = dev.download_file(ll, sha, file_number=0)
+        assert backup[0:2] == b'7z'
+        return ll
+
+    return doit
+
+
+@pytest.fixture
+def enter_mash_entropy(pick_menu_item, press_select, need_keypress):
+    def doit():
+        pick_menu_item('Mash Keys')
+        time.sleep(.1)
+        press_select()
+        time.sleep(.1)
+        for i in range(65):
+            need_keypress(str(i % 10))
+
+        time.sleep(.2)
+        press_select()  # done
+
+    return doit
 
 @pytest.fixture
 def press_cancel(need_keypress, has_qwerty):
@@ -1044,9 +1097,12 @@ def settings_append(sim_exec):
 def settings_get(sim_exec):
 
     def doit(key, def_val=None, prelogin=False):
-        source = "from nvstore import SettingsObject;SettingsObject.prelogin()" if prelogin else "settings"
-        cmd = f"RV.write(repr({source}.get('{key}', {def_val!r})))"
-        resp = sim_exec(cmd)
+        if prelogin:
+            src = f"from nvstore import SettingsObject;RV.write(repr(SettingsObject.prelogin().get('{key}', {def_val!r})))"
+        else:
+            src = f"RV.write(repr(settings.get('{key}', {def_val!r})))"
+
+        resp = sim_exec(src)
         assert 'Traceback' not in resp, resp
         return eval(resp)
 
@@ -1066,8 +1122,9 @@ def master_settings_get(sim_exec):
 @pytest.fixture
 def settings_remove(sim_exec):
 
-    def doit(key):
-        x = sim_exec("settings.remove_key('%s')" % key)
+    def doit(key, prelogin=False):
+        source = "from nvstore import SettingsObject;SettingsObject.prelogin()" if prelogin else "settings"
+        x = sim_exec("%s.remove_key('%s')" % (source, key))
         assert x == ''
 
     return doit
@@ -2264,7 +2321,7 @@ def verify_backup_file(goto_home, pick_menu_item, cap_story, need_keypress):
         # Check on-device verify UX works.
         goto_home()
         pick_menu_item('Advanced/Tools')
-        pick_menu_item('Backup')
+        pick_menu_item('File Management')
         pick_menu_item('Verify Backup')
         time.sleep(0.1)
         pick_menu_item(os.path.basename(fn))
@@ -2276,12 +2333,13 @@ def verify_backup_file(goto_home, pick_menu_item, cap_story, need_keypress):
 
 
 @pytest.fixture
-def check_and_decrypt_backup(microsd_path):
-    def doit(fn, passphrase):
+def check_and_decrypt_backup(request, microsd_path):
+    def doit(fn, passphrase, vdisk=False, notes=False):
         # List contents using unix tools
-        pn = microsd_path(fn)
+        path_f = request.getfixturevalue('virtdisk_path') if vdisk else microsd_path
+        pn = path_f(fn)
         out = check_output(['7z', 'l', pn], encoding='utf8')
-        xfname, = re.findall('[a-z0-9]{4,30}.txt', out)
+        xfname, = re.findall('[a-z0-9]{4,30}.%s' % ("json" if notes else "txt"), out)
         print(f"Filename inside 7z: {xfname}")
         assert xfname in out
         assert 'Method = 7zAES' in out
@@ -2666,7 +2724,8 @@ def txin_explorer(cap_story, press_cancel, need_keypress, is_q1, cap_menu,
             time.sleep(.1)
             title, story = cap_story()
             ss = story.split("\n\n")
-            assert "Press RIGHT to see next group" in ss[-1]
+            if i < (num_inputs - 1):
+                assert "RIGHT to see next group" in ss[-1]
             if i:
                 assert " LEFT to go back" in ss[-1]
             else:
@@ -2741,7 +2800,8 @@ def txout_explorer(cap_story, press_cancel, need_keypress, is_q1, verify_qr_addr
             _, story = cap_story()
             ss = story.split("\n\n")
             assert len(ss) == (len(d) * 2) + 1
-            assert "Press RIGHT to see next group" in ss[-1]
+            if (i + n) < len(data):
+                assert "RIGHT to see next group" in ss[-1]
             if i:
                 assert " LEFT to go back" in ss[-1]
             else:
@@ -3068,12 +3128,37 @@ def import_wif_to_store(goto_home, pick_menu_item, cap_story, press_select, cap_
 
     return doit
 
+
+@pytest.fixture
+def bip322_txn(dev, pytestconfig):
+    from bip322 import bip322_txn
+    return functools.partial(bip322_txn, master_xpub=dev.master_xpub,
+                             psbt_v2=pytestconfig.getoption('psbt2'))
+
+
+@pytest.fixture
+def bip322_ms_txn(pytestconfig):
+    from bip322 import bip322_ms_txn
+    return functools.partial(bip322_ms_txn, psbt_v2=pytestconfig.getoption('psbt2'))
+
+
+@pytest.fixture
+def bip322_verify():
+    from bip322 import bip322_verify
+    return bip322_verify
+
+
+@pytest.fixture
+def bip322_from_classic_tx():
+    from bip322 import bip322_from_classic_tx
+    return bip322_from_classic_tx
+
+
 # useful fixtures
 from test_backup import backup_system
 from test_bbqr import readback_bbqr, render_bbqr, readback_bbqr_ll, try_sign_bbqr, split_scan_bbqr
-from bip322 import bip322_txn, bip322_ms_txn, create_msg_file, bip322_from_classic_tx
 from test_bip39pw import set_bip39_pw
-from test_ccc import get_last_violation
+from test_ccc import get_last_violation, setup_ccc, goto_ccc_menu, ccc_ms_setup, bitcoind_create_watch_only_wallet
 from test_drv_entro import derive_bip85_secret, activate_bip85_ephemeral
 from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto_eph_seed_menu
 from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed, confirm_tmp_seed

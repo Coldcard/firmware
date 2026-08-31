@@ -3,14 +3,16 @@
 import chains, ngu, version
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
-from ux import ux_show_story, ux_confirm, the_ux, import_export_prompt, ux_input_text, show_qr_code
+from ux import ux_show_story, ux_confirm, the_ux, import_export_prompt, ux_input_text
 from menu import MenuSystem, MenuItem
-from utils import problem_file_line, show_single_address, node_from_pubkey
+from utils import problem_file_line, show_single_address
 from files import CardSlot, CardMissingError, needs_microsd
 from glob import settings
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
-from public_constants import AF_P2WPKH
+from public_constants import AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2SH, AF_P2TR, AF_BARE_PK
 from msgsign import msg_signing_done
+
+MAX_ITEMS = 30
 
 
 def decode_wif(wif):
@@ -33,15 +35,59 @@ def decode_wif(wif):
     return kp, testnet, compressed
 
 
-def iter_wif_store_addresses(chain, addr_fmt):
+def encode_wif(pk, sk, chain):
+    # WIF preserves whether the corresponding public key is compressed.
+    suffix = b'\x01' if len(pk) == 66 else b''
+    return ngu.codecs.b58_encode(chain.b58_privkey + a2b_hex(sk) + suffix)
+
+
+def iter_wif_store_addresses(addr_fmt):
     # nothing found among singlesig & registered multisig wallets
     # check WIF store
     wifs = settings.get("wifs", [])
     if not wifs: return
 
-    for i, (pk, sk) in enumerate(wifs):
-        node = node_from_pubkey(a2b_hex(pk))
-        yield i, chain.address(node, addr_fmt)
+    for i, (pk, _) in enumerate(wifs):
+        is_compressed = len(pk) == 66
+        if addr_fmt != AF_CLASSIC and not is_compressed:
+            continue
+
+        pubkey = a2b_hex(pk)
+        if addr_fmt == AF_P2TR:
+            pubkey = pubkey[1:]  # x-only internal key
+        addr = chains.current_chain().pubkey_to_address(pubkey, addr_fmt)
+
+        yield i, addr
+
+
+def save_wif_store_items(new_wifs):
+    saved = settings.get("wifs", [])
+    len_saved = len(saved)
+    unique = []
+    dups = 0
+
+    for item in new_wifs:
+        if item in unique:
+            continue
+
+        if item not in saved:
+            unique.append(item)
+        else:
+            dups += 1
+
+    err = ("No valid WIF key found." + (" Contains duplicate WIF(s)" if dups else ""))
+    assert unique, err
+
+    err = ("Max %d items allowed in WIF Store.\n\nAttempted to import %d keys,"
+           " while remaining WIF store capacity is only %d. Please, make room"
+           " first." % (MAX_ITEMS, len(unique), MAX_ITEMS - len_saved))
+    assert (len_saved + len(unique)) <= MAX_ITEMS, err
+
+    saved.extend(unique)
+    settings.set('wifs', saved)
+    settings.save()
+
+    return len(unique)
 
 
 async def ux_visualize_wif(wif_str, kp, compressed, testnet):
@@ -51,34 +97,30 @@ async def ux_visualize_wif(wif_str, kp, compressed, testnet):
     msg = "%s\n\nchain: %s\n\nPrivkey:\n%s\n\nPubkey:\n%s" % (wif_str, ch_str, sk, pk)
     esc = ""
 
-    if compressed and (testnet == (chains.current_chain().ctype != "BTC")):
-        # we only support compressed in WIF store
+    if testnet == (chains.current_chain().ctype != "BTC"):
         msg += "\n\nPress (1) to import to WIF Store."
         esc += "1"
 
     ch = await ux_show_story(msg, title="WIF Key", escape=esc)
     if ch == "1":
-        saved = settings.get("wifs", [])
-        if (pk, sk) in saved:
-            await ux_show_story("Already saved in WIF Store.", title="Failure")
-            return
+        title = "Success"
+        try:
+            save_wif_store_items([[pk, sk]])
+            msg = "Saved to WIF Store."
+        except Exception as e:
+            title = "Failure"
+            msg = str(e)
 
-        saved.append((pk, sk))
-        settings.set('wifs', saved)
-        settings.save()
-
-        await ux_show_story("Saved to WIF Store.", title="Success")
+        await ux_show_story(msg, title=title)
 
 
-class WIFStore(MenuSystem):
-    MAX_ITEMS = 30
-
+class WIFStoreMenu(MenuSystem):
     def __init__(self):
         items = self.construct()
         super().__init__(items)
 
     @classmethod
-    async def make_menu(cls, *a):
+    async def make(cls, *a):
         if not settings.get("wifs", None):
             intro = ("Individual private keys, encoded as WIF (Wallet Import Format) keys"
                      " can be imported and used for signing. Any PSBT that uses a WIF stored here"
@@ -104,21 +146,23 @@ class WIFStore(MenuSystem):
 
         items = []
 
-        if len(wifs) < self.MAX_ITEMS:
+        if len(wifs) < MAX_ITEMS:
             items.append(MenuItem('Import WIF', f=self.import_wif, predicate=not_hobbled_mode))
 
         a_items = []
         export_all = []
         for i, (pk, sk) in enumerate(wifs):
-            wif = ngu.codecs.b58_encode(ch.b58_privkey + a2b_hex(sk) + b'\x01')
+            wif = encode_wif(pk, sk, ch)
             export_all.append(wif)
 
             submenu = [
                 MenuItem("Detail", f=self.detail, arg=(wif,pk,sk)),
-                MenuItem("Addresses", f=self.show_addr_step1, arg=pk),
-                MenuItem("Sign MSG", f=self.sign_msg_step1, arg=sk),
-                MenuItem('Delete', f=self.delete, arg=(i, pk), predicate=not_hobbled_mode),
+                MenuItem("Descriptors", f=self.show_desc_step1, arg=(pk, sk)),
+                MenuItem("Addresses", f=self.show_addr_step1, arg=(pk, sk)),
             ]
+            if len(pk) == 66:
+                submenu.append(MenuItem("Sign MSG", f=self.sign_msg_step1, arg=sk))
+            submenu.append(MenuItem('Delete', f=self.delete, arg=(i, pk), predicate=not_hobbled_mode))
 
             # cannot use truncate_address here, as it does nto fit on Mk4 (because padded numbering)
             clen = 12 if version.has_qwerty else 5
@@ -144,46 +188,72 @@ class WIFStore(MenuSystem):
         await export_contents(title, wif, "wif.txt", None, None,
                               force_prompt=True, intro=msg, ux_title=title)
 
+    async def show_desc_step1(self, a, b, item):
+        pk, _ = item.arg
+        compressed = len(pk) == 66
+        rv = []
+
+        to_do = chains.SINGLESIG_AF + (AF_BARE_PK,) if compressed else (AF_CLASSIC, AF_BARE_PK)
+
+        for af in to_do:
+            label = "Bare P2PK" if af == AF_BARE_PK else chains.addr_fmt_label(af)
+            rv.append(MenuItem(label, f=self.show_desc_step2, arg=(pk, af)))
+
+        the_ux.push(MenuSystem(rv))
+
+    async def show_desc_step2(self, a, b, item):
+        # allow to export pubkey, instead of main detail where WIF is exported
+        pk, af = item.arg
+        title = "Descriptor"
+
+        if af == AF_P2WPKH:
+            desc = "wpkh(%s)"
+        elif af == AF_CLASSIC:
+            desc = "pkh(%s)"
+        elif af == AF_P2TR:
+            pk = pk[2:] # xonly from string
+            desc = "tr(%s)"
+        elif af == AF_BARE_PK:
+            desc = "pk(%s)"
+        else:
+            assert af == AF_P2WPKH_P2SH
+            desc = "sh(wpkh(%s))"
+
+        from descriptor import append_checksum
+        desc = append_checksum(desc % pk)
+
+        from export import export_contents
+        await export_contents(title, desc, "wif_desc_%d.txt" % af, None, None,
+                              force_prompt=True, intro=desc, ux_title=title)
+
     async def show_addr_step1(self, a, b, item):
-        pubkey = a2b_hex(item.arg)
-        rv = [
-            MenuItem(chains.addr_fmt_label(af), f=self.show_addr_step2, arg=(pubkey, af))
-            for af in chains.SINGLESIG_AF
-        ]
+        pk, _ = item.arg
+        compressed = len(pk) == 66
+        rv = []
+
+        for af in chains.SINGLESIG_AF if compressed else (AF_CLASSIC,):
+            rv.append(MenuItem(chains.addr_fmt_label(af), f=self.show_addr_step2, arg=(pk, af)))
         the_ux.push(MenuSystem(rv))
 
     async def show_addr_step2(self, a, b, item):
-        from glob import NFC
         pubkey, af = item.arg
-        node = node_from_pubkey(pubkey)
-        addr = chains.current_chain().address(node, af)
-        msg = show_single_address(addr) + "\n\n"
+        pubkey = a2b_hex(pubkey)
+        if af == AF_P2TR:
+            pubkey = pubkey[1:]  # x-only internal key
+        addr = chains.current_chain().pubkey_to_address(pubkey, af)
+        msg = show_single_address(addr)
 
-        escape = ""
-        # Q only hint keys
-        if not version.has_qwerty:
-            msg += "Press (1) to show address QR code."
-            escape += "1"
-            if NFC:
-                msg += "(3) to share via NFC."
-                escape += "3"
+        ux_title = chains.addr_fmt_label(af) if version.has_qwerty else None
 
-        title = chains.addr_fmt_label(af) if version.has_qwerty else None
-        while True:
-            ch = await ux_show_story(msg, title=title, escape=escape,
-                                     hint_icons=KEY_QR+(KEY_NFC if NFC else ''))
-            if ch == "x": return
-            if ch in "1"+KEY_QR:
-                await show_qr_code(addr, is_alnum=af == AF_P2WPKH)
-
-            elif NFC and (ch in "3"+KEY_NFC):
-                await NFC.share_text(addr)
+        from export import export_contents
+        await export_contents("Address", addr, "wif_addr.txt", None, None,
+                              force_prompt=True, intro=msg, ux_title=ux_title)
 
     async def sign_msg_step1(self, a, b, item):
         privkey = a2b_hex(item.arg)
         rv = [
             MenuItem(chains.addr_fmt_label(af), f=self.sign_msg_step2, arg=(privkey, af))
-            for af in chains.SINGLESIG_AF
+            for af in chains.SINGLESIG_AF if af != AF_P2TR
         ]
         the_ux.push(MenuSystem(rv))
 
@@ -224,16 +294,17 @@ class WIFStore(MenuSystem):
             return
 
         idx, pubkey = item.arg
-        wifs = settings.get('wifs', {})
+        wifs = settings.get('wifs', [])
         if not wifs: return
 
         try:
-            item = wifs[idx]
-            assert item[0] == pubkey
+            entry = wifs[idx]
+            assert entry[0] == pubkey
             del wifs[idx]
             settings.set('wifs', wifs)
             settings.save()
-        except IndexError: pass
+        except IndexError:
+            return
 
         the_ux.pop()  # pop submenu
         self.update_contents()
@@ -298,12 +369,8 @@ class WIFStore(MenuSystem):
         # allow commas, spaces, and newlines as separators
         got = got.replace(',', ' ').split()
 
-        saved = settings.get("wifs", [])
-        len_saved = len(saved)
-
         try:
             new_wifs = []
-            dups = 0
 
             for here in got:
                 here = here.strip()
@@ -316,34 +383,15 @@ class WIFStore(MenuSystem):
                     # ignore garbage text, headers, addresses, etc.
                     continue
 
-                assert compressed, "compressed only"
                 assert testnet == (chains.current_chain().ctype != "BTC"), "chain"
 
                 sk = b2a_hex(kp.privkey()).decode()
-                pk = b2a_hex(kp.pubkey().to_bytes()).decode()
+                pk = b2a_hex(kp.pubkey().to_bytes(not compressed)).decode()
 
-                item = (pk, sk)
-                if item in new_wifs:
-                    # duplicate in import content
-                    continue
+                new_wifs.append([pk, sk])
 
-                if item in saved:       # ignore dups
-                    dups += 1
-                else:
-                    new_wifs.append(item)
+            save_wif_store_items(new_wifs)
 
-            assert new_wifs, 'no valid WIF found' if not dups else 'duplicate WIF(s)'
-
-            if (len_saved + len(new_wifs)) > self.MAX_ITEMS:
-                await ux_show_story("Max %d items allowed in WIF Store.\n\nAttempted to import %d keys,"
-                                    " while remaining WIF store capacity is only %d. Please, make room"
-                                    " first." % (self.MAX_ITEMS, len(new_wifs), self.MAX_ITEMS - len_saved),
-                                    title="Failure")
-                return
-
-            saved.extend(new_wifs)
-            settings.set('wifs', saved)
-            settings.save()
             self.update_contents()
 
         except Exception as e:
@@ -351,13 +399,58 @@ class WIFStore(MenuSystem):
                                 title="Failure")
 
 
-def init_wif_store():
-    # stored as hex strings, need load to bytes
-    wifs = settings.get('wifs', [])
-    if not wifs: return {}
-    res = {}
-    for pk, sk in wifs:
-        res[a2b_hex(pk)] = a2b_hex(sk)
-    return res
+
+class WIFStore:
+    def __init__(self):
+        wifs = settings.get('wifs', [])
+        self.wifs = []  # max 30 items, each (pubkey, privkey)
+        for pk, sk in wifs:
+            self.wifs.append((a2b_hex(pk), a2b_hex(sk)))
+
+        # built lazily, on first match_address_hash() call
+        self._pkh = []   # hash160(pubkey)         — P2PKH / P2WPKH
+        self._sh  = []   # hash160(0014 || _pkh)   — P2SH-P2WPKH
+
+    def __bool__(self):
+        return len(self.wifs) > 0
+
+    def __contains__(self, pubkey):
+        return self._privkey_for(pubkey) is not None
+
+    def __getitem__(self, pubkey):
+        sk = self._privkey_for(pubkey)
+        if sk is None: raise KeyError
+        return sk
+
+    def _privkey_for(self, pubkey):
+        for pk, sk in self.wifs:
+            if pk == pubkey:
+                return sk
+
+    def match_address_hash(self, addr_fmt, hash20):
+        if not self.wifs:
+            return None
+        if not self._pkh:
+            self._pkh = [ngu.hash.hash160(pk) for pk, _ in self.wifs]
+
+        if addr_fmt in (AF_P2WPKH, AF_CLASSIC):
+            table = self._pkh
+        elif addr_fmt == AF_P2SH:
+            if not self._sh:
+                self._sh = [ngu.hash.hash160(b'\x00\x14' + h) for h in self._pkh]
+            table = self._sh
+        elif addr_fmt == AF_BARE_PK:
+            table = [pk for pk, _ in self.wifs]
+        else:
+            return None    # AF_P2WSH / AF_P2TR / unknown -- not us
+
+        for idx, target in enumerate(table):
+            if addr_fmt in (AF_P2WPKH, AF_P2SH) and len(self.wifs[idx][0]) != 33:
+                # do not match uncompressed keys for segwit
+                continue
+            if target == hash20:
+                return idx, self.wifs[idx][0]
+
+        return None
 
 # EOF

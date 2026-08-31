@@ -349,7 +349,7 @@ async def show_qr_code(data, is_alnum=False, msg=None, **kw):
     o = QRDisplaySingle([data], is_alnum, msg=msg, **kw)
     await o.interact_bare()
 
-async def ux_enter_bip32_index(prompt, can_cancel=False, unlimited=False):
+async def ux_enter_bip32_index(prompt, can_cancel=True, unlimited=False):
     if unlimited:
         max_value = (2 ** 31) - 1  # we handle hardened
     else:

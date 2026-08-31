@@ -35,7 +35,7 @@ def setup_sssp(goto_sssp_menu, pick_menu_item, cap_story, press_select, pass_wor
         title, story = cap_story()
 
         # it is possible that PIN was set beforehand
-        if title == "Spending Policy":
+        if title == ("Spending Policy" if is_q1 else "Spend Policy"):
             assert "stops you from signing transactions unless conditions are met" in story
             assert "locked into a special mode" in story
             assert "First step is to define a new PIN" in story
@@ -380,7 +380,7 @@ def test_velocity(velocity_mi, setup_sssp, bitcoind, settings_set, pick_menu_ite
                                           init_block_height)  # nLockTime set to current block height
     psbt = psbt_resp.get("psbt")
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == init_block_height
+    assert po.get_locktime() == init_block_height
     policy_sign(wo, psbt)  # success as this is first tx that sets block height from 0
 
     assert settings_get("sssp")["pol"]["block_h"] == init_block_height
@@ -393,7 +393,7 @@ def test_velocity(velocity_mi, setup_sssp, bitcoind, settings_set, pick_menu_ite
                                           block_height)
     psbt = psbt_resp.get("psbt")
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == block_height
+    assert po.get_locktime() == block_height
     policy_sign(wo, psbt, violation="velocity")
 
     assert settings_get("sssp")["pol"]["block_h"] == init_block_height  # still initial block height as above failed
@@ -405,7 +405,7 @@ def test_velocity(velocity_mi, setup_sssp, bitcoind, settings_set, pick_menu_ite
                                                    block_height)
     psbt = psbt_resp.get("psbt")
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == block_height
+    assert po.get_locktime() == block_height
     policy_sign(wo, psbt)  # success
 
     assert settings_get("sssp")["pol"]["block_h"] == block_height  # updated block height
@@ -470,7 +470,7 @@ def test_warnings(setup_sssp, bitcoind, settings_set, policy_sign, pick_menu_ite
                                           init_block_height, {"fee_rate":48000})
     psbt = psbt_resp.get("psbt")
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == init_block_height
+    assert po.get_locktime() == init_block_height
     policy_sign(wo, psbt, violation="has warnings")
 
     # invalidate nLockTime with use of nSequence max values
@@ -488,9 +488,8 @@ def test_warnings(setup_sssp, bitcoind, settings_set, policy_sign, pick_menu_ite
     psbt_resp = wo.walletcreatefundedpsbt(ins, [{whitelist[0]: 0.06},{whitelist[1]: 0.01},{whitelist[2]: 0.03}],
                                           0, {"fee_rate":2, "replaceable": False})  # locktime needs to be zero, otherwise exception from core (contradicting parameters)
     po = BasicPSBT().parse(base64.b64decode(psbt_resp.get("psbt")))
-    assert po.parsed_txn.nLockTime == 0
-    po.parsed_txn.nLockTime = init_block_height  # add locktime
-    po.txn = po.parsed_txn.serialize_with_witness()
+    assert po.get_locktime() == 0
+    po.set_locktime(init_block_height)  # add locktime
     # num_warn=2, warn_list=["Bad Locktime"]
     policy_sign(wo, po.as_b64_str(), violation="has warnings")
 
@@ -608,7 +607,7 @@ def test_deltamode_signature(active_policy, setup_sssp, bitcoind, settings_set,
     psbt = psbt_resp.get("psbt")
 
     po = BasicPSBT().parse(base64.b64decode(psbt))
-    assert po.parsed_txn.nLockTime == init_block_height
+    assert po.get_locktime() == init_block_height
 
     start_sign(base64.b64decode(psbt), finalize=True)
     signed = end_sign(accept=True, finalize=True)
@@ -637,7 +636,7 @@ def test_deltamode_signature(active_policy, setup_sssp, bitcoind, settings_set,
 def test_sssp_enforce_tmp_seed(setup_sssp, bitcoind, settings_set, settings_get, press_select,
                                pick_menu_item, cap_menu, go_to_passphrase, enter_complex,
                                need_keypress, word_menu_entry, fake_txn, start_sign, dev,
-                               cap_story):
+                               cap_story, get_last_violation, end_sign):
     tmp_words = "style car win bomb plug raccoon predict warm wrap flush usual seminar"
     blocks = 6  # ~1 hour
     settings_set("chain", "XRT")
@@ -681,13 +680,50 @@ def test_sssp_enforce_tmp_seed(setup_sssp, bitcoind, settings_set, settings_get,
     assert "Passphrase" not in m  # xprv based
     assert "Settings" not in m  # still in hobbled
 
-    xpub = dev.send_recv(CCProtocolPacker.get_xpub("m"), timeout=None)
-    psbt = fake_txn(2, 2, input_amount=200000000, master_xpub=xpub)
+    xpub1 = dev.send_recv(CCProtocolPacker.get_xpub("m"), timeout=None)
+    psbt = fake_txn(2, 2, input_amount=200000000, master_xpub=xpub1)
     start_sign(psbt)
     time.sleep(.1)
     _, story = cap_story()
     assert "Spending Policy violation" in story
     press_select()
+    time.sleep(.1)
+
+    # try success signing
+    psbt = fake_txn(2, 2, input_amount=1000000, master_xpub=xpub1, lock_time=50)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    assert "Spending Policy violation" not in story
+    assert end_sign()
+
+    # go back to previous temporary seed and verify block_h was updated
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Temporary Seed")
+    need_keypress("4")
+    pick_menu_item("Import Words")
+    pick_menu_item("12 Words")
+    word_menu_entry(tmp_words.split())
+    press_select()
+
+    # lock time is still 50 - as in previous case = rewound
+    psbt = fake_txn(2, 2, input_amount=1000000, master_xpub=xpub, lock_time=50)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Spending Policy violation" in story
+    assert get_last_violation() == "rewound (50)"
+    press_select()
+    time.sleep(.1)
+
+    # bump locktime
+    psbt = fake_txn(2, 2, input_amount=1000000, master_xpub=xpub, lock_time=56)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    assert end_sign()
     time.sleep(.1)
 
     pick_menu_item("Restore Master")
@@ -697,12 +733,31 @@ def test_sssp_enforce_tmp_seed(setup_sssp, bitcoind, settings_set, settings_get,
     m = cap_menu()
     assert "Passphrase" in m
     assert "Settings" not in m  # still in hobbled
-    psbt = fake_txn(2, 2, input_amount=200000000)
+    psbt = fake_txn(2, 2, input_amount=200000000, lock_time=150)
     start_sign(psbt)
     time.sleep(.1)
     _, story = cap_story()
     assert "Spending Policy violation" in story
     press_select()
+
+    # lock time is still 56 - as in previous case = rewound
+    psbt = fake_txn(2, 2, input_amount=1000000, lock_time=56)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "Spending Policy violation" in story
+    assert get_last_violation() == "rewound (56)"
+    press_select()
+    time.sleep(.1)
+
+    # bump locktime
+    psbt = fake_txn(2, 2, input_amount=1000000, lock_time=70)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    assert end_sign()
+    time.sleep(.1)
 
 def test_sssp_notes_enable(only_q1, setup_sssp):
     # just test menu item works
@@ -779,5 +834,61 @@ def test_miniscript_enforce(af, settings_set, clear_miniscript, goto_home, get_c
     )
     psbt = psbt_resp.get("psbt")
     policy_sign(wo, psbt)  # good - in accordance with policy
+
+
+
+@pytest.mark.bitcoind
+def test_ccc_with_sssp_block_h(setup_ccc, ccc_ms_setup, setup_sssp, bitcoind, policy_sign,
+                               settings_get, settings_set, bitcoind_create_watch_only_wallet,
+                               pick_menu_item, press_select, cap_story, clear_miniscript):
+    settings_set("ccc", None)
+    settings_set("sssp", None)
+    clear_miniscript()
+    settings_set("chain", "XRT")
+
+    setup_ccc(mag=10, vel='Unlimited')
+    _, target_mi = ccc_ms_setup()
+
+    bitcoind_wo = bitcoind_create_watch_only_wallet(target_mi)
+
+    setup_sssp(pin="11-11", mag=10, vel='48 blocks (8h)')
+
+    pick_menu_item("Test Drive")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "COLDCARD operation will look like with Spending Policy" in story
+    press_select()
+
+    multi_addr = bitcoind_wo.getnewaddress()
+    bitcoind.supply_wallet.sendtoaddress(address=multi_addr, amount=49)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    cur_h = bitcoind.supply_wallet.getblockchaininfo()["blocks"]
+    psbt1 = bitcoind_wo.walletcreatefundedpsbt(
+        [], [{bitcoind.supply_wallet.getnewaddress(): 1}], cur_h
+    )["psbt"]
+    policy_sign(bitcoind_wo, psbt1)
+
+    assert cur_h == settings_get("sssp")["pol"]["block_h"]
+    assert cur_h == settings_get("ccc")["pol"]["block_h"]
+    baseline_block_h = cur_h
+
+    bitcoind.supply_wallet.generatetoaddress(5, bitcoind.supply_wallet.getnewaddress())
+
+    # second signing -> SSSP velocity BLOCKS but CCC overrides and signing allowed
+    chosen_lock_time = baseline_block_h + 1
+    psbt2 = bitcoind_wo.walletcreatefundedpsbt(
+        [], [{bitcoind.supply_wallet.getnewaddress(): 1}], chosen_lock_time
+    )["psbt"]
+    policy_sign(bitcoind_wo, psbt2)
+
+    assert chosen_lock_time == settings_get("ccc")["pol"]["block_h"]
+    # SSSP block_h is updated too
+    assert chosen_lock_time == settings_get("sssp")["pol"]["block_h"]
+
+    pick_menu_item("EXIT TEST DRIVE")
+    settings_set("ccc", None)
+    settings_set("sssp", None)
+
 
 # EOF

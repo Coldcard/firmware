@@ -290,7 +290,7 @@ class MenuSystem:
         dis.clear()
 
         cursor_y = None
-        for n in range(self.ypos+PER_M+1):
+        for n in range(PER_M+1):
             real_idx = n+self.ypos
             if real_idx >= self.count: break
 

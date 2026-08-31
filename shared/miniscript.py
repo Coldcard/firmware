@@ -789,7 +789,8 @@ class Multi(Miniscript):
         return self.len_args() + 2
 
     def m_n(self):
-        return self.args[0].num, len(self.args[1:])
+        # Persisted in JSON wallet settings, which restore arrays as lists.
+        return [self.args[0].num, len(self.args[1:])]
 
     def verify(self):
         super().verify()

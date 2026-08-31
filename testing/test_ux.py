@@ -1,14 +1,17 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, os, re, hashlib, shutil
-from helpers import xfp2str, prandom, addr_from_display_format
-from charcodes import KEY_DOWN, KEY_QR, KEY_NFC, KEY_DELETE, KEY_UP
+import pytest, time, os, re, hashlib, shutil, functools, ndef
+from binascii import b2a_hex
+from helpers import xfp2str, prandom
+from charcodes import KEY_QR, KEY_NFC, KEY_DELETE, KEY_ENTER, OUT_CTRL_ADDRESS
 from constants import AF_CLASSIC, simulator_fixed_words, simulator_fixed_xfp
 from mnemonic import Mnemonic
 from bip32 import BIP32Node
+from core_fixtures import _pass_word_quiz, _word_menu_entry
 
 mnem = Mnemonic('english')
 wordlist = mnem.wordlist
+
 
 @pytest.fixture
 def enable_hw_ux(pick_menu_item, cap_story, press_select, goto_home):
@@ -77,12 +80,16 @@ def test_home_menu(cap_menu, cap_story, cap_screen, need_keypress, reset_seed_wo
         assert scr == chk
     else:
         # does not fit to single screen on mk4
+        # Ignore status text (such as the vertical EDGE label) captured alongside
+        # the menu rows by sim_display.
+        scr = '\n'.join(line for line in scr.splitlines() if line in m)
         assert scr in chk
         # go down to the bottom
         for i in range(6):
             press_down()
 
         scr = cap_screen().rstrip()
+        scr = '\n'.join(line for line in scr.splitlines() if line in m)
         assert scr in chk
 
     # pick first item, expect a story
@@ -93,122 +100,20 @@ def test_home_menu(cap_menu, cap_story, cap_screen, need_keypress, reset_seed_wo
 
     title, body = cap_story()
     assert title == 'NO-TITLE'
-    assert 'transactions' in body or 'Choose PSBT' in body, body
+    assert ('transactions' in body or 'Choose PSBT' in body
+            or 'filename must end in psbt' in body), body
     
     press_cancel()
 
 @pytest.fixture
-def word_menu_entry(cap_menu, pick_menu_item, is_q1, do_keypresses, cap_screen):
-    def doit(words, has_checksum=True, q_accept=True):
-        if is_q1:
-            # easier for us on Q, but have to anticipate the autocomplete
-            for n, w in enumerate(words, start=1):
-                do_keypresses(w[0:2])
-                time.sleep(0.05)
-                if 'Next key' in cap_screen():
-                    do_keypresses(w[2])
-                    time.sleep(.01)
-                if 'Next key' in cap_screen():
-                    if len(w) > 3:
-                        do_keypresses(w[3])
-                    else:
-                        do_keypresses(KEY_DOWN)
-                    time.sleep(.01)
-
-                pat = rf'{n}:\s?{w}'
-                for x in range(10):
-                    if re.search(pat, cap_screen()):
-                        break
-                    time.sleep(0.02)
-                else:
-                    raise RuntimeError('timeout')
-
-            if len(words) == 23:
-                do_keypresses(KEY_DOWN)
-                time.sleep(.03)
-                cap_scr = cap_screen()
-                while 'Next key' in cap_scr:
-                    target = cap_scr.split("\n")[-1].replace("Next key: ", "")
-                    # picks first choice!?
-                    do_keypresses(target[0])
-                    time.sleep(.03)
-                    cap_scr = cap_screen()
-            else:
-                cap_scr = cap_screen()
-
-            if has_checksum:
-                assert 'Valid words' in cap_scr
-            else:
-                assert 'Press ENTER if all done' in cap_scr
-
-            if q_accept:
-                do_keypresses('\r')
-            return
-
-        # do the massive drilling-down to pick a specific pass phrase
-        assert len(words) in {1, 12, 18, 23, 24}
-
-        for word in words:
-            while 1:
-                menu = cap_menu()
-                which = None
-                for m in menu:
-                    if '-' not in m:
-                        if m == word:
-                            which = m
-                            break
-                    else:
-                        assert m[-1] == '-'
-                        if m == word[0:len(m)-1]+'-':
-                            which = m
-                            break
-
-                assert which, "cant find: " + word
-
-                pick_menu_item(which)
-                if '-' not in which:
-                    break
-
-    return doit
+def word_menu_entry(dev, cap_menu, pick_menu_item, is_q1, do_keypresses, cap_screen):
+    f = functools.partial(_word_menu_entry, dev, is_q1)
+    return f
 
 @pytest.fixture
-def pass_word_quiz(need_keypress, cap_story, press_select):
-    def doit(words, prefix='', preload=None):
-        if not preload:
-            press_select()
-            time.sleep(.01)
-
-        count = 0
-        last_title = None
-        while 1:
-            title, body = preload or cap_story()
-            preload = None
-
-            if not title.startswith('Word '+prefix): break
-            assert title.endswith(' is?')
-            assert not last_title or last_title != title, "gave wrong ans?"
-
-            wn = int(title.split()[1][len(prefix):])
-            assert 1 <= wn <= len(words)
-            wn -= 1
-
-            ans = [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
-            assert len(ans) == 3
-            
-            correct = ans.index(words[wn])
-            assert 0 <= correct < 3
-
-            #print("Pick %d: %s" % (correct, ans[correct]))
-
-            need_keypress(chr(49 + correct))
-            time.sleep(.1) 
-            count += 1
-
-            last_title = title
-
-        return count, title, body
-
-    return doit
+def pass_word_quiz(dev, need_keypress, cap_story, press_select, is_q1):
+    f = functools.partial(_pass_word_quiz, dev, is_q1)
+    return f
 
 
 @pytest.mark.qrcode
@@ -331,6 +236,12 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
     pick_menu_item('Advanced')
 
     pick_menu_item(f'{nwords} Word Dice Roll')
+    title, warning = cap_story()
+    assert title == 'WARNING'
+    assert 'only source of randomness' in warning
+    assert 'wallet derived from the rolls entered so far' in warning
+    press_select()
+    time.sleep(0.1)
 
     gave = ''
     for i in range(count):
@@ -343,6 +254,10 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
         gave += ch
         
     time.sleep(0.1)
+    screen = cap_screen()
+    digest = sha256(gave.encode('ascii')).hexdigest()
+    assert digest[:32] in screen
+    assert digest[32:] in screen
     press_select()
 
     time.sleep(0.1)
@@ -365,6 +280,7 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
         title, body = cap_story()
 
     target = f'Record these {nwords}'
+    assert 'Press (4)' not in body
     if is_q1:
         assert target in title
         words = [i[:4].upper() for i in seed_story_to_words(body)]
@@ -405,15 +321,132 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
 
 @pytest.mark.parametrize('multiple_runs', range(3))
 @pytest.mark.parametrize('nwords', [12, 24])
+@pytest.mark.parametrize('entropy_method', ['mash', 'dice', 'coin'])
 def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, expect_ftux,
                     cap_menu, get_secrets, unit_test, pass_word_quiz, multiple_runs,
-                    reset_seed_words, is_q1, seed_story_to_words):
+                    reset_seed_words, is_q1, seed_story_to_words, need_keypress,
+                    cap_screen, entropy_method, sim_exec, press_select):
     # generate a random wallet, and check seeds are what's shown to user, etc
     
     unit_test('devtest/clear_seed.py')
     m = cap_menu()
     pick_menu_item('New Seed Words')
     pick_menu_item(f'{nwords} Words')
+
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips',
+                          'View TRNG Words', 'CANCEL']
+
+    def finish_entropy():
+        # Queue a finishing ENTER plus a lagging ENTER before the UX can run.
+        # collect_*_entropy must clear the second event before showing the words.
+        key = KEY_ENTER if is_q1 else 'y'
+        sim_exec("from glob import numpad; numpad.inject(%r); numpad.inject(%r)" % (key, key))
+
+    label, intro = {
+        'mash': ('Mash Keys', 'Only the timing between presses is credited as entropy.'),
+        'dice': ('Dice Rolls', 'Physical die rolls will be mixed into the seed.'),
+        'coin': ('Coin Flips', 'Physical coin flips will be mixed into the seed.'),
+    }[entropy_method]
+    pick_menu_item(label)
+    _, story = cap_story()
+    assert intro in story
+    if entropy_method == 'mash':
+        assert 'Each press after the first adds one timing gap, credited with two bits.' in story
+        assert 'You may keep mashing to add more timing entropy.' in story
+    press_select()
+    time.sleep(0.1)
+
+    if entropy_method == 'mash':
+        screen = cap_screen()
+        assert 'Mash Keys' in screen
+        assert ('0 / 65 mashes' if is_q1 else '0 / 65') in screen
+        if is_q1:
+            assert 'Press random keys' in screen
+
+        for i in range(64):
+            need_keypress(str(i % 10))
+
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert 'Mash Keys' in screen
+        assert ('64 / 65 mashes' if is_q1 else '64 / 65') in screen
+        need_keypress('9')
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert ('65 / 65 mashes' in screen and
+                'Keep mashing or ENTER when done' in screen) if is_q1 else \
+               '65  OK=Done' in screen
+        need_keypress('8')
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert ('66 / 65 mashes' in screen and
+                'Keep mashing or ENTER when done' in screen) if is_q1 else \
+               '66  OK=Done' in screen
+        finish_entropy()
+
+    elif entropy_method == 'dice':
+        screen = cap_screen()
+        assert ('Dice Rolls' if is_q1 else 'Roll Dice') in screen
+        assert ('0 / 50 rolls' if is_q1 else '0 / 50') in screen
+        if is_q1:
+            assert 'Enter each roll: 1-6' in screen
+
+        gave = ''
+        for i in range(49):
+            ch = str(1 + (i % 6))
+            need_keypress(ch)
+            gave += ch
+
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert ('49 / 50 rolls' if is_q1 else '49 / 50') in screen
+        digest = hashlib.sha256(gave.encode('ascii')).hexdigest()
+        assert digest[:32] not in screen
+        assert digest[32:] not in screen
+
+        need_keypress('2')
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert ('50 / 50 rolls' in screen and
+                'Keep rolling or ENTER when done' in screen) if is_q1 else \
+               '50  OK=Done' in screen
+        need_keypress('3')
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert ('51 / 50 rolls' in screen and
+                'Keep rolling or ENTER when done' in screen) if is_q1 else \
+               '51  OK=Done' in screen
+        finish_entropy()
+
+    elif entropy_method == 'coin':
+        screen = cap_screen()
+        assert ('Coin Flips' if is_q1 else 'Coin: 1=H 0=T') in screen
+        if is_q1:
+            assert '1 = Heads, 0 = Tails' in screen
+        assert ('0 / 128 flips' if is_q1 else '0 / 128') in screen
+
+        for i in range(127):
+            need_keypress('1' if i % 2 else '0')
+
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert ('Coin Flips' if is_q1 else 'Coin: 1=H 0=T') in screen
+        assert ('127 / 128 flips' if is_q1 else '127 / 128') in screen
+        need_keypress('1')
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert ('128 / 128 flips' in screen and
+                'Keep flipping or ENTER when done' in screen) if is_q1 else \
+               '128  OK=Done' in screen
+        need_keypress('0')
+        time.sleep(0.1)
+        screen = cap_screen()
+        assert ('129 / 128 flips' in screen and
+                'Keep flipping or ENTER when done' in screen) if is_q1 else \
+               '129  OK=Done' in screen
+        finish_entropy()
+
+    time.sleep(0.1)
 
     title, body = cap_story()
     target = f'Record these {nwords} secret words!'
@@ -422,6 +455,7 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, expect_ftux,
     else:
         assert title == 'NO-TITLE'
         assert target in body
+    assert 'Press (4)' not in body
 
     if is_q1:
         words = seed_story_to_words(body)
@@ -442,6 +476,363 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, expect_ftux,
     assert v['mnemonic'].split(' ') == words
 
     reset_seed_words()
+
+
+@pytest.mark.parametrize('nwords', [12, 24])
+def test_view_trng_words_verifies_dice_mix(nwords, pick_menu_item, cap_menu, cap_story, unit_test,
+                                           press_select, need_keypress, seed_story_to_words, is_q1,
+                                           wait_for_story, cap_screen, press_down):
+    unit_test('devtest/clear_seed.py')
+    pick_menu_item('New Seed Words')
+    pick_menu_item(f'{nwords} Words')
+
+    assert cap_menu()[-2:] == ['View TRNG Words', 'CANCEL']
+    pick_menu_item('View TRNG Words')
+    title, body = cap_story()
+    base_words = seed_story_to_words(body)
+    base_seed = bytes(mnem.to_entropy(' '.join(base_words)))
+    assert title == 'TRNG Words'
+    assert len(base_words) == 24
+    assert 'full 256-bit device seed' in body
+    assert 'All 256 bits are used' in body
+    assert 'STM32 TRNG + SE1 + SE2' in body
+    assert 'KEEP SECRET' in body
+    assert 'Scroll to see TRNG words.' in body
+
+    if is_q1:
+        press_down()
+        press_down()
+        time.sleep(0.1)
+        shown = {int(n) for n in re.findall(r'(?<!\d)(\d{1,2}):', cap_screen())}
+        assert shown == set(range(1, 25))
+
+    press_select()
+    time.sleep(0.1)
+    assert cap_menu()[-2:] == ['View TRNG Words', 'CANCEL']
+
+    pick_menu_item('Dice Rolls')
+    press_select()
+    time.sleep(.5)
+    rolls = ('123456' * 8) + '12'
+    for ch in rolls:
+        need_keypress(ch)
+        time.sleep(0.01)
+    time.sleep(0.1)
+    done_key = KEY_ENTER if is_q1 else 'y'
+    need_keypress(done_key)
+    time.sleep(0.1)
+
+    _, body = wait_for_story(f'Record these {nwords} secret words!', check_title=is_q1)
+    words = seed_story_to_words(body) if is_q1 else \
+        [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
+
+    dice_hash = hashlib.sha256(b'CC\x01D' + rolls.encode()).digest()
+    mix = b'CC\x01SMD' + base_seed + dice_hash
+    final_seed = hashlib.sha256(hashlib.sha256(mix).digest()).digest()
+    expected_seed = final_seed[:16] if nwords == 12 else final_seed
+    assert words == mnem.to_mnemonic(expected_seed).split()
+
+    # Throw away the test words instead of committing them.
+    need_keypress('x')
+    press_select()
+    time.sleep(0.1)
+
+
+@pytest.mark.parametrize('nwords', [12, 24])
+def test_view_trng_words_verifies_coin_mix(nwords, pick_menu_item, cap_menu, cap_story, unit_test,
+                                           press_select, need_keypress, seed_story_to_words, is_q1,
+                                           wait_for_story):
+    unit_test('devtest/clear_seed.py')
+    pick_menu_item('New Seed Words')
+    pick_menu_item(f'{nwords} Words')
+
+    assert cap_menu()[-2:] == ['View TRNG Words', 'CANCEL']
+    pick_menu_item('View TRNG Words')
+    title, body = cap_story()
+    base_words = seed_story_to_words(body)
+    base_seed = bytes(mnem.to_entropy(' '.join(base_words)))
+    assert title == 'TRNG Words'
+    assert len(base_words) == 24
+
+    press_select()
+    time.sleep(0.1)
+    assert cap_menu()[-2:] == ['View TRNG Words', 'CANCEL']
+
+    pick_menu_item('Coin Flips')
+    press_select()
+    time.sleep(.5)
+    flips = '01' * 64
+    for ch in flips:
+        need_keypress(ch)
+        time.sleep(0.01)
+    time.sleep(0.1)
+    done_key = KEY_ENTER if is_q1 else 'y'
+    need_keypress(done_key)
+    time.sleep(0.1)
+
+    _, body = wait_for_story(f'Record these {nwords} secret words!', check_title=is_q1)
+    words = seed_story_to_words(body) if is_q1 else \
+        [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
+
+    coin_hash = hashlib.sha256(b'CC\x01C' + flips.encode()).digest()
+    mix = b'CC\x01SMC' + base_seed + coin_hash
+    final_seed = hashlib.sha256(hashlib.sha256(mix).digest()).digest()
+    expected_seed = final_seed[:16] if nwords == 12 else final_seed
+    assert words == mnem.to_mnemonic(expected_seed).split()
+
+    # Throw away the test words instead of committing them.
+    need_keypress('x')
+    press_select()
+    time.sleep(0.1)
+
+
+def test_new_wallet_entropy_cancel(pick_menu_item, cap_menu, cap_story,
+                                   unit_test, press_cancel, press_select,
+                                   sim_eval):
+    unit_test('devtest/clear_seed.py')
+    pick_menu_item('New Seed Words')
+    pick_menu_item('12 Words')
+
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips',
+                          'View TRNG Words', 'CANCEL']
+    pick_menu_item('Mash Keys')
+    _, story = cap_story()
+    assert 'Only the timing between presses is credited as entropy.' in story
+    press_cancel()
+    time.sleep(0.1)
+
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips',
+                          'View TRNG Words', 'CANCEL']
+
+    # Also cancel after raw-edge capture has been enabled. The collector's
+    # finally block must restore normal keypad IRQ handling.
+    pick_menu_item('Mash Keys')
+    press_select()
+    time.sleep(0.1)
+    assert sim_eval("__import__('glob').numpad._mash_mode") == 'True'
+    press_cancel()
+    time.sleep(0.1)
+    assert sim_eval("__import__('glob').numpad._mash_mode") == 'False'
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips',
+                          'View TRNG Words', 'CANCEL']
+
+    pick_menu_item('CANCEL')
+    time.sleep(0.1)
+
+    assert cap_menu()[0] == '12 Words'
+
+
+def test_new_wallet_rejects_biased_dice(pick_menu_item, cap_menu, unit_test,
+                                        need_keypress, press_select, cap_story):
+    unit_test('devtest/clear_seed.py')
+    pick_menu_item('New Seed Words')
+    pick_menu_item('12 Words')
+    pick_menu_item('Dice Rolls')
+    press_select()
+    time.sleep(0.1)
+
+    for _ in range(50):
+        need_keypress('1')
+    press_select()
+    time.sleep(0.1)
+
+    _, story = cap_story()
+    assert 'Distribution of dice rolls is not random' in story
+    assert 'Some numbers occurred more than 30% of the time' in story
+    press_select()
+    time.sleep(0.1)
+
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips',
+                          'View TRNG Words', 'CANCEL']
+    pick_menu_item('CANCEL')
+
+
+def test_new_wallet_rejects_biased_coin(pick_menu_item, cap_menu, unit_test,
+                                        need_keypress, press_select, cap_story):
+    unit_test('devtest/clear_seed.py')
+    pick_menu_item('New Seed Words')
+    pick_menu_item('12 Words')
+    pick_menu_item('Coin Flips')
+    press_select()
+    time.sleep(0.1)
+
+    for _ in range(128):
+        need_keypress('1')
+    press_select()
+    time.sleep(0.1)
+
+    _, story = cap_story()
+    assert 'Distribution of coin flips is not random' in story
+    assert 'Heads or tails occurred more than 65% of the time' in story
+    press_select()
+    time.sleep(0.1)
+
+    assert cap_menu() == ['Mash Keys', 'Dice Rolls', 'Coin Flips',
+                          'View TRNG Words', 'CANCEL']
+    pick_menu_item('CANCEL')
+
+
+def test_mash_allows_single_key(pick_menu_item, unit_test, need_keypress,
+                                press_select, press_cancel, cap_story):
+    # Todd's construction gets entropy from timing and works with one button.
+    unit_test('devtest/clear_seed.py')
+    pick_menu_item('New Seed Words')
+    pick_menu_item('12 Words')
+    pick_menu_item('Mash Keys')
+    press_select()
+    time.sleep(0.1)
+
+    for _ in range(65):
+        need_keypress('1')
+    press_select()
+    time.sleep(0.1)
+
+    title, story = cap_story()
+    assert 'Record these 12 secret words' in title + story
+
+    # Throw away the generated words.
+    press_cancel()
+    press_select()
+    time.sleep(0.1)
+
+
+def test_mk_mash_debounce_state_machine(sim_exec, sim_eval, is_mark4, is_mark5):
+    # Normal simulator key injection bypasses the Mk membrane scan path.
+    if not (is_mark4 or is_mark5):
+        pytest.skip('membrane keypad only')
+
+    setup = '''\
+import mempad, uasyncio, utime
+from glob import numpad
+mempad._saved_call_later_ms = mempad.call_later_ms
+mempad.call_later_ms = lambda *a, **k: None
+numpad.timer.deinit()
+while numpad.scans:
+    numpad.scans.popleft()
+numpad._char_reported.clear()
+numpad._test_mash_events = []
+events = numpad._test_mash_events
+numpad._key_event = lambda key, timestamp=None, events=events: events.append((key, timestamp))
+numpad._mash_mode = True
+numpad.waiting_for_any = False
+numpad._mash_press_timestamp = 123
+numpad._scan_count = 1
+for i in range(len(numpad._history)):
+    numpad._history[i] = 0
+numpad._history[0] = 1
+numpad.lp_time = utime.ticks_ms()
+uasyncio.create_task(numpad._finish_scan())
+'''
+    try:
+        assert sim_exec(setup) == ''
+        time.sleep(0.05)
+
+        # The 5ms queue poll must not erase an edge while its 60Hz debounce
+        # samples are still being collected.
+        state = '(glob.numpad.waiting_for_any, glob.numpad._mash_press_timestamp, '
+        state += 'glob.numpad._scan_count, glob.numpad._history[0])'
+        assert sim_eval(state) == '(False, 123, 1, 1)'
+
+        # Supply the remaining two down samples and emit the accepted press.
+        assert sim_exec('''\
+import uasyncio
+from glob import numpad
+numpad.cols[0].value(0)
+numpad.cols[1].value(1)
+numpad.cols[2].value(1)
+numpad._measure_irq(numpad.timer)
+numpad._measure_irq(numpad.timer)
+uasyncio.create_task(numpad._finish_scan())
+''') == ''
+        time.sleep(0.05)
+        assert sim_eval('glob.numpad._test_mash_events') == "[('y', 123)]"
+        assert sim_eval('glob.numpad._mash_press_timestamp') == 'None'
+
+        # Three all-up samples re-arm raw-edge capture immediately, before
+        # the async queue consumer emits the release event.
+        assert sim_exec('''\
+from glob import numpad
+for c in numpad.cols:
+    c.value(1)
+for i in range(3):
+    numpad._measure_irq(numpad.timer)
+''') == ''
+        state = '(glob.numpad.waiting_for_any, glob.numpad._mash_press_timestamp, '
+        state += 'glob.numpad._scan_count, sum(glob.numpad._history))'
+        assert sim_eval(state) == '(True, None, 0, 0)'
+        assert sim_eval('glob.numpad._test_mash_events') == "[('y', 123)]"
+
+        assert sim_exec('''\
+import uasyncio
+from glob import numpad
+uasyncio.create_task(numpad._finish_scan())
+''') == ''
+        time.sleep(0.05)
+        events = "[('y', 123), ('', None)]"
+        assert sim_eval('glob.numpad._test_mash_events') == events
+        assert sim_eval(state) == '(True, None, 0, 0)'
+
+        # A falling-edge glitch that never debounces must eventually re-arm.
+        assert sim_exec('''\
+import uasyncio, utime
+from glob import numpad
+numpad.waiting_for_any = False
+numpad._mash_press_timestamp = 456
+numpad._scan_count = 1
+numpad._history[0] = 1
+numpad.lp_time = utime.ticks_add(utime.ticks_ms(), -251)
+uasyncio.create_task(numpad._finish_scan())
+''') == ''
+        time.sleep(0.05)
+        assert sim_eval(state) == '(True, None, 0, 0)'
+    finally:
+        sim_exec('''\
+import mempad
+from glob import numpad
+mempad.call_later_ms = mempad._saved_call_later_ms
+del mempad._saved_call_later_ms
+del numpad._key_event
+del numpad._test_mash_events
+numpad._mash_mode = False
+numpad._mash_press_timestamp = None
+numpad._finish_scan_active = False
+numpad._wait_any()
+''')
+
+
+def test_mash_entropy_includes_timing(goto_home, pick_menu_item, cap_story,
+                                      need_keypress, press_select, sim_exec,
+                                      unit_test, expect_ftux):
+    # Identical base seed and identical key sequence, twice. Only press
+    # timing may differ, so the resulting words must differ: proves that
+    # timing reaches the hash and keys alone cannot regenerate the seed.
+    unit_test('devtest/clear_seed.py')
+    sim_exec("import seed; seed._orig_gs = seed.generate_seed;"
+             " seed.generate_seed = lambda: bytes(32)")
+    try:
+        stories = []
+        for _ in range(2):
+            goto_home()
+            pick_menu_item('New Seed Words')
+            pick_menu_item('12 Words')
+            pick_menu_item('Mash Keys')
+            press_select()
+            for i in range(65):
+                need_keypress(str(i % 10))
+            press_select()
+            time.sleep(0.1)
+
+            _, body = cap_story()
+            stories.append(body)
+
+            # throw the words away, do not commit them
+            need_keypress('x')
+            press_select()
+            time.sleep(0.1)
+
+        assert stories[0] != stories[1]
+    finally:
+        sim_exec("import seed; seed.generate_seed = seed._orig_gs")
 
 
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
@@ -595,7 +986,12 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
     reset_seed_words()
     if mode == 'words':
         set_bip39_pw(b39_word, reset=False)
-        words = simulator_fixed_words.split(" ")
+        if b39_word:
+            seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=b39_word)
+            node = BIP32Node.from_master_secret(seed, netcode="XTN")
+            expect = node.hwif(as_private=True)
+        else:
+            words = simulator_fixed_words.split(" ")
 
     else:
         if b39_word: return
@@ -621,6 +1017,8 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
     title, body = cap_story()
     where = title if is_q1 else body
     assert 'Are you SURE' in where
+    assert 'secret seed words' in body
+    assert 'or extended private key' in body
     assert 'can control all funds' in body
     press_select()      # skip warning
     time.sleep(0.01)
@@ -629,7 +1027,7 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
     if not is_q1:
         assert title == 'NO-TITLE'
 
-    if mode == 'words':
+    if mode == 'words' and not b39_word:
         assert '24' in (title if is_q1 else body)
 
         lines = body.split('\n')
@@ -638,30 +1036,18 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
         else:
             assert lines[1:25] == ['%2d: %s' % (n+1, w) for n,w in enumerate(words)]
 
-        if b39_word:
-            if is_q1:
-                assert lines[9] == 'BIP-39 Passphrase:'
-                assert "*" in lines[10]
-                assert "Seed+Passphrase" in lines[12]
-                ek = lines[13]
-            else:
-                assert lines[26] == 'BIP-39 Passphrase:'
-                assert "*" in lines[27]
-                assert "Seed+Passphrase" in lines[29]
-                ek = lines[30]
-
-            seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=b39_word)
-            expect = BIP32Node.from_master_secret(seed, netcode="XTN")
-            esk = expect.hwif(as_private=True)
-            assert esk == ek
-        else:
-            assert "BIP-39 Passphrase" not in body
-
+        assert "BIP-39 Passphrase" not in body
         qr_expect = ' '.join(w[0:4].upper() for w in words)
 
     else:
         assert expect in body
         qr_expect = expect
+        if b39_word:
+            assert body.startswith("BIP-39 Passphrase in effect\n\n")
+            assert b39_word not in body
+            assert "Seed words" not in body
+        else:
+            assert "BIP-39 Passphrase" not in body
 
     if not is_q1:
         assert '(1) to view as QR Code' in body
@@ -861,7 +1247,7 @@ def test_sign_file_from_list_files(f_len, goto_home, cap_story, pick_menu_item, 
 
 
 def test_rename_from_list_files(goto_home, cap_story, pick_menu_item, need_keypress, is_q1,
-                                microsd_path, press_select, cap_screen, enter_complex):
+                                microsd_path, press_select, cap_screen, enter_complex, cap_menu):
     def clear(fname):
         for i in range(len(fname)):
             if not is_q1 and not i:
@@ -921,10 +1307,20 @@ def test_rename_from_list_files(goto_home, cap_story, pick_menu_item, need_keypr
     assert not os.path.exists(fpath)
     assert os.path.exists(microsd_path(new_fname))
 
+    # delete (6) from the same loop must blank the *renamed* file, not the stale old path
+    assert "(6) to delete" in story
+    need_keypress("6")
+    time.sleep(.1)
+    menu = cap_menu()
+    assert "List Files" in menu
+    assert not os.path.exists(microsd_path(new_fname))
+    assert not os.path.exists(fpath)
 
-def test_bip39_pw_signing_xfp_ux(pick_menu_item, press_select, cap_story, enter_complex,
+
+def test_bip39_pw_signing_xfp_ux(pick_menu_item, press_select, cap_story, enter_complex, enable_nfc,
                                  reset_seed_words, cap_menu, go_to_passphrase, microsd_wipe):
     microsd_wipe()  # need to wipe all PSBT on SD card so we do not proceed to signing
+    enable_nfc()
     go_to_passphrase()
     enter_complex("21coinkite21", apply=True)
     time.sleep(0.3)
@@ -958,6 +1354,28 @@ def test_q1_seed_word_entry_bug(word_menu_entry, unit_test, pick_menu_item,
     # now we are yikes if bug not fixed
     press_select()
     expect_ftux()
+
+
+def test_q1_seed_word_bad_qr_keeps_words(unit_test, pick_menu_item, is_q1, do_keypresses,
+                                         need_keypress, scan_a_qr, cap_screen):
+    if not is_q1:
+        raise pytest.skip("Q only")
+
+    unit_test('devtest/clear_seed.py')
+    pick_menu_item('Import Existing')
+    pick_menu_item('12 Words')
+
+    do_keypresses("aba")
+    time.sleep(1)
+    assert "1: abandon" in cap_screen()
+
+    need_keypress(KEY_QR)
+    scan_a_qr("not a seed qr")
+    time.sleep(1)
+
+    screen = cap_screen()
+    assert "1: abandon" in screen
+    assert "Unable to decode as secret" in screen
 
 
 def test_custom_pushtx_url(goto_home, pick_menu_item, press_select, enter_complex,
@@ -1124,6 +1542,53 @@ def test_qr_share_files(fname, pick_menu_item, goto_home, is_q1, cap_menu, cap_s
     assert res == qr.decode()
     os.remove(f'{sim_root_dir}/MicroSD/' + fname)
 
+
+@pytest.mark.parametrize("way", ["nfc", "qr"])
+def test_share_binary_txn_file(way, goto_home, pick_menu_item, src_root_dir, sim_root_dir,
+                                press_select, cap_story, cap_screen_qr, is_q1, enable_nfc,
+                                nfc_read, nfc_block4rf, garbage_collector):
+    if way == "qr" and not is_q1:
+        pytest.skip("QR share is Q1 only")
+
+    if way == "nfc":
+        enable_nfc()
+
+    with open(f"{src_root_dir}/testing/data/devils-txn.txn", "r") as f:
+        binary = bytes.fromhex(f.read().strip())
+    assert binary[2:8] != bytes(6)
+
+    fname = "binary-l01.txn"
+    dst = f"{sim_root_dir}/MicroSD/{fname}"
+    garbage_collector.append(dst)
+    with open(dst, "wb") as f:
+        f.write(binary)
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("File Management")
+    pick_menu_item("NFC File Share" if way == "nfc" else "QR File Share")
+    time.sleep(.1)
+    pick_menu_item(fname)
+    time.sleep(.2)
+
+    title, story = cap_story()
+    assert "ERROR" not in title
+
+    if way == "nfc":
+        nfc_block4rf()
+        res = nfc_read()
+        got_txn = None
+        for got in ndef.message_decoder(res):
+            if got.type == 'urn:nfc:ext:bitcoin.org:txn':
+                got_txn = bytes(got.data)
+                break
+        assert got_txn == binary
+        press_select()
+    else:
+        qr = cap_screen_qr()
+        assert qr.decode().lower() == b2a_hex(binary).decode().lower()
+
+
 @pytest.mark.parametrize("word,cs_word", [
     # few combos with all words with length 8 + their longest possible checksum word
     ("acoustic", "decrease"),
@@ -1144,11 +1609,11 @@ def test_q1_24_8char_words(set_seed_words, is_q1, goto_home, pick_menu_item, pre
     if not is_q1:
         raise pytest.skip("only Q")
 
-    goto_home()
     # longest words in wordlist_en have 8 chars
     words = ([word] * 23) + [cs_word]
     set_seed_words(" ".join(words))
 
+    goto_home()
     pick_menu_item("Advanced/Tools")
     pick_menu_item("Danger Zone")
     pick_menu_item("Seed Functions")
@@ -1227,6 +1692,149 @@ def test_file_picker_suffixes(pick_menu_item, goto_home, cap_story, microsd_wipe
     assert "No suitable files found" in story
     assert "The filename must end in: .txt OR .json" in story
     microsd_wipe()
+
+
+@pytest.mark.parametrize("already_set", [True, False])
+def test_nickname_cancel_preserves_existing(already_set, goto_home, pick_menu_item, need_keypress,
+                                            settings_set, settings_get, press_cancel, press_select,
+                                            settings_remove, sim_exec):
+    nick = 'CancelTest'
+
+    if already_set:
+        settings_set("nick", nick, prelogin=True)
+    else:
+        settings_remove("nick", prelogin=True)
+
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Login Settings')
+    pick_menu_item('Set Nickname')
+    if not already_set:
+        press_select()  # intro
+
+    press_cancel()
+
+    new_nick = settings_get("nick", False, prelogin=True)
+    if already_set:
+        assert nick == new_nick
+    else:
+        assert new_nick is False
+
+    settings_remove("nick")  # clean-up
+
+
+@pytest.mark.parametrize('chain', ['BTC', 'XTN'])
+@pytest.mark.parametrize('rz', [8, 5, 2, 0])
+@pytest.mark.parametrize('amount', [
+    '1.1',
+    '50',
+    '0.12345678',
+    '1.10000000',
+])
+def test_bip21_amount_display(amount, chain, rz, settings_set, settings_remove, scan_a_qr,
+                              cap_story, goto_home, need_keypress, press_cancel):
+    settings_set('chain', chain)
+    settings_set('rz', rz)
+
+    whole, _, frac = amount.partition('.')
+    sats = int((whole or '0') + (frac + '00000000')[:8])
+
+    if rz == 8:
+        amt = '%d.%08d %s' % (sats // 100000000, sats % 100000000, chain)
+    elif rz == 5:
+        amt = '%d.%05d m%s' % (sats // 100000, sats % 100000, chain)
+    elif rz == 2:
+        amt = '%d.%02d bits' % (sats // 100, sats % 100)
+    else:
+        assert rz == 0
+        amt = '%d sats' % sats
+
+    expected = 'Amount: %s' % amt
+
+    # base58 P2PKH decodes regardless of chain setting (we exploit bug here to not need to specify 2 addrs)
+    addr = 'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R'
+    url = 'bitcoin:%s?amount=%s' % (addr, amount)
+
+    goto_home()
+    need_keypress(KEY_QR)
+    time.sleep(.1)
+    scan_a_qr(url)
+    time.sleep(.5)
+
+    title, body = cap_story()
+    assert title == 'Payment Address', title
+    assert expected in body
+
+    press_cancel()
+    settings_set('chain', 'XTN')
+    settings_remove('rz')
+
+
+@pytest.mark.parametrize('amount', [
+    '999999999',        # 9-digit whole part: 99,999,999 > 21M BTC supply
+    '999999999.0',      # same, with explicit fractional zero
+    '1.123456789',      # 9-digit fractional part: sub-satoshi precision
+    'abc',              # not numeric at all
+    '1.5a',             # mixed digits + alpha in fractional part
+    '-1.0',             # negative sign breaks isdigit()
+    '1,5',              # comma not handled (no dot found, whole isn't digits)
+    '',                 # empty string
+])
+def test_bip21_amount_display_corrupt(amount, scan_a_qr, cap_story, goto_home,
+                                       need_keypress, press_cancel):
+    addr = 'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R'
+    url = 'bitcoin:%s?amount=%s' % (addr, amount)
+
+    goto_home()
+    need_keypress(KEY_QR)
+    time.sleep(.1)
+    scan_a_qr(url)
+    time.sleep(.5)
+
+    title, body = cap_story()
+    assert title == 'Payment Address', title
+    assert 'Amount: (corrupt)' in body
+    press_cancel()
+
+
+@pytest.mark.parametrize('field', ['label', 'message', 'lightning'])
+def test_bip21_metadata_control_chars(field, scan_a_qr, cap_story, goto_home,
+                                       need_keypress, press_cancel):
+    addr = 'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R'
+    fake_addr = 'tb1qupyd58ndsh7lut0et0vtrq432jvu9jtdyws9n9'
+    url = 'bitcoin:%s?%s=Pay%%20to%%3A%%0A%%02%s' % (addr, field, fake_addr)
+
+    goto_home()
+    need_keypress(KEY_QR)
+    time.sleep(.1)
+    scan_a_qr(url)
+    time.sleep(.5)
+
+    title, body = cap_story()
+    assert title == 'Payment Address', title
+    assert '%s: (corrupt)' % field.title() in body
+    assert fake_addr not in body
+    press_cancel()
+
+
+def test_bip21_parameter_name_control_chars(scan_a_qr, cap_story, goto_home,
+                                             need_keypress, press_cancel):
+    addr = 'mtHSVByP9EYZmB26jASDdPVm19gvpecb5R'
+    fake_addr = 'tb1qupyd58ndsh7lut0et0vtrq432jvu9jtdyws9n9'
+    bad_key = OUT_CTRL_ADDRESS + fake_addr
+    url = 'bitcoin:%s?amount=1&%s=1' % (addr, bad_key)
+
+    goto_home()
+    need_keypress(KEY_QR)
+    time.sleep(.1)
+    scan_a_qr(url)
+    time.sleep(.5)
+
+    title, body = cap_story()
+    assert title == 'Payment Address'
+    assert 'And values for: (corrupt)' in body
+    assert fake_addr not in body
+    press_cancel()
 
 
 @pytest.mark.onetime

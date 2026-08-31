@@ -55,7 +55,7 @@ firmware-signed.dfu: firmware-signed.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):$< $@
 
 #
-# Verify correct RNG code was built in.
+# Verify correct RNG code was built in and the bytes consumer reaches it.
 #
 NM = arm-none-eabi-nm
 .PHONY: rng-code-check
@@ -72,6 +72,31 @@ rng-code-check:
 		| grep -Eq '^[[:xdigit:]]+[[:space:]]+T[[:space:]]+rng_get$$'; then \
 		echo "ERROR: board rng.o does not define global rng_get"; \
 		printf '%s\n' "$$board_symbols"; \
+		exit 1; \
+	fi; \
+	libngu_random="$(BUILD_DIR)/libngu/random.o"; \
+	random_bytes_refs="$$($(OBJDUMP) -r -j .text.random_bytes \
+		"$$libngu_random")" || exit $$?; \
+	if ! printf '%s\n' "$$random_bytes_refs" \
+		| grep -Eq '[[:space:]]R_ARM_(THM_)?CALL[[:space:]]+my_random_bytes([+-].*)?$$'; then \
+		echo "ERROR: ngu.random.bytes does not call my_random_bytes"; \
+		printf '%s\n' "$$random_bytes_refs"; \
+		exit 1; \
+	fi; \
+	my_random_bytes_refs="$$($(OBJDUMP) -r -j .text.my_random_bytes \
+		"$$libngu_random")" || exit $$?; \
+	if ! printf '%s\n' "$$my_random_bytes_refs" \
+		| grep -Eq '[[:space:]]R_ARM_(THM_)?CALL[[:space:]]+checked_chip_trng_read([+-].*)?$$'; then \
+		echo "ERROR: my_random_bytes does not call checked_chip_trng_read"; \
+		printf '%s\n' "$$my_random_bytes_refs"; \
+		exit 1; \
+	fi; \
+	checked_trng_refs="$$($(OBJDUMP) -r -j .text.checked_chip_trng_read \
+		"$$libngu_random")" || exit $$?; \
+	if ! printf '%s\n' "$$checked_trng_refs" \
+		| grep -Eq '[[:space:]]R_ARM_(THM_)?CALL[[:space:]]+rng_get([+-].*)?$$'; then \
+		echo "ERROR: checked_chip_trng_read does not reach rng_get"; \
+		printf '%s\n' "$$checked_trng_refs"; \
 		exit 1; \
 	fi
 
@@ -104,6 +129,18 @@ $(BOARD)/file_time.c: make_filetime.py *-Makefile shared.mk
 	./make_filetime.py $(BOARD)/file_time.c $(VERSION_STRING)
 	cp $(BOARD)/file_time.c .
 
+
+.PHONY: block_height
+
+block_height:
+	@python3 make_block_height.py; \
+	if [ $$? -eq 0 ]; then \
+		echo "Block Height file already up-to-date."; \
+	else \
+		echo "Block Height file updated."; \
+		git commit -m "update block height" ../shared/block_height.py; \
+	fi
+
 # Make a factory release: using key #1
 # - when executed in a repro w/o the required key, it defaults to key zero
 # - and that's what happens inside the Docker build
@@ -113,7 +150,7 @@ production.bin: firmware-signed.bin Makefile
 SUBMAKE = $(MAKE) -f $(PARENT_MKFILE)
 
 .PHONY: release
-release: submods-match code-committed
+release: submods-match code-committed block_height
 	$(SUBMAKE) clean
 	$(SUBMAKE) repro
 	test -f built/production.bin
@@ -122,7 +159,7 @@ release: submods-match code-committed
 
 # Make a release-candidate, faster.
 .PHONY: rc1
-rc1: 
+rc1: submods-match
 	$(SUBMAKE) clean 		# critical, or else you get a mix of debug/not
 	$(SUBMAKE) DEBUG_BUILD=0 all
 	$(SIGNIT) sign -b $(BUILD_DIR) -m $(HW_MODEL) $(VERSION_STRING) $(PROD_KEYNUM) -o rc1.bin
@@ -140,7 +177,7 @@ rc1:
 rc2: RC2_TIMESTAMP = $(shell date "+%F_%H%M")
 rc2: RC2_FNAME = ./RC2-$(RC2_TIMESTAMP)-$(HW_MODEL)-coldcard.dfu
 rc2: RC2_FNAME_FACT = ./RC2-$(RC2_TIMESTAMP)-$(HW_MODEL)-factory.dfu
-rc2: submods-match code-committed
+rc2: submods-match code-committed block_height
 	$(SUBMAKE) clean
 	$(SUBMAKE) repro
 	test -f built/production.bin
@@ -188,12 +225,10 @@ SUBMODULES := $(shell git config --file ../.gitmodules --name-only --get-regex p
 SUBMODULES := $(SUBMODULES:submodule.%.path=%)
 SUBMODULES := $(filter-out stm32/mk4-bootloader/hal, $(SUBMODULES))
 submods-match:
-	@echo Submodules: $(SUBMODULES)
-	git submodule status --cached $(SUBMODULES:%=../%) > sm-want.txt
-	git submodule status $(SUBMODULES:%=../%) > sm-have.txt
-	@echo "Submodules: <WANT vs. >HAVE"
-	diff sm-want.txt sm-have.txt
-	rm sm-have.txt sm-want.txt
+	@echo Checking submodule revisions: $(SUBMODULES)
+	@git submodule status $(SUBMODULES:%=../%) | awk '\
+		/^[^ ]/ { print; bad=1 } \
+		END { exit bad }'
 	@echo "Submodules are right revisions."
 
 .PHONY: code-committed

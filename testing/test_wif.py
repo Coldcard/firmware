@@ -1,7 +1,9 @@
 # (c) Copyright 2026 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, os, json, base64
-from helpers import prandom, addr_from_display_format
+import pytest, time, os, json, base64, struct
+
+from conftest import microsd_path
+from helpers import prandom, addr_from_display_format, hash160, taptweak
 from charcodes import KEY_QR, KEY_NFC, KEY_UP
 from constants import unmap_addr_fmt, AF_P2WSH, AF_P2SH
 from bip32 import BIP32Node, PrivateKey
@@ -9,11 +11,16 @@ from base58 import encode_base58_checksum
 from msg import verify_message, parse_signed_message
 from psbt import BasicPSBT
 from helpers import str_to_path
+from io import BytesIO
+from serialize import uint256_from_str
+from ctransaction import CTransaction, COutPoint, CTxIn, CTxOut
 
 
-def make_fake_wif(prefix=239):
-    # generate a WIF
-    return encode_base58_checksum(bytes([prefix]) + prandom(32) + b'\x01')
+def make_fake_wif(mainnet=False, compressed=True):
+    prefix = bytes([0x80 if mainnet else 0xef])
+    suffix = b'\x01' if compressed else b''
+    return encode_base58_checksum(prefix + prandom(32) + suffix)
+
 
 @pytest.mark.parametrize("num_wifs", [1, 11])
 @pytest.mark.parametrize("separator", ["\n", ','])
@@ -36,6 +43,113 @@ def test_wif_store_import_manual(import_wif_to_store, settings_remove, goto_home
 
     import_wif_to_store(wif_list, way="input")
     goto_home()
+
+
+@pytest.mark.parametrize("mainnet", [True, False])
+def test_wif_store_import_uncompressed(mainnet, import_wif_to_store, settings_remove, settings_get,
+                                       cap_menu, pick_menu_item, cap_story, press_cancel, use_mainnet,
+                                       goto_home):
+    goto_home()
+    if mainnet:
+        use_mainnet()
+    settings_remove("wifs")
+
+    wif = make_fake_wif(mainnet=mainnet, compressed=False)
+    import_wif_to_store([wif])
+
+    saved = settings_get("wifs")
+    assert len(saved) == 1
+    pubkey, privkey = saved[0]
+    assert len(pubkey) == 130
+    assert pubkey[0:2] == "04"
+    assert len(privkey) == 64
+
+    menu = cap_menu()
+    assert len(menu) == 2
+    pick_menu_item(menu[1])
+    submenu = cap_menu()
+    assert submenu == ["Detail", "Descriptors", "Addresses", "Delete"]
+
+    pick_menu_item("Detail")
+    title, story = cap_story()
+    assert title == "WIF"
+    assert story.split("\n\n")[0] == wif
+    assert story.split("\n\n")[2].split("\n")[-1] == pubkey
+
+    press_cancel()
+    pick_menu_item("Descriptors")
+    assert cap_menu() == ["Classic P2PKH", "Bare P2PK"]
+    pick_menu_item("Classic P2PKH")
+    title, story = cap_story()
+    assert title == "Descriptor"
+    assert story.split("\n\n")[0].startswith("pkh(%s)" % pubkey)
+    press_cancel()
+    press_cancel()
+    pick_menu_item("Addresses")
+    assert cap_menu() == ["Classic P2PKH"]
+    pick_menu_item("Classic P2PKH")
+    _, story = cap_story()
+    addr = addr_from_display_format(story.split("\n\n")[0])
+    prefix = bytes([0 if mainnet else 111])
+    assert addr == encode_base58_checksum(prefix + hash160(bytes.fromhex(pubkey)))
+    press_cancel()
+    press_cancel()
+
+
+@pytest.mark.parametrize("compressed,expected_menu", [
+    (True, ["Segwit P2WPKH", "Classic P2PKH", "Taproot P2TR", "P2SH-Segwit", "Bare P2PK"]),
+    (False, ["Classic P2PKH", "Bare P2PK"]),
+])
+def test_wif_store_p2pk_descriptor_pubkey_form(compressed, expected_menu, import_wif_to_store,
+                                               settings_remove, settings_get, cap_menu,
+                                               pick_menu_item, cap_story, press_cancel, goto_home):
+    settings_remove("wifs")
+    goto_home()
+
+    wif = make_fake_wif(compressed=compressed)
+    import_wif_to_store([wif])
+
+    pubkey, _ = settings_get("wifs")[0]
+    if compressed:
+        assert len(pubkey) == 66
+        assert pubkey[0:2] in ("02", "03")
+    else:
+        assert len(pubkey) == 130
+        assert pubkey[0:2] == "04"
+
+    menu = cap_menu()
+    pick_menu_item(menu[1])
+    pick_menu_item("Detail")
+    time.sleep(.1)
+    title, story = cap_story()
+    wif_str = story.split("\n\n")[0].strip()
+    assert wif == wif_str
+    if compressed:
+        assert wif_str.startswith("c")
+    else:
+        assert wif_str.startswith("9")
+
+    press_cancel()
+    pick_menu_item("Descriptors")
+    assert cap_menu() == expected_menu
+
+    pick_menu_item("Classic P2PKH")
+    title, story = cap_story()
+    assert title == "Descriptor"
+    desc = story.split("\n\n")[0]
+    assert desc.startswith("pkh(")
+    assert desc.split(")", 1)[0][4:] == pubkey
+
+    press_cancel()
+    pick_menu_item("Bare P2PK")
+    title, story = cap_story()
+    assert title == "Descriptor"
+    desc = story.split("\n\n")[0]
+    assert desc.startswith("pk(")
+    assert desc.split(")", 1)[0][3:] == pubkey
+
+    press_cancel()
+    press_cancel()
 
 
 def test_wif_store_import_paper_wallet(goto_home, pick_menu_item, press_select, cap_story,
@@ -92,7 +206,6 @@ def test_wif_store_import_paper_wallet(goto_home, pick_menu_item, press_select, 
 
 @pytest.mark.parametrize("wif,err,way", [
     ("Ky2BtsR8qRN91PjktxaTQWMgJZUWSBJLjwip642vvoNyH1PeEpUP", "chain", "qr"),  # mainnet key on testnet
-    ("91zb4oYGEvwEroihAbkdeoBpLSKnZYMdD1CPhfQD76fxrfNSp5J", "compressed only", "sd"),  # uncompressed pk
     ("cWALDjUu1tszsCBMjBjL4mhYj2wHUWYDR8Q8aSjLKzjkWaXMLRaY", None, "sd"),  # curve order
     ("cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87J7g8rY9t", None, "nfc"),  # zero
     ("cPPBMnQzGV4QAqD2HNPamprjvnmv6dQ2oysHCUVSRv2yXkVvWVtX", None, "nfc"),  # wrong csum
@@ -101,7 +214,7 @@ def test_wif_store_import_paper_wallet(goto_home, pick_menu_item, press_select, 
 def test_wif_store_import_fail(way, wif, err, import_wif_to_store, skip_if_useless_way,
                                settings_remove, press_select, cap_story, use_testnet, settings_get):
 
-    err = err or "no valid WIF found"
+    err = err or "No valid WIF key found"
     skip_if_useless_way(way)
     use_testnet()
     settings_remove("wifs")
@@ -149,9 +262,10 @@ def test_wif_store_detail(netcode, import_wif_to_store, use_mainnet, cap_menu, p
         time.sleep(.1)
         menu = cap_menu()
         assert menu[0] == "Detail"
-        assert menu[1] == "Addresses"
-        assert menu[2] == "Sign MSG"
-        assert menu[3] == "Delete"
+        assert menu[1] == "Descriptors"
+        assert menu[2] == "Addresses"
+        assert menu[3] == "Sign MSG"
+        assert menu[4] == "Delete"
 
         pick_menu_item("Detail")
 
@@ -190,9 +304,11 @@ def test_wif_store_detail(netcode, import_wif_to_store, use_mainnet, cap_menu, p
 
 
 @pytest.mark.parametrize("netcode", ["XTN", "BTC"])
-def test_wif_store_addresses(netcode, import_wif_to_store, use_mainnet, cap_menu, pick_menu_item,
-                             cap_story, need_keypress, settings_remove, cap_screen_qr, is_q1,
-                             nfc_is_enabled, press_nfc, nfc_read_text, goto_home, press_cancel):
+@pytest.mark.parametrize("compressed", [True, False])
+def test_wif_store_addresses(netcode, compressed, import_wif_to_store, use_mainnet, cap_menu,
+                             pick_menu_item, cap_story, need_keypress, settings_remove,
+                             cap_screen_qr, is_q1, nfc_is_enabled, press_nfc, nfc_read_text,
+                             goto_home, press_cancel):
     goto_home()
     if netcode == "BTC":
         use_mainnet()
@@ -203,7 +319,8 @@ def test_wif_store_addresses(netcode, import_wif_to_store, use_mainnet, cap_menu
     n = BIP32Node.from_master_secret(prandom(32))
     privkey = n.node.private_key
 
-    wif_list = [ encode_base58_checksum(prefix + bytes(privkey) + b'\x01') ]
+    suffix = b'\x01' if compressed else b''
+    wif_list = [encode_base58_checksum(prefix + bytes(privkey) + suffix)]
 
     import_wif_to_store(wif_list)
 
@@ -213,7 +330,14 @@ def test_wif_store_addresses(netcode, import_wif_to_store, use_mainnet, cap_menu
     pick_menu_item(menu[1])
     pick_menu_item("Addresses")
 
-    for mi, af in [("P2SH-Segwit", "p2sh-p2wpkh"), ("Segwit P2WPKH", "p2wpkh"), ("Classic P2PKH", "p2pkh")]:
+    cases = [
+        ("P2SH-Segwit", "p2sh-p2wpkh"),
+        ("Segwit P2WPKH", "p2wpkh"),
+        ("Classic P2PKH", "p2pkh"),
+        ("Taproot P2TR", "p2tr"),
+    ] if compressed else [("Classic P2PKH", "p2pkh")]
+
+    for mi, af in cases:
         pick_menu_item(mi)
         time.sleep(.1)
         title, story = cap_story()
@@ -221,14 +345,14 @@ def test_wif_store_addresses(netcode, import_wif_to_store, use_mainnet, cap_menu
             # Q has title as it needs hint keys
             assert title == mi
 
-        target_addr = n.address(addr_fmt=af, chain=netcode)
+        target_addr = n.address(compressed=compressed, addr_fmt=af, chain=netcode)
         addr = addr_from_display_format(story.split("\n\n")[0])
         assert addr == target_addr
 
         if not is_q1:
-            assert "Press (1) to show address QR code." in story
+            assert "(4) to show QR code" in story
 
-        need_keypress(KEY_QR if is_q1 else "1")
+        need_keypress(KEY_QR if is_q1 else "4")
         time.sleep(.1)
         qr_addr = cap_screen_qr().decode()
         if af == "p2wpkh":
@@ -238,7 +362,7 @@ def test_wif_store_addresses(netcode, import_wif_to_store, use_mainnet, cap_menu
 
         if nfc_is_enabled():
             if not is_q1:
-                assert "(3) to share via NFC." in story
+                assert "(3) to share via NFC" in story
 
             press_nfc()
             time.sleep(0.3)
@@ -250,6 +374,7 @@ def test_wif_store_addresses(netcode, import_wif_to_store, use_mainnet, cap_menu
         press_cancel()
     press_cancel()
     press_cancel()
+    goto_home()
 
 
 def test_wif_store_clear_all(import_wif_to_store, press_select, cap_story, settings_get,
@@ -336,8 +461,40 @@ def test_wif_store_capacity(import_wif_to_store, settings_remove, press_select, 
     assert "Import WIF" in menu
 
 
+def test_visualize_wif_store_capacity(is_q1, goto_home, use_testnet, settings_remove,
+                                      import_wif_to_store, settings_get, need_keypress,
+                                      scan_a_qr, cap_story, press_select):
+    if not is_q1:
+        raise pytest.skip("need scanner")
+
+    settings_remove("wifs")
+    use_testnet()
+
+    goto_home()
+    import_wif_to_store([make_fake_wif() for _ in range(30)])
+    assert len(settings_get("wifs", [])) == 30
+
+    goto_home()
+    need_keypress(KEY_QR)
+    scan_a_qr("cUR6JLQCmdPPt3op4jEYmFhjHpWC2AoZaWmZqoDaBQYMXN4QeKuc")
+    time.sleep(1)
+
+    title, story = cap_story()
+    assert title == "WIF Key"
+    assert "Press (1) to import to WIF Store" in story
+
+    need_keypress("1")
+    time.sleep(.1)
+
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Max 30 items allowed in WIF Store" in story
+    assert len(settings_get("wifs", [])) == 30
+    press_select()
+
+
 def test_wif_store_import_duplicate(settings_remove, import_wif_to_store, settings_get, cap_menu, cap_story,
-                                    goto_home):
+                                    goto_home, sim_exec):
     goto_home()
     settings_remove("wifs")
 
@@ -345,7 +502,13 @@ def test_wif_store_import_duplicate(settings_remove, import_wif_to_store, settin
 
     import_wif_to_store(wif_list)
     b4 = cap_menu()
-    assert len(settings_get("wifs")) == 4
+    sim_exec(
+        "import ujson\n"
+        "settings.set('wifs', ujson.loads(ujson.dumps(settings.get('wifs'))))"
+    )
+    saved = settings_get("wifs")
+    assert len(saved) == 4
+    assert all(isinstance(item, list) for item in saved)
 
     import_wif_to_store(wif_list, early_exit=True)
     assert len(settings_get("wifs")) == 4
@@ -424,6 +587,7 @@ def test_sign_msg_with_wif_store_key(way, af, settings_remove, import_wif_to_sto
     assert len(menu) == 2
     pick_menu_item(menu[1])
     pick_menu_item("Sign MSG")
+    assert "Taproot P2TR" not in cap_menu()
     pick_menu_item(af)
 
     if way == "input":
@@ -521,18 +685,25 @@ def test_multisig_wif_store(oneshot, addr_fmt, dev, fake_ms_txn, start_sign, set
     end_sign(finalize=True)
 
 
-@pytest.mark.parametrize("addr_fmt", ["p2wpkh", "p2sh-p2wpkh", "p2pkh"])
+@pytest.mark.parametrize("addr_fmt,compressed", [
+    ("p2tr", True),
+    ("p2wpkh", True),
+    ("p2sh-p2wpkh", True),
+    ("p2pkh", True),
+    ("p2pkh", False),
+])
 @pytest.mark.parametrize("idx", [1, 3])
-def test_wif_store_ownership(addr_fmt, idx, is_q1, goto_home, pick_menu_item, scan_a_qr, cap_story,
-                             need_keypress, src_root_dir, sim_root_dir, nfc_write, settings_remove,
-                             import_wif_to_store, load_shared_mod, cap_screen_qr, press_cancel):
+def test_wif_store_ownership(addr_fmt, compressed, idx, is_q1, goto_home, pick_menu_item,
+                             scan_a_qr, cap_story, need_keypress, src_root_dir, sim_root_dir,
+                             nfc_write, settings_remove, import_wif_to_store, load_shared_mod,
+                             cap_screen_qr, press_cancel):
 
     settings_remove("wifs")
 
     n = BIP32Node.from_master_secret(os.urandom(32))
     privkey = n.node.private_key
-    addr = n.address(addr_fmt=addr_fmt)
-    wif = encode_base58_checksum(bytes([239]) + bytes(privkey) + b'\x01')
+    addr = n.address(addr_fmt=addr_fmt, compressed=compressed)
+    wif = encode_base58_checksum(bytes([239]) + bytes(privkey) + (b'\x01' if compressed else b''))
     wif1 = encode_base58_checksum(bytes([239]) + os.urandom(32) + b'\x01')
     wif2 = encode_base58_checksum(bytes([239]) + os.urandom(32) + b'\x01')
 
@@ -575,11 +746,88 @@ def test_wif_store_ownership(addr_fmt, idx, is_q1, goto_home, pick_menu_item, sc
     assert f"Found in WIF store at index {idx}" in story
     need_keypress(KEY_QR if is_q1 else '1')
     addr_qr = cap_screen_qr().decode()
-    if addr_fmt == "p2wpkh":
+    if addr_fmt in ("p2wpkh", "p2tr"):
         addr_qr = addr_qr.lower()
 
     assert addr == addr_qr
     press_cancel()
+
+
+@pytest.mark.parametrize("compressed", [True, False])
+def test_wif_store_other_serialization_not_owned(compressed, is_q1, goto_home, pick_menu_item,
+                                                  scan_a_qr, cap_story, need_keypress,
+                                                  src_root_dir, sim_root_dir, nfc_write,
+                                                  settings_remove, import_wif_to_store,
+                                                  load_shared_mod):
+    settings_remove("wifs")
+
+    n = BIP32Node.from_master_secret(os.urandom(32))
+    privkey = n.node.private_key
+    wif = encode_base58_checksum(
+        bytes([239]) + bytes(privkey) + (b'\x01' if compressed else b''))
+    addr = n.address(addr_fmt="p2pkh", compressed=not compressed)
+
+    import_wif_to_store([wif])
+    goto_home()
+
+    if is_q1:
+        pick_menu_item('Scan Any QR Code')
+        scan_a_qr(addr)
+        time.sleep(1)
+
+        _, story = cap_story()
+        assert addr == addr_from_display_format(story.split("\n\n")[0])
+        assert '(1) to verify ownership' in story
+        need_keypress('1')
+    else:
+        cc_ndef = load_shared_mod('cc_ndef', f'{src_root_dir}/shared/ndef.py')
+        n = cc_ndef.ndefMaker()
+        n.add_text(addr)
+        ccfile = n.bytes()
+
+        pick_menu_item('Advanced/Tools')
+        pick_menu_item('NFC Tools')
+        pick_menu_item('Verify Address')
+        with open(f'{sim_root_dir}/debug/nfc-addr.ndef', 'wb') as f:
+            f.write(ccfile)
+        nfc_write(ccfile)
+
+    time.sleep(1)
+    title, story = cap_story()
+    assert title == "Unknown Address"
+    assert addr == addr_from_display_format(story.split("\n\n")[0])
+    assert "Found in WIF store" not in story
+    assert "without finding a match" in story
+
+
+@pytest.mark.parametrize("addr_fmt", ["p2wpkh", "p2sh-p2wpkh", "p2tr"])
+def test_uncompressed_wif_not_owned_by_segwit(addr_fmt, fake_txn, start_sign, cap_story,
+                                              settings_remove, import_wif_to_store):
+    settings_remove("wifs")
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    n = node.subkey_for_path("0/0")
+    po = BasicPSBT().parse(fake_txn(1, 1, addr_fmt=addr_fmt, master_xpub=node.hwif()))
+
+    if addr_fmt == "p2tr":
+        po.inputs[0].taproot_internal_key, = po.inputs[0].taproot_bip32_paths.keys()
+        po.inputs[0].taproot_bip32_paths = {}
+    else:
+        pubkey_hash = hash160(n.node.public_key.sec(compressed=False))
+        redeem_script = b'\x00\x14' + pubkey_hash
+        wrapped = addr_fmt == "p2sh-p2wpkh"
+        script = (b'\xa9\x14' + hash160(redeem_script) + b'\x87') if wrapped else redeem_script
+
+        po.inputs[0].bip32_paths = {}
+        po.inputs[0].witness_utxo = CTxOut(100_000_000, script).serialize()
+        po.inputs[0].redeem_script = redeem_script if wrapped else None
+
+    import_wif_to_store([n.node.private_key.wif(compressed=False, testnet=True)])
+
+    start_sign(po.as_bytes(), finalize=True)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "None of the keys involved in this transaction belong to this Coldcard" in story
 
 
 @pytest.mark.parametrize("num_ins", [1, 5])
@@ -607,11 +855,171 @@ def test_wif_store_signing(num_ins, addr_fmt, fake_txn, goto_home, pick_menu_ite
     time.sleep(.1)
     title, story = cap_story()
     assert "warning" in story
-    if num_ins == 1:
-        assert "WIF store: 0" in story
-    else:
-        assert f"WIF store: {', '.join([str(i) for i in range(num_ins)])}" in story
+    assert f"{num_ins} input(s) use key from the WIF store." in story
     end_sign(finalize=True)
+
+
+@pytest.mark.parametrize("with_merkle_root", [False, True])
+def test_wif_store_signing_taproot_without_paths(with_merkle_root, fake_txn, start_sign,
+                                                  end_sign, cap_story, settings_remove,
+                                                  import_wif_to_store):
+    settings_remove("wifs")
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    po = BasicPSBT().parse(fake_txn(1, 1, addr_fmt="p2tr", master_xpub=node.hwif()))
+    inp = po.inputs[0]
+    inp.taproot_internal_key, = inp.taproot_bip32_paths.keys()
+    inp.taproot_bip32_paths = None
+
+    if with_merkle_root:
+        inp.taproot_merkle_root = os.urandom(32)
+        output_key = taptweak(inp.taproot_internal_key, inp.taproot_merkle_root)
+        inp.witness_utxo = CTxOut(100_000_000, b'\x51\x20' + output_key).serialize()
+
+    import_wif_to_store([node.subkey_for_path("0/0").node.private_key.wif(testnet=True)])
+
+    start_sign(po.as_bytes(), finalize=True)
+    _, story = cap_story()
+    assert "1 input(s) use key from the WIF store." in story
+    end_sign(finalize=True)
+
+
+def test_wif_store_rejects_mismatched_taproot_merkle_root(
+        fake_txn, start_sign, cap_story, settings_remove, import_wif_to_store):
+    settings_remove("wifs")
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    po = BasicPSBT().parse(fake_txn(1, 1, addr_fmt="p2tr", master_xpub=node.hwif()))
+    inp = po.inputs[0]
+    inp.taproot_internal_key, = inp.taproot_bip32_paths.keys()
+    inp.taproot_bip32_paths = None
+    inp.taproot_merkle_root = os.urandom(32)
+
+    import_wif_to_store([node.subkey_for_path("0/0").node.private_key.wif(testnet=True)])
+
+    start_sign(po.as_bytes(), finalize=True)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Invalid PSBT" in story
+
+
+def test_se_single_sig_rejects_taproot_merkle_root(
+        fake_txn, start_sign, cap_story, settings_remove, master_xpub):
+    settings_remove("wifs")
+
+    po = BasicPSBT().parse(fake_txn(1, 1, addr_fmt="p2tr", master_xpub=master_xpub))
+    inp = po.inputs[0]
+    inp.taproot_internal_key, = inp.taproot_bip32_paths.keys()
+    inp.taproot_merkle_root = os.urandom(32)
+    output_key = taptweak(inp.taproot_internal_key, inp.taproot_merkle_root)
+    inp.witness_utxo = CTxOut(100_000_000, b'\x51\x20' + output_key).serialize()
+
+    start_sign(po.as_bytes(), finalize=True)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Invalid PSBT" in story
+
+
+@pytest.mark.parametrize("root_len", [31, 33])
+def test_wif_store_rejects_bad_taproot_merkle_root_length(
+        root_len, fake_txn, start_sign, cap_story, settings_remove, import_wif_to_store):
+    settings_remove("wifs")
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    po = BasicPSBT().parse(fake_txn(1, 1, addr_fmt="p2tr", master_xpub=node.hwif()))
+    inp = po.inputs[0]
+    inp.taproot_internal_key, = inp.taproot_bip32_paths.keys()
+    inp.taproot_bip32_paths = None
+    inp.taproot_merkle_root = os.urandom(root_len)
+
+    import_wif_to_store([node.subkey_for_path("0/0").node.private_key.wif(testnet=True)])
+
+    start_sign(po.as_bytes(), finalize=True)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Invalid PSBT" in story
+
+
+@pytest.mark.parametrize("addr_fmt", ["p2pkh", "p2wpkh", "p2sh-p2wpkh", "p2tr"])
+def test_wif_store_signing_with_unrelated_path(addr_fmt, fake_txn, start_sign, end_sign,
+                                               cap_story, settings_remove, import_wif_to_store):
+    settings_remove("wifs")
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    po = BasicPSBT().parse(fake_txn(1, 1, addr_fmt=addr_fmt, master_xpub=node.hwif()))
+    inp = po.inputs[0]
+
+    unrelated = BIP32Node.from_master_secret(os.urandom(32)).subkey_for_path("0/0")
+    if addr_fmt == "p2tr":
+        inp.taproot_internal_key, = inp.taproot_bip32_paths.keys()
+        path, = inp.taproot_bip32_paths.values()
+        inp.taproot_bip32_paths = {unrelated.node.public_key.sec()[1:]: path}
+    else:
+        path, = inp.bip32_paths.values()
+        inp.bip32_paths = {unrelated.node.public_key.sec(): path}
+
+    import_wif_to_store([node.subkey_for_path("0/0").node.private_key.wif(testnet=True)])
+
+    start_sign(po.as_bytes(), finalize=True)
+    _, story = cap_story()
+    assert "1 input(s) use key from the WIF store." in story
+    end_sign(finalize=True)
+
+
+@pytest.mark.parametrize("script_type", ["p2pkh", "p2pk"])
+@pytest.mark.parametrize("compressed", [False, True])
+@pytest.mark.parametrize("der_paths", [False, True])
+def test_wif_store_signing_exact_key(script_type, compressed, der_paths, fake_txn, start_sign,
+                                     end_sign, cap_story, settings_remove, import_wif_to_store,
+                                     goto_home):
+    settings_remove("wifs")
+    goto_home()
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    n = node.subkey_for_path("0/0")
+    pubkey = n.node.public_key.sec(compressed=compressed)
+
+    if script_type == "p2pk":
+        p2pk_in = "compressed" if compressed else "uncompressed"
+        psbt = fake_txn(1, 1, master_xpub=node.hwif(), p2pk_in=p2pk_in)
+        po = BasicPSBT().parse(psbt)
+        assert list(po.inputs[0].bip32_paths.keys()) == [pubkey]
+    else:
+        psbt = fake_txn(1, 1, master_xpub=node.hwif())
+        po = BasicPSBT().parse(psbt)
+
+        script = b'\x76\xa9\x14' + hash160(pubkey) + b'\x88\xac'
+
+        supply = CTransaction()
+        supply.nVersion = 2
+        out_point = COutPoint(uint256_from_str(struct.pack('4Q', 0xdead, 0xbeef, 0, 0)), 73)
+        supply.vin = [CTxIn(out_point, nSequence=0xffffffff)]
+        supply.vout.append(CTxOut(100000000, script))
+        supply.calc_sha256()
+
+        po.inputs[0].utxo = supply.serialize_with_witness()
+
+        spend_tx = CTransaction()
+        spend_tx.deserialize(BytesIO(po.txn))
+        spend_tx.vin[0] = CTxIn(COutPoint(supply.sha256, 0),
+                                nSequence=spend_tx.vin[0].nSequence)
+        po.txn = spend_tx.serialize_with_witness()
+
+    if der_paths and not compressed and script_type == "p2pkh":
+        path, = po.inputs[0].bip32_paths.values()
+        po.inputs[0].bip32_paths = {pubkey: path}
+    elif not der_paths:
+        po.inputs[0].bip32_paths = {}
+
+    import_wif_to_store([n.node.private_key.wif(compressed=compressed, testnet=True)])
+
+    start_sign(po.as_bytes(), finalize=False)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    assert "1 input(s) use key from the WIF store." in story
+
+    signed = BasicPSBT().parse(end_sign(accept=True, finalize=False))
+    assert list(signed.inputs[0].part_sigs.keys()) == [pubkey]
 
 
 @pytest.mark.parametrize("der_paths", [True, False])
@@ -670,9 +1078,9 @@ def test_wif_store_signing_multi(der_paths, complete, fake_txn, start_sign, end_
     title, story = cap_story()
     assert "warning" in story
     if complete:
-        assert "WIF store: 0, 1, 2" in story
+        assert "3 input(s) use key from the WIF store." in story
     else:
-        assert "WIF store: 0, 1" in story
+        assert "2 input(s) use key from the WIF store." in story
         assert "Limited Signing" in story
 
     end_sign(finalize=complete)
@@ -714,7 +1122,7 @@ def test_wif_store_signing_with_master(fake_txn, start_sign, end_sign, cap_story
     start_sign(po.to_v0(), finalize=True)
     title, story = cap_story()
     assert "warning" in story
-    assert "WIF store: 0, 1" in story
+    assert "2 input(s) use key from the WIF store." in story
 
     end_sign(finalize=True)
 
@@ -755,12 +1163,12 @@ def test_visualize_wif(wif, testnet, is_q1, goto_home, need_keypress, use_testne
 
     if testnet:
         # we are on testnet, mainnet keys are not importable
-        if wif[0] in "K59":
+        if wif[0] in "KL5":
             assert "Press (1) to import to WIF Store" not in story
             return
     else:
         # we are on mainnet, testnet keys are not importable
-        if wif[0] in "c59":
+        if wif[0] in "c9":
             assert "Press (1) to import to WIF Store" not in story
             return
 
@@ -781,9 +1189,8 @@ def test_visualize_wif(wif, testnet, is_q1, goto_home, need_keypress, use_testne
     time.sleep(.1)
     title, story = cap_story()
     assert title == "Failure"
-    assert "Already saved in WIF Store" in story
+    assert "duplicate WIF" in story
     press_select()
-
 
 
 @pytest.mark.bitcoind
@@ -880,5 +1287,569 @@ def test_wif_store_signing_miniscript(tmplt, clear_miniscript, goto_home, cap_st
     assert res[0]["allowed"]
     res = wo.sendrawtransaction(tx_hex)
     assert len(res) == 64  # tx id
+
+@pytest.mark.bitcoind
+def test_descriptor_export(import_wif_to_store, cap_menu, goto_home, settings_remove,
+                           pick_menu_item, skip_if_useless_way, need_keypress, load_export,
+                           cap_story, is_q1, bitcoind, press_cancel):
+    goto_home()
+    settings_remove("wifs")
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    pk = node.node.private_key
+    wif_str = pk.wif(testnet=True)
+
+    target = f"wpkh({node.node.public_key.sec().hex()})"
+    target = bitcoind.rpc.getdescriptorinfo(target)["descriptor"]
+
+    import_wif_to_store([wif_str])
+    # now in wif store menu, only one menu  item besides "Import WIF"
+    menu = cap_menu()
+    assert len(menu) == 2
+    pick_menu_item(menu[1])
+    pick_menu_item("Descriptors")
+    pick_menu_item("Segwit P2WPKH")
+    time.sleep(.1)
+    title, story = cap_story()
+    story_desc = story.split("\n\n")[0]
+    assert story_desc.strip() == target
+
+    need_keypress("1") # SD
+    sd_desc = load_export("sd", "Descriptor", is_json=False, sig_check=False)
+    assert sd_desc.strip() == target
+
+    time.sleep(.1)
+    title, story = cap_story()
+    if "QR" in story:
+        qr_desc = load_export("qr", "Descriptor", is_json=False, sig_check=False)
+        press_cancel()  # exit QR disaply
+        assert qr_desc.strip() == target
+        time.sleep(.1)
+        title, story = cap_story()
+
+    if "NFC" in story:
+        nfc_desc = load_export("nfc", "Descriptor", is_json=False, sig_check=False)
+        assert nfc_desc.strip() == target
+        press_cancel()
+
+    goto_home()
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize('mode', ["Classic P2PKH", "P2SH-Segwit", "Segwit P2WPKH", "Taproot P2TR"])
+def test_spend_paper_wallet_desc_core(mode, bitcoind, settings_remove, import_wif_to_store,
+                                      start_sign, end_sign, cap_story, use_regtest, cap_menu,
+                                      pick_menu_item, goto_home, need_keypress, load_export):
+    use_regtest()
+    goto_home()
+    settings_remove("wifs")
+    amount = 5 # BTC
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    pk = node.node.private_key
+    wif_str = pk.wif(testnet=True)
+
+    import_wif_to_store([wif_str])
+    # now in wif store menu, only one menu  item besides "Import WIF"
+    menu = cap_menu()
+    assert len(menu) == 2
+    pick_menu_item(menu[1])
+    pick_menu_item("Descriptors")
+    pick_menu_item(mode)
+    need_keypress("1") # SD
+    desc = load_export("sd", "Descriptor", is_json=False, sig_check=False)
+
+    # must match pubkey from device
+    pubkey = pk.K.sec().hex()
+    if mode == "Taproot P2TR":
+        assert pubkey[2:] in desc
+    else:
+        assert pubkey in desc
+
+    paper_addr = bitcoind.rpc.deriveaddresses(desc)[0]
+
+    paper = bitcoind.create_wallet(wallet_name="paper-wif", disable_private_keys=True,
+                                   blank=True, descriptors=True)
+    res = paper.importdescriptors([{
+        "desc": desc, "timestamp": 0, "watchonly": True,
+    }])
+    assert len(res) == 1 and res[0]["success"]
+
+    bitcoind.supply_wallet.sendtoaddress(paper_addr, amount)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    assert paper.listunspent()
+
+    dest = bitcoind.supply_wallet.getnewaddress()
+    resp = paper.walletcreatefundedpsbt([], [{dest: amount}], 0,
+                                        {"fee_rate": 3, "subtractFeeFromOutputs": [0]})
+
+    po = BasicPSBT().parse(base64.b64decode(resp["psbt"]))
+    # first sign as provided by core
+    psbt_bytes = po.as_bytes()
+    start_sign(psbt_bytes, finalize=True)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "1 input(s) use key from the WIF store." in story
+    signed = end_sign(accept=True, finalize=True)
+
+    # remove BIP-32 paths from PSBT inputs
+    # causes auto-detection on CC side
+    for i in range(len(po.inputs)):
+        if mode == "Taproot P2TR":
+            po.inputs[i].taproot_bip32_paths = None
+        else:
+            po.inputs[i].bip32_paths = None
+
+    psbt1_bytes = po.as_bytes()
+    assert len(psbt_bytes) > len(psbt1_bytes)
+    start_sign(psbt1_bytes, finalize=True)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "1 input(s) use key from the WIF store." in story
+    signed1 = end_sign(accept=True, finalize=True)
+
+    if mode != "Taproot P2TR":
+        # taproot signatures are not deterministic
+        assert signed1 == signed
+
+    tx_hex = signed.hex()
+    accept = bitcoind.rpc.testmempoolaccept([tx_hex])
+
+    assert accept[0]["allowed"]
+    txid = bitcoind.rpc.sendrawtransaction(tx_hex)
+    assert len(txid) == 64
+
+    settings_remove("wifs")
+    goto_home()
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("finalize", [True, False])
+@pytest.mark.parametrize("script_type", ["p2pkh", "p2pk"])
+def test_spend_uncompressed_wif_core_psbt(script_type, finalize, bitcoind, bitcoind_d_wallet,
+                                          settings_remove, import_wif_to_store,
+                                          start_sign, end_sign, cap_story, use_regtest,
+                                          goto_home, cap_menu, pick_menu_item,
+                                          need_keypress, load_export):
+    use_regtest()
+    goto_home()
+    settings_remove("wifs")
+    amount = 5  # BTC
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    n = node.subkey_for_path("0/0")
+    privkey = n.node.private_key
+    pubkey = n.node.public_key.sec(compressed=False)
+    pubkey_hex = pubkey.hex()
+    wif_str = privkey.wif(compressed=False, testnet=True)
+
+    import_wif_to_store([wif_str])
+    menu = cap_menu()
+    assert len(menu) == 2
+    pick_menu_item(menu[1])
+    pick_menu_item("Descriptors")
+    if script_type == "p2pkh":
+        pick_menu_item("Classic P2PKH")
+    else:
+        pick_menu_item("Bare P2PK")
+    need_keypress("1")  # SD
+    desc = load_export("sd", "Descriptor", is_json=False, sig_check=False)
+    assert pubkey_hex in desc
+
+    res = bitcoind_d_wallet.importdescriptors([{
+        "desc": desc, "timestamp": "now", "watchonly": True,
+    }])
+    assert len(res) == 1 and res[0]["success"], res
+
+    if script_type == "p2pkh":
+        paper_addr = bitcoind.rpc.deriveaddresses(desc)[0]
+        bitcoind.supply_wallet.sendtoaddress(paper_addr, amount)
+    else:
+        # Core has no address for bare P2PK, so fund that script directly.
+        spk = bytes([len(pubkey)]) + pubkey + b'\xac'
+        txn = CTransaction()
+        txn.vout = [CTxOut(amount * 100_000_000, spk)]
+        funded = bitcoind.supply_wallet.fundrawtransaction(txn.serialize().hex())
+        signed = bitcoind.supply_wallet.signrawtransactionwithwallet(funded["hex"])
+        assert signed["complete"], signed
+        bitcoind.rpc.sendrawtransaction(signed["hex"])
+
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    assert bitcoind_d_wallet.listunspent()
+
+    dest = bitcoind.supply_wallet.getnewaddress()
+    resp = bitcoind_d_wallet.walletcreatefundedpsbt(
+        [], [{dest: bitcoind_d_wallet.getbalance()}], 0,
+        {"fee_rate": 3, "subtractFeeFromOutputs": [0]})
+    psbt_bytes = base64.b64decode(resp["psbt"])
+
+    po = BasicPSBT().parse(psbt_bytes)
+    assert len(po.inputs) == 1
+
+    def cc_sign(do_finalize):
+        start_sign(psbt_bytes, finalize=do_finalize)
+        time.sleep(.1)
+        title, story = cap_story()
+        assert title == "OK TO SEND?"
+        assert "1 input(s) use key from the WIF store." in story
+        return end_sign(accept=True, finalize=do_finalize)
+
+    out = cc_sign(finalize)
+    if finalize:
+        cc_tx_hex = out.hex()
+        signed_psbt = cc_sign(False)
+    else:
+        signed_psbt = out
+
+    signed_po = BasicPSBT().parse(signed_psbt)
+    assert list(signed_po.inputs[0].part_sigs.keys()) == [pubkey]
+
+    finalized = bitcoind.rpc.finalizepsbt(base64.b64encode(signed_psbt).decode(), True)
+    assert finalized["complete"], finalized
+    tx_hex = finalized["hex"]
+
+    if finalize:
+        assert cc_tx_hex == tx_hex
+
+    accept = bitcoind.rpc.testmempoolaccept([tx_hex])
+    assert accept[0]["allowed"], accept
+    txid = bitcoind.rpc.sendrawtransaction(tx_hex)
+    assert len(txid) == 64
+
+    settings_remove("wifs")
+    goto_home()
+
+
+@pytest.mark.parametrize("wif_store", [True, False])
+@pytest.mark.parametrize("subpaths", [True, False])
+def test_no_keys(wif_store, subpaths, fake_txn, settings_set, start_sign,
+                 cap_story, settings_remove):
+
+    hack = None
+    if subpaths is False:
+        def hack(psbt):
+            psbt.inputs[0].bip32_paths = None
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    psbt = fake_txn(1, 1, addr_fmt="p2wpkh", master_xpub=node.hwif(), psbt_v2=True,
+                    psbt_hacker=hack)
+
+    # overwrite node, causing PSBT to be from completely different WIF/address
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    n = node.subkey_for_path("0/0")
+    sk = bytes(n.node.private_key).hex()
+    pk = n.node.private_key.K.sec().hex()
+
+    if wif_store:
+        settings_set("wifs", [(pk, sk)])
+    else:
+        settings_remove("wifs")
+
+    start_sign(psbt, finalize=True)
+    title, story = cap_story()
+    assert "Failure" == title
+
+    if wif_store is False and subpaths is False:
+        assert "PSBT inputs do not contain any key path information" in story
+    else:
+        assert "None of the keys involved in this transaction belong to this Coldcard" in story
+
+
+def test_unrelated_wif_does_not_allow_presigned_foreign_psbt(fake_txn, settings_set,
+                                                            start_sign, cap_story):
+    foreign = BIP32Node.from_master_secret(os.urandom(32))
+    psbt = fake_txn(2, 1, addr_fmt="p2wpkh", master_xpub=foreign.hwif(), psbt_v2=True)
+    po = BasicPSBT().parse(psbt)
+
+    pubkey = list(po.inputs[0].bip32_paths.keys())[0]
+    po.inputs[0].part_sigs[pubkey] = b'\x30' + os.urandom(70)
+
+    unrelated = BIP32Node.from_master_secret(os.urandom(32)).subkey_for_path("0/0")
+    sk = bytes(unrelated.node.private_key).hex()
+    pk = unrelated.node.private_key.K.sec().hex()
+    settings_set("wifs", [(pk, sk)])
+
+    start_sign(po.as_bytes(), finalize=False)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "None of the keys involved in this transaction belong to this Coldcard" in story
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize('mode', ["Classic P2PKH", "Segwit P2WPKH", "P2SH-Segwit"])
+def test_spend_paper_wallet_addr_only(mode, bitcoind, settings_remove, import_wif_to_store,
+                                      start_sign, end_sign, cap_story, use_regtest,
+                                      pick_menu_item, goto_home, cap_menu, need_keypress,
+                                      load_export):
+    use_regtest()
+    goto_home()
+    settings_remove("wifs")
+    amount = 10  # BTC
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    pk = node.node.private_key
+    wif_str = pk.wif(testnet=True)
+
+    import_wif_to_store([wif_str])
+    menu = cap_menu()
+    assert len(menu) == 2
+
+    # Use the device-exported descriptor only to derive the address; we'll
+    # build the watch-only wallet around addr() instead of pkh/wpkh.
+    pick_menu_item(menu[1])
+    pick_menu_item("Descriptors")
+    pick_menu_item(mode)
+    need_keypress("1")  # SD
+    desc = load_export("sd", "Descriptor", is_json=False, sig_check=False)
+    paper_addr = bitcoind.rpc.deriveaddresses(desc.strip())[0]
+
+    # Watch-only wallet built from addr() — no pubkey knowledge at all.
+    addr_desc = bitcoind.rpc.getdescriptorinfo("addr(%s)" % paper_addr)["descriptor"]
+
+    wname = "paper-addr-%s" % mode.replace(' ', '-')
+    paper = bitcoind.create_wallet(wallet_name=wname, disable_private_keys=True,
+                                   blank=True, descriptors=True)
+    res = paper.importdescriptors([{
+        "desc": addr_desc, "timestamp": "now", "watchonly": True,
+    }])
+    assert len(res) == 1 and res[0]["success"], res
+
+    # two inputs
+    bitcoind.supply_wallet.sendtoaddress(paper_addr, amount/2)
+    bitcoind.supply_wallet.sendtoaddress(paper_addr, amount/2)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    assert paper.listunspent()
+
+    dest = bitcoind.supply_wallet.getnewaddress()
+    # solving_data lets Core estimate the dummy signature size for fee
+    # selection; it is NOT written into the PSBT, so bip32_paths stays empty.
+    pubkey_hex = node.node.public_key.sec().hex()
+    resp = paper.walletcreatefundedpsbt(
+        [], [{dest: amount}], 0,
+        {"fee_rate": 3, "subtractFeeFromOutputs": [0],
+         "solving_data": {"pubkeys": [pubkey_hex]}})
+    psbt_bytes = base64.b64decode(resp["psbt"])
+
+    # Sanity check
+    po = BasicPSBT().parse(psbt_bytes)
+    for i, inp in enumerate(po.inputs):
+        assert not inp.bip32_paths
+
+    start_sign(psbt_bytes, finalize=True)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "2 input(s) use key from the WIF store." in story
+    signed = end_sign(accept=True, finalize=True)
+
+    tx_hex = signed.hex()
+    accept = bitcoind.rpc.testmempoolaccept([tx_hex])
+    assert accept[0]["allowed"], accept
+    txid = bitcoind.rpc.sendrawtransaction(tx_hex)
+    assert len(txid) == 64
+
+    settings_remove("wifs")
+    goto_home()
+
+
+@pytest.mark.bitcoind
+def test_spend_paper_wallet_addr_only_p2sh_segwit_signed_psbt_finalizes(
+        bitcoind, settings_remove, import_wif_to_store, start_sign, end_sign,
+        cap_story, use_regtest, pick_menu_item, goto_home, cap_menu, need_keypress,
+        load_export):
+    use_regtest()
+    goto_home()
+    settings_remove("wifs")
+    amount = 10  # BTC
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    pk = node.node.private_key
+    wif_str = pk.wif(testnet=True)
+
+    import_wif_to_store([wif_str])
+    menu = cap_menu()
+    assert len(menu) == 2
+
+    pick_menu_item(menu[1])
+    pick_menu_item("Descriptors")
+    pick_menu_item("P2SH-Segwit")
+    need_keypress("1")  # SD
+    desc = load_export("sd", "Descriptor", is_json=False, sig_check=False)
+    paper_addr = bitcoind.rpc.deriveaddresses(desc.strip())[0]
+
+    addr_desc = bitcoind.rpc.getdescriptorinfo("addr(%s)" % paper_addr)["descriptor"]
+    paper = bitcoind.create_wallet(wallet_name="paper-addr-p2sh-segwit-signed-psbt",
+                                   disable_private_keys=True, blank=True,
+                                   descriptors=True)
+    res = paper.importdescriptors([{
+        "desc": addr_desc, "timestamp": "now", "watchonly": True,
+    }])
+    assert len(res) == 1 and res[0]["success"], res
+
+    bitcoind.supply_wallet.sendtoaddress(paper_addr, amount)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    assert paper.listunspent()
+
+    dest = bitcoind.supply_wallet.getnewaddress()
+    pubkey_hex = node.node.public_key.sec().hex()
+    resp = paper.walletcreatefundedpsbt(
+        [], [{dest: amount}], 0,
+        {"fee_rate": 3, "subtractFeeFromOutputs": [0],
+         "solving_data": {"pubkeys": [pubkey_hex]}})
+    psbt_bytes = base64.b64decode(resp["psbt"])
+
+    po = BasicPSBT().parse(psbt_bytes)
+    for inp in po.inputs:
+        assert not inp.bip32_paths
+
+    start_sign(psbt_bytes, finalize=False)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "1 input(s) use key from the WIF store." in story
+    signed_psbt = end_sign(accept=True, finalize=False)
+
+    finalize_res = bitcoind.rpc.finalizepsbt(base64.b64encode(signed_psbt).decode(), True)
+    assert finalize_res["complete"], finalize_res
+
+    accept = bitcoind.rpc.testmempoolaccept([finalize_res["hex"]])
+    assert accept[0]["allowed"], accept
+
+    settings_remove("wifs")
+    goto_home()
+
+
+@pytest.mark.parametrize("addr_fmt,with_paths", [
+    ("p2sh-p2wpkh", False),
+    ("p2tr", False),
+    ("p2tr", True),
+])
+def test_spend_paper_wallet_wif_input_details(
+        addr_fmt, with_paths,
+        fake_txn, settings_set, settings_remove, start_sign, cap_story,
+        pick_menu_item, need_keypress, press_cancel):
+    settings_remove("wifs")
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    n = node.subkey_for_path("0/0")
+    pubkey_hex = n.node.private_key.K.sec().hex()
+    settings_set("wifs", [(pubkey_hex, bytes(n.node.private_key).hex())])
+
+    def hack(psbt):
+        if with_paths:
+            return
+
+        if addr_fmt == "p2tr":
+            inp = psbt.inputs[0]
+            inp.taproot_internal_key, = inp.taproot_bip32_paths.keys()
+            inp.taproot_bip32_paths = None
+        else:
+            psbt.inputs[0].bip32_paths = None
+            psbt.inputs[0].redeem_script = None
+
+    psbt = fake_txn(1, 1, addr_fmt=addr_fmt, master_xpub=node.hwif(),
+                    psbt_hacker=hack)
+
+    po = BasicPSBT().parse(psbt)
+    for inp in po.inputs:
+        paths = inp.taproot_bip32_paths if addr_fmt == "p2tr" else inp.bip32_paths
+        assert bool(paths) == with_paths
+        if addr_fmt == "p2sh-p2wpkh":
+            assert inp.redeem_script is None
+
+    start_sign(psbt, finalize=False)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?", story
+    assert "1 input(s) use key from the WIF store." in story
+    assert "Press (2) to explore transaction" in story
+
+    need_keypress("2")
+    pick_menu_item("Inputs")
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Input 0"
+    assert "WIF Store" in story
+    assert pubkey_hex in story
+
+    for _ in range(3):
+        press_cancel()
+
+    settings_remove("wifs")
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize('mode', ["Classic P2PKH", "Segwit P2WPKH", "P2SH-Segwit"])
+def test_spend_paper_wallet_via_electrum(mode, bitcoind, electrum, settings_remove,
+                                         import_wif_to_store, start_sign, end_sign,
+                                         cap_story, use_regtest, pick_menu_item,
+                                         goto_home, cap_menu, press_cancel,
+                                         need_keypress, cap_screen_qr, is_q1):
+    use_regtest()
+    goto_home()
+    settings_remove("wifs")
+    amount = 5  # BTC
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+    pk = node.node.private_key
+    wif_str = pk.wif(testnet=True)
+
+    import_wif_to_store([wif_str])
+    menu = cap_menu()
+    assert len(menu) == 2
+
+    pick_menu_item(menu[1])
+    pick_menu_item("Addresses")
+    pick_menu_item(mode)
+    time.sleep(.1)
+    need_keypress(KEY_QR if is_q1 else "4")
+    time.sleep(.1)
+    paper_addr = cap_screen_qr().decode()
+    if mode == "Segwit P2WPKH":
+        paper_addr = paper_addr.lower()
+
+    goto_home()
+
+    # Electrum imported-address watch-only wallet.
+    wallet_path = electrum.imported_addr_wallet(
+        paper_addr, name="paper-%s" % mode.replace(' ', '-'))
+
+    # Fund the address via bitcoind, confirm.
+    txid = bitcoind.supply_wallet.sendtoaddress(paper_addr, amount)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    # `getrawtransaction` won't see this once it's mined (no -txindex), but
+    # the supply wallet still has the tx in its own history.
+    funding_hex = bitcoind.supply_wallet.gettransaction(txid)["hex"]
+
+    # Tell Electrum about the funding tx so its wallet sees the UTXO without
+    # needing an Electrum server backend.
+    electrum.addtransaction(wallet_path, funding_hex)
+
+    # Build the unsigned PSBT in Electrum.
+    dest = bitcoind.supply_wallet.getnewaddress()
+    spend_amt = round(amount - 0.001, 8)
+    psbt_b64 = electrum.payto_unsigned_psbt(wallet_path, dest, spend_amt)
+    psbt_bytes = base64.b64decode(psbt_b64)
+
+    # Sanity: confirm Electrum did NOT include any bip32 derivations.
+    # If this changes upstream, the test below would no longer be exercising
+    # the scriptPubKey auto-detect path.
+    po = BasicPSBT().parse(psbt_bytes)
+    for i, inp in enumerate(po.inputs):
+        assert not inp.bip32_paths
+
+    # Sign on Coldcard — must use scriptPubKey hash auto-detect.
+    start_sign(psbt_bytes, finalize=True)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "1 input(s) use key from the WIF store." in story
+    signed = end_sign(accept=True, finalize=True)
+
+    tx_hex = signed.hex()
+    accept = bitcoind.rpc.testmempoolaccept([tx_hex])
+    assert accept[0]["allowed"], accept
+    txid = bitcoind.rpc.sendrawtransaction(tx_hex)
+    assert len(txid) == 64
+
+    settings_remove("wifs")
+    goto_home()
 
 # EOF

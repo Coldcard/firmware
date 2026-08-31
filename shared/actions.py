@@ -153,7 +153,7 @@ async def dev_enable_vcp(*a):
         pyb.usb_mode('VCP+HID')
 
     # allow REPL access
-    ckcc.vcp_enabled(True)
+    ckcc.repl_enabled(True)
 
     await ux_show_story("""\
 The USB virtual serial port has now been enabled. Use a real computer to connect to it.""")
@@ -197,7 +197,7 @@ async def dev_enable_protocol(*a):
     enable_usb()
 
     # enable REPL
-    ckcc.vcp_enabled(True)
+    ckcc.repl_enabled(True)
 
     await ux_show_story('Back to normal USB mode.')
 
@@ -459,21 +459,27 @@ async def pick_nickname(*a):
     # Value is not stored with normal settings, it's part of "prelogin" settings
     # which are encrypted with zero-key.
     s = SettingsObject.prelogin()
-    nick = s.get('nick', '')
+    k = "nick"
+    nick = s.get(k, '')
 
     if not nick:
-        ch = await ux_show_story('''\
-You can give this Coldcard a nickname and it will be shown before login.''')
+        ch = await ux_show_story("You can give this Coldcard a nickname"
+                                 " and it will be shown before login.")
         if ch != 'y': return
 
     nn = await ux_input_text(nick, confirm_exit=False, prompt="Enter Nickname")
+
+    if nn is None or (nick == nn): return  # user exit & same value - noop
 
     from glob import dis
     dis.fullscreen("Saving...")
     dis.busy_bar(True)
 
-    nn = nn.strip() if nn else None
-    s.set('nick', nn)
+    if not nn:
+        s.remove_key(k)
+    else:
+        s.set(k, nn.strip())
+
     s.save()
     dis.busy_bar(False)
     del s
@@ -536,9 +542,10 @@ async def convert_ephemeral_to_master(*a):
     from stash import bip39_passphrase
 
     words = settings.get("words", True)
-    _type = 'BIP-39 passphrase' if bip39_passphrase else 'temporary seed'
+    master_words = settings.master_get("words", True)
+    _type = 'BIP-39 passphrase wallet' if bip39_passphrase else 'temporary seed'
     msg = 'Convert currently used %s to master seed. Old master seed' % _type
-    if words or bip39_passphrase:
+    if master_words:
         msg += ' words themselves are erased forever, '
     else:
         msg += ' is erased forever, '
@@ -606,7 +613,7 @@ new wallet.''', 'AGAIN...', confirm_key='4'):
 
 def render_master_secrets(mode, raw, node):
     # Render list of words, or XPRV / master secret to text.
-    import stash, chains
+    import chains
 
     c = chains.current_chain()
     qr_alnum = False
@@ -628,12 +635,6 @@ def render_master_secrets(mode, raw, node):
 
         msg += ux_render_words(words)
 
-        if stash.bip39_passphrase:
-            msg += '\n\nBIP-39 Passphrase:\n    *****'
-            if node:
-                msg += '\n\nSeed+Passphrase:\n%s' % c.serialize_private(node)
-
-
     elif mode == 'xprv':
         title = "Extended Private Key" if version.has_qwerty else None
         msg = c.serialize_private(node)
@@ -650,9 +651,9 @@ def render_master_secrets(mode, raw, node):
     return title, msg, qr, qr_alnum
 
 async def view_seed_words(*a):
-    if not await ux_confirm('The next screen will show the seed words'
-                            ' (and if defined, your BIP-39 passphrase).'
-                            '\n\nAnyone with knowledge of those words '
+    if not await ux_confirm('The next screen will show the secret seed words'
+                            ' (or extended private key).'
+                            '\n\nAnyone with knowledge of the secret '
                             'can control all funds in this wallet.'):
         return
 
@@ -660,26 +661,19 @@ async def view_seed_words(*a):
     from glob import dis, NFC
 
     dis.fullscreen("Wait...")
-    dis.busy_bar(True)
 
-    # preserve old UI where we show words + passphrase
-    # instead of just calculated seed + passphrase = extended privkey
-    # new: calculated xprv is now also shown for BIP39 passphrase wallet
-    raw = mode = None
-    if stash.bip39_passphrase:
-        # get main secret - bypass tmp
-        with stash.SensitiveValues(bypass_tmp=True, enforce_delta=True) as sv:
-            assert sv.mode == "words"
-            raw = sv.raw[:]
-            mode = sv.mode
+    # CHANGED: old UI where we show words + passphrase
+    # instead just calculated seed + passphrase = extended privkey for all BIP39 passphrase wallets
 
-        stash.SensitiveValues.clear_cache()
+    with stash.SensitiveValues(enforce_delta=True) as sv:
+        msg = ""
+        if stash.bip39_passphrase:
+            # on the top of the page - so visible on Mk4/5
+            msg += "BIP-39 Passphrase in effect\n\n"
 
-    with stash.SensitiveValues(bypass_tmp=False, enforce_delta=True) as sv:
-        dis.busy_bar(False)
-        title, msg, qr, qr_alnum = render_master_secrets(mode or sv.mode,
-                                                         raw or sv.raw,
-                                                         sv.node)
+        title, sub_msg, qr, qr_alnum = render_master_secrets(sv.mode, sv.raw, sv.node)
+        msg += sub_msg
+
         esc = "1"
         if not version.has_qwerty:
             msg += '\n\nPress (1) to view as QR Code'
@@ -702,7 +696,6 @@ async def view_seed_words(*a):
 
     stash.blank_object(qr)
     stash.blank_object(msg)
-    stash.blank_object(raw)
 
 async def export_seedqr(*a):
     # see standard: <https://github.com/SeedSigner/seedsigner/blob/dev/docs/seed_qr/README.md>
@@ -719,7 +712,7 @@ async def export_seedqr(*a):
 
     # Note: cannot reach this menu item if no words. If they are tmp, that's cool.
 
-    with stash.SensitiveValues(bypass_tmp=False, enforce_delta=True) as sv:
+    with stash.SensitiveValues(enforce_delta=True) as sv:
         if sv.mode != 'words':
             raise ValueError(sv.mode)
 
@@ -825,7 +818,7 @@ async def start_login_sequence():
             # PIN again) and if it's a duress wallet, that's cool...
 
         # Do we need to do countdown delay? (real or otherwise)
-        # - wiping has already occured if that was selected by trick details
+        # - wiping has already occurred if that was selected by trick details
         # - delay is variable, stored in tc_arg
         delay = tp.was_countdown_pin()
 
@@ -942,12 +935,14 @@ async def start_login_sequence():
             settings.master_set("seedvault", False)
         except: pass
 
-    if version.has_nfc and settings.get('nfc', 0):
+
+    from glob import hsm_active
+    if version.has_nfc and settings.get('nfc', 0) and not hsm_active:
         # Maybe allow NFC now
         import nfc
         nfc.NFCHandler.startup()
 
-    if settings.get('vidsk', 0):
+    if settings.get('vidsk', 0) and not hsm_active:
         # Maybe start virtual disk
         import vdisk
         vdisk.VirtDisk()
@@ -1105,8 +1100,10 @@ async def export_xpub(label, _2, item):
         if ch == "2":
             slip132 = not slip132
             continue
+
         if ch == '1':
-            acct = await ux_enter_bip32_index('Account Number:') or 0
+            acct = await ux_enter_bip32_index('Account Number:')
+            if acct is None: continue
             pth_split = path.split("/")
             pth_split[-1] = ("%dh" % acct)
             path = "/".join(pth_split)
@@ -1148,15 +1145,16 @@ async def electrum_skeleton(a, b, item):
 
     ch = await ux_show_story(electrum_export_story(title), escape='1')
 
-    account_num = 0
+    acct = 0
     if ch == '1':
-        account_num = await ux_enter_bip32_index('Account Number:') or 0
-    elif ch != 'y':
+        acct = await ux_enter_bip32_index('Account Number:')
+
+    if (ch not in '1y') or acct is None:
         return
 
     rv = [
         MenuItem(chains.addr_fmt_label(af), f=electrum_skeleton_step2,
-                 arg=(af, account_num, title, fname_pat))
+                 arg=(af, acct, title, fname_pat))
         for af in chains.SINGLESIG_AF
     ]
     the_ux.push(MenuSystem(rv))
@@ -1177,13 +1175,14 @@ async def ss_descriptor_skeleton(_0, _1, item):
         int_ext, allowed_af, ll, f_pattern, direct_way = item.arg
         addition = " for " + ll
 
-    account_num = 0
+    acct = 0
     if not direct_way:
         ch = await ux_show_story(ss_descriptor_export_story(addition), escape='1')
 
         if ch == '1':
-            account_num = await ux_enter_bip32_index('Account Number:', unlimited=True) or 0
-        elif ch != 'y':
+            acct = await ux_enter_bip32_index('Account Number:', unlimited=True)
+
+        if (ch not in '1y') or acct is None:
             return
 
     if int_ext is None:
@@ -1195,12 +1194,12 @@ async def ss_descriptor_skeleton(_0, _1, item):
         int_ext = False if ch == "1" else True
 
     if len(allowed_af) == 1:
-        await make_descriptor_wallet_export(allowed_af[0], account_num, int_ext=int_ext,
+        await make_descriptor_wallet_export(allowed_af[0], acct, int_ext=int_ext,
                                             fname_pattern=f_pattern, direct_way=direct_way)
     else:
         rv = [
             MenuItem(chains.addr_fmt_label(af), f=descriptor_skeleton_step2,
-                     arg=(af, account_num, int_ext, f_pattern, direct_way))
+                     arg=(af, acct, int_ext, f_pattern, direct_way))
             for af in allowed_af
         ]
         the_ux.push(MenuSystem(rv))
@@ -1214,12 +1213,13 @@ async def key_expression_skeleton_step2(_1, _2, item):
 async def key_expression_skeleton(_0, _1, item):
     # Export key expression -> [xfp/d/e/r]xpub
 
-    acct_num = 0
+    acct = 0
     ch = await ux_show_story("This saves a extended key expression."
                              + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape='1')
     if ch == '1':
-        acct_num = await ux_enter_bip32_index('Account Number:', unlimited=True) or 0
-    elif ch != 'y':
+        acct = await ux_enter_bip32_index('Account Number:', unlimited=True)
+
+    if (ch not in '1y') or acct is None:
         return
 
     # element on 2nd index is address format for signed exports
@@ -1242,7 +1242,7 @@ async def key_expression_skeleton(_0, _1, item):
     ct = chains.current_chain().b44_cointype
 
     rv = [
-        MenuItem(label, f=key_expression_skeleton_step2, arg=(orig_der % (ct, acct_num), af))
+        MenuItem(label, f=key_expression_skeleton_step2, arg=(orig_der % (ct, acct), af))
         for label, orig_der, af in todo
     ]
     rv += [MenuItem("Custom Path", menu=doit)]
@@ -1293,14 +1293,15 @@ You can then run the commands in Bitcoin Core's console window, \
 without ever connecting this Coldcard to a computer.\
 ''' + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape='1')
 
-    account_num = 0
+    acct = 0
     if ch == '1':
-        account_num = await ux_enter_bip32_index('Account Number:') or 0
-    elif ch != 'y':
+        acct = await ux_enter_bip32_index('Account Number:')
+
+    if (ch not in '1y') or acct is None:
         return
 
     # no choices to be made, just do it.
-    await make_bitcoin_core_wallet(account_num)
+    await make_bitcoin_core_wallet(acct)
 
 
 async def electrum_skeleton_step2(_1, _2, item):
@@ -1314,13 +1315,14 @@ async def _generic_export(prompt, label, f_pattern):
     # like the Multisig export, make a single JSON file with
     # basically all useful XPUB's in it.
     ch = await ux_show_story(prompt + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape="1")
-    account_num = 0
+    acct = 0
     if ch == '1':
-        account_num = await ux_enter_bip32_index('Account Number:') or 0
-    elif ch != 'y':
+        acct = await ux_enter_bip32_index('Account Number:')
+
+    if (ch not in '1y') or acct is None:
         return
 
-    await export_contents(label, lambda: generate_generic_export(account_num),
+    await export_contents(label, lambda: generate_generic_export(acct),
                           f_pattern, is_json=True)
 
 async def generic_skeleton(*A):
@@ -1365,16 +1367,17 @@ async def unchained_capital_export(*a):
     ch = await ux_show_story('''\
 This saves multisig XPUB information required to setup on the Unchained platform. \
 ''' + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape="1")
-    account_num = 0
+    acct = 0
     if ch == '1':
-        account_num = await ux_enter_bip32_index('Account Number:') or 0
-    elif ch != 'y':
+        acct = await ux_enter_bip32_index('Account Number:')
+
+    if (ch not in '1y') or acct is None:
         return
 
     xfp = xfp2str(settings.get('xfp', 0))
     fname = 'unchained-%s.json' % xfp
 
-    await export_contents('Unchained', lambda: generate_unchained_export(account_num),
+    await export_contents('Unchained', lambda: generate_unchained_export(acct),
                           fname, is_json=True)
 
 
@@ -1416,7 +1419,9 @@ async def import_xprv(_1, _2, item):
 
     ephemeral = item.arg
     if not ephemeral:
-        assert pa.is_secret_blank() # "must not have secret"
+        # A blank SE can still have a temporary wallet active.
+        # Permanent imports require no active secret.
+        assert not pa.has_secrets()
 
     def contains_xprv(fname):
         # just check if likely to be valid; not full check
@@ -1483,7 +1488,9 @@ async def restore_backup_dev(*a):
     if fn:
         words = False if fn[-3:] == ".7z" else None
         import backups
-        await backups.restore_complete(fn, not pa.is_secret_blank(), words)
+        # A temporary wallet makes master writes no-op, despite the restore reporting success.
+        # Route the backup to another temporary wallet whenever any secret is active.
+        await backups.restore_complete(fn, pa.has_secrets(), words)
 
 async def bkpw_override(*A):
     # allows user to:
@@ -1619,7 +1626,7 @@ async def qr_share_file(_1, _2, item):
                     # it's a txn, and we wrote as hex
                     data = data.decode()
                 else:
-                    assert data[2:8] == bytes(6)
+                    assert data[1:4] == bytes(3)
                     data = b2a_hex(data).decode()
             elif data[0:5] == b'psbt\xff':
                 tc = "P"
@@ -1774,6 +1781,7 @@ async def list_files(*A):
                                 assert s not in new_basename, "illegal char"
                             uos.rename(path + "/" + basename, path + "/" + new_basename)
                             basename = new_basename
+                            fn = path + "/" + basename      # keep full path in sync (delete/sign use it)
                         except Exception as e:
                             await ux_show_story("Failed to rename the file. " + str(e),
                                                 title="Failure")
@@ -2313,7 +2321,7 @@ async def wipe_address_cache(*a):
 async def wipe_ovc(*a):
     ok = await ux_confirm('''Clear history of segwit UTXO input values we have seen already. \
 This data protects you against specific attacks. Use this only if certain a false-positive \
-has occured in the detection logic.''')
+has occurred in the detection logic.''')
     if not ok: return
 
     import history
@@ -2447,8 +2455,12 @@ async def scan_any_qr(menu, label, item):
 async def _scan_any_qr(expect_secret=False, tmp=False, miniscript_wallet=None):
     from ux_q1 import QRScannerInteraction
     x = QRScannerInteraction()
-    await x.scan_anything(expect_secret=expect_secret, tmp=tmp,
-                          miniscript_wallet=miniscript_wallet)
+    try:
+        await x.scan_anything(expect_secret=expect_secret, tmp=tmp,
+                              miniscript_wallet=miniscript_wallet)
+    except Exception as e:
+        await ux_show_story(msg="Failed to import from QR.\n\n%s\n%s" % (e, problem_file_line(e)),
+                            title="ERROR")
 
 
 PUSHTX_SUPPLIERS = [

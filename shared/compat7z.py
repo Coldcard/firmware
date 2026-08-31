@@ -6,7 +6,7 @@
 # always does AES-256. Not really expecting to be able to read any 7z file, except
 # those we created ourselves.
 #
-import os, sys, ckcc, ngu
+import os, sys, ngu
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import crc32
@@ -19,9 +19,7 @@ def masked_crc(bits):
     return crc32(bits) & 0xffffffff
 
 def urandom(l):
-    rv = bytearray(l)
-    ckcc.rng_bytes(rv)
-    return rv
+    return ngu.random.bytes(l)
 
 def encode_utf_16_le(s):
     # emulate: str.encode('utf-16-le')
@@ -51,9 +49,7 @@ def decode_utf_16_le(s):
 '''
 
 def read_var64(f):
-    '''
-        Decode their silly 64-bit encoding.
-    '''
+    # Decode their silly 64-bit encoding.
     first = ord(f.read(1))
     if first < 128:
         return first
@@ -100,7 +96,7 @@ def check_file_headers(f):
     # assume f is seekable
     fh = FileHeader.read(f)
 
-    if not fh.has_good_magic:
+    if not fh.has_good_magic():
         raise ValueError("Bad magic bytes")
 
     # read only first header
@@ -113,22 +109,21 @@ def check_file_headers(f):
     if sh.size > 10000:
         raise ValueError("Second header too big")
 
-    # capture this spot
-    # TODO 'data_start' unused
-    data_start = f.tell()       # expect 0x20
+    # FileHeader.read() always reads exactly calcsize('<6sBBL') = 12 bytes
+    # SectionHeader.read() always reads exactly calcsize('<QQL') = 20 bytes
+    # after those two calls, f.tell() is always start_pos + 32
+    # assert f.tell() == 0x20       # expect 0x20
 
     try:
         f.seek(sh.offset, 1)
         th = f.read(sh.size)
-        if len(th) != sh.size:
-            raise IndexError("Truncated file?")
+        assert len(th) == sh.size, "Truncated file?"
 
         # Look for properties about compression. this could be 
         # faked-out but good enough for now
-        if b'\x24\x06\xf1\x07\x01' not in th:
-            raise RuntimeError("Not marked as AES+SHA encrypted?")
+        assert b'\x24\x06\xf1\x07\x01' in th, "Not marked as AES+SHA encrypted?"
     except Exception as e:
-        raise ValueError("Confused file? %s" % e.message)
+        raise ValueError("Confused file? %s" % e)
 
     if masked_crc(th) != sh.crc:
         raise ValueError("Trailing header has wrong CRC")
@@ -174,7 +169,6 @@ class FileHeader(object):
 
     def actual_crc(self):
         return masked_crc(self.bits)
-
         
 
 class SectionHeader(namedtuple('SectionHeader', ['offset', 'size', 'crc' ])):
@@ -212,6 +206,7 @@ class SectionHeader(namedtuple('SectionHeader', ['offset', 'size', 'crc' ])):
 
     def actual_crc(self):
         return masked_crc(self.bits)
+
 
 class Builder(object):
     def __init__(self, password=None, salt_len=16, iv_len=16, rounds_pow=13, progress_fcn=None):
@@ -441,8 +436,9 @@ class Builder(object):
 
         first, second = rv.read(2)
         self.rounds_pow = first & 0x3f
+        assert self.rounds_pow <= 19  # excessive KDF rounds
 
-        assert first & 0xc0 == 0xc0, "require salt+iv"
+        assert first & 0xc0 == 0xc0  # require salt+iv
 
         salt_len = ((second >> 4) & 0xf) + 1
         iv_len = (second & 0xf) + 1

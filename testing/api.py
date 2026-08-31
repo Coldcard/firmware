@@ -7,6 +7,8 @@ from authproxy import AuthServiceProxy, JSONRPCException
 from helpers import xfp2str
 from ckcc.protocol import CCProtocolPacker
 
+BITCOIND_RPC_TIMEOUT = 60
+
 
 def find_bitcoind():
     # search for the binary we need
@@ -67,7 +69,7 @@ class Bitcoind:
                 "-listen=0",
                 "-keypool=1",
                 f"-port={self.p2p_port}",
-                f"-rpcport={self.rpc_port}"
+                f"-rpcport={self.rpc_port}",
             ]
         )
         signal.signal(signal.SIGTERM, self.cleanup)
@@ -84,7 +86,7 @@ class Bitcoind:
         with open(cookie_path) as f:
             self.userpass = f.readline().lstrip().rstrip()
         self.rpc_url = f"http://{self.userpass}@127.0.0.1:{self.rpc_port}"
-        self.rpc = AuthServiceProxy(self.rpc_url)
+        self.rpc = AuthServiceProxy(self.rpc_url, timeout=BITCOIND_RPC_TIMEOUT)
 
         # Wait for bitcoind to be ready
         ready = False
@@ -113,7 +115,7 @@ class Bitcoind:
 
     def get_wallet_rpc(self, wallet):
         url = self.rpc_url + f"/wallet/{wallet}"
-        return AuthServiceProxy(url)
+        return AuthServiceProxy(url, timeout=BITCOIND_RPC_TIMEOUT)
 
     def create_wallet(self, wallet_name: str, disable_private_keys: bool = False, blank: bool = False,
                       passphrase: str = None, avoid_reuse: bool = False, descriptors: bool = True,

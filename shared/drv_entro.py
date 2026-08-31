@@ -86,7 +86,7 @@ def bip85_derive(picked, index):
     else:
         raise ValueError(picked)
 
-    with stash.SensitiveValues() as sv:
+    with stash.SensitiveValues(enforce_delta=True) as sv:
         node = sv.derive_path(path)
         entropy = ngu.hmac.hmac_sha512(b'bip-entropy-from-k', node.privkey())
     
@@ -124,8 +124,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
 
     msg = "Password Index?" if picked == 7 else "Index Number?"
     index = await ux_enter_bip32_index(msg, unlimited=settings.get("b85max", False))
-    if index is None:
-        return
+    if index is None: return
 
     dis.fullscreen("Working...")
     new_secret, width, s_mode, path = bip85_derive(picked, index)
@@ -292,7 +291,7 @@ async def password_entry(*args, **kwargs):
 
         while True:
             the_ux.pop()
-            index = await ux_enter_bip32_index("Password Index?", can_cancel=True)
+            index = await ux_enter_bip32_index("Password Index?")
             if index is None:
                 break
 

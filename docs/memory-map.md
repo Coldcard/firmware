@@ -38,7 +38,7 @@ directly from python programs.
 
 | Start         | Size      | Notes
 |---------------|-----------|--------------------------
-| 0x0800 0000   | 128k      | Bootloader code, including reset vector. See `stm32/mk4-bootloader`
+| 0x0800 0000   | 112k      | Bootloader code, including reset vector. See `stm32/mk4-bootloader`
 | 0x0801 c000   | 8k        | Sensitive "pairing secrets" for SE1 and SE2
 | 0x0801 e000   | 8k        | MCU keys, consumable; 256 32-bit write-once slots.
 | 0x0802 0000   | 16k       | Interrupt handlers, file header (Micropython and Coldcard code)

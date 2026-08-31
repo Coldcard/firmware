@@ -34,4 +34,9 @@ SCAN = None
 # cache size = 1
 DESC_CACHE = {}
 
+# the only region of PSRAM the USB host may download (dwld) right now:
+# tuple (file_number, offset, length), set by producers of downloadable
+# results only; None blocks all downloads
+ALLOWED_DOWNLOAD = None
+
 # EOF

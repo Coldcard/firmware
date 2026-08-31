@@ -10,10 +10,11 @@
 # - "hobbled" refers to less-than full control over Coldcard, even though you have main PIN
 #
 import gc, chains, version, ngu, web2fa, bip39, re
+from ubinascii import hexlify as b2a_hex
 from chains import NLOCK_IS_TIME
 from utils import swab32, xfp2str, truncate_address, deserialize_secret, show_single_address
 from glob import settings, dis
-from ux import ux_confirm, ux_show_story, the_ux, OK, ux_dramatic_pause, ux_enter_number, ux_aborted
+from ux import ux_confirm, ux_show_story, the_ux, OK, ux_enter_number, ux_aborted
 from menu import MenuSystem, MenuItem, start_chooser
 from seed import seed_words_to_encoded_secret
 from stash import SecretStash
@@ -61,19 +62,19 @@ class SpendingPolicy(dict):
                 self.update(v.items())      # mpy bugfix, when called with SpendingPolicy
             
 
-    def _save_policy(self):
+    def _save_policy(self, master_only=True):
         # serialize the spending policy, save it
         v = dict(settings.master_get(self.nvkey, {}))
         v['pol'] = self.copy()
-        settings.master_set(self.nvkey, v, master_only=True)
+        settings.master_set(self.nvkey, v, master_only=master_only)
 
-    def update_policy_key(self, _quiet=False, **kws):
+    def update_policy_key(self, _quiet=False, _master_only=True, **kws):
         # Update a few elements of the spending policy
         # - all changes are saved immediately (which is a little slow/visible)
         if not _quiet:
             dis.fullscreen("Saving...")
         self.update(kws)
-        self._save_policy()
+        self._save_policy(_master_only)
 
     def meets_policy(self, psbt):
         # Does policy allow signing this? Else raise why. Return T if web2fa required.
@@ -105,7 +106,7 @@ class SpendingPolicy(dict):
                 # this is unix timestamp - not allowed - fail
                 raise SpendPolicyViolation("nLockTime not height")
 
-            block_h = pol.get("block_h", chains.current_chain().ccc_min_block)
+            block_h = max(pol.get("block_h", 0), chains.current_chain().ccc_min_block)
             if psbt.lock_time <= block_h:
                 raise SpendPolicyViolation("rewound (%d)" % psbt.lock_time)
 
@@ -121,7 +122,10 @@ class SpendingPolicy(dict):
             for idx, txo in psbt.output_iter():
                 out = psbt.outputs[idx]
                 if not out.is_change:  # ignore change
-                    addr = c.render_address(txo.scriptPubKey)
+                    try:
+                        addr = c.render_address(txo.scriptPubKey)
+                    except ValueError:
+                        addr = str(b2a_hex(txo.scriptPubKey), 'ascii')
                     if addr not in wl:
                         raise SpendPolicyViolation("whitelist: " + addr)
 
@@ -156,7 +160,8 @@ class SpendingPolicy(dict):
             # always update last block height, even if velocity isn't enabled yet
             # - attacker might have changed to testnet, but there is no
             #   reason to ever lower block height. strictly ascending
-            self.update_policy_key(_quiet=True, block_h=psbt.lock_time)
+            # allow update block_h from temporary seed
+            self.update_policy_key(_quiet=True, _master_only=False, block_h=psbt.lock_time)
 
 class SSSPFeature:
     # Using setting value "sssp"
@@ -232,7 +237,12 @@ class CCCFeature:
     @classmethod
     def words_check(cls, words):
         # Test if words provided are right
-        enc = seed_words_to_encoded_secret(words)
+        try:
+            # a2b_words with checksum check
+            enc = seed_words_to_encoded_secret(words)
+        except:
+            return False
+
         exp = cls.get_encoded_secret()
         return enc == exp
 
@@ -589,11 +599,12 @@ class SPAddrWhitelist(MenuSystem):
         if choice == KEY_CANCEL:
             return
         elif choice == KEY_NFC:
-            addr = await NFC.read_address()
-            if not addr:
+            res = await NFC.read_address()
+            if not res:
                 # error already displayed in nfc.py
                 return
 
+            _, addr, _ = res
             await self.add_addresses([addr])
             return
 
@@ -655,11 +666,12 @@ class SPAddrWhitelist(MenuSystem):
 
     async def add_addresses(self, more_addrs):
         # add new entries, if unique; preserve ordering
-        addrs = self.policy.get('addrs', [])
+        # - work on a copy and check the limit *before* committing: the list
+        #   from get('addrs') is the live, settings-backed one
+        addrs = list(self.policy.get('addrs', []))
         new = []
         for a in more_addrs:
-            if a not in addrs:
-                addrs.append(a)
+            if a not in addrs and a not in new:
                 new.append(a)
 
         if not new:
@@ -667,10 +679,10 @@ class SPAddrWhitelist(MenuSystem):
                                 '\n\n'.join(show_single_address(a) for a in more_addrs))
             return
 
-        if len(addrs) > MAX_WHITELIST:
+        if len(addrs) + len(new) > MAX_WHITELIST:
             return await self.maxed_out()
 
-        self.policy.update_policy_key(addrs=addrs)
+        self.policy.update_policy_key(addrs=addrs + new)
         self.update_contents()
 
         if len(new) > 1:
@@ -750,15 +762,11 @@ class SpendingPolicyMenu(MenuSystem):
         # Looks decent on both Q and Mk4...
         was = self.policy.get('mag', 0)
         val = await ux_enter_number('Transaction Max:', max_value=int(1e8),
-                                    can_cancel=True, value=(was or ''))
+                                    value=(was or ''))
+        if val is None: return
 
         args = dict(mag=val)
-        if (val is None) or (val == was):
-            msg = "Did not change"
-            val = was
-        else:
-            msg = "You have set the"
-            unchanged = False
+        msg = "Did not change" if val == was else "You have set the"
 
         if not val:
             msg = "No check for maximum transaction size will be done. "
@@ -853,16 +861,20 @@ phone with Internet access and 2FA app holding correct shared-secret.''',
 
 async def gen_or_import():
     # returns 12 words, or None to abort
-    from seed import WordNestMenu, generate_seed, approve_word_list, SeedVaultChooserMenu
+    from seed import WordNestMenu, generate_seed_with_user_entropy, approve_word_list
+    from seed import SeedVaultChooserMenu, PURPOSE_CCC
+    from pincodes import pa
 
     msg = "Press %s to generate a new 12-word seed phrase to be used "\
           "as the Coldcard Co-Signing Secret (key C).\n\nOr press (1) to import existing "\
           "12-words or (2) for 24-words import." % OK
 
-    if settings.master_get("seedvault", False):
+    esc = "12"
+    if not pa.is_deltamode() and settings.master_get("seedvault", False):
+        esc += "6"
         msg += ' Press (6) to import from Seed Vault.'
 
-    ch = await ux_show_story(msg, escape='126', title="CCC Key C")
+    ch = await ux_show_story(msg, escape=esc, title="CCC Key C")
 
     if ch in '12':
         nwords = 24 if ch == '2' else 12
@@ -892,8 +904,10 @@ async def gen_or_import():
 
     elif ch == 'y':
         # normal path: pick 12 words, quiz them
-        await ux_dramatic_pause('Generating...', 3)
-        seed = generate_seed()
+        seed = await generate_seed_with_user_entropy(PURPOSE_CCC)
+        if seed is None:
+            return None
+
         words = await approve_word_list(seed, 12)
     else:
         return None
@@ -1093,7 +1107,7 @@ is locked into a special mode that restricts seed access, backups, settings and 
 First step is to define a new PIN code that is used when you want to bypass or \
 disable this feature.
 ''',
-        title="Spending Policy")
+        title="Spending Policy" if version.has_qwerty else "Spend Policy")
 
     if ch != 'y': 
         # just a tourist

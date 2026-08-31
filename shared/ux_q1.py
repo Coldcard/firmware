@@ -12,7 +12,7 @@ from decoders import decode_qr_result
 from ubinascii import hexlify as b2a_hex
 from ubinascii import b2a_base64
 
-from utils import problem_file_line, show_single_address
+from utils import problem_file_line, show_single_address, is_printable
 from public_constants import MSG_SIGNING_MAX_LENGTH
 from glob import numpad         # may be None depending on import order, careful
 
@@ -76,7 +76,7 @@ class PressRelease:
                 self.last_key = ch
                 return ch
 
-async def ux_enter_number(prompt, max_value, can_cancel=False, value=''):
+async def ux_enter_number(prompt, max_value, can_cancel=True, value=''):
     # return the decimal number which the user has entered
     # - default/blank value assumed to be zero
     # - clamps large values to the max
@@ -121,7 +121,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=False, value=''):
             dis.text(0, 4, ' '*CHARS_W)
         elif ch == KEY_CANCEL:
             if can_cancel:
-                # quit if they press X on empty screen
+                # quit if they press CANCEL on any screen
                 return None
         elif '0' <= ch <= '9':
             if len(value) == max_w:
@@ -578,7 +578,7 @@ def ux_draw_words(y, num_words, words):
         if num_words == 12:
             # luxious space after colon
             msg = ('%2d: ' % n) + word
-            x_off = 3
+            x_off = 4
         else:
             if n <= n_per_c:
                 # no space in front of 1: thru N: in leftmost column of 3
@@ -667,7 +667,7 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None, li
                 what, vals = decode_qr_result(got, expect_secret=True)
             except QRDecodeExplained as e:
                 err_msg = str(e)
-                redraw_words()
+                redraw_words(words)
                 continue
 
             if what != "words":
@@ -825,7 +825,6 @@ class QRScannerInteraction:
         while 1:
             if task.done():
                 data = await task
-                #print("Scanned: %r" % data)
                 break
 
             dis.image(None, 40, 'scan_%d' % frames[ph])
@@ -838,7 +837,12 @@ class QRScannerInteraction:
                 data = None
                 break
 
-        task.cancel()
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
         # clear screen right away so user knows we got it
         dis.clear()
@@ -881,7 +885,7 @@ class QRScannerInteraction:
             file_type, _, data = decode_qr_result(got, expect_bbqr=True)
             if file_type == 'U':
                 data = data.strip()
-                if data[0] == '{' and data[-1] == '}':
+                if data[:1] == b'{' and data[-1:] == b'}':
                     file_type = 'J'
             if file_type != 'J':
                 raise QRDecodeExplained('Expected JSON data')
@@ -1058,7 +1062,7 @@ async def qr_psbt_sign(decoder, psbt_len, raw, miniscript_wallet=None):
         psbt_len = total
 
     else:
-        with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as out:
+        with SFFile(TXN_INPUT_OFFSET, length=psbt_len) as out:
             taste = out.read(10)
             _, output_encoder, _ = psbt_encoding_taster(taste, psbt_len)
 
@@ -1110,28 +1114,33 @@ async def ux_visualize_bip21(proto, addr, args):
     # - imho, a bare address is a valid BIP-21 URL so we come here too
     # - validate address ownership on request
     from ux import ux_show_story
+    from chains import current_chain
 
     msg = show_single_address(addr) + '\n\n'
     args = args or {}
 
     if 'amount' in args:
-        msg += 'Amount: '
         try:
             amt = args.pop('amount')
-            whole, frac = amt.split('.', 1)
-            frac = int(frac) if frac else 0
-            whole = int(whole) if whole else 0
-            msg += '%d.%08d BTC\n' % (whole, frac)
+            whole, _, frac = amt.partition('.')
+            assert whole.isdigit()
+            assert len(whole) <= 8
+            assert len(frac) <= 8
+            sats = int((whole or '0') + (frac + '00000000')[:8])
+            msg += 'Amount: %s %s\n' % current_chain().render_value(sats)
         except:
-            msg += '(corrupt)\n'
+            msg += 'Amount: (corrupt)\n'
 
     for fn in ['label', 'message', 'lightning']:
         if fn in args:
             val = args.pop(fn)
+            if not is_printable(val):
+                val = '(corrupt)'
             msg += '%s%s: %s\n' % (fn[0].upper(), fn[1:], val)
 
     if args:
-        msg += 'And values for: ' + ', '.join(args)
+        msg += 'And values for: ' + \
+               ', '.join(k if is_printable(k) else '(corrupt)' for k in args)
         msg += "\n"
 
     msg += '\nPress (1) to verify ownership.'
@@ -1198,12 +1207,14 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
     from bbqr import TYPE_LABELS, int2base36, b32encode, num_qr_needed
     from glob import PSRAM, dis
     from ux import ux_wait_keydown
+    import glob
     import uqr
+
+    glob.ALLOWED_DOWNLOAD = None
 
     # put QR shenanigans at offset 1MB after TXN_OUTPUT_OFFSET
     TMP_OFFSET = const(3 * 1024 * 1024)
 
-    assert not PSRAM.is_at(data, TMP_OFFSET)  # output data would be overwritten with our work
     assert type_code in TYPE_LABELS
 
     dis.fullscreen('Generating BBQr...', .1)
@@ -1214,6 +1225,11 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
     else:
         # default to Base32, because always best option
         encoding = '2'
+        if isinstance(data, str):
+            # 'U'/'J' payloads are UTF-8 text; b32encode consumes the UTF-8
+            # bytes, so convert now to keep length/slicing consistent (else
+            # multi-byte chars overflow target_vers -> assert below trips)
+            data = data.encode()
         data_len = len(data)
 
     # try a few select resolutions (sizes) in order such that we use either single QR

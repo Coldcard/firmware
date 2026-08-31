@@ -31,7 +31,9 @@ async def import_tapsigner_backup_file(_1, _2, item):
     ephemeral = item.arg
     if not ephemeral:
         from pincodes import pa
-        assert pa.is_secret_blank()  # "must not have secret"
+        # A blank SE can still have a temporary wallet active.
+        # Permanent imports require no active secret.
+        assert not pa.has_secrets()
 
     origin = "from "
     label = "TAPSIGNER encrypted backup file"

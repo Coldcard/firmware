@@ -3,8 +3,8 @@
 # teleport.py - Magically transport extremely sensitive data between the
 #               secure environment of two Q's.
 #
-import ngu, aes256ctr, bip39, json, ndef, chains
-from utils import xfp2str, deserialize_secret
+import ngu, aes256ctr, bip39, json, ndef, chains, stash
+from utils import xfp2str, deserialize_secret, wipe_if_deltamode
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from glob import settings, dis
@@ -16,7 +16,7 @@ from menu import MenuItem, MenuSystem
 from notes import NoteContentBase
 from sffile import SFFile
 from wallet import MiniScriptWallet
-from stash import SensitiveValues, SecretStash, blank_object, bip39_passphrase
+from stash import SensitiveValues, SecretStash, blank_object
 
 # One page github-hosted static website that shows QR based on URL contents pushed by NFC
 KT_DOMAIN = 'keyteleport.com'
@@ -307,7 +307,7 @@ async def kt_accept_values(dtype, raw):
     - `p` - binary PSBT to be signed
     - `b` - complete system backup file (text, internal format)
     '''
-    from flow import has_se_secrets, goto_top_menu
+    from flow import has_secrets, goto_top_menu
     from pincodes import pa
 
     enc = None
@@ -344,17 +344,20 @@ async def kt_accept_values(dtype, raw):
 
         # This will take over UX w/ the signing process
         # flags=None --> whether to finalize is decided based on psbt.is_complete
-        sign_transaction(psbt_len, flags=None)
+        sign_transaction(psbt_len, flags=None, input_method="kt")
         return
 
     elif dtype == 'b':
         # full system backup, including master: text lines
         from backups import text_bk_parser, restore_tmp_from_dict_ll, restore_from_dict, extract_raw_secret
 
-        vals = text_bk_parser(raw)
-        assert vals         # empty?
-
-        raw_sec, _ = extract_raw_secret(vals)
+        try:
+            vals = text_bk_parser(raw)
+            assert vals         # empty?
+            raw_sec, _ = extract_raw_secret(vals)
+        except Exception as e:
+            await ux_show_story("Invalid backup\n\n" + str(e), title='FAILED')
+            return
 
         from flow import has_secrets
 
@@ -414,7 +417,8 @@ async def kt_accept_values(dtype, raw):
 
     from seed import set_ephemeral_seed, set_seed_value
 
-    if not has_se_secrets():
+    # A temporary wallet still counts as a secret when the SE is blank.
+    if not has_secrets():
         # unit has nothing, so this will be the master seed
         set_seed_value(encoded=enc)
         ok = True
@@ -514,6 +518,8 @@ class SecretPickerMenu(MenuSystem):
         from pincodes import pa
         assert not pa.hobbled_mode
 
+        wipe_if_deltamode()  # shouldn't be here in delta mode
+
         from flow import word_based_seed, is_tmp, has_se_secrets
         has_notes = bool(NoteContentBase.count())
         has_sv = bool(settings.get('seedvault', False))
@@ -536,7 +542,7 @@ class SecretPickerMenu(MenuSystem):
             # tmp seed, or maybe bip39 is in effect 
             # - share the current master secret, not the real master
             msg = 'Temp Secret (words)' if word_based_seed() else (
-                        'XPRV from Words+Passphrase' if bip39_passphrase else 'Temp XPRV Secret')
+                        'XPRV from Seed+Passphrase' if stash.bip39_passphrase else 'Temp XPRV Secret')
         elif has_se_secrets():
             # sharing real master secret
             msg = 'Master Seed Words' if word_based_seed() else 'Master XPRV'
@@ -588,12 +594,21 @@ class SecretPickerMenu(MenuSystem):
 
     async def share_full_backup(self, *a):
         # context, and warn them
-        ch = await ux_show_story("Sending complete backup, including master secret, "
-            "seed vault (if any), miniscript wallets, notes/passwords, and all settings! "
-            "The receiving "
-            "COLDCARD must already have the master seed wiped to be able to install "
-            "everything, otherwise only master secret and miniscripts are saved into a tmp seed. "
-            "OK to proceed?")
+        from pincodes import pa
+
+        if pa.tmp_value:
+            if stash.bip39_passphrase:
+                what = "BIP-39 Passphrase wallet"
+            else:
+                what = "current active temporary secret"
+        else:
+            what = "master secret, seed vault (if any)"
+
+        ch = await ux_show_story("Sending complete backup, including %s, miniscript wallets,"
+                                 " notes/passwords, and all settings! The receiving COLDCARD"
+                                 " must already have the master seed wiped to be able to install"
+                                 " everything, otherwise only the transferred secret and miniscripts"
+                                 " are saved into a temporary seed. OK to proceed?" % what)
         if ch != 'y': return
 
         from backups import render_backup_contents
@@ -601,7 +616,7 @@ class SecretPickerMenu(MenuSystem):
         dis.fullscreen("Buiding Backup...")
 
         # renders a text file, with rather a lot of comments; strip them
-        bkup = render_backup_contents(bypass_tmp=True)
+        bkup = render_backup_contents()
         out = []
         for ln in bkup.split('\n'):
             if not ln: continue
@@ -616,7 +631,7 @@ class SecretPickerMenu(MenuSystem):
 
         dis.fullscreen("Wait...")
 
-        with SensitiveValues(bypass_tmp=False, enforce_delta=True) as sv:
+        with SensitiveValues(enforce_delta=True) as sv:
             raw = bytearray(sv.secret)
             xfp = xfp2str(sv.get_xfp())
 
@@ -639,7 +654,7 @@ class SecretPickerMenu(MenuSystem):
         await kt_do_send(self.rx_pubkey, 's', raw=raw)
 
 
-async def kt_send_psbt(psbt, psbt_len, psbt_offset):
+async def kt_send_psbt(psbt, psbt_len, source_offset):
     # We just finished adding our signature to an incomplete PSBT.
     # User wants to send to one or more other senders for them to complete signing.
 
@@ -658,10 +673,8 @@ async def kt_send_psbt(psbt, psbt_len, psbt_offset):
         await ux_show_story("No more signers?")
         return
 
-    # move out of PSRAM
-    from auth import TXN_OUTPUT_OFFSET
-
-    with SFFile(TXN_OUTPUT_OFFSET, psbt_len) as fd:
+    # (TXN_OUTPUT_OFFSET after signing, TXN_INPUT_OFFSET for the file-teleport path)
+    with SFFile(source_offset, psbt_len) as fd:
         bin_psbt = fd.read(psbt_len)
 
     my_xfp = settings.get('xfp')
@@ -689,12 +702,17 @@ async def kt_send_psbt(psbt, psbt_len, psbt_offset):
             f = None
             if x in need:
                 # we haven't signed ourselves yet, so allow that
-                from auth import sign_transaction
+                from auth import sign_transaction, TXN_INPUT_OFFSET
 
                 async def sign_now(*a):
                     # this will reset the UX stack:
                     # flags=None --> whether to finalize is decided based on psbt.is_complete
-                    sign_transaction(psbt_len, flags=None, offset=psbt_offset)
+                    # Signing writes the updated PSBT to TXN_OUTPUT_OFFSET, so its source
+                    # must be staged in the separate input region.
+                    with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as fd:
+                        fd.write(bin_psbt)
+                    sign_transaction(psbt_len, flags=None, input_method="kt",
+                                     offset=TXN_INPUT_OFFSET)
                 
                 f = sign_now
 
@@ -720,6 +738,7 @@ async def kt_send_psbt(psbt, psbt_len, psbt_offset):
 
     if m.next_xfp:
         assert m.next_xfp != my_xfp
+        dis.fullscreen("Wait...")
         ri, rx_pubkey, kp = ms.kt_make_rxkey(m.next_xfp)
         await kt_do_send(rx_pubkey, 'p', raw=bin_psbt, prefix=ri, kp=kp,
                         rx_label='[%s] co-signer' % xfp2str(m.next_xfp))
@@ -761,6 +780,8 @@ async def kt_send_file_psbt(*a):
 
     # read into PSRAM from wherever
     psbt_len = await sign_psbt_file(input_psbt, just_read=True, **picked)
+    if psbt_len is None:
+        return
 
     dis.fullscreen("Validating...")
     try:
@@ -786,6 +807,6 @@ async def kt_send_file_psbt(*a):
         await ux_show_story("We are not part of this wallet.", "Cannot Teleport PSBT")
         return
 
-    await kt_send_psbt(psbt, psbt_len=psbt_len, psbt_offset=TXN_INPUT_OFFSET)
+    await kt_send_psbt(psbt, psbt_len=psbt_len, source_offset=TXN_INPUT_OFFSET)
     
 # EOF

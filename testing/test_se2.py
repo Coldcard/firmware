@@ -789,7 +789,7 @@ def test_ux_changing_pins(true_pin, repl, force_main_pin, goto_trick_menu,
     clear_all_tricks()
 
 def test_se2_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
-        new_trick_pin, new_pin_confirmed, pick_menu_item, press_select):
+        new_trick_pin, new_pin_confirmed, pick_menu_item, press_select, clear_miniscript):
     def decode_backup(txt):
         import json
         vals = dict()
@@ -810,6 +810,7 @@ def test_se2_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
 
         return vals, trimmed
 
+    clear_miniscript()
     clear_all_tricks()
 
     # - make wallets of all duress types (x2 each)
@@ -847,9 +848,15 @@ def test_se2_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
     assert 'duress_1002_words' in trimmed
     assert 'duress_1003_words' in trimmed
 
+    clear_all_tricks()
     unit_test('devtest/clear_seed.py')
-    
-    repl.exec(f'import backups; backups.restore_from_dict_ll({vals!r})')
+
+    # Real bootrom clears PA_ZERO_SECRET when pa.change() installs the restored
+    # secret, but sim_secel does not update that response flag.
+    repl.exec(f'import backups; from pincodes import PA_ZERO_SECRET; '
+              f'pa.state_flags &= ~PA_ZERO_SECRET; d={vals!r}; '
+              'raw,_=backups.extract_raw_secret(d); '
+              'backups.restore_from_dict_ll(d, raw)')
 
     # recover from recovery
     repl.exec(f'import backups; pa.setup(pa.pin); pa.login(); from actions import goto_top_menu; goto_top_menu()')
@@ -865,6 +872,10 @@ def test_se2_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
         vals['setting.nfc'] = 0  # restoring from backup always set NFC to default OFF
     if 'setting.vidsk' in vals and vals['setting.vidsk']:
         vals['setting.vidsk'] = 0  # restoring from backup always set VDisk to default OFF
+
+    tp1 = {pin: spec[1:] for pin, spec in vals.pop('setting.tp').items()}
+    tp2 = {pin: spec[1:] for pin, spec in vals2.pop('setting.tp').items()}
+    assert tp1 == tp2
 
     assert vals == vals2
     assert trimmed == tr2

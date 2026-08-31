@@ -11,10 +11,16 @@ The entrypoint makefile for repro builds.
 The `repro` command in `shared.mk` is the first step in the repro build process, which triggers a docker build and run process.
 
 ```makefile
+repro: submods-match code-committed
 repro: 
 	docker build -t coldcard-build - < dockerfile.build
-	(cd ..; docker run $(DOCK_RUN_ARGS) sh src/stm32/repro-build.sh $(VERSION_STRING) $(MK_NUM))
+	(cd ..; docker run $(DOCK_RUN_ARGS) sh src/stm32/repro-build.sh $(VERSION_STRING) $(HW_MODEL) $(PARENT_MKFILE))
 ```
+
+`$(HW_MODEL)` is the model string (e.g. `mk4`, `q1`) and `$(PARENT_MKFILE)` is the
+top-level makefile being used (`MK-Makefile` or `Q1-Makefile`). The `submods-match`
+and `code-committed` prerequisites ensure the submodules and working tree are clean
+before a repro build.
 
 Below are interesting sections from the docker logs that give an idea as to what is going on in build process:
 
@@ -61,19 +67,19 @@ Successfully installed signit-1.0
 
 ...
 
-+ make -f MK4-Makefile setup
++ make -f MK-Makefile setup
 
 ...
 
-+ make -f MK4-Makefile firmware-signed.bin firmware-signed.dfu production.bin dev.dfu firmware.lss firmware.elf
++ make -f MK-Makefile firmware-signed.bin firmware-signed.dfu production.bin dev.dfu firmware.lss firmware.elf
 
 ...
 
-signit sign -b l-port/build-COLDCARD_MK4 -m 4 5.0.7 -o firmware-signed.bin
+signit sign -b l-port/build-COLDCARD_MK4 -m mk4 5.0.7 -o firmware-signed.bin
 
 ...
 
-signit sign -m 4 5.0.7 -r firmware-signed.bin -k 1 -o production.bin
+signit sign -m mk4 5.0.7 -r firmware-signed.bin -k 1 -o production.bin
 You don't have that key (1), so using key zero instead!
 ...
 
@@ -96,7 +102,7 @@ production.bin
 
 ...
 
-+ make -f MK4-Makefile 'PUBLISHED_BIN=/tmp/checkout/firmware/releases/2022-10-05T1724-v5.0.7-mk4-coldcard.dfu' check-repro
++ make -f MK-Makefile 'PUBLISHED_BIN=/tmp/checkout/firmware/releases/2022-10-05T1724-v5.0.7-mk4-coldcard.dfu' check-repro
 
 ...
 
@@ -183,7 +189,7 @@ To summarize `check-repro`:
 
 - `split` (cli/signit.py: Line 153-175) is run against the release `*.dfu` resulting in a `check-fw.bin` and `check-bootrom.bin`. "This splits the DFU file into the two parts it contains: the main firmware (COLDCARD application) and the boot loader code."
 
-- `check` (cli/signit.py: Line 176-241) is run against each the release `check-fw.bin` and our built `firmware-signed.bin`.
+- `check` (cli/signit.py: Line 176-243) is run against each the release `check-fw.bin` and our built `firmware-signed.bin`.
 
 - a hexdump is taken of each the release `check-fw.bin` and our built `firmware-signed.bin` piped through $TRIM_SIG which removes 64 bytes of signature data and subsitutes it with a common string.
 

@@ -5,7 +5,7 @@
 # Unattended signing of transactions and messages, subject to a set of rules.
 #
 import ustruct, chains, sys, gc, uio, ujson, uos, utime, ckcc, ngu
-from utils import problem_file_line, cleanup_deriv_path, match_deriv_path
+from utils import problem_file_line, cleanup_deriv_path, match_deriv_path, keypath_to_str
 from utils import cleanup_payment_address
 from pincodes import AE_LONG_SECRET_LEN
 from stash import blank_object
@@ -222,7 +222,8 @@ class ApprovalRule:
         # if specified, 'wallet' must be an existing miniscript wallet's name
         if self.wallet and self.wallet != '1':
             msc_names = [msc.name for msc in MiniScriptWallet.iter_wallets()]
-            assert self.wallet in msc_names, "unknown wallet: " + self.wallet
+            assert msc_names.count(self.wallet) == 1, \
+                "unknown or ambiguous wallet: " + self.wallet
 
         # patterns must be valid
         for p in self.patterns:
@@ -654,6 +655,15 @@ class HSMPolicy:
         assert not glob.hsm_active
         glob.hsm_active = self
 
+        # HSM is the locked-down operating mode: shut down peripherals
+        # that enlarge the USB-stack interaction surface.
+        # - VDisk: MSC bulk OUT and HID OUT share the STM32 OTG_FS RX FIFO;
+        #   under load this can wedge the HID OUT endpoint permanently
+        if glob.VD is not None:
+            glob.VD.shutdown()
+        if glob.NFC is not None:
+            glob.NFC.shutdown()
+
         self.start_time = utime.ticks_ms()
 
         if new_file:
@@ -871,16 +881,44 @@ class HSMPolicy:
                 # do this super early so always cleared even if other issues
                 local_ok = self.consume_local_code(psbt_sha)
 
-                if not self.rules:
-                    raise ValueError("no txn signing allowed")
-
                 # reject anything with warning, probably
                 if psbt.warnings:
-                    print(psbt.warnings)
                     if self.warnings_ok:
                         log.info("Txn has warnings, but policy is to accept anyway.")
                     else:
                         raise ValueError("has %d warning(s)" % len(psbt.warnings))
+
+                if psbt.por322:
+                    if not self.msg_paths:
+                        raise ValueError("Message signing not permitted")
+
+                    for inp in psbt.inputs:
+                        if inp.fully_signed or not inp.sp_idxs:
+                            continue
+
+                        paths = []
+                        uses_wif = bool(inp.wif_key)
+                        if not uses_wif:
+                            for sp_idx in inp.sp_idxs:
+                                if inp.taproot_subpaths:
+                                    key, path_coords = inp.taproot_subpaths[sp_idx]
+                                    path_coords = path_coords[2]
+                                else:
+                                    key, path_coords = inp.subpaths[sp_idx]
+
+                                uses_wif |= bool(psbt.key_in_wif_store(inp.get(key)))
+                                paths.append(keypath_to_str(inp.parse_xfp_path(path_coords)))
+
+                        if uses_wif and 'any' not in self.msg_paths:
+                            raise ValueError("WIF Store message signing requires any path")
+                        if not uses_wif and not any(match_deriv_path(self.msg_paths, p) for p in paths):
+                            raise ValueError("Message signing not enabled for that path")
+
+                    self.approve(log, "BIP-322 message signing allowed")
+                    return 'y'
+
+                if not self.rules:
+                    raise ValueError("no txn signing allowed")
 
                 # See who has entered creditials already (all must be valid).
                 users = []

@@ -12,8 +12,9 @@ from public_constants import AF_P2TR, AF_P2WSH, AF_CLASSIC, AF_P2SH, AF_P2WSH_P2
 from menu import MenuSystem, MenuItem, start_chooser
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, OK, X, ux_enter_bip32_index
 from files import CardSlot, CardMissingError, needs_microsd
-from utils import problem_file_line, xfp2str, to_ascii_printable, swab32, show_single_address
-from charcodes import KEY_QR, KEY_CANCEL, KEY_NFC, KEY_ENTER
+from utils import (problem_file_line, xfp2str, to_ascii_printable, swab32,
+                   show_single_address, max_signers)
+from charcodes import KEY_QR, KEY_NFC
 from glob import settings, DESC_CACHE
 
 # Arbitrary value, not 0 or 1, used to derive a pubkey from preshared xpub in Key Teleport
@@ -61,7 +62,7 @@ class MasterSingleSigWallet(WalletABC):
     def __init__(self, addr_fmt, path=None, account_idx=0, chain_name=None):
         # Construct a wallet based on current master secret, and chain.
         # - path is optional, and then we use standard path for addr_fmt
-        # - path can be overriden when we come here via address explorer
+        # - path can be overridden when we come here via address explorer
 
         n = chains.addr_fmt_label(addr_fmt)
         if not version.has_qwerty:
@@ -160,8 +161,6 @@ class MiniScriptWallet(WalletABC):
     def __init__(self, name, desc_tmplt, keys_info, af, ik_u=None,
                  desc=None, m_n=None, bip67=None, chain_type=None):
 
-        assert 1 <= len(name) <= MAX_NAME_LEN, "name len"
-
         self.storage_idx = -1
         self.name = name
         self.desc_tmplt = desc_tmplt
@@ -225,6 +224,20 @@ class MiniScriptWallet(WalletABC):
     def exists(cls):
         # are there any wallets defined?
         return bool(settings.get(cls.skey, []))
+
+    @classmethod
+    def make_unique_name(cls, base):
+        assert 1 <= len(base) <= MAX_NAME_LEN
+        names = [rec[0] for rec in settings.get(cls.skey, [])]
+        if base not in names:
+            return base
+
+        prefix = base + ' #'
+        nums = [int(n[len(prefix):]) for n in names
+                if n.startswith(prefix) and n[len(prefix):].isdigit()]
+        name = prefix + str(max([1] + nums) + 1)
+        assert len(name) <= MAX_NAME_LEN
+        return name
 
     @classmethod
     def iter_wallets(cls, name=None, addr_fmts=None):
@@ -506,6 +519,8 @@ class MiniScriptWallet(WalletABC):
 
     @classmethod
     def from_descriptor_obj(cls, name, desc_obj, desc_tmplt=None, keys_info=None):
+        name = to_ascii_printable(name)
+        assert 1 <= len(name) <= MAX_NAME_LEN, "name len"
         if not desc_tmplt or not keys_info:
             # BIP388 wasn't generated yet - generating from descriptor upon import/enroll
             desc_tmplt, keys_info = desc_obj.bip388_wallet_policy()
@@ -535,7 +550,6 @@ class MiniScriptWallet(WalletABC):
                 desc_obj, cs = Descriptor.from_string(config.strip(), checksum=True)
                 name = cs
             else:
-                name = to_ascii_printable(name)
                 desc_obj = Descriptor.from_string(config.strip())
 
             desc_obj.validate(cls.disable_checks)
@@ -557,7 +571,7 @@ class MiniScriptWallet(WalletABC):
         #  - capture address format based on path used for my leg (if standards compliant)
 
         assert N == len(xpubs_list)
-        assert 1 <= M <= N <= 20, 'M/N range'
+        assert 1 <= M <= N <= max_signers(addr_fmt), 'M/N range'
         my_xfp = settings.get('xfp')
 
         has_mine = 0
@@ -569,12 +583,13 @@ class MiniScriptWallet(WalletABC):
             keys.append(k)
 
         assert has_mine == 1         # 'my key not included'
+        assert len(keys) == len(set(keys)), "duplicate cosigner key"
 
-        name = 'PSBT-%d-of-%d' % (M, N)
         # this will always create sortedmulti multisig (BIP-67)
         # because BIP-174 came years after wide-spread acceptance of BIP-67 policy
         desc_obj = Descriptor(miniscript=Sortedmulti(Number(M), *keys),
                               addr_fmt=addr_fmt)
+        name = cls.make_unique_name('PSBT-%dof%d' % (M, N))
         return cls.from_descriptor_obj(name, desc_obj)
 
     def validate_psbt_xpubs(self, psbt_xpubs):
@@ -1240,7 +1255,8 @@ P2TR:
         if ch != "y":
             return
 
-    acct = await ux_enter_bip32_index('Account Number:') or 0
+    acct = await ux_enter_bip32_index('Account Number:')
+    if acct is None: return
 
     def render(acct_num):
         sign_der = None
@@ -1424,7 +1440,7 @@ async def multisig_640_migration(multisig_wallets):
 
         new_opts = {
             "af": af,
-            "m_n": (M, N),
+            "m_n": [M, N],
             "b67": bip67
         }
         if ct != "BTC":

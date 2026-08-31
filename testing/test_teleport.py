@@ -16,6 +16,9 @@ from test_ephemeral import SEEDVAULT_TEST_DATA
 from test_backup import make_big_notes
 from ckcc.protocol import CCProtocolPacker
 from test_hobble import set_hobble
+from test_notes import goto_notes
+from ckcc_protocol.protocol import CCProtoError
+from psbt import BasicPSBT
 
 # All tests in this file are exclusively meant for Q
 #
@@ -471,7 +474,7 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, num_ins, dev, clea
         f.write(psbt)
 
     cur_wallet = 0
-    my_xfp = select_wallet(cur_wallet, no_import=hobbled)
+    my_xfp = select_wallet(cur_wallet, no_import=hobbled, clear_wallets=False)
 
     _, updated = try_sign(psbt, accept_ms_import=False, exit_export_loop=False)
     with open(f'{sim_root_dir}/debug/myself-after-1.psbt', 'wb') as f:
@@ -528,7 +531,7 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, num_ins, dev, clea
         # assert msg in story
 
         # switch personalities, and try to read that QR
-        new_xfp = select_wallet(idx, no_import=hobbled)
+        new_xfp = select_wallet(idx, no_import=hobbled, clear_wallets=False)
         assert new_xfp == next_xfp
         my_xfp = next_xfp
         assert settings_get('xfp') == my_xfp
@@ -546,6 +549,8 @@ def test_teleport_ms_sign(M, use_regtest, make_myself_wallet, num_ins, dev, clea
         if 'Finalized TX' in body:
             break
 
+        assert "shared via USB" not in body
+        assert "Updated PSBT is" not in body  # not written to SD/Virtual Disk
         assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
         num_sigs_needed -= 1
 
@@ -651,6 +656,54 @@ def test_teleport_big_ms(clear_miniscript, fake_ms_txn, try_sign, cap_story,
     press_cancel()
 
 
+def test_teleport_file_psbt_uses_loaded_file(clear_miniscript, fake_ms_txn, cap_story,
+                                             need_keypress, cap_menu, pick_menu_item,
+                                             grab_payload, rx_complete, set_master_key,
+                                             goto_home, open_microsd, import_ms_wallet,
+                                             press_cancel, remote_backup_lease, dev):
+    clear_miniscript()
+    M, N = 2, 4
+    keys = import_ms_wallet(M, N, name="ms-tp", unique=11, accept=True, bip67=True)
+    psbt = fake_ms_txn(1, 1, M, keys)
+
+    fname = "ms-tp.psbt"
+    open_microsd(fname, "wb").write(psbt)
+
+    remote_backup_lease()
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("File Management")
+    pick_menu_item("Teleport Multisig/Miniscript PSBT")
+    need_keypress("1")
+    try:
+        pick_menu_item(fname)
+    except KeyError:
+        pass
+
+    menu = cap_menu()
+    with pytest.raises(CCProtoError) as exc:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 0))
+    assert 'not allowed' in str(exc.value)
+    assert len(menu) == N
+    target = next(item for item in menu if "YOU" not in item)
+    target_xfp = str2xfp(target[1:9])
+    pick_menu_item(target)
+
+    pw, _, qr_raw = grab_payload("E")
+
+    # Become the selected co-signer and enroll the same edge miniscript wallet.
+    node, = [node for xfp, node, _ in keys if xfp == target_xfp]
+    set_master_key(node.hwif(as_private=True))
+    import_ms_wallet(M, N, name="www", keys=keys, accept=True, bip67=True)
+
+    # Before the fix, this decoded stale/zero output-buffer bytes instead of
+    # the PSBT loaded from the selected file.
+    rx_complete(("E", qr_raw), pw, expect_xfp=simulator_fixed_xfp)
+    title, _ = cap_story()
+    assert title == "OK TO SEND?"
+    press_cancel()
+
+
 @pytest.mark.manual
 def test_teleport_real_ms(dev, fake_ms_txn, sim_root_dir):
     #
@@ -714,7 +767,10 @@ def test_send_backup(testcase, rx_start, tx_start, cap_menu, enter_complex, pick
 
     title, body = cap_story()
 
-    assert 'Sending complete backup' in body
+    assert ('Sending complete backup, including master secret, seed vault (if any), '
+            'miniscript wallets' in body)
+    assert 'otherwise only the transferred secret and miniscripts' in body
+    assert ',,' not in body
 
     press_select()
 
@@ -755,6 +811,50 @@ def test_send_backup(testcase, rx_start, tx_start, cap_menu, enter_complex, pick
         settings_set('notes', [])
 
 
+def test_send_backup_tmp_story(rx_start, tx_start, pick_menu_item, cap_story, press_cancel,
+                               generate_ephemeral_words, set_bip39_pw, restore_main_seed):
+    def check_story(expected):
+        code, rx_pubkey = rx_start()
+        tx_start(rx_pubkey, code)
+        pick_menu_item('Full COLDCARD Backup')
+
+        _, body = cap_story()
+        assert ('Sending complete backup, including %s, miniscript wallets' % expected) in body
+        assert 'otherwise only the transferred secret and miniscripts' in body
+        assert ',,' not in body
+        press_cancel()
+
+    generate_ephemeral_words(num_words=12, from_main=True, seed_vault=False)
+    check_story('current active temporary secret')
+    restore_main_seed()
+
+    set_bip39_pw('teleport-test')
+    check_story('BIP-39 Passphrase wallet')
+    restore_main_seed()
+
+
+def test_teleport_backup_invalid_raw_secret(grab_payload, rx_complete, goto_home,
+                                            pick_menu_item, cap_story, is_q1):
+    if not is_q1:
+        raise pytest.skip("Q1 Key Teleport")
+    from teleport_protocol import sender_step1
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Key Teleport (start)")
+    code, _, qr_raw = grab_payload("R")
+
+    bad_backup = b'chain = "XTN"\n'
+    cleartext = b"b" + bad_backup
+    noid_txt, encrypted_payload, _, _ = sender_step1(code, qr_raw, cleartext)
+
+    rx_complete(("S", encrypted_payload), noid_txt)
+    time.sleep(.5)
+    title, body = cap_story()
+    assert title == "FAILED"
+    assert "Invalid backup" in body
+
+
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("taproot", [True, False])
 @pytest.mark.parametrize("keys", [True, False, None])
@@ -766,7 +866,7 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
                                   need_keypress, offer_minsc_import, load_export, reset_seed_words,
                                   cap_story, cap_menu, grab_payload, sim_root_dir, rx_complete,
                                   settings_set, try_sign, settings_get, press_cancel, keys,
-                                  cap_screen):
+                                  cap_screen, microsd_path):
 
     reset_seed_words()
     use_regtest()
@@ -875,9 +975,14 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
     for i in range(len(signers)):
         # expect: a menu of other signers to pick from
         if i == (len(signers) - 1):
-            done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
-            resp_len, chk = done
-            psbt_out = dev.download_file(resp_len, chk)
+            need_keypress("1")  # save result to SD
+            time.sleep(.25)
+            title, body = cap_story()
+            assert "Updated PSBT is:" in body
+            psbt_fname = body.split("Updated PSBT is:\n\n")[1].split("\n\n")[0]
+            with open(microsd_path(psbt_fname), "rb") as f:
+                psbt_out = f.read()
+
             res = wo.finalizepsbt(base64.b64encode(psbt_out).decode())
             assert res["complete"]
             tx_hex = res["hex"]
@@ -964,6 +1069,194 @@ def test_teleport_miniscript_sign(dev, taproot, policy, get_cc_key, bitcoind, us
         title, body = cap_story()
 
         assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
+
+
+@pytest.mark.unfinalized
+def test_teleport_multisig_signers_per_input(use_regtest, clear_miniscript, goto_home,
+                                             make_myself_wallet, fake_ms_txn, try_sign,
+                                             cap_story, need_keypress, cap_menu, cap_screen,
+                                             press_cancel):
+    use_regtest()
+    clear_miniscript()
+    goto_home()
+
+    M = 3
+    keys, select_wallet = make_myself_wallet(M, addr_fmt="p2wsh")
+    path = str_to_path("m/45h/0/0")
+    psbt = fake_ms_txn(2, 1, M, keys, inp_addr_fmt="p2wsh",
+                       path_mapper=lambda _: list(path))
+
+    original = BasicPSBT().parse(psbt)
+    assert set(original.inputs[0].bip32_paths) == set(original.inputs[1].bip32_paths)
+
+    signed = []
+    for idx in (0, 1):
+        select_wallet(idx)
+        _, updated = try_sign(psbt)
+        po = BasicPSBT().parse(updated)
+        assert all(len(i.part_sigs) == 1 for i in po.inputs)
+        signed.append(po)
+
+    # Input 0 has signer A; input 1 has signer B.
+    mixed = signed[0]
+    mixed.inputs[1].part_sigs = signed[1].inputs[1].part_sigs
+    missing = {xfp2str(keys[i][0]) for i in (0, 1, 3)}
+
+    my_xfp = select_wallet(2)
+    _, updated = try_sign(mixed.as_bytes(), exit_export_loop=False)
+    updated = BasicPSBT().parse(updated)
+    assert all(len(i.part_sigs) == 2 for i in updated.inputs)
+
+    title, body = cap_story()
+    assert title == "PSBT Signed"
+    assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
+
+    need_keypress('t')
+    time.sleep(.1)
+    menu = cap_menu()
+    assert len(menu) == len(keys)
+    for xfp in missing:
+        item, = [i for i in menu if xfp in i]
+        assert "DONE" not in item
+    assert "%s] Co-signer" % xfp2str(my_xfp) in cap_screen()
+    assert "YOU \x14\x00" in cap_screen()
+    press_cancel()
+
+
+@pytest.mark.bitcoind
+def test_teleport_tapscript_signers_per_input(reset_seed_words, use_regtest, clear_miniscript,
+                                              build_musig_wallet, bitcoind, try_sign, cap_story,
+                                              need_keypress, cap_menu, cap_screen, press_cancel):
+    reset_seed_words()
+    use_regtest()
+    clear_miniscript()
+
+    name = "tele_tapscript"
+    desc = "tr($H,sortedmulti_a(3,$0/<0;1>/*,$1/<0;1>/*,$2/<0;1>/*))"
+    wo, signers, _ = build_musig_wallet(name, 3, tapscript=desc, num_utxo_available=False)
+
+    addr = wo.getnewaddress("", "bech32m")
+    bitcoind.supply_wallet.sendtoaddress(addr, 10)
+    bitcoind.supply_wallet.sendtoaddress(addr, 11)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    unspent = wo.listunspent()
+    assert len(unspent) == 2
+    inputs = [{"txid": u["txid"], "vout": u["vout"]} for u in unspent]
+    outputs = [{bitcoind.supply_wallet.getnewaddress(): wo.getbalance()}]
+    psbt = wo.walletcreatefundedpsbt(
+        inputs, outputs, 0, {"fee_rate": 2, "subtractFeeFromOutputs": [0]}
+    )["psbt"]
+
+    signed = []
+    for signer in signers:
+        result = signer.walletprocesspsbt(psbt, True, "DEFAULT", True, False)
+        po = BasicPSBT().parse(base64.b64decode(result["psbt"]))
+        assert all(len(i.taproot_script_sigs) == 1 for i in po.inputs)
+        signed.append(po)
+
+    # Input 0 has signer A; input 1 has signer B. Both still need the other signer.
+    mixed = signed[0]
+    mixed.inputs[1].taproot_script_sigs = signed[1].inputs[1].taproot_script_sigs
+
+    def signed_xfp(inp):
+        xonly, _ = next(iter(inp.taproot_script_sigs))
+        path = inp.taproot_bip32_paths[xonly]
+        assert path[0] == 1
+        return path[33:37].hex().upper()
+
+    missing = {signed_xfp(mixed.inputs[0]), signed_xfp(mixed.inputs[1])}
+    assert len(missing) == 2
+
+    _, updated = try_sign(mixed.as_bytes(), accept=True, exit_export_loop=False)
+    updated = BasicPSBT().parse(updated)
+    assert all(len(i.taproot_script_sigs) == 2 for i in updated.inputs)
+
+    title, body = cap_story()
+    assert title == "PSBT Signed"
+    assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
+
+    need_keypress('t')
+    time.sleep(.1)
+    menu = cap_menu()
+    assert len(menu) == 3
+    for xfp in missing:
+        item, = [i for i in menu if xfp in i]
+        assert "DONE" not in item
+    assert "YOU \x14\x00" in cap_screen()
+    press_cancel()
+
+
+@pytest.mark.bitcoind
+def test_teleport_musig_signers_per_input(reset_seed_words, use_regtest, clear_miniscript,
+                                          build_musig_wallet, bitcoind, try_sign, cap_story,
+                                          need_keypress, cap_menu, cap_screen, press_cancel):
+    reset_seed_words()
+    use_regtest()
+    clear_miniscript()
+
+    name = "tele_musig_inputs"
+    wo, signers, _ = build_musig_wallet(name, 3, num_utxo_available=False)
+
+    addr = wo.getnewaddress("", "bech32m")
+    bitcoind.supply_wallet.sendtoaddress(addr, 10)
+    bitcoind.supply_wallet.sendtoaddress(addr, 11)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    unspent = wo.listunspent()
+    assert len(unspent) == 2
+    inputs = [{"txid": u["txid"], "vout": u["vout"]} for u in unspent]
+    outputs = [{bitcoind.supply_wallet.getnewaddress(): wo.getbalance()}]
+    psbt = wo.walletcreatefundedpsbt(
+        inputs, outputs, 0, {"fee_rate": 2, "subtractFeeFromOutputs": [0]}
+    )["psbt"]
+
+    # First round: collect every public nonce.
+    for signer in signers:
+        psbt = signer.walletprocesspsbt(psbt, True, "DEFAULT", True, False)["psbt"]
+    _, nonce_psbt = try_sign(base64.b64decode(psbt))
+    nonce_po = BasicPSBT().parse(nonce_psbt)
+    assert all(len(i.musig_pubnonces) == 3 for i in nonce_po.inputs)
+    assert all(not i.musig_part_sigs for i in nonce_po.inputs)
+
+    # Second round: retain signer A only on input 0 and signer B only on input 1.
+    signed = []
+    nonce_psbt = base64.b64encode(nonce_psbt).decode()
+    for signer in signers:
+        result = signer.walletprocesspsbt(nonce_psbt, True, "DEFAULT", True, False)
+        po = BasicPSBT().parse(base64.b64decode(result["psbt"]))
+        assert all(len(i.musig_part_sigs) == 1 for i in po.inputs)
+        signed.append(po)
+
+    mixed = signed[0]
+    mixed.inputs[1].musig_part_sigs = signed[1].inputs[1].musig_part_sigs
+
+    def signed_xfp(inp):
+        participant, _, _ = next(iter(inp.musig_part_sigs))
+        path = inp.taproot_bip32_paths[participant[1:]]
+        offset = 1 + (path[0] * 32)
+        return path[offset:offset+4].hex().upper()
+
+    missing = {signed_xfp(mixed.inputs[0]), signed_xfp(mixed.inputs[1])}
+    assert len(missing) == 2
+
+    _, updated = try_sign(mixed.as_bytes(), exit_export_loop=False)
+    updated = BasicPSBT().parse(updated)
+    assert all(len(i.musig_part_sigs) == 2 for i in updated.inputs)
+
+    title, body = cap_story()
+    assert title == "PSBT Signed"
+    assert '(T) to use Key Teleport to send PSBT to other co-signers' in body
+
+    need_keypress('t')
+    time.sleep(.1)
+    menu = cap_menu()
+    assert len(menu) == 3
+    for xfp in missing:
+        item, = [i for i in menu if xfp in i]
+        assert "DONE" not in item
+    assert "YOU \x14\x00" in cap_screen()
+    press_cancel()
 
 
 @pytest.mark.bitcoind
@@ -1163,12 +1456,22 @@ def test_teleport_musig_sign(tapscript, wtype, reset_seed_words, use_regtest, cl
     title, body = cap_story()
     assert '(T) to use Key Teleport to send PSBT to other co-signers' not in body  # done
     assert "Finalized TX ready for broadcast" in body
-    txid = body.split("\n\n")[1].split()[1]
+    split_body = body.split("\n\n")
+    for p in split_body:
+        if "TXID" in p:
+            txid = p.split()[1]
+            break
+    else:
+        assert False, "TXID not found"
 
-    done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
-    resp_len, chk = done
-    tx_out = dev.download_file(resp_len, chk)
-    tx_hex = tx_out.hex()
+    need_keypress("1")  # save result to SD
+    time.sleep(.25)
+    title, body = cap_story()
+    assert "Finalized transaction (ready for broadcast):" in body
+    tx_fname = body.split("Finalized transaction (ready for broadcast):\n\n")[1].split("\n\n")[0]
+    with open(microsd_path(tx_fname), "r") as f:
+        tx_hex = f.read().strip()
+
     res = wo.testmempoolaccept([tx_hex])
     assert res[0]["allowed"]
     res = wo.sendrawtransaction(tx_hex)
@@ -1176,25 +1479,23 @@ def test_teleport_musig_sign(tapscript, wtype, reset_seed_words, use_regtest, cl
     press_cancel()
 
 
-def test_hobble_limited(set_hobble, scan_a_qr, cap_menu, cap_screen, pick_menu_item, grab_payload,
-                        rx_complete, cap_story, press_cancel, press_select, settings_get,
-                        settings_set, restore_backup_unpacked, main_do_over, set_encoded_secret,
-                        reset_seed_words, make_big_notes):
+def test_hobble_limited(set_hobble, cap_screen, rx_complete, reset_seed_words, goto_home):
     # verify: in hobbled mode, KT is blocked for everything except multisig cases
-
+    reset_seed_words()
+    goto_home()
     set_hobble(True)
 
     from bbqr import split_qrs
 
     _, parts = split_qrs(b's'*33, 'R')
     rx_complete(parts[0], '12345678', expect_fail=True)
-    time.sleep(.1)
+    time.sleep(.3)
     last = cap_screen().split('\n')[-1]
     assert last == 'KT Blocked'
 
     _, parts = split_qrs(b's'*33, 'S')
     rx_complete(parts[0], 'abcdefgh', expect_fail=True)
-    time.sleep(.1)
+    time.sleep(.3)
     last = cap_screen().split('\n')[-1]
     assert last == 'KT Blocked'
 

@@ -2,7 +2,7 @@
 #
 # sffile.py - file-like objects stored in PSRAM (Mk4+) (used to be SPI Flash)
 #
-# - implements stream IO protoccol
+# - implements stream IO protocol
 # - random read, sequential write
 # - only a few of these are possible
 # - the offset is the file name

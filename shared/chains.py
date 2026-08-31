@@ -9,12 +9,13 @@ from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2TR, AF_BARE_PK
 from public_constants import AF_P2SH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH
 from public_constants import AFC_PUBKEY, AFC_BECH32, AFC_SCRIPT
 from public_constants import TAPROOT_LEAF_TAPSCRIPT, TAPROOT_LEAF_MASK
+from block_height import BLOCK_HEIGHT
 from serializations import hash160, ser_compact_size, disassemble, ser_string
 from ucollections import namedtuple
 from opcodes import OP_RETURN, OP_1, OP_16
 from precomp_tag_hash import TAP_TWEAK_H, TAP_LEAF_H
 
-
+# DO NOT CHANGE ORDER! PickAddrFmtMenu.__init__ expects correct order
 SINGLESIG_AF = (AF_P2WPKH, AF_CLASSIC, AF_P2TR, AF_P2WPKH_P2SH)
 
 # See SLIP 132 <https://github.com/satoshilabs/slips/blob/master/slip-0132.md>
@@ -45,9 +46,8 @@ def taptweak(internal_key, tweak=None):
     return xo_pubkey_tweaked.to_bytes()
 
 def tapscript_serialize(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
-    # leaf version is only 7 msb
-    lv = leaf_version % TAPROOT_LEAF_MASK
-    return bytes([lv]) + ser_string(script)
+    assert (leaf_version & ~TAPROOT_LEAF_MASK) == 0, "Tapleaf ver 0x%02x" % leaf_version
+    return bytes([leaf_version]) + ser_string(script)
 
 def tapleaf_hash(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
     return ngu.hash.sha256t(TAP_LEAF_H, tapscript_serialize(script, leaf_version), True)
@@ -247,7 +247,7 @@ class ChainsBase:
             return ngu.codecs.b58_encode(cls.b58_script + script[2:2+20])
 
         # segwit v0 (P2WPKH, P2WSH)
-        if script[0] == 0 and script[1] in (0x14, 0x20) and (ll-2) == script[1]:
+        if ll in (22, 34) and script[0] == 0 and script[1] in (0x14, 0x20) and (ll-2) == script[1]:
             return ngu.codecs.segwit_encode(cls.bech32_hrp, script[0], script[2:])
 
         # segwit v1 (P2TR) and later segwit version
@@ -258,56 +258,40 @@ class ChainsBase:
 
     @classmethod
     def op_return(cls, script):
-        # returns decoded string op return data if script is op return otherwise None
-        gen = disassemble(script)
-        script_type = next(gen)
-        if OP_RETURN not in script_type:
-            return
+        try:
+            gen = disassemble(script)
+            item, opcode = next(gen)
+        except (StopIteration, ValueError):
+            return None
+
+        if opcode != OP_RETURN:
+            return None
 
         try:
-            data = next(gen)[0]
-            if data:
-                return data
-        except StopIteration:
-            pass
+            try:
+                data, opcode = next(gen)
+            except StopIteration:
+                return b""  # bare OP_RETURN
 
-        return b""
+            try:
+                next(gen)
+                return None  # extra ops/pushes -> raw script display
+            except StopIteration: pass
 
-    @classmethod
-    def possible_address_fmt(cls, addr):
-        # Given a text (serialized) address, return what
-        # address format applies to the address, but
-        # for AF_P2SH case, could be: AF_P2SH,  AF_P2WPKH_P2SH, AF_P2WSH_P2SH. .. we don't know
-        hrp = cls.bech32_hrp + "1"
-        if addr.startswith(hrp):
-            if addr.startswith(hrp+'p'):
-                # segwit v1 (any ver=1 script or address, but for now just taproot...)
-                return AF_P2TR
-            elif addr.startswith(hrp+'q'):
-                # segwit v0
-                return AF_P2WPKH if len(addr) < 55 else AF_P2WSH
+        except ValueError:
+            return None
 
-            return 0
-
-        try:
-            raw = ngu.codecs.b58_decode(addr)
-        except ValueError: 
-            # not base58, not an error
-            return 0
-
-        if raw[0] == cls.b58_addr[0]:
-            return AF_CLASSIC
-        if raw[0] == cls.b58_script[0]:
-            return AF_P2SH
-
-        return 0
-
+        if isinstance(data, bytes):
+            return data
+        if data is None and opcode == 0:
+            return b""  # OP_RETURN OP_0
+        return None
 
 class BitcoinMain(ChainsBase):
     # see <https://github.com/bitcoin/bitcoin/blob/master/src/chainparams.cpp#L140>
     ctype = 'BTC'
     name = 'Bitcoin Mainnet'
-    ccc_min_block = 939464          # Mar 5/2026
+    ccc_min_block = BLOCK_HEIGHT
 
     slip132 = {
         AF_CLASSIC:     Slip132Version(0x0488B21E, 0x0488ADE4, 'x'),
@@ -510,5 +494,14 @@ def verify_recover_pubkey(sig, digest):
         return af, sig.verify_recover(digest).to_bytes()
     except:
         raise ValueError('invalid signature')
+
+
+def type_from_xpub_version(xpub_ver):
+    # https://github.com/satoshilabs/slips/blob/master/slip-0132.md
+    if xpub_ver in [0x0488b21e, 0x049d7cb2, 0x04b24746, 0x0295b43f, 0x02aa7ed3]:
+        return "BTC"
+    else:
+        assert xpub_ver in [0x043587cf, 0x044a5262, 0x045f1cf6, 0x024289ef, 0x02575483]
+        return "XTN"
 
 # EOF

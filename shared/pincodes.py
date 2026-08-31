@@ -361,20 +361,12 @@ class PinAttempt:
         # - call new_main_secret() when main secret changes!
         # - is_secret_blank and is_successful may be wrong now, re-login to get again
 
-    def fetch(self, duress_pin=None, spare_num=0, bypass_tmp=False):
+    def fetch(self, bypass_tmp=False):
         if self.tmp_value and not bypass_tmp:
             # must make a copy here, and must be mutable instance so not reused
-            if spare_num:
-                return bytearray(AE_SECRET_LEN)
             return bytearray(self.tmp_value)
 
-        if duress_pin is None:
-            secret = self.roundtrip(4, spare_num=spare_num)
-        else:
-            # mk3 and earlier
-            secret = self.roundtrip(4, old_pin=duress_pin, get_duress_secret=True)
-
-        return secret
+        return self.roundtrip(4)
 
     def ls_fetch(self):
         # get the "long secret"
@@ -416,8 +408,6 @@ class PinAttempt:
 
         # invalidate descriptor cache - upon new secret load
         glob.DESC_CACHE.clear()
-
-        bypass_tmp = False
         stash.bip39_passphrase = bool(bip39pw)
 
         # capture values we have already
@@ -428,7 +418,6 @@ class PinAttempt:
 
         if raw_secret is None:
             assert pa.tmp_value
-            bypass_tmp = True
             pa.tmp_value = None
             if blank:
                 # wipe current ephemeral secret settings slot
@@ -446,7 +435,7 @@ class PinAttempt:
 
         # Recalculate xfp/xpub values (depends both on secret and chain)
         try:
-            with stash.SensitiveValues(raw_secret, bypass_tmp=bypass_tmp) as sv:
+            with stash.SensitiveValues(raw_secret) as sv:
                 if chain is not None:
                     sv.chain = chain
 

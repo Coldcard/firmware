@@ -20,7 +20,7 @@ import pytest, time, os, pdb
 from bip32 import BIP32Node
 from constants import simulator_fixed_words, simulator_fixed_xprv
 from test_ephemeral import SEEDVAULT_TEST_DATA, WORDLISTS
-from test_ephemeral import confirm_tmp_seed, verify_ephemeral_secret_ui 
+from test_ephemeral import confirm_tmp_seed, verify_ephemeral_secret_ui
 from test_ux import word_menu_entry
 from charcodes import KEY_QR
 
@@ -28,6 +28,7 @@ from charcodes import KEY_QR
 def set_hobble(sim_exec, settings_set, settings_remove, goto_home):
     def doit(mode, enabled={}):     # okeys, words, notes
         assert mode in { True, False, 2 }
+        assert not (set(enabled) - {'okeys', 'words', 'notes'}), enabled
 
         if mode:
             v = dict(en=True, pol={})
@@ -138,8 +139,8 @@ def test_menu_contents(set_hobble, pick_menu_item, cap_menu, en_okeys, en_notes,
     assert set(m) == fm_expect, "File Mgmt menu wrong"
 
 
-def test_h_notes(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set, need_some_notes,
-                 sim_exec, settings_remove):
+def test_h_notes(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set,
+                 need_some_notes, sim_exec, settings_remove, press_cancel):
     '''
         * load a secure note/pw; check readonly once hobbled
             * cannot export
@@ -159,6 +160,12 @@ def test_h_notes(only_q1, set_hobble, pick_menu_item, cap_menu, settings_set, ne
 
     m = cap_menu()
     assert m == [ '"Title Here"', 'View Note', 'Sign Note Text' ]
+
+    set_hobble(True, {'notes', 'okeys'})
+
+    pick_menu_item('Secure Notes & Passwords')
+    pick_menu_item('1: Title Here')
+    assert cap_menu() == ['"Title Here"', 'View Note', 'Sign Note Text', 'Apply as BIP-39 Passphrase']
 
     # clear notes, should not be offered
     settings_remove('notes')
@@ -247,7 +254,8 @@ def test_h_seedvault(sv_empty, set_hobble, pick_menu_item, cap_menu, settings_se
 
     # clear keys from sv, should not be offered in menu, even if okeys set.
     settings_remove('seedvault')
-    set_hobble(True, {'okey'})
+    set_hobble(True, {'okeys'})
+    time.sleep(.1)
 
     m = cap_menu()
     assert 'Seed Vault' not in m
@@ -398,19 +406,26 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
 def test_h_usbcmds(en_okeys, set_hobble, dev):
     # test various usb commands are blocked during hobble
 
-    from ckcc_protocol.protocol import CCProtoError
+    from ckcc_protocol.protocol import CCProtoError, CCProtocolPacker
 
     set_hobble(True, {'okeys'} if en_okeys else {})
 
-    block_list = [ 'back', 'enrl', 'bagi', 'hsms', 'user', 'nwur', 'rmur' ]
+    block_list = ['back', 'enrl', 'mins', 'msdl', 'msls', 'msgt', 'mspl',
+                  'bagi', 'hsms', 'user', 'nwur', 'rmur']
 
     if not en_okeys:
-        block_list.insert(0, 'pass')
+        block_list[0:0] = ['pass', 'rest']
 
     for cmd in block_list:
         with pytest.raises(CCProtoError) as ee:
             got = dev.send_recv(cmd)
         assert 'Spending policy in effect' in str(ee)
+
+    if en_okeys:
+        msg = CCProtocolPacker.restore_backup(1, bytes(32))
+        with pytest.raises(CCProtoError) as ee:
+            dev.send_recv(msg)
+        assert 'Checksum' in str(ee)
 
 
 @pytest.mark.parametrize('en_okeys', [ True, False])
@@ -495,5 +510,5 @@ def test_empty_notes_bug(set_hobble, goto_notes, cap_menu, pick_menu_item, is_q1
     m = cap_menu()
     assert len(m) == 1
     assert m[0] == "(none saved yet)"
-        
+
 # EOF

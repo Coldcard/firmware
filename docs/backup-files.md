@@ -40,14 +40,24 @@ called `ckcc-backup.txt`, but the filename is now picked randomly.
 
 ## BIP39 Passphrase
 
-If BIP39 passphrase is active the default behavior is to back-up
-main wallet - not BIP39 passphrase wallet. From version `5.2.0`
-users can choose to back-up also BIP39 passphrase wallet.
+If BIP39 passphrase is active, the passphrase wallet itself is backed-up,
+as an extended private key (ie. a XPRV) created from seed words plus
+passphrase. Neither the seed words nor the passphrase are part of such backup.
+
+Before versions 5.6.1 (Mk4/Mk5) and 1.5.1Q (Q1), backups defaulted to the
+main wallet. Versions supporting passphrase-wallet backups offered a choice
+between the two. That option is gone, because passphrase can be applied on
+top of another temporary seed, in which case main wallet is not the wallet
+the passphrase was applied to.
 
 ## Ephemeral Seeds
 
 If ephemeral seed is active the default behavior is to always 
 back-up ephemeral wallet instead of the main wallet.
+
+This applies to every path that captures the whole device: `Backup System`,
+`Clone Coldcard` and Key Teleport's `Full COLDCARD Backup`. All of them
+capture the seed in effect, and warn about it beforehand.
 
 ## Limitations
 
@@ -220,4 +230,3 @@ setting.terms_ok = 1
 As you can see, it is a simple text file and if you needed to access your funds
 without the help of a Coldcard, it would be a simple matter to import either the `xprv`
 (BIP32 master) or the mnemonic (BIP39) into another wallet system.
-

@@ -4,11 +4,13 @@
 # 
 # - not working well on simulator right now, but that's not key
 #
-import pytest, struct
+import pytest, struct, hashlib, os
 from bip32 import BIP32Node
 from binascii import b2a_hex
 from constants import simulator_fixed_tprv
 from ckcc_protocol.protocol import MAX_MSG_LEN, CCProtocolPacker, CCProtoError
+from ckcc_protocol.constants import MSG_SIGNING_MAX_LENGTH
+from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_HEADER_MAGIC
 
 @pytest.mark.skip
 def test_usb_fuzz(dev):
@@ -98,7 +100,7 @@ def test_xpub_invalid(dev, path):
     # some bad paths
 
     with pytest.raises(CCProtoError):
-        xpub = dev.send_recv(CCProtocolPacker.get_xpub(path), timeout=None)
+        dev.send_recv(CCProtocolPacker.get_xpub(path), timeout=None)
     
 
 def test_version(dev, is_q1):
@@ -120,8 +122,6 @@ def test_version(dev, is_q1):
 @pytest.mark.parametrize('data_len', [1, 24, 60, 61, 62, 63, 64, 1000])
 def test_upload_short(dev, data_len):
     # upload a few really short files
-    
-    from hashlib import sha256
 
     data = b'a'*data_len
 
@@ -129,17 +129,11 @@ def test_upload_short(dev, data_len):
     assert v == 0
     chk = dev.send_recv(CCProtocolPacker.sha256())
 
-    assert chk == sha256(data).digest(), 'bad hash'
-
-    # clear screen / test a degerate case
-    dev.send_recv(CCProtocolPacker.upload(256, 256, b''))
+    assert chk == hashlib.sha256(data).digest(), 'bad hash'
 
 @pytest.mark.parametrize('pkt_len', [256, 1024, 2048])
 def test_upload_long(dev, pkt_len, count=5, data=None):
     # upload a larger "file"
-    
-    from hashlib import sha256
-    import os
 
     data = data or os.urandom(pkt_len * count)
 
@@ -147,10 +141,11 @@ def test_upload_long(dev, pkt_len, count=5, data=None):
         v = dev.send_recv(CCProtocolPacker.upload(pos, len(data), data[pos:pos+pkt_len]))
         assert v == pos
         chk = dev.send_recv(CCProtocolPacker.sha256())
-        assert chk == sha256(data[0:pos+pkt_len]).digest(), 'bad hash'
+        assert chk == hashlib.sha256(data[0:pos+pkt_len]).digest(), 'bad hash'
 
-    # clear screen / test a degerate case
-    dev.send_recv(CCProtocolPacker.upload(256, 256, b''))
+@pytest.mark.parametrize('data_len', [0x3f01, 0x3f02, 0x3f03])
+def test_upload_psbt_at_firmware_probe_boundary(dev, data_len):
+    dev.upload_file(b'psbt\xff' + bytes(data_len - 5))
 
 def test_upload_fails(dev):
     # incorrect file upload cases
@@ -164,6 +159,43 @@ def test_upload_fails(dev):
     with pytest.raises(CCProtoError):
         # bad position
         v = dev.send_recv(CCProtocolPacker.upload(1000, 3, data))
+
+def test_upload_rejects_sparse_offset(dev):
+    dev.send_recv(CCProtocolPacker.upload(0, 768, bytes(256)))
+
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.upload(512, 768, bytes(256)))
+    assert 'offset' in str(e.value)
+    assert dev.send_recv(CCProtocolPacker.sha256()) == hashlib.sha256(b'').digest()
+
+def test_upload_error_resets_checksum(dev):
+    # This block looks like a firmware header, but fails validation before
+    # it can be written to PSRAM. It must not remain in the upload checksum.
+    total_size = FW_HEADER_OFFSET + FW_HEADER_SIZE
+    for pos in range(0, FW_HEADER_OFFSET & ~255, 1024):
+        here = bytes(min(1024, (FW_HEADER_OFFSET & ~255) - pos))
+        dev.send_recv(CCProtocolPacker.upload(pos, total_size, here))
+
+    bad_hdr = bytearray(256)
+    struct.pack_into('<I', bad_hdr, FW_HEADER_OFFSET & 255, FW_HEADER_MAGIC)
+    with pytest.raises(CCProtoError):
+        dev.send_recv(CCProtocolPacker.upload(FW_HEADER_OFFSET & ~255, total_size, bad_hdr))
+
+    assert dev.send_recv(CCProtocolPacker.sha256()) == hashlib.sha256(b'').digest()
+
+def test_stxn_binds_uploaded_size_and_psram(dev, fake_txn, sim_exec):
+    psbt = fake_txn(1, 2, addr_fmt="p2wpkh")
+    txn_len, txn_sha = dev.upload_file(psbt)
+
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.sign_transaction(txn_len - 1, txn_sha))
+    assert 'Checksum' in str(e.value)
+
+    txn_len, txn_sha = dev.upload_file(psbt)
+    sim_exec("from glob import PSRAM; PSRAM.write(0, b'x')")
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.sign_transaction(txn_len, txn_sha))
+    assert 'Checksum' in str(e.value)
 
 def test_encryption(dev):
     "Setup session key and test link encryption works"
@@ -206,7 +238,6 @@ def test_mitm(dev):
     assert dev.mitm_verify(sig2, dev.master_xpub) == False
 
 def test_remote_upload(dev):
-    import os
     dev.upload_file(b'testing')
     dev.upload_file(os.urandom(3000))
 
@@ -216,12 +247,252 @@ def test_remote_up_download(f_len, dev, mk_num):
     if f_len > (384*1024) and mk_num <= 3:
         raise pytest.skip('mk4+ only case')
 
-    import os
     data = os.urandom(f_len)
     ll, sha = dev.upload_file(data, verify=True)
     assert ll == len(data) == f_len
 
-    rb = dev.download_file(ll, sha, file_number=0)
-    assert rb == data
+    # arbitrary readback of uploaded content is not allowed;
+    # only results explicitly produced for download can be fetched
+    with pytest.raises(CCProtoError) as e:
+        dev.download_file(ll, sha, file_number=0)
+    assert 'not allowed' in str(e.value)
+
+
+def test_download_lease(dev, fake_txn, start_sign, end_sign):
+    # a malicious USB host must not be able to re-download content that was
+    # previously staged in PSRAM (uploaded PSBT, multisig enroll file, ...);
+    # only the single most recent result produced for download is readable
+    data = os.urandom(1024)
+    dev.upload_file(data)
+
+    # nothing produced for download yet: all reads blocked
+    for file_no in (0, 1):
+        with pytest.raises(CCProtoError) as e:
+            dev.send_recv(CCProtocolPacker.download(0, 256, file_no))
+        assert 'not allowed' in str(e.value)
+
+    # sign: signed result (file 1) becomes downloadable (end_sign fetches it)
+    in_psbt = fake_txn(1, 2, addr_fmt="p2wpkh")
+    start_sign(in_psbt, finalize=False)
+    signed = end_sign(accept=True, finalize=False)
+
+    # uploaded input (file 0) must not be downloadable
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 0))
+    assert 'not allowed' in str(e.value)
+
+    # reads past the end of the produced result are blocked
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.download(len(signed), 1, 1))
+    assert 'not allowed' in str(e.value)
+
+    # in-bounds partial re-read of the result still works
+    part = dev.send_recv(CCProtocolPacker.download(0, 256, 1))
+    assert part == signed[:256]
+
+    # a plaintext (unencrypted) link may not read PSRAM, even with a lease
+    msg = struct.pack('<4sIII', b'dwld', 0, 256, 1)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'must encrypt' in str(e.value)
+
+    # a new encrypted session voids the previous session's lease
+    dev.start_encryption()
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 1))
+    assert 'not allowed' in str(e.value)
+
+    # a new upload clears the lease: result no longer downloadable
+    dev.upload_file(b'next')
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 1))
+    assert 'not allowed' in str(e.value)
+
+    # same for a partial re-upload at a nonzero offset (no offset-zero block)
+    in_psbt = fake_txn(1, 2, addr_fmt="p2wpkh")
+    start_sign(in_psbt, finalize=False)
+    end_sign(accept=True, finalize=False)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.upload(256, 1024, bytes(256)))
+    assert 'offset' in str(e.value)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.download(0, 256, 1))
+    assert 'not allowed' in str(e.value)
+
+
+def test_dwld_offset_at_max(dev, mk_num):
+    max_txn = 2*1024*1024
+    msg = struct.pack('<4sIII', b'dwld', max_txn, 1, 1)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'bad offset' in str(e.value)
+
+def test_dwld_offset_one_past_max(dev, mk_num):
+    max_txn = 2*1024*1024
+    msg = struct.pack('<4sIII', b'dwld', max_txn + 1, 1, 1)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'bad offset' in str(e.value)
+
+def test_smsg_zero_length_message(dev):
+    subpath = b'm'
+    msg = struct.pack('<4sIII', b'smsg', 0x01, len(subpath), 0) + subpath
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'msg too short (min. 2)' in str(e.value)
+
+def test_smsg_oversized_message(dev):
+    subpath = b'm'
+    raw_msg = b'a' * (MSG_SIGNING_MAX_LENGTH + 1)
+    msg = struct.pack('<4sIII', b'smsg', 0x01, len(subpath), len(raw_msg)) + subpath + raw_msg
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'msg too long (max. 240)' in str(e.value)
+
+def test_ncry_invalid_pubkey(dev):
+    msg = struct.pack('<4sI64s', b'ncry', 0x01, bytes(64))
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'secp256k1_ec_pubkey_parse' in str(e.value)
+
+@pytest.mark.parametrize("file_no", [0, 1])
+def test_dwld_oob_psram_read(file_no, dev, mk_num):
+    max_txn = 2*1024*1024
+    msg = struct.pack('<4sIII', b'dwld', max_txn - 1, 2, file_no)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'bad offset' in str(e.value)
+
+def test_rest_zero_file_len(dev):
+    empty_sha = hashlib.sha256(b'').digest()
+    msg = b'rest' + struct.pack('<I32sB', 0, empty_sha, 0)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_rest_oversized_file_len(dev):
+    empty_sha = hashlib.sha256(b'').digest()
+    max_txn_len = 2 * 1024 * 1024
+    msg = b'rest' + struct.pack('<I32sB', max_txn_len + 1, empty_sha, 0)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_upld_zero_total_size(dev):
+    msg = struct.pack('<4sII', b'upld', 0, 0)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'long' in str(e.value)
+
+def test_upld_short_args(dev):
+    dev.upload_file(b'previous upload')
+    msg = b'upld' + struct.pack('<I', 0)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'buffer too small' in str(e.value)
+    assert dev.send_recv(CCProtocolPacker.sha256()) == hashlib.sha256(b'').digest()
+
+def test_ncry_short_args(dev):
+    msg = b'ncry' + struct.pack('<I', 1)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'buffer too small' in str(e.value)
+
+def test_stxn_short_args(dev):
+    msg = b'stxn' + struct.pack('<II', 100, 0)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'buffer too small' in str(e.value)
+
+def test_smsg_short_args(dev):
+    msg = b'smsg' + struct.pack('<II', 0, 5)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'buffer too small' in str(e.value)
+
+def test_enrl_short_args(dev):
+    msg = b'enrl' + struct.pack('<I', 200)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'buffer too small' in str(e.value)
+
+def test_mins_short_args(dev):
+    msg = b'mins' + struct.pack('<I', 200)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'buffer too small' in str(e.value)
+
+def test_msas_short_args(dev):
+    msg = b'msas' + struct.pack('<I', 0)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg)
+    assert 'buffer too small' in str(e.value)
+
+def test_rest_short_args(dev):
+    msg = b'rest' + struct.pack('<I', 100)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'buffer too small' in str(e.value)
+
+def test_show_short_args(dev):
+    msg = b'show'
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'buffer too small' in str(e.value)
+
+def test_dwld_short_args(dev):
+    msg = b'dwld' + struct.pack('<II', 0, 256)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'buffer too small' in str(e.value)
+
+def test_dwld_trailing_garbage(dev):
+    msg = b'dwld' + struct.pack('<III', 0, 256, 0) + b'\xff'  # 13 bytes, need exactly 12
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_ncry_trailing_garbage(dev):
+    msg = b'ncry' + struct.pack('<I', 1) + bytes(64) + b'\xff'  # 69 bytes, need exactly 68
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_enrl_trailing_garbage(dev):
+    msg = b'enrl' + struct.pack('<I', 200) + bytes(32) + b'\xff'  # 37 bytes, need exactly 36
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_mins_trailing_garbage(dev):
+    msg = b'mins' + struct.pack('<I', 200) + bytes(32) + b'\xff'  # 37 bytes, need exactly 36
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_msas_name_too_long(dev):
+    msg = b'msas' + struct.pack('<II', 0, 0) + bytes(33)
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg)
+    assert 'badlen' in str(e.value)
+
+@pytest.mark.parametrize("cmd", [b"msdl", b"msgt", b"mspl"])
+def test_miniscript_name_too_long(cmd, dev):
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(cmd + bytes(33))
+    assert 'name len' in str(e.value)
+
+def test_stxn_trailing_garbage(dev):
+    msg = b'stxn' + struct.pack('<II', 100, 0) + bytes(32) + b'\xff'  # 41 bytes, need exactly 40
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
+
+def test_rest_trailing_garbage(dev):
+    empty_sha = hashlib.sha256(b'').digest()
+    msg = b'rest' + struct.pack('<I32sB', 100, empty_sha, 0) + b'\xff'  # 38 bytes, need exactly 37
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(msg, encrypt=False)
+    assert 'badlen' in str(e.value)
 
 # EOF

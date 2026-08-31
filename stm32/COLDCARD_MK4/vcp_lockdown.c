@@ -12,7 +12,7 @@
 #include "lib/utils/interrupt_char.h"       // for mp_interrupt_char
 
 // is the REPL enabled by user (default: no)
-bool ckcc_vcp_enabled;
+bool ckcc_repl_enabled;
 
 // mp_hal_stdin_rx_chr()
 //
@@ -29,7 +29,7 @@ mp_hal_stdin_rx_chr(void) {
 #if COLDCARD_DEBUG
             return ch;
 #else
-            if(ckcc_vcp_enabled) return ch;
+            if(ckcc_repl_enabled) return ch;
 #endif
         }
 
@@ -37,7 +37,7 @@ mp_hal_stdin_rx_chr(void) {
 #if 0
         int dupterm_c = mp_uos_dupterm_rx_chr();
         if (dupterm_c >= 0) {
-            if(ckcc_vcp_enabled) {
+            if(ckcc_repl_enabled) {
                 return dupterm_c;
             }
         }
@@ -68,7 +68,7 @@ mp_hal_set_interrupt_char(int c)
 mp_hal_stdout_tx_strn(const char *str, size_t len)
 {
 #if !COLDCARD_DEBUG
-    if(!ckcc_vcp_enabled) {
+    if(!ckcc_repl_enabled) {
         // allow the copyright notice and version string, then no more output
         static int so_far = 0;
 

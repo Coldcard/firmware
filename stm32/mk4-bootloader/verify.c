@@ -253,6 +253,10 @@ verify_firmware_in_ram(const uint8_t *start, uint32_t len, uint8_t world_check[3
     // check basics like verison, hw compat, etc
     if(!verify_header(hdr)) goto fail;
 
+    // Length of data to be flashed must equal the signed length exactly:
+    // anything more is unsigned, attacker-controlled bytes (fail closed).
+    if(len != hdr->firmware_length) goto fail;
+
     if(check_is_downgrade(hdr->timestamp, (const char *)hdr->version_string)) {
         puts("downgrade");
         goto fail;

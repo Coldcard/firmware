@@ -17,8 +17,8 @@ MICROPY_USE_READLINE = 1
 # btree module using Berkeley DB 1.xx
 MICROPY_PY_BTREE = 1
 
-# _thread module using pthreads
-MICROPY_PY_THREAD = 1
+# ngu.random holds mutable DRBG and source-check state.
+MICROPY_PY_THREAD = 0
 
 # Subset of CPython termios module
 MICROPY_PY_TERMIOS = 1
@@ -41,7 +41,9 @@ MICROPY_STANDALONE = 0
 
 # NGU library
 FROZEN_MANIFEST += $(CC_TOP)/unix/variant/manifest.py
-NGU_NEEDS_CIFRA = 1
+NGU_NEEDS_CIFRA  = 1
+NGU_INCL_SCHNORR = 1
+NGU_INCL_MUSIG   = 1
 
 USER_C_MODULES = $(CC_TOP)/external/c-modules
 

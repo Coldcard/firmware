@@ -3,7 +3,7 @@
 # Operations that require user authorization, like our core features: signing messages
 # and signing bitcoin transactions.
 #
-import stash, ure, chains, sys, gc, uio, version, ngu, ujson
+import stash, ure, chains, sys, gc, uio, version, ngu, ujson, glob
 from ubinascii import b2a_base64, a2b_base64
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
@@ -13,13 +13,14 @@ from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, SUPPORTED_ADDR_
 from public_constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED, AF_P2SH, AF_P2WPKH_P2SH
 from sffile import SFFile
 from menu import MenuSystem, MenuItem
-from serializations import ser_uint256, SIGHASH_ALL
+from serializations import ser_uint256, disassemble_multisig_mn
 from ux import ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys, ux_confirm, the_ux
-from ux import show_qr_code, OK, X, abort_and_push, AbortInteraction, ux_input_text, ux_enter_number
+from ux import show_qr_code, OK, X, abort_and_push, AbortInteraction, ux_enter_number
 from usb import CCBusyError
 from utils import (HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A, node_from_privkey,
                    show_single_address, keypath_to_str, seconds2human_readable)
-from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
+from psbt import (psbtObject, FatalPSBTIssue, FraudulentChangeOutput,
+                  CHANGE_PATH_ISSUES, CHANGE_PATH_ISSUE_MASK)
 from files import CardSlot, CardMissingError
 from exceptions import HSMDenied, QRTooBigError
 from version import MAX_TXN_LEN
@@ -29,6 +30,26 @@ from msgsign import sign_message_digest
 # Where in SPI flash/PSRAM the two PSBT files are (in and out)
 TXN_INPUT_OFFSET = 0
 TXN_OUTPUT_OFFSET = MAX_TXN_LEN
+
+def psram_sha256(offset, length):
+    # SHA-256 over a region of PSRAM
+    # - read_at is zero-copy (a view), so no big RAM usage here
+    from glob import PSRAM
+
+    rv = sha256()
+    for pos in range(offset, offset+length, 4096):
+        rv.update(PSRAM.read_at(pos, min(4096, offset+length-pos)))
+
+    return rv.digest()
+
+def psram_wipe(offset, length):
+    # zero-out a region of PSRAM, in chunks
+    # - can zero up to 255 bytes past end: always still inside TXN staging area
+    from glob import PSRAM
+
+    z = bytes(256)
+    for pos in range(offset, offset+length, 256):
+        PSRAM.write(pos, z)
 
 class UserAuthorizedAction:
     active_request = None
@@ -132,7 +153,7 @@ Press %s to continue, otherwise %s to cancel.''' % (OK, X)
 
 class ApproveMessageSign(UserAuthorizedAction):
     def __init__(self, text, subpath, addr_fmt, approved_cb=None,
-                 msg_sign_request=None, only_printable=True, privkey=None):
+                 msg_sign_request=None, allow_tab_nl=False, privkey=None):
         super().__init__()
         is_json = False
 
@@ -142,7 +163,7 @@ class ApproveMessageSign(UserAuthorizedAction):
             text, subpath, addr_fmt, is_json = parse_msg_sign_request(msg_sign_request)
 
         self.text = validate_text_for_signing(
-            text, only_printable=not is_json and only_printable
+            text, allow_tab_nl=is_json or allow_tab_nl
         )
         self.subpath = cleanup_deriv_path(subpath)
         self.addr_fmt = chains.parse_addr_fmt_str(addr_fmt)
@@ -208,7 +229,7 @@ def sign_msg(text, subpath, addr_fmt):
 
 async def approve_msg_sign(text, subpath, addr_fmt, approved_cb=None,
                            msg_sign_request=None, kill_menu=False,
-                           only_printable=True, privkey=None):
+                           allow_tab_nl=False, privkey=None):
 
     # Ask user if they want to sign some short text message.
     UserAuthorizedAction.cleanup()
@@ -218,7 +239,7 @@ async def approve_msg_sign(text, subpath, addr_fmt, approved_cb=None,
             text, subpath, addr_fmt,
             approved_cb=approved_cb,
             msg_sign_request=msg_sign_request,
-            only_printable=only_printable,
+            allow_tab_nl=allow_tab_nl,
             privkey=privkey
         )
 
@@ -282,6 +303,10 @@ class ApproveTransaction(UserAuthorizedAction):
         self.offset = offset
         self.psbt_len = psbt_len
 
+        # a new transaction was just staged into the input region of PSRAM,
+        # so any previous download lease is now dangling
+        glob.ALLOWED_DOWNLOAD = None
+
         # do finalize is None if not USB, None = decide based on is_complete
         if flags is None:
             self.do_finalize = self.do_visualize = None
@@ -298,56 +323,6 @@ class ApproveTransaction(UserAuthorizedAction):
         self.result = None      # will be (len, sha256) of the resulting PSBT
         self.chain = chains.current_chain()
         self.miniscript_wallet = miniscript_wallet
-
-    async def por322_msg_verify(self):
-        # https://gist.github.com/orangesurf/0c1d0a31d3ebe7e48335a34d56788d4c
-        from glob import NFC
-        from ux import import_export_prompt
-        from actions import file_picker
-        ch = await import_export_prompt("message", is_import=True, force_prompt=True,
-                                        intro="Import msg that hashes to 'to_spend' msg hash.",
-                                        key0="to input message manually",
-                                        title="BIP-322 Messsage" if version.has_qwerty else 'BIP-322 MSG',
-                                        no_qr=not version.has_qwerty)
-
-        # single sha256 of b'BIP0322-signed-message'
-        bip322_tag_hash = b'te\x84\xa1\x87/\xa1\x00AUN\xff\xa08\xd6\x12IB\xddy\xb4\xe5\x8aL\xda\x18N\x13\xdb\xe6,I'
-
-        if ch == KEY_CANCEL:
-            return
-        elif ch == "0":
-            msg = await ux_input_text("", confirm_exit=False)
-        elif ch == KEY_NFC:
-            msg = await NFC.read_bip322_msg()
-        elif ch == KEY_QR:
-            from ux_q1 import QRScannerInteraction
-            msg = await QRScannerInteraction().scan_text('Scan message from a QR code')
-        else:
-            choices = await file_picker(suffix='.txt', ux=False, **ch)
-            target = "%s.txt" % b2a_hex(self.psbt.por322_msg_hash).decode()
-
-            for fname, dir, _ in choices:
-                if target == fname:
-                    fn = dir + "/" + fname
-                    break
-            else:
-                fn = await file_picker(choices=choices, **ch)
-
-            if not fn: return
-
-            with CardSlot(readonly=True, **ch) as card:
-                with open(fn, 'rt') as fd:
-                    msg = fd.read()
-
-        assert msg, "need msg"
-        msg_hash = ngu.hash.sha256t(bip322_tag_hash, msg, True)
-        assert msg_hash == self.psbt.por322_msg_hash, "hash verification failed"
-        ch = await ux_show_story(
-            msg+"\n\nPress %s to approve message, otherwise %s to exit." % (OK, X),
-            title="Message:"
-        )
-        return True if ch == "y" else False
-
 
     def render_output(self, o):
         # Pretty-print a transactions output. 
@@ -421,6 +396,17 @@ class ApproveTransaction(UserAuthorizedAction):
 
             return await self.failure(msg, exc)
 
+        # bind this request to the exact bytes we just parsed
+        # - they are re-read from live PSRAM during display, signing & finalization,
+        #   and a USB host could rewrite them while we wait for approval
+        from glob import PSRAM
+        self.parsed_write_count = PSRAM.txn_write_count
+        self.parsed_sha = psram_sha256(self.offset, self.psbt_len)
+        if self.psbt_sha is not None and self.psbt_sha != self.parsed_sha:
+            del self.psbt
+            gc.collect()
+            return await self.failure("PSBT checksum mismatch")
+
         dis.fullscreen("Validating...")
         self.psbt.active_miniscript = self.miniscript_wallet
 
@@ -482,6 +468,7 @@ class ApproveTransaction(UserAuthorizedAction):
         #
         try:
             msg = uio.StringIO()
+            is_por = self.psbt.por322 and (self.psbt.num_inputs > 1)
 
             # mention warning at top
             wl= len(self.psbt.warnings)
@@ -491,20 +478,15 @@ class ApproveTransaction(UserAuthorizedAction):
                 msg.write('(%d warnings below)\n\n' % wl)
 
             if self.psbt.por322:
-
+                msg.write("%s\n\n" % ("Proof of Reserves" if is_por else "BIP-322 Message"))
+                msg.write("Message:\n%s\n\n" % self.psbt.por322_msg)
+                if is_por:
+                    msg.write("Amount %s %s\n\n" % self.chain.render_value(self.psbt.total_value_in))
                 try:
-                    if not await self.por322_msg_verify():
-                        self.refused = True
-                        await ux_dramatic_pause("Refused.", 1)
-                        self.done()
-                        return
-                except Exception as exc:
-                    return await self.failure("Msg verification failed.", exc)
-
-                msg.write("Proof of Reserves\n\n")
-                msg.write("Amount %s %s\n\n" % self.chain.render_value(self.psbt.total_value_in))
-                msg.write("Message Hash:\n%s\n\n" % b2a_hex(self.psbt.por322_msg_hash).decode())
-                msg.write("Message Challenge:\n%s\n\n" % b2a_hex(self.psbt.por322_msg_challenge).decode())
+                    addr = self.chain.render_address(self.psbt.por322_msg_challenge)
+                    msg.write("Challenge Address:\n%s\n\n" % show_single_address(addr))
+                except ValueError:
+                    msg.write("Message Challenge:\n%s\n\n" % b2a_hex(self.psbt.por322_msg_challenge).decode())
             else:
                 if self.psbt.active_miniscript:
                     # show name of the multisig/miniscript wallet that we signed with
@@ -522,15 +504,18 @@ class ApproveTransaction(UserAuthorizedAction):
                 if fee is not None:
                     msg.write("Network fee %s %s\n\n" % self.chain.render_value(fee))
 
-            msg.write(" %d %s\n %d %s\n\n" % (
-                self.psbt.num_inputs,
-                "input" if self.psbt.num_inputs == 1 else "inputs",
-                self.psbt.num_outputs,
-                "output" if self.psbt.num_outputs == 1 else "outputs",
-            ))
+            if not self.psbt.por322 or is_por:
+                msg.write(" %d %s\n %d %s\n\n" % (
+                    self.psbt.num_inputs,
+                    "input" if self.psbt.num_inputs == 1 else "inputs",
+                    self.psbt.num_outputs,
+                    "output" if self.psbt.num_outputs == 1 else "outputs",
+                ))
 
-            # outputs + change story created here
-            self.output_summary_text(msg)
+            if not self.psbt.por322:
+                # outputs + change story created here
+                self.output_summary_text(msg)
+
             gc.collect()
 
             if self.psbt.ux_notes:
@@ -558,8 +543,13 @@ class ApproveTransaction(UserAuthorizedAction):
 
             if not hsm_active:
                 esc = "2"
-                msg.write("Press %s to approve and sign transaction."
-                          " Press (2) to explore transaction." % OK)
+                noun = "transaction"
+                if self.psbt.por322:
+                    noun = "proof of reserves" if is_por else "message"
+
+                msg.write("Press %s to approve and sign %s."
+                          " Press (2) to explore transaction." % (OK, noun))
+
                 if (self.input_method == "sd") and CardSlot.both_inserted():
                     esc += "b"
                     msg.write(" (B) to write to lower SD slot.")
@@ -618,6 +608,23 @@ class ApproveTransaction(UserAuthorizedAction):
             except:
                 return await self.failure("2FA Failed")
 
+        # the parsed bytes must be unchanged since parse/approval; covers all
+        # input methods and the HSM auto-approval path, as both end up here
+        # - fast path: nothing wrote to the TXN region since we hashed it,
+        #   so there is no need to re-hash in that (common) case
+        from glob import PSRAM
+        if PSRAM.txn_write_count != self.parsed_write_count:
+            if psram_sha256(self.offset, self.psbt_len) != self.parsed_sha:
+                # fail closed: wipe the txn, so no signature over modified data
+                psram_wipe(self.offset, self.psbt_len)
+                del self.psbt
+                gc.collect()
+                return await self.failure("Transaction modified")
+
+            # A writer touched the other TXN staging region. The active PSBT is
+            # unchanged, so make this successful re-check the new baseline.
+            self.parsed_write_count = PSRAM.txn_write_count
+
         # do the actual signing.
         try:
             dis.fullscreen('Wait...')
@@ -631,7 +638,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 CCCFeature.sign_psbt(self.psbt)
 
             if SSSPFeature.is_enabled():
-                # capture new min-height for velocity limit
+                # update SSSP block_h even if SSSP blocks and overridden by CCC
                 SSSPFeature.update_last_signed(self.psbt)
 
         except FraudulentChangeOutput as exc:
@@ -642,6 +649,12 @@ class ApproveTransaction(UserAuthorizedAction):
         except BaseException as exc:
             # sys.print_exception(exc)
             return await self.failure("Signing failed late", exc)
+
+        # tripwire: no writer could have run since the re-check above, as
+        # there is no await between it and signing (single-threaded asyncio),
+        # so this cannot trigger today - it fails loudly if a future change
+        # adds an await or a new TXN-region writer on this path
+        assert PSRAM.txn_write_count == self.parsed_write_count
 
         try:
             await done_signing(self.psbt, self, self.input_method,
@@ -681,7 +694,12 @@ class ApproveTransaction(UserAuthorizedAction):
                 fd.write(b2a_base64(sig).decode('ascii').strip())
                 fd.write('\n')
 
-            return fd.tell(), fd.checksum.digest()
+            rv = fd.tell(), fd.checksum.digest()
+
+            # lease the result region for download (dwld)
+            glob.ALLOWED_DOWNLOAD = (1, 0, rv[0])
+
+            return rv
 
     def output_summary_text(self, msg):
         # Produce text report of where their cash is going. This is what
@@ -706,7 +724,8 @@ class ApproveTransaction(UserAuthorizedAction):
                 has_change = True
                 total_change += tx_out.nValue
                 if len(largest_change) < MAX_VISIBLE_CHANGE:
-                    largest_change.append((tx_out.nValue, self.chain.render_address(tx_out.scriptPubKey)))
+                    _, addr = self.render_output(tx_out)
+                    largest_change.append((tx_out.nValue, addr))
                     if len(largest_change) == MAX_VISIBLE_CHANGE:
                         largest_change = sorted(largest_change, key=lambda x: x[0], reverse=True)
                     continue
@@ -731,12 +750,9 @@ class ApproveTransaction(UserAuthorizedAction):
                 continue        # too small
 
             largest.pop(-1)
-            if outp.is_change:
-                ret = (here, self.chain.render_address(tx_out.scriptPubKey))
-            else:
-                rendered, _ = self.render_output(tx_out)
-                ret = (here, rendered)
-            largest.insert(keep, ret)
+
+            rendered, dest = self.render_output(tx_out)
+            largest.insert(keep, (here, dest if outp.is_change else rendered))
 
         # foreign outputs (soon to be other people's coins)
         visible_out_sum = 0
@@ -775,13 +791,13 @@ class ApproveTransaction(UserAuthorizedAction):
                 msg.write('%s %s\n\n' % self.chain.render_value(total_change - visible_change_sum))
 
 
-def sign_transaction(psbt_len, flags=0x0, psbt_sha=None, miniscript_wallet=None,
-                     offset=TXN_INPUT_OFFSET):
+def sign_transaction(psbt_len, flags=0x0, psbt_sha=None, input_method="usb",
+                     miniscript_wallet=None, offset=TXN_INPUT_OFFSET):
     # transaction (binary) loaded into PSRAM already, checksum checked
     # optional miniscript_wallet arg, choose particular enrolled wallet by name to sign
     UserAuthorizedAction.check_busy(ApproveTransaction)
     UserAuthorizedAction.active_request = ApproveTransaction(
-        psbt_len, flags, psbt_sha=psbt_sha, input_method="usb",
+        psbt_len, flags, psbt_sha=psbt_sha, input_method=input_method,
         miniscript_wallet=miniscript_wallet, offset=offset
     )
 
@@ -830,13 +846,19 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
         # USB case - user can choose whether to attempt finalization
         is_complete = finalize
 
+    if psbt.por322:
+        # network txn strips PSBT BIP-32 with paths with pubkey required for verification
+        # overrides --finalize from USB
+        # disable pushTX for BIP-322
+        is_complete = False
+
     with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as psram:
         if is_complete:
             txid = psbt.finalize(psram)
             noun = "Finalized TX ready for broadcast"
         else:
             psbt.serialize(psram)
-            noun = "Partly Signed PSBT"
+            noun = "Signed BIP-322 PSBT" if psbt.por322 else "Partly Signed PSBT"
             txid = None
 
         data_len = psram.tell()
@@ -850,6 +872,8 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
     if input_method == "usb":
         # return result over USB before going to all options
         tx_req.result = data_len, data_sha2
+        # lease the result region for download (dwld)
+        glob.ALLOWED_DOWNLOAD = (1, 0, data_len)
         if hsm_active:
             # it is enough to just return back via USB, other options
             # are pointless
@@ -857,6 +881,10 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
 
         first_time = False
         msg = noun + " shared via USB."
+        title = base_title
+
+    elif input_method == "kt":
+        first_time = False
         title = base_title
 
     if txid and await try_push_tx(data_len, txid, data_sha2):
@@ -877,8 +905,6 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
                 ch = KEY_QR
             elif input_method == "nfc":
                 ch = KEY_NFC
-            elif input_method == "kt":
-                ch = 't'
             else:
                 # SD/VDisk
                 ch = {"force_vdisk": input_method == "vdisk", "slot_b": slot_b}
@@ -911,7 +937,7 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
 
         elif ch == KEY_QR:
             here = PSRAM.read_at(TXN_OUTPUT_OFFSET, data_len)
-            msg = txid or 'Partly Signed PSBT'
+            msg = txid or noun
             try:
                 if len(here) > 920:
                     # too big for simple QR - use BBQr instead
@@ -939,11 +965,11 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
             # there is no need to teleport PSBT if txn is already complete & ready to be broadcast
             # updated PSBT is at TXN_OUTPUT_OFFSET (at TXN_INPUT_OFFSET is PSBT that is NOT updated)
             from teleport import kt_send_psbt
-            ok = await kt_send_psbt(psbt, data_len, psbt_offset=TXN_OUTPUT_OFFSET)
-            if ok:
-                title = "Sent by Teleport"
-            else:
+            ok = await kt_send_psbt(psbt, data_len, source_offset=TXN_OUTPUT_OFFSET)
+            if ok is None:
                 title = "Failed to Teleport"
+            else:
+                title = "Sent by Teleport"
 
             continue
 
@@ -967,11 +993,22 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
 
     dis.fullscreen("Wait...")
 
+    match = None
     if filename:
         _, basename = filename.rsplit('/', 1)
         base = basename.rsplit('.', 1)[0]
+        match = ure.compile(r"-part-(\d+)$").search(base)
     else:
         base = 'recent-txn'
+
+    if match:
+        prefix = base[:-len(match.group(0))]
+        suffix = '-signed' if is_complete else '-part-%d' % (int(match.group(1)) + 1)
+    else:
+        prefix = base if is_complete else base.replace('-part', '')
+        suffix = '-signed' if is_complete else '-part'
+
+    target_fname = prefix + suffix + '.psbt'
 
     # default encoding is binary
     output_encoder = output_encoder or (lambda x:x)
@@ -993,13 +1030,6 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
 
     while 1:
         # try to put back into same spot, but also do top-of-card
-        if not is_complete:
-            # keep the filename under control during multiple passes
-            target_fname = base.replace('-part', '') + '-part.psbt'
-        else:
-            # add -signed to end. We won't offer to sign again.
-            target_fname = base + '-signed.psbt'
-
         # attempt write-out
         try:
             with CardSlot(**save_options) as card:
@@ -1093,6 +1123,9 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, just_read=Fal
     from glob import dis
     from ux import the_ux
 
+    # file staging replaces any previously leased PSRAM contents
+    glob.ALLOWED_DOWNLOAD = None
+
     tmp_buf = bytearray(4096)
 
     # copy file into PSRAM
@@ -1113,25 +1146,43 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None, just_read=Fal
             decoder, output_encoder, psbt_len = psbt_encoding_taster(taste, psbt_len)
 
             total = 0
-            with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as out:
-                while 1:
-                    n = fd.readinto(tmp_buf)
-                    if not n: break
+            # Binary length is exact, so reject it without staging. Encoded
+            # lengths are estimates and must be checked as bytes are decoded.
+            too_big = not decoder and psbt_len > MAX_TXN_LEN
+            if not too_big:
+                with SFFile(TXN_INPUT_OFFSET, max_size=MAX_TXN_LEN) as out:
+                    while 1:
+                        n = fd.readinto(tmp_buf)
+                        if not n: break
 
-                    if n == len(tmp_buf):
-                        abuf = tmp_buf
-                    else:
-                        abuf = memoryview(tmp_buf)[0:n]
+                        if n == len(tmp_buf):
+                            abuf = tmp_buf
+                        else:
+                            abuf = memoryview(tmp_buf)[0:n]
 
-                    if not decoder:
-                        out.write(abuf)
-                        total += n
-                    else:
-                        for here in decoder.more(abuf):
-                            out.write(here)
-                            total += len(here)
+                        if not decoder:
+                            out.write(abuf)
+                            total += n
+                        else:
+                            for here in decoder.more(abuf):
+                                if total + len(here) > MAX_TXN_LEN:
+                                    too_big = True
+                                    break
+                                out.write(here)
+                                total += len(here)
 
-                    dis.progress_sofar(total, psbt_len)
+                            if too_big:
+                                break
+
+                        dis.progress_sofar(total, psbt_len)
+
+            if too_big:
+                size = " (%d bytes)" % psbt_len if not decoder else ""
+                await ux_show_story(
+                    "That transaction file is too big%s. "
+                    "Maximum supported is %d bytes." % (size, MAX_TXN_LEN),
+                    title='Sorry')
+                return
 
             # might have been whitespace inflating initial estimate of PSBT size
             assert total <= psbt_len
@@ -1167,6 +1218,8 @@ class RemoteBackup(UserAuthorizedAction):
             if r:
                 # expect (length, sha)
                 self.result = r
+                # backup image sits at start of PSRAM; lease it for download (dwld)
+                glob.ALLOWED_DOWNLOAD = (0, 0, r[0])
             else:
                 self.refused = True
 
@@ -1197,13 +1250,12 @@ class RemoteRestoreBackup(UserAuthorizedAction):
     def to_tmp(self):
         # conversion to "temporary" argument of "restore_complete" function
         from pincodes import pa
-        if pa.is_secret_blank() and not self.force_tmp:
-            # no master secret & not forcing tmp
-            # will load backup as master seed
+        # A temporary wallet makes master writes no-op, so only select master restore
+        # when no secret is active and the caller did not force temporary mode.
+        if not pa.has_secrets() and not self.force_tmp:
             return False, "master"
 
-        # has master secret --> load backup as tmp
-        # secret is blank but user forcing tmp
+        # A master/temporary secret is active, or the caller forced temporary mode.
         return True, "temporary"
 
     async def interact(self):
@@ -1537,7 +1589,6 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False,
                 if "name" in j_conf:
                     # name from json has preference over filenames and desc checksum
                     name = j_conf["name"]
-                    assert 2 <= len(name) <= 40, "'name' length"
             except ValueError: pass
 
             # this call will raise on parsing errors, so let them rise up
@@ -1565,6 +1616,7 @@ class FirmwareUpgradeRequest(UserAuthorizedAction):
         self.length = length
         self.hdr_check = hdr_check
         self.psram_offset = psram_offset
+        self.upgrade_write_count = glob.PSRAM.upgrade_write_count
 
     async def interact(self):
         from version import decode_firmware_header
@@ -1598,6 +1650,8 @@ Binary checksum and signature will be further verified before any changes are ma
             ch = await ux_show_story(msg)
 
             if ch == 'y':
+                assert glob.PSRAM.upgrade_write_count == self.upgrade_write_count
+
                 # Accepted:
                 # - write final file header, so bootloader will see it
                 # - reboot to start process
@@ -1643,6 +1697,9 @@ class TXExplorer:
         self.qr_msgs = []
         self.title = None
 
+    def can_goto_idx(self):
+        return self.max_items > 1
+
     @classmethod
     async def start(cls, user_auth_action):
         rv = [
@@ -1655,6 +1712,7 @@ class TXExplorer:
     def make_ux_msg(self, offset, count):
         from glob import dis
         dis.fullscreen('Wait...')
+        esc = "4"+KEY_QR
         rv = ""
         qrs = []
         change = []
@@ -1663,18 +1721,29 @@ class TXExplorer:
             rv += item
             dis.progress_sofar(idx-offset+1, count)
 
-        rv += 'Press RIGHT to see next group'
+        hints = []
+        if end < self.max_items:
+            hints.append('RIGHT to see next group')
+            esc += KEY_RIGHT + "9"
         if offset:
-            rv += ', LEFT to go back'
+            hints.append('LEFT to go back')
+            esc += KEY_LEFT + "7"
 
-        rv += ", (2) to go to index"
+        if self.can_goto_idx():
+            hints.append("(2) to go to index")
+            esc += "2"
 
         if not version.has_qwerty:
             # Q has hint key
-            rv += ", (4) to show QR code"
-        rv += ('. %s to quit.' % X)
+            hints.append("(4) to show QR code")
 
-        return rv, qrs, change, end
+        if hints:
+            rv += 'Press ' + ', '.join(hints)
+            rv += ('. %s to quit.' % X)
+        else:
+            rv += 'Press %s to quit.' % X
+
+        return rv, qrs, change, end, esc
 
 
     async def explore(self, *a):
@@ -1683,11 +1752,10 @@ class TXExplorer:
         # - shows all inputs: utxo amount and address, txid & tx index.
 
         start = 0
-        msg, addrs, change, end = self.make_ux_msg(start, self.n)
+        msg, addrs, change, end, esc = self.make_ux_msg(start, self.n)
 
         while True:
-            ch = await ux_show_story(msg, title=self.title, escape='2479'+KEY_RIGHT+KEY_LEFT+KEY_QR,
-                                     hint_icons=KEY_QR)
+            ch = await ux_show_story(msg, title=self.title, hint_icons=KEY_QR, escape=esc)
             if ch == 'x':
                 del msg
                 return
@@ -1709,17 +1777,16 @@ class TXExplorer:
                 else:
                     # go forwards
                     start += self.n
-            elif ch == "2":
+            elif (ch == "2") and (self.max_items > 1):
                 max_v = self.max_items - 1
-                res = await ux_enter_number("Start Idx (0-%d):" % max_v, max_value=max_v,
-                                            can_cancel=True)
+                res = await ux_enter_number("Start Idx (0-%d):" % max_v, max_value=max_v)
                 if res is None: continue
                 start = res
             else:
                 # nothing changed - do not recalc msg
                 continue
 
-            msg, addrs, change, end = self.make_ux_msg(start, self.n)
+            msg, addrs, change, end, esc = self.make_ux_msg(start, self.n)
 
 
 class TXOutExplorer(TXExplorer):
@@ -1737,6 +1804,27 @@ class TXOutExplorer(TXExplorer):
             qr_items.append(addr_or_script)
             if outp.is_change:
                 change_idxs.append(i)
+
+            path_issues = (outp.is_change or 0) & CHANGE_PATH_ISSUE_MASK
+            if path_issues:
+                item += "\nChange derivation warning:\n"
+                for flag, label in CHANGE_PATH_ISSUES:
+                    if path_issues & flag:
+                        item += " - %s\n" % label
+
+                item += "\nOutput derivation path%s:\n" % (
+                    "s" if len(outp.sp_idxs) > 1 else ""
+                )
+                for path_idx in outp.sp_idxs:
+                    if outp.taproot_subpaths:
+                        sp = outp.taproot_subpaths[path_idx][1][2]
+                    else:
+                        sp = outp.subpaths[path_idx][1]
+
+                    pth = outp.parse_xfp_path(sp)
+                    item += " %s\n" % keypath_to_str(
+                        pth, prefix="%s/" % xfp2str(pth[0])
+                    )
             item += "\n"
             yield idx, item
 
@@ -1770,8 +1858,10 @@ class TXInpExplorer(TXExplorer):
             item += "=== UTXO ===\n\n%s %s\n\n%s\n\n" % (val, unit, spk)
             if addr:
                 item += show_single_address(addr) + "\n\n"
-                item += "Address Format: %s\n\n" % chains.AF_TO_STR_AF[inp.af]
                 qr_items.append(addr)
+
+            if inp.af is not None:
+                item += "Address Format: %s\n\n" % chains.AF_TO_STR_AF[inp.af]
 
         if self.user_auth_action.psbt.txn_version >= 2:
             has_rtl = inp.has_relative_timelock(txin)
@@ -1786,30 +1876,35 @@ class TXInpExplorer(TXExplorer):
 
         psbt_item = ""
         if inp.sp_idxs:
-            ws = self.user_auth_action.psbt.wif_store
+            psbt = self.user_auth_action.psbt
             psbt_item += "Our key%s:\n\n" % ("s" if len(inp.sp_idxs) > 1 else "")
-            for i in inp.sp_idxs:
-                # get node required
-                if inp.taproot_subpaths:
-                    pubk = inp.taproot_subpaths[i][0]
-                    sp = inp.taproot_subpaths[i][1][2]
-                else:
-                    pubk = inp.subpaths[i][0]
-                    sp = inp.subpaths[i][1]
+            if inp.wif_key:
+                psbt_item += "%s\n(WIF Store)\n\n" % b2a_hex(inp.wif_key).decode()
+            else:
+                for i in inp.sp_idxs:
+                    if inp.taproot_subpaths:
+                        pubk = inp.taproot_subpaths[i][0]
+                        sp = inp.taproot_subpaths[i][1][2]
+                    else:
+                        pubk = inp.subpaths[i][0]
+                        sp = inp.subpaths[i][1]
 
-                pth = inp.parse_xfp_path(sp)
-                k = inp.get(pubk)
-                ws_note = "\n(WIF Store)" if (ws and k in ws) else ""
-                psbt_item += "%s:\n%s%s\n\n" % (keypath_to_str(pth, prefix="%s/" % xfp2str(pth[0])),
-                                         b2a_hex(k).decode(), ws_note)
+                    k = inp.get(pubk)
+                    wif_key = psbt.key_in_wif_store(k)
+                    if wif_key:
+                        psbt_item += "%s\n(WIF Store)\n\n" % b2a_hex(wif_key).decode()
+                        continue
 
-        M = None
+                    pth = inp.parse_xfp_path(sp)
+                    psbt_item += "%s:\n%s\n\n" % (
+                        keypath_to_str(pth, prefix="%s/" % xfp2str(pth[0])),
+                        b2a_hex(k).decode(),
+                    )
+
         if inp.is_miniscript:
             ks_coord = inp.witness_script or inp.redeem_script
             if ks_coord:
                 ks = inp.get(ks_coord)
-
-                from psbt import disassemble_multisig_mn
                 try:
                     M, N = disassemble_multisig_mn(ks)
                     psbt_item += "Multisig: %dof%d\n\n" % (M, N)
@@ -1833,7 +1928,7 @@ class TXInpExplorer(TXExplorer):
                     if inp.get(pk) in signed:
                         done.append(xfp2str(inp.parse_xfp_path(val[2])[0]))
 
-            if inp.fully_signed or (M and (len(done) >= M)):
+            if inp.fully_signed:
                 psbt_item += "Input fully signed.\n\n"
             else:
                 psbt_item += "Already signed:\n"
@@ -1849,7 +1944,7 @@ class TXInpExplorer(TXExplorer):
                     1 | 0x80: "ALL|ANYONECANPAY",
                     2 | 0x80: "NONE|ANYONECANPAY",
                     3 | 0x80: "SINGLE|ANYONECANPAY",
-                }[inp.sighash]
+                }.get(inp.sighash, "0x%02x (non-standard)" % inp.sighash)
 
         if psbt_item:
             psbt_item = "=== PSBT ===\n\n" + psbt_item

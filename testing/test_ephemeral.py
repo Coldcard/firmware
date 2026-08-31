@@ -367,7 +367,8 @@ def verify_ephemeral_secret_ui(cap_story, cap_menu, dev, fake_txn, goto_home,
 @pytest.fixture
 def generate_ephemeral_words(goto_eph_seed_menu, pick_menu_item, press_select,
                              need_keypress, cap_story, settings_set, seed_story_to_words,
-                             ephemeral_seed_disabled_ui, confirm_tmp_seed, is_q1):
+                             ephemeral_seed_disabled_ui, confirm_tmp_seed, is_q1,
+                             enter_mash_entropy):
     def doit(num_words, dice=False, from_main=False, seed_vault=None, testnet=True):
         if testnet:
             netcode = "XTN"
@@ -381,13 +382,23 @@ def generate_ephemeral_words(goto_eph_seed_menu, pick_menu_item, press_select,
             ephemeral_seed_disabled_ui()
 
         pick_menu_item("Generate Words")
-        if not dice:
-            pick_menu_item(f"{num_words} Words")
-            time.sleep(0.1)
-        else:
+        if dice:
             pick_menu_item(f"{num_words} Word Dice Roll")
-            for ch in '123456\r\r':
-                need_keypress(ch)
+            time.sleep(0.1)
+            title, _ = cap_story()
+            assert title == 'WARNING'
+            press_select()  # acknowledge dice-only warning
+            time.sleep(0.1)
+
+            num_rolls = 50 if num_words == 12 else 99
+            for i in range(num_rolls):
+                need_keypress(str((i % 6) + 1))
+                time.sleep(0.01)
+            press_select()
+        else:
+            pick_menu_item(f"{num_words} Words")
+            enter_mash_entropy()
+            time.sleep(0.1)
 
         time.sleep(0.2)
         title, story = cap_story()
@@ -491,7 +502,7 @@ def import_ephemeral_xprv(microsd_path, virtdisk_path, goto_eph_seed_menu,
 
 
 @pytest.mark.parametrize("num_words", [12, 24])
-@pytest.mark.parametrize("dice", [False, True])
+@pytest.mark.parametrize("dice", [False, True], ids=["generated", "dice"])
 @pytest.mark.parametrize("seed_vault", [False, True])
 @pytest.mark.parametrize("preserve_settings", [False, True])
 def test_ephemeral_seed_generate(num_words, generate_ephemeral_words, dice,
@@ -510,6 +521,60 @@ def test_ephemeral_seed_generate(num_words, generate_ephemeral_words, dice,
         seed_vault_delete(xfp, not preserve_settings)
     else:
         restore_main_seed(preserve_settings)
+
+
+@pytest.mark.parametrize("num_words,min_rolls", [(12, 50), (24, 99)])
+def test_ephemeral_dice_security_checks(reset_seed_words, goto_eph_seed_menu,
+                                        ephemeral_seed_disabled, pick_menu_item,
+                                        cap_story, press_select, press_cancel,
+                                        need_keypress, num_words, min_rolls):
+    reset_seed_words()
+    goto_eph_seed_menu()
+    ephemeral_seed_disabled()
+
+    pick_menu_item("Generate Words")
+    pick_menu_item(f"{num_words} Word Dice Roll")
+
+    title, warning = cap_story()
+    assert title == 'WARNING'
+    assert 'only source of randomness' in warning
+    assert 'wallet derived from the rolls entered so far' in warning
+    press_select()
+
+    for ch in '123456':
+        need_keypress(ch)
+    press_select()
+    time.sleep(0.1)
+
+    _, story = cap_story()
+    assert 'Not enough dice rolls' in story
+    assert f'minimum for {num_words} word seeds' in story
+    assert f'need at least {min_rolls} rolls' in story
+    press_cancel()
+    time.sleep(0.1)
+    ephemeral_seed_disabled()
+
+
+def test_ephemeral_seed_import_qr_bad_checksum(reset_seed_words, goto_eph_seed_menu,
+                                               pick_menu_item, scan_a_qr, cap_story,
+                                               press_cancel, is_q1):
+    if not is_q1:
+        pytest.skip('Q1 only (QR scan path)')
+
+    reset_seed_words()
+    goto_eph_seed_menu()
+    pick_menu_item('Import from QR Scan')
+    time.sleep(.1)
+
+    # SeedQR with 12 zero-indices = "abandon" * 12, wordlist-valid but
+    # consensus-invalid BIP-39 checksum.
+    scan_a_qr('0000' * 12)
+    time.sleep(.5)
+
+    title, story = cap_story()
+    assert 'checksum fail' in story
+    press_cancel()
+    press_cancel()
 
 
 @pytest.mark.parametrize("num_words", [12, 18, 24])
@@ -1553,7 +1618,7 @@ def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
                               need_keypress, word_menu_entry, settings_set,
                               confirm_tmp_seed, cap_menu, microsd_path,
                               restore_main_seed, get_identity_story, press_select,
-                              press_cancel, settings_remove):
+                              press_cancel, settings_remove, enter_mash_entropy):
     
     
     reset_seed_words()
@@ -1586,7 +1651,10 @@ def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
     # random temporary seed
     pick_menu_item("Generate Words")
     pick_menu_item(f"12 Words")
+    enter_mash_entropy()
+    time.sleep(0.1)
     need_keypress("6")  # skip quiz
+    time.sleep(0.1)
     press_select()  # yes - I'm sure
     confirm_tmp_seed(seedvault=False)
 
@@ -1636,7 +1704,8 @@ def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
     assert xfp_str == parsed_ident["xfp"]
 
 def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_menu,
-                       settings_get, goto_eph_seed_menu, need_keypress):
+                       settings_get, goto_eph_seed_menu, need_keypress,
+                       enter_mash_entropy):
     goto_home()
     pick_menu_item("Settings")
     pick_menu_item("Buried Settings")
@@ -1654,6 +1723,7 @@ def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_m
     goto_eph_seed_menu()
     pick_menu_item("Generate Words")
     pick_menu_item(f"12 Words")
+    enter_mash_entropy()
     time.sleep(0.1)
     need_keypress("6")  # skip quiz
     press_select()
@@ -1702,8 +1772,8 @@ def test_seed_vault_enable_on_tmp(generate_ephemeral_words, reset_seed_words,
     settings_remove("seeds")
     goto_eph_seed_menu()
     ephemeral_seed_disabled()
-    e_seed_words = generate_ephemeral_words(num_words=12, dice=False,
-                                            from_main=True, seed_vault=False)
+    e_seed_words = generate_ephemeral_words(num_words=12, from_main=True,
+                                            seed_vault=False)
     verify_ephemeral_secret_ui(mnemonic=e_seed_words, seed_vault=False)
     goto_home()
     pick_menu_item("Advanced/Tools")

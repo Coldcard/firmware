@@ -16,6 +16,7 @@ PROVABLY_UNSPENDABLE = b'\x02P\x92\x9bt\xc1\xa0IT\xb7\x8bK`5\xe9z^\x07\x8aZ\x0f(
 
 # sha256(b"MuSig2MuSig2MuSig2")
 MUSIG_CHAIN_CODE = b'\x86\x80\x87\xca\x02\xa6\xf9t\xc4Y\x89$\xc3kWv-2\xcbEqqg\xe3\x00b,qg\xe3\x89e'
+MAX_MUSIG_PARTICIPANTS = const(32)
 
 INPUT_CHARSET = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ "
 CHECKSUM_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
@@ -282,28 +283,11 @@ class ExtendedKey:
     @classmethod
     def parse_key(cls, key_str):
         assert key_str[1:4].lower() == b"pub", "only extended pubkeys allowed"
-        # extended key
-        # or xpub or tpub as we use descriptors (SLIP-132 NOT allowed)
-        hint = key_str[0:1].lower()
-        if hint == b"x":
-            chain_type = "BTC"
-        elif hint == b"t":
-            chain_type = "XTN"
-        else:
-            # slip (ignore any implied address format)
-            chain_type = "BTC" if hint in b"yz" else "XTN"
-
         node = ngu.hdnode.HDNode()
-        node.deserialize(key_str)
-        try:
-            assert node.privkey() is None, "no privkeys"
-        except ValueError:
-            # ValueError is thrown from libngu if key is public
-            pass
+        version = node.deserialize(key_str)
+        return node, chains.type_from_xpub_version(version)
 
-        return node, chain_type
-
-    def validate(self, my_xfp, disable_checks=False):
+    def validate(self, my_xfp, disable_checks=False, secret=None):
         assert self.chain_type == chains.current_key_chain().ctype, "wrong chain"
 
         # xfp is always available, even if key was serialized without origin info
@@ -311,9 +295,16 @@ class ExtendedKey:
         xfp = self.origin.cc_fp
         is_mine = (xfp == my_xfp)
 
-        # raises ValueError on invalid pubkey (should be in libngu)
+        # raises ValueError on invalid pubkey in libngu
+        # https://github.com/switck/libngu/blob/master/ngu/hdnode.c#L148
         # invalid public key not allowed even with disable checks
-        ngu.secp256k1.pubkey(self.node.pubkey())
+        # ngu.secp256k1.pubkey(self.node.pubkey())
+
+        try:
+            assert self.node.privkey() is None, "no privkeys"
+        except ValueError:
+            # ValueError is thrown from libngu if key is public
+            pass
 
         if not disable_checks:
             depth = self.node.depth()
@@ -332,15 +323,17 @@ class ExtendedKey:
                 target = swab32(self.node.parent_fp())
                 assert xfp == target, 'xfp depth=1 wrong'
 
-            if is_mine:
-                # it's supposed to be my key, so I should be able to generate pubkey
-                # - might indicate collision on xfp value between co-signers,
-                #   and that's not supported
-                deriv = self.origin.str_derivation()
-                with stash.SensitiveValues() as sv:
-                    chk_node = sv.derive_path(deriv)
+            # XFP is attacker-controlled text. Verify both directions: keys claiming
+            # our XFP must be ours, and our keys cannot claim a foreign XFP.
+            deriv = self.origin.str_derivation()
+            with stash.SensitiveValues(secret=secret) as sv:
+                chk_node = sv.derive_path(deriv)
+                if is_mine:
                     assert self.node.pubkey() == chk_node.pubkey(), \
                                 "[%s/%s] wrong pubkey" % (xfp2str(xfp), deriv[2:])
+                else:
+                    assert self.node.pubkey() != chk_node.pubkey(), \
+                                "[%s] is our key" % xfp2str(xfp)
 
         return is_mine
 
@@ -410,7 +403,6 @@ class ExtendedKey:
             # new firmware, prefer key expression
             return cls.from_string(vals[key_exp])
 
-        # TODO
         node, _, _, _ = chains.slip132_deserialize(vals[af_str])
         ek = chains.current_chain().serialize_public(node)
         return cls.from_cc_data(vals["xfp"], vals["%s_deriv" % af_str], ek)
@@ -418,13 +410,11 @@ class ExtendedKey:
     @classmethod
     def from_psbt_xpub(cls, ek_bytes, xfp_path):
         xfp, *path = xfp_path
-        koi = KeyOriginInfo(a2b_hex(xfp2str(xfp)), path)
-        # TODO this should be done by C code, no need to base58 encode/decode
-        # byte-serialized key should be decodable
-        ek = ngu.codecs.b58_encode(ek_bytes)
-        node, chain_type = cls.parse_key(ek.encode())
-
-        return cls(node, koi, KeyDerivationInfo(), chain_type=chain_type)
+        koi = KeyOriginInfo(ustruct.pack("<I", xfp), path)
+        node = ngu.hdnode.HDNode()
+        version = node.deser_bytes(ek_bytes)
+        return cls(node, koi, KeyDerivationInfo(),
+                   chain_type=chains.type_from_xpub_version(version))
 
     @property
     def is_provably_unspendable(self):
@@ -466,6 +456,7 @@ class ExtendedKey:
 
 class MusigKey:
     def __init__(self, keys, der=None, node=None):
+        assert len(keys) <= MAX_MUSIG_PARTICIPANTS, "too many musig keys"
         self.keys = keys
         self.derivation = der or KeyDerivationInfo()
         self._node = node

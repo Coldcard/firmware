@@ -2,7 +2,7 @@
 #
 # backups.py - Save and restore backup data.
 #
-import compat7z, stash, ckcc, chains, gc, sys, bip39, uos, ngu
+import compat7z, stash, chains, gc, sys, bip39, uos, ngu
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from utils import deserialize_secret, swab32, xfp2str
@@ -22,12 +22,11 @@ bkpw_min_len = const(32)
 # - limited by size of LFS area of flash, since all settings are held there
 MAX_BACKUP_FILE_SIZE = const(128*1024)     # bytes
 
-def render_backup_contents(bypass_tmp=False):
+def render_backup_contents():
     # simple text format: 
     #   key = value
     # or #comments
     # but value is JSON
-    current_tmp = None
     rv = StringIO()
 
     def COMMENT(val=None):
@@ -45,11 +44,11 @@ def render_backup_contents(bypass_tmp=False):
 
     COMMENT('Private key details: ' + chain.name)
 
-    with stash.SensitiveValues(bypass_tmp=bypass_tmp, enforce_delta=True) as sv:
+    with stash.SensitiveValues(enforce_delta=True) as sv:
         if sv.mode == 'words':
             ADD('mnemonic', bip39.b2a_words(sv.raw))
 
-        if sv.mode == 'master':
+        elif sv.mode == 'master':
             ADD('bip32_master_key', b2a_hex(sv.raw))
 
         ADD('chain', chain.ctype)
@@ -72,15 +71,6 @@ def render_backup_contents(bypass_tmp=False):
             for k,v in pairs:
                 ADD(k, v)
 
-        if bypass_tmp and pa.tmp_value:
-            current_tmp = pa.tmp_value[:]
-            pa.tmp_value = None
-            # we also need correct settings from main seed
-            nv = stash.SecretStash.encode(seed_phrase=sv.raw)
-            settings.set_key(nv)
-            settings.load()
-            stash.blank_object(nv)
-    
     COMMENT('Firmware version (informational)')
     date, vers, timestamp = version.get_mpy_version()[0:3]
     ADD('fw_date', date)
@@ -113,13 +103,6 @@ def render_backup_contents(bypass_tmp=False):
             ADD('hsm_policy', hsm.capture_backup())
 
     rv.write('\n# EOF\n')
-
-    if bypass_tmp and current_tmp:
-        # go back to tmp secret and its settings
-        stash.SensitiveValues.clear_cache()
-        pa.tmp_value = current_tmp
-        settings.set_key()
-        settings.load()
 
     return rv.getvalue()
 
@@ -159,6 +142,8 @@ def restore_from_dict_ll(vals, raw):
     # Need a Reboot on success, return string on failure
     # - low-level version, factored out for better testing
     from glob import dis
+
+    assert not pa.tmp_value, "temporary seed active"
 
     need_ftux = False
 
@@ -200,6 +185,13 @@ def restore_from_dict_ll(vals, raw):
             continue
 
         k = key[8:]
+
+        if k == 'bkpw':
+            # never import a cached backup password from a backup file.
+            # write-side (render_backup_contents) strips bkpw, so a present
+            # value means a tampered/crafted file trying to fixate the
+            # password used for all FUTURE backups - drop it.
+            continue
 
         if k == 'sd2fa':
             # do NOT restore sd2fa as SD card can be lost or damaged
@@ -317,31 +309,41 @@ async def restore_from_dict(vals, raw):
     reset()
 
 
-async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
-    from stash import bip39_passphrase
+async def pick_backup_password(write_sflash=False, secret_opt=False, what="money for free"):
+    # Pick a password: like bip39 but no checksum word
+    #
+    while 1:
+        b = ngu.random.bytes(32)
+        # b2a_words(32 bytes) gives 24 BIP39 words. Keep the leading 12 by dropping the tail,
+        # which includes checksum bits; this is a wordlist password, not a valid BIP39 mnemonic.
+        # * keep pwd as a string for the encryption/settings paths
+        # * use rsplit to avoid split+join churn (2x slower)
+        assert num_pw_words == 12
+        pwd = bip39.b2a_words(b).rsplit(' ', num_pw_words)[0]
 
-    pwd = None
-    skip_quiz = False
-    bypass_tmp = False
+        ch = await seed.show_words(
+            prompt="Record this (%d word) backup file password:\n" % num_pw_words,
+            words=pwd.split(" "), escape='6',
+            extra="Press (6) for cleartext backup. " if secret_opt else ""
+        )
 
-    if bip39_passphrase and pa.tmp_value:
-        # this is a BIP39 password ephemeral wallet
-        msg = ("BIP39 passphrase is in effect. Backup ignores passphrases "
-               "and produces backup of main seed. Press %s to back-up main wallet,"
-               " press (2) to back-up BIP39 passphrase wallet "
-               "(extended private key created via seed + pass)" % OK)
-        ch = await ux_show_story(msg, escape="2")
-        if ch == "x": return
-        if ch == "y":
-            bypass_tmp = True
+        if (ch == "6") and not write_sflash:
+            # Secret feature: plaintext mode
+            # - only safe for people living in faraday cages inside locked vaults.
+            if await ux_confirm("The file will **NOT** be encrypted and anyone who finds"
+                                " the file will get all of your %s!" % what):
+                pwd = []
+                break
+            continue
 
-    elif pa.tmp_value:
-        if not await ux_confirm("A temporary seed is in effect, "
-                                "so backup will be of that seed."):
-            return
+        break
 
-    # first check if bkpw already defined on tmp seed settings
+    return pwd, ch == "x"
+
+async def bkpw_workflow():
     stored_pwd = None
+    skip_quiz = False
+
     master_pwd = settings.master_get("bkpw", None)
     if pa.tmp_value:
         stored_pwd = settings.get('bkpw', None)
@@ -361,36 +363,52 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
                                  sensitive=True)
 
         if ch == 'y':
-            pwd = stored_pwd  # string, not list
             skip_quiz = True
 
+    return stored_pwd, skip_quiz
+
+
+def encrypt_7z_data(password, body, ext="txt"):
+    from glob import dis
+
+    zz = compat7z.Builder(password=password, progress_fcn=dis.progress_bar_show)
+    zz.add_data(body)
+
+    # pick random filename, but ending in 'ext'
+    word = bip39.wordlist_en[ngu.random.uniform(2048)]
+    num = ngu.random.uniform(1000)
+    fname = '%s%d.%s' % (word, num, ext)
+
+    hdr, footer = zz.save(fname)
+    return zz, hdr, footer
+
+
+async def confirm_tmp_in_effect(what):
+    # We always capture the seed in effect, never the master seed underneath it.
+    # Passphrase can be applied on top of another temporary seed, so we cannot
+    # offer master seed as an alternative - be clear about whose secret leaves.
+    if not pa.tmp_value:
+        return True
+
+    name = "BIP-39 passphrase" if stash.bip39_passphrase else "temporary seed"
+    return await ux_confirm("A %s is in effect, so %s will be of that seed." % (name, what))
+
+async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
+    pwd = None
+
+    if not await confirm_tmp_in_effect("backup"):
+        return
+
+    # first check if bkpw already defined on tmp seed settings
+    stored_pwd, skip_quiz = await bkpw_workflow()
+    if skip_quiz:
+        pwd = stored_pwd
+
     if not pwd:
-        # Pick a password: like bip39 but no checksum word
-        #
-        b = bytearray(32)
-        while 1:
-            ckcc.rng_bytes(b)
-            pwd = bip39.b2a_words(b).rsplit(' ', num_pw_words)[0]
-
-            ch = await seed.show_words(
-                prompt="Record this (%d word) backup file password:\n" % num_pw_words,
-                words=pwd.split(" "), escape='6'
-            )
-
-            if (ch == '6') and not write_sflash:
-                # Secret feature: plaintext mode
-                # - only safe for people living in faraday cages inside locked vaults.
-                if await ux_confirm("The file will **NOT** be encrypted and "
-                                    "anyone who finds the file will get all of your money for free!"):
-                    pwd = []
-                    fname_pattern = 'backup.txt'
-                    break
-                continue
-
-            if ch == 'x':
-                return
-
-            break
+        pwd, abort = await pick_backup_password(write_sflash=write_sflash)
+        if abort: return
+        if not pwd:
+            fname_pattern = 'backup.txt'
 
     if pwd and not skip_quiz:
         # quiz them, but be nice and do a shorter test.
@@ -404,23 +422,18 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
         if ch == '1':
             settings.set('bkpw', pwd)  # if on tmp save to tmp, do not update master
             settings.save()
-        # stop droping bkpw just because someone decided to use differrent password
-        # elif stored_words:
-        #     settings.remove_key('bkpw')
-        #     settings.save()
 
-    return await write_complete_backup(pwd, fname_pattern, write_sflash=write_sflash,
-                                       bypass_tmp=bypass_tmp)
+    return await write_complete_backup(pwd, fname_pattern, write_sflash=write_sflash)
 
 async def write_complete_backup(pwd, fname_pattern, write_sflash=False,
-                                allow_copies=True, bypass_tmp=False):
+                                allow_copies=True):
     # Just do the writing
     from glob import dis
     from files import CardSlot
 
     # Show progress:
     dis.fullscreen('Encrypting...' if pwd else 'Generating...')
-    body = render_backup_contents(bypass_tmp=bypass_tmp).encode()
+    body = render_backup_contents().encode()
 
     gc.collect()
 
@@ -428,15 +441,7 @@ async def write_complete_backup(pwd, fname_pattern, write_sflash=False,
         # NOTE: Takes a few seconds to do the key-streching, but little actual
         # time to do the encryption.
 
-        zz = compat7z.Builder(password=pwd, progress_fcn=dis.progress_bar_show)
-        zz.add_data(body)
-
-        # pick random filename, but ending in .txt
-        word = bip39.wordlist_en[ngu.random.uniform(2048)]
-        num = ngu.random.uniform(1000)
-        fname = '%s%d.txt' % (word, num)
-
-        hdr, footer = zz.save(fname)
+        zz, hdr, footer = encrypt_7z_data(pwd, body)
 
         del body
 
@@ -577,7 +582,11 @@ async def restore_complete(fname_or_fd, temporary=False, words=True, usb=False):
         # give them a menu to pick from, and start picking
         if usb:
             # we're not originating from a menu
-            words = await seed.WordNestMenu.get_n_words(12)
+            words = await seed.WordNestMenu.get_n_words(num_pw_words)
+            if len(words) != num_pw_words:
+                seed.WordNestMenu.pop_all()
+                return
+
             await done(words)
         else:
             m = seed.WordNestMenu(num_words=num_pw_words, has_checksum=False, done_cb=done)
@@ -594,7 +603,7 @@ async def restore_complete(fname_or_fd, temporary=False, words=True, usb=False):
         await done(pwd)
 
 
-def check_and_decrypt(fd, password):
+def check_and_decrypt(fd, password, inner_ext=".txt"):
     try:
         compat7z.check_file_headers(fd)
     except Exception as e:
@@ -609,11 +618,15 @@ def check_and_decrypt(fd, password):
                                        progress_fcn=dis.progress_bar_show)
 
         # simple quick sanity checks
-        assert fname.endswith('.txt')  # was == 'ckcc-backup.txt'
-        assert contents[0:1] == b'#' and contents[-1:] == b'\n'
+        assert fname.endswith(inner_ext), "not %s" % inner_ext
+        if inner_ext == ".txt":
+            assert contents[0:1] == b'#' and contents[-1:] == b'\n',"malformed"
         return contents
 
-    except Exception as e:
+    except AssertionError as e:
+        raise RuntimeError('Invalid backup file: %s'% str(e))
+
+    except Exception:
         # assume everything here is "password wrong" errors
         raise RuntimeError('Unable to decrypt backup file. Incorrect password?'
                            '\n\nTried:\n\n' + password)
@@ -780,9 +793,7 @@ back and press %s to complete clone process.''' % OK)
         uos.remove(fname)       # ccbk-start.json
 
     # this will reset in successful case, no return (but delme is called)
-    # no need to ask for UX confirmation during clone - as user can see what is loaded on source CC
-    prob = await restore_complete_doit(incoming, words, file_cleanup=delme,
-                                       ux_confirm=False)
+    prob = await restore_complete_doit(incoming, words, file_cleanup=delme)
     if prob:
         await ux_show_story(prob, title='FAILED')
 
@@ -817,6 +828,9 @@ async def clone_write_data(*a):
         await ux_show_story("Start this process on the other Coldcard, which will write a file onto MicroSD card as the first step.\n\nInsert that card and try again here.")
         return
 
+    if not await confirm_tmp_in_effect("clone"):
+        return
+
     # pick our own temp keys for this encryption
     pair = ngu.secp256k1.keypair()
     my_pubkey = pair.pubkey().to_bytes(False)
@@ -824,7 +838,7 @@ async def clone_write_data(*a):
 
     fname = b2a_hex(my_pubkey).decode() + '-ccbk.7z'
 
-    await write_complete_backup(b2a_hex(session_key).decode(), fname, allow_copies=False, bypass_tmp=True)
+    await write_complete_backup(b2a_hex(session_key).decode(), fname, allow_copies=False)
 
     await ux_show_story("Done.\n\nTake this MicroSD card back to other Coldcard and continue from there.")
 

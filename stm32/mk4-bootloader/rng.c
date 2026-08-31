@@ -6,7 +6,41 @@
 #include "basics.h"
 #include "stm32l4xx_hal.h"
 
+#define RNG_MAX_ATTEMPTS (3)
 
+// Clock-error flags (CEIS/CECS) are intentionally ignored: per RM0432
+// section 32.3.7, "the clock error has no impact on generated random
+// numbers", and ST's errata (ES0250/ES0335) confirm a clock error neither
+// stops generation nor invalidates RNG_DR when DRDY is set. A dead clock
+// still fails closed via the intentionally unbounded DRDY wait below.
+// CEIS is left set on purpose: clearing it is a no-op while RNG interrupts
+// stay disabled.
+#define RNG_SEED_ERROR_MASK (RNG_SR_SEIS | RNG_SR_SECS)
+
+// Recover from a seed error.
+static void
+rng_recover(void)
+{
+    // Ensure the peripheral is clocked before touching its registers.
+    __HAL_RCC_RNG_CLK_ENABLE();
+
+    // Clear sticky SEIS and cycle RNGEN (ST HAL recommendation).
+    RNG->SR &= ~RNG_SR_SEIS;
+    RNG->CR &= ~RNG_CR_RNGEN;
+    RNG->CR |= RNG_CR_RNGEN;
+
+    // RM0432 32.3.7: discard 12 words to clean the pipeline. The DRDY wait
+    // stays unbounded like rng_sample(): a dead clock remains a hard
+    // fail-closed wait; a recurring seed error bails to the next attempt.
+    for(int i = 0; i < 12; i++) {
+        while(!(RNG->SR & RNG_FLAG_DRDY)) {
+            if(RNG->SR & RNG_SEED_ERROR_MASK) {
+                return;
+            }
+        }
+        (void)RNG->DR;
+    }
+}
 
 // rng_setup()
 //
@@ -47,25 +81,43 @@ rng_sample(void)
 {
     static uint32_t last_rng_result;
 
-    while(1) {
-        // Check if data register contains valid random data
-        while(!(RNG->SR & RNG_FLAG_DRDY)) {
-            // busy wait; okay to get stuck here... better than failing.
+    // Attempts bound seed-error recovery; DRDY polling remains intentionally unbounded.
+    for(int attempt = 0; attempt < RNG_MAX_ATTEMPTS; attempt++) {
+        while(1) {
+            uint32_t sr = RNG->SR;
+
+            if(sr & RNG_SEED_ERROR_MASK) {
+                break;
+            }
+
+            if(!(sr & RNG_FLAG_DRDY)) {
+                // Missing clocks are a hard failure. Preserve the existing
+                // fail-closed behaviour and wait rather than use bad data.
+                continue;
+            }
+
+            uint32_t rv = RNG->DR;
+
+            // Recheck after reading DR to close the documented polling race.
+            if(RNG->SR & RNG_SEED_ERROR_MASK) {
+                break;
+            }
+
+            if(rv != last_rng_result && rv) {
+                last_rng_result = rv;
+
+                return rv;
+            }
+
+            // Zero or repeat: poll for another word without consuming an attempt.
         }
 
-        // Get the new number
-        uint32_t rv = RNG->DR;
-
-        if(rv != last_rng_result && rv) {
-            last_rng_result = rv;
-
-            return rv;
+        if(attempt + 1 < RNG_MAX_ATTEMPTS) {
+            rng_recover();
         }
-
-        // keep trying if not a new number
     }
 
-    // NOT-REACHED
+    fatal_error("rng");
 }
 
 // rng_buffer()

@@ -1,7 +1,7 @@
 
 # Firmware Upgrade and Recovery Process
 
-_This document applies only to the Mk4. Earlier COLDCARDs did not use this approach._
+_This document applies to the Mk4, Mk5, and Q. Earlier COLDCARDs did not use this approach._
 
 On the COLDCARD, we have done away with the slow external SPI flash
 (serial flash) chip entirely (used in Mk1-Mk3). In it's place we

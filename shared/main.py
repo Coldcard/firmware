@@ -20,7 +20,7 @@ gc.threshold(4096)
 try:
     from h import *
     import ckcc
-    ckcc.vcp_enabled(True)
+    ckcc.repl_enabled(True)
 except:
     # above will fail on release build, because:
     # - 'h.py' not included

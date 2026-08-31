@@ -6,8 +6,9 @@ import stash, gc, history, sys, ngu, ckcc, chains
 from ucollections import OrderedDict
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, B2A, keypath_to_str, validate_derivation_path_length, problem_file_line, node_from_privkey
-from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str, swab32
+from utils import (xfp2str, B2A, keypath_to_str, validate_derivation_path_length,
+                   problem_file_line, node_from_privkey, max_signers)
+from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str
 from uhashlib import sha256
 from uio import BytesIO
 from sffile import SizerFile
@@ -15,15 +16,15 @@ from chains import taptweak, tapleaf_hash, NLOCK_IS_TIME, AF_TO_STR_AF
 from wallet import MiniScriptWallet, TRUST_PSBT, TRUST_VERIFY
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160
-from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, COutPoint
-from serializations import ser_sig_der, uint256_from_str, ser_push_data
+from serializations import CTransaction, CTxIn, CTxInWitness, CTxOut, ser_string, COutPoint
+from serializations import ser_sig_der, uint256_from_str, ser_push_data, disassemble_multisig_mn
 from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_ANYONECANPAY
 from serializations import ALL_SIGHASH_FLAGS, SIGHASH_DEFAULT
 from opcodes import OP_CHECKMULTISIG, OP_RETURN
 from glob import settings
-from precomp_tag_hash import TAP_TWEAK_H, TAP_SIGHASH_H
-from desc_utils import MusigKey, MUSIG_CHAIN_CODE
-from wif import init_wif_store
+from precomp_tag_hash import TAP_TWEAK_H, TAP_SIGHASH_H, BIP322_TAG_HASH
+from desc_utils import MusigKey, MUSIG_CHAIN_CODE, MAX_MUSIG_PARTICIPANTS
+from wif import WIFStore
 
 from public_constants import (
     PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_XPUB, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
@@ -38,7 +39,7 @@ from public_constants import (
     PSBT_GLOBAL_TX_MODIFIABLE, PSBT_GLOBAL_OUTPUT_COUNT, PSBT_GLOBAL_INPUT_COUNT,
     PSBT_GLOBAL_FALLBACK_LOCKTIME, PSBT_GLOBAL_TX_VERSION, PSBT_IN_PREVIOUS_TXID,
     PSBT_IN_OUTPUT_INDEX, PSBT_IN_SEQUENCE, PSBT_IN_REQUIRED_TIME_LOCKTIME,
-    PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, MAX_SIGNERS,
+    PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE,
     PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS, PSBT_IN_MUSIG2_PUB_NONCE, PSBT_IN_MUSIG2_PARTIAL_SIG,
     PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS,
     AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, AF_P2TR, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH,
@@ -49,6 +50,14 @@ psbt_tmp256 = bytearray(256)
 
 # transaction version error
 TX_VER_ERR = "bad txn version"
+NO_KEY_ERR = "None of the keys involved in this transaction belong to this Coldcard"
+
+def build_bip322_to_spend(msg_hash, message_challenge):
+    to_spend = CTransaction()
+    to_spend.nVersion = 0
+    to_spend.vin = [CTxIn(COutPoint(hash=0, n=0xffffffff), scriptSig=b'\x00\x20' + msg_hash)]
+    to_spend.vout = [CTxOut(0, message_challenge)]
+    return to_spend
 
 # PSBT proprietary keytype
 PSBT_PROPRIETARY = const(0xFC)
@@ -63,11 +72,49 @@ PSBT_ATTESTATION_SUBTYPE = const(0)
 # Amounts over 5% are warned regardless.
 DEFAULT_MAX_FEE_PERCENTAGE = const(10)
 
+# is_change bitmask: bit 0 marks change; bits 1-5 record derivation-path
+# issues for the explorer. Issue bits are only set with bit 0 (max 0x3f).
+CHANGE_OUTPUT = const(1 << 0)
+CHANGE_PATH_LENGTH = const(1 << 1)
+CHANGE_PATH_HARDENING = const(1 << 2)
+CHANGE_PATH_PREFIX = const(1 << 3)
+CHANGE_PATH_BRANCH = const(1 << 4)
+CHANGE_PATH_GAP = const(1 << 5)
+CHANGE_PATH_ISSUES = (
+    (CHANGE_PATH_LENGTH, "length"),
+    (CHANGE_PATH_HARDENING, "hardening"),
+    (CHANGE_PATH_PREFIX, "prefix"),
+    (CHANGE_PATH_BRANCH, "branch"),
+    (CHANGE_PATH_GAP, "gap"),
+)
+CHANGE_PATH_ISSUE_MASK = const(
+    CHANGE_PATH_LENGTH | CHANGE_PATH_HARDENING | CHANGE_PATH_PREFIX |
+    CHANGE_PATH_BRANCH | CHANGE_PATH_GAP
+)
+
 # print some things, sometimes
 DEBUG = ckcc.is_simulator()
 
 
 MUSIG_SESSION_CACHE = {}
+
+
+def make_musig_session_id(txn_digest, witness_digest, my_xfp, wallet):
+    # Bind the cached nonce root to the supplied transaction digest, the
+    # witness_utxo commitments (BIP341 granularity), and the wallet policy.
+    # NUL is not valid in policy or key-info strings; witness_digest folds
+    # as empty bytes when no input bears a UTXO.
+    session = sha256()
+    session.update(txn_digest)
+    session.update(witness_digest or b"")
+    session.update(pack('<I', my_xfp))
+    session.update(wallet.desc_tmplt.encode())
+    session.update(b'\0')
+    for key_info in wallet.keys_info:
+        session.update(key_info.encode())
+        session.update(b'\0')
+    return session.digest()
+
 
 class HashNDump:
     def __init__(self, d=None):
@@ -83,10 +130,6 @@ class HashNDump:
     def digest(self):
         print(' END')
         return self.rv.digest()
-
-def seq_to_str(seq):
-    # take a set or list of numbers and show a tidy list in order.
-    return ', '.join(str(i) for i in sorted(seq))
 
 def _skip_n_objs(fd, n, cls):
     # skip N sized objects in the stream, for example a vectors of CTxIns
@@ -112,17 +155,6 @@ def _skip_n_objs(fd, n, cls):
                 fd.seek(p, 1)
 
     return rv
-
-def disassemble_multisig_mn(redeem_script):
-    # pull out just M and N from script. Simple, faster, no memory.
-
-    if not redeem_script or (redeem_script[-1] != OP_CHECKMULTISIG):
-        return None, None
-
-    M = redeem_script[0] - 80
-    N = redeem_script[-2] - 80
-
-    return M, N
 
 def calc_txid(fd, poslen, body_poslen=None):
     # Given the (pos,len) of a transaction in a file, return the txid for that txn.
@@ -228,6 +260,7 @@ class psbtProxy:
 
     def parse(self, fd):
         self.fd = fd
+        seen_singletons = 0
 
         while 1:
             ks = deser_compact_size(fd)
@@ -241,6 +274,11 @@ class psbtProxy:
             assert vs is not None, 'eof'
 
             kt = key[0]
+
+            if len(key) == 1:
+                mask = 1 << kt
+                assert not (seen_singletons & mask), 'duplicate key'
+                seen_singletons |= mask
 
             if kt in self.no_keys:
                 assert len(key) == 1       # not expecting key
@@ -344,8 +382,8 @@ class psbtProxy:
             self.taproot_subpaths[i] = (key, (val[0], val[1], (curr_pos, to_read)))
             # internal key is allowed to go from master
             # unspendable path can be just a bare xonly pubkey
-            allow_master = True if not leaf_hash_len else False
-            validate_derivation_path_length(to_read, allow_master=allow_master)
+            # master keys allowed
+            validate_derivation_path_length(to_read)
             v = self.fd.read(to_read)
             here = list(unpack_from('<%dI' % (to_read // 4), v))
             here = self.handle_zero_xfp(here, my_xfp, parent)
@@ -423,8 +461,8 @@ class psbtOutputProxy(psbtProxy):
         #self.amount = None
         #self.musig_pubkeys = None
 
-        # this flag is set when we are assuming output will be change (same wallet)
-        #self.is_change = False
+        # Nonzero when output is change; higher bits record derivation-path issues.
+        #self.is_change = 0
 
         self.parse(fd)
 
@@ -563,9 +601,8 @@ class psbtOutputProxy(psbtProxy):
             ))
 
         if af == AF_BARE_PK:
-            # output is compressed public key (not a hash, much less common)
-            # uncompressed public keys not supported!
-            assert len(addr_or_pubkey) == 33
+            # output is public key (not a hash, much less common)
+            assert len(addr_or_pubkey) in (33, 65)
             assert len(parsed_subpaths) == 1
             target, = parsed_subpaths.keys()
 
@@ -589,7 +626,7 @@ class psbtOutputProxy(psbtProxy):
                     # but also not a fraud
                     if msc.matching_subpaths(xfp_paths):
                         msc.validate_script_pubkey(txo.scriptPubKey, xfp_paths)
-                        self.is_change = True
+                        self.is_change = CHANGE_OUTPUT
                 except AssertionError as e:
                     # sys.print_exception(e)
                     fraud(out_idx, af, e)
@@ -615,7 +652,7 @@ class psbtOutputProxy(psbtProxy):
                     xfp_paths = [v[1:] for v in parsed_subpaths.values()]
                     if msc.matching_subpaths(xfp_paths):
                         msc.validate_script_pubkey(txo.scriptPubKey, xfp_paths)
-                        self.is_change = True
+                        self.is_change = CHANGE_OUTPUT
                 except AssertionError as e:
                     fraud(out_idx, af, e)
                 return af
@@ -633,7 +670,7 @@ class psbtOutputProxy(psbtProxy):
             fraud(out_idx, af)
 
         # We will check pubkey value at the last second, during signing.
-        self.is_change = True
+        self.is_change = CHANGE_OUTPUT
         return af
 
 
@@ -658,7 +695,7 @@ class psbtInputProxy(psbtProxy):
         'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts',
         'taproot_subpaths', 'taproot_internal_key', 'taproot_key_sig', 'tr_added_sigs',
         'ik_idx', 'musig_pubkeys', 'musig_pubnonces', 'musig_part_sigs', 'musig_agg_idx',
-        'musig_added_pubnonces', 'musig_added_sigs'
+        'musig_added_pubnonces', 'musig_added_sigs', 'wif_key', 'wif_redeem_script'
     )
 
     def __init__(self, fd, idx):
@@ -824,7 +861,7 @@ class psbtInputProxy(psbtProxy):
 
     def handle_none_sighash(self):
         if self.sighash is None:
-            self.sighash = SIGHASH_DEFAULT if self.taproot_subpaths else SIGHASH_ALL
+            self.sighash = SIGHASH_DEFAULT if self.af == AF_P2TR else SIGHASH_ALL
 
     def has_utxo(self):
         # do we have a copy of the corresponding UTXO?
@@ -848,48 +885,57 @@ class psbtInputProxy(psbtProxy):
         fd = self.fd
         old_pos = fd.tell()
 
-        if self.witness_utxo:
-            # Going forward? Just what we will witness; no other junk
-            # - prefer this format, altho does that imply segwit txn must be generated?
-            # - I don't know why we wouldn't always use this
-            # - once we use this partial utxo data, we must create witness data out
+        if self.utxo:
+            # skip over all the parts of the txn we don't care about, without
+            # fully parsing it... pull out a single TXO
+            fd.seek(self.utxo[0])
 
-            fd.seek(self.witness_utxo[0])
+            _, marker, flags = unpack("<iBB", fd.read(6))
+            wit_format = (marker == 0 and flags != 0x0)
+            if not wit_format:
+                # rewind back over marker+flags
+                fd.seek(-2, 1)
+
+            # How many ins? We accept zero here because utxo's inputs might have been
+            # trimmed to save space, and we have test cases like that.
+            num_in = deser_compact_size(fd)
+            _skip_n_objs(fd, num_in, 'CTxIn')
+
+            num_out = deser_compact_size(fd)
+            assert idx < num_out, "not enuf outs"
+            _skip_n_objs(fd, idx, 'CTxOut')
+
             utxo = CTxOut()
             utxo.deserialize(fd)
+
+            # ... followed by more outs, and maybe witness data, but we don't care ...
+
             fd.seek(old_pos)
 
             return utxo
 
-        assert self.utxo, 'no utxo'
+        assert self.witness_utxo, 'no utxo'
 
-        # skip over all the parts of the txn we don't care about, without
-        # fully parsing it... pull out a single TXO
-        fd.seek(self.utxo[0])
-
-        _, marker, flags = unpack("<iBB", fd.read(6))
-        wit_format = (marker == 0 and flags != 0x0)
-        if not wit_format:
-            # rewind back over marker+flags
-            fd.seek(-2, 1)
-
-        # How many ins? We accept zero here because utxo's inputs might have been
-        # trimmed to save space, and we have test cases like that.
-        num_in = deser_compact_size(fd)
-        _skip_n_objs(fd, num_in, 'CTxIn')
-
-        num_out = deser_compact_size(fd)
-        assert idx < num_out, "not enuf outs"
-        _skip_n_objs(fd, idx, 'CTxOut')
-
+        fd.seek(self.witness_utxo[0])
         utxo = CTxOut()
         utxo.deserialize(fd)
-
-        # ... followed by more outs, and maybe witness data, but we don't care ...
-
         fd.seek(old_pos)
 
         return utxo
+
+    def witness_utxo_is_provably_segwit(self, utxo):
+        af, addr_or_pubkey = utxo.get_address()
+        if af and (af & AFC_SEGWIT):
+            return True
+
+        if af != AF_P2SH or not self.redeem_script:
+            return False
+
+        redeem_script = self.get(self.redeem_script)
+        return redeem_script[0] == 0 and \
+            ((len(redeem_script) == 22 and redeem_script[1] == 20) or
+             (len(redeem_script) == 34 and redeem_script[1] == 32)) and \
+            hash160(redeem_script) == addr_or_pubkey
 
     def determine_my_signing_key(self, my_idx, addr_or_pubkey, my_xfp, psbt, parsed_subpaths, utxo):
         # See what it takes to sign this particular input
@@ -901,26 +947,59 @@ class psbtInputProxy(psbtProxy):
         if self.af == OP_RETURN:
             return
 
-        if self.af is None:
-            # If this is reached, we do not understand the output well
-            # enough to allow the user to authorize the spend, so fail hard.
-            raise FatalPSBTIssue('Unhandled scriptPubKey: ' + b2a_hex(addr_or_pubkey).decode())
+        if self.fully_signed:
+            return
 
         if psbt.active_miniscript or psbt.active_singlesig:
-            # we have already set one of these - sow we can use some short-cuts
+            # We have already selected a wallet type, so skip incompatible inputs.
             if psbt.active_miniscript and (self.af in (AF_CLASSIC, AF_P2WPKH, AF_BARE_PK)):
                 # signing with miniscript wallet - ignore single sig utxos
                 self.sp_idxs = None
                 return
             elif psbt.active_singlesig and (self.af == AF_P2WSH):
-                # we are signing single sig inputs - ignore p2wsh utxos
+                # signing with single sig wallet - ignore p2wsh utxos
                 self.sp_idxs = None
                 return
 
+        if not self.sp_idxs and psbt.wif_store:
+            match_key = pk = None
+
+            if self.af == AF_P2TR and self.taproot_internal_key:
+                match_key = self.get(self.taproot_internal_key)
+                pk = psbt.key_in_wif_store(match_key)
+            else:
+                match = psbt.wif_store.match_address_hash(self.af, addr_or_pubkey)
+                if match:
+                    pk = match[1]
+                    match_key = pk
+
+            if pk:
+                # Add a synthetic, local-only path so the edge signing pipeline can
+                # validate this input without trusting unrelated derivation metadata
+                # or serializing the synthetic path.
+                parsed_subpaths.clear()
+                parsed_subpaths[match_key] = [0]
+                self.sp_idxs = [0]
+                self.wif_key = pk
+
+                if self.af == AF_P2TR:
+                    self.ik_idx = [0]
+                elif self.af == AF_P2SH:
+                    self.wif_redeem_script = b'\x00\x14' + hash160(pk)
+                    if self.redeem_script:
+                        assert self.get(self.redeem_script) == self.wif_redeem_script
+
+        if not self.sp_idxs:
+            return
+
+        if self.af is None:
+            # If this is reached, we do not understand the output well
+            # enough to allow the user to authorize the spend, so fail hard.
+            raise FatalPSBTIssue('Unhandled scriptPubKey: ' + b2a_hex(addr_or_pubkey).decode())
+
         if self.af == AF_BARE_PK:
-            # input is single compressed public key (less common)
-            # uncompressed public keys not supported!
-            assert len(addr_or_pubkey) == 33
+            # input is a single compressed or uncompressed public key (less common)
+            assert len(addr_or_pubkey) in (33, 65)
 
             for i, pubkey in enumerate(parsed_subpaths):
                 if pubkey == addr_or_pubkey:
@@ -944,26 +1023,45 @@ class psbtInputProxy(psbtProxy):
 
         elif self.af in (AF_P2WSH, AF_P2SH):
             # we must have the redeem script already (else fail)
-            ks = self.witness_script or self.redeem_script
-            if not ks:
-                raise FatalPSBTIssue("Missing redeem/witness script for input #%d" % my_idx)
+            if self.wif_redeem_script:
+                redeem_script = self.wif_redeem_script
+            else:
+                ks = self.witness_script or self.redeem_script
+                if not ks:
+                    raise FatalPSBTIssue("Missing redeem/witness script for input #%d" % my_idx)
 
-            redeem_script = self.get(ks)
+                redeem_script = self.get(ks)
+
             native_v0 = (self.af == AF_P2WSH)
+            if self.witness_script and not native_v0 and not self.redeem_script:
+                raise FatalPSBTIssue('Missing redeem script for input #%d' % my_idx)
 
             if not native_v0 and (len(redeem_script) == 22) and \
-                    redeem_script[0] == 0 and redeem_script[1] == 20 and \
-                    len(parsed_subpaths) == 1:
+                    redeem_script[0] == 0 and redeem_script[1] == 20:
+
+                # P2SH-P2WPKH is a single-key input. Do not mistake a 1-of-1
+                # multisig script for singlesig merely because it has one path.
+                assert len(parsed_subpaths) == 1, "p2sh-p2wpkh needs one key"
 
                 for i, pubkey in enumerate(parsed_subpaths):
                     target_spk, _ = chains.current_chain().script_pubkey(AF_P2WPKH_P2SH,
                                                                          pubkey=pubkey)
-                    if target_spk == utxo.scriptPubKey:
-                        # it's actually segwit p2wpkh inside p2sh
-                        self.af = AF_P2WPKH_P2SH
-                        assert i == self.sp_idxs[0]
+                    assert target_spk == utxo.scriptPubKey, "p2sh-p2wpkh pubkey mismatch"
+                    self.af = AF_P2WPKH_P2SH
+                    assert i == self.sp_idxs[0]
 
             else:
+                # A standard multisig input is complete once its script threshold is met,
+                # not only when every listed pubkey has signed. Other miniscript forms
+                # are handled by the existing wallet/script validation below.
+                try:
+                    M, _ = disassemble_multisig_mn(redeem_script)
+                    if len(self.part_sigs or []) >= M:
+                        self.fully_signed = True
+                        return
+                except:
+                    pass
+
                 # Assume we'll be signing with any key we know
                 # - but if partial sig already in place, ignore that one
                 self.is_miniscript = True
@@ -994,43 +1092,49 @@ class psbtInputProxy(psbtProxy):
                         raise FatalPSBTIssue('Need witness script for input #%d' % my_idx)
 
         elif self.af == AF_P2TR:
+            if self.taproot_merkle_root is not None:
+                assert len(parsed_subpaths) != 1 or self.wif_key, "Merkle root not allowed"
+                merkle_root = self.get(self.taproot_merkle_root)
+
             if len(parsed_subpaths) == 1:
-                # keyspend without a script path
-                assert self.taproot_merkle_root is None, "merkle_root should not be defined for simple keyspend"
+                # Simple SE-backed key-path spends must not commit to an unknown
+                # script tree. WIF Store is the explicit escape hatch for externally
+                # constructed Taproot outputs.
                 assert self.ik_idx == [0]
                 xonly_pubkey, lhs_path = list(parsed_subpaths.items())[0]
                 lhs, path = lhs_path[0], lhs_path[1:]
                 assert not lhs, "LeafHashes have to be empty for internal key"
                 assert self.sp_idxs[0] == 0
-                assert taptweak(xonly_pubkey) == addr_or_pubkey
+                assert taptweak(xonly_pubkey, merkle_root) == addr_or_pubkey
             else:
                 self.is_miniscript = True
 
-                if self.taproot_merkle_root is not None:
-                    merkle_root = self.get(self.taproot_merkle_root)
+                internal_key = None
+                if self.taproot_internal_key is not None:
+                    internal_key = self.get(self.taproot_internal_key)
 
-                for i, (xonly_pubkey, lhs_path) in enumerate(parsed_subpaths.items()):
-                    if i not in self.sp_idxs:
-                        # # ignore keys that does not have correct xfp specified in PSBT
-                        continue
+                # Prefer key-path spending when we control the sole internal key.
+                if self.ik_idx and len(self.ik_idx) == 1:
+                    internal_idx = self.ik_idx[0]
 
-                    if psbt.key_in_wif_store(xonly_pubkey):
-                        assert i in self.sp_idxs
+                    for i, (candidate, lhs_path) in enumerate(parsed_subpaths.items()):
+                        if i != internal_idx:
+                            continue
 
-                    lhs, path = lhs_path[0], lhs_path[1:]
-                    # assert merkle_root is not None, "Merkle root not defined"
-                    if self.ik_idx and len(self.ik_idx) == 1 and self.ik_idx[0] == i:
-                        assert not lhs
-                        output_key = taptweak(xonly_pubkey, merkle_root)
-                        if output_key == addr_or_pubkey:
-                            # if we find a possibility to spend keypath (internal_key) - we do keypath
-                            # even though script path is available
+                        assert not lhs_path[0]
+
+                        if internal_key is None:
+                            internal_key = candidate
+                            if i in self.sp_idxs:
+                                self.sp_idxs = [i]
+                        elif candidate == internal_key and i in self.sp_idxs:
                             self.sp_idxs = [i]
-                            break  # done ignoring all other possibilities
-                    else:
-                        internal_key = self.get(self.taproot_internal_key)
-                        output_pubkey = taptweak(internal_key, merkle_root)
-                        assert addr_or_pubkey == output_pubkey
+
+                        break
+
+                assert internal_key is not None, "Taproot internal key missing"
+                assert taptweak(internal_key, merkle_root) == addr_or_pubkey, \
+                    "Taproot output key mismatch"
 
         if self.is_miniscript:
             if not self.sp_idxs: return
@@ -1089,7 +1193,8 @@ class psbtInputProxy(psbtProxy):
         if self.af == AF_P2WPKH:
             return b'\x19\x76\xa9\x14' + self.utxo_spk[2:2+20] + b'\x88\xac'
         elif self.af == AF_P2WPKH_P2SH:
-            return b'\x19\x76\xa9\x14' + self.get(self.redeem_script)[2:22] + b'\x88\xac'
+            redeem_script = self.wif_redeem_script or self.get(self.redeem_script)
+            return b'\x19\x76\xa9\x14' + redeem_script[2:22] + b'\x88\xac'
         elif self.af in (AF_P2WSH, AF_P2WSH_P2SH):
             # "scriptCode is witnessScript preceeded by a
             #  compactSize integer for the size of witnessScript"
@@ -1099,7 +1204,7 @@ class psbtInputProxy(psbtProxy):
         if self.af in [AF_BARE_PK, AF_CLASSIC]:
             return self.utxo_spk
         elif self.af in (AF_P2SH, AF_P2WSH_P2SH, AF_P2WPKH_P2SH):
-            return self.get(self.redeem_script)
+            return self.wif_redeem_script or self.get(self.redeem_script)
         else:
             return b""
 
@@ -1197,8 +1302,9 @@ class psbtInputProxy(psbtProxy):
             for k, v in self.subpaths:
                 wr(PSBT_IN_BIP32_DERIVATION, v, k)
 
-        if self.redeem_script:
-            wr(PSBT_IN_REDEEM_SCRIPT, self.redeem_script)
+        redeem_script = self.redeem_script or self.wif_redeem_script
+        if redeem_script:
+            wr(PSBT_IN_REDEEM_SCRIPT, redeem_script)
 
         if self.witness_script:
             wr(PSBT_IN_WITNESS_SCRIPT, self.witness_script)
@@ -1267,9 +1373,9 @@ class psbtInputProxy(psbtProxy):
 class psbtObject(psbtProxy):
     "Just? parse and store"
     short_values = { PSBT_GLOBAL_TX_MODIFIABLE }
-    no_keys = { PSBT_GLOBAL_UNSIGNED_TX }
+    no_keys = { PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE }
     blank_flds = ("hashPrevouts", "hashSequence", "hashOutputs", "hashValues", "hashScriptPubKeys",
-                  "my_tr_in", "unknown")
+                  "tr_hashPrevouts", "tr_hashSequence", "tr_hashOutputs", "my_tr_in", "unknown")
 
     def __init__(self):
         super().__init__()
@@ -1280,7 +1386,7 @@ class psbtObject(psbtProxy):
         self.xpubs = []         # tuples(xfp_path, xpub)
 
         self.my_xfp = settings.get('xfp', 0)
-        self.wif_store = init_wif_store()
+        self.wif_store = WIFStore()
 
         # details that we discover as we go
         self.inputs = None
@@ -1332,10 +1438,12 @@ class psbtObject(psbtProxy):
 
         # musig related
         self.session = None
+        self.witness_session = None
         self.allow_cache_store = False
 
         # Proof of Reserves
         self.por322 = False
+        self.por322_msg = None
         self.por322_msg_hash = None
         self.por322_msg_challenge = None
 
@@ -1344,10 +1452,10 @@ class psbtObject(psbtProxy):
         self.sig_added = False
 
     def key_in_wif_store(self, key):
-        # key -> public key (xonly or classic compressed)
+        # key -> public key (xonly, compressed, or uncompressed)
         # wif_store -> initialized wif store as in psbt class
         # returns key as found in wif store
-        assert len(key) in [32, 33]
+        assert len(key) in [32, 33, 65]
         if len(key) == 32:
             # taproot xonly key
             if b"\x02" + key in self.wif_store:
@@ -1372,7 +1480,7 @@ class psbtObject(psbtProxy):
         elif kt == PSBT_GLOBAL_XPUB:
             # list of tuples(xfp_path, xpub)
             self.xpubs.append((key, val))
-            assert len(self.xpubs) <= MAX_SIGNERS
+            assert len(self.xpubs) <= 20
         elif kt == PSBT_GLOBAL_VERSION:
             self.version = unpack("<I", self.get(val))[0]
         elif kt == PSBT_GLOBAL_TX_VERSION:
@@ -1390,10 +1498,34 @@ class psbtObject(psbtProxy):
             # bytes of length 1 (tx modifiable in short_values)
             assert len(val) == 1
             self.txn_modifiable = val[0]
+        elif kt == PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE:
+            assert key[1] == 0
+            assert val[1] <= 330, "msg too long (max. 330)"
+            self.por322_msg = self.get(val).decode()
         else:
             self.unknown = self.unknown or []
             pos, length = key
             self.unknown.append(((pos - 1, length + 1), val))
+
+    def validate_bip322_input0(self, inp, txi, utxo):
+        msg_hash = ngu.hash.sha256t(BIP322_TAG_HASH, self.por322_msg.encode(), True)
+        message_challenge = utxo.scriptPubKey
+        to_spend = build_bip322_to_spend(msg_hash, message_challenge)
+        to_spend_hash = uint256_from_str(ngu.hash.sha256d(to_spend.serialize_without_witness()))
+
+        assert txi.prevout.hash == to_spend_hash, "to_spend hash"
+        assert txi.prevout.n == 0, "prevout n"
+        assert utxo.nValue == 0, "input0 value"
+
+        if inp.utxo:
+            old_pos = self.fd.tell()
+            raw_utxo = self.get(inp.utxo)
+            self.fd.seek(old_pos)
+            assert raw_utxo == to_spend.serialize_without_witness(), "utxo"
+
+        self.por322_msg_hash = msg_hash
+        assert message_challenge, "empty message_challenge"
+        self.por322_msg_challenge = message_challenge
 
     def output_iter(self, start=0, stop=None):
         # yield the txn's outputs: index, (CTxOut object) for each
@@ -1554,10 +1686,9 @@ class psbtObject(psbtProxy):
             # does not match PSBT_XPUBS length
             if N != len(self.xpubs): continue
 
-            assert 1 <= M <= N <= MAX_SIGNERS
-
             # guess address format also - based on scripts provided by PSBT provider
             af = i.guess_multisig_addr_fmt()
+            assert 1 <= M <= N <= max_signers(af)
 
             return af, M, N
 
@@ -1637,71 +1768,15 @@ class psbtObject(psbtProxy):
         # must have wallet at this point
         assert self.active_miniscript
 
-    def ux_relative_timelocks(self, tb, bb):
-        # visualize 10 largest timelock to user
-        # when signing a tx
-        MAX_SHOW = 10
-        num_tb = len(tb)
-        num_bb = len(bb)
-
-        if (num_tb + num_bb) > MAX_SHOW:
-            # 10 from each is enough for us to have in memory
-            tb = sorted(tb, key=lambda item: item[1], reverse=True)[:10]
-            bb = sorted(bb, key=lambda item: item[1], reverse=True)[:10]
-            if (num_tb >= 5) and (num_bb >= 5):
-                # 5 biggest from each
-                tb = tb[:5]
-                bb = bb[:5]
-            else:
-                if num_tb < num_bb:
-                    tb = tb[:num_tb]
-                    bb = bb[:(MAX_SHOW - num_tb)]
-                else:
-                    bb = bb[:num_bb]
-                    tb = tb[:(MAX_SHOW - num_bb)]
-
+    def ux_relative_timelocks(self, num_tb, max_tb, num_bb, max_bb):
         if num_bb:
-            # Block height relative lock-time
-            if num_bb == 1:
-                idx, val = bb[0]
-                msg = "Input %d. has relative block height timelock of %d blocks\n" % (
-                        idx, val
-                    )
-            elif all(bb[0][1] == i[1] for i in bb):
-                msg = "%d inputs have relative block height timelock of %d blocks\n" % (
-                        num_bb, bb[0][1]
-                    )
-            else:
-                msg = "%d inputs have relative block height timelock." % num_bb
-                if num_bb > len(bb):
-                    msg += " Showing only %d with highest values." % len(bb)
-                msg += "\n\n"
-                for idx, num_blocks in bb:
-                    msg += " %d.  %d blocks\n" % (idx, num_blocks)
-
+            msg = "%d input(s), maximum %d blocks\n" % (num_bb, max_bb)
             self.ux_notes.append(("Block height RTL", msg))
 
         if num_tb:
-            # Block height relative lock-time
-            if num_tb == 1:
-                idx, val = tb[0]
-                val = seconds2human_readable(val)
-                msg = "Input %d. has relative time-based timelock of:\n %s\n" % (
-                    idx, val
-                )
-            elif all(tb[0][1] == i[1] for i in tb):
-                msg = "%d inputs have relative time-based timelock of:\n %s\n" % (
-                        num_tb, seconds2human_readable(tb[0][1])
-                    )
-            else:
-                msg = "%d inputs have relative time-based timelock." % num_tb
-                if num_tb > len(tb):
-                    msg += " Showing only %d with highest values." % len(tb)
-                msg += "\n\n"
-                for idx, seconds in tb:
-                    hr = seconds2human_readable(seconds)
-                    msg += " %d.  %s\n" % (idx, hr)
-
+            msg = "%d input(s), maximum %s\n" % (
+                num_tb, seconds2human_readable(max_tb)
+            )
             self.ux_notes.append(("Time-based RTL", msg))
 
     def validate_unkonwn(self, obj, label):
@@ -1721,6 +1796,7 @@ class psbtObject(psbtProxy):
             assert k[1] == 33  #  compressed pubkey len 33
             assert v[1]  # list of pubkeys cannot be empty
             assert (v[1] % 33 == 0)  # each pubkey len 33
+            assert v[1] <= (33 * MAX_MUSIG_PARTICIPANTS), "too many musig keys"
 
     async def validate(self):
         # Do a first pass over the txn. Raise assertions, be terse tho because
@@ -1786,6 +1862,9 @@ class psbtObject(psbtProxy):
             if i.taproot_internal_key:
                 assert i.taproot_internal_key[1] == 32  # "PSBT_IN_TAP_INTERNAL_KEY length != 32"
 
+            if i.taproot_merkle_root:
+                assert i.taproot_merkle_root[1] == 32  # "PSBT_IN_TAP_MERKLE_ROOT length != 32"
+
             if i.taproot_key_sig:
                 # "PSBT_IN_TAP_KEY_SIG length != 64 or 65"
                 assert i.taproot_key_sig[1] in (64, 65)
@@ -1825,19 +1904,14 @@ class psbtObject(psbtProxy):
                     assert v[1] == 32  # PSBT_IN_MUSIG2_PARTIAL_SIG value is partial signature
 
 
-            if i.sighash and (i.sighash not in ALL_SIGHASH_FLAGS):
-                raise FatalPSBTIssue("Unsupported sighash flag 0x%x" % i.sighash)
-
             self.validate_unkonwn(i, "input")
 
         null_data_op_return = False
         for o in self.outputs:
             if self.is_v2:
                 # v2 requires inclusion
-                assert o.amount
+                assert o.amount is not None
                 assert o.script
-                if o.amount == 0 and o.script == b'\x6a':
-                    null_data_op_return = True
             else:
                 # v0 requires exclusion
                 assert o.amount is None
@@ -1851,19 +1925,29 @@ class psbtObject(psbtProxy):
 
             self.validate_unkonwn(o, "output")
 
-        if not self.is_v2 and (self.num_outputs == 1):
+        if self.num_outputs == 1:
             for idx, txo in self.output_iter():
                 if txo.nValue == 0 and txo.scriptPubKey == b'\x6a':
                     null_data_op_return = True
 
-        if null_data_op_return and (len(self.outputs) == 1):
-            self.por322 = True
+        if null_data_op_return:
+            assert self.por322_msg, "msg"
+            self.por322 = bool(self.por322_msg)
+
+        if self.por322:
+            from msgsign import validate_text_for_signing
+            validate_text_for_signing(
+                self.por322_msg.encode(), allow_tab_nl=True, max_length=330
+            )
 
         if self.txn_version == 0:
             # only allow txn version 0 for Proof of Reserves txn (BIP-322)
             assert self.por322, TX_VER_ERR
 
-        if not inp_have_subpath:
+        if self.por322:
+            assert self.txn_version in {0, 2}, TX_VER_ERR
+
+        if not inp_have_subpath and not self.wif_store:
             # Can happen w/ Electrum in watch-mode on XPUB. It doesn't know XFP and
             # so doesn't insert that into PSBT.
             # or PSBT provider forgot to include subpaths
@@ -1884,6 +1968,7 @@ class psbtObject(psbtProxy):
         total_out = 0
         total_change = 0
         num_op_return = 0
+        num_zero_value_op_return = 0
         num_op_return_size = 0
         num_unknown_scripts = 0
         zero_val_outs = 0  # only those that are not OP_RETURN are considered
@@ -1892,6 +1977,7 @@ class psbtObject(psbtProxy):
         validate_inp_pths = False
         path_len = None
         max_gap = idx_max + 200
+        troublesome_change_issues = 0
 
         # We aren't seeing shared input path lengths.
         # They are probably doing weird stuff, so leave them alone
@@ -1943,43 +2029,38 @@ class psbtObject(psbtProxy):
                         if i not in output.sp_idxs: continue
                         p = xpath[2:] if output.taproot_subpaths else xpath[1:]
 
-                        iss = None
+                        issues = 0
                         if len(p) != path_len:
-                            iss = "has wrong path length (%d not %d)" % (len(p), path_len)
-                        elif tuple(bool(i & 0x80000000) for i in p) not in hard_p:
-                            iss = "has different hardening pattern"
-                        elif tuple(p[:-2]) not in prefix_pths:
-                            iss = "goes to diff path prefix"
-                        elif not is_cmplx and ((p[-2] & 0x7fffffff) not in {0,1}):
-                            iss = "2nd last component not 0 or 1"
-                        elif (p[-1] & 0x7fffffff) > max_gap:
-                            iss = "last component beyond reasonable gap"
+                            issues |= CHANGE_PATH_LENGTH
+                        else:
+                            if tuple(bool(i & 0x80000000) for i in p) not in hard_p:
+                                issues |= CHANGE_PATH_HARDENING
+                            if tuple(p[:-2]) not in prefix_pths:
+                                issues |= CHANGE_PATH_PREFIX
+                            if not is_cmplx and ((p[-2] & 0x7fffffff) not in {0,1}):
+                                issues |= CHANGE_PATH_BRANCH
+                            if (p[-1] & 0x7fffffff) > max_gap:
+                                issues |= CHANGE_PATH_GAP
 
-                        if iss:
-                            msg = "Output#%d: %s: %s" % (idx, iss, keypath_to_str(p, skip=0))
-                            if len(hard_p) == 1 and len(prefix_pths) == 1:
-                                # message can be more verbose
-                                # fastest way to get first element from the set
-                                # without modifying the set is for-loop
-                                for hp in hard_p:
-                                    break
-                                for pp in prefix_pths:
-                                    break
-                                msg += " not %s/{0~1}%s/{0~%d}%s expected" % (
-                                    keypath_to_str(pp, skip=0),
-                                    "'" if hp[-2] else "",
-                                    max_gap,
-                                    "'" if hp[-1] else ""
-                                )
-                            self.warnings.append(('Troublesome Change Outs', msg))
+                        output.is_change |= issues
+                        troublesome_change_issues |= issues
 
             if af == OP_RETURN:
                 num_op_return += 1
+                if txo.nValue == 0:
+                    num_zero_value_op_return += 1
                 if len(txo.scriptPubKey) > 83:
                     num_op_return_size += 1
 
             elif af is None:
                 num_unknown_scripts += 1
+
+        if troublesome_change_issues:
+            msg = "Some output derivation paths deviate from input paths by:"
+            for flag, label in CHANGE_PATH_ISSUES:
+                if troublesome_change_issues & flag:
+                    msg += "\n - %s" % label
+            self.warnings.append(('Troublesome Change Outs', msg))
 
         if self.total_value_out is None:
             self.total_value_out = total_out
@@ -2041,7 +2122,10 @@ class psbtObject(psbtProxy):
                  'Non-standard zero value output(s).')
             )
 
-        self.consolidation_tx = (self.num_change_outputs == self.num_outputs)
+        self.consolidation_tx = (self.num_change_outputs > 0) and (
+            self.num_change_outputs + num_zero_value_op_return == self.num_outputs
+        )
+
         dis.progress_bar_show(1)
 
         if DEBUG:
@@ -2056,13 +2140,12 @@ class psbtObject(psbtProxy):
         # check nSequences & nLockTime and warn about TX level locktimes
         from glob import dis
 
-        foreign = []
+        foreign = 0
+        unverified_witness_utxo = 0
         total_in = 0
-        presigned_inputs = set()
-        # time based relative locks
-        tb_rel_locks = []
-        # block height based relative locks
-        bb_rel_locks = []
+        presigned_inputs = 0
+        num_tb_rel_locks = max_tb_rel_lock = 0
+        num_bb_rel_locks = max_bb_rel_lock = 0
         smallest_nsequence = 0xffffffff
 
         # collect some input path data from subapths
@@ -2073,7 +2156,7 @@ class psbtObject(psbtProxy):
         idx_max = 0
         my_cnt = 0
         prevouts = set()
-        from_wif_store = []
+        from_wif_store = 0
 
         dis.fullscreen("Validating...", line2="Inputs")
 
@@ -2099,7 +2182,8 @@ class psbtObject(psbtProxy):
                 # - assuming PSBT creator doesn't give us extra data not required
                 # - seems harmless if they fool us into thinking already signed; we do nothing
                 # - could also look at pubkey needed vs. sig provided
-                # - could consider structure of MofN in p2sh cases
+                # - structure of standard M-of-N scripts is considered later in
+                #   determine_my_signing_key, where fully_signed is updated
                 if len(inp.part_sigs) >= len(inp.subpaths):
                     inp.fully_signed = True
 
@@ -2123,22 +2207,29 @@ class psbtObject(psbtProxy):
                 has_rtl = inp.has_relative_timelock(txi)
                 if has_rtl:
                     if has_rtl[0]:
-                        tb_rel_locks.append((i, has_rtl[1]))
+                        num_tb_rel_locks += 1
+                        if has_rtl[1] > max_tb_rel_lock:
+                            max_tb_rel_lock = has_rtl[1]
                     else:
-                        bb_rel_locks.append((i, has_rtl[1]))
+                        num_bb_rel_locks += 1
+                        if has_rtl[1] > max_bb_rel_lock:
+                            max_bb_rel_lock = has_rtl[1]
 
             if txi.nSequence < smallest_nsequence:
                 smallest_nsequence = txi.nSequence
 
             parsed_subpaths = inp.parse_subpaths(self.my_xfp, self, cosign_xfp)
+            if parsed_subpaths is None:
+                parsed_subpaths = OrderedDict()
 
             if not inp.has_utxo():
                 if inp.sp_idxs and not inp.fully_signed:
                     # we cannot proceed if the input is ours and there is no UTXO
-                    raise FatalPSBTIssue('Missing own UTXO(s). Cannot determine value being signed')
+                    raise FatalPSBTIssue('i%d: Missing own UTXO(s).'
+                                         ' Cannot determine value being signed' % i)
 
                 # input clearly not ours
-                foreign.append(i)
+                foreign += 1
                 continue
 
             # pull out just the CTXOut object
@@ -2149,6 +2240,8 @@ class psbtObject(psbtProxy):
             inp.amount = utxo.nValue
             assert inp.amount >= 0, "negative input value: i%d" % i
             total_in += inp.amount
+            if not inp.utxo and not inp.witness_utxo_is_provably_segwit(utxo):
+                unverified_witness_utxo += 1
 
             inp.af, addr_or_pubkey = utxo.get_address()
             # save scriptPubKey of utxo for later use
@@ -2157,14 +2250,31 @@ class psbtObject(psbtProxy):
             # needed for each input if we sign at least one P2TR input
             inp.utxo_spk = utxo.scriptPubKey
 
-            if inp.sighash == SIGHASH_DEFAULT:
-                assert inp.af == AF_P2TR, "SIGHASH_DEFAULT outside taproot context"
+            if self.session:
+                # parallel accumulator: witness_utxo (amount+scriptPubKey)
+                # committed at BIP341 granularity, so the session id binds
+                # value data, not just the tx skeleton
+                if self.witness_session is None:
+                    self.witness_session = sha256()
+                self.witness_session.update(pack("<q", inp.amount))
+                self.witness_session.update(ser_string(inp.utxo_spk))
+
+            if inp.sighash == SIGHASH_DEFAULT and inp.af != AF_P2TR:
+                raise FatalPSBTIssue("SIGHASH_DEFAULT outside taproot context")
+
+            if self.por322 and (i == 0):
+                # Validate and capture the message challenge before any signing-key
+                # handling below can skip the rest of this input.
+                try:
+                    self.validate_bip322_input0(inp, txi, utxo)
+                except Exception as e:
+                    raise FatalPSBTIssue("i0: invalid BIP-322 'to_spend': %s" % e)
 
             if inp.sp_idxs:
                 my_cnt += 1
             if inp.fully_signed:
-                presigned_inputs.add(i)
-            if inp.sp_idxs and (not inp.fully_signed):
+                presigned_inputs += 1
+            if (inp.sp_idxs or self.wif_store) and (not inp.fully_signed):
                 # Look at what kind of input this will be, and therefore what
                 # type of signing will be required, and which key we need.
                 # - also validates redeem_script when present
@@ -2172,29 +2282,47 @@ class psbtObject(psbtProxy):
                 inp.determine_my_signing_key(i, addr_or_pubkey, self.my_xfp, self,
                                              parsed_subpaths, utxo)
 
+                if inp.wif_key:
+                    my_cnt += 1
+
+                # determine_my_signing_key updates fully_signed from the actual
+                # threshold for standard multisig scripts.
+                if inp.fully_signed:
+                    presigned_inputs += 1
+                    continue
+
                 # determine_my_signing_key may have removed sp_idxs
                 # meaning we're not going to sign this input - other wallet in use
                 if not inp.sp_idxs:
                     continue
 
+                if not inp.is_segwit and not inp.utxo:
+                    raise FatalPSBTIssue('Legacy input #%d requires non-witness UTXO' % i)
+
                 # parsed subpaths are OrderedDict - matches sp_idxs
                 in_wif_store = False
                 for ii, (key, xpath) in enumerate(parsed_subpaths.items()):
                     if ii not in inp.sp_idxs: continue
-                    p = xpath[2:] if inp.taproot_subpaths else xpath[1:]
-                    length_p.add(len(p))  # ignore xfp
-                    hard_pattern.add(tuple(bool(i & 0x80000000) for i in p))
-                    prefix_p.add(tuple(p[:-2]))
 
-                    index = p[-1] & 0x7fffffff
-                    if index > idx_max:
-                        idx_max = index
+                    if inp.wif_key == key:
+                        in_wif_store = True
+                        continue
+
+                    p = xpath[2:] if inp.taproot_subpaths else xpath[1:]
+                    if p:
+                        length_p.add(len(p))  # ignore xfp
+                        hard_pattern.add(tuple(bool(i & 0x80000000) for i in p))
+                        prefix_p.add(tuple(p[:-2]))
+
+                        index = p[-1] & 0x7fffffff
+                        if index > idx_max:
+                            idx_max = index
 
                     if self.key_in_wif_store(key):
                         in_wif_store = True
 
                 if in_wif_store:
-                    from_wif_store.append(i)
+                    from_wif_store += 1
 
                 # iff to UTXO is segwit, then check it's value, and also
                 # capture that value, since it's supposed to be immutable
@@ -2203,59 +2331,24 @@ class psbtObject(psbtProxy):
                     history.verify_amount(txi.prevout, inp.amount, i)
 
                 if inp.af == AF_P2TR:
-                    # based on this we know whether we can drop inp.utxo_spk
-                    # attribute after creating sighash
+                    # Signing a Taproot input may require every input's scriptPubKey
+                    # when calculating the BIP341 sighash.
                     self.my_tr_in = True
-
-            if self.por322 and (i == 0):
-                # Proof of Reserves 'to_spend' validation
-                try:
-                    assert inp.utxo, "utxo"
-                    fd = self.fd
-                    old_pos = fd.tell()
-                    fd.seek(inp.utxo[0])
-
-                    txn_version, marker, flags = unpack("<iBB", fd.read(6))
-                    assert txn_version == 0, TX_VER_ERR
-                    wit_format = (marker == 0 and flags != 0x0)
-                    if not wit_format:
-                        fd.seek(-2, 1)
-
-                    num_in = deser_compact_size(fd)
-                    assert num_in == 1, "num ins"
-                    tx_inp = CTxIn()
-                    tx_inp.deserialize(fd)
-                    try:
-                        assert len(tx_inp.scriptSig) == 34
-                        assert tx_inp.scriptSig[0] == 0
-                        assert tx_inp.scriptSig[1] == 32
-                    except:
-                        assert False, "scriptSig"
-                    self.por322_msg_hash = tx_inp.scriptSig[2:]
-                    try:
-                        assert tx_inp.prevout.hash == 0
-                        assert tx_inp.prevout.n == 0xffffffff
-                    except:
-                        assert False, "prevout"
-
-                    num_out = deser_compact_size(fd)
-                    assert num_out == 1, "num outs"
-                    tx_out = CTxOut()
-                    tx_out.deserialize(fd)
-                    self.por322_msg_challenge = tx_out.scriptPubKey
-                    assert tx_out.nValue == 0, "nVal"
-
-                    fd.seek(old_pos)
-                except Exception as e:
-                    raise FatalPSBTIssue("i0: invalid BIP-322 'to_spend': %s" % e)
 
             del utxo
 
-        if not my_cnt:
-            raise FatalPSBTIssue('None of the keys involved in this transaction '
-                                 'belong to this Coldcard (need %s).' % xfp2str(self.my_xfp))
+        if self.por322:
+            if not self.inputs[0].sp_idxs:
+                raise FatalPSBTIssue("i0: invalid BIP-322 'to_spend': not our key")
+            if not self.por322_msg_challenge:
+                raise FatalPSBTIssue("Missing BIP-322 message challenge")
+            if any(not self.inputs[i].sp_idxs for i in range(1, self.num_inputs)):
+                raise FatalPSBTIssue("Foreign inputs not allowed in BIP-322 Proof of Reserves")
 
-        if not foreign:
+        if not my_cnt:
+            raise FatalPSBTIssue(NO_KEY_ERR + " (need %s)." % xfp2str(self.my_xfp))
+
+        if not foreign and not unverified_witness_utxo:
             # no foreign inputs, we can calculate the total input value
             self.total_value_in = total_in
             assert total_in > 0 or self.por322, "zero value txn"
@@ -2264,11 +2357,15 @@ class psbtObject(psbtProxy):
             # OK for multi-party transactions (coinjoin etc.)
             assert not self.por322  # cannot have foreign inputs in POR txn
             self.total_value_in = None
-            self.warnings.append(
-                ("Unable to calculate fee", "Some input(s) haven't provided UTXO(s): " + seq_to_str(foreign))
-            )
+            if foreign:
+                self.warnings.append(("Unable to calculate fee",
+                                      "%d input(s) haven't provided UTXO." % foreign))
+            if unverified_witness_utxo:
+                self.warnings.append(("Unable to calculate fee",
+                                      "%d input(s) provided unverified witness UTXO." %
+                                      unverified_witness_utxo))
 
-        if len(presigned_inputs) == self.num_inputs:
+        if presigned_inputs == self.num_inputs:
             # Maybe wrong f cases? Maybe they want to add their
             # own signature, even tho N of M is satisfied?!
             raise FatalPSBTIssue('Transaction looks completely signed already?')
@@ -2276,32 +2373,31 @@ class psbtObject(psbtProxy):
         # We should know pubkey required for each input now.
         # - but we may not be the signer for those inputs, which is fine.
         # - TODO: but what if not SIGHASH_ALL
-        no_keys = set(
-            n
-            for n,inp in enumerate(self.inputs)
-            if (not inp.sp_idxs) and (not inp.fully_signed)
-        )
+        no_keys = 0
+        for inp in self.inputs:
+            if (not inp.sp_idxs) and (not inp.fully_signed):
+                no_keys += 1
         # HWI blocker
-        # if len(no_keys) == self.num_inputs:
+        # if no_keys == self.num_inputs:
         #     # nothing to sign for us
         #     raise FatalPSBTIssue("Nothing to sign here")
 
         if no_keys:
             # This is seen when you re-sign same signed file by accident (multisig)
-            # - case of len(no_keys)==num_inputs is handled by consider_inputs
+            # - case of no_keys==num_inputs is handled by consider_inputs
             self.warnings.append(('Limited Signing',
-                "We are not signing these inputs, because we either don't know the key,"
-                " inputs belong to different wallet, or we have already signed: " + seq_to_str(no_keys)))
+                "We are not signing %d input(s), because we either don't know the key,"
+                " inputs belong to different wallet, or we have already signed." % no_keys))
 
         if presigned_inputs:
             # this isn't really even an issue for some complex usage cases
             self.warnings.append(('Partly Signed Already',
-                'Some input(s) provided were already completely signed by other parties: ' +
-                        seq_to_str(presigned_inputs)))
+                '%d input(s) provided were already completely signed by other parties.' %
+                        presigned_inputs))
 
         if from_wif_store:
-            self.warnings.append(("WIF Store", "Some input(s) use key from the WIF store: " +
-                                  seq_to_str(from_wif_store)))
+            self.warnings.append(("WIF Store", "%d input(s) use key from the WIF store." %
+                                  from_wif_store))
 
         if isinstance(self.lock_time, int) and self.lock_time > 0:
             if smallest_nsequence == 0xffffffff:
@@ -2325,14 +2421,16 @@ class psbtObject(psbtProxy):
                 self.ux_notes.append(("Abs Locktime", msg))
 
         # create UX for users about tx level relative timelocks (nSequence)
-        self.ux_relative_timelocks(tb_rel_locks, bb_rel_locks)
+        self.ux_relative_timelocks(
+            num_tb_rel_locks, max_tb_rel_lock, num_bb_rel_locks, max_bb_rel_lock
+        )
 
         if MiniScriptWallet.disable_checks:
             self.warnings.append(('Danger', 'Some miniscript checks are disabled.'))
 
         if DEBUG:
             print("PSBT inputs: %d inputs contain our key, %d fully-signed" % (
-                my_cnt, len(presigned_inputs)))
+                my_cnt, presigned_inputs))
 
         dis.progress_bar_show(1)
 
@@ -2345,8 +2443,19 @@ class psbtObject(psbtProxy):
         # can only be run after consider_outputs is done
         sh_unusual = False
         none_sh = False
+        single_sh = False
         for inp in self.inputs:
             if inp.sp_idxs and not inp.fully_signed:
+                if inp.sighash is not None and inp.sighash not in ALL_SIGHASH_FLAGS:
+                    raise FatalPSBTIssue("Unsupported sighash flag 0x%x" % inp.sighash)
+
+                if self.por322 and inp.sighash is not None:
+                    if inp.af == AF_P2TR:
+                        if inp.sighash not in (SIGHASH_ALL, SIGHASH_DEFAULT):
+                            raise FatalPSBTIssue("POR sighash not ALL/DEFAULT")
+                    elif inp.sighash != SIGHASH_ALL:
+                        raise FatalPSBTIssue("POR not SIGHASH_ALL")
+
                 if inp.sighash:
                     if inp.sighash is not None:
                         if inp.sighash not in (SIGHASH_ALL, SIGHASH_DEFAULT):
@@ -2354,6 +2463,8 @@ class psbtObject(psbtProxy):
 
                         if inp.sighash in (SIGHASH_NONE, SIGHASH_NONE | SIGHASH_ANYONECANPAY):
                             none_sh = True
+                        elif inp.sighash in (SIGHASH_SINGLE, SIGHASH_SINGLE | SIGHASH_ANYONECANPAY):
+                            single_sh = True
 
         if sh_unusual and not settings.get("sighshchk"):
             if self.consolidation_tx:
@@ -2364,6 +2475,9 @@ class psbtObject(psbtProxy):
             if none_sh:
                 # sighash NONE or NONE|ANYONECANPAY is proposed: block
                 raise FatalPSBTIssue("Sighash NONE is not allowed as funds could be going anywhere.")
+
+            if single_sh:
+                raise FatalPSBTIssue("Sighash SINGLE is not allowed as some outputs could be changed.")
 
         if none_sh:
             self.warnings.append(
@@ -2455,6 +2569,9 @@ class psbtObject(psbtProxy):
             for k, v in self.xpubs:
                 wr(PSBT_GLOBAL_XPUB, v, k)
 
+        if self.por322_msg:
+            wr(PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE, self.por322_msg.encode())
+
         if self.unknown:
             for k, v in self.unknown:
                 wr(None, v, k)
@@ -2480,6 +2597,9 @@ class psbtObject(psbtProxy):
         our_pk = node.pubkey()
         if is_xonly:
             our_pk = our_pk[1:]
+        elif len(target_pk) == 65:
+            # BIP32 derives compressed keys; re-serialize for legacy P2PK comparison.
+            our_pk = ngu.secp256k1.pubkey(our_pk).to_bytes(True)
         if target_pk == our_pk:
             return node
 
@@ -2531,7 +2651,7 @@ class psbtObject(psbtProxy):
                             digest, leaf_hash=b""):
 
         assert session  # needed
-        session_digest, session_rand, round1 = session
+        session_rand, round1 = session
         my_participant_key = keypair.pubkey().to_bytes()
         musig_pubkeys = inp.get_musig_pubkeys()
         cosigners = musig_pubkeys.get(agg_k, None)
@@ -2551,16 +2671,6 @@ class psbtObject(psbtProxy):
         )
         # verify aggregate key is correct
         assert keyagg_cache.agg_pubkey().to_bytes() == agg_k
-
-        musig_index = None  # index of musig expression in key list
-        for i, k in enumerate(self.active_miniscript.to_descriptor().keys):
-            if not isinstance(k, MusigKey):
-                continue
-            if k.node.pubkey() == agg_k:
-                musig_index = i
-                break
-
-        assert musig_index is not None  # important, must be there
 
         # get derivation we need to use for musig
         sp = inp.get_tr_der_coords_by_key(der_agg_k)
@@ -2599,41 +2709,52 @@ class psbtObject(psbtProxy):
             if not round1:
                 raise FatalPSBTIssue("resign")
 
-        # sec_rand is pseudo random, derived from session true randomness
-        sec_rand = ngu.hash.sha256s(session_rand + pack("<I", inp_idx) + pack("<I", musig_index))
+        # Different BIP-328 derivations can share agg_k and its descriptor index.
+        # Bind the session entropy to the exact participant/aggregate/leaf tuple.
+        sec_rand = ngu.hash.sha256s(b"".join((session_rand, pack("<I", inp_idx),
+                                              my_participant_key, der_agg_k, leaf_hash)))
 
-        # generate musig2 secnonce & pubnonce
-        sn, pn = ngu.secp256k1.musig_nonce_gen(keypair.pubkey(), sec_rand, keypair.privkey(), digest)
+        sn = None
+        try:
+            # generate musig2 secnonce & pubnonce
+            sn, pn = ngu.secp256k1.musig_nonce_gen(keypair.pubkey(), sec_rand, keypair.privkey(),
+                                                   digest, keyagg_cache)
 
-        if my_musig_pubnonces_key not in musig_pubnonces:
-            # I haven't added my pubnoce yet - adding now
-            my_pn_bytes = pn.to_bytes()
-            inp.musig_added_pubnonces[my_musig_pubnonces_key] = my_pn_bytes
-            # we added nonce - done
-            # strict 1st & 2nd round separation
-            self.allow_cache_store = True
-            return
+            if my_musig_pubnonces_key not in musig_pubnonces:
+                # I haven't added my pubnoce yet - adding now
+                my_pn_bytes = pn.to_bytes()
+                inp.musig_added_pubnonces[my_musig_pubnonces_key] = my_pn_bytes
+                # we added nonce - done
+                # strict 1st & 2nd round separation
+                self.allow_cache_store = True
+                return
 
-        pubnonces = set()
-        for (pk, ak, lh), pnonce in musig_pubnonces.items():
-            if (ak == der_agg_k) and (lh == leaf_hash):
-                # this is the nonce belonging to our aggregate key
-                pubnonces.add(pnonce)
-                if pk == my_participant_key:
-                    # required, because if pubnonce is different from what was generated in 1st
-                    # round - signatures will be invalid
-                    assert pnonce == pn.to_bytes()
+            pubnonces = set()
+            for (pk, ak, lh), pnonce in musig_pubnonces.items():
+                if (pk in cosigners) and (ak == der_agg_k) and (lh == leaf_hash):
+                    # this is the nonce belonging to our aggregate key
+                    pubnonces.add(pnonce)
+                    if pk == my_participant_key:
+                        # required, because if pubnonce is different from what was generated in 1st
+                        # round - signatures will be invalid
+                        assert pnonce == pn.to_bytes()
 
-        if len(pubnonces) < len(cosigners):
-            # cannot sign as number of pubnonces is insufficient
-            return
+            if len(pubnonces) < len(cosigners):
+                # cannot sign as number of pubnonces is insufficient
+                if self.allow_cache_store is None:
+                    self.allow_cache_store = True
+                return
 
-        # all pubnonces are known - we can sign
-        aggnonce = ngu.secp256k1.musig_nonce_agg([ngu.secp256k1.MusigPubNonce(pn) for pn in pubnonces])
-        session = ngu.secp256k1.musig_nonce_process(aggnonce, digest, keyagg_cache)
-        part_sig = ngu.secp256k1.musig_partial_sign(sn, keypair, keyagg_cache, session)
-        my_part_sig_bytes = part_sig.to_bytes()
-        self.sig_added = True
+            # all pubnonces are known - we can sign
+            aggnonce = ngu.secp256k1.musig_nonce_agg([ngu.secp256k1.MusigPubNonce(pn) for pn in pubnonces])
+            session = ngu.secp256k1.musig_nonce_process(aggnonce, digest, keyagg_cache)
+            part_sig = ngu.secp256k1.musig_partial_sign(sn, keypair, keyagg_cache, session)
+            my_part_sig_bytes = part_sig.to_bytes()
+            self.sig_added = True
+        finally:
+            if sn is not None:
+                sn.clear()
+            stash.blank_object(sec_rand)
 
         # good for debug - verification of partial musig signature CC created
         # assert part_sig.verify(pn, keypair.pubkey(), keyagg_cache, session)
@@ -2652,7 +2773,7 @@ class psbtObject(psbtProxy):
         self.allow_cache_store = False
 
         for (pk, ak, lh), sig in musig_partial_sigs.items():
-            if (ak == der_agg_k) and (lh == leaf_hash):
+            if (pk in cosigners) and (ak == der_agg_k) and (lh == leaf_hash):
                 # good for debug - verify validity of cosigner musig partial signatures
                 # other_pn = ngu.secp256k1.MusigPubNonce(musig_pubnonces[(pk,ak,lh)])
                 # psig = ngu.secp256k1.MusigPartSig(sig)
@@ -2674,6 +2795,39 @@ class psbtObject(psbtProxy):
         return agg_sig, der_agg_k
 
     def sign_it(self, alternate_secret=None, my_xfp=None):
+        if my_xfp is None:
+            my_xfp = self.my_xfp
+
+        musig_session = None
+        session_id = None
+        session_rand = None
+        musig_round1 = False
+        self.allow_cache_store = None
+        if self.session and self.active_miniscript:
+            session_id = make_musig_session_id(self.session.digest(),
+                                                self.witness_session.digest()
+                                                if self.witness_session else None,
+                                                my_xfp,
+                                                self.active_miniscript)
+            session_rand = MUSIG_SESSION_CACHE.pop(session_id, None)
+            musig_round1 = session_rand is None
+            if musig_round1:
+                session_rand = ngu.random.bytes(32)
+
+            musig_session = (session_rand, musig_round1)
+
+        store_session = False
+        try:
+            self._sign_it(alternate_secret, my_xfp, musig_session)
+            store_session = self.allow_cache_store is True
+        finally:
+            if musig_session:
+                if store_session:
+                    MUSIG_SESSION_CACHE[session_id] = session_rand
+                else:
+                    stash.blank_object(session_rand)
+
+    def _sign_it(self, alternate_secret, my_xfp, musig_session):
         # txn is approved. sign all inputs we can sign. add signatures
         # - hash the txn first
         # - sign all inputs we have the key for
@@ -2682,25 +2836,6 @@ class psbtObject(psbtProxy):
         # - update our state with new partial sigs
         from glob import dis
         from ownership import OWNERSHIP
-
-        if my_xfp is None:
-            my_xfp = self.my_xfp
-
-        musig_session = None
-        musig_round1 = False
-        if self.session:
-            # initialize MuSig2 session
-            session_digest = self.session.digest() + pack('<I', my_xfp)  # to differentiate tmp keys
-            # if we already have it stored, this is 2nd round
-            # remove it - only one chance to make it right, as consequences for re-use are catastrophic
-            session_rand = MUSIG_SESSION_CACHE.pop(session_digest, None)
-            if session_rand is None:
-                musig_round1 = True
-                # first round - create new session rand and (maybe) store it for 2nd round
-                session_rand = ngu.random.bytes(32)
-
-            # initialized Musig2 session tuple
-            musig_session = (session_digest, session_rand, musig_round1)
 
         with stash.SensitiveValues(secret=alternate_secret) as sv:
             # Double-check the change outputs are right. This is slow, but critical because
@@ -2764,6 +2899,7 @@ class psbtObject(psbtProxy):
 
                 if not inp.sp_idxs:
                     # we don't know the key for this input
+                    # Taproot leaf metadata alone must never make an input signable.
                     continue
 
                 if inp.fully_signed:
@@ -2776,7 +2912,7 @@ class psbtObject(psbtProxy):
                     assert inp.sighash in [SIGHASH_ALL, SIGHASH_DEFAULT], "POR sighash not ALL/DEFAULT"
 
                 # decide if it is appropriate to drop sighash from PSBT
-                if inp.taproot_subpaths:
+                if inp.af == AF_P2TR:
                     drop_sighash = (inp.sighash == SIGHASH_DEFAULT)
                 else:
                     drop_sighash = (inp.sighash == SIGHASH_ALL)
@@ -2833,6 +2969,7 @@ class psbtObject(psbtProxy):
                                 scr = leaf.compile()
                                 if scr not in taproot_scripts:
                                     continue
+                                assert taproot_scripts[scr] == TAPROOT_LEAF_TAPSCRIPT, "Tapleaf ver 0x%02x" % taproot_scripts[scr]
 
                                 for k in leaf.keys:
                                     is_musig = False
@@ -2857,30 +2994,41 @@ class psbtObject(psbtProxy):
 
                     assert not inp.added_sigs, "already done??"
                     assert not inp.taproot_key_sig, "already done taproot??"
-
-                    if inp.taproot_subpaths:
-                        schnorrsig = True
-                        pubk = inp.taproot_subpaths[sp_idx][0]
-                        sp = inp.taproot_subpaths[sp_idx][1][2]
-                    else:
-                        pubk = inp.subpaths[sp_idx][0]
-                        sp = inp.subpaths[sp_idx][1]
-
-                    pk = self.get(pubk)
                     int_pth = None
-                    wif_store_key = self.key_in_wif_store(pk)
-                    if wif_store_key:
-                        node = node_from_privkey(self.wif_store[wif_store_key])
+
+                    if inp.wif_key:
+                        pubk = pk = inp.wif_key
+                        skp = "WIF Store"
+                        node = node_from_privkey(self.wif_store[pk])
+                        if inp.af == AF_P2TR:
+                            schnorrsig = True
+                            pk = self.get(inp.taproot_internal_key)
                     else:
-                        int_pth = self.handle_zero_xfp(self.parse_xfp_path(sp), self.my_xfp, None)
-                        skp = keypath_to_str(int_pth)
-                        # get node required
-                        node = sv.derive_path(skp, register=False)
+                        if inp.taproot_subpaths:
+                            schnorrsig = True
+                            pubk = inp.taproot_subpaths[sp_idx][0]
+                            sp = inp.taproot_subpaths[sp_idx][1][2]
+                        else:
+                            pubk = inp.subpaths[sp_idx][0]
+                            sp = inp.subpaths[sp_idx][1]
+
+                        pk = self.get(pubk)
+                        wif_store_key = self.key_in_wif_store(pk)
+                        if wif_store_key:
+                            skp = "WIF Store"
+                            node = node_from_privkey(self.wif_store[wif_store_key])
+                        else:
+                            int_pth = self.handle_zero_xfp(self.parse_xfp_path(sp), self.my_xfp, None)
+                            skp = keypath_to_str(int_pth)
+                            # get node required
+                            node = sv.derive_path(skp, register=False)
 
                     # expensive test, but works... and important
                     pu = node.pubkey()
                     if schnorrsig:
                         pu = pu[1:]
+                    elif len(pk) == 65:
+                        pu = ngu.secp256k1.pubkey(pu).to_bytes(True)
 
                     assert pu == pk, "Path (%s) led to wrong pubkey for input#%d" % (skp, in_idx)
 
@@ -2898,7 +3046,7 @@ class psbtObject(psbtProxy):
                     digest = self.make_txn_sighash(in_idx, txi, inp.sighash)
                 else:
                     # Hash the inputs and such in totally new ways, based on BIP-143
-                    if not inp.taproot_subpaths:
+                    if inp.af != AF_P2TR:
                         digest = self.make_txn_segwit_sighash(in_idx, txi, inp.amount,
                                                               inp.segwit_v0_scriptCode(),
                                                               inp.sighash)
@@ -2945,9 +3093,7 @@ class psbtObject(psbtProxy):
                             # This can be achieved by computing the output key point as Q = P + int(hashTapTweak(bytes(P)))G."
                             tweak = xonly_pk
                             if inp.taproot_merkle_root:
-                                # we have a script path but internal key is spendable by us
-                                # merkle root needs to be added to tweak with internal key
-                                # merkle root was already verified against registered script in determine_my_signing_key
+                                # Include the script-tree root in the key-path tweak.
                                 tweak += self.get(inp.taproot_merkle_root)
 
                             tweak = ngu.hash.sha256t(TAP_TWEAK_H, tweak, True)
@@ -3067,11 +3213,6 @@ class psbtObject(psbtProxy):
                 del to_sign
                 gc.collect()
 
-        # store musig session - only at the end of this function execution
-        # if any exceptions were raised - just do not store
-        if musig_session and musig_round1 and self.allow_cache_store:
-            MUSIG_SESSION_CACHE[session_digest] = session_rand
-
         # done.
         dis.progress_bar_show(1)
 
@@ -3183,21 +3324,21 @@ class psbtObject(psbtProxy):
                 hashValues.update(pack("<q", inp.amount))
                 hashScriptPubKeys.update(ser_string(inp.utxo_spk))
 
-            self.hashPrevouts = hashPrevouts.digest()
-            self.hashSequence = hashSequence.digest()
+            self.tr_hashPrevouts = hashPrevouts.digest()
+            self.tr_hashSequence = hashSequence.digest()
             self.hashValues = hashValues.digest()
             self.hashScriptPubKeys = hashScriptPubKeys.digest()
 
             del hashPrevouts, hashSequence, hashValues, hashScriptPubKeys, txi
             gc.collect()
 
-        if not self.hashOutputs and out_type == SIGHASH_ALL:
+        if not self.tr_hashOutputs and out_type == SIGHASH_ALL:
             # output side
             hashOutputs = sha256()
             for out_idx, txo in self.output_iter():
                 hashOutputs.update(txo.serialize())
 
-            self.hashOutputs = hashOutputs.digest()
+            self.tr_hashOutputs = hashOutputs.digest()
 
             del hashOutputs, txo
             gc.collect()
@@ -3208,17 +3349,17 @@ class psbtObject(psbtProxy):
 
         if in_type != SIGHASH_ANYONECANPAY:
             # sha_prevouts
-            msg += self.hashPrevouts
+            msg += self.tr_hashPrevouts
             # sha_amounts
             msg += self.hashValues
             # sha_scriptpubkeys
             msg += self.hashScriptPubKeys
             # sha_sequences
-            msg += self.hashSequence
+            msg += self.tr_hashSequence
 
         if out_type == SIGHASH_ALL:
             # sha_outputs
-            msg += self.hashOutputs
+            msg += self.tr_hashOutputs
 
         # spend type
         spend_type = 0
@@ -3429,7 +3570,11 @@ class psbtObject(psbtProxy):
         # or one signature from partial sigs if input is fully sign
         if inp.added_sigs:
             assert len(inp.added_sigs) == 1
-            return self.get(inp.added_sigs[0][0]), inp.added_sigs[0][1]
+            pk, sig = inp.added_sigs[0]
+            if inp.wif_key:
+                assert pk == inp.wif_key
+                return pk, sig
+            return self.get(pk), sig
 
         if inp.part_sigs:
             assert len(inp.part_sigs) == 1
@@ -3440,10 +3585,10 @@ class psbtObject(psbtProxy):
         # provide the set of xfp's that still need to sign PSBT
         # - used to find which multisig-signer needs to go next
         rv = set()
-        done_keys = set()
         ignore_keys = set()
 
         for inp in self.inputs:
+            done_keys = set()
             if inp.fully_signed:
                 continue
 
@@ -3487,9 +3632,9 @@ class psbtObject(psbtProxy):
                             else:
                                 key_signed_num_map[pk] += 1
 
-                    for key, num in key_signed_num_map.items():
+                    for key, num in key_musig_num_map.items():
                         xkey = key[1:]
-                        if key_musig_num_map.get(key) == num:
+                        if key_signed_num_map.get(key, 0) == num:
                             # all musig expressions signed
                             done_keys.add(xkey)
                         else:
@@ -3499,14 +3644,12 @@ class psbtObject(psbtProxy):
 
                 for i, (k, v) in enumerate(inp.taproot_subpaths):
                     xpk = self.get(k)
-                    if inp.ik_idx == i:
+                    if inp.ik_idx and i in inp.ik_idx and self.active_miniscript.ik_u:
                         # internal key
-                        if self.active_miniscript.ik_u:
-                            # no way to sign with unspend
-                            continue
-                    else:
-                        if xpk in done_keys:
-                            continue
+                        # no way to sign with unspend
+                        continue
+                    if xpk in done_keys:
+                        continue
 
                     # add xfp
                     xfp = self.handle_zero_xfp(self.parse_xfp_path(v[2]), self.my_xfp, None)[0]
@@ -3548,11 +3691,13 @@ class psbtObject(psbtProxy):
             fd.write(b'\x00\x01')
 
         body_start = fd.tell()
+        txid_session = self.session
 
         # inputs
         fd.write(ser_compact_size(self.num_inputs))
         for in_idx, txi in self.input_iter():
             inp = self.inputs[in_idx]
+            original_script_sig = txi.scriptSig
 
             # first check - if no signature(s) - fail soon
             if inp.is_miniscript and not inp.taproot_key_sig:
@@ -3586,8 +3731,15 @@ class psbtObject(psbtProxy):
                     txi.scriptSig = ss
                 else:
                     pubkey, der_sig = ssig
-                    txi.scriptSig = ser_push_data(der_sig) + ser_push_data(pubkey)
+                    if inp.af == AF_BARE_PK:
+                        # P2PK: pubkey is already in scriptPubKey, scriptSig is just <sig>
+                        txi.scriptSig = ser_push_data(der_sig)
+                    else:
+                        # P2PKH: scriptSig is <sig> <pubkey>
+                        txi.scriptSig = ser_push_data(der_sig) + ser_push_data(pubkey)
 
+            if txi.scriptSig != original_script_sig:
+                txid_session = None
             fd.write(txi.serialize())
 
         # outputs
@@ -3637,10 +3789,10 @@ class psbtObject(psbtProxy):
             # easy w/o witness data
             txid = ngu.hash.sha256s(fd.checksum.digest())
         else:
-            if self.session:
+            if txid_session:
                 # musig transaction with session already calculated, which is basically TXID
                 # just needs another single SHA256 + byte reverse done few lines below
-                txid = ngu.hash.sha256s(self.session.digest())
+                txid = ngu.hash.sha256s(txid_session.digest())
             else:
                 # legacy cost here for segwit: re-read what we just wrote
                 txid = calc_txid(fd, (0, fd.tell()), (body_start, body_end-body_start))

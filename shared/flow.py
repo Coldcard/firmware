@@ -20,7 +20,7 @@ from paper import make_paper_wallet
 from trick_pins import TrickPinMenu
 from tapsigner import import_tapsigner_backup_file
 from ccc import toggle_ccc_feature, sssp_spending_policy, sssp_feature_menu
-from wif import WIFStore
+from wif import WIFStoreMenu
 
 # useful shortcut keys
 from charcodes import KEY_QR, KEY_NFC
@@ -152,7 +152,7 @@ with the Coldcard.''',
 # Mostly pre-login values here.
 LoginPrefsMenu = [
     #         xxxxxxxxxxxxxxxx
-    MenuItem('Change Main PIN', f=main_pin_changer),
+    MenuItem('Change Main PIN', f=main_pin_changer, predicate=is_not_tmp),
     NonDefaultMenuItem('Trick PINs', 'tp', menu=TrickPinMenu.make_menu, predicate=has_real_secret),
     NonDefaultMenuItem('Set Nickname', 'nick', prelogin=True, f=pick_nickname),
     NonDefaultMenuItem('Scramble Keys', 'rngk', prelogin=True, f=pick_scramble, default_value=0),
@@ -427,7 +427,7 @@ AdvancedNormalMenu = [
     MenuItem("Key Teleport (start)", f=kt_start_rx, predicate=version.has_qr),
     MenuItem("Spending Policy", menu=SpendingPolicySubMenu,shortcut='s',predicate=has_real_secret),
     MenuItem('Paper Wallets', f=make_paper_wallet),
-    MenuItem('WIF Store', menu=WIFStore.make_menu),
+    MenuItem('WIF Store', menu=WIFStoreMenu.make),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu, shortcut=KEY_NFC),
     MenuItem("Danger Zone", menu=DangerZoneMenu, shortcut='z'),
 ]
@@ -490,7 +490,7 @@ NormalSystem = [
     MenuItem("Address Explorer", menu=address_explore, shortcut='x'),
     MenuItem('Secure Notes & Passwords', menu=make_notes_menu, shortcut='n',
                  predicate=lambda: version.has_qwerty and settings.get("secnap", False)),
-    MenuItem('Type Passwords', f=password_entry, shortcut='t',
+    MenuItem('Type Passwords', f=password_entry, shortcut='e',
              predicate=lambda: settings.get("emu", False) and has_secrets()),
     MenuItem('Seed Vault', menu=make_seed_vault_menu, shortcut='v',
              predicate=lambda: settings.master_get('seedvault') and has_secrets()),
@@ -554,7 +554,7 @@ HobbledAdvancedMenu = [
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu, predicate=sssp_related_keys),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=HobbledNFCToolsMenu, shortcut=KEY_NFC),
-    MenuItem('WIF Store', menu=WIFStore.make_menu, predicate=sssp_related_keys),
+    MenuItem('WIF Store', menu=WIFStoreMenu.make, predicate=sssp_related_keys),
     MenuItem('Show %s Version' % ("Firmware" if version.has_qwerty else "FW"), f=show_version),
     MenuItem("Destroy Seed", f=clear_seed, predicate=has_real_secret),
 ]

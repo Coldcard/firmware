@@ -501,7 +501,7 @@ def test_login_integration(request, nick, randomize, login_ctdwn, kill_btn, kill
 def test_calc_login(request):
     is_Q = request.config.getoption('--Q')
     if not is_Q: raise pytest.skip("Q only")
-    
+
     clean_sim_data()  # remove all from previous
     sim = ColdcardSimulator(args=["--q1"])
     sim.start(start_wait=6)
@@ -700,6 +700,49 @@ def test_sssp_bypass_pin(request, word_check, randomize):
     device.close()
 
 
+def test_sssp_bypass_pin_alone_no_login(request):
+    main_pin = "22-22"
+    bypass_pin = "111-111"
+    is_Q = request.config.getoption('--Q')
+
+    clean_sim_data()
+    sim = ColdcardSimulator(args=["--q1"] if is_Q else [])
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+
+    _pick_menu_item(device, is_Q, "Advanced/Tools")
+    _pick_menu_item(device, is_Q, "Spending Policy")
+    _pick_menu_item(device, is_Q, "Single-Signer")
+    _press_select(device, is_Q)
+    _login(device, is_Q, bypass_pin)
+    _login(device, is_Q, bypass_pin)
+    time.sleep(2)
+    sim.stop()
+    device.close()
+
+    sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", main_pin, "--early-usb"])
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+
+
+    _login(device, is_Q, bypass_pin)
+    time.sleep(.1)
+    _, story = _cap_story(device)
+    assert "Spending Policy Unlock" in story
+    _press_select(device, is_Q)
+    time.sleep(.1)
+    _login(device, is_Q, bypass_pin)  # bypass PIN a 2nd time, instead of main PIN
+    time.sleep(1.0)
+
+    # device lands on the EmptyWallet menu (no-secret session).
+    scr = _cap_screen(device)
+    assert "New Seed Words" in scr
+    assert "Import Existing" in scr
+
+    sim.stop()
+    device.close()
+
+
 def test_sssp_login_countdown(request):
     bypass_pin = "236-156"
     is_Q = request.config.getoption('--Q')
@@ -845,6 +888,208 @@ def test_sssp_trick_pins(request):
     assert "Must wait:" in scr
     assert "5s" in scr
     time.sleep(6)
+
+    sim.stop()
+    device.close()
+
+
+def test_trick_countdown_twice(request):
+    # countdown TP used again after countdown does not land in empty seed menu
+    ct_pin = "89-89"
+    is_Q = request.config.getoption('--Q')
+    headless = request.config.getoption('--headless')
+    clean_sim_data()  # remove all from previous
+    sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"],
+                            headless=headless)
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+    _login(device, is_Q, "22-22")
+
+    _pick_menu_item(device, is_Q, "Settings")
+    _pick_menu_item(device, is_Q, "Login Settings")
+    _pick_menu_item(device, is_Q, "Trick PINs")
+
+    _pick_menu_item(device, is_Q, "Add New Trick")
+    time.sleep(.1)
+
+    for ch in ct_pin[:2]:
+        _need_keypress(device, ch)
+        time.sleep(.1)
+    _press_select(device, is_Q)
+
+    if not is_Q:
+        # anti-phishing words
+        _press_select(device, is_Q)
+
+    for ch in ct_pin[-2:]:
+        _need_keypress(device, ch)
+        time.sleep(.1)
+    _press_select(device, is_Q)
+
+    _pick_menu_item(device, is_Q, "Login Countdown")
+    _press_select(device, is_Q)
+    time.sleep(.1)
+
+    _pick_menu_item(device, is_Q, "Just Countdown")
+    for _ in range(2):
+        _press_select(device, is_Q)
+        time.sleep(.1)
+
+    # adjust countdown to lowest possible value
+    _pick_menu_item(device, is_Q, f'↳{ct_pin}')
+    _pick_menu_item(device, is_Q, '↳Countdown')
+    _need_keypress(device, "4")
+    _pick_menu_item(device, is_Q, " 5 minutes")
+
+    time.sleep(2)
+    sim.stop()
+    device.close()
+
+    sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"],
+                            headless=headless)
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+
+    _login(device, is_Q, ct_pin)
+    time.sleep(.15)
+    scr = " ".join(_cap_screen(device).split("\n"))
+    assert "Login countdown in effect" in scr
+    assert "Must wait:" in scr
+    assert "5s" in scr
+    time.sleep(6)
+
+    _login(device, is_Q, ct_pin)
+    time.sleep(.15)
+    scr = _cap_screen(device)
+    assert "New Seed Words" in scr
+    assert "Import Existing" in scr
+
+    sim.stop()
+    device.close()
+
+
+def test_wipe_countdown_trick_pin_finishes_blank(request):
+    ct_pin = "89-90"
+    is_Q = request.config.getoption('--Q')
+    headless = request.config.getoption('--headless')
+    clean_sim_data()  # remove all from previous
+    sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"],
+                            headless=headless)
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+    _login(device, is_Q, "22-22")
+
+    _pick_menu_item(device, is_Q, "Settings")
+    _pick_menu_item(device, is_Q, "Login Settings")
+    _pick_menu_item(device, is_Q, "Trick PINs")
+
+    _pick_menu_item(device, is_Q, "Add New Trick")
+    time.sleep(.1)
+
+    for ch in ct_pin[:2]:
+        _need_keypress(device, ch)
+        time.sleep(.1)
+    _press_select(device, is_Q)
+
+    if not is_Q:
+        # anti-phishing words
+        _press_select(device, is_Q)
+
+    for ch in ct_pin[-2:]:
+        _need_keypress(device, ch)
+        time.sleep(.1)
+    _press_select(device, is_Q)
+
+    _pick_menu_item(device, is_Q, "Login Countdown")
+    _press_select(device, is_Q)
+    time.sleep(.1)
+
+    _pick_menu_item(device, is_Q, "Wipe & Countdown")
+    for _ in range(2):
+        _press_select(device, is_Q)
+        time.sleep(.1)
+
+    # adjust countdown to lowest possible value
+    _pick_menu_item(device, is_Q, f'↳{ct_pin}')
+    _pick_menu_item(device, is_Q, '↳Countdown')
+    _need_keypress(device, "4")
+    _pick_menu_item(device, is_Q, " 5 minutes")
+
+    time.sleep(2)
+    sim.stop()
+    device.close()
+
+    sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"],
+                            headless=headless)
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+
+    _login(device, is_Q, ct_pin)
+    time.sleep(.15)
+    scr = " ".join(_cap_screen(device).split("\n"))
+    assert "Login countdown in effect" in scr
+    assert "Must wait:" in scr
+    assert "5s" in scr
+    time.sleep(6)
+
+    _login(device, is_Q, ct_pin)
+    time.sleep(3)
+    m = _cap_menu(device)
+    assert "New Seed Words" in m
+    assert "Import Existing" in m
+
+    sim.stop()
+    device.close()
+
+
+def test_look_blank_trick_pin_empty_menu(request):
+    blank_pin = "55-55"
+    is_Q = request.config.getoption('--Q')
+    clean_sim_data()  # remove all from previous
+    sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"])
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+    _login(device, is_Q, "22-22")
+
+    _pick_menu_item(device, is_Q, "Settings")
+    _pick_menu_item(device, is_Q, "Login Settings")
+    _pick_menu_item(device, is_Q, "Trick PINs")
+
+    _pick_menu_item(device, is_Q, "Add New Trick")
+    time.sleep(.1)
+
+    for ch in blank_pin[:2]:
+        _need_keypress(device, ch)
+        time.sleep(.1)
+    _press_select(device, is_Q)
+
+    if not is_Q:
+        # anti-phishing words
+        _press_select(device, is_Q)
+
+    for ch in blank_pin[-2:]:
+        _need_keypress(device, ch)
+        time.sleep(.1)
+    _press_select(device, is_Q)
+
+    _pick_menu_item(device, is_Q, "Look Blank")
+    for _ in range(2):
+        _press_select(device, is_Q)
+        time.sleep(.1)
+
+    time.sleep(2)
+    sim.stop()
+    device.close()
+
+    sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"])
+    sim.start(start_wait=6)
+    device = ColdcardDevice(is_simulator=True)
+
+    _login(device, is_Q, blank_pin)
+    time.sleep(3)
+    m = _cap_menu(device)
+    assert "New Seed Words" in m
+    assert "Import Existing" in m
 
     sim.stop()
     device.close()

@@ -5,7 +5,7 @@
 import ngu, chains
 from io import BytesIO
 from collections import OrderedDict
-from utils import xfp2str, swab32
+from utils import xfp2str, swab32, max_signers
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from public_constants import AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, MAX_TR_SIGNERS
 from desc_utils import (parse_desc_str, append_checksum, descriptor_checksum,
@@ -123,11 +123,11 @@ class Descriptor:
         c = 0
         has_mine = 0
         err_top_B = "Top level miniscript should be 'B'"
-        max_signers = 20
+        limit = max_signers(self.addr_fmt)
 
         if self.tapscript:
             assert self.key  # internal key (would fail during parse)
-            max_signers = MAX_TR_SIGNERS
+            limit = MAX_TR_SIGNERS
             for l in self.tapscript.iter_leaves():
                 assert l.type == "B", err_top_B
                 l.verify()
@@ -160,7 +160,7 @@ class Descriptor:
             assert self.addr_fmt != AF_P2SH, "Miniscript in legacy P2SH not allowed"
 
         assert ext_nums.isdisjoint(int_nums), "Non-disjoint multipath"
-        assert c <= max_signers, "max signers"
+        assert c <= limit, "max signers"
 
         assert has_mine > 0, 'My key %s missing in descriptor.' % xfp2str(my_xfp).upper()
 
