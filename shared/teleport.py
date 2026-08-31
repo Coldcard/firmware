@@ -737,6 +737,7 @@ async def kt_send_psbt(psbt, psbt_len, source_offset):
 
     if m.next_xfp:
         assert m.next_xfp != my_xfp
+        dis.fullscreen("Wait...")
         ri, rx_pubkey, kp = ms.kt_make_rxkey(m.next_xfp)
         await kt_do_send(rx_pubkey, 'p', raw=bin_psbt, prefix=ri, kp=kp,
                         rx_label='[%s] co-signer' % xfp2str(m.next_xfp))
