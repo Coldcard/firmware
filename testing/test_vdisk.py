@@ -229,7 +229,7 @@ def test_virtdisk_import_invalidates_pending_psbt(
     else:
         pytest.fail('no approval screen')
 
-    before = int(sim_eval("__import__('glob').PSRAM.txn_write_count"))
+    before = int(sim_eval("__import__('glob').PSRAM.psram_write_count"))
 
     # A firmware import uses the native PSRAM copy and overwrites the pending
     # transaction before its own authorization attempt is rejected as busy.
@@ -237,7 +237,7 @@ def test_virtdisk_import_invalidates_pending_psbt(
         f.write(bytes(0x50000))
 
     for _ in range(50):
-        if int(sim_eval("__import__('glob').PSRAM.txn_write_count")) != before:
+        if int(sim_eval("__import__('glob').PSRAM.psram_write_count")) != before:
             break
         time.sleep(.1)
     else:
