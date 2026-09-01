@@ -51,6 +51,7 @@ psbt_tmp256 = bytearray(256)
 # transaction version error
 TX_VER_ERR = "bad txn version"
 NO_KEY_ERR = "None of the keys involved in this transaction belong to this Coldcard"
+MAX_FUTURE_BLOCKS = const(10 * 365 * 144)
 
 def build_bip322_to_spend(msg_hash, message_challenge):
     to_spend = CTransaction()
@@ -2414,6 +2415,13 @@ class psbtObject(psbtProxy):
                 msg = "This tx can only be spent after "
                 if self.lock_time < NLOCK_IS_TIME:
                     msg += "block height of %d" % self.lock_time
+
+                    min_block = chains.current_chain().ccc_min_block
+                    if min_block and self.lock_time > (min_block + MAX_FUTURE_BLOCKS):
+                        self.warnings.append((
+                            "Distant Locktime",
+                            "Unusually distant block-height locktime (10+ years)."
+                        ))
                 else:
                     try:
                         dt = datetime_from_timestamp(self.lock_time)

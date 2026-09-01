@@ -2976,6 +2976,28 @@ def test_locktime_ux(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign,
     assert txid == story_txid
 
 
+@pytest.mark.parametrize("extra_blocks,warn", [(0, False), (1, True)])
+def test_far_future_locktime_warning(
+        extra_blocks, warn, use_mainnet, sim_exec, fake_txn, start_sign,
+        end_sign, cap_story):
+    use_mainnet()
+    min_block = int(sim_exec(
+        "import chains; RV.write(str(chains.current_chain().ccc_min_block))"))
+    locktime = min_block + (10 * 365 * 144) + extra_blocks
+
+    start_sign(fake_txn(1, 1, lock_time=locktime))
+    time.sleep(0.1)
+    title, story = cap_story()
+
+    assert title == "OK TO SEND?"
+    assert "Abs Locktime" in story
+    assert "block height of %d" % locktime in story
+    assert ("Distant Locktime" in story) is warn
+    assert ("Unusually distant block-height locktime (10+ years)." in story) is warn
+
+    end_sign(accept=False)
+
+
 def test_relative_locktime_summary_is_bounded(fake_txn, start_sign, cap_story, press_cancel):
     num_each = 125
     max_lock = num_each
