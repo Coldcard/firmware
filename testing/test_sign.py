@@ -4941,9 +4941,9 @@ def test_psram_write_counter_covers_txn_output_region(sim_exec, sim_eval):
     else:
         raise pytest.fail('PSRAM not initialized')
 
-    start = int(sim_eval("__import__('glob').PSRAM.txn_write_count"))
+    start = int(sim_eval("__import__('glob').PSRAM.psram_write_count"))
     sim_exec("from glob import PSRAM; import version; PSRAM.write(version.MAX_TXN_LEN, bytes(100))")
     sim_exec("from glob import PSRAM; PSRAM.write(3 * 1024 * 1024, bytes(100))")
-    assert int(sim_eval("__import__('glob').PSRAM.txn_write_count")) == start + 2
+    assert int(sim_eval("__import__('glob').PSRAM.psram_write_count")) == start + 2
 
 # EOF

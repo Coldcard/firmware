@@ -107,8 +107,7 @@ class VirtDisk:
         # through the PSRAM wrapper — record it, and revoke any lease of
         # those staged bytes, so post-review tampering can't hide
         glob.ALLOWED_DOWNLOAD = None
-        glob.PSRAM.txn_write_count += 1
-        glob.PSRAM.upgrade_write_count += 1
+        glob.PSRAM.psram_write_count += 1
 
         # I could not resist doing this in C... since we already have the
         # data in memory, why mess around with file concepts?
