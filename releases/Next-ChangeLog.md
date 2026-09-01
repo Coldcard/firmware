@@ -12,6 +12,9 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Simulator crashed on Bless Firmware, due to a desynced LED pipe. Thanks to
   [@hitechhayekian](https://github.com/hitechhayekian).
 - Bugfix: Hide Change Main PIN while a temporary seed or BIP-39 passphrase wallet is active.
+- Bugfix: Reject PSBTv2 transactions with an out-of-range transaction version, matching
+  the PSBTv0 parser. Previously a v2 PSBT with an invalid `nVersion` could be approved
+  and signed, producing a transaction the network will not relay.
 
 # Mk Specific Changes
 

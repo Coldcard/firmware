@@ -1946,6 +1946,11 @@ class psbtObject(psbtProxy):
 
         if self.por322:
             assert self.txn_version in {0, 2}, TX_VER_ERR
+        else:
+            # reject out-of-range versions on both v0 and v2 paths (the
+            # parse_txn() check only runs for v0); keeps v2 from signing
+            # transactions the network will not relay
+            assert self.txn_version in {1, 2, 3}, TX_VER_ERR
 
         if not inp_have_subpath and not self.wif_store:
             # Can happen w/ Electrum in watch-mode on XPUB. It doesn't know XFP and
