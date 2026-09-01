@@ -2352,7 +2352,12 @@ class psbtObject(psbtProxy):
                 raise FatalPSBTIssue("i0: invalid BIP-322 'to_spend': not our key")
             if not self.por322_msg_challenge:
                 raise FatalPSBTIssue("Missing BIP-322 message challenge")
-            if any(not self.inputs[i].sp_idxs for i in range(1, self.num_inputs)):
+            if any(not self.inputs[i].sp_idxs or self.inputs[i].fully_signed
+                   for i in range(1, self.num_inputs)):
+                # every POR input past to_spend must be one we will actually sign;
+                # sp_idxs alone is not enough: forged keypaths (incl. zero-xfp
+                # placeholder) plus a partial sig can leave it populated while
+                # making a foreign input look fully signed
                 raise FatalPSBTIssue("Foreign inputs not allowed in BIP-322 Proof of Reserves")
 
         if not my_cnt:
