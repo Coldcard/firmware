@@ -1885,7 +1885,11 @@ class psbtObject(psbtProxy):
             # - also finds appropriate multisig wallet to be used
             inp.determine_my_signing_key(i, utxo, self.my_xfp, self, cosign_xfp)
 
-            if self.por322 and i and not inp.num_our_keys:
+            if self.por322 and i and not inp.required_key:
+                # every POR input past to_spend must be one we will actually sign;
+                # num_our_keys is not enough: forged keypaths (incl. zero-xfp
+                # placeholder) plus a partial sig would make a foreign input
+                # look ours and already-signed (required_key is None)
                 foreign_por = True
 
             if inp.required_key and not inp.is_segwit and not inp.utxo:

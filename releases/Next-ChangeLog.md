@@ -4,7 +4,8 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk and Q
 
-- Bugfix: Reject foreign inputs from BIP-322 Proof of Reserves.
+- Bugfix: Reject foreign inputs from BIP-322 Proof of Reserves, including inputs
+  disguised with forged key-path metadata or partial signatures.
 - Bugfix: Restore the ability to view the device-generated seed before adding user
   entropy, which was available in the previous dice-roll workflow but was inadvertently
   removed in 5.6.1/1.5.1Q. The new **View TRNG Words** menu item displays the full
