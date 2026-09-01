@@ -2621,6 +2621,19 @@ def test_psbt_v2_global_quantities(way, fake_txn, start_sign, end_sign, cap_stor
     assert "failed" in story or "Invalid PSBT" in story or "Network fee bigger" in story
 
 
+@pytest.mark.parametrize("bad_ver", [4, -1, 100])
+def test_psbt_v2_bad_txn_version(bad_ver, fake_txn, start_sign, cap_story):
+    # PSBTv2 must reject an out-of-range transaction version, same as the v0 parser
+    # (parse_txn's `bad txn version` check only runs for v0). Otherwise a v2 PSBT with
+    # an invalid nVersion could be approved and signed into an unrelayable transaction.
+    # negative values are stored two's-complement (device parses txn_version as <i)
+    psbt = fake_txn(1, 1, segwit_in=True, psbt_v2=True,
+                    psbt_hacker=lambda p: setattr(p, 'txn_version', bad_ver & 0xffffffff))
+    start_sign(psbt)
+    title, story = cap_story()
+    assert "bad txn version" in story, story
+
+
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("locktime", [
     0,  # zero default
