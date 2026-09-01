@@ -836,8 +836,12 @@ class psbtInputProxy(psbtProxy):
 
                 redeem_script = self.get(ks)
 
-            if self.addr_fmt == AF_P2SH and self.witness_script and not self.redeem_script:
-                raise FatalPSBTIssue('Missing redeem script for input #%d' % my_idx)
+            if self.addr_fmt == AF_P2SH and self.witness_script:
+                expect = b'\x00\x20' + ngu.hash.sha256s(self.get(self.witness_script))
+                if not self.redeem_script or self.get(self.redeem_script) != expect:
+                    # redeem script is the only proof the UTXO is really segwit;
+                    # without it the input amount (and fee) cannot be verified
+                    raise FatalPSBTIssue('Missing/bad redeem script for input #%d' % my_idx)
 
             self.scriptSig = redeem_script
 
