@@ -38,7 +38,7 @@ from public_constants import (
 # transaction version error
 TX_VER_ERR = "bad txn version"
 NO_KEY_ERR = "None of the keys involved in this transaction belong to this Coldcard"
-MAX_FUTURE_BLOCKS = const(10 * 365 * 144)
+MAX_FUTURE_BLOCKS = const(10 * 365 * 144)       # 10 years
 
 # single sha256 of b'BIP0322-signed-message'
 BIP322_TAG_HASH = b'te\x84\xa1\x87/\xa1\x00AUN\xff\xa08\xd6\x12IB\xddy\xb4\xe5\x8aL\xda\x18N\x13\xdb\xe6,I'
