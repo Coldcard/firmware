@@ -28,6 +28,9 @@ This lists the new changes that have not yet been published in a normal release.
   `psram_copy_file`/`psram_mmap_file` that allowed out-of-bounds PSRAM writes, reads,
   and mappings from a compromised USB host.
 - Bugfix: Hide Change Main PIN while a temporary seed or BIP-39 passphrase wallet is active.
+- Bugfix: Reject PSBTv2 transactions with an out-of-range transaction version, matching
+  the PSBTv0 parser. Previously a v2 PSBT with an invalid `nVersion` could be approved
+  and signed, producing a transaction the network will not relay.
 - Bugfix: Reject firmware images that extend past the world-checksum-covered
   flash region.
 - Security hardening: Remove the unused USB CDC/VCP serial interface from normal
