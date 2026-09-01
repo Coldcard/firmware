@@ -400,7 +400,7 @@ class ApproveTransaction(UserAuthorizedAction):
         # - they are re-read from live PSRAM during display, signing & finalization,
         #   and a USB host could rewrite them while we wait for approval
         from glob import PSRAM
-        self.parsed_write_count = PSRAM.txn_write_count
+        self.parsed_write_count = PSRAM.psram_write_count
         self.parsed_sha = psram_sha256(self.offset, self.psbt_len)
         if self.psbt_sha is not None and self.psbt_sha != self.parsed_sha:
             del self.psbt
@@ -610,10 +610,10 @@ class ApproveTransaction(UserAuthorizedAction):
 
         # the parsed bytes must be unchanged since parse/approval; covers all
         # input methods and the HSM auto-approval path, as both end up here
-        # - fast path: nothing wrote to the TXN region since we hashed it,
+        # - fast path: nothing wrote to PSRAM since we hashed it,
         #   so there is no need to re-hash in that (common) case
         from glob import PSRAM
-        if PSRAM.txn_write_count != self.parsed_write_count:
+        if PSRAM.psram_write_count != self.parsed_write_count:
             if psram_sha256(self.offset, self.psbt_len) != self.parsed_sha:
                 # fail closed: wipe the txn, so no signature over modified data
                 psram_wipe(self.offset, self.psbt_len)
@@ -621,9 +621,9 @@ class ApproveTransaction(UserAuthorizedAction):
                 gc.collect()
                 return await self.failure("Transaction modified")
 
-            # A writer touched the other TXN staging region. The active PSBT is
+            # A writer touched PSRAM outside the active PSBT. The active PSBT is
             # unchanged, so make this successful re-check the new baseline.
-            self.parsed_write_count = PSRAM.txn_write_count
+            self.parsed_write_count = PSRAM.psram_write_count
 
         # do the actual signing.
         try:
@@ -653,8 +653,8 @@ class ApproveTransaction(UserAuthorizedAction):
         # tripwire: no writer could have run since the re-check above, as
         # there is no await between it and signing (single-threaded asyncio),
         # so this cannot trigger today - it fails loudly if a future change
-        # adds an await or a new TXN-region writer on this path
-        assert PSRAM.txn_write_count == self.parsed_write_count
+        # adds an await or a new PSRAM writer on this path
+        assert PSRAM.psram_write_count == self.parsed_write_count
 
         try:
             await done_signing(self.psbt, self, self.input_method,
@@ -1616,7 +1616,7 @@ class FirmwareUpgradeRequest(UserAuthorizedAction):
         self.length = length
         self.hdr_check = hdr_check
         self.psram_offset = psram_offset
-        self.upgrade_write_count = glob.PSRAM.upgrade_write_count
+        self.psram_write_count = glob.PSRAM.psram_write_count
 
     async def interact(self):
         from version import decode_firmware_header
@@ -1650,7 +1650,7 @@ Binary checksum and signature will be further verified before any changes are ma
             ch = await ux_show_story(msg)
 
             if ch == 'y':
-                assert glob.PSRAM.upgrade_write_count == self.upgrade_write_count
+                assert glob.PSRAM.psram_write_count == self.psram_write_count
 
                 # Accepted:
                 # - write final file header, so bootloader will see it
