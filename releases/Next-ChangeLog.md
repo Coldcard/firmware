@@ -12,6 +12,8 @@ This lists the new changes that have not yet been published in a normal release.
   proceeding to approval.
 - Bugfix: Reject foreign inputs from BIP-322 Proof of Reserves, including inputs
   disguised with forged key-path metadata or partial signatures.
+- Bugfix: Add a block-height reset to Single-Signer Spending Policy's
+  **Last Violation** screen after policy bypass, matching CCC.
 - Bugfix: Restore the ability to view the device-generated seed before adding user
   entropy, which was available in the previous dice-roll workflow but was inadvertently
   removed in 5.6.1/1.5.1Q. The new **View TRNG Words** menu item displays the full
