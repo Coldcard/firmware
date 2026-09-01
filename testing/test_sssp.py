@@ -438,6 +438,72 @@ def test_velocity(velocity_mi, setup_sssp, bitcoind, settings_set, pick_menu_ite
     )
 
 
+def test_reset_poisoned_block_height(setup_sssp, settings_set, settings_get,
+                                     pick_menu_item, press_select, start_sign,
+                                     end_sign, fake_txn, cap_story,
+                                     get_last_violation, goto_home, cap_menu,
+                                     press_cancel, sim_exec, goto_sssp_menu,
+                                     need_keypress):
+    settings_set("chain", "XRT")
+    setup_sssp("11-11", mag=2, vel='6 blocks (hour)')
+    pick_menu_item("ACTIVATE")
+    press_select()
+
+    poisoned_h = 499_913_672
+    poisoned = fake_txn(2, 2, input_amount=1_000_000, lock_time=poisoned_h)
+    start_sign(poisoned)
+    time.sleep(.1)
+    title, _ = cap_story()
+    assert title == 'OK TO SEND?'
+    assert end_sign()
+    assert settings_get("sssp")["pol"]["block_h"] == poisoned_h
+
+    normal_h = 100
+    normal = fake_txn(2, 2, input_amount=1_000_000, lock_time=normal_h)
+    start_sign(normal)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Spending Policy violation." in story
+    assert get_last_violation() == "rewound (%d)" % normal_h
+    press_select()
+
+    goto_home()
+    assert "Settings" not in cap_menu()
+    pick_menu_item("Advanced/Tools")
+    assert "Spending Policy" not in cap_menu()
+    press_cancel()
+
+    rv = sim_exec("from pincodes import pa; from ccc import sssp_spending_policy; "
+                  "from actions import goto_top_menu; pa.hobbled_mode = False; "
+                  "sssp_spending_policy('en', set_value=False); goto_top_menu()")
+    assert 'Traceback' not in rv
+
+    goto_sssp_menu()
+    pick_menu_item("Last Violation")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "Last height:\n\n%d" % poisoned_h in story
+    assert "Press (1) to clear block height" in story
+    need_keypress("1")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "Reset block height to default value 0 for Bitcoin Regtest?" in story
+    press_select()
+    time.sleep(.1)
+    assert settings_get("sssp")["pol"]["block_h"] == 0
+
+    goto_sssp_menu()
+    pick_menu_item("ACTIVATE")
+    press_select()
+    start_sign(normal)
+    time.sleep(.1)
+    title, _ = cap_story()
+    assert title == 'OK TO SEND?'
+    assert end_sign()
+    assert settings_get("sssp")["pol"]["block_h"] == normal_h
+
+
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("active", [True, False])
 def test_warnings(setup_sssp, bitcoind, settings_set, policy_sign, pick_menu_item,
