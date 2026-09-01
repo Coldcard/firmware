@@ -137,9 +137,11 @@ def test_addr_decode(unit_test):
     # - runs som known examples thru CTxIn and check it categories, and extracts pubkey/pkh right
     unit_test('devtest/unit_addrs.py')
 
-def test_clear_seed(unit_test):
-    # just testing the test?
-    unit_test('devtest/clear_seed.py')
+def test_clear_seed(unit_test, reset_seed_words):
+    try:
+        unit_test('devtest/clear_seed.py')
+    finally:
+        reset_seed_words()
 
 def test_slip132(unit_test):
     # slip132 ?pub stuff

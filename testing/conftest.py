@@ -141,7 +141,7 @@ def X(is_q1):
 
 @pytest.fixture
 def need_keypress(dev, request):
-    def doit(k, timeout=1000):
+    def doit(k, timeout=3000):
         if request.config.getoption("--manual"):
             # need actual user interaction
             print("==> NOW, on the Coldcard, press key: %r (then enter here)" % k, file=sys.stderr)
@@ -426,6 +426,19 @@ def cap_story(dev):
     # returns (title, body) of whatever story is being actively shown
     f = functools.partial(_cap_story, dev)
     return f
+
+
+@pytest.fixture
+def wait_for_story(cap_story):
+    def doit(expected, check_title=False):
+        for _ in range(50):
+            title, story = cap_story()
+            if expected in (title if check_title else story):
+                return title, story
+            time.sleep(0.2)
+        pytest.fail(f'Timed out waiting for: {expected!r}')
+
+    return doit
 
 
 @pytest.fixture

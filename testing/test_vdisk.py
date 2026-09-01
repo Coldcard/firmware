@@ -290,7 +290,7 @@ def test_virtdisk_wrapped_base64_uses_decoded_size(fake_txn, virtdisk_path, cap_
     psbt = BasicPSBT().parse(fake_txn(1, 1, segwit_in=True))
     padding = 0
     for _ in range(3):
-        psbt.unknown[b'\xfcsize-check'] = bytes(padding)
+        psbt.unknown[b'\xfdsize-check'] = bytes(padding)
         raw = psbt.as_bytes()
         if len(raw) == target_len:
             break
