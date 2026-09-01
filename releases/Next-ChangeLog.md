@@ -32,6 +32,9 @@ This lists the new changes that have not yet been published in a normal release.
   flash region.
 - Security hardening: Remove the unused USB CDC/VCP serial interface from normal
   operation and keyboard emulation.
+- Bugfix: In Delta Mode, wipe the seed if anyone tries to view or activate a duress
+  wallet's secret from the Trick PINs menu, instead of revealing it. Browsing the menu
+  itself still works, so Delta Mode continues to look like normal operation.
 
 # Mk Specific Changes
 

@@ -808,6 +808,11 @@ so you may perform transactions with it.''')
         b, slot = tp.get_by_pin(pin)
         assert slot
 
+        # loading a duress wallet's secret is a secret-revealing action; in
+        # Delta Mode it would hand the coercer working keys, so wipe instead
+        from utils import wipe_if_deltamode
+        wipe_if_deltamode()
+
         # TC_BLANK_WALLET here would be nice, but no support working w/ fake empty secret
 
         # emulate stash.py encoding
@@ -887,6 +892,11 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
 
         ch = await ux_show_story(msg + '\n\nPress (6) to view associated secrets.', escape='6')
         if ch != '6': return
+
+        # viewing the duress wallet's seed words/XPRV reveals a live secret;
+        # in Delta Mode it would hand the coercer the keys, so wipe instead
+        from utils import wipe_if_deltamode
+        wipe_if_deltamode()
 
         b, s = tp.get_by_pin(pin)
         if s is None:
