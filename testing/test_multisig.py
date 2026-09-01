@@ -1520,7 +1520,28 @@ def test_missing_p2sh_p2wsh_redeem_script_rejected(clear_ms, import_ms_wallet,
     with pytest.raises(CCProtoError) as exc:
         try_sign(psbt, False)
 
-    assert "Missing redeem script for input #0" in str(exc.value)
+    assert "Missing/bad redeem script for input #0" in str(exc.value)
+
+
+def test_junk_p2sh_p2wsh_redeem_script_rejected(clear_ms, import_ms_wallet,
+                                                fake_ms_txn, try_sign):
+    # present-but-wrong redeem script: input would still be signed as segwit
+    # while its amount (and the fee) cannot be verified - must be rejected
+    clear_ms()
+    M, N = 2, 3
+    keys = import_ms_wallet(M, N, addr_fmt="p2sh-p2wsh", accept=True)
+
+    def junk_redeem_script(psbt):
+        # valid shape for a P2WSH wrapper, but not sha256 of the witness script
+        psbt.inputs[0].redeem_script = b'\x00\x20' + b'\x11' * 32
+
+    psbt = fake_ms_txn(1, 1, M, keys, fee=99_000_000, inp_af=AF_P2WSH_P2SH,
+                       hack_psbt=junk_redeem_script)
+
+    with pytest.raises(CCProtoError) as exc:
+        try_sign(psbt, False)
+
+    assert "Missing/bad redeem script for input #0" in str(exc.value)
 
 @pytest.mark.veryslow
 @pytest.mark.unfinalized
