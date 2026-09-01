@@ -365,7 +365,7 @@ def render_mag_value(mag):
         return '%d SATS' % mag
 
 
-class CCCConfigMenu(MenuSystem):
+class PolicyConfigMenuBase(MenuSystem):
     def __init__(self):
         items = self.construct()
         super().__init__(items)
@@ -373,6 +373,38 @@ class CCCConfigMenu(MenuSystem):
     def update_contents(self):
         tmp = self.construct()
         self.replace_items(tmp)
+
+    async def debug_last_fail(self, *a):
+        # debug for customers: why did we reject that last txn?
+        c = chains.current_chain()
+        def_bh = c.ccc_min_block
+        pol = self.policy_feature.get_policy()
+        bh = pol.get('block_h', None)
+        bh_clear = ''
+        msg = ''
+        escape = "4"
+        if bh is not None:
+            msg += '%s:\n\n%s\n\n' % (self.height_label, bh)
+            if bh != def_bh:
+                bh_clear = 'Press (1) to clear block height. '
+                escape += "1"
+
+        lfr = LastFailReason.get()
+        msg += ('The most recent policy check failed because of:\n\n%s\n\n'
+                '%sPress (4) to clear last fail reason.' % (lfr, bh_clear))
+        ch = await ux_show_story(msg, escape=escape)
+
+        if ch == '4':
+            LastFailReason.clear()
+            self.update_contents()
+        elif ch == '1':
+            if await ux_confirm("Reset block height to default value %d for %s?" % (def_bh, c.name)):
+                pol.update_policy_key(_quiet=True, _master_only=False, block_h=def_bh)
+
+
+class CCCConfigMenu(PolicyConfigMenuBase):
+    policy_feature = CCCFeature
+    height_label = 'CCC height'
 
     def construct(self):
         from multisig import MultisigWallet, make_ms_wallet_menu
@@ -405,35 +437,6 @@ class CCCConfigMenu(MenuSystem):
         items.append(MenuItem('Remove CCC', f=self.remove_ccc))
 
         return items
-
-    async def debug_last_fail(self, *a):
-        # debug for customers: why did we reject that last txn?
-        c = chains.current_chain()
-        def_bh = c.ccc_min_block
-        pol = CCCFeature.get_policy()
-        bh = pol.get('block_h', None)
-        bh_clear = ''
-        msg = ''
-        escape = "4"
-        if bh is not None:
-            msg += 'CCC height:\n\n%s\n\n' % bh
-            if bh != def_bh:
-                bh_clear = 'Press (1) to clear block height. '
-                escape += "1"
-
-        lfr = LastFailReason.get()
-        msg += ('The most recent policy check failed because of:\n\n%s\n\n'
-                '%sPress (4) to clear last fail reason.' % (lfr, bh_clear))
-        ch = await ux_show_story(msg, escape=escape)
-
-        if ch == '4':
-            LastFailReason.clear()
-            self.update_contents()
-        elif ch == '1':
-            if await ux_confirm("Reset block height to default value %d for %s?" % (def_bh, c.name)):
-                pol.update_policy_key(_quiet=True, _master_only=False, block_h=def_bh)
-
-
 
     async def remove_ccc(self, *a):
         # disable and remove feature
@@ -1204,14 +1207,9 @@ class SSSPCheckedMenuItem(MenuItem):
         sssp_spending_policy(self.polkey, set_value=(not was))
 
 
-class SSSPConfigMenu(MenuSystem):
-    def __init__(self):
-        items = self.construct()
-        super().__init__(items)
-
-    def update_contents(self):
-        tmp = self.construct()
-        self.replace_items(tmp)
+class SSSPConfigMenu(PolicyConfigMenuBase):
+    policy_feature = SSSPFeature
+    height_label = 'Last height'
 
     def construct(self):
         items = [
@@ -1272,23 +1270,6 @@ class SSSPConfigMenu(MenuSystem):
 
         pa.hobbled_mode = 2      # Truthy value to indicate they can escape easily
         goto_top_menu()
-
-    async def debug_last_fail(self, *a):
-        # debug for customers: why did we reject that last txn?
-        pol = SSSPFeature.get_policy()
-        bh = pol.get('block_h', None)
-        msg = ''
-        if bh:
-            msg += "Last height:\n\n%s\n\n" % bh
-
-        lfr = LastFailReason.get()
-        msg += 'The most recent policy check failed because of:\n\n%s\n\nPress (4) to clear.' \
-                    % lfr
-        ch = await ux_show_story(msg, escape='4')
-
-        if ch == '4':
-            LastFailReason.clear()
-            self.update_contents()
 
     async def remove_sssp(self, *a):
         # disable and remove feature
