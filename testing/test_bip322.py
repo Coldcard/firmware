@@ -3,7 +3,7 @@
 # BIP-322 Message Signing and Proof of Reserves
 # NOTE: Run this module with and without --psbt2 to cover both PSBT versions.
 #
-import pytest, time, os
+import pytest, time, os, struct
 from io import BytesIO
 from decimal import Decimal
 from constants import SIGHASH_MAP, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH
@@ -320,8 +320,7 @@ def test_bip322_Xth_input_witness_utxo(ins, bip322_txn, start_sign, cap_story, e
     [["p2wpkh", None, None], ["p2pkh", None, 10000000], ["p2pkh", None, 10000000]],
     [["p2sh-p2wpkh", None, None], ["p2sh-p2wpkh", None, 10000000], ["p2sh-p2wpkh", None, 10000000]],
 ])
-def test_bip322_incomplete_psbt_bip32_paths(ins, bip322_txn, start_sign, cap_story,
-                                            verify_msg_bip322_por):
+def test_bip322_incomplete_psbt_bip32_paths(ins, bip322_txn, start_sign, cap_story):
 
     def hack(psbt_in):
         without_paths = 0 if len(psbt_in.inputs) == 1 else 1
@@ -332,16 +331,30 @@ def test_bip322_incomplete_psbt_bip32_paths(ins, bip322_txn, start_sign, cap_sto
     psbt, _ = bip322_txn(ins, psbt_hacker=hack)
     start_sign(psbt)
     title, story = cap_story()
+    assert title == "Failure"
     if len(ins) == 1:
-        assert title == "Failure"
         assert 'PSBT does not contain any key path information.' in story
     else:
-        verify_msg_bip322_por("POR")
-        time.sleep(.1)
-        title, story = cap_story()
-        assert "warning" in story
-        assert "Limited Signing" in story
-        assert "because we do not know the key: 1" in story
+        assert "Foreign inputs not allowed in BIP-322 Proof of Reserves" in story
+
+
+def test_bip322_por_presigned_foreign_input(bip322_txn, start_sign, cap_story):
+    # Foreign UTXO (key from a different seed) carrying a forged zero-xfp keypath
+    # - rewritten to our master fingerprint on the fly - plus a partial signature,
+    # so the input looks "ours" and already signed; must still be rejected.
+    foreign_sec = BIP32Node.from_master_secret(b'\x77' * 32).subkey_for_path("0/0").sec()
+
+    def hack(psbt_in):
+        inp = psbt_in.inputs[1]
+        inp.bip32_paths = {foreign_sec: b"\x00" * 4 + struct.pack("<I", 0)}
+        inp.part_sigs[foreign_sec] = b"\x30" + 70 * b"a"
+
+    psbt, _ = bip322_txn([["p2wpkh", None, None], ["p2wpkh", None, 10000000]],
+                         witness_utxo=[1], psbt_hacker=hack)
+    start_sign(psbt)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Foreign inputs not allowed in BIP-322 Proof of Reserves" in story
 
 
 def test_bip322_por_input0_bip32_paths_required(bip322_txn, start_sign, cap_story):
