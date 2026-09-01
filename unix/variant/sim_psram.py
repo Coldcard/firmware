@@ -7,6 +7,8 @@ import version, psram
 class SimulatedPSRAMWrapper(psram.PSRAMWrapper):
 
     def __init__(self):
+        self.psram_write_count = 0
+
         # note: need heapsize=X with big number to get object so big on the heap
         self._wr = bytearray(self.length)
 
