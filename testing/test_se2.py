@@ -925,6 +925,63 @@ def test_deltamode_toggle(get_deltamode, set_deltamode):
     assert get_deltamode() == False
 
 
+def test_deltamode_duress_secret_view_wipes(clear_all_tricks, new_trick_pin,
+        new_pin_confirmed, pick_menu_item, cap_story, need_keypress, press_select,
+        set_deltamode, get_deltamode, sim_exec, goto_trick_menu):
+    # In Delta Mode, browsing the Trick PINs menu is allowed (looks like normal
+    # operation), but attempting to *view* a duress wallet's seed or *activate* it must
+    # wipe the device rather than hand the coercer a live secret.
+    clear_all_tricks()
+
+    new_pin = '11-55'
+    new_trick_pin(new_pin, 'Duress Wallet', 'Goes directly to a specific duress wallet')
+    pick_menu_item('BIP-85 Wallet #1')
+    _, story = cap_story()
+    assert "functional 'duress' wallet" in story
+    press_select()
+    new_pin_confirmed(new_pin, 'BIP-85 Wallet #1', TC_WORD_WALLET, 1001)
+
+    # spy on the wipe (record the call on the fast_wipe referenced by the guard)
+    sim_exec('import callgate\n'
+             'callgate._w=[0]\n'
+             'def _spy(silent=True):\n'
+             '    callgate._w[0]+=1\n'
+             'callgate._fw=callgate.fast_wipe\n'
+             'callgate.fast_wipe=_spy\n'
+             'RV.write("spy ok")')
+    set_deltamode(True)
+    assert get_deltamode() == True
+
+    def wipe_count():
+        return int(sim_exec('import callgate; RV.write(str(callgate._w[0]))'))
+
+    # -- attempt to view the duress seed words via the (6) viewer -> wipe, no secret shown
+    goto_trick_menu()
+    pick_menu_item(f'↳{new_pin}')
+    pick_menu_item('↳Duress Wallet')
+    _, story = cap_story()
+    assert 'Press (6) to view associated' in story
+    need_keypress('6')
+    time.sleep(.5)
+    # the wipe fired (with the real fast_wipe the device reboots before rendering the
+    # secret; the spy only skips the reboot so the test can continue)
+    assert wipe_count() == 1, 'viewing duress secret in delta mode did not wipe'
+
+    # -- attempt to activate the duress wallet -> wipe again, secret never applied
+    goto_trick_menu()
+    pick_menu_item(f'↳{new_pin}')
+    pick_menu_item('Activate Wallet')
+    _, story = cap_story()
+    assert 'This will temporarily load' in story
+    press_select()
+    time.sleep(.5)
+    assert wipe_count() == 2, 'activating duress wallet in delta mode did not wipe'
+
+    # restore real fast_wipe and leave delta mode
+    sim_exec('import callgate; callgate.fast_wipe=callgate._fw')
+    set_deltamode(False)
+
+
 # TODO
 # - make trick and do login, check arrives right state?
 # - out of slots
