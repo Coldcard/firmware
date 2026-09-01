@@ -2342,6 +2342,8 @@ class psbtObject(psbtProxy):
                 raise FatalPSBTIssue("i0: invalid BIP-322 'to_spend': not our key")
             if not self.por322_msg_challenge:
                 raise FatalPSBTIssue("Missing BIP-322 message challenge")
+            if presigned_inputs:
+                raise FatalPSBTIssue("Presigned inputs not allowed in BIP-322 Proof of Reserves")
             if any(not self.inputs[i].sp_idxs for i in range(1, self.num_inputs)):
                 raise FatalPSBTIssue("Foreign inputs not allowed in BIP-322 Proof of Reserves")
 

@@ -369,6 +369,25 @@ def test_bip322_por_input0_bip32_paths_required(bip322_txn, start_sign, cap_stor
     assert "not our key" in story
 
 
+def test_bip322_por_presigned_input_rejected(bip322_txn, start_sign, cap_story):
+    foreign = BIP32Node.from_master_secret(os.urandom(32))
+
+    def hack(psbt_in):
+        inp = psbt_in.inputs[1]
+        pubkey, = inp.bip32_paths.keys()
+        inp.part_sigs[pubkey] = b"\x30" + (70 * b"a")
+
+    psbt, _ = bip322_txn([
+        ["p2wpkh", None, None],
+        ["p2wpkh", None, 10000000, foreign.node.private_key.K.sec()],
+    ], psbt_hacker=hack)
+
+    start_sign(psbt)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Presigned inputs not allowed in BIP-322 Proof of Reserves" in story
+
+
 @pytest.mark.parametrize("ins", [
     [["p2sh-p2wpkh", None, None]],
     [["p2pkh", None, None], ["p2sh-p2wpkh", None, 10000000], ["p2wpkh", None, 100000000]],
