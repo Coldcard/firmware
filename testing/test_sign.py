@@ -3653,8 +3653,8 @@ def test_txout_explorer_qr_too_big_single_item(fake_txn, start_sign, cap_story, 
     scr = cap_screen()
     assert "QR too big" in scr
 
-    press_cancel()
-    press_cancel()
+    for _ in range(4):
+        press_cancel()
 
 
 def test_low_R_grinding(dev, goto_home, microsd_path, press_select, offer_ms_import,
