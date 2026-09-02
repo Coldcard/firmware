@@ -2,9 +2,11 @@
 #
 # tests for ../shared/pwsave.py
 #
-import pytest, time, os, shutil
+import pytest, time, os, shutil, json
+import pyaes
 from binascii import a2b_hex
-from constants import simulator_fixed_tprv
+from ckcc.protocol import CCProtocolPacker
+from constants import simulator_fixed_tprv, simulator_fixed_xfp
 
 
 @pytest.fixture
@@ -141,6 +143,40 @@ p=PassphraseSaver(); p._calc_key(cs); RV.write(b2a_hex(p.key)); cs.__exit__()'''
     assert isinstance(j, list)
     assert j[0]['pw']
     assert j[0]['xfp']
+
+def test_restore_non_ascii_rejected(dev, sim_exec, simulator_db_file,
+                                    garbage_collector, reset_seed_words,
+                                    go_to_passphrase, pick_menu_item, cap_menu,
+                                    cap_story, press_select):
+    reset_seed_words()
+    before = dev.send_recv(CCProtocolPacker.get_xpub("m"), timeout=None)
+
+    key = sim_exec('''\
+import files; from h import b2a_hex; from pwsave import PassphraseSaver; \
+cs = files.CardSlot().__enter__(); p = PassphraseSaver(); \
+p._calc_key(cs); RV.write(b2a_hex(p.key)); cs.__exit__()''')
+    records = [{"xfp": simulator_fixed_xfp, "pw": "café"}]
+    enc = pyaes.AESModeOfOperationCTR(a2b_hex(key), pyaes.Counter(0)).encrypt(
+        json.dumps(records).encode())
+    with open(simulator_db_file(), "wb") as fd:
+        fd.write(enc)
+    garbage_collector.append(simulator_db_file())
+
+    go_to_passphrase()
+    pick_menu_item("Restore Saved")
+    time.sleep(.2)
+    pick_menu_item(cap_menu()[0])
+    time.sleep(.2)
+    pick_menu_item("Restore")
+    time.sleep(.2)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "ASCII characters 32-126" in story
+    assert dev.send_recv(CCProtocolPacker.get_xpub("m"), timeout=None) == before
+
+    press_select()
+    time.sleep(.2)
+    assert "Restore" in cap_menu()
 
 def test_delete_one_by_one(go_to_passphrase, pick_menu_item, cap_menu,
                            cap_story, press_select, src_root_dir, sim_root_dir):
