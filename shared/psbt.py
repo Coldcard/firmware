@@ -214,6 +214,7 @@ class psbtProxy:
 
     def parse(self, fd):
         self.fd = fd
+        seen_singletons = 0
 
         while 1:
             ks = deser_compact_size(fd)
@@ -225,6 +226,11 @@ class psbtProxy:
             assert vs is not None, 'eof'
 
             kt = key[0]
+
+            if len(key) == 1:
+                mask = 1 << kt
+                assert not (seen_singletons & mask), 'duplicate key'
+                seen_singletons |= mask
 
             if kt in self.no_keys:
                 assert len(key) == 1        # not expecting key
