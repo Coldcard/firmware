@@ -4,10 +4,11 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk and Q
 
-- New Feature: Added USB ncry v3 authenticated encryption with direction-separated keys and replay protection
+- New Feature: Added USB ncry v3 authenticated encryption for our USB communications
+  protocol, now with direction-separated keys and replay protection.
 - Enhancement: Warn when a transaction's block-height `nLockTime` is more than
   ten years beyond the Bitcoin block height known to the firmware.
-- Bugfix: Reject duplicate singleton keys in PSBT maps
+- Bugfix: Reject duplicate singleton keys in PSBT maps.
 - Bugfix: Add a block-height reset to Single-Signer Spending Policy's
   **Last Violation** screen after policy bypass, matching CCC.
 - Enhancement: Retain up to 128 UTXO cache entries across restarts.
@@ -32,7 +33,8 @@ This lists the new changes that have not yet been published in a normal release.
   verification of dice-roll or coin-flip mixing.
 - Bugfix: Simulator crashed on Bless Firmware, due to a desynced LED pipe. Thanks to
   [@hitechhayekian](https://github.com/hitechhayekian).
-- Bugfix: With an empty master wallet and an active temporary seed, keep imports and backup restores temporary instead of treating them as master-seed changes.
+- Bugfix: With an empty master wallet and an active temporary seed, keep imports and
+  backup restores temporary instead of treating them as master-seed changes.
 - Bugfix: Reject PSRAM virtual-disk files whose FAT metadata is inconsistent with the
   declared file size (oversized cluster chains, oversized fragment counts, spurious
   trailing fragments, final remainders exceeding the final fragment's capacity, or
@@ -66,4 +68,6 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 1.5.xQ - 2026-0x-xx
 
-- tbd
+- All of the above.
+
+
