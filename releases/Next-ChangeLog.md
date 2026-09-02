@@ -43,6 +43,9 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: In Delta Mode, wipe the seed if anyone tries to view or activate a duress
   wallet's secret from the Trick PINs menu, instead of revealing it. Browsing the menu
   itself still works, so Delta Mode continues to look like normal operation.
+- Bugfix: Reject non-ASCII BIP-39 passphrases (USB, saved-passphrase recall, and
+  note/password lanes) instead of silently deriving a wallet incompatible with
+  BIP-39-normalizing software.
 
 # Mk Specific Changes
 

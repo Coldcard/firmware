@@ -12,6 +12,7 @@ import json
 from mnemonic import Mnemonic
 from constants import simulator_fixed_xfp, simulator_fixed_words, simulator_fixed_tprv
 from helpers import xfp2str
+from charcodes import KEY_QR
 
 # add the BIP39 test vectors
 vectors = json.load(open('bip39-vectors.json'))['english']
@@ -138,7 +139,7 @@ def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story,
     return doit
 
 
-@pytest.mark.parametrize('pw', [ 
+@pytest.mark.parametrize('pw', [
     'a'*1000,   # way too big
     'a'*100,    # just too big
     ])
@@ -146,6 +147,73 @@ def test_b39_fails(dev, pw):
 
     with pytest.raises(CCProtoError):
         dev.send_recv(CCProtocolPacker.bip39_passphrase(pw), timeout=None)
+
+@pytest.mark.parametrize('pw', [
+    'café',         # NFC form
+    'café',        # NFD form
+    'emoji 🚀 inside',
+    'tab\tinside',
+    'line\nbreak',
+    ])
+def test_b39_non_ascii_or_non_printable_rejected(dev, pw):
+    # non-ASCII and non-printable passphrases are rejected at entry
+    with pytest.raises(CCProtoError) as e:
+        dev.send_recv(CCProtocolPacker.bip39_passphrase(pw), timeout=None)
+    assert 'ascii' in str(e.value)
+
+def test_b39_ascii_still_works(dev, set_bip39_pw, reset_seed_words):
+    # ASCII passphrases (with spaces) are unaffected
+    try:
+        set_bip39_pw('with some spaces')
+    finally:
+        reset_seed_words()
+
+def test_b39_non_ascii_qr_rejected(dev, is_q1, reset_seed_words, go_to_passphrase,
+                                   need_keypress, scan_a_qr, press_select, cap_story,
+                                   cap_menu, cap_screen):
+    if not is_q1:
+        raise pytest.skip("Q only")
+
+    reset_seed_words()
+    before = dev.send_recv(CCProtocolPacker.get_xpub("m"), timeout=None)
+
+    go_to_passphrase()
+    need_keypress(KEY_QR)
+
+    for _ in range(20):
+        if "Scan any QR" in cap_screen():
+            break
+        time.sleep(.1)
+    assert "Scan any QR" in cap_screen()
+
+    scan_a_qr('café 🚀')
+
+    for _ in range(20):
+        if "Your BIP-39 Passphrase" in cap_screen():
+            break
+        time.sleep(.1)
+    assert "Your BIP-39 Passphrase" in cap_screen()
+
+    press_select()
+
+    for _ in range(20):
+        title, story = cap_story()
+        if title == "Failure":
+            break
+        time.sleep(.1)
+
+    assert title == "Failure"
+    assert "ASCII characters 32-126" in story
+    assert dev.send_recv(CCProtocolPacker.get_xpub("m"), timeout=None) == before
+
+    press_select()
+
+    for _ in range(20):
+        menu = cap_menu()
+        if "Passphrase" in menu:
+            break
+        time.sleep(.1)
+    assert "Passphrase" in menu
 
 def test_b39p_refused(dev, press_cancel, pw='testing 123'):
     # user can refuse the passphrase (cancel)
