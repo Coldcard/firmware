@@ -641,6 +641,13 @@ class ApproveTransaction(UserAuthorizedAction):
                 # update SSSP block_h even if SSSP blocks and overridden by CCC
                 SSSPFeature.update_last_signed(self.psbt)
 
+            # signing succeeded: record first-seen UTXO amounts only for inputs
+            # that received our signature; parsing itself does not change history
+            # Proof of Reserves must not read or modify this history.
+            if not self.psbt.por322:
+                from history import OutptValueCache
+                OutptValueCache.commit(self.psbt)
+
         except FraudulentChangeOutput as exc:
             return await self.failure(exc.args[0], title='Change Fraud')
         except MemoryError:

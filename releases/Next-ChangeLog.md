@@ -14,6 +14,11 @@ This lists the new changes that have not yet been published in a normal release.
   disguised with forged key-path metadata or partial signatures.
 - Bugfix: Add a block-height reset to Single-Signer Spending Policy's
   **Last Violation** screen after policy bypass, matching CCC.
+- Enhancement: Retain up to 128 UTXO cache entries across restarts.
+- Bugfix: Cancelled PSBTs no longer persist claimed input amounts to the UTXO
+  cache; amounts are committed only after signing, for inputs actually signed.
+- Bugfix: Cache single-sig segwit change amounts at finalize, so understated
+  input amounts are caught instead of silently trusted.
 - Bugfix: Restore the ability to view the device-generated seed before adding user
   entropy, which was available in the previous dice-roll workflow but was inadvertently
   removed in 5.6.1/1.5.1Q. The new **View TRNG Words** menu item displays the full

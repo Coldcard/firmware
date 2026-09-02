@@ -157,6 +157,14 @@ def _skip_n_objs(fd, n, cls):
 
     return rv
 
+def is_wrapped_p2wpkh_redeem(rs):
+    # redeem script is a bare v0 p2wpkh witness program nested in p2sh (wrapped segwit)
+    return len(rs) == 22 and rs[0] == 0 and rs[1] == 20
+
+def is_wrapped_p2wsh_redeem(rs):
+    # redeem script is a bare v0 p2wsh witness program nested in p2sh (wrapped segwit)
+    return len(rs) == 34 and rs[0] == 0 and rs[1] == 32
+
 def calc_txid(fd, poslen, body_poslen=None):
     # Given the (pos,len) of a transaction in a file, return the txid for that txn.
     # - doesn't validate data
@@ -933,9 +941,7 @@ class psbtInputProxy(psbtProxy):
             return False
 
         redeem_script = self.get(self.redeem_script)
-        return redeem_script[0] == 0 and \
-            ((len(redeem_script) == 22 and redeem_script[1] == 20) or
-             (len(redeem_script) == 34 and redeem_script[1] == 32)) and \
+        return (is_wrapped_p2wpkh_redeem(redeem_script) or is_wrapped_p2wsh_redeem(redeem_script)) and \
             hash160(redeem_script) == addr_or_pubkey
 
     def determine_my_signing_key(self, my_idx, addr_or_pubkey, my_xfp, psbt, parsed_subpaths, utxo):
@@ -1041,8 +1047,7 @@ class psbtInputProxy(psbtProxy):
                     # without it the input amount (and fee) cannot be verified
                     raise FatalPSBTIssue('Missing/bad redeem script for input #%d' % my_idx)
 
-            if not native_v0 and (len(redeem_script) == 22) and \
-                    redeem_script[0] == 0 and redeem_script[1] == 20:
+            if not native_v0 and is_wrapped_p2wpkh_redeem(redeem_script):
 
                 # P2SH-P2WPKH is a single-key input. Do not mistake a 1-of-1
                 # multisig script for singlesig merely because it has one path.
@@ -2167,6 +2172,7 @@ class psbtObject(psbtProxy):
         my_cnt = 0
         prevouts = set()
         from_wif_store = 0
+        ovc = None if self.por322 else history.OutptValueCache.get_cache()
 
         dis.fullscreen("Validating...", line2="Inputs")
 
@@ -2338,7 +2344,7 @@ class psbtObject(psbtProxy):
                 # capture that value, since it's supposed to be immutable
                 # Proof of Reserves PSBT must not modify history
                 if inp.af and inp.is_segwit and not self.por322:
-                    history.verify_amount(txi.prevout, inp.amount, i)
+                    history.verify_amount(txi.prevout, inp.amount, i, ovc)
 
                 if inp.af == AF_P2TR:
                     # Signing a Taproot input may require every input's scriptPubKey
@@ -3770,8 +3776,14 @@ class psbtObject(psbtProxy):
             fd.write(txo.serialize())
 
             # capture change output amounts (if segwit)
-            if self.outputs[out_idx].is_change and self.outputs[out_idx].witness_script:
-                history.add_segwit_utxos(out_idx, txo.nValue)
+            # - p2wsh & p2sh-p2wsh change always carries witness_script
+            # - single-sig change usually has keypaths only: detect p2wpkh from
+            #   scriptPubKey, and p2sh-p2wpkh from its 22-byte v0 redeem script
+            outp = self.outputs[out_idx]
+            if outp.is_change:
+                rs = self.get(outp.redeem_script) if outp.redeem_script else None
+                if outp.witness_script or txo.is_p2wpkh() or (rs and is_wrapped_p2wpkh_redeem(rs)):
+                    history.add_segwit_utxos(out_idx, txo.nValue)
 
         body_end = fd.tell()
 
