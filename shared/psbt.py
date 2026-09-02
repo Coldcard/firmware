@@ -110,6 +110,14 @@ def _skip_n_objs(fd, n, cls):
 
     return rv
 
+def is_wrapped_p2wpkh_redeem(rs):
+    # redeem script is a bare v0 p2wpkh witness program nested in p2sh (wrapped segwit)
+    return len(rs) == 22 and rs[0] == 0 and rs[1] == 20
+
+def is_wrapped_p2wsh_redeem(rs):
+    # redeem script is a bare v0 p2wsh witness program nested in p2sh (wrapped segwit)
+    return len(rs) == 34 and rs[0] == 0 and rs[1] == 32
+
 def calc_txid(fd, poslen, body_poslen=None):
     # Given the (pos,len) of a transaction in a file, return the txid for that txn.
     # - doesn't validate data
@@ -474,8 +482,7 @@ class psbtOutputProxy(psbtProxy):
 
                 target_spk, _ = chains.current_chain().script_pubkey(AF_P2WPKH_P2SH,
                                                                      pubkey=expect_pubkey)
-                if not is_segwit and len(redeem_script) == 22 and \
-                        redeem_script[0] == 0 and redeem_script[1] == 20 and \
+                if not is_segwit and is_wrapped_p2wpkh_redeem(redeem_script) and \
                         txo.scriptPubKey == target_spk:
                     # it's actually segwit p2wpkh inside p2sh
                     pkh = redeem_script[2:22]
@@ -513,8 +520,7 @@ class psbtOutputProxy(psbtProxy):
                     return af
 
                 if (af == AF_P2SH) and (redeem_script and witness_script) and \
-                        (len(redeem_script) == 34) and \
-                        (redeem_script[0]) == 0 and (redeem_script[1] == 32):
+                        is_wrapped_p2wsh_redeem(redeem_script):
                     # can also check if redeem script hashes to hash160 and compare with scriptPubKey
                     af = AF_P2WSH_P2SH
 
@@ -774,10 +780,8 @@ class psbtInputProxy(psbtProxy):
             return False
 
         redeem_script = self.get(self.redeem_script)
-        return redeem_script[0] == 0 and \
-            ((len(redeem_script) == 22 and redeem_script[1] == 20) or
-             (len(redeem_script) == 34 and redeem_script[1] == 32)) and \
-            hash160(redeem_script) == addr_or_pubkey
+        return (is_wrapped_p2wpkh_redeem(redeem_script) or is_wrapped_p2wsh_redeem(redeem_script)) \
+            and hash160(redeem_script) == addr_or_pubkey
 
     def determine_my_signing_key(self, my_idx, utxo, my_xfp, psbt, cosign_xfp=None):
         # See what it takes to sign this particular input
@@ -852,8 +856,7 @@ class psbtInputProxy(psbtProxy):
 
             self.scriptSig = redeem_script
 
-            if not addr_is_segwit and len(redeem_script) == 22 and \
-                    redeem_script[0] == 0 and redeem_script[1] == 20:
+            if not addr_is_segwit and is_wrapped_p2wpkh_redeem(redeem_script):
                 # segwit p2pkh wrapped in p2sh: exactly one key, not multisig.
                 # psbt creator tells us the key by providing exactly one subpath.
                 self.addr_fmt = AF_P2WPKH_P2SH
@@ -1876,6 +1879,7 @@ class psbtObject(psbtProxy):
         from_wif_store = []
         prevouts = set()
         foreign_por = False
+        ovc = None if self.por322 else history.OutptValueCache.get_cache()
 
         for i, txi in self.input_iter():
             # check for duplicate inputs
@@ -1939,7 +1943,7 @@ class psbtObject(psbtProxy):
             # capture that value, since it's supposed to be immutable
             # Proof of Reserves PSBT must not modify history
             if inp.is_segwit and not self.por322:
-                history.verify_amount(txi.prevout, inp.amount, i)
+                history.verify_amount(txi.prevout, inp.amount, i, ovc)
 
             if self.por322 and (i == 0):
                 # Proof of Reserves 'to_spend' validation
@@ -2646,8 +2650,14 @@ class psbtObject(psbtProxy):
             fd.write(txo.serialize())
 
             # capture change output amounts (if segwit)
-            if self.outputs[out_idx].is_change and self.outputs[out_idx].witness_script:
-                history.add_segwit_utxos(out_idx, txo.nValue)
+            # - p2wsh & p2sh-p2wsh change always carries witness_script
+            # - single-sig change usually has keypaths only: detect p2wpkh from
+            #   scriptPubKey, and p2sh-p2wpkh from its 22-byte v0 redeem script
+            outp = self.outputs[out_idx]
+            if outp.is_change:
+                rs = self.get(outp.redeem_script) if outp.redeem_script else None
+                if outp.witness_script or txo.is_p2wpkh() or (rs and is_wrapped_p2wpkh_redeem(rs)):
+                    history.add_segwit_utxos(out_idx, txo.nValue)
 
         body_end = fd.tell()
 

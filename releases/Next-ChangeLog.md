@@ -9,6 +9,11 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Reject duplicate singleton keys in PSBT maps
 - Bugfix: Add a block-height reset to Single-Signer Spending Policy's
   **Last Violation** screen after policy bypass, matching CCC.
+- Enhancement: Retain up to 128 UTXO cache entries across restarts.
+- Bugfix: Cancelled PSBTs no longer persist claimed input amounts to the UTXO
+  cache; amounts are committed only after signing, for inputs actually signed.
+- Bugfix: Cache single-sig segwit change amounts at finalize, so understated
+  input amounts are caught instead of silently trusted.
 - Bugfix: Reject foreign inputs from BIP-322 Proof of Reserves, including inputs
   disguised with forged key-path metadata or partial signatures.
 - Bugfix: Detect and abort transaction signing if a Virtual Disk firmware import
