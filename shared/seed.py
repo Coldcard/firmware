@@ -15,6 +15,7 @@ from ucollections import OrderedDict
 from menu import MenuItem, MenuSystem
 from utils import xfp2str, parse_extended_key, swab32
 from utils import deserialize_secret, problem_file_line, wipe_if_deltamode
+from utils import to_ascii_printable
 from uhashlib import sha256
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, OK, X
 from ux import PressRelease, ux_input_text, show_qr_code, ux_clear_keys
@@ -1002,6 +1003,18 @@ def set_seed_value(words=None, encoded=None, chain=None):
         dis.busy_bar(False)
 
 
+async def validate_bip39_passphrase(pw):
+    try:
+        to_ascii_printable(pw, allow_tab_nl=False)
+    except AssertionError:
+        await ux_show_story(
+            "BIP-39 passphrase must use ASCII characters 32-126 (0x20-0x7e).",
+            title="Failure")
+        return False
+
+    return True
+
+
 async def calc_bip39_passphrase(pw, bypass_tmp=False):
     # Returns (new) encoded secret, new xfp, old xfp
     from glob import dis, settings
@@ -1019,6 +1032,9 @@ async def calc_bip39_passphrase(pw, bypass_tmp=False):
     return nv, xfp, current_xfp
 
 async def set_bip39_passphrase(pw, bypass_tmp=False, summarize_ux=True):
+    if not await validate_bip39_passphrase(pw):
+        return False
+
     nv, xfp, parent_xfp = await calc_bip39_passphrase(pw, bypass_tmp=bypass_tmp)
 
     ret = await set_ephemeral_seed(nv, summarize_ux=summarize_ux, bip39pw=pw,
@@ -1651,6 +1667,9 @@ class PassphraseMenu(MenuSystem):
 async def apply_pass_value(new_pp):
     # Apply provided BIP-39 passphrase to master or current active tmp seed
     # and go to top menu.
+    if not await validate_bip39_passphrase(new_pp):
+        return False
+
     nv, xfp, parent_xfp = await calc_bip39_passphrase(new_pp)
     xfp_str = xfp2str(xfp)
     parent_xfp_str = xfp2str(parent_xfp)

@@ -862,29 +862,44 @@ def test_top_import(way, encrypted, goto_notes, cap_menu, cap_story, need_keypre
     goto_notes()
 
 
+@pytest.mark.parametrize("password", [False, True])
 def test_top_import_u_typed_json(goto_notes, cap_menu, cap_story, need_keypress,
-                                 settings_get, settings_set, scan_a_qr):
+                                 settings_get, settings_set, scan_a_qr,
+                                 pick_menu_item, password):
     settings_set('notes', [])
 
     goto_notes('Import')
     need_keypress(KEY_QR)
 
-    notes = {"coldcard_notes": [{"title": "demo", "misc": "x"}]}
+    note = {"title": "demo", "misc": "café" if not password else "x"}
+    if password:
+        note.update(password="café", user="user", site="example.com")
+    notes = {"coldcard_notes": [note]}
     jj = json.dumps(notes)
     _, parts = split_qrs(jj, 'U', max_version=20)   # deliberately U-typed
     for p in parts:
         scan_a_qr(p)
 
-    time.sleep(.5)
-    m = cap_menu()
-    for _ in range(3):
-        if "1:" in m[0]:
-            break
-        time.sleep(.2)
+    for _ in range(20):
         m = cap_menu()
+        if m and "1:" in m[0]:
+            break
+        time.sleep(.1)
+    assert m and "1:" in m[0]
 
     assert settings_get('notes') == notes["coldcard_notes"]
     goto_notes()
+    pick_menu_item("1: demo")
+
+    expect = "View Password" if password else "View Note"
+    for _ in range(20):
+        menu = cap_menu()
+        if expect in menu:
+            break
+        time.sleep(.1)
+
+    assert expect in menu
+    assert "Apply as BIP-39 Passphrase" not in menu
 
 
 @pytest.mark.parametrize('bkpw', [True, False])
