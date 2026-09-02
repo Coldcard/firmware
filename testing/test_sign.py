@@ -17,7 +17,7 @@ from helpers import B2A, fake_dest_addr, parse_change_back, addr_from_display_fo
 from helpers import xfp2str, seconds2human_readable, hash160
 from msg import verify_message
 from bip32 import BIP32Node
-from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP, simulator_fixed_xfp
+from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP, simulator_fixed_xfp, simulator_fixed_tprv
 from txn import *
 from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint
 from ckcc_protocol.constants import STXN_VISUALIZE, STXN_SIGNED
@@ -1202,30 +1202,34 @@ def test_change_troublesome(dev, start_sign, cap_story, try_path, expect, sim_ro
 
     assert parse_change_back(story) == (Decimal('1.09997082'), ['mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'])
 
-def test_bip143_attack(try_sign, sim_exec, set_xfp, settings_set, settings_get):
+def test_bip143_attack(try_sign, sim_exec, fake_txn, settings_get):
     # cleanup prev runs
     sim_exec('import history; history.OutptValueCache.clear()')
 
-    # hand-modified transactions from Andrew Chow
-    set_xfp('D1A226A9')
-    mod1 = b64decode(open('data/b143a_mod1.psbt').read())
-    mod2 = b64decode(open('data/b143a_mod2.psbt').read())
+    # Same two-input amount swap as the original Andrew Chow fixtures, but use
+    # simulator-owned keys so the first claim can establish history by signing.
+    mod1 = fake_txn(2, 1, segwit_in=True,
+                    invals=[500001000, 2000000000], outvals=[2500000000])
+    mod2 = _same_prevout_variant(mod1, [1500000000, 1000001000])
 
-    orig, result = try_sign(mod1, accept=False)
+    try_sign(mod1, accept=False)
+    try_sign(mod2, accept=False)
+    assert not settings_get('ovc')
 
-    # after seeing first one, should raise an error on second one
+    # A cancelled request does not establish history. Once the first claim is
+    # signed, presenting the conflicting claim must fail.
+    try_sign(mod1, accept=True)
     with pytest.raises(CCProtoError) as ee:
-        orig, result = try_sign(mod2, accept=False)
+        try_sign(mod2, accept=False)
 
     assert 'but PSBT claims 15 XTN' in str(ee), ee
 
-    assert len(settings_get('ovc')) == 2
     sim_exec('import history; history.OutptValueCache.clear()')
 
     # try in opposite order, should also trigger
-    orig, result = try_sign(mod2, accept=False)
+    try_sign(mod2, accept=True)
     with pytest.raises(CCProtoError) as ee:
-        orig, result = try_sign(mod1, accept=False)
+        try_sign(mod1, accept=False)
 
     assert 'but PSBT claims' in str(ee), ee
     assert 'Expected 15 but' in str(ee)
@@ -1279,10 +1283,9 @@ def spend_outputs(funding_psbt, finalized_txn, tweaker=None):
     return nn, raw
 
 @pytest.fixture
-def hist_count(sim_exec):
+def hist_count(settings_get):
     def doit():
-        return int(sim_exec(
-            'import history; RV.write(str(len(history.OutptValueCache.runtime_cache)));'))
+        return len(settings_get('ovc') or [])
     return doit
 
 @pytest.fixture
@@ -1325,19 +1328,21 @@ def test_bip143_attack_data_capture(num_utxo, segwit_in, try_sign, fake_txn, set
     press_cancel()
     press_cancel()
 
-    assert hist_count() in {128, hist_b4+num_utxo+num_inp_utxo}
+    expect_history = min(128, hist_b4+num_utxo+1+num_inp_utxo)
+    assert hist_count() == expect_history
 
     t = CTransaction()
     t.deserialize(BytesIO(txn))
     assert t.txid().hex() == txid
 
-    # expect all of new "change outputs" to be recorded (none of the non-segwit change tho)
+    # expect all of new segwit "change outputs" to be recorded: num_utxo p2wpkh plus
+    # the one p2sh-p2wpkh (none of the non-segwit p2pkh change tho),
     # plus the one input we "revealed"
     after1 = settings_get('ovc')
-    assert len(after1) == min(30, num_utxo + num_inp_utxo)
+    assert len(after1) == min(128, num_utxo + 1 + num_inp_utxo)
 
     all_utxo = hist_count()
-    assert all_utxo == hist_b4+num_utxo+num_inp_utxo
+    assert all_utxo == expect_history
     # build a new PSBT based on those change outputs
     psbt2, raw = spend_outputs(psbt, txn)
     with open(f'{sim_root_dir}/debug/spend_outs.psbt', 'wb') as f:
@@ -1363,6 +1368,180 @@ def test_bip143_attack_data_capture(num_utxo, segwit_in, try_sign, fake_txn, set
             orig, result = try_sign(raw, accept=True, finalize=True)
 
         assert 'but PSBT claims' in str(ee), ee
+
+
+def _same_prevout_variant(psbt_bytes, claim_amounts):
+    # return a copy of a segwit PSBT spending the SAME prevout, but with the
+    # inputs' witness_utxo amounts replaced by claim_amounts (lies).
+    # fake_txn bakes input_amount into the funding txid, so two fake_txn calls
+    # with different amounts do NOT share a prevout -- patch the claim instead.
+    ps = BasicPSBT().parse(psbt_bytes)
+    assert len(claim_amounts) == len(ps.inputs)
+    for inp, claim_amount in zip(ps.inputs, claim_amounts):
+        utxo = CTxOut()
+        utxo.deserialize(BytesIO(inp.witness_utxo))
+        utxo.nValue = claim_amount
+        inp.witness_utxo = utxo.serialize()
+
+    with BytesIO() as fd:
+        ps.serialize(fd)
+        return fd.getvalue()
+
+
+def test_ovc_not_poisoned_pre_approval(try_sign, fake_txn, settings_get, sim_exec, hist_count):
+    # A parsed-but-cancelled PSBT must NOT persist first-seen UTXO amounts to flash
+    # (anti-exfiltration cache); only an actual signature may commit them. Otherwise a
+    # hostile cosigner can poison a fresh prevout with a wrong amount (no approval needed)
+    # and DoS the honest spend of that UTXO.
+    #
+    # The segwit input here is foreign (its prevout was never signed by this device), so
+    # verify_amount sees it as first-seen. The PSBT parses (device keys), but the user
+    # cancels -> no signature -> nothing may be committed.
+    sim_exec('import history; history.OutptValueCache.clear()')
+    assert hist_count() == 0
+    assert not settings_get('ovc')
+
+    # attacker previews a PSBT with a WRONG input amount; user cancels (X).
+    honest = fake_txn(1, 1, segwit_in=True, input_amount=int(0.49995 * 1E8))
+    evil = _same_prevout_variant(honest, [int(0.50095 * 1E8)])
+    try_sign(evil, accept=False)
+    assert not settings_get('ovc'), "cancelled preview poisoned the persisted cache"
+    assert hist_count() == 0
+
+    # The cancelled request left no OVC state, so the honest request is first-seen
+    # and signs cleanly without requiring a reboot.
+    try_sign(honest, accept=True, finalize=True)
+
+    # and only now is the prevout's amount committed (post-signature)
+    assert settings_get('ovc'), "signature did not commit the approved UTXO amount"
+
+
+def test_ovc_commit_only_signed_inputs(try_sign, fake_txn, settings_get, sim_exec, hist_count):
+    # A cancelled PSBT must not affect a later, unrelated signature.
+    sim_exec('import history; history.OutptValueCache.clear()')
+    assert hist_count() == 0
+    assert not settings_get('ovc')
+
+    # hostile preview of UTXO 0 with a WRONG amount; user cancels
+    honest = fake_txn(1, 1, segwit_in=True, input_amount=int(0.49995 * 1E8))
+    evil = _same_prevout_variant(honest, [int(0.50095 * 1E8)])
+    try_sign(evil, accept=False)
+    assert not settings_get('ovc')
+
+    # victim then signs an unrelated transaction (different inputs, 2 ins/1 out
+    # so there is no change output to capture either)
+    try_sign(fake_txn(2, 1, segwit_in=True), accept=True, finalize=True)
+    after = settings_get('ovc') or []
+    assert len(after) == 2, "only the signed txn's two inputs may be committed"
+
+    # the poisoned claim for the SAME prevout was not committed, so the honest
+    # spend is first-seen and signs with the correct amount
+    try_sign(honest, accept=True, finalize=True)
+    assert len(settings_get('ovc')) == 3, "only correct amounts may be committed"
+
+
+def test_ovc_multi_input_amounts(try_sign, fake_txn, settings_get, sim_exec):
+    # PSBTv0 input_iter reuses its CTxIn object. commit() must serialize each
+    # prevout before advancing, so unequal amounts are recorded under the right keys.
+    sim_exec('import history; history.OutptValueCache.clear()')
+    psbt = fake_txn(2, 1, segwit_in=True,
+                    invals=[100000000, 125000000], outvals=[224990000])
+
+    try_sign(psbt, accept=True, finalize=True)
+    assert len(settings_get('ovc')) == 2
+
+    # A second pass checks both persisted amounts against the same prevouts.
+    try_sign(psbt, accept=True, finalize=True)
+    assert len(settings_get('ovc')) == 2
+
+
+@pytest.mark.parametrize('in_style', ['p2wpkh', 'p2wpkh-p2sh'])
+def test_ovc_singlesig_change_capture(in_style, try_sign, fake_txn, settings_get,
+                                      sim_exec, hist_count, press_cancel,
+                                      txid_from_export_prompt):
+    # Regression for first-seen segwit amount trust (coldcard-internal#1126):
+    # single-sig segwit change (p2wpkh and p2sh-p2wpkh) produced by a txn we sign
+    # must be captured into the UTXO value cache at finalize time, so a later
+    # understated amount claim on that UTXO is rejected with IncorrectUTXOAmount
+    sim_exec('import history; history.OutptValueCache.clear()')
+    assert hist_count() == 0
+
+    # non-change output goes to a random fake destination (not ours), so the
+    # change output is the only UTXO this txn leaves to this device
+    dest = fake_dest_addr('p2wpkh')
+
+    def pay_away(ps):
+        ps.outputs[0].bip32_paths = {}
+
+    psbt = fake_txn(1, 2, segwit_in=True, wrapped=(in_style == 'p2wpkh-p2sh'),
+                    change_outputs=[1], outstyles=['p2wpkh', in_style],
+                    fee=10000, psbt_hacker=pay_away)
+    psbt = BasicPSBT().parse(psbt)
+    psbt.outputs[0].script = dest
+    with BytesIO() as fd:
+        psbt.serialize(fd)
+        raw = fd.getvalue()
+
+    _, tx = try_sign(raw, accept=True, finalize=True, exit_export_loop=False)
+    txid = txid_from_export_prompt()
+    press_cancel()
+    press_cancel()
+
+    # cache now holds: funding input + our change output (index 1)
+    assert len(settings_get('ovc')) == 2, settings_get('ovc')
+
+    t = CTransaction()
+    t.deserialize(BytesIO(tx))
+    assert t.txid().hex() == txid
+    change_out = t.vout[1]
+    change_val = change_out.nValue
+
+    # find the key to spend the change: same path make_change_addr used,
+    # 12/34/N over the simulator seed. For wrapped (p2sh-p2wpkh) the output
+    # hash is hash160(redeem) so compare against the redeem hash.
+    mk = BIP32Node.from_wallet_key(simulator_fixed_tprv)
+    wrapped = (in_style == 'p2wpkh-p2sh')
+    target = change_out.scriptPubKey[2:22]
+    found = None
+    for n in range(1001):
+        sk = mk.subkey_for_path('12/34/%d' % n)
+        pkh = sk.hash160()
+        if wrapped:
+            pkh = hash160(bytes([0, 20]) + pkh)
+        if pkh == target:
+            found = n, sk
+            break
+    assert found, "change key not found"
+    n, subkey = found
+
+    # now spend that change UTXO, but LIE about its amount (understated) -- it
+    # must abort with "but PSBT claims" (IncorrectUTXOAmount); an honest claim
+    # (the exact cached value) must still sign. That verification is the point.
+    def make_spend(amount):
+        sp = BasicPSBT()
+        sp.inputs = [BasicPSBTInput(idx=0)]
+        sp.outputs = [BasicPSBTOutput(idx=0)]
+        sp.inputs[0].bip32_paths[subkey.sec()] = \
+            mk.fingerprint() + struct.pack('<III', 12, 34, n)
+        if in_style == 'p2wpkh-p2sh':
+            sp.inputs[0].redeem_script = psbt.outputs[1].redeem_script
+        sp.inputs[0].witness_utxo = CTxOut(amount, change_out.scriptPubKey).serialize()
+        stxn = CTransaction()
+        stxn.nVersion = 2
+        stxn.vin = [CTxIn(COutPoint(t.sha256, 1), nSequence=0xffffffff)]
+        stxn.vout = [CTxOut(amount - 10000, fake_dest_addr('p2wpkh'))]
+        sp.txn = stxn.serialize_with_witness()
+        with BytesIO() as fd:
+            sp.serialize(fd)
+            return fd.getvalue()
+
+    with pytest.raises(CCProtoError) as ee:
+        try_sign(make_spend(change_val - 1000000), accept=True)
+
+    assert 'but PSBT claims' in str(ee), ee
+
+    # honest spend of the cached change still works
+    try_sign(make_spend(change_val), accept=True, finalize=True)
 
 
 @pytest.mark.parametrize('segwit', [False, True])

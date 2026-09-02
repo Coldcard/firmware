@@ -85,6 +85,38 @@ def test_bip322_por(msg, ins, bip322_txn, start_sign, end_sign, cap_story, need_
     press_cancel()
 
 
+def test_bip322_does_not_modify_ovc(bip322_txn, start_sign, end_sign,
+                                    cap_story, press_select, settings_get,
+                                    sim_exec, bip322_verify):
+    # Proof of Reserves deliberately skips OVC verification and must not modify
+    # the committed cache when it signs the proof.
+    psbt, _ = bip322_txn([
+        ["p2wpkh", None, None],
+        ["p2wpkh", None, 10000000],
+    ])
+
+    sim_exec("from history import OutptValueCache; "
+             "from glob import settings; "
+             "from serializations import COutPoint; "
+             "OutptValueCache.clear(); "
+             "cache = []; "
+             "OutptValueCache.add(cache, COutPoint(1, 0), 1); "
+             "settings.set(OutptValueCache.KEY, cache)")
+    before = settings_get('ovc')
+    assert len(before) == 1
+
+    start_sign(psbt, finalize=True)
+    title, story = cap_story()
+    assert title == "OK TO SIGN?"
+    assert "Proof of Reserves" in story
+    press_select()
+    signed = end_sign(accept=None)
+    bip322_verify(signed)
+
+    assert settings_get('ovc') == before
+    sim_exec('import history; history.OutptValueCache.clear()')
+
+
 @pytest.mark.parametrize("msg, concern", [
     ("UTF-8: öäüéàè".encode(), "ascii"),
     (b"shown\x03hidden", "must be ascii printable"),
