@@ -12,7 +12,7 @@ from public_constants import (
 )
 from ustruct import pack, unpack_from
 from ckcc import watchpoint, is_simulator
-from utils import problem_file_line, call_later_ms, consteq, hkdf_expand
+from utils import problem_file_line, call_later_ms, consteq, hkdf_expand, to_ascii_printable
 from version import supports_hsm, is_devmode, MAX_TXN_LEN, MAX_UPLOAD_LEN
 from exceptions import FramingError, CCBusyError, HSMDenied, HSMCMDDisabled, SpendPolicyViolation
 from pincodes import pa
@@ -746,10 +746,10 @@ class USBHandler:
             assert self.encrypted_req, 'must encrypt'
             from auth import start_bip39_passphrase
             from glob import settings
-
             assert settings.get("words", True), 'no seed'
             assert len(args) < 400, 'too long'
             pw = str(args, 'utf8')
+            to_ascii_printable(pw, allow_tab_nl=False)
             assert len(pw), 'too short'
             assert len(pw) < 100, 'too long'
 

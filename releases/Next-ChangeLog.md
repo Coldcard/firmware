@@ -30,6 +30,9 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Reject PSBTv2 transactions with an out-of-range transaction version, matching
   the PSBTv0 parser. Previously a v2 PSBT with an invalid `nVersion` could be approved
   and signed, producing a transaction the network will not relay.
+- Bugfix: Reject non-ASCII BIP-39 passphrases (USB, saved-passphrase recall, and
+  note/password lanes) instead of silently deriving a wallet incompatible with
+  BIP-39-normalizing software.
 
 # Mk Specific Changes
 

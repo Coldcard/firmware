@@ -887,6 +887,29 @@ def test_top_import_u_typed_json(goto_notes, cap_menu, cap_story, need_keypress,
     goto_notes()
 
 
+@pytest.mark.parametrize("password", [False, True])
+def test_non_ascii_not_bip39_applicable(goto_notes, cap_menu, settings_set,
+                                        pick_menu_item, password):
+    note = {"title": "demo", "misc": "café" if not password else "x"}
+    if password:
+        note.update(password="café", user="user", site="example.com")
+
+    settings_set('secnap', True)
+    settings_set('notes', [note])
+    goto_notes()
+    pick_menu_item("1: demo")
+
+    expect = "View Password" if password else "View Note"
+    for _ in range(20):
+        menu = cap_menu()
+        if expect in menu:
+            break
+        time.sleep(.1)
+
+    assert expect in menu
+    assert "Apply as BIP-39 Passphrase" not in menu
+
+
 @pytest.mark.parametrize('bkpw', [True, False])
 def test_top_import_wrong_pw(bkpw, goto_notes, cap_menu, cap_story, need_keypress,
                              settings_set, need_some_notes, backup_notes, press_select,

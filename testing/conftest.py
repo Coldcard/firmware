@@ -1797,7 +1797,7 @@ def scan_a_qr(sim_exec, is_q1):
         if not is_q1:
             raise pytest.xfail('needs scanner')
         assert isinstance(qr, str)
-        qr = qr.encode('ascii')
+        qr = qr.encode('utf8')
         rv = sim_exec(f'glob.SCAN._q.put_nowait({qr!r})')
         if 'Traceback' in rv: raise pytest.fail(rv)
 
