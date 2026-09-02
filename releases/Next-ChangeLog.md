@@ -6,6 +6,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 - Enhancement: Warn when a transaction's block-height `nLockTime` is more than
   ten years beyond the Bitcoin block height known to the firmware.
+- Bugfix: Reject duplicate singleton keys in PSBT maps
 - Bugfix: Add a block-height reset to Single-Signer Spending Policy's
   **Last Violation** screen after policy bypass, matching CCC.
 - Bugfix: Reject foreign inputs from BIP-322 Proof of Reserves, including inputs
