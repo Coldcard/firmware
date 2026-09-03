@@ -142,11 +142,14 @@ class Descriptor:
     @staticmethod
     def checksum_check(desc_w_checksum , csum_required=False):
         try:
-            desc, checksum = desc_w_checksum.split("#")
+            desc, checksum = desc_w_checksum.split("#", 1)
         except ValueError:
             if csum_required:
                 raise ValueError("Missing descriptor checksum")
             return desc_w_checksum, None
+        if "#" in checksum:
+            # never allow multiple '#' to bypass checksum verification
+            raise ValueError("Too many '#' in descriptor")
         calc_checksum = descriptor_checksum(desc)
         if calc_checksum != checksum:
             raise WrongCheckSumError("Wrong checksum %s, expected %s" % (checksum, calc_checksum))
