@@ -195,15 +195,13 @@ def compute_silent_payment_spending_privkey(b_spend_bytes, sp_tweak_bytes):
         ValueError: If sp_tweak or spending_privkey is invalid
     """
     sp_tweak_int = int.from_bytes(sp_tweak_bytes, "big")
-    b_spend_int = int.from_bytes(b_spend_bytes, "big")
-    if not (0 < b_spend_int < SECP256K1_ORDER):
-        raise ValueError("Invalid spend private key: not in valid scalar range")
     if not (0 < sp_tweak_int < SECP256K1_ORDER):
         raise ValueError("Invalid tweak: not in valid scalar range")
-    spending_sk = (b_spend_int + sp_tweak_int) % SECP256K1_ORDER
-    if spending_sk == 0:
-        raise ValueError("Invalid computed spend key: result is zero")
-    return _negate_if_odd_y(spending_sk.to_bytes(32, "big"))
+    try:
+        spending_sk = ngu.secp256k1.ec_seckey_tweak_add(b_spend_bytes, sp_tweak_bytes)
+    except ValueError:
+        raise ValueError("Invalid computed spend key")
+    return _negate_if_odd_y(spending_sk)
 
 
 def _compute_silent_payment_spending_xonly(B_spend_bytes, sp_tweak_bytes):
@@ -233,7 +231,7 @@ def _negate_if_odd_y(privkey):
     """
     pubkey = ngu.secp256k1.ec_pubkey_tweak_mul(G, privkey)
     if pubkey[0] == 0x03:
-        privkey = (SECP256K1_ORDER - int.from_bytes(privkey, "big")).to_bytes(32, "big")
+        privkey = ngu.secp256k1.ec_seckey_negate(privkey)
     return privkey
 
 

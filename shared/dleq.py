@@ -135,19 +135,15 @@ def verify_dleq_proof(A_sum_bytes, B_scan_bytes, ecdh_share_bytes, proof, m=None
     sG = ngu.secp256k1.ec_pubkey_tweak_mul(G, s_bytes)
     eA = ngu.secp256k1.ec_pubkey_tweak_mul(A_sum_bytes, e_bytes)
 
-    # Negate eA by flipping the y-coordinate (change 02<->03 prefix)
-    eA_neg = bytearray(eA)
-    eA_neg[0] = 0x03 if eA[0] == 0x02 else 0x02
-    R1_bytes = ngu.secp256k1.ec_pubkey_combine([sG, bytes(eA_neg)])
+    eA_neg = ngu.secp256k1.ec_pubkey_negate(eA)
+    R1_bytes = ngu.secp256k1.ec_pubkey_combine([sG, eA_neg])
 
     # Reconstruct R2 = s*B - e*C
     sB = ngu.secp256k1.ec_pubkey_tweak_mul(B_scan_bytes, s_bytes)
     eC = ngu.secp256k1.ec_pubkey_tweak_mul(ecdh_share_bytes, e_bytes)
 
-    # Negate eC
-    eC_neg = bytearray(eC)
-    eC_neg[0] = 0x03 if eC[0] == 0x02 else 0x02
-    R2_bytes = ngu.secp256k1.ec_pubkey_combine([sB, bytes(eC_neg)])
+    eC_neg = ngu.secp256k1.ec_pubkey_negate(eC)
+    R2_bytes = ngu.secp256k1.ec_pubkey_combine([sB, eC_neg])
 
     # Recompute challenge e'
     e_check = dleq_challenge(A_sum_bytes, B_scan_bytes, ecdh_share_bytes, R1_bytes, R2_bytes, m, _G=G)
