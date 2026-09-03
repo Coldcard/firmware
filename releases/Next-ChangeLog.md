@@ -7,6 +7,9 @@ your addition and anything else already in this file.**
 
 # Shared Improvements - Both Mk and Q
 
+- Bugfix: Reject descriptors with multiple `#` characters, which silently bypassed
+  checksum verification on import. Thanks to [@Amiga500](https://github.com/Amiga500).
+
 - tbd
 
 
