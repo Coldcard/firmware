@@ -133,6 +133,12 @@ def test_bip143(unit_test):
     # exercise hash digesting for bip143 signatures
     unit_test('devtest/unit_bip143.py')
 
+def test_unified_sighash(unit_test, sim_exec, src_root_dir):
+    # unified opt-in sighash, against the cross-implementation vectors
+    sim_exec('import main; main.FILENAME = %r' % (
+                    src_root_dir + '/testing/data/unified_sighash.json'))
+    unit_test('devtest/unit_unified_sighash.py')
+
 def test_addr_decode(unit_test):
     # - runs som known examples thru CTxIn and check it categories, and extracts pubkey/pkh right
     unit_test('devtest/unit_addrs.py')

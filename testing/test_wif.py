@@ -5,7 +5,7 @@ import pytest, time, os, base64
 from conftest import microsd_path
 from helpers import prandom, addr_from_display_format
 from charcodes import KEY_QR, KEY_NFC, KEY_UP
-from constants import unmap_addr_fmt, AF_P2WSH, AF_P2SH
+from constants import unmap_addr_fmt, AF_P2WSH, AF_P2SH, SIGHASH_MAP_ALL
 from bip32 import BIP32Node, PrivateKey
 from base58 import encode_base58_checksum
 from msg import verify_message, parse_signed_message
@@ -736,6 +736,43 @@ def test_wif_store_signing_multi(der_paths, complete, fake_txn, start_sign, end_
         assert "Limited Signing" in story
 
     end_sign(finalize=complete)
+
+
+@pytest.mark.parametrize("sighash", ["ALL|UNIFIED", "NONE|UNIFIED", "SINGLE|UNIFIED"])
+def test_wif_store_unified_sighash(sighash, fake_txn, try_sign, settings_set,
+                                   settings_remove):
+    # A WIF-store input carries no BIP32 derivations, so it does not become
+    # "ours" until determine_my_signing_key() runs while the inputs are being
+    # walked. Anything that decides whether the unified message needs the spent
+    # amounts before that point misses this input, and signing then dies on a
+    # missing hash after the user has already approved.
+    settings_remove("wifs")
+    settings_set("sighshchk", 1)      # NONE/SINGLE blocked otherwise
+
+    node = BIP32Node.from_master_secret(os.urandom(32))
+
+    def hack(psbt):
+        for i in psbt.inputs:
+            # strip the derivations: this is what makes it a WIF-only input
+            i.bip32_paths = {}
+            i.sighash = SIGHASH_MAP_ALL[sighash]
+
+    psbt = fake_txn(1, 1, segwit_in=True, master_xpub=node.hwif(), psbt_hacker=hack)
+
+    n = node.subkey_for_path("0/0")
+    settings_set("wifs", [(n.node.private_key.K.sec().hex(),
+                           bytes(n.node.private_key).hex())])
+
+    _, signed = try_sign(psbt, accept=True)
+
+    po = BasicPSBT().parse(signed)
+    want = SIGHASH_MAP_ALL[sighash]
+    n_sigs = 0
+    for inp in po.inputs:
+        for _, sig in inp.part_sigs.items():
+            assert sig[-1] == want, "wanted 0x%02x got 0x%02x" % (want, sig[-1])
+            n_sigs += 1
+    assert n_sigs, "WIF-store input was not signed"
 
 
 def test_wif_store_signing_with_master(fake_txn, start_sign, end_sign, cap_story, settings_set):

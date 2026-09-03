@@ -2946,6 +2946,69 @@ def test_finalization(m_n, script, desc, use_regtest, clear_ms, bitcoind_multisi
 
 
 @pytest.mark.bitcoind
+@pytest.mark.parametrize("m_n", [(2, 3), (3, 5)])
+@pytest.mark.parametrize("script", ["p2wsh", "p2sh-p2wsh", "p2sh"])
+@pytest.mark.parametrize("sighash", ["ALL|UNIFIED", "ALL|ANYONECANPAY|UNIFIED",
+                                     "NONE|UNIFIED"])
+def test_multisig_unified_sighash(m_n, script, sighash, needs_unified_node, use_regtest, clear_ms,
+                                  bitcoind_multisig, bitcoind, settings_set,
+                                  try_sign, finalize_v2_v0_convert, pytestconfig):
+    # The unified opt-in over multisig, with the node co-signing and verifying.
+    #
+    # This is where the script code differs by script type and a mistake hides:
+    # P2WSH commits to the witnessScript where P2WPKH commits to the implied
+    # P2PKH script, and P2SH commits to the redeemScript under script type 0.
+    # Single-sig tests pass either way, so each shape is spent here for real.
+    #
+    # Imports over USB rather than the microSD menu, which is what
+    # test_bitcoind_MofN_tutorial uses.
+    M, N = m_n
+    settings_set("sighshchk", 1)  # NONE and ANYONECANPAY are blocked otherwise
+    use_regtest()
+    clear_ms()
+
+    addr_type = bitcoind_addr_fmt(script)
+    bitcoind_watch_only, bitcoind_signers = bitcoind_multisig(M, N, script, way="usb")
+
+    dest_addr = bitcoind_watch_only.getnewaddress("", addr_type)
+    all_of_it = bitcoind_watch_only.getbalance()
+    psbt_resp = bitcoind_watch_only.walletcreatefundedpsbt(
+        [], [{dest_addr: all_of_it}], 0,
+        {"fee_rate": 20, "subtractFeeFromOutputs": [0], "change_type": addr_type}
+    )
+
+    x = BasicPSBT().parse(base64.b64decode(psbt_resp["psbt"]))
+    for i in x.inputs:
+        i.sighash = SIGHASH_MAP_ALL[sighash]
+    psbt = x.as_b64_str()
+
+    # the other signers opt in too: the names are spelled as bitcoind spells them
+    for signer in bitcoind_signers[:M - 1]:
+        psbt = signer.walletprocesspsbt(psbt, True, sighash, True)["psbt"]
+
+    if pytestconfig.getoption('psbt2'):
+        po = BasicPSBT().parse(base64.b64decode(psbt))
+        po.to_v2()
+        psbt = po.as_b64_str()
+
+    _, signed = try_sign(base64.b64decode(psbt), accept=True)
+
+    po = BasicPSBT().parse(signed)
+    for inp in po.inputs:
+        assert inp.sighash == SIGHASH_MAP_ALL[sighash]
+        for _, sig in inp.part_sigs.items():
+            assert sig[-1] == SIGHASH_MAP_ALL[sighash], "signature carries the wrong hash type"
+
+    res = finalize_v2_v0_convert(po)
+    assert res["complete"], "not enough signatures to finalize"
+    tx_hex = res["hex"]
+
+    # only the node can say the digest was right
+    assert bitcoind_watch_only.testmempoolaccept([tx_hex])[0]["allowed"]
+    assert len(bitcoind_watch_only.sendrawtransaction(tx_hex)) == 64
+
+
+@pytest.mark.bitcoind
 @pytest.mark.parametrize("m_n", [(2,3), (3,5), (15,15)])
 @pytest.mark.parametrize("script", ["p2wsh", "p2sh-p2wsh", "p2sh"])
 @pytest.mark.parametrize("sighash", list(SIGHASH_MAP.keys()))
@@ -3014,10 +3077,12 @@ def test_bitcoind_MofN_tutorial(m_n, script, clear_ms, goto_home, need_keypress,
 
     assert title == "OK TO SEND?"
     assert "Consolidating" in story
-    if sighash != "ALL":
+    if sh_base(sighash) != "ALL":
         assert "(1 warning below)" in story
         assert "---WARNING---" in story
-        if sighash in ("NONE", "NONE|ANYONECANPAY"):
+        if sh_base(sighash) in ("NONE", "NONE|ANYONECANPAY"):
+            # NONE is the danger regardless of the opt-in: the device judges on
+            # the output type, so NONE|UNIFIED shows the same warning as NONE.
             assert "Danger" in story
             assert "Destination address can be changed after signing (sighash NONE)." in story
         else:

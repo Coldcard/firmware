@@ -880,6 +880,14 @@ def microsd_path(simulator, sim_root_dir):
     return doit
 
 @pytest.fixture
+def needs_unified_node(bitcoind):
+    # The unified opt-in only exists on a node carrying the deployment. Skip
+    # where it is absent rather than fail: the suite is expected to run against
+    # a stock node too.
+    if not bitcoind.blake2b_args():
+        pytest.skip('needs a bitcoind with the unified sighash deployment')
+
+@pytest.fixture
 def microsd_wipe(microsd_path):
     def doit():
         dir = microsd_path("")

@@ -27,6 +27,35 @@ def find_bitcoind():
     raise RuntimeError("Need a binary for bitcoin core. Check path?")
 
 
+def _blake2b_args(bitcoind_path):
+    # "blake2b" is the node-side name of the deployment carrying the unified
+    # opt-in sighash; the firmware calls the rule itself "unified".
+    #
+    # A node that knows the rule needs two things we cannot assume of every
+    # build: it refuses to start without a headline, and on regtest the fork
+    # has no default height, so nothing opts in unless one is given. Both
+    # options are unknown to builds without the feature, which would then
+    # refuse to start, so ask the binary first.
+    try:
+        help_txt = subprocess.run([bitcoind_path, '-help-debug'],
+                                  capture_output=True, timeout=30).stdout.decode('utf8', 'ignore')
+    except Exception as exc:
+        # Do not report a probe we could not run as "feature absent": that
+        # silently skips every opted-in test and reads as a clean run.
+        raise RuntimeError('cannot probe %r for the unified sighash deployment: %s'
+                           % (bitcoind_path, exc))
+
+    if not help_txt:
+        # ran, but said nothing: a wrong binary, not a node without the feature
+        raise RuntimeError('%r produced no help output' % bitcoind_path)
+
+    if 'blake2b_headline' not in help_txt:
+        return []
+
+    return ['-blake2b_headline=COLDCARD test headline',
+            '-testactivationheight=blake2b@1']
+
+
 # stolen from HWI test suite and slightly modified
 class Bitcoind:
     def __init__(self):
@@ -38,6 +67,13 @@ class Bitcoind:
         self.supply_wallet = None
         self.has_bdb = True
         self.version = None
+        self._blake2b = None
+
+    def blake2b_args(self):
+        # cached: the -help-debug probe is slow enough to notice per test
+        if self._blake2b is None:
+            self._blake2b = _blake2b_args(self.bitcoind_path)
+        return self._blake2b
 
     def start(self):
 
@@ -55,6 +91,7 @@ class Bitcoind:
         self.bitcoind_proc = subprocess.Popen(
             [
                 self.bitcoind_path,
+            ] + self.blake2b_args() + [
                 # needed for newest master
                 # legacy wallet was deprecated in v29
                 # and removed completely in v30
