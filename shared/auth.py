@@ -1609,7 +1609,9 @@ Binary checksum and signature will be further verified before any changes are ma
             ch = await ux_show_story(msg)
 
             if ch == 'y':
-                assert glob.PSRAM.psram_write_count == self.psram_write_count
+                if glob.PSRAM.psram_write_count != self.psram_write_count:
+                    # staged bytes changed since approval prompt was shown
+                    return await self.failure("Firmware modified")
 
                 # Accepted:
                 # - write final file header, so bootloader will see it

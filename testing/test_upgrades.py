@@ -169,6 +169,8 @@ def test_upgrade_staged_image_tamper(make_firmware, upload_file, cap_story,
         press_select()
         time.sleep(1)
         assert sim_eval("glob._fw_upgrade_called") == 'False'
+        _, story = cap_story()
+        assert "Firmware modified" in story
     finally:
         sim_exec("from pincodes import pa; import glob; "
                  "pa.firmware_upgrade = glob._fw_upgrade")
