@@ -7,6 +7,9 @@ your addition and anything else already in this file.**
 
 # Shared Improvements - Both Mk and Q
 
+- Bugfix: Fix device crash when message-signing input is valid JSON but not an
+  object (NFC / QR / SD `.json` file). Thanks to [@Amiga500](https://github.com/Amiga500).
+
 - tbd
 
 
