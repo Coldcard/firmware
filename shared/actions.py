@@ -2089,6 +2089,7 @@ async def main_pin_changer(*a):
     # - the bootloader maybe lying to us about main vs trick pin
     # - what may look like just policy here, is in fact enforced by the bootrom code
     #
+    assert not pa.tmp_value      # menu already hides this; tmp wallet has no main PIN
     from glob import dis
     from login import LoginUX
     from pincodes import BootloaderError, EPIN_OLD_AUTH_FAIL

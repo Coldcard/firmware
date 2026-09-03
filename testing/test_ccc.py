@@ -1010,9 +1010,6 @@ def test_maxed_out(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_setup, sim
     import_multisig(data=ms_conf)
     press_select()  # confirm multisig import
 
-    # get rid of last violation - as it is held as global
-    sim_exec('from ccc import CCCFeature; CCCFeature.last_fail_reason=""')
-
     # sign with B (B does not have ccc in settings so CC is unaware that part of CCC is signing)
     policy_sign(bitcoind_wo, base64.b64encode(part_psbt).decode())  # no violations
     restore_main_seed()
@@ -1135,8 +1132,6 @@ def test_load_and_sign_key_C(settings_set, setup_ccc, enter_enabled_ccc, ccc_ms_
     import_multisig(data=ms_conf)
     press_select()  # confirm multisig import
 
-    # get rid of last violation - as it is held as global
-    sim_exec('from ccc import CCCFeature; CCCFeature.last_fail_reason=""')
     # no violations ccc not in C settings
     policy_sign(bitcoind_wo, base64.b64encode(part_psbt).decode())
     restore_main_seed(seed_vault=seed_vault)
