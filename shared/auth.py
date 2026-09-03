@@ -509,11 +509,25 @@ class ApproveTransaction(UserAuthorizedAction):
 
             gc.collect()
 
-            if self.psbt.ux_notes:
-                # currently we only have locktimes in ux_notes
+            # ux_notes carries locktimes and, since the unified opt-in, the
+            # signature hash the transaction will be signed with. Keep them
+            # apart: whether a signature is replay-protected is not a locktime
+            # fact, and filing it under that heading is how a reader skips it.
+            lock_notes = []
+            sig_notes = []
+            for label, m in self.psbt.ux_notes:
+                (sig_notes if label == 'Sighash' else lock_notes).append((label, m))
+
+            if lock_notes:
                 msg.write('TX LOCKTIMES\n\n')
 
-                for label, m in self.psbt.ux_notes:
+                for label, m in lock_notes:
+                    msg.write('- %s: %s\n' % (label, m))
+
+            if sig_notes:
+                msg.write('SIGNATURE HASH\n\n')
+
+                for label, m in sig_notes:
                     msg.write('- %s: %s\n' % (label, m))
 
             if self.psbt.warnings:
@@ -1851,11 +1865,22 @@ class TXInpExplorer(TXExplorer):
 
         if inp.sighash and (inp.sighash != SIGHASH_ALL):
             # only show sighash value to the user if it is non-standard
+            # UNIFIED is the opt-in to the unified signature hash: it selects
+            # the algorithm rather than what the signature covers, so it is
+            # named alongside the output type rather than instead of it.
             psbt_item += "sighash: %s\n\n" % {
                 1: "ALL", 2: "NONE", 3: "SINGLE",
                 1 | 0x80: "ALL|ANYONECANPAY",
                 2 | 0x80: "NONE|ANYONECANPAY",
                 3 | 0x80: "SINGLE|ANYONECANPAY",
+                1 | 0x20: "ALL|UNIFIED",
+                2 | 0x20: "NONE|UNIFIED",
+                3 | 0x20: "SINGLE|UNIFIED",
+                # spelled as Knots spells it, so what the screen shows can be
+                # handed straight back to decodepsbt or walletprocesspsbt
+                1 | 0x20 | 0x80: "ALL|ANYONECANPAY|UNIFIED",
+                2 | 0x20 | 0x80: "NONE|ANYONECANPAY|UNIFIED",
+                3 | 0x20 | 0x80: "SINGLE|ANYONECANPAY|UNIFIED",
             }.get(inp.sighash, "0x%02x (non-standard)" % inp.sighash)
 
         if psbt_item:

@@ -33,7 +33,14 @@ hash160 = ngu.hash.hash160
 SIGHASH_ALL = const(1)
 SIGHASH_NONE = const(2)
 SIGHASH_SINGLE = const(3)
+# Opt-in to the unified signature hash; see PSBT.make_txn_unified_sighash()
+SIGHASH_UNIFIED = const(0x20)
 SIGHASH_ANYONECANPAY = const(0x80)
+
+# The output type, with the opt-in and ANYONECANPAY bits removed. Legacy and
+# segwit v0 read the low bits as a five-bit field, so masking 0x1f rather than
+# 0x7f is what keeps 0x21 reading as ALL instead of as an undefined type.
+SIGHASH_OUTPUT_MASK = const(0x1f)
 
 # list containing all flags that we support signing for
 ALL_SIGHASH_FLAGS = [
@@ -43,6 +50,16 @@ ALL_SIGHASH_FLAGS = [
     SIGHASH_ALL|SIGHASH_ANYONECANPAY,
     SIGHASH_NONE|SIGHASH_ANYONECANPAY,
     SIGHASH_SINGLE|SIGHASH_ANYONECANPAY,
+    # Opted-in forms. There are exactly six, and 0x20/0xa0 are not among them:
+    # they name no output type. For the script types signed here that is a
+    # standardness rule rather than consensus (IsDefinedHashtypeSignature under
+    # STRICTENC), but a signature no node would relay is not worth making.
+    SIGHASH_ALL|SIGHASH_UNIFIED,
+    SIGHASH_NONE|SIGHASH_UNIFIED,
+    SIGHASH_SINGLE|SIGHASH_UNIFIED,
+    SIGHASH_ALL|SIGHASH_UNIFIED|SIGHASH_ANYONECANPAY,
+    SIGHASH_NONE|SIGHASH_UNIFIED|SIGHASH_ANYONECANPAY,
+    SIGHASH_SINGLE|SIGHASH_UNIFIED|SIGHASH_ANYONECANPAY,
 ]
 
 # Serialization/deserialization tools

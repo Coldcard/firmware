@@ -11,6 +11,14 @@ This lists the new changes that have not yet been published in a normal release.
   verification of dice-roll or coin-flip mixing.
 - Bugfix: Simulator crashed on Bless Firmware, due to a desynced LED pipe. Thanks to
   [@hitechhayekian](https://github.com/hitechhayekian).
+- Enhancement: Support the unified opt-in signature hash. A PSBT can now ask for hash
+  types 0x21, 0x22, 0x23, 0xa1, 0xa2 and 0xa3, and the resulting signature commits to
+  every spent amount and scriptPubKey rather than only the one being signed, which
+  removes CVE-2013-2292 and CVE-2020-14199 for the inputs that opt in. Because the
+  message differs from every existing one, an opted-in transaction is also protected
+  against replay onto any chain that does not implement the rule. Signing is unaffected
+  unless a PSBT asks for it. Covers bare, P2SH and segwit v0 inputs; this
+  tree does not sign taproot, so the rule's taproot script types are not reached.
 
 # Mk Specific Changes
 

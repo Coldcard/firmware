@@ -17,6 +17,7 @@ from serializations import ser_compact_size, deser_compact_size, hash160
 from serializations import CTransaction, CTxIn, CTxInWitness, CTxOut, ser_string, COutPoint
 from serializations import ser_sig_der, uint256_from_str, ser_push_data
 from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_ANYONECANPAY
+from serializations import SIGHASH_UNIFIED, SIGHASH_OUTPUT_MASK
 from serializations import ALL_SIGHASH_FLAGS
 from opcodes import OP_CHECKMULTISIG, OP_RETURN
 from glob import settings
@@ -41,6 +42,16 @@ NO_KEY_ERR = "None of the keys involved in this transaction belong to this Coldc
 
 # single sha256 of b'BIP0322-signed-message'
 BIP322_TAG_HASH = b'te\x84\xa1\x87/\xa1\x00AUN\xff\xa08\xd6\x12IB\xddy\xb4\xe5\x8aL\xda\x18N\x13\xdb\xe6,I'
+
+# single sha256 of b'UnifiedSighash'
+UNIFIED_TAG_HASH = b'\xa3)\x80W\xe0aV\x07\x9c\xbe\xe5\xeb8\x0f?\x05\x13H\xc0c6Ve\xdcd\xa3.\x1d\r\"=\x8c'
+
+# Script types of the unified message. Domain separation, so a signature made
+# for one script type can never be valid for another. Taproot (2) and tapscript
+# (3) are defined by the rule but unreachable here: this firmware does not spend
+# taproot at all.
+UNIFIED_ST_BARE = const(0)          # bare and P2SH
+UNIFIED_ST_WITNESS_V0 = const(1)
 
 def build_bip322_to_spend(msg_hash, message_challenge):
     to_spend = CTransaction()
@@ -1095,6 +1106,23 @@ class psbtObject(psbtProxy):
         self.hashSequence = None
         self.hashOutputs = None
 
+        # The unified message commits to every spent amount and scriptPubKey,
+        # which we can only see while the UTXOs are in hand during
+        # consider_inputs(). Gathered there, used at signing time.
+        # - these are single SHA256, where the BIP-143 ones above are double
+        self.hashAmounts = None
+        self.hashScriptPubKeys = None
+
+        # Same three sub-hashes BIP-143 caches, in the unified message's own
+        # single-SHA256 form. Cacheable for every input and every opted-in hash
+        # type, where the BIP-143 ones are only reusable for SIGHASH_ALL,
+        # because this message never zeroes them per flag: it either commits to
+        # the field as it is, or leaves it out. Without this, signing an input
+        # re-reads every input and output, once per input signed.
+        self.uPrevouts = None
+        self.uSequence = None
+        self.uOutputs = None
+
         # this points to a MS wallet, during operation
         # - we are only supporting a single multisig wallet during signing
         self.active_multisig = None
@@ -1726,6 +1754,8 @@ class psbtObject(psbtProxy):
         sh_unusual = False
         none_sh = False
         single_sh = False
+        unified_sh = False
+        unified_acp_sh = False
 
         for input in self.inputs:
             # only if it is our input - one that will be eventually sign
@@ -1738,12 +1768,26 @@ class psbtObject(psbtProxy):
                     if self.por322 and input.sighash != SIGHASH_ALL:
                         raise FatalPSBTIssue("POR not SIGHASH_ALL")
 
-                    if input.sighash != SIGHASH_ALL:
+                    # The opt-in picks a signature hash algorithm; it does not
+                    # change what the signature covers. Judge the risk on the
+                    # rest of the byte, so an opted-in ALL is not treated as an
+                    # unusual hash type, and report the opt-in separately.
+                    if input.sighash & SIGHASH_UNIFIED:
+                        # ANYONECANPAY carries this input's spent output inline
+                        # and commits to no other, so it must not be described
+                        # as covering every amount.
+                        if input.sighash & SIGHASH_ANYONECANPAY:
+                            unified_acp_sh = True
+                        else:
+                            unified_sh = True
+
+                    base_sh = input.sighash & ~SIGHASH_UNIFIED
+                    if base_sh != SIGHASH_ALL:
                         sh_unusual = True
 
-                    if input.sighash in (SIGHASH_NONE, SIGHASH_NONE|SIGHASH_ANYONECANPAY):
+                    if base_sh in (SIGHASH_NONE, SIGHASH_NONE|SIGHASH_ANYONECANPAY):
                         none_sh = True
-                    elif input.sighash in (SIGHASH_SINGLE, SIGHASH_SINGLE|SIGHASH_ANYONECANPAY):
+                    elif base_sh in (SIGHASH_SINGLE, SIGHASH_SINGLE|SIGHASH_ANYONECANPAY):
                         single_sh = True
 
         if sh_unusual and not settings.get("sighshchk"):
@@ -1766,6 +1810,20 @@ class psbtObject(psbtProxy):
             self.warnings.append(
                 ("Caution", "Some inputs have unusual SIGHASH values not used in typical cases.")
             )
+
+        if unified_sh or unified_acp_sh:
+            # Say which signature hash was used: the legacy one is otherwise
+            # indistinguishable from this. Phrased like the other sighash
+            # notices, as what it means for this transaction rather than as a
+            # summary of the rule. The exact type is on the per-input screen.
+            if not unified_acp_sh:
+                msg = "Commits to every input amount, not just this one (sighash UNIFIED)."
+            elif not unified_sh:
+                msg = "Commits to this input's amount only (sighash UNIFIED|ANYONECANPAY)."
+            else:
+                msg = ("Some inputs commit to every amount, those with ANYONECANPAY "
+                       "only to their own (sighash UNIFIED).")
+            self.ux_notes.append(("Sighash", msg))
 
     def consider_dangerous_change(self, my_xfp):
         # Enforce some policy on change outputs:
@@ -1850,6 +1908,23 @@ class psbtObject(psbtProxy):
         from_wif_store = []
         prevouts = set()
 
+        # The unified message commits to every spent amount and scriptPubKey,
+        # so gather them here where the UTXOs are already being parsed rather
+        # than paying for a second pass at signing time.
+        #
+        # Gate on the declared hash type, which is known from parse time, and
+        # not on ownership: whether an input is ours is not settled until
+        # determine_my_signing_key() runs inside this very loop, because a
+        # WIF-store input carries no subpaths and only becomes ours there. An
+        # ownership gate up here would read zero and leave the digest without
+        # the amounts it needs. This one is a superset of what is actually
+        # needed, and costs nothing for the transactions that never opt in.
+        maybe_unified = any(inp.sighash and (inp.sighash & SIGHASH_UNIFIED)
+                                for inp in self.inputs)
+        hashAmounts = sha256() if maybe_unified else None
+        hashScriptPubKeys = sha256() if maybe_unified else None
+        no_utxo = None
+
         for i, txi in self.input_iter():
             # check for duplicate inputs
             k = (txi.prevout.hash, txi.prevout.n)
@@ -1866,7 +1941,11 @@ class psbtObject(psbtProxy):
                     # we cannot proceed if the input is ours and there is no UTXO
                     raise FatalPSBTIssue('Missing own UTXO(s). Cannot determine value being signed')
                 else:
-                    # input clearly not ours
+                    # input clearly not ours. Remember it: if we end up signing
+                    # with the opt-in, the message covers this input too and we
+                    # have no amount for it.
+                    if no_utxo is None:
+                        no_utxo = i
                     foreign.append(i)
                     continue
 
@@ -1875,6 +1954,14 @@ class psbtObject(psbtProxy):
 
             assert utxo.nValue >= 0, "negative input value: i%d" % i
             total_in += utxo.nValue
+
+            if maybe_unified:
+                # length prefix then bytes, rather than ser_string(), which
+                # would copy the whole script first. Same bytes either way.
+                hashAmounts.update(pack('<q', utxo.nValue))
+                hashScriptPubKeys.update(ser_compact_size(len(utxo.scriptPubKey)))
+                hashScriptPubKeys.update(utxo.scriptPubKey)
+
             if not inp.utxo and not inp.witness_utxo_is_provably_segwit(utxo):
                 unverified_witness_utxo.append(i)
 
@@ -1916,6 +2003,30 @@ class psbtObject(psbtProxy):
                     raise FatalPSBTIssue("i0: invalid BIP-322 'to_spend': %s" % e)
 
             del utxo
+
+        # determine_my_signing_key() has now run for every input, so which are
+        # ours is settled and the opt-in can be judged. ANYONECANPAY carries
+        # this input's spent output inline and needs neither hash.
+        unified_needed = any(
+            inp.num_our_keys and inp.sighash
+                             and (inp.sighash & SIGHASH_UNIFIED)
+                             and not (inp.sighash & SIGHASH_ANYONECANPAY)
+            for inp in self.inputs
+        )
+        if unified_needed:
+            # strict subset of maybe_unified, so the accumulators exist
+            assert hashAmounts is not None, 'unified gate diverged'
+            if no_utxo is not None:
+                # Refuse rather than sign over an amount we cannot see. Raised
+                # here, during validation, so the user is not asked to approve
+                # a transaction that could never be signed.
+                raise FatalPSBTIssue(
+                    'Missing UTXO on input #%d. Unified sighash covers all inputs' % no_utxo)
+            self.hashAmounts = hashAmounts.digest()
+            self.hashScriptPubKeys = hashScriptPubKeys.digest()
+
+            del hashAmounts, hashScriptPubKeys
+            gc.collect()
 
         # XXX scan witness data provided, and consider those ins signed if not multisig?
 
@@ -2237,7 +2348,11 @@ class psbtObject(psbtProxy):
 
                         OWNERSHIP.note_subpath_used(inp.subpaths[which_key])
 
-                if not inp.is_segwit:
+                if inp.sighash & SIGHASH_UNIFIED:
+                    # One message for every script type, opted into per
+                    # signature. Selected by the hash type, not by the input.
+                    digest = self.make_txn_unified_sighash(in_idx, txi, inp, inp.sighash)
+                elif not inp.is_segwit:
                     # Hash by serializing/blanking various subparts of the transaction
                     digest = self.make_txn_sighash(in_idx, txi, inp.sighash)
                 else:
@@ -2300,7 +2415,7 @@ class psbtObject(psbtProxy):
             if self.txn_modifiable & 1:
                 self.txn_modifiable &= ~1
 
-        out_type = inp.sighash & 0x7f  # regardless of ANYONECANPAY
+        out_type = inp.sighash & SIGHASH_OUTPUT_MASK  # regardless of ANYONECANPAY and the opt-in
         if out_type != SIGHASH_NONE:
             # Bit 1 is the Outputs Modifiable flag - set to 0
             if self.txn_modifiable & 2:
@@ -2453,6 +2568,118 @@ class psbtObject(psbtProxy):
 
         # double SHA256
         return ngu.hash.sha256s(rv.digest())
+
+    def make_txn_unified_sighash(self, replace_idx, replacement, inp, sighash_type):
+        # Unified opt-in signature hash: one message format shared by every
+        # script type, selected by bit 0x20 in the hash type rather than by the
+        # kind of input. See doc/unified-sighash.md in Bitcoin Knots.
+        #
+        # Unlike BIP-143 this commits to every spent amount and scriptPubKey,
+        # not just this input's, which is what closes CVE-2020-14199 at the
+        # consensus layer. The commitment is to precomputed hashes, so the work
+        # stays linear in the input count, closing CVE-2013-2292 as well. It
+        # also does not verify under the pre-fork rules, so
+        # a transaction signed this way cannot be replayed onto a chain that
+        # has not adopted the fork.
+        fd = self.fd
+        old_pos = fd.tell()
+
+        # Output type is five bits here. Masking 0x7f the way the legacy paths
+        # do would leave the opt-in bit in place and read 0x21 as an undefined
+        # type rather than as ALL.
+        out_sighash_type = sighash_type & SIGHASH_OUTPUT_MASK
+        anyonecanpay = bool(sighash_type & SIGHASH_ANYONECANPAY)
+
+        # Every sub-hash below is a single SHA256, as BIP-341 writes them. The
+        # BIP-143 ones cached on self are double, and are not interchangeable.
+        h = sha256(UNIFIED_TAG_HASH + UNIFIED_TAG_HASH)
+
+        h.update(b'\x00')                              # epoch
+        h.update(bytes([sighash_type]))                # one byte, as the signature carries it
+        h.update(pack('<i', self.txn_version))
+        # Locktime is committed to as five bytes rather than the four it
+        # occupies in a transaction: four run out in 2106, and widening the
+        # field later would otherwise invalidate every signature made under
+        # this message. The fifth byte is zero until something sets it.
+        h.update(pack('<I', self.lock_time))
+        h.update(b'\x00')
+
+        if not anyonecanpay:
+            if self.uPrevouts is None:
+                hashPrevouts = sha256()
+                hashSequence = sha256()
+                for in_idx, txi in self.input_iter():
+                    hashPrevouts.update(txi.prevout.serialize())
+                    hashSequence.update(pack('<I', txi.nSequence))
+
+                self.uPrevouts = hashPrevouts.digest()
+                self.uSequence = hashSequence.digest()
+                del hashPrevouts, hashSequence
+                gc.collect()
+
+            h.update(self.uPrevouts)
+            # Gathered during consider_inputs(), where the UTXOs were in hand.
+            assert self.hashAmounts and self.hashScriptPubKeys, 'no spent outputs'
+            h.update(self.hashAmounts)
+            h.update(self.hashScriptPubKeys)
+            h.update(self.uSequence)
+
+        if out_sighash_type not in (SIGHASH_NONE, SIGHASH_SINGLE):
+            if self.uOutputs is None:
+                hashOutputs = sha256()
+                for out_idx, txo in self.output_iter():
+                    hashOutputs.update(txo.serialize())
+                self.uOutputs = hashOutputs.digest()
+                del hashOutputs
+                gc.collect()
+
+            h.update(self.uOutputs)
+
+        # Where BIP-341 writes its spend type. That byte has an annex bit to
+        # pack in and this one does not, so it carries the script type alone.
+        # Script types 2 and 3 (taproot, tapscript) are not built here. A
+        # taproot input would set is_segwit, so refuse rather than sign it with
+        # the segwit v0 message if this tree ever learns to spend one. Today it
+        # cannot: determine_my_signing_key() rejects taproot before this.
+        assert inp.addr_fmt != AF_P2TR, 'taproot needs its own unified message'
+        script_type = UNIFIED_ST_WITNESS_V0 if inp.is_segwit else UNIFIED_ST_BARE
+        h.update(bytes([script_type]))
+
+        if anyonecanpay:
+            # The message names only this input, so it carries the whole spent
+            # output inline instead of an index into hashes it did not build.
+            utxo = inp.get_utxo(replacement.prevout.n)
+            h.update(replacement.prevout.serialize())
+            h.update(pack('<q', utxo.nValue))
+            h.update(ser_compact_size(len(utxo.scriptPubKey)))
+            h.update(utxo.scriptPubKey)
+            h.update(pack('<I', replacement.nSequence))
+            del utxo
+        else:
+            h.update(pack('<I', replace_idx))
+
+        # scriptCode: the redeemScript for P2SH and the scriptPubKey for a bare
+        # input, both of which are already in inp.scriptSig by this point; for
+        # segwit v0 the witnessScript, or the implied P2PKH script for P2WPKH.
+        # scriptCode is stored with its compact-size length prefix on already,
+        # scriptSig is not.
+        if script_type == UNIFIED_ST_WITNESS_V0:
+            assert inp.scriptCode, 'need scriptCode here'
+            h.update(inp.scriptCode)
+        else:
+            assert inp.scriptSig, 'need scriptSig here'
+            h.update(ser_compact_size(len(inp.scriptSig)))
+            h.update(inp.scriptSig)
+
+        if out_sighash_type == SIGHASH_SINGLE:
+            assert replace_idx < self.num_outputs, \
+                        "SINGLE corresponding output (%d) missing" % replace_idx
+            for _, txo in self.output_iter(replace_idx, replace_idx+1):
+                h.update(ngu.hash.sha256s(txo.serialize()))
+
+        fd.seek(old_pos)
+
+        return h.digest()
 
     def multi_input_complete(self, inp):
         # raises if input is not multisig or no active_multisig loaded
