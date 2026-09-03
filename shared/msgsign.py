@@ -314,7 +314,7 @@ def parse_msg_sign_request(data):
         data_dict = ujson.loads(data.strip())
         if not isinstance(data_dict, dict):
             # valid JSON, but not an object (e.g. 123, "str", null, [1,2])
-            raise ValueError("not a JSON object")
+            raise ValueError
         text = data_dict.get("msg", None)
         if text is None:
             raise AssertionError("MSG required")
