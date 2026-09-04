@@ -800,13 +800,13 @@ This will temporarily load the secrets associated with this trick wallet \
 so you may perform transactions with it.''')
         if ch != 'y': return
 
-        b, slot = tp.get_by_pin(pin)
-        assert slot
-
         # loading a duress wallet's secret is a secret-revealing action; in
         # Delta Mode it would hand the coercer working keys, so wipe instead
         from utils import wipe_if_deltamode
         wipe_if_deltamode()
+
+        b, slot = tp.get_by_pin(pin)
+        assert slot
 
         # TC_BLANK_WALLET here would be nice, but no support working w/ fake empty secret
 
