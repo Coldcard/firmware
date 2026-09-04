@@ -3782,7 +3782,8 @@ class psbtObject(psbtProxy):
             outp = self.outputs[out_idx]
             if outp.is_change:
                 rs = self.get(outp.redeem_script) if outp.redeem_script else None
-                if outp.witness_script or txo.is_p2wpkh() or (rs and is_wrapped_p2wpkh_redeem(rs)):
+                if outp.witness_script or txo.is_p2wpkh() or txo.is_p2tr() or \
+                        (rs and is_wrapped_p2wpkh_redeem(rs)):
                     history.add_segwit_utxos(out_idx, txo.nValue)
 
         body_end = fd.tell()

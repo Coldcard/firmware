@@ -14,7 +14,7 @@ from decimal import Decimal
 from base64 import b64encode, b64decode
 from base58 import encode_base58_checksum
 from helpers import B2A, fake_dest_addr, parse_change_back, addr_from_display_format
-from helpers import xfp2str, seconds2human_readable, hash160
+from helpers import xfp2str, seconds2human_readable, hash160, taptweak
 from msg import verify_message
 from bip32 import BIP32Node
 from constants import (ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP, simulator_fixed_xfp,
@@ -1591,7 +1591,7 @@ def test_ovc_multi_input_amounts(try_sign, fake_txn, settings_get, sim_exec):
     assert len(settings_get('ovc')) == 2
 
 
-@pytest.mark.parametrize('in_style', ['p2wpkh', 'p2wpkh-p2sh'])
+@pytest.mark.parametrize('in_style', ['p2wpkh', 'p2wpkh-p2sh', 'p2tr'])
 def test_ovc_singlesig_change_capture(in_style, try_sign, fake_txn, settings_get,
                                       sim_exec, history_data, press_cancel,
                                       txid_from_export_prompt):
@@ -1622,12 +1622,13 @@ def test_ovc_singlesig_change_capture(in_style, try_sign, fake_txn, settings_get
     change_val = change_out.nValue
 
     mk = BIP32Node.from_wallet_key(simulator_fixed_tprv)
+    taproot = (in_style == 'p2tr')
     wrapped = (in_style == 'p2wpkh-p2sh')
-    target = change_out.scriptPubKey[2:22]
+    target = change_out.scriptPubKey[2:] if taproot else change_out.scriptPubKey[2:22]
     found = None
     for n in range(1001):
         sk = mk.subkey_for_path('12/34/%d' % n)
-        pkh = sk.hash160()
+        pkh = taptweak(sk.sec()[1:]) if taproot else sk.hash160()
         if wrapped:
             pkh = hash160(bytes([0, 20]) + pkh)
         if pkh == target:
@@ -1640,8 +1641,12 @@ def test_ovc_singlesig_change_capture(in_style, try_sign, fake_txn, settings_get
         sp = BasicPSBT()
         sp.inputs = [BasicPSBTInput(idx=0)]
         sp.outputs = [BasicPSBTOutput(idx=0)]
-        sp.inputs[0].bip32_paths[subkey.sec()] = \
-            mk.fingerprint() + struct.pack('<III', 12, 34, n)
+        if taproot:
+            sp.inputs[0].taproot_bip32_paths[subkey.sec()[1:]] = \
+                b'\x00' + mk.fingerprint() + struct.pack('<III', 12, 34, n)
+        else:
+            sp.inputs[0].bip32_paths[subkey.sec()] = \
+                mk.fingerprint() + struct.pack('<III', 12, 34, n)
         if wrapped:
             sp.inputs[0].redeem_script = psbt.outputs[1].redeem_script
         sp.inputs[0].witness_utxo = CTxOut(amount, change_out.scriptPubKey).serialize()
