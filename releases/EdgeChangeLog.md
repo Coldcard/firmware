@@ -45,6 +45,9 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
   filesystems with more than one sector per cluster), fixing an integer underflow in
   `psram_copy_file`/`psram_mmap_file` that allowed out-of-bounds PSRAM writes, reads,
   and mappings from a compromised USB host.
+- Bugfix: Fix device crash when message-signing input is valid JSON but not an
+  object (NFC / QR / SD `.json` file). Thanks to [@Amiga500](https://github.com/Amiga500).
+
 
 # Mk4 Specific Changes
 
