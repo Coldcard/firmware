@@ -163,8 +163,9 @@ session.
 First supported in:
 
 - ckcc-protocol client: `1.6.0`
-- COLDCARD Mk4/Mk5 firmware: `5.6.1`
-- COLDCARD Q firmware: `1.5.1Q`
+- COLDCARD Mk4/Mk5 firmware: `5.6.2`
+- COLDCARD Q firmware: `1.5.2Q`
+- COLDCARD EDGE `6.6.2X` & `6.6.2QX`
 
 Use v3 only when both the client and firmware are known to support it. The
 default client encryption version remains `USB_NCRY_V1` for compatibility, so a
