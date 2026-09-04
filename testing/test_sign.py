@@ -3029,8 +3029,7 @@ def test_psbt_v2_bad_txn_version(bad_ver, fake_txn, start_sign, cap_story):
     # (parse_txn's `bad txn version` check only runs for v0). Otherwise a v2 PSBT with
     # an invalid nVersion could be approved and signed into an unrelayable transaction.
     # negative values are stored two's-complement (device parses txn_version as <i)
-    psbt = fake_txn(1, 1, segwit_in=True, psbt_v2=True,
-                    psbt_hacker=lambda p: setattr(p, 'txn_version', bad_ver & 0xffffffff))
+    psbt = fake_txn(1, 1, psbt_v2=True, psbt_hacker=lambda p: setattr(p, 'txn_version', bad_ver & 0xffffffff))
     start_sign(psbt)
     title, story = cap_story()
     assert "bad txn version" in story, story
