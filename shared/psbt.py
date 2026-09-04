@@ -2581,6 +2581,9 @@ class psbtObject(psbtProxy):
         # - but in segwit case, needs to re-read to calculate it
         # - fd must be read/write and seekable to support txid calc
 
+        # drop any stale change captures from a previously-failed signing
+        history.new_outpts.clear()
+
         fd.write(pack('<i', self.txn_version))           # nVersion
 
         # does this txn require witness data to be included?
