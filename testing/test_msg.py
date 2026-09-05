@@ -1133,4 +1133,36 @@ def test_verify_scanned_signed_msg(msg, scan_a_qr, need_keypress, goto_home, cap
     assert "Good signature by address" in story
     assert addr == addr_from_display_format(story.split("\n")[-1])
 
+
+@pytest.mark.parametrize('body,fail', [
+    ('123', False),  # valid JSON, int
+    ('"hello"', False),  # valid JSON, string
+    ('null', False),  # valid JSON, null
+    ('[1,2]', False),  # valid JSON, list
+    # all above treated as just message
+    ('{"nomsg": 1}', True),  # object but missing "msg" key
+])
+def test_sign_msg_json_not_object(body, fail, open_microsd, microsd_path, goto_home,
+                                  pick_menu_item, cap_story):
+
+    # valid JSON that is not an object (or lacks "msg") must produce a clean
+    # failure story, never a crash (yikes)
+    fname = 't-msgsign-bad.json'
+    with open_microsd(fname, 'wt') as sd:
+        sd.write(body)
+
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
+    pick_menu_item('Sign Text File')
+    time.sleep(.1)
+    pick_menu_item(fname)
+    time.sleep(.1)
+    title, story = cap_story()
+    if fail:
+        assert not story.startswith('Ok to sign this?')
+        assert 'MSG required' in story or 'must be ascii' in story or 'too short' in story
+    else:
+        assert story.startswith('Ok to sign this?')
+
 # EOF
