@@ -664,10 +664,11 @@ def test_resign_musig_psbt_nonce(use_regtest, clear_miniscript, build_musig_wall
     press_cancel()
 
 def test_resign_musig_psbt_sig(use_regtest, clear_miniscript, build_musig_wallet, start_sign,
-                                 cap_story, end_sign, press_cancel):
+                                 cap_story, end_sign, press_cancel, settings_get, sim_exec):
 
     use_regtest()
     clear_miniscript()
+    sim_exec('import history; history.OutptValueCache.clear()')
     name = "musig_resign_sig"
     wo, signers, desc = build_musig_wallet(name, 3, tapscript=True,
                                            tapscript_musig_threshold=2)
@@ -689,6 +690,7 @@ def test_resign_musig_psbt_sig(use_regtest, clear_miniscript, build_musig_wallet
     assert len(po.inputs[0].musig_pubnonces) == 3
     # still no signature was added
     assert len(po.inputs[0].musig_part_sigs) == 0
+    assert not settings_get('ovc')
 
     # cosigners adding nonces
     full_nonce_psbt = po.as_b64_str()
@@ -706,6 +708,7 @@ def test_resign_musig_psbt_sig(use_regtest, clear_miniscript, build_musig_wallet
     assert len(po.inputs[0].musig_pubnonces) == 9
     # coldcard also added partial signatures - as all pubnonces were already available
     assert len(po.inputs[0].musig_part_sigs) == 3
+    assert len(settings_get('ovc')) == 1
 
     # resign PSBT that we have already signed
     start_sign(base64.b64decode(po.as_b64_str()))

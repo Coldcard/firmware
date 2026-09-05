@@ -3707,6 +3707,9 @@ class psbtObject(psbtProxy):
         # - but in segwit case, needs to re-read to calculate it
         # - fd must be read/write and seekable to support txid calc
 
+        # drop any stale change captures from a previously-failed signing
+        history.new_outpts.clear()
+
         fd.write(pack('<i', self.txn_version))           # nVersion
 
         # does this txn require witness data to be included?
@@ -3782,7 +3785,8 @@ class psbtObject(psbtProxy):
             outp = self.outputs[out_idx]
             if outp.is_change:
                 rs = self.get(outp.redeem_script) if outp.redeem_script else None
-                if outp.witness_script or txo.is_p2wpkh() or (rs and is_wrapped_p2wpkh_redeem(rs)):
+                if outp.witness_script or txo.is_p2wpkh() or txo.is_p2tr() or \
+                        (rs and is_wrapped_p2wpkh_redeem(rs)):
                     history.add_segwit_utxos(out_idx, txo.nValue)
 
         body_end = fd.tell()

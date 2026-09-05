@@ -110,7 +110,8 @@ class OutptValueCache:
         # Signing succeeded: record first-seen amounts directly from inputs that
         # received our signature. Parsing/cancelling a PSBT leaves no OVC state.
         # - called only after a signature was actually produced (post-approval)
-        # - sp_idxs shows EDGE signing intent; added_sigs is evidence from sign_it()
+        # - sp_idxs shows EDGE signing intent; added signature fields are evidence
+        #   from sign_it()
         # - Proof of Reserves must never read or modify this history
         if psbt.por322:
             return
@@ -121,7 +122,11 @@ class OutptValueCache:
 
         for in_idx, txin in psbt.input_iter():
             inp = psbt.inputs[in_idx]
-            if inp.is_segwit and inp.added_sigs and inp.sp_idxs and inp.has_utxo():
+            # Pre-existing key-path signatures are marked fully_signed before
+            # sign_it(); a newly-added key-path signature is not.
+            added_sig = (inp.added_sigs or inp.tr_added_sigs or inp.musig_added_sigs
+                         or (inp.taproot_key_sig and not inp.fully_signed))
+            if added_sig and inp.sp_idxs and inp.has_utxo() and inp.is_segwit:
                 if not cls.verify_amount(txin.prevout, inp.amount, in_idx, cache):
                     # add() serializes prevout immediately, which is important because
                     # PSBTv0 input_iter() reuses and mutates its CTxIn object

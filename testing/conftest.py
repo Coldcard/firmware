@@ -35,6 +35,8 @@ if sys.platform == 'darwin':
 def pytest_addoption(parser):
     parser.addoption("--dev", action="store_true",
                      default=False, help="run on real dev")
+    parser.addoption("--dev-serial", default=None,
+                     help="serial number of real device")
     parser.addoption("--sim", action="store_true",
                      default=True, help="run on simulator")
     parser.addoption("--localhost", action="store_true",
@@ -68,7 +70,7 @@ def dev(request):
     config = request.config
 
     if config.getoption("--dev"):
-        return ColdcardDevice()
+        return ColdcardDevice(sn=config.getoption("--dev-serial"))
 
     else:
         # manually get the simulator fixture

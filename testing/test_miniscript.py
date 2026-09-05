@@ -1018,10 +1018,12 @@ def test_tapscript(M_N, cc_first, clear_miniscript, goto_home, pick_menu_item,
 def test_pathless_tapscript_input_not_signed(clear_miniscript, offer_minsc_import,
                                               press_select, get_cc_key, dev, fake_txn,
                                               start_sign, end_sign, cap_story,
-                                              settings_remove, use_testnet):
+                                              settings_remove, use_testnet, settings_get,
+                                              sim_exec):
     clear_miniscript()
     settings_remove("wifs")
     use_testnet()
+    sim_exec('import history; history.OutptValueCache.clear()')
 
     name = "pathless-ts"
     account = "m/86h/1h/0h"
@@ -1073,6 +1075,7 @@ def test_pathless_tapscript_input_not_signed(clear_miniscript, offer_minsc_impor
     assert not signed.inputs[0].taproot_key_sig
     assert not signed.inputs[1].taproot_script_sigs
     assert not signed.inputs[1].taproot_key_sig
+    assert len(settings_get('ovc')) == 1
 
 
 def test_tapscript_leaf_version_mismatch(clear_miniscript, offer_minsc_import,
