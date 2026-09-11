@@ -183,6 +183,14 @@ def test_tapscript_leaf_version(sim_exec):
     )
     assert "Tapleaf ver 0xc1" in rv
 
+
+def test_miniscript_derive_preserves_taproot(sim_exec):
+    rv = sim_exec(
+        "from miniscript import Miniscript; "
+        "RV.write(str(Miniscript(taproot=True).derive(0).taproot))"
+    )
+    assert rv == "True"
+
 @pytest.mark.parametrize('secret,counter,expect', [
         ( b'abcdefghij', 1, '765705'),
         ( b'abcdefghij', 2, '816065'),

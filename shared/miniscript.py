@@ -160,7 +160,7 @@ class Miniscript:
                 arg = arg.derive(idx, key_map, change)
 
             args.append(arg)
-        return type(self)(*args)
+        return type(self)(*args, taproot=self.taproot)
 
     @property
     def properties(self):

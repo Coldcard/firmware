@@ -49,6 +49,10 @@ This lists the new changes that have not yet been published in a normal release.
   filesystems with more than one sector per cluster), fixing an integer underflow in
   `psram_copy_file`/`psram_mmap_file` that allowed out-of-bounds PSRAM writes, reads,
   and mappings from a compromised USB host.
+- Bugfix: Harden PSBTv2 parsing by rejecting key data on singleton fields,
+  malformed global input/output count encodings, and files missing the required
+  global version.
+- Bugfix: Preserve Taproot context while deriving Miniscript policies.
 
 # Mk Specific Changes
 

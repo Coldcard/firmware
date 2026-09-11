@@ -7,7 +7,13 @@ import time, pytest, os, random, pdb, struct, base64, binascii, itertools, datet
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
 from binascii import b2a_hex, a2b_hex
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
-from psbt import PSBT_GLOBAL_VERSION, PSBT_IN_WITNESS_UTXO, PSBT_OUT_AMOUNT
+from psbt import (PSBT_GLOBAL_VERSION, PSBT_GLOBAL_TX_VERSION,
+                  PSBT_GLOBAL_FALLBACK_LOCKTIME, PSBT_GLOBAL_INPUT_COUNT,
+                  PSBT_GLOBAL_OUTPUT_COUNT, PSBT_GLOBAL_TX_MODIFIABLE,
+                  PSBT_IN_WITNESS_UTXO, PSBT_IN_PREVIOUS_TXID,
+                  PSBT_IN_OUTPUT_INDEX, PSBT_IN_SEQUENCE,
+                  PSBT_IN_REQUIRED_TIME_LOCKTIME, PSBT_IN_REQUIRED_HEIGHT_LOCKTIME,
+                  PSBT_OUT_AMOUNT, PSBT_OUT_SCRIPT)
 from io import BytesIO
 from pprint import pprint
 from decimal import Decimal
@@ -82,6 +88,65 @@ def test_psbt_duplicate_singleton_key(try_sign, fake_txn, scope):
         try_sign(psbt, accept=False)
 
     assert 'PSBT parse failed' in ee.value.args[0]
+
+
+@pytest.mark.parametrize('scope, ktype, value', [
+    ('global', PSBT_GLOBAL_TX_VERSION, struct.pack('<I', 2)),
+    ('global', PSBT_GLOBAL_FALLBACK_LOCKTIME, struct.pack('<I', 0)),
+    ('global', PSBT_GLOBAL_INPUT_COUNT, b'\x01'),
+    ('global', PSBT_GLOBAL_OUTPUT_COUNT, b'\x01'),
+    ('global', PSBT_GLOBAL_TX_MODIFIABLE, b'\x00'),
+    ('global', PSBT_GLOBAL_VERSION, struct.pack('<I', 2)),
+    ('input', PSBT_IN_PREVIOUS_TXID, bytes(32)),
+    ('input', PSBT_IN_OUTPUT_INDEX, struct.pack('<I', 0)),
+    ('input', PSBT_IN_SEQUENCE, struct.pack('<I', 0xffffffff)),
+    ('input', PSBT_IN_REQUIRED_TIME_LOCKTIME, struct.pack('<I', 500000000)),
+    ('input', PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, struct.pack('<I', 1)),
+    ('output', PSBT_OUT_AMOUNT, struct.pack('<q', 1000)),
+    ('output', PSBT_OUT_SCRIPT, b'\x51'),
+])
+def test_psbt_singleton_rejects_key_data(try_sign, fake_txn, scope, ktype, value):
+    def add_key_data(psbt):
+        target = psbt
+        if scope == 'input':
+            target = psbt.inputs[0]
+        elif scope == 'output':
+            target = psbt.outputs[0]
+        target.unknown = [(bytes([ktype, 0]), value)]
+
+    psbt = fake_txn(1, 1, psbt_v2=True, psbt_hacker=add_key_data)
+
+    with pytest.raises(CCProtoError) as ee:
+        try_sign(psbt, accept=False)
+
+    assert 'PSBT parse failed' in ee.value.args[0]
+
+
+@pytest.mark.parametrize('ktype', [PSBT_GLOBAL_INPUT_COUNT, PSBT_GLOBAL_OUTPUT_COUNT])
+def test_psbt_v2_rejects_non_exact_global_count(try_sign, fake_txn, ktype):
+    def add_trailing_count_byte(psbt):
+        if ktype == PSBT_GLOBAL_INPUT_COUNT:
+            psbt.input_count = None
+        else:
+            psbt.output_count = None
+        psbt.unknown = [(bytes([ktype]), b'\x01\x00')]
+
+    psbt = fake_txn(1, 1, psbt_v2=True, psbt_hacker=add_trailing_count_byte)
+
+    with pytest.raises(CCProtoError) as ee:
+        try_sign(psbt, accept=False)
+
+    assert 'PSBT parse failed' in ee.value.args[0]
+
+
+def test_psbt_v2_requires_global_version(try_sign, fake_txn):
+    psbt = fake_txn(1, 1, psbt_v2=True,
+                    psbt_hacker=lambda p: setattr(p, 'version', None))
+
+    with pytest.raises(CCProtoError) as ee:
+        try_sign(psbt, accept=False)
+
+    assert 'Invalid PSBT' in ee.value.args[0]
 
 @pytest.mark.parametrize('fn', [
 	'data/2-of-2.psbt',

@@ -13,6 +13,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
+- Enhancement: Support per-input required height and time locktimes in PSBTv2 transactions.
 - New Feature: Added USB ncry v3 authenticated encryption with direction-separated keys and replay protection
 - Enhancement: Warn when a transaction's block-height `nLockTime` is more than
   ten years beyond the Bitcoin block height known to the firmware.
@@ -47,6 +48,10 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
   and mappings from a compromised USB host.
 - Bugfix: Fix device crash when message-signing input is valid JSON but not an
   object (NFC / QR / SD `.json` file). Thanks to [@Amiga500](https://github.com/Amiga500).
+- Bugfix: Harden PSBTv2 parsing by rejecting key data on singleton fields,
+  malformed global input/output count encodings, and files missing the required
+  global version.
+- Bugfix: Preserve Taproot context while deriving Miniscript policies.
 
 
 # Mk4 Specific Changes
