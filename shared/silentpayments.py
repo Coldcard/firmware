@@ -554,10 +554,11 @@ class SilentPaymentsMixin:
                             "Input #%d DLEQ proof wrong size (%d bytes, expected 64)" % (i, len(proof))
                         )
 
-        # TX_MODIFIABLE must be cleared when output scripts are finalized
+        # BIP-375: Inputs/Outputs Modifiable must be cleared when output scripts are finalized.
+        # The SIGHASH_SINGLE bit is left to the SIGHASH_ALL check in _validate_input_eligibility.
         for outp in self.outputs:
-            if outp.sp_v0_info and outp.script:
-                if self.txn_modifiable is not None and self.txn_modifiable != 0:
+            if outp.sp_v0_info and self.resolve_script(outp.script):
+                if self.txn_modifiable is not None and self.txn_modifiable & 0b11:
                     raise FatalPSBTIssue("TX_MODIFIABLE not cleared but SP output script is set")
 
     def _validate_input_eligibility(self):
@@ -567,6 +568,17 @@ class SilentPaymentsMixin:
         Raises FatalPSBTIssue if any input constraints are violated
         """
         for i, inp in enumerate(self.inputs):
+            # SIGHASH_ALL required when SP outputs present
+            # Checked for every input, including foreign ones without a UTXO
+            if inp.sighash is not None and inp.sighash not in (
+                SIGHASH_ALL,
+                SIGHASH_DEFAULT,
+            ):
+                raise FatalPSBTIssue(
+                    "BIP-375 violation: Input #%d uses sighash 0x%x. "
+                    "Silent payments require SIGHASH_ALL." % (i, inp.sighash)
+                )
+
             if not inp.utxo_spk:
                 continue
 
@@ -577,16 +589,6 @@ class SilentPaymentsMixin:
                 raise FatalPSBTIssue(
                     "BIP-375 violation: Input #%d spends Segwit v%d output. "
                     "Silent payment outputs cannot be mixed with Segwit v>1 inputs." % (i, witness_version)
-                )
-
-            # SIGHASH_ALL required when SP outputs present
-            if inp.sighash is not None and inp.sighash not in (
-                SIGHASH_ALL,
-                SIGHASH_DEFAULT,
-            ):
-                raise FatalPSBTIssue(
-                    "BIP-375 violation: Input #%d uses sighash 0x%x. "
-                    "Silent payments require SIGHASH_ALL." % (i, inp.sighash)
                 )
 
     def _validate_ecdh_coverage(self):
@@ -749,6 +751,9 @@ class SilentPaymentsMixin:
 
             outp.script = computed
             scan_key_k[scan_key] = k + 1
+            # Clear TX_MODIFIABLE when output scripts are finalized
+            if self.txn_modifiable is not None and self.txn_modifiable != 0:
+                self.txn_modifiable &= ~0b11
 
     def _store_proof_entry(self, sk, scan_key, shares, proofs):
         """

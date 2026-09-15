@@ -459,11 +459,14 @@ def test_sp_partial_owned_coverage_incomplete_refused(dev, fake_txn, start_sign,
 # merge with another signer's earlier copy of the same field)
 # ---------------------------------------------------------------------------
 
+SIGHASH_ALL = 1
+
+
 def _sign_partial_then_act_as_other_signer(dev, fake_txn, start_sign, end_sign, sim_exec, sim_execfile,
                                             tamper_input0_before_first_sign=None):
     """Shared setup: Coldcard signs input 0 first (coverage incomplete), then test
     code plays the role of the second signer on input 1, computes the SP output
-    script, and clears TX_MODIFIABLE.
+    script, clears TX_MODIFIABLE, and sets SIGHASH_ALL on input 0.
 
     Returns (tp, orig_share, orig_proof) where tp is the PSBT ready for Coldcard's
     second signing pass, and orig_share/orig_proof are Coldcard's first-pass values
@@ -515,6 +518,7 @@ def _sign_partial_then_act_as_other_signer(dev, fake_txn, start_sign, end_sign, 
     )
 
     tp.txn_modifiable = 0
+    tp.inputs[0].sighash = SIGHASH_ALL
 
     return tp, orig_share, orig_proof
 
@@ -548,6 +552,7 @@ def test_sp_multi_signer_resign_preserves_contribution(dev, fake_txn, start_sign
     assert sp_outs[0].script == output_script, "output script must not change on re-sign"
 
     assert rp.inputs[0].part_sigs, "input 0 must be signed"
+    assert rp.inputs[0].sighash == SIGHASH_ALL, "explicit SIGHASH_ALL must be retained"
 
     assert not rp.sp_global_ecdh_shares, "multi-signer path must never populate global shares"
     assert not rp.sp_global_dleq_proofs

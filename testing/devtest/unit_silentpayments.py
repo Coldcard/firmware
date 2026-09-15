@@ -245,6 +245,7 @@ class MockPSBT(SilentPaymentsMixin):
         self.my_xfp = MY_XFP
         self.sp_global_ecdh_shares = {}
         self.sp_global_dleq_proofs = {}
+        self.txn_modifiable = None
 
     def get(self, x):
         return x
@@ -539,6 +540,39 @@ assert sp4.script == _compute_silent_payment_output_script(ops, spk_sum, es, spe
 assert sp2.script == _compute_silent_payment_output_script(ops, spk_sum, es, spend_key_b, k=2)
 assert reg1.script is None
 assert reg3.script is None
+
+# ---------------------------------------------------------------------------
+# Mixin: TX_MODIFIABLE and sighash
+# ---------------------------------------------------------------------------
+
+# Resolved SP output: Inputs/Outputs Modifiable must be cleared
+psbt = MockPSBT()
+outp = _make_sp_output(TEST_SCAN_KEY)
+outp.script = b"\x51\x20" + b"\xcd" * 32
+psbt.outputs = [outp]
+for flags in (0b01, 0b10, 0b111):
+    psbt.txn_modifiable = flags
+    try:
+        psbt._validate_psbt_structure()
+        assert False, "Should raise for TX_MODIFIABLE 0x%x" % flags
+    except FatalPSBTIssue as e:
+        assert "TX_MODIFIABLE not cleared" in str(e)
+
+# SIGHASH_SINGLE bit alone is left to the SIGHASH_ALL check
+psbt.txn_modifiable = 0b100
+psbt._validate_psbt_structure()
+
+# SIGHASH_ALL enforced on every input, including a foreign input without a UTXO
+inp = MockInput()
+psbt.inputs = [inp]
+inp.sighash = 1  # SIGHASH_ALL
+psbt._validate_input_eligibility()
+inp.sighash = 3  # SIGHASH_SINGLE
+try:
+    psbt._validate_input_eligibility()
+    assert False, "Should raise for SIGHASH_SINGLE"
+except FatalPSBTIssue as e:
+    assert "require SIGHASH_ALL" in str(e)
 
 # ---------------------------------------------------------------------------
 # Mixin: Simple Methods

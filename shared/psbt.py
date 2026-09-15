@@ -3047,7 +3047,8 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
             # Silent Payment Processing
             if self.has_silent_payment_inputs():
                 self.validate_silent_payment_inputs(sv)
-            if self.has_silent_payment_outputs():
+            has_sp_outputs = self.has_silent_payment_outputs()
+            if has_sp_outputs:
                 if not self.process_silent_payment_outputs(sv):
                     # Silent Payments: must not sign if output scripts not set for all signers
                     # Defensive re-check - ApproveTransaction::interact should handle this case before reaching signing
@@ -3077,6 +3078,7 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
                     # but in other cases, no more signatures are possible
                     continue
 
+                explicit_sighash = inp.sighash is not None
                 inp.handle_none_sighash()
                 if self.por322:
                     assert inp.sighash in [SIGHASH_ALL, SIGHASH_DEFAULT], "POR sighash not ALL/DEFAULT"
@@ -3086,6 +3088,10 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
                     drop_sighash = (inp.sighash == SIGHASH_DEFAULT)
                 else:
                     drop_sighash = (inp.sighash == SIGHASH_ALL)
+
+                # BIP-375: retain explicit sighash so other signers see the SIGHASH_ALL intent
+                if has_sp_outputs and explicit_sighash:
+                    drop_sighash = False
 
                 schnorrsig = False
                 tr_sh = []
