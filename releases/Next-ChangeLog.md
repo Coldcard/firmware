@@ -10,6 +10,11 @@ your addition and anything else already in this file.**
 - Enhancement: Warn before installing firmware signed by an external contributor
   or downgrading from the currently installed firmware. Thanks to Huzaifa Jawaid for his suggestion.
 
+- New Feature: Codex32 (BIP-93) secrets and Shamir secret sharing. Generate or import Codex32 wallets,
+  split the active wallet into two to nine Shamir shares with **Shamir Split**, and restore it with **Shamir Recover**.
+  Word wallets split as `cw1`, raw master seeds as `ms1`, and extended-key wallets as `cx1`.
+  CW1 and CX1 are COLDCARD extensions that require explicit support in recovery software.
+
 - Bugfix: Fix device crash when message-signing input is valid JSON but not an
   object (NFC / QR / SD `.json` file). Thanks to [@Amiga500](https://github.com/Amiga500).
 

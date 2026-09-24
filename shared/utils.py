@@ -11,6 +11,7 @@ from uhashlib import sha256
 from public_constants import MAX_PATH_DEPTH, AF_CLASSIC, AF_P2SH, AF_P2WPKH, AF_P2WSH, AF_P2TR
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
+HEX_DIGITS = '0123456789abcdef'
 
 try:
     from font_iosevka import FontIosevka

@@ -18,8 +18,8 @@ from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
 # All tests in this file are exclusively meant for Q
 #
 @pytest.fixture(autouse=True)
-def THIS_FILE_requires_q1(is_q1, is_headless):
-    if not is_q1 or is_headless:
+def THIS_FILE_requires_q1(is_q1, is_headless, request):
+    if not is_q1 or (is_headless and request.node.originalname != 'test_tx_master_secret_label'):
         raise pytest.skip('Q1 only (not headless)')
 
 @pytest.fixture
@@ -241,6 +241,32 @@ def test_tx_quick_note(rx_start, tx_start, cap_menu, enter_complex, pick_menu_it
     pick_menu_item('Delete')
     press_select()
     
+
+@pytest.mark.parametrize('words,c32,expected', [
+    (24, 0, 'Master Seed Words'),
+    (0, 0, 'Master XPRV'),
+    (0, 1, 'Master Seed Bytes'),
+])
+def test_tx_master_secret_label(words, c32, expected, sim_exec,
+                                settings_get, settings_set, settings_remove):
+    old_words = settings_get('words')
+    old_c32 = settings_get('c32')
+
+    try:
+        settings_set('words', words)
+        settings_set('c32', c32)
+
+        labels = sim_exec(
+            'from teleport import SecretPickerMenu; '
+            'RV.write("\\n".join(item.label for item in SecretPickerMenu(None).items))')
+        assert expected in labels.splitlines()
+    finally:
+        for key, value in [('words', old_words), ('c32', old_c32)]:
+            if value is None:
+                settings_remove(key)
+            else:
+                settings_set(key, value)
+
 
 @pytest.mark.parametrize('testcase', [ 'weak', 'strong'])
 def test_tx_master_send(testcase, rx_start, tx_start, cap_menu, enter_complex, pick_menu_item,

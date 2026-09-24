@@ -125,6 +125,19 @@ def test_detector_secrets(num_words, encoding, case, try_decode):
     got_words, = vals
     assert got_words == expect
     
+@pytest.mark.parametrize('share', [
+    'ms10testsxxxxxxxxxxxxxxxxxxxxxxxxxx4nzvca9cmczlw',
+    'ms10leetsllhdmn9m42vcsamx24zrxgs3qrl7ahwvhw4fnzrhve25gvezzyq9dsuypw2ragmel',
+    'ms10testsqqqsyqcyq5rqwzqfpg9scrgwpugpzysnzs23v9ccrydpk8qarc0jqgfzyvjz2f389q5j52ev95hz7vp3xgengdfkxuurjw3m8s7nu0ax3uvrcss9ddwnst',
+    'CX100C8VSM32ZXFGUHPCHTLUPZRY9X8GF2TVDW0S3JN54KHCE6MUA7LQPZYGSFJD6AN074RXVCEMLH8WU3TK925ACDEFGHJKLMNPQRSTUVWXY06GPUHWUSDF58Y65T8',
+    'CW12TESTSQQQSYQCYQ5RQWZQFPG9SCRGWPA3HA0NYPT0468L',
+    'CW12TESTSQQQSYQCYQ5RQWZQFPG9SCRGWPUGPZYSNZS23V9E97M4WG0QA8MXD',
+    'CW12TESTSQQQSYQCYQ5RQWZQFPG9SCRGWPUGPZYSNZS23V9CCRYDPK8QARC03HC0TSDSAFY5ZR',
+], ids=['ms1-128', 'ms1-256', 'ms1-512', 'cx1', 'cw1-128', 'cw1-192', 'cw1-256'])
+def test_detector_codex32(share, try_decode):
+    assert try_decode(share) == ('codex32', (share.lower(),))
+
+
 @pytest.mark.parametrize('code', [
     'xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb',
     'xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH',

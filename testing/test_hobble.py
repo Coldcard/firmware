@@ -260,11 +260,12 @@ def test_h_seedvault(sv_empty, set_hobble, pick_menu_item, cap_menu, settings_se
     m = cap_menu()
     assert 'Seed Vault' not in m
 
-@pytest.mark.parametrize('mode', [ 'words', 'qr', 'xprv', 'tapsigner', 'coldcard', 'b39pass'])
+@pytest.mark.parametrize('mode', [ 'words', 'qr', 'xprv', 'tapsigner', 'coldcard', 'b39pass', 'c32'])
 def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, is_q1,
                      press_select, cap_story, word_menu_entry, confirm_tmp_seed, enter_complex,
-                     verify_ephemeral_secret_ui, scan_a_qr, tapsigner_encrypted_backup,
-                     need_keypress, enter_hex, open_microsd, microsd_path, go_to_passphrase):
+                     verify_ephemeral_secret_ui, scan_a_qr, tapsigner_encrypted_backup, press_cancel,
+                     need_keypress, enter_hex, open_microsd, microsd_path, go_to_passphrase,
+                     garbage_collector):
     '''
     - can import and use a key for signing
     - NOT offered chance to save into seedvault
@@ -282,7 +283,14 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
 
         m = cap_menu()
         assert 'Generate Words' not in m
-        assert all((i.startswith("Import ") or i.endswith(' Backup') or i == 'Restore Seed XOR')
+        assert 'Codex32' in m  # Codex32 still there, generation not allowed
+        pick_menu_item("Codex32")
+        mm = cap_menu()
+        assert "Generate" not in mm
+        assert "Import Codex32" in mm
+        assert "Shamir Recover" in mm
+        press_cancel()
+        assert all((i.startswith("Import ") or i.endswith(' Backup') or i == 'Restore Seed XOR' or i == "Codex32")
                                     for i in m), m
 
     words, expect_xfp = WORDLISTS[12]
@@ -348,10 +356,11 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
 
     elif mode == 'xprv':
         fname = "ek.txt"
+        pth = microsd_path(fname)
         node = BIP32Node.from_master_secret(os.urandom(32), netcode="XTN")
         expect_xfp = node.fingerprint().hex().upper()
         ek = node.hwif(as_private=True)
-        with open(microsd_path(fname), "w") as f:
+        with open(pth, "w") as f:
             f.write(ek)
 
         pick_menu_item("Import XPRV")
@@ -381,6 +390,20 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
         title, story = cap_story()
         assert "store temporary seed into Seed Vault" not in story
         time.sleep(.1)
+
+    elif mode == "c32":
+        s_share = "MS12NAMES6XQGUZTTXKEQNJSJZV4JV3NZ5K3KWGSPHUH6EVW"
+        fname = "sshare.txt"
+        pth = microsd_path(fname)
+        with open(pth, "w") as f:
+            f.write(s_share)
+        xprv = "xprv9s21ZrQH143K2NkobdHxXeyFDqE44nJYvzLFtsriatJNWMNKznGoGgW5UMTL4fyWtajnMYb5gEc2CgaKhmsKeskoi9eTimpRv2N11THhPTU"
+        node = BIP32Node.from_hwif(xprv)
+        expect_xfp = node.fingerprint().hex().upper()
+        pick_menu_item("Codex32")
+        pick_menu_item("Import Codex32")
+        need_keypress("1")
+        pick_menu_item(fname)
 
     else:
         raise pytest.fail(mode)
@@ -439,7 +462,8 @@ def test_h_qrscan(en_okeys, set_hobble, scan_a_qr, need_keypress, press_cancel, 
     words, _ = WORDLISTS[12]
     keys = [ 
         ' '.join(w[0:4] for w in words.split()),
-        simulator_fixed_xprv]
+        simulator_fixed_xprv,
+        'MS12NAMES6XQGUZTTXKEQNJSJZV4JV3NZ5K3KWGSPHUH6EVW']
 
     for ss in keys:
         need_keypress(KEY_QR)

@@ -10,6 +10,7 @@ from ux import ux_input_text, import_export_prompt
 from files import CardSlot, CardMissingError, needs_microsd
 from charcodes import KEY_NFC, KEY_QR, KEY_CANCEL
 from actions import file_picker, import_extended_key_as_secret
+from utils import HEX_DIGITS
 
 def decrypt_tapsigner_backup(backup_key, data):
     try:
@@ -90,7 +91,7 @@ async def import_tapsigner_backup_file(_1, _2, item):
         return
 
     while True:
-        backup_key = await ux_input_text("", confirm_exit=False, hex_only=True,
+        backup_key = await ux_input_text("", confirm_exit=False, charset=HEX_DIGITS,
                                          min_len=32, max_len=32,
                                          prompt='Backup Password (32 hex digits)')
         if backup_key is None:

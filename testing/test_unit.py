@@ -155,6 +155,12 @@ def test_decoding(unit_test):
     # utils.py Hex/Base64 streaming decoders
     unit_test('devtest/unit_decoding.py')
 
+def test_codex32(unit_test):
+    unit_test('devtest/unit_codex32.py')
+
+def test_codex32_boundaries(unit_test):
+    unit_test('devtest/unit_codex32_boundaries.py')
+
 @pytest.mark.parametrize('hasher', ['sha256', 'sha1', 'sha512'])
 @pytest.mark.parametrize('msg', [b'123', b'b'*78])
 @pytest.mark.parametrize('key', [b'3245', b'b'*78])

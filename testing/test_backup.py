@@ -8,6 +8,9 @@ from charcodes import KEY_QR
 from bip32 import BIP32Node
 from mnemonic import Mnemonic
 from ckcc_protocol.protocol import CCProtocolPacker
+from test_codex32 import (SHARES, IMPORT_SHARES, CW_SHARES, Share, native_encoding,
+                         bip32_node_from_codex32_share, import_codex32_ui,
+                         goto_codex32_menu, enter_bech32)
 
 
 @pytest.fixture
@@ -324,20 +327,41 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
                       pass_way=pass_way)
 
 
-@pytest.mark.parametrize("stype", ["words12", "words24", "xprv"])
+@pytest.mark.parametrize("stype", [
+    "words12", "words24", "xprv",
+    pytest.param(SHARES[0], id="ms1-128"),
+    pytest.param(SHARES[1], id="ms1-256"),
+    pytest.param(IMPORT_SHARES[11], id="ms1-512"),
+    pytest.param(IMPORT_SHARES[7], id="cx1"),
+    pytest.param(CW_SHARES[0], id="cw1-128"),
+    pytest.param(CW_SHARES[1], id="cw1-192"),
+    pytest.param(CW_SHARES[2], id="cw1-256"),
+])
 def test_backup_ephemeral_wallet(stype, pick_menu_item, press_select, goto_home,
                                  cap_story, pass_word_quiz, get_setting,
                                  verify_backup_file, microsd_path, check_and_decrypt_backup,
                                  sim_execfile, unit_test, word_menu_entry, cap_menu,
                                  restore_backup_cs, generate_ephemeral_words, press_cancel,
-                                 import_ephemeral_xprv, reset_seed_words, seed_story_to_words):
+                                 import_ephemeral_xprv, reset_seed_words, seed_story_to_words,
+                                 import_codex32_ui, confirm_tmp_seed, sim_exec, dev, get_secrets):
     reset_seed_words()
     goto_home()
+    codex32 = stype.lower().startswith(('ms1', 'cx1', 'cw1'))
+    mnemonic = None
     if "words" in stype:
         num_words = int(stype.replace("words", ""))
         sec = generate_ephemeral_words(num_words, from_main=True, seed_vault=False)
-    else:
+    elif stype == "xprv":
         sec = import_ephemeral_xprv("sd", from_main=True, seed_vault=False)
+    else:
+        share = Share.parse(stype)
+        assert share.to_seed_and_pad()[1]  # Exercise preservation of nonzero padding.
+        encoded = native_encoding(stype)
+        sec = bip32_node_from_codex32_share(share)
+        if share.hrp == 'cw':
+            mnemonic = Mnemonic('english').to_mnemonic(share.to_seed_and_pad()[0])
+        import_codex32_ui('sd', stype, tmp=True)
+        confirm_tmp_seed(expect_xfp=sec.fingerprint().hex().upper())
 
     target = sim_execfile('devtest/get-secrets.py')
     assert 'Error' not in target
@@ -376,12 +400,24 @@ def test_backup_ephemeral_wallet(stype, pick_menu_item, press_select, goto_home,
     assert fn.endswith(".7z")
     verify_backup_file(fn)
     contents = check_and_decrypt_backup(fn, words)
-    if "words" in stype:
+    if "words" in stype or mnemonic:
         assert "mnemonic" in contents
     else:
         assert "mnemonic" not in contents
     assert simulator_fixed_words not in contents
     assert simulator_fixed_tprv not in contents
+    if codex32:
+        values = dict((key, json.loads(value)) for key, value in
+                      (line.split(' = ', 1) for line in contents.splitlines()
+                       if line and not line.startswith('#')))
+        assert 'codex32' not in values
+        assert values['raw_secret'] == encoded.hex().rstrip('0')
+        if share.hrp == 'ms':
+            assert values['bip32_master_key'] == share.to_seed_and_pad()[0].hex()
+        else:
+            assert 'bip32_master_key' not in values
+        if mnemonic:
+            assert values['mnemonic'] == mnemonic
     # assert target == contents
     if "words" in stype:
         words_str = " ".join(sec)
@@ -404,6 +440,12 @@ def test_backup_ephemeral_wallet(stype, pick_menu_item, press_select, goto_home,
     assert target_esk == esk
 
     restore_backup_cs(fn, words)
+    if codex32:
+        assert sim_exec('from utils import B2A; RV.write(B2A(pa.fetch()))') == encoded.hex()
+        assert 'codex32' not in get_secrets()
+        if mnemonic:
+            assert get_secrets()['mnemonic'] == mnemonic
+        assert dev.send_recv(CCProtocolPacker.get_xpub()) == epk
 
 
 @pytest.mark.parametrize('seedvault', [False, True])
@@ -553,6 +595,11 @@ def test_seed_vault_backup(settings_set, reset_seed_words, generate_ephemeral_wo
     sv_xfp_menu = [i.split(" ")[-1][1:-1] for i in m]
     for xfp_ui in ui_xfps:
         assert xfp_ui in sv_xfp_menu
+
+
+def test_pending_codex32_shares_excluded(reset_seed_words, unit_test):
+    reset_seed_words()
+    unit_test('devtest/backup_codex32.py')
 
 
 def test_seed_vault_backup_frozen(reset_seed_words, settings_set, repl, build_test_seed_vault):

@@ -13,7 +13,7 @@
 import ngu, uctypes, bip39, random, version
 from ucollections import OrderedDict
 from menu import MenuItem, MenuSystem
-from utils import xfp2str, parse_extended_key, swab32
+from utils import xfp2str, parse_extended_key, swab32, chunk_address
 from utils import deserialize_secret, problem_file_line, wipe_if_deltamode
 from utils import to_ascii_printable
 from uhashlib import sha256
@@ -433,7 +433,7 @@ async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False)
     return ch
 
 
-async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
+async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False, nbits=None):
     from ux import ux_dice_rolling
 
     low_entropy_msg = "You only provided %d dice rolls, and each roll adds only 2.585 bits of entropy."
@@ -443,13 +443,9 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
         low_entropy_msg += ", which is considered the minimum for %d word seeds," % nwords
     low_entropy_msg += " you need at least %d rolls."
 
-    # None is for paper wallet private key - as it is 32 bytes of entropy we need 99 D6
-    if nwords in (24, None):
-        threshold = 99
-        sec_bit = 256
-    else:
-        threshold = 50
-        sec_bit = 128
+    # Default to 256 bits for paper wallet private keys (nwords=None).
+    sec_bit = nbits or (256 if nwords in (24, None) else 128)
+    threshold = 99 if sec_bit > 128 else 50
 
     counter = {}
     md = sha256(seed)
@@ -658,6 +654,144 @@ def generate_seed():
 
     # hash to combine the sources and mitigate any possible bias
     return ngu.hash.sha256d(seed + a + b)
+
+def render_codex32(c32):
+    parts = chunk_address(c32)
+    if not version.has_qwerty:
+        return '\n'.join('%2d: %s' % (i+1, part)
+                         for i, part in enumerate(parts))
+
+    wide = len(parts) > 24
+    widths, separator = ((6, 7, 7, 7), '  ') if wide else ((11, 11, 11), ' ')
+    rows = (len(parts) + len(widths) - 1) // len(widths)
+
+    lines = []
+    for row in range(rows):
+        cells = []
+        for col, pos in enumerate(range(row, len(parts), rows)):
+            number = str(pos + 1) if wide and col == 0 else '%2d' % (pos + 1)
+            cell = '%s:%s' % (number, parts[pos])
+            cells.append(cell + (' ' * (widths[col] - len(cell))))
+
+        lines.append(separator.join(cells).rstrip())
+
+    return '\n'.join(lines)
+
+async def show_codex32(c32, ephemeral=False, is_new=True):
+    from glob import NFC
+
+    title = 'Record Codex32' if is_new else 'Codex32 Share'
+    msg = render_codex32(c32)
+    escape = ''
+
+    if is_new and ephemeral:
+        escape += '6'
+        msg += '\n\nPress (6) to skip the verification.'
+
+    if not version.has_qwerty:
+        escape += '1'
+        msg += '\n\nPress (1) to view as QR.'
+        if NFC:
+            escape += '3'
+            msg += ' Press (3) to share via NFC.'
+
+    while True:
+        ch = await ux_show_story(msg, title=title if version.has_qwerty else None,
+                                 escape=escape, sensitive=True,
+                                 hint_icons=KEY_QR + (KEY_NFC if NFC else ''))
+        if ch in ('1' + KEY_QR):
+            await show_qr_code(c32, True, is_secret=True)
+        elif NFC and ch in ('3' + KEY_NFC):
+            await NFC.share_text(c32, is_secret=True)
+        else:
+            return ch
+
+async def codex32_quiz(c32):
+    from codex32 import CHARSET
+
+    alphabet = CHARSET.upper()
+    parts = chunk_address(c32)
+    order = list(range(len(parts)))
+    random.shuffle(order)
+
+    for pos in order:
+        right = parts[pos]
+        choices = [right]
+        while len(choices) < 3:
+            value = ''.join(alphabet[random.randbelow(len(alphabet))]
+                            for _ in right)
+            if value not in choices:
+                choices.append(value)
+
+        while True:
+            random.shuffle(choices)
+            msg = '' if not dis.has_lcd else '\n'
+            msg += '\n'.join(' %d: %s' % (i+1, choices[i]) for i in range(3))
+            msg += '\n\nWhich group is right?\n\n%s to give up, %s to see all the groups again.' % (X, OK)
+
+            ch = await ux_show_story(msg, title='Group %d is?' % (pos+1),
+                                     escape='123', sensitive=True)
+            if ch == 'x':
+                return ch
+            if ch == 'y':
+                await ux_show_story(render_codex32(c32), sensitive=True)
+                continue
+            if ch not in '123':
+                continue
+            if choices[ord(ch) - ord('1')] == right:
+                break
+
+            await ux_dramatic_pause('Wrong!', 2)
+
+async def approve_codex32(seed, ephemeral=False):
+    from codex32 import MS_HRP, SECRET, SECRET_ID, Share
+
+    share = Share.from_seed(seed, MS_HRP, SECRET_ID, SECRET, 0)
+    encoded = share.to_string()
+    while True:
+        ch = await show_codex32(encoded, ephemeral=ephemeral)
+        if ch == 'x':
+            if await ux_confirm('Throw away this secret and stop?'):
+                return
+            continue
+
+        if ch == '6' and ephemeral:
+            if await ux_confirm('Skip verification of the recorded Codex32 share?'):
+                return share
+            continue
+
+        if await codex32_quiz(encoded) == 'x':
+            if await ux_confirm('Throw away this secret and stop?'):
+                return
+            continue
+
+        return share
+
+async def make_new_codex32_wallet(byte_length, ephemeral=False, dice=False):
+    if dice:
+        prompt = '\n\nPress %s to continue, %s to exit.' % (OK, X)
+        if not await ux_confirm(DICE_ONLY_WARNING + prompt, title='WARNING'):
+            return
+        count, seed = await add_dice_rolls(0, b'', True, enforce=True, nbits=byte_length * 8)
+        if not count:
+            return
+    else:
+        purpose = PURPOSE_EPHEMERAL if ephemeral else PURPOSE_MASTER
+        seed = await generate_seed_with_user_entropy(purpose)
+    if seed is None:
+        return
+    seed = seed[:byte_length]
+
+    share = await approve_codex32(seed, ephemeral)
+    if not share:
+        return
+
+    encoded = SecretStash.encode(master_secret=seed)
+    if ephemeral:
+        await set_ephemeral_seed(encoded, origin='Generated Codex32')
+    else:
+        set_seed_value(encoded=encoded)
+    goto_top_menu(first_time=not ephemeral)
 
 def update_entropy_screen(title, count, target, unit, action, prompt, mk_title=None):
     # progress display while collecting user entropy
@@ -975,7 +1109,6 @@ def xprv_to_encoded_secret(xprv):
     node.blank()
     return nv, chain  # need to know chain
 
-
 def set_seed_value(words=None, encoded=None, chain=None):
     # Save the seed words (or other encoded private key) into secure element.
     # BIP-39 passphrase is not set at this point (empty string).
@@ -1238,7 +1371,7 @@ class SeedVaultMenu(MenuSystem):
     async def _detail(menu, label, item):
         rec, encoded = item.arg
 
-        # - first byte represents type of secret (internal encoding flags)
+        # First byte represents the stored secret type.
         txt = SecretStash.summary(encoded[0])
 
         detail = "Name:\n%s\n\nMaster XFP: %s\nSecret Type: %s\n\nOrigin:\n%s\n\n" \
@@ -1459,6 +1592,7 @@ class EphemeralSeedMenu(MenuSystem):
 
         rv = [
             MenuItem("Generate Words", menu=gen_ephemeral_menu, predicate=not_hobbled_mode),
+            MenuItem("Codex32", menu=make_codex32_menu, arg=True),
             MenuItem('Import from QR Scan', predicate=version.has_qr,
                      shortcut=KEY_QR, f=scan_any_qr, arg=(True, True)),
             MenuItem("Import Words", menu=import_ephemeral_menu),
@@ -1487,6 +1621,28 @@ async def make_ephemeral_seed_menu(*a):
 
     rv = EphemeralSeedMenu.construct()
     return EphemeralSeedMenu(rv)
+
+async def make_codex32_menu(menu, label, item):
+    from actions import codex32_shamir_recover, codex32_derive_shares, import_codex32, pick_new_codex32
+    from actions import codex32_calculate_checksum
+
+    ephemeral = bool(item.arg)
+    generated = [
+        MenuItem('128-bit', f=pick_new_codex32, arg=(16, ephemeral)),
+        MenuItem('256-bit', f=pick_new_codex32, arg=(32, ephemeral)),
+        MenuItem('Advanced', menu=[
+            MenuItem('128-bit Dice Roll', f=pick_new_codex32, arg=(16, ephemeral, True)),
+            MenuItem('256-bit Dice Roll', f=pick_new_codex32, arg=(32, ephemeral, True)),
+        ]),
+    ]
+    return MenuSystem([
+        MenuItem('Generate', menu=generated, predicate=not_hobbled_mode),
+        MenuItem('Import Codex32', f=import_codex32, arg=ephemeral),
+        MenuItem('Shamir Recover', f=codex32_shamir_recover, arg=ephemeral),
+        MenuItem('Derive Shares', f=codex32_derive_shares, predicate=not_hobbled_mode),
+        MenuItem('Calculate Checksum' if version.has_qwerty else 'Calc Checksum',
+                 f=codex32_calculate_checksum),
+    ])
 
 async def start_b39_pw(menu, label, item):
     # Menu item for top-level "Passphrase" item - take in a BIP-39 passphrase

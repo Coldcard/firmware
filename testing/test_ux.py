@@ -1007,13 +1007,12 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
     pick_menu_item('Advanced/Tools')
     pick_menu_item('Danger Zone')
     pick_menu_item('Seed Functions')
-    pick_menu_item('View Seed Words')
+    pick_menu_item('View Secret')
     time.sleep(.01)
     title, body = cap_story()
     where = title if is_q1 else body
     assert 'Are you SURE' in where
-    assert 'secret seed words' in body
-    assert 'or extended private key' in body
+    assert "wallet's secret" in body
     assert 'can control all funds' in body
     press_select()      # skip warning
     time.sleep(0.01)
@@ -1661,7 +1660,7 @@ def test_q1_24_8char_words(set_seed_words, is_q1, goto_home, pick_menu_item, pre
     pick_menu_item("Advanced/Tools")
     pick_menu_item("Danger Zone")
     pick_menu_item("Seed Functions")
-    pick_menu_item('View Seed Words')
+    pick_menu_item('View Secret')
     time.sleep(.01)
     press_select()  # skip warning
     time.sleep(0.01)

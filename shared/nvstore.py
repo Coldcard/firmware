@@ -26,6 +26,8 @@ from utils import call_later_ms
 #   xfp = master xpub's fingerprint (32 bit unsigned)
 #   xpub = master xpub in base58
 #   chain = 3-letter codename for chain we are working on (BTC)
+#   c32 = (bool) active secret is a raw BIP-32 master seed, not words or XPRV
+#   c32_shares = (list of strings) pending Codex32 shares, stored in master or seedless settings
 #   words = {0/12/18/24} nummber of BIP-39 seed words exist (default: 24, 0=XPRV, etc)
 #   b39skip = (bool) skip discussion about use of BIP-39 passphrase
 #   idle_to = idle timeout period (seconds)
@@ -96,7 +98,7 @@ KEEP_IF_BLANK_SETTINGS = ["wa", "sighshchk", "emu", "rz", "b39skip",
 
 # key value pairs saved directly to master seed settings
 # held in RAM for tmp seed sessions
-MASTER_FIELDS = ['seeds', 'seedvault', 'xfp', 'words', "bkpw", "sssp", "tsn"]
+MASTER_FIELDS = ['seeds', 'seedvault', 'xfp', 'words', "bkpw", "sssp", "tsn", 'c32_shares']
 
 NUM_SLOTS = const(100)
 SLOTS = range(NUM_SLOTS)
