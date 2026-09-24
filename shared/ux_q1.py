@@ -132,7 +132,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=True, value=''):
             # cleanup leading zeros and such
             value = str(min(int(value), max_value))
 
-async def ux_input_text(value, confirm_exit=False, hex_only=False, max_len=100,
+async def ux_input_text(value, confirm_exit=False, charset=None, max_len=100,
             prompt='Enter value', min_len=0, b39_complete=False, scan_ok=False,
             placeholder=None, funct_keys=None, force_xy=None):
     # Get a text string.
@@ -141,6 +141,7 @@ async def ux_input_text(value, confirm_exit=False, hex_only=False, max_len=100,
     # - no control chars allowed either
     # - press QR -> do scan and use that text
     # - funct_keys => CTA msg, and map of Fn key to async-function which takes and returns new text
+    # - charset => allowed characters; accepts the other case when only one is allowed
     # - TODO: regex validation for derviation paths?
     # - TODO: arrowing around, insertion cursor, delete-left vs -right, etc
     # - if unlimited length, then we allow newlines and CANCEL is only way out.
@@ -157,8 +158,10 @@ async def ux_input_text(value, confirm_exit=False, hex_only=False, max_len=100,
     # map from what they entered, to allowed char. None if not allowed char
     # - can case fold if desired
     ch_remap = lambda ch: ch if ' ' <= ch < chr(127) else None
-    if hex_only:
-        ch_remap = lambda ch: ch.lower() if ch in '0123456789abcdefABCDEF' else None
+    if charset:
+        ch_remap = lambda ch: ch if ch in charset else (
+            ch.lower() if ch.lower() in charset else (
+            ch.upper() if ch.upper() in charset else None))
 
     line_len = CHARS_W-2
     y = 2
@@ -879,6 +882,15 @@ class QRScannerInteraction:
             return decode_qr_result(got, expect_text=True)
         return await self.scan_general(prompt, convertor)
 
+    async def scan_codex32(self, prompt):
+        def convertor(got):
+            what, values = decode_qr_result(got, expect_secret=True)
+            if what != 'codex32':
+                raise QRDecodeExplained('Expected Codex32')
+            return values[0]
+
+        return await self.scan_general(prompt, convertor, enter_quits=True)
+
     async def scan_json(self, prompt):
         # Scan for a BBQr and a BBQr object. Converts sometimes?
         def convertor(got):
@@ -931,7 +943,7 @@ class QRScannerInteraction:
         problem = None
         while 1:
             prompt = 'Scan any QR code, or CANCEL' if not expect_secret else \
-                        'Scan XPRV or Seed Words, or CANCEL'
+                        'Scan XPRV/Words/Codex32, or CANCEL'
             if expect_type:
                 label = {'psbt': 'PSBT', 'teleport': 'Key Teleport'}[expect_type]
                 prompt = 'Scan %s, or CANCEL' % label
@@ -963,7 +975,7 @@ class QRScannerInteraction:
             sv_ok = sssp_spending_policy('okeys')
             if sv_ok:
                 # seed vault, and tmp seeds are okay with user, even in hobble mode
-                whitelist.update({'xprv', 'words'})
+                whitelist.update({'xprv', 'words', 'codex32'})
 
             if what not in whitelist:
                 await ux_show_story("Blocked when Spending Policy is in force.", title='Sorry')
@@ -983,6 +995,12 @@ class QRScannerInteraction:
             else:
                 await commit_new_words(words)
 
+            return
+
+        if what == 'codex32':
+            from actions import import_codex32_as_secret
+            value, = vals
+            await import_codex32_as_secret(value, tmp, 'Codex32 from QR')
             return
 
         if what == 'psbt':

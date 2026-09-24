@@ -1,9 +1,16 @@
 import sys
+import shutil
+import subprocess
+from hashlib import sha256
+from pathlib import Path
 import pytest
 sys.path.append("..")
 from docs.rolls import entropy_to_mnemonic24, wl as rolls_wl
 from docs.rolls12 import entropy_to_mnemonic12
 from docs.verify_seed_mix import derive_seed, entropy_to_mnemonic, mnemonic24_to_entropy, wl as trng_wl
+from docs.verify_seed_mix import encode_codex32
+from docs.rolls_codex32 import encode_seed
+from shared.codex32 import Share
 
 
 bip39_vectors_12 = [
@@ -142,3 +149,87 @@ def test_trng_coin_mix(nwords, expected):
     assert seed.hex() == expected
     convert = entropy_to_mnemonic12 if nwords == 12 else entropy_to_mnemonic24
     assert entropy_to_mnemonic(seed) == convert(seed)
+
+
+@pytest.mark.parametrize('encode', [encode_seed, encode_codex32])
+@pytest.mark.parametrize('seed, uid, expected', [
+    (bytes(16), 'test', 'MS10TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQS75SVV7JAL8P5'),
+    (bytes.fromhex('ffeeddccbbaa99887766554433221100' * 2), 'leet',
+     'MS10LEETSLLHDMN9M42VCSAMX24ZRXGS3QRL7AHWVHW4FNZRHVE25GVEZZYQQTUM9PGV99YCMA'),
+])
+def test_codex32_encoders(encode, seed, uid, expected):
+    assert encode(seed, uid) == expected
+
+
+@pytest.fixture
+def run_rolls_script(tmp_path):
+    def run(name, args, data):
+        script = tmp_path / name
+        shutil.copyfile(Path(__file__).resolve().parents[1] / 'docs' / name, script)
+        return subprocess.run([sys.executable, '-I', str(script), *args], input=data,
+                              text=True, capture_output=True, cwd=tmp_path)
+    return run
+
+
+@pytest.mark.parametrize('codex32', [None, 'seed', 'test'])
+@pytest.mark.parametrize('bits', [128, 256])
+@pytest.mark.parametrize('method, tmp, expected', [
+    ('d', False, '67c8b6d836d47f88dfb88a1bb5a534cf28b437cd345e8c7fa59f1982f9248da5'),
+    ('d', True, 'c890c265e37b1da69636a6ed93bcfa2734232bcdcfd95908d7c1623f46af17cd'),
+    ('c', False, '8216d06056e31315bec14171d1f09345eef5cbba16fdd3498354951dd3356dab'),
+    ('c', True, '11e2749d5953a01b6d293fe3b3023fa2ab13426063f60e2529ebf195ad47b800'),
+])
+def test_seed_mix_script(run_rolls_script, codex32, bits, method, tmp, expected):
+    args = ([] if codex32 is None else ['--codex32'] if codex32 == 'seed'
+            else ['--codex32', 'TeSt']) + (['--tmp'] if tmp else [])
+    symbols = '123456' * 8 + '12' if method == 'd' else '01' * 64
+    size = bits if codex32 else (12 if bits == 128 else 24)
+    data = '\n'.join([bip39_vectors_24[0][1], method, ' '.join(symbols), str(size)]) + '\n'
+    result = run_rolls_script('verify_seed_mix.py', args, data)
+    assert result.returncode == 0, result.stderr
+    seed = bytes.fromhex(expected)[:bits // 8]
+    assert '\n' + seed.hex() + '\n' in result.stdout
+    if codex32:
+        share = Share.parse(result.stdout.splitlines()[-1])
+        assert (share.hrp, share.uid, share.index, share.threshold) == ('ms', codex32, 's', 0)
+        assert share.to_seed_and_pad() == (seed, 0)
+    else:
+        convert = entropy_to_mnemonic12 if bits == 128 else entropy_to_mnemonic24
+        expected_words = '\n'.join('%4d: %s' % item for item in enumerate(convert(seed), 1))
+        assert result.stdout.endswith(expected_words + '\n')
+
+
+@pytest.mark.parametrize('bits, minimum', [(128, 50), (256, 99)])
+@pytest.mark.parametrize('uid', ['seed', 'test'])
+def test_codex32_dice_script(run_rolls_script, bits, minimum, uid):
+    args = ['--bits', str(bits)] + (['--id', 'TeSt'] if uid == 'test' else [])
+    rolls = ('123456' * 17)[:minimum]
+    result = run_rolls_script('rolls_codex32.py', args, ' \n' + '\t '.join(rolls) + '\n')
+    assert result.returncode == 0, result.stderr
+    digest = sha256(rolls.encode()).digest()
+    assert result.stdout.splitlines()[0] == digest.hex()
+    share = Share.parse(result.stdout.splitlines()[-1])
+    assert (share.hrp, share.uid, share.index, share.threshold) == ('ms', uid, 's', 0)
+    assert share.to_seed_and_pad() == (digest[:bits // 8], 0)
+
+    for invalid, error in [
+        ('', 'only digits 1-6'),
+        (rolls + '0', 'only digits 1-6'),
+        (rolls[:-1], 'at least %d rolls required' % minimum),
+        ('1' * minimum, 'more than 30%'),
+    ]:
+        result = run_rolls_script('rolls_codex32.py', args, invalid)
+        assert result.returncode == 2
+        assert error in result.stderr
+        assert not result.stdout
+
+
+@pytest.mark.parametrize('script, args', [
+    ('rolls_codex32.py', ['--bits', '128', '--id', 'tesb']),
+    ('verify_seed_mix.py', ['--codex32', 'tesb']),
+])
+def test_codex32_scripts_invalid_id(run_rolls_script, script, args):
+    result = run_rolls_script(script, args, '')
+    assert result.returncode == 2
+    assert 'ID must contain four Codex32 characters' in result.stderr
+    assert not result.stdout

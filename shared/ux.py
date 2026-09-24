@@ -357,6 +357,14 @@ async def ux_enter_bip32_index(prompt, can_cancel=True, unlimited=False):
 
     return await ux_enter_number(prompt=prompt, max_value=max_value, can_cancel=can_cancel)
 
+async def ux_enter_codex32(value='', scan_ok=True, with_checksum=True):
+    # Spaces may be inserted to group the text and are ignored on return.
+    from codex32 import UX_CHARSET
+    rv = await ux_input_text(value, charset=UX_CHARSET.upper(), confirm_exit=True,
+                             prompt='Enter Codex32' if with_checksum else 'Header + payload',
+                             scan_ok=scan_ok, max_len=191, min_len=48 if with_checksum else 35)
+    return rv.replace(' ', '') if rv else rv
+
 def _import_prompt_builder(title, no_qr, no_nfc, slot_b_only=False, key0=None, key6=None):
     from glob import NFC, VD
 
@@ -489,7 +497,7 @@ def import_export_prompt_decode(ch):
 async def import_export_prompt(what_it_is, is_import=False, no_qr=False,
                                no_nfc=False, title=None, intro='', footnotes='',
                                offer_kt=False, slot_b_only=False, force_prompt=False,
-                               key0=None, key6=None):
+                               key0=None, key6=None, sensitive=False):
 
     # Show story allowing user to select source for importing/exporting
     # - return either str(mode) OR dict(file_args)
@@ -517,7 +525,8 @@ async def import_export_prompt(what_it_is, is_import=False, no_qr=False,
         hints = ("" if no_qr else KEY_QR) + (KEY_NFC if not no_nfc and NFC else "")
         msg_lst = [i for i in (intro, prompt, footnotes) if i]
         ch = await ux_show_story("\n\n".join(msg_lst), escape=escape, title=title,
-                                 strict_escape=True, hint_icons=hints)
+                                 strict_escape=True, hint_icons=hints,
+                                 sensitive=sensitive)
 
         return import_export_prompt_decode(ch)
 

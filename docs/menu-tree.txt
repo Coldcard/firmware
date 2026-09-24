@@ -16,6 +16,17 @@
     Advanced
       12 Word Dice Roll
       24 Word Dice Roll
+  Codex32
+    Generate
+      128-bit
+      256-bit
+      Advanced
+        128-bit Dice Roll
+        256-bit Dice Roll
+    Import Codex32
+    Shamir Recover
+    Derive Shares
+    Calculate Checksum
   Import Existing
     12 Words
     [SEED WORD ENTRY]
@@ -40,6 +51,17 @@
         24 Words
         12 Word Dice Roll
         24 Word Dice Roll
+      Codex32
+        Generate
+          128-bit
+          256-bit
+          Advanced
+            128-bit Dice Roll
+            256-bit Dice Roll
+        Import Codex32
+        Shamir Recover
+        Derive Shares
+        Calculate Checksum
       Import from QR Scan [IF QR SCANNER]
       Import Words
         12 Words
@@ -343,6 +365,17 @@
         24 Words
         12 Word Dice Roll
         24 Word Dice Roll
+      Codex32
+        Generate
+          128-bit
+          256-bit
+          Advanced
+            128-bit Dice Roll
+            256-bit Dice Roll
+        Import Codex32
+        Shamir Recover
+        Derive Shares
+        Calculate Checksum
       Import from QR Scan [IF QR SCANNER]
       Import Words
         12 Words
@@ -375,10 +408,11 @@
     Danger Zone
       Debug Functions
       Seed Functions
-        View Seed Words
+        View Secret
         Seed XOR
           Split Existing [IF WORD BASED SEED]
           Restore Seed XOR
+        Shamir Split
         Destroy Seed [IF SECRET AND NOT TMP SEED]
         Lock Down Seed [MAYBE]
         Export SeedQR [IF WORD BASED SEED]
@@ -688,6 +722,10 @@
     Teleport Multisig PSBT [MAYBE]
     View Identity
     Temporary Seed [IF SSSP RELATED KEYS ENABLED]
+      Codex32
+        Import Codex32
+        Shamir Recover
+        Calculate Checksum
       Import from QR Scan [IF QR SCANNER]
       Import Words
         12 Words

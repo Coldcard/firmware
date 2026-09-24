@@ -488,10 +488,10 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
     pick_menu_item("Advanced/Tools")
     pick_menu_item("Danger Zone")
     pick_menu_item("Seed Functions")
-    pick_menu_item("View Seed Words")
+    pick_menu_item("View Secret")
     time.sleep(.1)
     _, story = cap_story()
-    assert "secret seed words" in story
+    assert "wallet's secret" in story
     press_select()
     time.sleep(.1)
     _, story = cap_story()

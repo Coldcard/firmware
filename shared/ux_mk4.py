@@ -169,9 +169,11 @@ async def ux_input_digits(val, prompt=None, maxlen=32):
             if len(here) < maxlen:
                 here += ch
 
-async def ux_input_text(pw, confirm_exit=True, hex_only=False, max_len=100, min_len=0, **_kws):
+async def ux_input_text(pw, confirm_exit=True, charset=None,
+                        max_len=100, min_len=0, prompt='Enter value', **_kws):
     # Allow them to pick each digit using "D-pad"
     # - Q1 version of this function can do much more w/ more keyword args
+    # - charset => ordered choices; first character starts and expands the value
     from glob import dis
     from display import FontTiny, FontSmall
     from ux import ux_show_story
@@ -181,9 +183,10 @@ async def ux_input_text(pw, confirm_exit=True, hex_only=False, max_len=100, min_
     # - so really just ascii; not even latin-1
     # - 8-bit codepoints only
     my_rng = range(32, 127)  # FontSmall.code_range
-    if hex_only:
-        new_expand = "0"
-        symbols = b"0123456789abcdef"
+    restricted = bool(charset)
+    if restricted:
+        new_expand = charset[0]
+        symbols = charset.encode()
     else:
         new_expand = " "
         symbols = b' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
@@ -192,15 +195,15 @@ async def ux_input_text(pw, confirm_exit=True, hex_only=False, max_len=100, min_
         numbers = b'1234567890'
     # assert len(set(symbols+letters+Letters+numbers)) == len(my_rng)
 
-    if hex_only:
-        footer1 = "Enter Hexidecimal Number"
+    if restricted:
+        footer1 = prompt
         footer2 = "58=Change 9=Next 7=Back"
     else:
         footer1 = "1=Letters  2=Numbers  3=Symbols"
         footer2 = "4=SwapCase  0=HELP"
 
     y = 20
-    pw = bytearray(pw or ('0' if hex_only else 'A'))
+    pw = bytearray(pw or (new_expand if restricted else 'A'))
 
     pos = len(pw) - 1  # which part being changed
     n_visible = const(9)
@@ -220,7 +223,7 @@ async def ux_input_text(pw, confirm_exit=True, hex_only=False, max_len=100, min_
     def change(dx):
         # next/prev within the same subset of related chars
         ch = pw[pos]
-        if hex_only:
+        if restricted:
             return cycle_set(symbols, dx)
         for subset in [symbols, letters, Letters, numbers]:
             if ch in subset:
@@ -264,7 +267,7 @@ async def ux_input_text(pw, confirm_exit=True, hex_only=False, max_len=100, min_
 
             if ax == pos:
                 # draw cursor
-                if not hex_only and (len(pw) < 2 * n_visible):
+                if not restricted and (len(pw) < 2 * n_visible):
                     dis.text(x - 4, y - 19, '0x%02X' % ch, FontTiny)
                 dis.icon(x - 2, y - 10, 'spin')
 
@@ -309,8 +312,7 @@ async def ux_input_text(pw, confirm_exit=True, hex_only=False, max_len=100, min_
             pos += 1
             if pos >= len(pw):
                 if len(pw) < max_len and pw[-3:] != b'   ':
-                    # expands with space in normal mode
-                    # expands with 0 in hex_only mode
+                    # expands with the first charset character, or space in normal mode
                     pw += new_expand
                 else:
                     pos -= 1  # abort addition
@@ -319,9 +321,9 @@ async def ux_input_text(pw, confirm_exit=True, hex_only=False, max_len=100, min_
             change(1)
         elif ch == '8':  # down
             change(-1)
-        elif hex_only:
+        elif restricted:
             # just got back at the beginning of the loop
-            # below branches are unreachable for hex_only mode
+            # below branches are unreachable for restricted modes
             pass
         elif ch == '1':  # alpha
             cycle_set(b'Aa')
