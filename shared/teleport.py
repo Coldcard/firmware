@@ -4,7 +4,7 @@
 #               secure environment of two Q's.
 #
 import ngu, aes256ctr, bip39, json, ndef, chains, stash
-from utils import xfp2str, deserialize_secret, wipe_if_deltamode
+from utils import xfp2str, deserialize_secret, wipe_if_deltamode, HEX_DIGITS
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from glob import settings, dis
@@ -163,7 +163,7 @@ async def kt_start_send(rx_data):
 
     while 1:
         # - ask for the sender's password -- nearly any value will be accepted
-        code = await ux_input_text('', confirm_exit=False, hex_only=True, max_len=8,
+        code = await ux_input_text('', confirm_exit=False, charset=HEX_DIGITS, max_len=8,
             prompt='Teleport Password (number)', min_len=8, b39_complete=False, scan_ok=False,
             placeholder='########', funct_keys=None, force_xy=None)
         if not code: return
@@ -271,7 +271,7 @@ async def kt_decode_rx(is_psbt, payload):
 
     while 1:
         # ask for noid key
-        pw = await ux_input_text('', confirm_exit=False, hex_only=False, max_len=8,
+        pw = await ux_input_text('', confirm_exit=False, max_len=8,
                 prompt=prompt, min_len=8, b39_complete=False, scan_ok=False,
                 placeholder='********', funct_keys=None, force_xy=None)
         if not pw: return
@@ -538,13 +538,13 @@ class SecretPickerMenu(MenuSystem):
 
         msg = None
         if is_tmp():
-            # tmp seed, or maybe bip39 is in effect 
-            # - share the current master secret, not the real master
+            # Share the current secret, including any active BIP-39 passphrase.
             msg = 'Temp Secret (words)' if word_based_seed() else (
-                        'XPRV from Seed+Passphrase' if stash.bip39_passphrase else 'Temp XPRV Secret')
+                    'XPRV from Seed+Passphrase' if stash.bip39_passphrase else (
+                    'Temp Master Seed' if settings.get('c32') else 'Temp XPRV Secret'))
         elif has_se_secrets():
-            # sharing real master secret
-            msg = 'Master Seed Words' if word_based_seed() else 'Master XPRV'
+            msg = 'Master Seed Words' if word_based_seed() else (
+                    'Master Seed Bytes' if settings.get('c32') else 'Master XPRV')
 
         if msg:
             m.append( MenuItem(msg, f=self.share_master_secret) )

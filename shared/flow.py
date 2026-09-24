@@ -10,7 +10,7 @@ from actions import *
 from choosers import *
 from mk4 import dev_enable_repl
 from multisig import make_multisig_menu, import_multisig_nfc
-from seed import make_ephemeral_seed_menu, make_seed_vault_menu, start_b39_pw
+from seed import make_codex32_menu, make_ephemeral_seed_menu, make_seed_vault_menu, start_b39_pw
 from address_explorer import address_explore
 from drv_entro import drv_entro_start, password_entry
 from backups import clone_start, clone_write_data
@@ -329,8 +329,9 @@ SeedXORMenu = [
 ]
 
 SeedFunctionsMenu = [
-    MenuItem('View Seed Words', f=view_seed_words),     # text is a little wrong sometimes, rare
+    MenuItem('View Secret', f=view_seed_words),
     MenuItem('Seed XOR', menu=SeedXORMenu),
+    MenuItem('Shamir Split', f=codex32_shamir_split),
     MenuItem("Destroy Seed", f=clear_seed, predicate=has_real_secret),
     MenuItem('Lock Down Seed', f=convert_ephemeral_to_master, predicate=is_tmp),
     MenuItem('Export SeedQR', f=export_seedqr, predicate=word_based_seed),
@@ -473,6 +474,7 @@ NewSeedMenu = [
 EmptyWallet = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('New Seed Words', menu=NewSeedMenu),
+    MenuItem('Codex32', menu=make_codex32_menu, arg=False),
     MenuItem('Import Existing', menu=ImportWallet),
     MenuItem("Migrate Coldcard", menu=clone_start),
     MenuItem("Key Teleport (start)", f=kt_start_rx, predicate=version.has_qr),

@@ -1,0 +1,272 @@
+{
+  "description": "Public CW1/CX1 conformance vectors. Never use these secrets for funds.",
+  "valid_sets": [
+    {
+      "id": "cw-128",
+      "hrp": "cw",
+      "payload_hex": "00000000000000000000000000000000",
+      "padding": 0,
+      "secret": "CW12TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQEQHKN8PU566VY",
+      "standalone": "CW10TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQD858VGW90MG74",
+      "shares": [
+        "CW12TESTA0AMU8ZWGT7MV62HK55U55TLPRYMWAR3CH59DF6W",
+        "CW12TESTCDFXLE9M586X7S3CWTTLTT8VKN2UMXTKT0GRZGZ4",
+        "CW12TESTD40HTUG3F9RHENPW2ZZTZZ98YVS33KSMQT4Z5YX9"
+      ],
+      "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "wallets": [
+        {
+          "passphrase": "",
+          "xprv": "xprv9s21ZrQH143K3GJpoapnV8SFfukcVBSfeCficPSGfubmSFDxo1kuHnLisriDvSnRRuL2Qrg5ggqHKNVpxR86QEC8w35uxmGoggxtQTPvfUu",
+          "fingerprint": "73C5DA0A"
+        },
+        {
+          "passphrase": "codex32-example",
+          "xprv": "xprv9s21ZrQH143K3j6fpDsRkit6yTu3LpMgJGJGH7tWLQCSQS6TDeQyVn2bQ7WhboREHYN4EU26F7vd7NeYPWvEoL2atbNwCgHB8U8Sr38zE5a",
+          "fingerprint": "AD300F70"
+        }
+      ]
+    },
+    {
+      "id": "cw-192-nonzero-padding",
+      "hrp": "cw",
+      "payload_hex": "000102030405060708090a0b0c0d0e0f1011121314151617",
+      "padding": 7,
+      "secret": "CW12TESTSQQQSYQCYQ5RQWZQFPG9SCRGWPUGPZYSNZS23V9LPKXVWVTYD0EAK",
+      "standalone": "CW10TESTSQQQSYQCYQ5RQWZQFPG9SCRGWPUGPZYSNZS23V9LZRNLFVAAYU0X4",
+      "shares": [
+        "CW12TESTACSX9Z98HK88YT4E7HZ5KMZ0K208HDA6R2KEQEDS3EZJD4AR5AHNN",
+        "CW12TESTC4P0DTU5KWXF2J6R30EJLT43MXW9008PJKLCX33JQMVKA09AWTZX2",
+        "CW12TESTDMJCKU5L622NS6VL8TFNG5854YZATHM3PTG582V2NRK0ZNPCJ4GVZ"
+      ],
+      "mnemonic": "abandon amount liar amount expire adjust cage candy arch gather drum bullet absurd math era live bid rib",
+      "wallets": [
+        {
+          "passphrase": "",
+          "xprv": "xprv9s21ZrQH143K2CqMfQ23xCYdZXgh41nCQBtaPeuhpFgpzUaV7qKZJGcW43hyftAZuu6P2HXkPgJmcT7Mxo5qgCo9inthtPP8RCuLBipS6WY",
+          "fingerprint": "28C3D664"
+        },
+        {
+          "passphrase": "codex32-example",
+          "xprv": "xprv9s21ZrQH143K46EPLTwQig6EpXzYtUj2cn3N9kJ22rKXZZ6n3GJMV1aBFTLx21JcyLKDgxdjpzVv2CxngzNdNCApSQyD8EJz2GWmR2R8PwM",
+          "fingerprint": "796C4739"
+        }
+      ]
+    },
+    {
+      "id": "cw-256-nonzero-padding",
+      "hrp": "cw",
+      "payload_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "padding": 15,
+      "secret": "CW12TESTSQQQSYQCYQ5RQWZQFPG9SCRGWPUGPZYSNZS23V9CCRYDPK8QARC0LYHHQS7RWHTF54",
+      "standalone": "CW10TESTSQQQSYQCYQ5RQWZQFPG9SCRGWPUGPZYSNZS23V9CCRYDPK8QARC0LAZNGRHPWVMJ2D",
+      "shares": [
+        "CW12TESTAHCT7U02JDXTTQXKURDU3642AATVW6VNZHSJF4SKW8UZJ2TE0EHAX4YEVSLKQXKH0J",
+        "CW12TESTCC48T3DU2GSH84GW5Y5XXADDU7YZVHSRYLSLY0CRKF3QNFEREN4TUN9V7SG74QZNJV",
+        "CW12TESTDWM9PL4ZWAW29LJ20FU65SFQS2JC5EDU9YS32NRFJNLCLA7L8SD4QJFXES69LPY2RF"
+      ],
+      "mnemonic": "abandon amount liar amount expire adjust cage candy arch gather drum bullet absurd math era live bid rhythm alien crouch range attend journey unaware",
+      "wallets": [
+        {
+          "passphrase": "",
+          "xprv": "xprv9s21ZrQH143K2VqrrWbcFGpF6RBabiU5bv9V8kgy1zfcQwq46iGuzhSbWPvA3ZxAFQ1jtDSEgnSvZjBBydNYobTUbsSBRxKKb5LMHzN1Cmi",
+          "fingerprint": "3E1F3AE0"
+        },
+        {
+          "passphrase": "codex32-example",
+          "xprv": "xprv9s21ZrQH143K3tZSEXGoUKeyyAeuX2oAHjh4xCkWaXHmnuLBpRxb4s9XgxxZhbvif4TVUUB2usizBoX7yzvWy3Kjz4at4aGm7i255QxAfLc",
+          "fingerprint": "2A15A8C0"
+        }
+      ]
+    },
+    {
+      "id": "cx-passphrase-wallet",
+      "hrp": "cx",
+      "payload_hex": "a7883746d5c6d1d1dedf075123fe844264d63915234442696ee155f60ceb8b2c32783274204029a2f59b29b371cbf5b1c1461692d747c9d43fedda09f532ee3a",
+      "padding": 0,
+      "secret": "CX12TESTS57YRW3K4CMGARHKLQAGJ8L5YGFJDVWG4YDZYY6TWU92LVR8T3VKRY7PJWSSYQ2DZ7KDJNVM3E06MRS2XZ6FDW37F6SL7MKSF75EWUWS8Y7MXXRMH3H3RG8",
+      "standalone": "CX10TESTS57YRW3K4CMGARHKLQAGJ8L5YGFJDVWG4YDZYY6TWU92LVR8T3VKRY7PJWSSYQ2DZ7KDJNVM3E06MRS2XZ6FDW37F6SL7MKSF75EWUWSPZ05PRRL4EN75HN",
+      "shares": [
+        "CX12TESTAFMPQ5A37Q7U6NMQD6ULWEPKHHQXKE9MNAXNG447NPS2PMFQ83G4S0XCTJCEDEHWSU9M2MT8FWZ37FMVQUKWZPULMH5V5V6R33HF9CV2FF4FMKDRHVZEV9K",
+        "CX12TESTCAZCS700JD8RYZFCMSTSDA93KYTET3F668246NHK84C295J743X93RTZ33YJXRR7XMYR884YYP8A8JH9FCYSQREGDJ6D0RGZUN8CFKTQUVEL08CWHC29WQS",
+        "CX12TESTDM2S0AG2SR02P3WU9NEXEYUU60YS62TKDMG5AJ0DPNR2UZZMJ3U6AP97D9EAFL9PCKG8F6SS2HJL0Z4J7PR4CMV6N8QPL40WJTCTTVXRKEMPF5JQH73CK43"
+      ],
+      "chain_code_hex": "a7883746d5c6d1d1dedf075123fe844264d63915234442696ee155f60ceb8b2c",
+      "private_key_hex": "32783274204029a2f59b29b371cbf5b1c1461692d747c9d43fedda09f532ee3a",
+      "xprv": "xprv9s21ZrQH143K3j6fpDsRkit6yTu3LpMgJGJGH7tWLQCSQS6TDeQyVn2bQ7WhboREHYN4EU26F7vd7NeYPWvEoL2atbNwCgHB8U8Sr38zE5a",
+      "fingerprint": "AD300F70"
+    },
+    {
+      "id": "cx-key-one",
+      "hrp": "cx",
+      "payload_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f0000000000000000000000000000000000000000000000000000000000000001",
+      "padding": 7,
+      "secret": "CX12TESTSQQQSYQCYQ5RQWZQFPG9SCRGWPUGPZYSNZS23V9CCRYDPK8QARC0SQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ0NLPWN84JVWYL9G0",
+      "standalone": "CX10TESTSQQQSYQCYQ5RQWZQFPG9SCRGWPUGPZYSNZS23V9CCRYDPK8QARC0SQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ04ESP5Z4KWXQSJHM",
+      "shares": [
+        "CX12TESTAQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQJC4MCSFC68PFGMM",
+        "CX12TESTCQQQ3WQDWQLSQ48QTHUE3DSU4HRUH8W3P83MXJEDDSW9HC7Q5SDZ3QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQZ9X2N5L2RZVC3D6Y",
+        "CX12TESTDQQQZ5QR5QK0QL2QY9P3ZR0PL9HP925ZD2ZT843RR05S9UMQJ0R6ZQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ6HRRGKF7NXRS4CKD"
+      ],
+      "chain_code_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "private_key_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+      "xprv": "xprv9s21ZrQH143K24MoUenttLtWQNeeDZvsczTUeCMmb85Mn2qbbmZbpre8QqPqPmd8WTHi9dvj1xdRPwwyuutTwApKSzkJwpuVB4m6KdwVJXY",
+      "fingerprint": "751E76E8"
+    },
+    {
+      "id": "cx-key-order-minus-one",
+      "hrp": "cx",
+      "payload_hex": "0000000000000000000000000000000000000000000000000000000000000000fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140",
+      "padding": 3,
+      "secret": "CX12TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ0LLLLLLLLLLLLLLLLLLLLLLLLAW4WMNN27J9Q8WLAYH5V6QMYZSRPM0NF2Z07FTV4DX",
+      "standalone": "CX10TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ0LLLLLLLLLLLLLLLLLLLLLLLLAW4WMNN27J9Q8WLAYH5V6QMYZSR8A7UW0ZTUP0RZJJ",
+      "shares": [
+        "CX12TESTA6T3T63UWYV9GUYQ8KA0CDJXCXG9CY4SYHT7LP2ZK8KFSNTYKC8LRAFLRKUELDDH3FZHV0W9S7NJFY8VHZ9CJP4R8R7HYMWD3MMR30HA68NC92F2UZFP9VQ",
+        "CX12TESTCS8H8SHLM27U5L2QEWFD4GY0405U42AP2C86VK39WEWZPJ82W4EV363LQAVSLMMTY3KTD7G0JFPH37VKDCA5LJT2ED0T7G5H9VXWE2FE8YS5H29NMWWY5MF",
+        "CX12TESTDN9K9NKT3SE5FTSQU204MA6CMCF5MSXJSW9R8YPG2U2DJ79S2MU8KH4L5JN8L99KW4SKPDFV2MXZ4ZR23YEK3EWAUHUKZRGTR7HQZLVQKSYKS28MKVR38F7"
+      ],
+      "chain_code_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "private_key_hex": "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140",
+      "xprv": "xprv9s21ZrQH143K24Mfq5zL5MhWK9hUhhGbd45hLXo2Pq2oqzMMo63oStZzFAzHGBP2UuGCqWLTAPLcMtD5SDKr24z3aiUvKr9bJpdrc9bCf9B",
+      "fingerprint": "ADDE4C73"
+    }
+  ],
+  "invalid_encodings": [
+    {
+      "id": "mixed-case",
+      "encoded": "cW10TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQD858VGW90MG74",
+      "reason": "mixed case"
+    },
+    {
+      "id": "bad-character",
+      "encoded": "CW10TESTSBQQQQQQQQQQQQQQQQQQQQQQQQQD858VGW90MG74",
+      "reason": "invalid alphabet character"
+    },
+    {
+      "id": "bad-checksum",
+      "encoded": "CW10TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQD858VGW90MG7Q",
+      "reason": "checksum mismatch"
+    },
+    {
+      "id": "changed-prefix-short",
+      "encoded": "MS10TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQD858VGW90MG74",
+      "reason": "checksum mismatch"
+    },
+    {
+      "id": "changed-prefix-long",
+      "encoded": "MS10TESTS57YRW3K4CMGARHKLQAGJ8L5YGFJDVWG4YDZYY6TWU92LVR8T3VKRY7PJWSSYQ2DZ7KDJNVM3E06MRS2XZ6FDW37F6SL7MKSF75EWUWSPZ05PRRL4EN75HN",
+      "reason": "checksum mismatch"
+    },
+    {
+      "id": "unknown-prefix",
+      "encoded": "CC10TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQGU34F99UQ259KEZ",
+      "reason": "unsupported HRP"
+    },
+    {
+      "id": "threshold-one",
+      "encoded": "CW11TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQD858VGW90MG74",
+      "reason": "invalid threshold"
+    },
+    {
+      "id": "threshold-zero-share",
+      "encoded": "CW10TESTAQQQQQQQQQQQQQQQQQQQQQQQQQQ6EZ3NR2R2KFU8",
+      "reason": "non-secret index at threshold zero"
+    },
+    {
+      "id": "cw-length-20",
+      "encoded": "CW10TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQESY0P8ENX443R",
+      "reason": "unsupported CW1 length"
+    },
+    {
+      "id": "cw-length-28",
+      "encoded": "CW10TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQTFJW42MGV8W6U",
+      "reason": "unsupported CW1 length"
+    },
+    {
+      "id": "cw-length-64",
+      "encoded": "CW10TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ4V5C64PKYWRGYQ0",
+      "reason": "unsupported CW1 length"
+    },
+    {
+      "id": "cx-length-32",
+      "encoded": "CX10TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQUZHH266JXYR09",
+      "reason": "unsupported CX1 length"
+    }
+  ],
+  "invalid_wallets": [
+    {
+      "id": "cx-key-zero",
+      "encoded": "CX10TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQZQFRAEZ98D8NA55",
+      "reason": "invalid private scalar"
+    },
+    {
+      "id": "cx-key-order",
+      "encoded": "CX10TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ0LLLLLLLLLLLLLLLLLLLLLLLLAW4WMNN27J9Q8WLAYH5V6QMYZSG4PT506CCSMUD9H7",
+      "reason": "invalid private scalar"
+    },
+    {
+      "id": "cx-key-maximum",
+      "encoded": "CX10TESTSQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ0LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLC3DTV9WXW2WCMKPH",
+      "reason": "invalid private scalar"
+    },
+    {
+      "id": "cw-non-secret",
+      "encoded": "CW12TESTA0AMU8ZWGT7MV62HK55U55TLPRYMWAR3CH59DF6W",
+      "reason": "non-secret index"
+    },
+    {
+      "id": "cx-non-secret-zero-key",
+      "encoded": "CX12TESTAQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQJC4MCSFC68PFGMM",
+      "reason": "non-secret index"
+    }
+  ],
+  "invalid_recoveries": [
+    {
+      "id": "too-few",
+      "shares": [
+        "CW12TESTA0AMU8ZWGT7MV62HK55U55TLPRYMWAR3CH59DF6W"
+      ],
+      "reason": "insufficient shares"
+    },
+    {
+      "id": "duplicate-index",
+      "shares": [
+        "CW12TESTA0AMU8ZWGT7MV62HK55U55TLPRYMWAR3CH59DF6W",
+        "CW12TESTA0AMU8ZWGT7MV62HK55U55TLPRYMWAR3CH59DF6W"
+      ],
+      "reason": "duplicate index"
+    },
+    {
+      "id": "mismatched-hrp",
+      "shares": [
+        "CW12TESTA0AMU8ZWGT7MV62HK55U55TLPRYMWAR3CH59DF6W",
+        "MS12TESTCQQQQQQQQQQQQQQQQQQQQQQQQQQURE0LYMY6KRKP"
+      ],
+      "reason": "mismatched hrp"
+    },
+    {
+      "id": "mismatched-identifier",
+      "shares": [
+        "CW12TESTA0AMU8ZWGT7MV62HK55U55TLPRYMWAR3CH59DF6W",
+        "CW12NAMECQQQQQQQQQQQQQQQQQQQQQQQQQQ0FMZYG52LS3D0"
+      ],
+      "reason": "mismatched identifier"
+    },
+    {
+      "id": "mismatched-threshold",
+      "shares": [
+        "CW12TESTA0AMU8ZWGT7MV62HK55U55TLPRYMWAR3CH59DF6W",
+        "CW13TESTCQQQQQQQQQQQQQQQQQQQQQQQQQQK0S5SY0WM4FVV"
+      ],
+      "reason": "mismatched threshold"
+    },
+    {
+      "id": "mismatched-length",
+      "shares": [
+        "CW12TESTA0AMU8ZWGT7MV62HK55U55TLPRYMWAR3CH59DF6W",
+        "CW12TESTCQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ7ML0JFVQG42XT"
+      ],
+      "reason": "mismatched length"
+    }
+  ]
+}

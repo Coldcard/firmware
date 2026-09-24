@@ -12,6 +12,7 @@ freeze_as_mpy('', [
 	'chains.py',
 	'choosers.py',
 	'compat7z.py',
+	'codex32.py',
 	'countdowns.py',
 	'descriptor.py',
 	'drv_entro.py',

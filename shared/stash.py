@@ -61,10 +61,28 @@ class SecretStash:
     # a raw master secret, and so on.
 
     @staticmethod
-    def encode(seed_phrase=None, master_secret=None, xprv=None):
+    def encode(seed_phrase=None, master_secret=None, xprv=None, codex32=None):
         nv = bytearray(72)      # AE_SECRET_LEN
 
-        if seed_phrase:
+        if codex32 is not None:
+            from codex32 import CX_HRP, CW_HRP
+
+            assert codex32.is_secret_share()
+            seed, _ = codex32.to_seed_and_pad()
+            if codex32.hrp == CX_HRP:
+                assert len(seed) == 64
+                nv[0] = 1
+                nv[1:65] = seed
+            elif codex32.hrp == CW_HRP:
+                assert len(seed) in (16, 24, 32)
+                nv[0] = 0x80 | ((len(seed) // 8) - 2)
+                nv[1:1+len(seed)] = seed
+            else:
+                assert len(seed) in (16, 32, 64)
+                nv[0] = len(seed)
+                nv[1:1+len(seed)] = seed
+
+        elif seed_phrase:
             # typical: packed version of memonic phrase
             vlen = len(seed_phrase)
 
@@ -360,6 +378,8 @@ class SensitiveValues:
         if self.mode == 'words':
             nw = len_to_numwords(len(self.raw))
         settings.put('words', nw)
+        # Distinguish raw BIP-32 seeds from XPRVs without fetching the secret for menus.
+        settings.put('c32', self.mode == 'master')
 
         return xfp
 

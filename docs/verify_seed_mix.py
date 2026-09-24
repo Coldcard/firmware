@@ -1,12 +1,15 @@
 # Usage:
 #
 #   python3 verify_seed_mix.py
+#   python3 verify_seed_mix.py --codex32 --tmp
 #
-# - Verifies New Seed Words using View TRNG Words plus dice or coin entropy.
-# - Use rolls.py or rolls12.py for Advanced dice-only seeds.
+# - Verifies words or Codex32 using View TRNG Words plus dice or coin entropy.
+# - Add --tmp for temporary wallets; defaults to master-wallet generation.
+# - Use rolls.py, rolls12.py or rolls_codex32.py for Advanced dice-only seeds.
 # - Requires python3 and nothing else!
 # - Public domain.
 #
+import argparse
 from hashlib import sha256
 
 
@@ -189,6 +192,34 @@ METHODS = {
     'c': ('Coin flips', b'C', '01', 128),
 }
 
+CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l'
+
+
+def encode_codex32(seed, uid):
+    # Encode bytes as five-bit symbols with zero padding.
+    groups = (len(seed) * 8 + 4) // 5
+    value = int.from_bytes(seed, 'big') << (groups * 5 - len(seed) * 8)
+    payload = ''.join(CHARSET[(value >> (5 * i)) & 31]
+                      for i in range(groups - 1, -1, -1))
+    body = '0' + uid + 's' + payload
+
+    # Codex32 short checksum, sufficient for 128- and 256-bit secrets.
+    hrp = 'ms'
+    values = [ord(c) >> 5 for c in hrp] + [0] + [ord(c) & 31 for c in hrp]
+    values += [CHARSET.index(c) for c in body] + [0] * 13
+    generators = (0x19dc500ce73fde210, 0x1bfae00def77fe529,
+                  0x1fbd920fffe7bee52, 0x1739640bdeee3fdad, 0x07729a039cfc75f5a)
+    residue = 1
+    for value in values:
+        top = residue >> 60
+        residue = ((residue & 0x0fffffffffffffff) << 5) ^ value
+        for i, generator in enumerate(generators):
+            if (top >> i) & 1:
+                residue ^= generator
+    residue ^= 0x10ce0795c2fd1e62a
+    checksum = ''.join(CHARSET[(residue >> (5 * i)) & 31] for i in range(12, -1, -1))
+    return (hrp + '1' + body + checksum).upper()
+
 
 def mnemonic24_to_entropy(words):
     words = words.split()
@@ -224,7 +255,7 @@ def entropy_to_mnemonic(entropy):
     return words
 
 
-def derive_seed(base_seed, symbols, method, nwords):
+def derive_seed(base_seed, symbols, method, nwords, tmp=False):
     if len(base_seed) != 32:
         raise ValueError('TRNG words must encode 256 bits')
     if method not in METHODS:
@@ -238,13 +269,22 @@ def derive_seed(base_seed, symbols, method, nwords):
     if len(symbols) < minimum:
         raise ValueError('%s require at least %d entries' % (title, minimum))
     user_entropy = sha256(b'CC\x01' + method_id + symbols.encode()).digest()
-    mix = b'CC\x01SM' + method_id + base_seed + user_entropy
+    purpose = b'T' if tmp else b'M'
+    mix = b'CC\x01S' + purpose + method_id + base_seed + user_entropy
     seed = sha256(sha256(mix).digest()).digest()
     return seed[:16] if nwords == 12 else seed
 
 
 def main():
-    print('KEEP SECRET: TRNG words, entries, and resulting seed words are private.\n')
+    parser = argparse.ArgumentParser(description='Verify seed mixing for words or Codex32.')
+    parser.add_argument('--codex32', metavar='ID', type=str.lower, nargs='?', const='seed',
+                        help='output Codex32 (ID defaults to SEED; override for older backups)')
+    parser.add_argument('--tmp', action='store_true', help='verify a temporary wallet')
+    args = parser.parse_args()
+    if args.codex32 is not None:
+        if len(args.codex32) != 4 or any(c not in CHARSET for c in args.codex32):
+            parser.error('ID must contain four Codex32 characters')
+    print('KEEP SECRET: TRNG words, entries, and resulting secret are private.\n')
     try:
         base_seed = mnemonic24_to_entropy(input('Enter the 24 TRNG words: ').strip())
         method = input('Use [d]ice rolls or [c]oin flips? ').strip().lower()
@@ -252,14 +292,23 @@ def main():
             raise ValueError('entropy source must be d or c')
         title = METHODS[method][0]
         symbols = ''.join(input('Enter all %s: ' % title.lower()).split())
-        nwords = int(input('Final seed length (12 or 24 words): ').strip())
-        seed = derive_seed(base_seed, symbols, method, nwords)
+        if args.codex32:
+            bits = int(input('Final seed length (128 or 256 bits): ').strip())
+            if bits not in (128, 256):
+                raise ValueError('seed length must be 128 or 256 bits')
+            nwords = 12 if bits == 128 else 24
+        else:
+            nwords = int(input('Final seed length (12 or 24 words): ').strip())
+        seed = derive_seed(base_seed, symbols, method, nwords, tmp=args.tmp)
     except (ValueError, EOFError) as exc:
         raise SystemExit('ERROR: %s' % exc)
 
     print('\n' + seed.hex() + '\n')
-    print('\n'.join('%4d: %s' % item
-                    for item in enumerate(entropy_to_mnemonic(seed), 1)))
+    if args.codex32:
+        print(encode_codex32(seed, args.codex32))
+    else:
+        print('\n'.join('%4d: %s' % item
+                        for item in enumerate(entropy_to_mnemonic(seed), 1)))
 
 
 if __name__ == '__main__':

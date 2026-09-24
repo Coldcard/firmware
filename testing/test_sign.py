@@ -28,9 +28,55 @@ from txn import *
 from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint
 from ckcc_protocol.constants import STXN_VISUALIZE, STXN_SIGNED
 from charcodes import KEY_QR, KEY_RIGHT, KEY_LEFT
+from test_codex32 import (SHARES, IMPORT_SHARES, Share, native_encoding,
+                         bip32_node_from_codex32_share)
 
 
 SEQUENCE_LOCKTIME_TYPE_FLAG = (1 << 22)
+
+
+@pytest.mark.parametrize('value', [
+    pytest.param(SHARES[0], id='ms1-128'),
+    pytest.param(SHARES[1], id='ms1-256'),
+    pytest.param(IMPORT_SHARES[11], id='ms1-512'),
+    pytest.param(IMPORT_SHARES[7], id='cx1'),
+])
+@pytest.mark.parametrize('style', ['p2pkh', 'p2wpkh', 'p2wpkh-p2sh'])
+@pytest.mark.parametrize('finalize', [False, True])
+def test_codex32_signing_matches_xprv(value, style, finalize, set_master_key,
+                                    set_encoded_secret, fake_txn, try_sign, dev, sim_exec):
+    share = Share.parse(value)
+    assert share.to_seed_and_pad()[1]  # Include otherwise-lost padding bits.
+    node = bip32_node_from_codex32_share(share)
+    encoded = native_encoding(value)
+
+    # Establish the signing result using the equivalent ordinary XPRV wallet.
+    set_master_key(node.hwif(as_private=True))
+    psbt = fake_txn(2, 2, master_xpub=node.hwif(), segwit_in=style != 'p2pkh',
+                    wrapped=style == 'p2wpkh-p2sh', outstyles=[style], change_outputs=[1])
+    _, expected = try_sign(psbt, finalize=finalize)
+    if finalize:
+        txn = CTransaction()
+        txn.deserialize(BytesIO(expected))
+        assert len(txn.vin) == 2
+        if style == 'p2pkh':
+            assert all(inp.scriptSig for inp in txn.vin)
+        else:
+            assert len(txn.wit.vtxinwit) == 2
+            assert all(len(wit.scriptWitness.stack) == 2 for wit in txn.wit.vtxinwit)
+    else:
+        signed = BasicPSBT().parse(expected)
+        assert len(signed.inputs) == 2
+        for i, inp in enumerate(signed.inputs):
+            assert set(inp.part_sigs) == {node.subkey_for_path('0/%d' % i).sec()}
+
+    # Reuse identical PSBT bytes: deterministic signatures must match exactly.
+    set_encoded_secret(encoded)
+    assert dev.send_recv(CCProtocolPacker.get_xpub()) == node.hwif()
+    _, actual = try_sign(psbt, finalize=finalize)
+    assert actual == expected
+    assert sim_exec('from utils import B2A; RV.write(B2A(pa.fetch()))') == encoded.hex()
+    assert encoded[65:] == bytes(7)
 
 
 @pytest.mark.parametrize('finalize', [ False, True ])
