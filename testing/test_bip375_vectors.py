@@ -84,7 +84,12 @@ class TestBIP375InvalidVectors:
         ("input 1 missing ECDH share for scan key", "missing ECDH share"),
         ("segwit version greater than 1", "Segwit v"),
         ("non-SIGHASH_ALL signature", "SIGHASH_ALL"),
-        ("NUMS internal key", "Missing ECDH share for output"),
+        ("NUMS internal key cannot derive sp output", "Missing ECDH share for output"),
+        ("NUMS internal key claim not matching prevout", "missing ECDH share"),
+        ("derivation: P2WPKH BIP32_DERIVATION pubkey does not match prevout script", "does not match prevout script"),
+        ("P2PKH BIP32_DERIVATION pubkey does not match prevout script", "does not match prevout script"),
+        ("P2SH-P2WPKH BIP32_DERIVATION pubkey does not match prevout script", "does not match prevout script"),
+        ("global ECDH share computed from decoy pubkey", "does not match prevout script"),
         ("PSBT_OUT_SCRIPT does not match derived sp output", "output script mismatch"),
         ("not sorted lexicographically by spend key", "output script mismatch"),
         ("k values assigned to wrong output indices", "output script mismatch"),
@@ -124,6 +129,8 @@ class TestBIP375ValidVectors:
                 expected_ecdh = unhexlify(expected["ecdh_share"])
                 if "input_index" in expected:
                     ik = next(k for k in vec["supplementary"]["inputs"] if k["input_index"] == expected["input_index"])
+                    if not ik["private_key"]:
+                        continue
                     privkey = unhexlify(ik["private_key"])
                     actual = _sim_compute_ecdh_share(sim_exec, sim_execfile, privkey, scan_key)
                 else:
