@@ -444,7 +444,13 @@ class SilentPaymentsMixin:
             if input.taproot_internal_key:
                 tap_ik = self.get(input.taproot_internal_key)
                 if tap_ik == NUMS_H:
-                    return False
+                    # Only trust the NUMS claim if it reproduces the prevout output key,
+                    # otherwise an eligible key-path input could be excluded from ECDH
+                    # TODO: derive the merkle root from PSBT_IN_TAP_LEAF_SCRIPT control blocks when
+                    # PSBT_IN_TAP_MERKLE_ROOT is absent; until then such a NUMS input fails closed
+                    mr =self.get(input.taproot_merkle_root) if input.taproot_merkle_root else None
+                    if chains.taptweak(NUMS_H, mr) == spk[2:34]:
+                        return False
 
         if _is_p2sh(spk):
             if input.redeem_script:

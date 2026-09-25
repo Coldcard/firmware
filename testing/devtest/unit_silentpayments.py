@@ -8,6 +8,7 @@ import ngu
 from ubinascii import unhexlify as a2b_hex
 from uhashlib import sha256
 
+from chains import taptweak
 from dleq import generate_dleq_proof, verify_dleq_proof
 from exceptions import FatalPSBTIssue
 from silentpayments import (
@@ -219,6 +220,7 @@ class MockInput:
         self.prevout_idx = None
         self.witness_utxo = None
         self.taproot_internal_key = None
+        self.taproot_merkle_root = None
         self.sp_tweak = None
         self.sp_spend_bip32_derivation = None
         self.utxo_spk = None
@@ -625,6 +627,16 @@ assert _is_p2sh(b"\xa9\x14" + b"\xab" * 19 + b"\x87") is False  # wrong length
 
 # P2TR with NUMS output key is still valid P2TR shape (ineligibility is checked separately)
 assert _is_p2tr(b"\x51\x20" + NUMS_H) is True
+
+# NUMS internal key claim only makes a P2TR input ineligible when it reproduces the prevout
+psbt = MockPSBT()
+inp = MockInput()
+inp.taproot_internal_key = NUMS_H
+inp.taproot_merkle_root = b"\x42" * 32
+inp.utxo_spk = b"\x51\x20" + taptweak(NUMS_H, inp.taproot_merkle_root)
+assert psbt._is_input_eligible(inp) is False
+inp.utxo_spk = b"\x51\x20" + taptweak(NUMS_H)  # claimed merkle root does not match
+assert psbt._is_input_eligible(inp) is True
 
 # ---------------------------------------------------------------------------
 # _combine_pubkeys edge cases
