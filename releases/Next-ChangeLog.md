@@ -19,6 +19,9 @@ your addition and anything else already in this file.**
   malformed global input/output count encodings, and files missing the required
   global version.
 
+- Enhancement: Optionally show Seed Vault names for temporary seed fingerprints
+  at the top of the home menu.
+
 
 # Mk Specific Changes
 

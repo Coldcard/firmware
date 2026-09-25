@@ -994,6 +994,19 @@ def make_top_menu():
                 sl, sr = ("[", "]") if pa.tmp_value else ("<", ">")
                 if active_xfp:
                     ui_xfp = sl + xfp2str(active_xfp) + sr
+                    if pa.tmp_value and settings.master_get("tsn", False):
+                        from seed import seed_vault_iter
+                        from utils import deserialize_secret
+
+                        for rec in seed_vault_iter():
+                            if deserialize_secret(rec.encoded) != pa.tmp_value:
+                                continue
+
+                            named_xfp = "[" + rec.label + "]"
+                            max_name_width = 32 if version.has_qwerty else 16
+                            if len(named_xfp) <= max_name_width:
+                                ui_xfp = named_xfp
+                            break
                     _cls.insert(0, MenuItem(ui_xfp, f=ready2sign))
                 if pa.tmp_value:
                     _cls.append(MenuItem("Restore Master", f=restore_main_secret, shortcut='m'))

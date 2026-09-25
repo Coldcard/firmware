@@ -175,6 +175,12 @@ BuriedSettingsMenu = [
                           'Master seed is displayed as <XFP>, temporary seeds as [XFP].'),
                    predicate=has_real_secret,
                    on_change=goto_home),
+    ToggleMenuItem('Temporary Seed Names', 'tsn', ['Use XFP', 'Use Names'],
+                   story=("Show a temporary seed's Seed Vault name instead of its XFP "
+                          "at the top of the home menu. If the name is too long to "
+                          "fit, the XFP is shown."),
+                   predicate=has_real_secret,
+                   on_change=goto_home),
     ToggleMenuItem('Menu Wrapping', 'wa', ['Default', 'Always Wrap'],
            story='''When enabled, allows scrolling past menu top/bottom \
 (wrap around). By default, this only happens in menus whose length is greater than 10.'''),

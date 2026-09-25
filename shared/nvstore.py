@@ -63,6 +63,7 @@ from utils import call_later_ms
 #   b85max = (bool) allow max BIP-32 int value in BIP-85 derivations
 #   ptxurl = (str) URL for PushTx feature, clear to disable feature
 #   hmx    = (bool) Force display of current XFP in home menu, even w/o tmp seed active
+#   tsn    = (bool) Use Seed Vault names for temporary seed XFPs in home menu
 #   unsort_ms = (bool) Allow unsorted multisig with BIP-67 disabled
 #   msas = multisig address show (do not censor multisig addresses)
 #   ccc = (complex) If present, CCC feature is enabled and key details stored here.
@@ -95,7 +96,7 @@ KEEP_IF_BLANK_SETTINGS = ["wa", "sighshchk", "emu", "rz", "b39skip",
 
 # key value pairs saved directly to master seed settings
 # held in RAM for tmp seed sessions
-MASTER_FIELDS = ['seeds', 'seedvault', 'xfp', 'words', "bkpw", "sssp"]
+MASTER_FIELDS = ['seeds', 'seedvault', 'xfp', 'words', "bkpw", "sssp", "tsn"]
 
 NUM_SLOTS = const(100)
 SLOTS = range(NUM_SLOTS)

@@ -1703,9 +1703,11 @@ def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
     story, parsed_ident = get_identity_story()
     assert xfp_str == parsed_ident["xfp"]
 
-def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_menu,
+@pytest.mark.parametrize('name_fits', [True, False])
+def test_home_menu_xfp(name_fits, goto_home, pick_menu_item, press_select, cap_story, cap_menu,
                        settings_get, goto_eph_seed_menu, need_keypress,
-                       enter_mash_entropy):
+                       enter_mash_entropy, master_settings_get, sim_exec,
+                       has_qwerty):
     goto_home()
     pick_menu_item("Settings")
     pick_menu_item("Buried Settings")
@@ -1738,7 +1740,34 @@ def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_m
     time.sleep(.2)
     m = cap_menu()
     assert m[1] == "Ready To Sign"
-    assert m[0] == "[" + xfp2str(settings_get("xfp")) + "]"
+    tmp_xfp = xfp2str(settings_get("xfp"))
+    assert m[0] == "[" + tmp_xfp + "]"
+
+    original_seeds = master_settings_get("seeds") or []
+    original_tsn = master_settings_get("tsn")
+    sim_exec("from seed import SecretStash; from pincodes import pa; "
+             "encoded = SecretStash.storage_serialize(pa.tmp_value); "
+             "settings.master_set('seeds', %r + [(%r, encoded, 'Travel', 'test')]); "
+             "settings.master_set('tsn', True)" % (original_seeds, tmp_xfp))
+    goto_home()
+    assert cap_menu()[0] == "[Travel]"
+
+    max_name_width = 32 if has_qwerty else 16
+    name_width = max_name_width - 2 + (not name_fits)
+    test_name = 'N' * name_width
+    sim_exec("from seed import SecretStash; from pincodes import pa; "
+             "encoded = SecretStash.storage_serialize(pa.tmp_value); "
+             "settings.master_set('seeds', %r + [(%r, encoded, %r, 'test')])" %
+             (original_seeds, tmp_xfp, test_name))
+    goto_home()
+    expected_name = "[" + test_name + "]" if name_fits else "[" + tmp_xfp + "]"
+    assert cap_menu()[0] == expected_name
+
+    sim_exec("settings.master_set('seeds', %r); settings.master_set('tsn', %r)" %
+             (original_seeds, original_tsn))
+    goto_home()
+    assert cap_menu()[0] == "[" + tmp_xfp + "]"
+
     pick_menu_item("Restore Master")
     press_select()
 
@@ -1760,7 +1789,6 @@ def test_home_menu_xfp(goto_home, pick_menu_item, press_select, cap_story, cap_m
     time.sleep(.3)
     m = cap_menu()
     assert m[0] == "Ready To Sign"
-
 
 def test_seed_vault_enable_on_tmp(generate_ephemeral_words, reset_seed_words,
                                   goto_eph_seed_menu, ephemeral_seed_disabled,
