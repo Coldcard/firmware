@@ -7,7 +7,7 @@ import stash, chains
 from pincodes import pa
 from glob import settings
 import stash
-from seed import set_seed_value, PassphraseMenu
+from seed import seed_words_to_encoded_secret, PassphraseMenu
 from utils import xfp2str
 from actions import goto_top_menu
 from nvstore import SettingsObject
@@ -22,7 +22,12 @@ pa.tmp_value = None
 PassphraseMenu.pp_sofar = ''
 SettingsObject.master_sv_data = {}
 SettingsObject.master_nvram_key = None
-set_seed_value(main.WORDS)
+# Test setup deliberately replaces the current secret.
+raw = seed_words_to_encoded_secret(main.WORDS)
+pa.change(new_secret=raw)
+pa.new_main_secret(raw)
+pa.reset()
+pa.login()
 stash.SensitiveValues.clear_cache()
 
 settings.set('chain', 'XTN')

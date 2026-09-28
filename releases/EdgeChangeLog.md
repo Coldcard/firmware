@@ -74,6 +74,9 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 - all of the above
 - synced with master up to and including `1.5.2Q`
+- Bugfix: Prevent unintended master seed replacement when scanning seed words
+  or an extended private key from Ready To Sign or the Key Teleport retry screen.
+
 
 
 # Release History
