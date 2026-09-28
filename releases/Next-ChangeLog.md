@@ -7,6 +7,9 @@ your addition and anything else already in this file.**
 
 # Shared Improvements - Both Mk and Q
 
+- Enhancement: Warn before installing firmware signed by an external contributor
+  or downgrading from the currently installed firmware. Thanks to Huzaifa Jawaid for his suggestion.
+
 - Bugfix: Fix device crash when message-signing input is valid JSON but not an
   object (NFC / QR / SD `.json` file). Thanks to [@Amiga500](https://github.com/Amiga500).
 
