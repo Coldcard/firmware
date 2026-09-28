@@ -123,8 +123,11 @@ def test_hacky_upgrade(mode, cap_story, transport, dev, sim_exec, make_firmware,
     else:
         upgrade_by_sd(data)
 
-    _, story = cap_story()
+    title, story = cap_story()
+    assert title == "WARNING"
     assert "Install this new firmware?" in story
+    assert "This code was signed by an EXTERNAL CONTRIBUTOR and not Coinkite." in story
+    assert "It could do anything." in story
     press_cancel()
     # check data was uploaded verbatim (VERY SLOW)
     # for pos in range(0, cooked.firmware_length + 128, 128):
@@ -164,6 +167,8 @@ def test_upgrade_staged_image_tamper(make_firmware, upload_file, cap_story,
     _, story = cap_story()
     assert "Install this new firmware?" in story
     assert "3.0.98" in story
+    assert "This code was signed by an EXTERNAL CONTRIBUTOR and not Coinkite." in story
+    assert "It could do anything." in story
 
     try:
         press_select()
@@ -171,6 +176,56 @@ def test_upgrade_staged_image_tamper(make_firmware, upload_file, cap_story,
         assert sim_eval("glob._fw_upgrade_called") == 'False'
     finally:
         sim_exec("from pincodes import pa; import glob; "
+                 "pa.firmware_upgrade = glob._fw_upgrade")
+
+
+@pytest.mark.parametrize('age', ['older', 'same', 'newer'])
+@pytest.mark.parametrize('external', [False, True])
+@pytest.mark.parametrize('approve', [False, True])
+def test_upgrade_confirmation(age, external, approve, make_firmware, upload_file,
+                              cap_story, press_select, press_cancel, sim_exec, sim_eval,
+                              is_q1, is_mark5):
+    hw = "q1" if is_q1 else (5 if is_mark5 else 4)
+    data = make_firmware(hw)
+    hdr = data[FW_HEADER_OFFSET:FW_HEADER_OFFSET+FW_HEADER_SIZE]
+    cooked = parse_hdr(hdr)
+    # Only exercise consent here; signature verification happens in the bootloader,
+    # whose entry point is replaced below so no test image is installed.
+    hdr = struct.pack(FWH_PY_FORMAT, *cooked._replace(pubkey_num=0 if external else 1))
+    data = data[:FW_HEADER_OFFSET] + hdr + data[FW_HEADER_OFFSET+FW_HEADER_SIZE:]
+    current_ts = bytearray(cooked.timestamp)
+    current_ts[0] += {'older': 1, 'same': 0, 'newer': -1}[age]
+
+    sim_exec("import glob, version; from pincodes import pa; "
+             "glob._get_header_value = version.get_header_value; "
+             "version.get_header_value = lambda fld: %r; "
+             "glob._fw_upgrade = pa.firmware_upgrade; "
+             "glob._fw_upgrade_called = False; "
+             "pa.firmware_upgrade = lambda *a: setattr(glob, '_fw_upgrade_called', True)"
+             % bytes(current_ts))
+    try:
+        upload_file(data + hdr)
+        title, story = cap_story()
+        assert (title == "WARNING") == (age == 'older' or external)
+        assert "Install this new firmware?" in story
+        assert "3.0.99" in story
+        assert ("Proposed firmware is a DOWNGRADE from the version already installed." in story) == (age == 'older')
+        assert ("It might contain already-fixed issues or security concerns." in story) == (age == 'older')
+        assert ("This code was signed by an EXTERNAL CONTRIBUTOR and not Coinkite." in story) == external
+        assert ("It could do anything." in story) == external
+        if external and age == 'older':
+            assert story.index("EXTERNAL CONTRIBUTOR") < story.index("DOWNGRADE") < story.index("Install this new firmware?")
+
+        if approve:
+            press_select()
+        else:
+            press_cancel()
+        time.sleep(1 if approve else 3)
+        assert sim_eval("glob._fw_upgrade_called") == str(approve)
+        assert sim_eval("__import__('auth').UserAuthorizedAction.active_request is None") == 'True'
+    finally:
+        sim_exec("import glob, version; from pincodes import pa; "
+                 "version.get_header_value = glob._get_header_value; "
                  "pa.firmware_upgrade = glob._fw_upgrade")
 
 
