@@ -29,6 +29,8 @@ This lists the changes in the most recent firmware, for each hardware platform.
   removed in 5.6.1/1.5.1Q. The new **View TRNG Words** menu item displays the full
   256-bit seed from the STM32 TRNG, SE1, and SE2 as 24 BIP39 words, allowing independent
   verification of dice-roll or coin-flip mixing which follows.
+- Bugfix: Clear the Set Nickname checkmark when the nickname is removed, including
+  empty nicknames saved by earlier firmware.
 - Bugfix: Reject duplicate singleton keys in PSBT maps.
 - Bugfix: Add a block-height reset to Single-Signer Spending Policy's
   **Last Violation** screen after policy bypass, matching CCC.
@@ -91,4 +93,3 @@ This lists the changes in the most recent firmware, for each hardware platform.
 - [`History-Q.md`](History-Q.md)
 - [`History-Mk.md` (Mk4 and Mk5)](History-Mk.md)
 - [`History-Mk3.md`](History-Mk3.md)
-
