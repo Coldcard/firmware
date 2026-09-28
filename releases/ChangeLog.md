@@ -30,7 +30,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
   256-bit seed from the STM32 TRNG, SE1, and SE2 as 24 BIP39 words, allowing independent
   verification of dice-roll or coin-flip mixing which follows.
 - Bugfix: Clear the Set Nickname checkmark when the nickname is removed, including
-  empty nicknames saved by earlier firmware.
+  empty nicknames saved by earlier firmware. Thanks to [@bonitoman](https://github.com/bonitoman).
 - Bugfix: Reject duplicate singleton keys in PSBT maps.
 - Bugfix: Add a block-height reset to Single-Signer Spending Policy's
   **Last Violation** screen after policy bypass, matching CCC.
