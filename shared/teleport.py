@@ -65,7 +65,7 @@ We will re-use same values as last try, unless you press (R) for new values to b
         if ch == KEY_QR:
             # help them scan now!
             x = QRScannerInteraction()
-            await x.scan_anything(expect_secret=False, tmp=False)
+            await x.scan_anything(expect_type='teleport')
             return
         elif ch == 'r':
             # wipe and restart; sender's work might be lost

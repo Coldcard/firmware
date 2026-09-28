@@ -923,7 +923,7 @@ class QRScannerInteraction:
         return await self.scan_general(prompt, addr_taster, line2=line2, enter_quits=True)
 
 
-    async def scan_anything(self, expect_secret=False, tmp=False):
+    async def scan_anything(self, expect_secret=False, tmp=False, expect_type=None):
         # start a QR scan, and act on what we find, whatever it may be.
         from ux import ux_show_story
         from pincodes import pa
@@ -932,6 +932,9 @@ class QRScannerInteraction:
         while 1:
             prompt = 'Scan any QR code, or CANCEL' if not expect_secret else \
                         'Scan XPRV or Seed Words, or CANCEL'
+            if expect_type:
+                label = {'psbt': 'PSBT', 'teleport': 'Key Teleport'}[expect_type]
+                prompt = 'Scan %s, or CANCEL' % label
 
             try:
                 got = await self.scan(prompt, line2=problem)
@@ -940,6 +943,8 @@ class QRScannerInteraction:
 
                 # Figure out what we got.
                 what, vals = decode_qr_result(got, expect_secret=expect_secret)
+                if expect_type and what != expect_type:
+                    raise QRDecodeExplained('Expected ' + label)
                 break
             except QRDecodeExplained as exc:
                 problem = str(exc)

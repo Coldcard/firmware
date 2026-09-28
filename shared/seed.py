@@ -979,7 +979,7 @@ def xprv_to_encoded_secret(xprv):
 def set_seed_value(words=None, encoded=None, chain=None):
     # Save the seed words (or other encoded private key) into secure element.
     # BIP-39 passphrase is not set at this point (empty string).
-    assert not pa.tmp_value, "temporary seed active"
+    assert not pa.has_secrets()
 
     if words:
         nv = seed_words_to_encoded_secret(words)
