@@ -1627,6 +1627,8 @@ class FirmwareUpgradeRequest(UserAuthorizedAction):
 
     async def interact(self):
         from version import decode_firmware_header
+        from sigheader import FWH_PY_FORMAT
+        from ustruct import unpack_from
         from utils import check_firmware_hdr
 
         # check header values
@@ -1642,7 +1644,8 @@ class FirmwareUpgradeRequest(UserAuthorizedAction):
                 return
 
         # Get informed consent to upgrade.
-        date, version, _ = decode_firmware_header(self.hdr)
+        date, fw_version, _ = decode_firmware_header(self.hdr)
+        _, timestamp, _, pk = unpack_from(FWH_PY_FORMAT, self.hdr)[0:4]
 
         msg = '''\
 Install this new firmware?
@@ -1651,10 +1654,22 @@ Install this new firmware?
   {built}
 
 Binary checksum and signature will be further verified before any changes are made.
-'''.format(version=version, built=date)
+'''.format(version=fw_version, built=date)
+
+        warnings = []
+        if pk == 0:
+            warnings.append('''\
+This code was signed by an EXTERNAL CONTRIBUTOR and not Coinkite. It could do anything.''')
+
+        if timestamp < version.get_header_value('timestamp'):
+            warnings.append('''\
+Proposed firmware is a DOWNGRADE from the version already installed. It might contain already-fixed issues or security concerns.''')
+
+        if warnings:
+            msg = '\n\n'.join(warnings) + '\n\n' + msg
 
         try:
-            ch = await ux_show_story(msg)
+            ch = await ux_show_story(msg, title='WARNING' if warnings else None)
 
             if ch == 'y':
                 assert glob.PSRAM.psram_write_count == self.psram_write_count
