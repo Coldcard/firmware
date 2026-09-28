@@ -24,5 +24,8 @@ your addition and anything else already in this file.**
 
 ## 1.5.3Q - 2026-09-xx
 
+- Bugfix: Prevent unintended master seed replacement when scanning seed words
+  or an extended private key from Ready To Sign or the Key Teleport retry screen.
+
 - tbd
 

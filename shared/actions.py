@@ -2020,7 +2020,7 @@ from your desktop wallet software or command line tools.'''
             if NFC and picked == KEY_NFC:
                 await NFC.start_psbt_rx()
             if picked == KEY_QR:
-                await _scan_any_qr()
+                await _scan_any_qr(expect_type='psbt')
 
             return
 
@@ -2436,11 +2436,11 @@ async def scan_any_qr(menu, label, item):
     expect_secret, tmp = item.arg
     await _scan_any_qr(expect_secret, tmp)
 
-async def _scan_any_qr(expect_secret=False, tmp=False):
+async def _scan_any_qr(expect_secret=False, tmp=False, expect_type=None):
     from ux_q1 import QRScannerInteraction
     x = QRScannerInteraction()
     try:
-        await x.scan_anything(expect_secret=expect_secret, tmp=tmp)
+        await x.scan_anything(expect_secret=expect_secret, tmp=tmp, expect_type=expect_type)
     except Exception as e:
         await ux_show_story(msg="Failed to import from QR.\n\n%s\n%s" % (e, problem_file_line(e)),
                             title="ERROR")
