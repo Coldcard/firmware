@@ -153,7 +153,7 @@ LoginPrefsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Change Main PIN', f=main_pin_changer, predicate=is_not_tmp),
     NonDefaultMenuItem('Trick PINs', 'tp', menu=TrickPinMenu.make_menu, predicate=has_real_secret),
-    NonDefaultMenuItem('Set Nickname', 'nick', prelogin=True, f=pick_nickname),
+    NonDefaultMenuItem('Set Nickname', 'nick', prelogin=True, default_value='', f=pick_nickname),
     NonDefaultMenuItem('Scramble Keys', 'rngk', prelogin=True, f=pick_scramble, default_value=0),
     NonDefaultMenuItem('Kill Key', 'kbtn', prelogin=True, f=pick_killkey),
     NonDefaultMenuItem('Login Countdown', 'lgto', prelogin=True, chooser=countdown_chooser),

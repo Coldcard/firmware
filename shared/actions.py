@@ -470,7 +470,10 @@ async def pick_nickname(*a):
 
     nn = await ux_input_text(nick, confirm_exit=False, prompt="Enter Nickname")
 
-    if nn is None or (nick == nn): return  # user exit & same value - noop
+    if nn is None: return  # user exit - noop
+
+    nn = nn.strip()
+    if nn and nick == nn: return
 
     from glob import dis
     dis.fullscreen("Saving...")
@@ -479,7 +482,7 @@ async def pick_nickname(*a):
     if not nn:
         s.remove_key(k)
     else:
-        s.set(k, nn.strip())
+        s.set(k, nn)
 
     s.save()
     dis.busy_bar(False)
