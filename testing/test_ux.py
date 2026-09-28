@@ -1694,6 +1694,56 @@ def test_file_picker_suffixes(pick_menu_item, goto_home, cap_story, microsd_wipe
     microsd_wipe()
 
 
+@pytest.mark.parametrize('nick', [None, '', 'A'])
+@pytest.mark.parametrize('blank', ['', ' ', '  '])
+def test_nickname_clear(nick, blank, goto_home, pick_menu_item, press_select,
+                        enter_complex, need_keypress, is_q1, settings_set,
+                        settings_get, settings_remove, sim_exec):
+    # Mk text entry cannot submit zero characters: clear with spaces instead.
+    if not blank and not is_q1:
+        pytest.skip('Mk text entry requires at least one character')
+
+    if nick is None:
+        settings_remove('nick', prelogin=True)
+    else:
+        settings_set('nick', nick, prelogin=True)
+
+    try:
+        goto_home()
+        pick_menu_item('Settings')
+        pick_menu_item('Login Settings')
+        pick_menu_item('Set Nickname')
+        if not nick:
+            press_select()  # intro
+        elif is_q1:
+            need_keypress(KEY_DELETE)
+
+        enter_complex(blank, b39pass=False)
+        assert settings_get('nick', None, prelogin=True) is None
+        assert sim_exec("from flow import LoginPrefsMenu; RV.write(repr(next("
+                        "m for m in LoginPrefsMenu if m.label == 'Set Nickname'"
+                        ").is_chosen()))") == 'False'
+    finally:
+        goto_home()
+        settings_remove('nick', prelogin=True)
+
+
+@pytest.mark.parametrize('nick', [None, '', 'Alice'])
+def test_nickname_checkmark(nick, settings_set, settings_remove, sim_exec):
+    # An empty string saved by older firmware must not show a checkmark.
+    if nick is None:
+        settings_remove('nick', prelogin=True)
+    else:
+        settings_set('nick', nick, prelogin=True)
+
+    try:
+        assert sim_exec("from flow import LoginPrefsMenu; RV.write(repr(next("
+                        "m for m in LoginPrefsMenu if m.label == 'Set Nickname'"
+                        ").is_chosen()))") == repr(bool(nick))
+    finally:
+        settings_remove('nick', prelogin=True)
+
+
 @pytest.mark.parametrize("already_set", [True, False])
 def test_nickname_cancel_preserves_existing(already_set, goto_home, pick_menu_item, need_keypress,
                                             settings_set, settings_get, press_cancel, press_select,
