@@ -1496,7 +1496,7 @@ async def import_xprv(_1, _2, item):
     await import_extended_key_as_secret(extended_key, ephemeral, origin='Imported XPRV')
     # not reached; will do reset.
 
-async def codex32_calculate_checksum(*a):
+async def codex32_calculate_checksum(_1, _2, item):
     from codex32 import Share
 
     value = ""
@@ -1518,7 +1518,7 @@ async def codex32_calculate_checksum(*a):
                 continue
 
         intro = 'Checksum:\n\n%s\n\nCodex32:\n\n' % share.checksum().upper()
-        await show_shamir_share(share.to_string(), share.uid, intro=intro)
+        await show_shamir_share(share.to_string(), share.uid, intro=intro, ephemeral=item.arg)
         break
 
 async def import_codex32_as_secret(value, ephemeral, origin=None):
@@ -2710,19 +2710,29 @@ async def pushtx_setup_menu(*a):
 async def shamir_share_story(menu, label, item):
     await show_shamir_share(*item.arg)
 
-async def show_shamir_share(value, uid, intro=None):
+async def show_shamir_share(value, uid, intro=None, ephemeral=None):
+    # ephemeral=None: no activation offered; True/False: offer activation as
+    # temporary or master seed for secret shares (index S) only.
     from glob import NFC, dis
     from seed import render_codex32
 
-    index = value[8]
+    index = value[8].upper()
+    key0 = None
+    if index == 'S' and ephemeral is not None:
+        key0 = 'to use as temporary seed' if ephemeral else 'to use as master seed'
     name = "Share '%s'" % index
     intro = (intro or '') + render_codex32(value)
     while True:
         choice = await import_export_prompt(name, title=name, intro=intro,
-                                            sensitive=True)
+                                            sensitive=True, key0=key0)
         if choice == KEY_CANCEL: return
 
-        if choice == KEY_QR:
+        if choice == '0' and key0:
+            if ephemeral or await ux_confirm('This share becomes the master seed of this'
+                                             ' device.', title='Master Seed'):
+                return await import_codex32_as_secret(value, ephemeral=ephemeral)
+
+        elif choice == KEY_QR:
             await show_qr_code(value, is_alnum=True, msg=name, is_secret=True)
 
         elif choice == KEY_NFC:

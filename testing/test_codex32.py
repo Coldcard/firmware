@@ -247,19 +247,22 @@ def goto_shamir_split(goto_home, pick_menu_item, cap_story, cap_screen, press_se
     return doit
 
 
-@pytest.mark.parametrize('text', [SHARES[0], CW_SHARE_A, SHARES[3]])
+@pytest.mark.parametrize('text', [SHARES[0], CW_SHARE_A, CW_SHARES[0], SHARES[3]])
 def test_calculate_checksum_manual(text, goto_codex32_menu, pick_menu_item, cap_story,
                                    cap_screen, press_select, enter_bech32, press_cancel,
                                    cap_menu, sim_exec, is_q1, enable_nfc, enable_hw_ux,
                                    load_export, need_keypress, microsd_path, virtdisk_path,
-                                   garbage_collector, is_headless, cap_screen_qr, goto_home):
+                                   garbage_collector, is_headless, cap_screen_qr, goto_home,
+                                   settings_set, active_secret, confirm_tmp_seed, reset_seed_words):
     goto_home()
+    settings_set('seedvault', False)
     enable_nfc()
     enable_hw_ux('vdisk')
     goto_codex32_menu(tmp=True)
     snapshot = ('RV.write(repr((bytes(pa.fetch(bypass_tmp=True)), pa.tmp_value, '
                 'settings.nvram_key, settings.current)))')
     before = sim_exec(snapshot)
+    master = sim_exec('RV.write(repr(bytes(pa.fetch(bypass_tmp=True))))')
     pick_menu_item('Calculate Checksum' if is_q1 else 'Calc Checksum')
     assert 'cannot detect existing transcription mistakes' in cap_story()[1]
     assert '(0) to enter manually' in cap_story()[1]
@@ -286,6 +289,10 @@ def test_calculate_checksum_manual(text, goto_codex32_menu, pick_menu_item, cap_
     assert parse_rendered_codex32(story.split('Codex32:', 1)[1]) == text.upper()
     assert 'to show QR code' in story
     assert 'to share via NFC' in story
+    is_secret = text[8].lower() == SECRET
+    assert ('(0)' in story) == is_secret
+    assert ('(0) to use as temporary seed' in story) == is_secret
+    assert '(0) to use as master seed' not in story
     for way, path_f in [('sd', microsd_path), ('vdisk', virtdisk_path)]:
         if way == 'sd':
             need_keypress('1')
@@ -304,6 +311,14 @@ def test_calculate_checksum_manual(text, goto_codex32_menu, pick_menu_item, cap_
         press_cancel()
         time.sleep(.2)
     assert sim_exec(snapshot) == before
+    if is_secret:
+        need_keypress('0')
+        node = bip32_node_from_codex32_share(Share.parse(text))
+        confirm_tmp_seed(expect_xfp=node.fingerprint().hex().upper())
+        assert active_secret() == native_encoding(text).hex()
+        assert sim_exec('RV.write(repr(bytes(pa.fetch(bypass_tmp=True))))') == master
+        reset_seed_words()
+        return
     press_cancel()
     time.sleep(.2)
     assert ('Calculate Checksum' if is_q1 else 'Calc Checksum') in cap_menu()
@@ -332,6 +347,40 @@ def test_calculate_checksum_full_share(text, goto_codex32_menu, pick_menu_item,
     press_cancel()
     time.sleep(.2)
     assert ('Calculate Checksum' if is_q1 else 'Calc Checksum') in cap_menu()
+
+
+@pytest.mark.parametrize('tmp', [False, True])
+def test_calculate_checksum_seedless_activation(tmp, unit_test, goto_codex32_menu,
+                                                pick_menu_item, press_select,
+                                                enter_bech32, cap_story, need_keypress,
+                                                confirm_tmp_seed, expect_ftux, is_q1,
+                                                active_secret, sim_exec, reset_seed_words):
+    unit_test('devtest/clear_seed.py')
+    try:
+        goto_codex32_menu(tmp=tmp)
+        pick_menu_item('Calculate Checksum' if is_q1 else 'Calc Checksum')
+        need_keypress('0')
+        time.sleep(.2)
+        enter_bech32(SHARES[0][:-13])
+        time.sleep(.2)
+        story = cap_story()[1]
+        assert ('(0) to use as temporary seed' in story) == tmp
+        assert ('(0) to use as master seed' in story) == (not tmp)
+        need_keypress('0')
+        if tmp:
+            confirm_tmp_seed()
+        else:
+            title, story = cap_story()
+            assert title == 'Master Seed'
+            assert 'becomes the master seed' in story
+            press_select()
+            expect_ftux()
+        assert active_secret() == native_encoding(SHARES[0]).hex()
+        assert sim_exec('RV.write(str(pa.is_secret_blank()))') == str(tmp)
+        assert sim_exec('RV.write(str(pa.tmp_value is not None))') == str(tmp)
+    finally:
+        reset_seed_words()
+
 
 
 @pytest.mark.parametrize('case', ['lower', 'upper', 'mixed'])
@@ -553,6 +602,7 @@ def export_shares(cap_story, press_select, cap_menu, pick_menu_item, need_keypre
             pick_menu_item(label)
             title, story = cap_story()
             assert title == label
+            assert '(0)' not in story
             value = parse_rendered_codex32(story)
             share = Share.parse(value)
             assert share.threshold == threshold
@@ -1540,7 +1590,9 @@ def test_derive_codex32_shares(hrp, size, state, threshold, reset_seed_words, un
     secret = generate_share(shares, SECRET).to_string()
     for index in output_indices[:2]:
         pick_menu_item("Share '%s'" % index)
-        value = parse_rendered_codex32(cap_story()[1])
+        story = cap_story()[1]
+        assert '(0)' not in story
+        value = parse_rendered_codex32(story)
         if index == output_indices[0]:
             assert value == expected
         assert value == generate_share(shares, index.lower()).to_string()
@@ -1566,6 +1618,7 @@ def test_derive_codex32_shares(hrp, size, state, threshold, reset_seed_words, un
     assert 'Exit and discard collected shares?' in story
     press_cancel()  # keep the session, including its original inputs
     pick_menu_item("Share '%s'" % output_indices[0])
+    assert '(0)' not in cap_story()[1]
     assert parse_rendered_codex32(cap_story()[1]) == expected
     press_cancel()
     press_cancel()
