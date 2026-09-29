@@ -309,6 +309,31 @@ def test_calculate_checksum_manual(text, goto_codex32_menu, pick_menu_item, cap_
     assert ('Calculate Checksum' if is_q1 else 'Calc Checksum') in cap_menu()
 
 
+@pytest.mark.parametrize('text', [SHARES[0], CW_SHARE_A, SHARES[3]])
+def test_calculate_checksum_full_share(text, goto_codex32_menu, pick_menu_item,
+                                       cap_story, press_select, enter_bech32,
+                                       need_keypress, press_cancel, cap_menu,
+                                       active_secret, is_q1):
+    # A complete share already carries its checksum: show it unchanged instead of
+    # extending the payload and computing a checksum for a different share.
+    before = active_secret()
+    goto_codex32_menu(tmp=True)
+    pick_menu_item('Calculate Checksum' if is_q1 else 'Calc Checksum')
+    need_keypress('0')
+    time.sleep(.2)
+    checksum_len = 15 if len(text) == 127 else 13
+    enter_bech32(' '.join(text.lower()[i:i+4] for i in range(0, len(text), 4)))
+    time.sleep(.2)
+    title, story = cap_story()
+    assert title == "Share '%s'" % text[8].upper()
+    assert 'Checksum:\n\n' + text[-checksum_len:].upper() in story
+    assert parse_rendered_codex32(story.split('Codex32:', 1)[1]) == text.upper()
+    assert active_secret() == before
+    press_cancel()
+    time.sleep(.2)
+    assert ('Calculate Checksum' if is_q1 else 'Calc Checksum') in cap_menu()
+
+
 @pytest.mark.parametrize('case', ['lower', 'upper', 'mixed'])
 @pytest.mark.parametrize('from_editor', [False, True])
 def test_calculate_checksum_scan_case(case, from_editor, is_q1, goto_codex32_menu, pick_menu_item,
