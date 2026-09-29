@@ -359,8 +359,10 @@ async def ux_enter_bip32_index(prompt, can_cancel=True, unlimited=False):
 
 async def ux_enter_codex32(value='', scan_ok=True):
     # Spaces may be inserted to group the text and are ignored on return.
+    # Rejected input from other transports may exceed the editor's capacity;
+    # truncate the prefill rather than crash Q1's renderer.
     from codex32 import UX_CHARSET
-    rv = await ux_input_text(value, charset=UX_CHARSET.upper(), confirm_exit=True,
+    rv = await ux_input_text(value[:191], charset=UX_CHARSET.upper(), confirm_exit=True,
                              prompt='Enter Codex32',
                              scan_ok=scan_ok, max_len=191, min_len=35)
     return rv.replace(' ', '') if rv else rv

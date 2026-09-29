@@ -508,6 +508,34 @@ def test_calculate_checksum_retry(goto_codex32_menu, pick_menu_item, cap_story,
     press_cancel()
 
 
+def test_calculate_checksum_retry_long_input(goto_codex32_menu, pick_menu_item, cap_story,
+                                             cap_screen, press_select, press_cancel,
+                                             need_keypress, active_secret, is_q1,
+                                             nfc_write_text, press_nfc, enable_nfc):
+    # A rejected over-long NFC/QR input must not crash the retry editor: the
+    # prefill is truncated to the editor's capacity (Q1 asserted off-screen).
+    before = active_secret()
+    enable_nfc()
+    goto_codex32_menu(tmp=True)
+    pick_menu_item('Calculate Checksum' if is_q1 else 'Calc Checksum')
+    press_nfc()
+    time.sleep(.2)
+    nfc_write_text('ms10tests' + 'q' * 300)
+    time.sleep(1)
+    title, story = cap_story()
+    assert title == 'FAILED'
+    assert 'ms codex32 length' in story
+    press_select()
+    need_keypress('0')
+    time.sleep(.5)
+    # Editor opens with the truncated prefill; no crash, input still editable.
+    assert 'Enter Codex32' in cap_screen()
+    press_cancel()
+    time.sleep(.2)
+    press_cancel()
+    assert active_secret() == before
+
+
 @pytest.mark.parametrize('way', ['sd', 'vdisk', 'nfc', 'qr'])
 @pytest.mark.parametrize('text', [CW_SHARE_A, SHARES[3]])
 def test_calculate_checksum_import(way, text, goto_codex32_menu, pick_menu_item,
