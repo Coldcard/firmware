@@ -530,9 +530,17 @@ def test_calculate_checksum_retry_long_input(goto_codex32_menu, pick_menu_item, 
     time.sleep(.5)
     # Editor opens with the truncated prefill; no crash, input still editable.
     assert 'Enter Codex32' in cap_screen()
-    press_cancel()
+    # Submit the still-invalid prefill to leave the editor on both Q and Mk.
+    press_select()
+    time.sleep(.2)
+    title, story = cap_story()
+    assert title == 'FAILED'
+    assert 'ms codex32 length' in story
+    press_select()
     time.sleep(.2)
     press_cancel()
+    time.sleep(.2)
+    assert ('Calculate Checksum' if is_q1 else 'Calc Checksum') in cap_screen()
     assert active_secret() == before
 
 
@@ -1921,9 +1929,11 @@ def test_import_codex32_invalid_key_preserves_state(key, state, vault,
         sim_exec('from stash import SecretStash; '
                  'pa.tmp_secret(SecretStash.encode(master_secret=bytes(range(32))))')
 
+    # Delayed settings saves may advance _age without changing wallet state.
     snapshot = (
         'RV.write(repr((bytes(pa.fetch(bypass_tmp=True)), pa.tmp_value, '
-        'pa.is_secret_blank(), settings.nvram_key, settings.current, '
+        'pa.is_secret_blank(), settings.nvram_key, '
+        '{k: v for k, v in settings.current.items() if k != "_age"}, '
         'settings.master_get("seeds", []))))')
     before = sim_exec(snapshot)
     value = Share.from_seed(bytes(32) + key.to_bytes(32, 'big'),
@@ -1962,8 +1972,10 @@ def test_non_secret_import_preserves_state(value, state, vault, unit_test, reset
     if state == 'temporary':
         sim_exec('from stash import SecretStash; '
                  'pa.tmp_secret(SecretStash.encode(master_secret=bytes(range(32))))')
+    # Delayed settings saves may advance _age without changing wallet state.
     snapshot = ('RV.write(repr((bytes(pa.fetch(bypass_tmp=True)), pa.tmp_value, '
-                'pa.is_secret_blank(), settings.nvram_key, settings.current, '
+                'pa.is_secret_blank(), settings.nvram_key, '
+                '{k: v for k, v in settings.current.items() if k != "_age"}, '
                 'settings.master_get("seeds", []))))')
     before = sim_exec(snapshot)
     try:
