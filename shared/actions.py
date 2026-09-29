@@ -2766,7 +2766,7 @@ async def codex32_shamir_split(*a):
         if not await ux_confirm(intro + recovery, title='WARNING'):
             return
 
-    msg = ("Split the current wallet using Codex32 Shamir sharing. Each split uses fresh"
+    msg = ("Split the current wallet using Codex32 Shamir Secret Sharing. Each split uses fresh"
            " randomness and a new ID. Fewer than the threshold shares reveal no information"
            " about the secret.")
     tmp = None

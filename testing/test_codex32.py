@@ -233,7 +233,7 @@ def goto_shamir_split(goto_home, pick_menu_item, cap_story, cap_screen, press_se
         title, story = cap_story()
         assert title == 'Shamir Split'
         assert 'CX1' not in story
-        assert 'Split the current wallet using Codex32 Shamir sharing.' in story
+        assert 'Split the current wallet using Codex32 Shamir Secret Sharing.' in story
         assert 'Each split uses fresh randomness and a new ID.' in story
         if active:
             warning = 'WARNING: The split will use the wallet derived from the active %s.' % active
