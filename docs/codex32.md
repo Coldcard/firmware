@@ -179,7 +179,8 @@ and ordinary Shamir shares are supported. Manual entry uses uppercase; Q convert
 lowercase keystrokes to uppercase. Scanned text must be all uppercase or all
 lowercase. Spaces between groups are allowed.
 The result shows the checksum and completed string, preserving all payload and
-padding bits. You can display the completed string as a QR code, send it
+padding bits. Entering a complete share shows its existing checksum and leaves
+the string unchanged. You can display the completed string as a QR code, send it
 via NFC, or save it to MicroSD or Virtual Disk, depending on your device and
 enabled features. It does not import or activate a wallet.
 
