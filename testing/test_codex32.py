@@ -262,9 +262,10 @@ def test_calculate_checksum_manual(text, goto_codex32_menu, pick_menu_item, cap_
     before = sim_exec(snapshot)
     pick_menu_item('Calculate Checksum' if is_q1 else 'Calc Checksum')
     assert 'cannot detect existing transcription mistakes' in cap_story()[1]
-    press_select()
+    assert '(0) to enter manually' in cap_story()[1]
+    need_keypress('0')
     time.sleep(.2)
-    assert 'Header + payload' in cap_screen()
+    assert 'Enter Codex32' in cap_screen()
     checksum_len = 15 if len(text) == 127 else 13
     body = text[:-checksum_len]
     if is_q1:
@@ -309,7 +310,8 @@ def test_calculate_checksum_manual(text, goto_codex32_menu, pick_menu_item, cap_
 
 
 @pytest.mark.parametrize('case', ['lower', 'upper', 'mixed'])
-def test_calculate_checksum_scan_case(case, is_q1, goto_codex32_menu, pick_menu_item,
+@pytest.mark.parametrize('from_editor', [False, True])
+def test_calculate_checksum_scan_case(case, from_editor, is_q1, goto_codex32_menu, pick_menu_item,
                                       press_select, need_keypress, scan_a_qr, cap_screen,
                                       cap_story, press_cancel, cap_menu, active_secret):
     if not is_q1:
@@ -322,22 +324,23 @@ def test_calculate_checksum_scan_case(case, is_q1, goto_codex32_menu, pick_menu_
         body = body[:-1] + 'Q'
     goto_codex32_menu(tmp=True)
     pick_menu_item('Calculate Checksum')
-    press_select()
-    time.sleep(.2)
+    if from_editor:
+        need_keypress('0')
+        time.sleep(.2)
     need_keypress(KEY_QR)
     time.sleep(.2)
     scan_a_qr(body)
     time.sleep(1)
-    # Short scans stay in the editor and must retain their original case.
-    assert body in ''.join(c for c in cap_screen() if c.isalnum())
-    press_select()
-    time.sleep(.2)
+    if from_editor:
+        # Short scans stay in the editor and must retain their original case.
+        assert body in ''.join(c for c in cap_screen() if c.isalnum())
+        press_select()
+        time.sleep(.2)
     title, story = cap_story()
     if case == 'mixed':
         assert title == 'FAILED'
         assert 'mixed case' in story
         press_select()
-        press_cancel()
         press_cancel()
     else:
         assert title == "Share 'S'"
@@ -348,15 +351,46 @@ def test_calculate_checksum_scan_case(case, is_q1, goto_codex32_menu, pick_menu_
     assert active_secret() == before
 
 
+@pytest.mark.parametrize('recover', [False, True])
+@pytest.mark.parametrize('missing_checksum', [False, True])
+def test_codex32_scan_requires_checksum(recover, missing_checksum, only_q1,
+                                      goto_codex32_menu, goto_shamir_recover,
+                                      pick_menu_item, need_keypress, scan_a_qr,
+                                      cap_screen, cap_story, active_secret,
+                                      press_select, press_cancel):
+    before = active_secret()
+    if recover:
+        goto_shamir_recover(tmp=True)
+    else:
+        goto_codex32_menu(tmp=True)
+        pick_menu_item('Import Codex32')
+    need_keypress(KEY_QR)
+    time.sleep(.2)
+    scan_a_qr('unrelated text')
+    time.sleep(1)
+    assert 'Expected Codex32' in cap_screen()
+    value = CW_SHARE_A[:-13] if missing_checksum else CW_SHARE_A[:-1] + 'Q'
+    scan_a_qr(value)
+    time.sleep(1)
+    title, story = cap_story()
+    assert title == 'FAILED'
+    assert ('cw codex32 length' if missing_checksum else 'incorrect checksum') in story
+    assert active_secret() == before
+    press_select()
+    if recover:
+        assert 'Collected: 0' in cap_story()[1]
+        press_cancel()
+
+
 @pytest.mark.parametrize('at_entry', [False, True])
 def test_calculate_checksum_cancel(at_entry, goto_codex32_menu, pick_menu_item,
                                    press_select, press_cancel, cap_menu, is_q1,
-                                   active_secret):
+                                   active_secret, need_keypress):
     before = active_secret()
     goto_codex32_menu(tmp=True)
     pick_menu_item('Calculate Checksum' if is_q1 else 'Calc Checksum')
     if at_entry:
-        press_select()
+        need_keypress('0')
         time.sleep(.2)
         press_cancel()
         time.sleep(.2)
@@ -373,11 +407,11 @@ def test_calculate_checksum_cancel(at_entry, goto_codex32_menu, pick_menu_item,
 
 def test_calculate_checksum_retry(goto_codex32_menu, pick_menu_item, cap_story,
                                   press_select, enter_bech32, press_delete,
-                                  press_cancel, active_secret, is_q1):
+                                  press_cancel, active_secret, is_q1, need_keypress):
     before = active_secret()
     goto_codex32_menu(tmp=True)
     pick_menu_item('Calculate Checksum' if is_q1 else 'Calc Checksum')
-    press_select()
+    need_keypress('0')
     time.sleep(.2)
     body = 'ms10tests' + 'q' * 27
     enter_bech32(body)
@@ -386,6 +420,7 @@ def test_calculate_checksum_retry(goto_codex32_menu, pick_menu_item, cap_story,
     assert title == 'FAILED'
     assert 'ms codex32 length' in story
     press_select()
+    need_keypress('0')
     time.sleep(.2)
     # The rejected input is retained. Remove the extra payload symbol.
     press_delete()
@@ -395,6 +430,56 @@ def test_calculate_checksum_retry(goto_codex32_menu, pick_menu_item, cap_story,
     assert title == "Share 'S'"
     assert parse_rendered_codex32(story.split('Codex32:', 1)[1]) == \
         Share.from_seed(bytes(16), 'ms', 'test', 's', 0).to_string()
+    assert active_secret() == before
+    press_cancel()
+
+
+@pytest.mark.parametrize('way', ['sd', 'vdisk', 'nfc', 'qr'])
+@pytest.mark.parametrize('text', [CW_SHARE_A, SHARES[3]])
+def test_calculate_checksum_import(way, text, goto_codex32_menu, pick_menu_item,
+                                   cap_story, need_keypress, press_nfc, nfc_write_text,
+                                   scan_a_qr, microsd_path, virtdisk_path, garbage_collector,
+                                   enable_nfc, enable_hw_ux, goto_home, is_q1,
+                                   active_secret, press_cancel):
+    if way == 'qr' and not is_q1:
+        pytest.skip('requires Q scanner')
+    goto_home()
+    enable_nfc()
+    enable_hw_ux('vdisk')
+    before = active_secret()
+    checksum_len = 15 if len(text) == 127 else 13
+    body = text[:-checksum_len]
+    fname = 'test-c32-checksum.txt'
+    if way in ('sd', 'vdisk'):
+        path = (microsd_path if way == 'sd' else virtdisk_path)(fname)
+        garbage_collector.append(path)
+        with open(path, 'w') as fd:
+            fd.write(body)
+    else:
+        body = ' '.join(body[i:i+4] for i in range(0, len(body), 4))
+
+    goto_codex32_menu(tmp=True)
+    pick_menu_item('Calculate Checksum' if is_q1 else 'Calc Checksum')
+    story = cap_story()[1]
+    assert 'without its checksum' in story
+    assert 'from SD Card' in story
+    assert 'from Virtual Disk' in story
+    assert 'to import via NFC' in story
+    if way in ('sd', 'vdisk'):
+        need_keypress('1' if way == 'sd' else '2')
+        pick_menu_item(fname)
+    elif way == 'nfc':
+        press_nfc()
+        time.sleep(.2)
+        nfc_write_text(body)
+    else:
+        need_keypress(KEY_QR)
+        scan_a_qr(body)
+    time.sleep(1)
+    title, story = cap_story()
+    assert title == "Share '%s'" % text[8].upper()
+    assert 'Checksum:\n\n' + text[-checksum_len:].upper() in story
+    assert parse_rendered_codex32(story.split('Codex32:', 1)[1]) == text.upper()
     assert active_secret() == before
     press_cancel()
 

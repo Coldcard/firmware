@@ -884,10 +884,10 @@ class QRScannerInteraction:
 
     async def scan_codex32(self, prompt):
         def convertor(got):
-            what, values = decode_qr_result(got, expect_secret=True)
-            if what != 'codex32':
+            value = decode_qr_result(got, expect_text=True)
+            if value.strip().replace(' ', '')[:3].lower() not in ('ms1', 'cx1', 'cw1'):
                 raise QRDecodeExplained('Expected Codex32')
-            return values[0]
+            return value
 
         return await self.scan_general(prompt, convertor, enter_quits=True)
 

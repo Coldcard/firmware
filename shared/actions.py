@@ -1499,17 +1499,16 @@ async def import_xprv(_1, _2, item):
 async def codex32_calculate_checksum(*a):
     from codex32 import Share
 
-    if not await ux_confirm('Enter the Codex32 header and payload, without its checksum.\n\n'
-                            'Calculating a checksum cannot detect existing transcription mistakes.',
-                            title='Calculate Checksum' if version.has_qwerty else 'Calc Checksum'):
-        return
-
     value = ""
     while True:
-        value = await ux_enter_codex32(value, with_checksum=False)
+        value = await import_codex32_share(
+            intro='Enter the Codex32 header and payload, without its checksum.\n\n'
+                  'Calculating a checksum cannot detect existing transcription mistakes.',
+            title='Calculate Checksum' if version.has_qwerty else 'Calc Checksum',
+            input_value=value)
         if not value: break
         try:
-            share = Share.from_body(value)
+            share = Share.from_body(value.strip().replace(' ', ''))
         except Exception as exc:
             await ux_show_story('Invalid Codex32 header or payload.\n\n%s' % exc,
                                 title='FAILED')
@@ -1559,7 +1558,7 @@ async def codex32_from_file(choice):
         except OSError:
             return False
 
-    fn = await file_picker(suffix='.txt', min_size=48, max_size=512,
+    fn = await file_picker(suffix='.txt', min_size=35, max_size=512,
                            taster=contains_codex32,
                            none_msg='Must contain Codex32.', **choice)
     if not fn:
