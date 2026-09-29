@@ -704,11 +704,19 @@ def goto_shamir_recover(goto_codex32_menu, pick_menu_item, cap_story, cap_screen
     return doit
 
 
-def check_recover_story(story, threshold=None, uid=None, num_collected=0, hrp=None):
+def check_recover_story(story, threshold=None, uid=None, num_collected=0, hrp=None,
+                        indices=None, is_q1=False):
     assert 'Collected: %d' % num_collected in story
     assert 'Threshold: %s' % ('?' if threshold is None else threshold) in story
     assert 'ID: %s' % ('?' if uid is None else uid.upper()) in story
     assert 'HRP: %s' % ('?' if hrp is None else hrp.upper()) in story
+    if indices is not None:
+        assert len(indices) == num_collected
+        expected = 'Collected: %d' % num_collected
+        if indices:
+            labels = ' '.join(sorted(index.upper() for index in indices))
+            expected += (' (%s)' if is_q1 else '\n%s') % labels
+        assert story.split('Threshold:', 1)[0] == expected + '\n'
 
 
 @pytest.fixture
@@ -1225,7 +1233,7 @@ def recover_codex32_shares(goto_shamir_recover, cap_story, need_keypress, is_q1,
         goto_shamir_recover(tmp=tmp, seed_vault=seed_vault)
         time.sleep(.1)
         _, story = cap_story()
-        check_recover_story(story)
+        check_recover_story(story, indices=[], is_q1=is_q1)
 
         if way in ('sd', 'vdisk') and fnames is None:
             path_f = microsd_path if way == 'sd' else virtdisk_path
@@ -1273,7 +1281,8 @@ def recover_codex32_shares(goto_shamir_recover, cap_story, need_keypress, is_q1,
             if pos < threshold:
                 time.sleep(.1)
                 _, story = cap_story()
-                check_recover_story(story, threshold, uid, pos, first.hrp)
+                check_recover_story(story, threshold, uid, pos, first.hrp,
+                                    indices=[s[8] for s in shares[:pos]], is_q1=is_q1)
 
     return doit
 
@@ -1524,7 +1533,7 @@ def test_shamir_recover_failures(reset_seed_words, goto_shamir_recover, generate
 def test_derive_codex32_shares(hrp, size, state, threshold, reset_seed_words, unit_test, set_encoded_secret,
                               import_ephemeral_xprv, goto_codex32_menu, pick_menu_item,
                               cap_story, cap_menu, press_select, press_cancel, need_keypress,
-                              microsd_path, garbage_collector, sim_exec, master_settings_get):
+                              microsd_path, garbage_collector, sim_exec, master_settings_get, is_q1):
     reset_seed_words()
     output_indices = IDX_ORDER[threshold + 1:10].upper()
     if (hrp, size, threshold) == ('ms', 16, 2):
@@ -1537,6 +1546,8 @@ def test_derive_codex32_shares(hrp, size, state, threshold, reset_seed_words, un
         shares = [Share.from_seed(os.urandom(size), hrp, 'name', idx, threshold, 1)
                   for idx in IDX_ORDER[1:threshold + 1]]
         expected = generate_share(shares, output_indices[0].lower()).to_string()
+    # Import out of order to check that collected indices are displayed sorted.
+    shares.reverse()
     if state in ('blank', 'blank_temporary'):
         unit_test('devtest/clear_seed.py')
         sim_exec('settings.load()')
@@ -1561,9 +1572,10 @@ def test_derive_codex32_shares(hrp, size, state, threshold, reset_seed_words, un
 
     for pos, share in enumerate(shares):
         if pos:
-            check_recover_story(cap_story()[1], threshold, 'name', pos, hrp)
+            check_recover_story(cap_story()[1], threshold, 'name', pos, hrp,
+                                indices=[s.index for s in shares[:pos]], is_q1=is_q1)
         else:
-            check_recover_story(cap_story()[1])
+            check_recover_story(cap_story()[1], indices=[], is_q1=is_q1)
         name = 'derive_%s.txt' % share.index
         path = microsd_path(name)
         garbage_collector.append(path)
@@ -1581,7 +1593,8 @@ def test_derive_codex32_shares(hrp, size, state, threshold, reset_seed_words, un
             pick_menu_item('Derive Shares')
             press_select()  # warning
             press_select()  # collection introduction
-            check_recover_story(cap_story()[1], threshold, 'name', 1, hrp)
+            check_recover_story(cap_story()[1], threshold, 'name', 1, hrp,
+                                indices=[share.index], is_q1=is_q1)
 
     assert master_settings_get('c32_shares') == []
     menu = cap_menu()

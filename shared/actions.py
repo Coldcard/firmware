@@ -2894,8 +2894,11 @@ async def collect_codex32_shares(title):
         expected = (first.hrp, first.uid, first.threshold, len(first))
 
     while expected is None or len(shares) < expected[2]:
-        intro = 'Collected: %d\nThreshold: %s\nID: %s\nHRP: %s' % (
-            len(shares),
+        indices = ' '.join(sorted(s.index.upper() for s in shares))
+        if indices:
+            indices = (' (%s)' if version.has_qwerty else '\n%s') % indices
+        intro = 'Collected: %d%s\nThreshold: %s\nID: %s\nHRP: %s' % (
+            len(shares), indices,
             expected[2] if expected else '?',
             expected[1].upper() if expected else '?',
             expected[0].upper() if expected else '?'
