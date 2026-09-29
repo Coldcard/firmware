@@ -182,7 +182,11 @@ The result shows the checksum and completed string, preserving all payload and
 padding bits. Entering a complete share shows its existing checksum and leaves
 the string unchanged. You can display the completed string as a QR code, send it
 via NFC, or save it to MicroSD or Virtual Disk, depending on your device and
-enabled features. It does not import or activate a wallet.
+enabled features. For a secret with index `S`,
+press **0** to activate it without exporting and re-importing it. From the direct
+`Codex32` menu this creates the Master Seed. From `Temporary Seed > Codex32` it
+always creates a Temporary Seed, even when no Master Seed is configured.
+Calculating the checksum alone does not activate a wallet.
 
 Calculating a checksum cannot detect existing transcription mistakes: it computes
 a checksum for exactly the header and payload you entered.

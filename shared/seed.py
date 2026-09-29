@@ -1641,7 +1641,7 @@ async def make_codex32_menu(menu, label, item):
         MenuItem('Shamir Recover', f=codex32_shamir_recover, arg=ephemeral),
         MenuItem('Derive Shares', f=codex32_derive_shares, predicate=not_hobbled_mode),
         MenuItem('Calculate Checksum' if version.has_qwerty else 'Calc Checksum',
-                 f=codex32_calculate_checksum),
+                 f=codex32_calculate_checksum, arg=ephemeral),
     ])
 
 async def start_b39_pw(menu, label, item):
