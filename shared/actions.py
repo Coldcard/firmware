@@ -2910,7 +2910,7 @@ async def collect_codex32_shares(title):
             # pre-fill the part that we already know (hrp+threshold+id)
             prefix = (expected[0] + '1' + str(expected[2]) + expected[1]).upper()
 
-        value = await import_codex32_share(intro, title, prefix)
+        value = await import_codex32_share(intro, title if version.has_qwerty else None, prefix)
         if value is False:
             if not shares: return
             msg = 'Discard collected shares?\n\nPress (1) to Save & Exit.'
