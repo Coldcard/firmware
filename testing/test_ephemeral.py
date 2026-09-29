@@ -1794,7 +1794,8 @@ def test_home_menu_xfp(name_fits, goto_home, pick_menu_item, press_select, cap_s
     sim_exec("from seed import SecretStash; from pincodes import pa; "
              "encoded = SecretStash.storage_serialize(pa.tmp_value); "
              "settings.master_set('seeds', %r + [(%r, encoded, 'Travel', 'test')]); "
-             "settings.master_set('tsn', True)" % (original_seeds, tmp_xfp))
+             "settings.master_set('tsn', True); "
+             "from actions import goto_top_menu; goto_top_menu()" % (original_seeds, tmp_xfp))
     goto_home()
     assert cap_menu()[0] == "[Travel]"
 
@@ -1803,13 +1804,15 @@ def test_home_menu_xfp(name_fits, goto_home, pick_menu_item, press_select, cap_s
     test_name = 'N' * name_width
     sim_exec("from seed import SecretStash; from pincodes import pa; "
              "encoded = SecretStash.storage_serialize(pa.tmp_value); "
-             "settings.master_set('seeds', %r + [(%r, encoded, %r, 'test')])" %
+             "settings.master_set('seeds', %r + [(%r, encoded, %r, 'test')]); "
+             "from actions import goto_top_menu; goto_top_menu()" %
              (original_seeds, tmp_xfp, test_name))
     goto_home()
     expected_name = "[" + test_name + "]" if name_fits else "[" + tmp_xfp + "]"
     assert cap_menu()[0] == expected_name
 
-    sim_exec("settings.master_set('seeds', %r); settings.master_set('tsn', %r)" %
+    sim_exec("settings.master_set('seeds', %r); settings.master_set('tsn', %r); "
+             "from actions import goto_top_menu; goto_top_menu()" %
              (original_seeds, original_tsn))
     goto_home()
     assert cap_menu()[0] == "[" + tmp_xfp + "]"
