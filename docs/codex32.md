@@ -243,6 +243,7 @@ To recover as a temporary wallet, select:
 Shares may be supplied in any order and through any supported import method.
 After the first share, COLDCARD requires the HRP, ID, threshold, and length to
 match. Duplicate share indices and secret index `s` values are rejected.
+The collection screen lists the indices already collected, including saved shares.
 
 Shares are collected from external sources only. Neither the active wallet nor
 Seed Vault supplies shares to recovery or derivation.
