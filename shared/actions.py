@@ -1508,11 +1508,14 @@ async def codex32_calculate_checksum(*a):
             input_value=value)
         if not value: break
         try:
-            share = Share.from_body(value.strip().replace(' ', ''))
-        except Exception as exc:
-            await ux_show_story('Invalid Codex32 header or payload.\n\n%s' % exc,
-                                title='FAILED')
-            continue
+            share = Share.parse(value.strip().replace(' ', ''))
+        except Exception:
+            try:
+                share = Share.from_body(value.strip().replace(' ', ''))
+            except Exception as exc:
+                await ux_show_story('Invalid Codex32 header or payload.\n\n%s' % exc,
+                                    title='FAILED')
+                continue
 
         intro = 'Checksum:\n\n%s\n\nCodex32:\n\n' % share.checksum().upper()
         await show_shamir_share(share.to_string(), share.uid, intro=intro)
