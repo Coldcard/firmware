@@ -2900,6 +2900,7 @@ async def codex32_shamir_recover(menu, label, item):
 
 async def collect_codex32_shares(title):
     from codex32 import Share
+    from glob import dis
 
     if not await ux_confirm('Import shares from one Codex32 set. Their HRP, ID, threshold and '
                             'length must match. Order does not matter.', title=title):
@@ -2936,6 +2937,8 @@ async def collect_codex32_shares(title):
                         ' protected by encryption.')
             ch = await ux_show_story(msg, escape='1')
             if ch not in "1y": continue
+            if ch == '1':
+                dis.fullscreen('Saving...')
             settings.master_set('c32_shares', [s.to_string() for s in shares] if ch == "1" else [])
             return
 
