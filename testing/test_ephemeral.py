@@ -1768,6 +1768,18 @@ def test_home_menu_xfp(name_fits, goto_home, pick_menu_item, press_select, cap_s
     assert m[0] == "<" + xfp2str(settings_get("xfp")) + ">"
     assert m[1] == "Ready To Sign"
 
+    original_tsn = master_settings_get("tsn")
+    pick_menu_item("Settings")
+    pick_menu_item("Buried Settings")
+    pick_menu_item("Temporary Seed Names" if has_qwerty else "Tmp Seed Names")
+    time.sleep(.1)
+    _, story = cap_story()
+    if "Show a temporary seed's Seed Vault name" in story:
+        press_select()
+    pick_menu_item("Use Names")
+    time.sleep(.2)
+    assert master_settings_get("tsn") == 1
+
     goto_eph_seed_menu()
     pick_menu_item("Generate Words")
     pick_menu_item(f"12 Words")
@@ -1783,18 +1795,16 @@ def test_home_menu_xfp(name_fits, goto_home, pick_menu_item, press_select, cap_s
         press_select()  # do not save
     press_select()  # new tmp seed
 
-    time.sleep(.2)
+    time.sleep(.3)  # allow temporary settings to save before modifying master settings
     m = cap_menu()
     assert m[1] == "Ready To Sign"
     tmp_xfp = xfp2str(settings_get("xfp"))
     assert m[0] == "[" + tmp_xfp + "]"
 
     original_seeds = master_settings_get("seeds") or []
-    original_tsn = master_settings_get("tsn")
     sim_exec("from seed import SecretStash; from pincodes import pa; "
              "encoded = SecretStash.storage_serialize(pa.tmp_value); "
              "settings.master_set('seeds', %r + [(%r, encoded, 'Travel', 'test')]); "
-             "settings.master_set('tsn', True); "
              "from actions import goto_top_menu; goto_top_menu()" % (original_seeds, tmp_xfp))
     goto_home()
     assert cap_menu()[0] == "[Travel]"
