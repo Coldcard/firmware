@@ -11,6 +11,7 @@ from uhashlib import sha256
 from chains import taptweak
 from dleq import generate_dleq_proof, verify_dleq_proof
 from exceptions import FatalPSBTIssue
+from serializations import hash160
 from silentpayments import (
     _compute_ecdh_share,
     _compute_input_hash,
@@ -264,7 +265,7 @@ class MockPSBT(SilentPaymentsMixin):
 
 def _make_eligible_input(pk, deriv, txid, vout_bytes):
     inp = MockInput()
-    inp.utxo_spk = P2WPKH_SPK
+    inp.utxo_spk = b"\x00\x14" + hash160(pk)  # the prevout must commit to the derivation pubkey
     inp.subpaths = [(pk, deriv)]
     inp.previous_txid = txid
     inp.prevout_idx = vout_bytes

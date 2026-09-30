@@ -119,7 +119,7 @@ class TestBIP375ValidVectors:
                 for inp in vec["supplementary"]["inputs"]
                 if inp["private_key"] and _sim_pubkey_from_input(sim_exec, sim_execfile, p, inp["input_index"])
             ]
-            for expected in vec["supplementary"]["sp_proofs"]:
+            for expected in vec["supplementary"].get("sp_proofs", []):
                 scan_key = unhexlify(expected["scan_key"])
                 expected_ecdh = unhexlify(expected["ecdh_share"])
                 if "input_index" in expected:

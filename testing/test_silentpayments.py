@@ -15,6 +15,7 @@ from binascii import unhexlify
 from bip32 import BIP32Node
 from ckcc_protocol.protocol import CCProtoError
 from constants import simulator_fixed_tprv
+from helpers import hash160
 from psbt import BasicPSBT
 from sp_helpers import (
     _sim_apply_label_to_spend_key,
@@ -1026,6 +1027,8 @@ def test_cosigner_change_output_is_allowed_with_warning(dev, fake_txn, start_sig
         # The firmware will fail to derive a privkey for this XFP → all_sp_inputs_ours=False.
         psbt.inputs[0].bip32_paths = {}
         psbt.inputs[0].bip32_paths[foreign_pub] = foreign_xfp + struct.pack('<II', 0, 0)
+        # The prevout must commit to the foreign key, else the derivation is rejected as a mismatch
+        psbt.inputs[0].witness_utxo = psbt.inputs[0].witness_utxo[:8] + b"\x16\x00\x14" + hash160(foreign_pub)
 
         # Pre-populate real per-input ECDH shares + DLEQ proofs for input 0 so that
         # coverage is complete after input 1's shares are computed by the firmware.

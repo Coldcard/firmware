@@ -17,7 +17,7 @@ from precomp_tag_hash import (
     BIP352_SHARED_SECRET_TAG_H,
     TAP_TWEAK_H,
 )
-from serializations import SIGHASH_ALL, SIGHASH_DEFAULT
+from serializations import SIGHASH_ALL, SIGHASH_DEFAULT, hash160
 from ubinascii import unhexlify as a2b_hex
 from utils import keypath_to_str
 
@@ -461,13 +461,32 @@ class SilentPaymentsMixin:
                 return False
         return True
 
+    def _committed_key_hash(self, input):
+        """
+        Hash160 of the public key a non-taproot eligible input's prevout commits to
+
+        Returns:
+            bytes: 20-byte key hash, or None if the script type carries none
+        """
+        spk = input.utxo_spk
+        if _is_p2wpkh(spk):
+            return spk[2:22]
+        if _is_p2pkh(spk):
+            return spk[3:23]
+        if _is_p2sh(spk) and input.redeem_script:
+            rs = self.get(input.redeem_script)
+            if _is_p2wpkh(rs):
+                return rs[2:22]
+        return None
+
     def _pubkey_from_input(self, input):
         """
         Extract the contributing public key from an input
 
         Note:
             P2TR: use PSBT_IN_WITNESS_UTXO to fetch x-only compressed pubkey
-            non-taproot: use BIP32 derivation pubkey from subpaths
+            non-taproot: use the BIP32 derivation pubkey that matches the prevout script,
+            skipping any decoy derivations
 
         Returns:
             bytes: Input public key (33-byte compressed) or None if not found
@@ -479,9 +498,10 @@ class SilentPaymentsMixin:
         if spk and _is_p2tr(spk):
             return b"\x02" + spk[2:34]
         if input.subpaths:
+            key_hash = self._committed_key_hash(input)
             for pk_coords, _ in input.subpaths:
                 pk = self.get(pk_coords)
-                if len(pk) == 33:
+                if len(pk) == 33 and hash160(pk) == key_hash:
                     return pk
         return None
 
@@ -596,6 +616,10 @@ class SilentPaymentsMixin:
                     "BIP-375 violation: Input #%d spends Segwit v%d output. "
                     "Silent payment outputs cannot be mixed with Segwit v>1 inputs." % (i, witness_version)
                 )
+
+            # A derivation pubkey that does not match the prevout script must not reach the ECDH sum
+            if inp.subpaths and not _is_p2tr(spk) and self._is_input_eligible(inp) and not self._pubkey_from_input(inp):
+                raise FatalPSBTIssue("Input #%d: BIP32_DERIVATION pubkey does not match prevout script" % i)
 
     def _validate_ecdh_coverage(self):
         """
