@@ -175,7 +175,7 @@ BuriedSettingsMenu = [
                           'Master seed is displayed as <XFP>, temporary seeds as [XFP].'),
                    predicate=has_real_secret,
                    on_change=goto_home),
-    ToggleMenuItem('Temporary Seed Names', 'tsn', ['Use XFP', 'Use Names'],
+    ToggleMenuItem('Temporary Seed Names' if version.has_qwerty else 'Tmp Seed Names', 'tsn', ['Use XFP', 'Use Names'],
                    story=("Show a temporary seed's Seed Vault name instead of its XFP "
                           "at the top of the home menu. If the name is too long to "
                           "fit, the XFP is shown."),
