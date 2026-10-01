@@ -14,7 +14,7 @@ your addition and anything else already in this file.**
 
 ## 5.6.? - 2026-10-??
 
-- tbd
+- Bugfix: Fix awkwardly wrapped share labels when displaying Codex32 QR codes on Mk4 and Mk5.
 
 
 
