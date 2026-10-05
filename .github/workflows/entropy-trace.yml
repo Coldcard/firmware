@@ -1,0 +1,69 @@
+name: Entropy Trace
+
+# Traces where generate_seed's randomness comes from and fails the check when it
+# resolves to a weak source (a non-cryptographic PRNG). An unresolved chain
+# warns without failing in `pr` mode.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write # to upload the SARIF to code scanning
+
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Only the submodules the analysis reads. `submodules: recursive` also pulls
+      # MicroPython's lwip, which lives on a server that cannot do shallow clones.
+      - name: Fetch the submodules the analysis needs
+        run: |
+          git submodule update --init --depth 1 external/micropython external/libngu
+          git -C external/micropython submodule update --init --depth 1 lib/stm32lib
+          git -C external/libngu submodule update --init --depth 1 libs/secp256k1 libs/cifra libs/bech32
+
+      - name: Run Entropy Trace
+        id: entropy-trace
+        uses: jantropy/entropy-trace@main
+        with:
+          profile: .entropy-trace/coldcard.yaml
+          mode: pr
+        # Still upload the SARIF below when the verdict is FAIL.
+        continue-on-error: true
+
+      - name: Upload SARIF to code scanning
+        if: steps.entropy-trace.outputs.sarif-path != ''
+        # An upload problem (code scanning off on a fork) must not hide the verdict.
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.entropy-trace.outputs.sarif-path }}
+
+      - name: Show what it found
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os
+          path = "${{ steps.entropy-trace.outputs.findings-path }}"
+          outcome = "${{ steps.entropy-trace.outcome }}"
+          if not path or not os.path.exists(path):
+              print(f"::warning title=Entropy Trace::no result file was written (step {outcome})")
+              raise SystemExit
+          d = json.load(open(path))
+          print(f"::notice title=Entropy Trace::overall {d['policy']['overall_verdict']} (step {outcome})")
+          for v in d["policy"]["verdicts"]:
+              line = f"{v['sink_name']}: {v['verdict']} ({v.get('terminal_category') or 'not traced'})"
+              for note in v.get("notes", []):
+                  line += f". Caveat: {note}"
+              print(f"::notice title=Entropy Trace::{line}")
+          PY
+
+      - name: Fail the job on a FAIL verdict
+        if: steps.entropy-trace.outcome == 'failure' || steps.entropy-trace.outputs.overall-verdict == 'FAIL'
+        run: |
+          echo "::error::Entropy Trace verdict: ${{ steps.entropy-trace.outputs.overall-verdict }} (step ${{ steps.entropy-trace.outcome }})"
+          exit 1

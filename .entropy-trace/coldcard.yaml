@@ -1,0 +1,11 @@
+# How Entropy Trace reads this repository: which build to read, and where the
+# seed is generated (generate_seed in shared/seed.py is in the analyser's own
+# catalogue, so it is not repeated here).
+adapter: coldcard
+board: COLDCARD_MK4
+build:
+  backend: make
+# The Action's container has no Docker, so the ARM sysroot target cannot be
+# fetched there; this target preprocesses without one (the report says so).
+target_yaml: data/targets/arm-none-eabi-cortex-m4.yaml
+run_bip32_anchor: true
