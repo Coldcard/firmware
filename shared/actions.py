@@ -1489,11 +1489,20 @@ async def import_xprv(_1, _2, item):
 async def codex32_calculate_checksum(_1, _2, item):
     from codex32 import Share
 
+    if not await ux_confirm(
+            'If you are generating new data, check the entered data exactly against your original. '
+            'Any transcription mistakes will be locked in by completing the checksum. '
+            'It cannot detect or correct them.\n\n'
+            'Never replace a failed checksum on an existing backup. '
+            'That can hide corrupted seed data.\n\n'
+            'A valid checksum does not mean the seed was generated securely.', title='WARNING'):
+        return
+
     value = ""
     while True:
         value = await import_codex32_share(
-            intro='Enter the Codex32 header and payload, without its checksum.\n\n'
-                  'Calculating a checksum cannot detect existing transcription mistakes.',
+            intro='Enter the MS1 header and payload without its checksum. '
+                  'Spaces between groups are allowed.',
             title='Calculate Checksum' if version.has_qwerty else 'Calc Checksum',
             input_value=value)
         if not value: break

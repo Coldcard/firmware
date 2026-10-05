@@ -170,7 +170,8 @@ original Codex32 string is not stored or included in encrypted backups.
 
 ## Calculate a Checksum
 
-Select **Codex32 > Calculate Checksum** (**Calc Checksum** on Mk4/Mk5) and enter
+Select **Codex32 > Calculate Checksum** (**Calc Checksum** on Mk4/Mk5), read and
+accept the warning, then enter
 the header and payload without a checksum via MicroSD, Virtual Disk, NFC, QR scan,
 or manual entry, depending on the device and enabled hardware. Text files may be
 35 to 512 bytes and follow the same single-line format as share imports.
@@ -189,7 +190,8 @@ always creates a Temporary Seed, even when no Master Seed is configured.
 Calculating the checksum alone does not activate a wallet.
 
 Calculating a checksum cannot detect existing transcription mistakes: it computes
-a checksum for exactly the header and payload you entered.
+a checksum for exactly the header and payload you entered, and cannot verify
+randomness. Do not remove and replace a failed checksum from an existing backup.
 
 ## Split the Active Wallet
 

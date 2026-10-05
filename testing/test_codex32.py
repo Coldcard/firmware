@@ -264,7 +264,10 @@ def test_calculate_checksum_manual(text, goto_codex32_menu, pick_menu_item, cap_
     before = sim_exec(snapshot)
     master = sim_exec('RV.write(repr(bytes(pa.fetch(bypass_tmp=True))))')
     pick_menu_item('Calculate Checksum' if is_q1 else 'Calc Checksum')
-    assert 'cannot detect existing transcription mistakes' in cap_story()[1]
+    assert cap_story()[0] == 'WARNING'
+    assert 'transcription mistakes will be locked in' in cap_story()[1]
+    press_select()
+    assert 'Spaces between groups are allowed.' in cap_story()[1]
     assert '(0) to enter manually' in cap_story()[1]
     need_keypress('0')
     time.sleep(.2)
@@ -334,6 +337,7 @@ def test_calculate_checksum_full_share(text, goto_codex32_menu, pick_menu_item,
     before = active_secret()
     goto_codex32_menu(tmp=True)
     pick_menu_item('Calculate Checksum' if is_q1 else 'Calc Checksum')
+    press_select()
     need_keypress('0')
     time.sleep(.2)
     checksum_len = 15 if len(text) == 127 else 13
@@ -359,6 +363,7 @@ def test_calculate_checksum_seedless_activation(tmp, unit_test, goto_codex32_men
     try:
         goto_codex32_menu(tmp=tmp)
         pick_menu_item('Calculate Checksum' if is_q1 else 'Calc Checksum')
+        press_select()
         need_keypress('0')
         time.sleep(.2)
         enter_bech32(SHARES[0][:-13])
@@ -400,6 +405,7 @@ def test_calculate_checksum_scan_case(case, from_editor, is_q1, goto_codex32_men
             body = body[:3] + ' ' + body[3:9] + ' ' + body[9:]
     goto_codex32_menu(tmp=True)
     pick_menu_item('Calculate Checksum')
+    press_select()
     if from_editor:
         need_keypress('0')
         time.sleep(.2)
@@ -464,14 +470,17 @@ def test_codex32_scan_requires_checksum(recover, missing_checksum, only_q1,
         press_cancel()
 
 
-@pytest.mark.parametrize('at_entry', [False, True])
-def test_calculate_checksum_cancel(at_entry, goto_codex32_menu, pick_menu_item,
+@pytest.mark.parametrize('stage', ['warning', 'prompt', 'editor'])
+def test_calculate_checksum_cancel(stage, goto_codex32_menu, pick_menu_item,
                                    press_select, press_cancel, cap_menu, is_q1,
-                                   active_secret, need_keypress):
+                                   active_secret, need_keypress, cap_story):
     before = active_secret()
     goto_codex32_menu(tmp=True)
     pick_menu_item('Calculate Checksum' if is_q1 else 'Calc Checksum')
-    if at_entry:
+    assert cap_story()[0] == 'WARNING'
+    if stage != 'warning':
+        press_select()
+    if stage == 'editor':
         need_keypress('0')
         time.sleep(.2)
         press_cancel()
@@ -504,7 +513,11 @@ def test_calculate_checksum_reject_hrp(text, form, goto_codex32_menu,
     enable_nfc()
     goto_codex32_menu(tmp=True)
     pick_menu_item('Calculate Checksum' if is_q1 else 'Calc Checksum')
-    assert 'Enter the Codex32 header' in cap_story()[1]
+    warning = cap_story()[1]
+    assert 'Never replace a failed checksum' in warning
+    assert 'A valid checksum does not mean the seed was generated securely.' in warning
+    press_select()
+    assert 'Enter the MS1 header' in cap_story()[1]
     press_nfc()
     time.sleep(.2)
     nfc_write_text(value.lower())
@@ -514,7 +527,7 @@ def test_calculate_checksum_reject_hrp(text, form, goto_codex32_menu,
     assert 'Only MS1 shares are supported.' in story
     assert active_secret() == before
     press_select()
-    assert 'Enter the Codex32 header' in cap_story()[1]
+    assert 'Enter the MS1 header' in cap_story()[1]
     press_cancel()
     assert ('Calculate Checksum' if is_q1 else 'Calc Checksum') in cap_menu()
 
@@ -525,6 +538,7 @@ def test_calculate_checksum_retry(goto_codex32_menu, pick_menu_item, cap_story,
     before = active_secret()
     goto_codex32_menu(tmp=True)
     pick_menu_item('Calculate Checksum' if is_q1 else 'Calc Checksum')
+    press_select()
     need_keypress('0')
     time.sleep(.2)
     body = 'ms10tests' + 'q' * 27
@@ -558,6 +572,7 @@ def test_calculate_checksum_retry_long_input(goto_codex32_menu, pick_menu_item, 
     enable_nfc()
     goto_codex32_menu(tmp=True)
     pick_menu_item('Calculate Checksum' if is_q1 else 'Calc Checksum')
+    press_select()
     press_nfc()
     time.sleep(.2)
     nfc_write_text('ms10tests' + 'q' * 300)
@@ -590,7 +605,7 @@ def test_calculate_checksum_import(way, text, goto_codex32_menu, pick_menu_item,
                                    cap_story, need_keypress, press_nfc, nfc_write_text,
                                    scan_a_qr, microsd_path, virtdisk_path, garbage_collector,
                                    enable_nfc, enable_hw_ux, goto_home, is_q1,
-                                   active_secret, press_cancel):
+                                   active_secret, press_cancel, press_select):
     if way == 'qr' and not is_q1:
         pytest.skip('requires Q scanner')
     goto_home()
@@ -610,6 +625,7 @@ def test_calculate_checksum_import(way, text, goto_codex32_menu, pick_menu_item,
 
     goto_codex32_menu(tmp=True)
     pick_menu_item('Calculate Checksum' if is_q1 else 'Calc Checksum')
+    press_select()
     story = cap_story()[1]
     assert 'without its checksum' in story
     assert 'from SD Card' in story
