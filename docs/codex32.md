@@ -174,8 +174,8 @@ Select **Codex32 > Calculate Checksum** (**Calc Checksum** on Mk4/Mk5) and enter
 the header and payload without a checksum via MicroSD, Virtual Disk, NFC, QR scan,
 or manual entry, depending on the device and enabled hardware. Text files may be
 35 to 512 bytes and follow the same single-line format as share imports.
-MS1, CW1 and CX1 secret `S`
-and ordinary Shamir shares are supported. Manual entry uses uppercase; Q converts
+Only MS1 shares are supported, both secret `S` and ordinary Shamir shares.
+Manual entry uses uppercase; Q converts
 lowercase keystrokes to uppercase. Scanned text must be all uppercase or all
 lowercase. Spaces between groups are allowed.
 The result shows the checksum and completed string, preserving all payload and

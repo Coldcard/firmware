@@ -1498,14 +1498,16 @@ async def codex32_calculate_checksum(_1, _2, item):
             input_value=value)
         if not value: break
         try:
-            share = Share.parse(value.strip().replace(' ', ''))
-        except Exception:
+            clean = value.strip().replace(' ', '')
+            assert clean[:3].lower() == 'ms1', 'Only MS1 shares are supported.'
             try:
-                share = Share.from_body(value.strip().replace(' ', ''))
-            except Exception as exc:
-                await ux_show_story('Invalid Codex32 header or payload.\n\n%s' % exc,
-                                    title='FAILED')
-                continue
+                share = Share.parse(clean)
+            except Exception:
+                share = Share.from_body(clean)
+        except Exception as err:
+            await ux_show_story('Invalid Codex32 header or payload.\n\n%s' % err,
+                                title='FAILED')
+            continue
 
         intro = 'Checksum:\n\n%s\n\nCodex32:\n\n' % share.checksum().upper()
         await show_shamir_share(share.to_string(), share.uid, intro=intro, ephemeral=item.arg)
