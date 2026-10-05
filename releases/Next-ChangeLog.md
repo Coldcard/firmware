@@ -7,7 +7,8 @@ your addition and anything else already in this file.**
 
 # Shared Improvements - Both Mk and Q
 
-- tbd
+- Change: Restrict the Codex32 checksum calculator to MS1 shares and warn that
+  completing a checksum locks in transcription errors.
 
 
 # Mk Specific Changes
