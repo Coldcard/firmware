@@ -651,10 +651,10 @@ def test_calculate_checksum_import(way, text, goto_codex32_menu, pick_menu_item,
 
 
 @pytest.fixture
-def shamir_split_settings(enter_number, cap_screen, cap_story, press_select):
+def shamir_split_settings(enter_number, cap_screen, cap_story, press_select, is_q1):
     def doit(num_shares, threshold):
         time.sleep(.1)
-        assert 'Number of shares (2-9):' in cap_screen()
+        assert ('Number of shares (2-9):' if is_q1 else 'Num shares (2-9):') in cap_screen()
         enter_number(num_shares)
         time.sleep(.1)
         assert 'Threshold (2-%d):' % num_shares in cap_screen()
@@ -1225,10 +1225,10 @@ def test_shamir_split_storage_warning(reset_seed_words, goto_shamir_split,
 
 @pytest.mark.parametrize('threshold', [1, 9])
 def test_shamir_split_rejects_threshold_outside_share_range(threshold, reset_seed_words, goto_shamir_split,
-                                                            enter_number, cap_screen, cap_story, press_select):
+                                                            enter_number, cap_screen, cap_story, press_select, is_q1):
     reset_seed_words()
     goto_shamir_split()
-    assert 'Number of shares (2-9):' in cap_screen()
+    assert ('Number of shares (2-9):' if is_q1 else 'Num shares (2-9):') in cap_screen()
     enter_number(3)
     time.sleep(.1)
     assert 'Threshold (2-3):' in cap_screen()
@@ -1243,10 +1243,10 @@ def test_shamir_split_rejects_threshold_outside_share_range(threshold, reset_see
 
 @pytest.mark.parametrize('num_shares', [0, 1])
 def test_shamir_split_rejects_too_few_shares(num_shares, reset_seed_words, goto_shamir_split,
-                                             enter_number, cap_screen, cap_story, press_select):
+                                             enter_number, cap_screen, cap_story, press_select, is_q1):
     reset_seed_words()
     goto_shamir_split()
-    assert 'Number of shares (2-9):' in cap_screen()
+    assert ('Number of shares (2-9):' if is_q1 else 'Num shares (2-9):') in cap_screen()
     enter_number(num_shares)
     time.sleep(.1)
 
@@ -1257,10 +1257,17 @@ def test_shamir_split_rejects_too_few_shares(num_shares, reset_seed_words, goto_
 
 
 def test_shamir_split_m_of_m_warning_cancel(reset_seed_words, goto_shamir_split,
-                                            enter_number, cap_screen, cap_story, press_cancel):
+                                            enter_number, cap_screen, cap_story, press_cancel,
+                                            is_q1, sim_exec):
     reset_seed_words()
     goto_shamir_split()
-    assert 'Number of shares (2-9):' in cap_screen()
+    if not is_q1:
+        # cap_screen records the full prompt even when the OLED clips it.
+        width, screen_width = eval(sim_exec(
+            'from glob import dis; from display import FontSmall; '
+            'RV.write(repr((dis.width(sim_display.contents[0], FontSmall), dis.WIDTH)))'))
+        assert width <= screen_width
+    assert ('Number of shares (2-9):' if is_q1 else 'Num shares (2-9):') in cap_screen()
     enter_number(3)
     time.sleep(.1)
     assert 'Threshold (2-3):' in cap_screen()

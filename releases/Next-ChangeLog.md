@@ -17,6 +17,8 @@ your addition and anything else already in this file.**
 
 - Bugfix: Fix awkwardly wrapped share labels when displaying Codex32 QR codes on Mk4 and Mk5.
 
+- Bugfix: Shorten the Shamir Split share-count prompt on Mk4/Mk5 to fit the screen.
+
 
 
 # Q Specific Changes
