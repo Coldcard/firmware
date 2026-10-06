@@ -13,6 +13,9 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
+- Bugfix: Clear the Set Nickname checkmark when the nickname is removed, including
+  empty nicknames saved by earlier firmware. Thanks to [@bonitoman](https://github.com/bonitoman).
+
 - Enhancement: Support per-input required height and time locktimes in PSBTv2 transactions.
 - New Feature: Added USB ncry v3 authenticated encryption with direction-separated keys and replay protection
 - Enhancement: Warn when a transaction's block-height `nLockTime` is more than
