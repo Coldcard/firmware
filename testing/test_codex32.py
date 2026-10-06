@@ -907,7 +907,8 @@ def test_c32_flag_lifecycle(set_encoded_secret, reset_seed_words, settings_get,
 
 
 @pytest.mark.parametrize('seed_type', ['words', 'xprv', 'ms', 'cx'])
-def test_integration(seed_type, unit_test, set_seed_words,
+@pytest.mark.parametrize('addr_fmt', ['p2wpkh', 'p2tr'])
+def test_integration(seed_type, addr_fmt, unit_test, set_seed_words,
                      import_codex32_ui, expect_ftux, goto_shamir_split,
                      shamir_split_settings, export_shares,
                      press_cancel, press_select, dev, settings_set, active_secret,
@@ -935,7 +936,7 @@ def test_integration(seed_type, unit_test, set_seed_words,
         expect_ftux()
     settings_set('chain', 'XTN')
     expected = dev.send_recv(CCProtocolPacker.get_xpub())
-    psbt = fake_txn(2, 2, master_xpub=expected, addr_fmt='p2wpkh')
+    psbt = fake_txn(2, 2, master_xpub=expected, addr_fmt=addr_fmt)
     _, signed_before = try_sign(psbt, finalize=True)
 
     goto_shamir_split()
@@ -957,7 +958,37 @@ def test_integration(seed_type, unit_test, set_seed_words,
     if native:
         assert active_secret() == native_encoding(original.to_string()).hex()
     _, signed_after = try_sign(psbt, finalize=True)
-    assert signed_after == signed_before
+    if addr_fmt == 'p2tr':
+        from io import BytesIO
+        from ctransaction import CTransaction, CTxOut
+        from psbt import BasicPSBT
+        from sighash import taproot_sighash
+        from pysecp256k1.extrakeys import xonly_pubkey_parse
+        from pysecp256k1.schnorrsig import schnorrsig_verify
+
+        unsigned = BasicPSBT().parse(psbt)
+        prevouts = []
+        for inp in unsigned.inputs:
+            prevout = CTxOut()
+            prevout.deserialize(BytesIO(inp.witness_utxo))
+            prevouts.append((prevout.nValue, prevout.scriptPubKey))
+
+        # Schnorr signatures use fresh randomness. Verify each against the
+        # original transaction and keys, both before and after recovery.
+        for result in (signed_before, signed_after):
+            tx = CTransaction()
+            tx.deserialize(BytesIO(result))
+            assert tx.serialize_without_witness() == unsigned.txn
+            assert len(tx.wit.vtxinwit) == len(prevouts)
+            for i, witness in enumerate(tx.wit.vtxinwit):
+                assert len(witness.scriptWitness.stack) == 1
+                sig, = witness.scriptWitness.stack
+                assert len(sig) == 64
+                digest = taproot_sighash(tx, i, prevouts)
+                pubkey = xonly_pubkey_parse(prevouts[i][1][2:])
+                assert schnorrsig_verify(sig, digest, pubkey)
+    else:
+        assert signed_after == signed_before
     reset_seed_words()
 
 
