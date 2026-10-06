@@ -727,7 +727,9 @@ def goto_shamir_recover(goto_codex32_menu, pick_menu_item, cap_story, cap_screen
             expected = ('The recovered Codex32 seed will be temporary and will not be saved to '
                         'the Secure Element.')
             assert warning == expected
-            assert 'recovered Codex32 seed' in cap_screen().replace('\n', ' ')
+            # The Mk EDGE watermark can appear between captured text lines.
+            screen = cap_screen().replace('\n', ' ')
+            assert 'recovered' in screen and 'Codex32 seed' in screen
             press_select()
             time.sleep(.1)
         _, story = cap_story()
@@ -933,7 +935,7 @@ def test_integration(seed_type, unit_test, set_seed_words,
         expect_ftux()
     settings_set('chain', 'XTN')
     expected = dev.send_recv(CCProtocolPacker.get_xpub())
-    psbt = fake_txn(2, 2, master_xpub=expected, segwit_in=True)
+    psbt = fake_txn(2, 2, master_xpub=expected, addr_fmt='p2wpkh')
     _, signed_before = try_sign(psbt, finalize=True)
 
     goto_shamir_split()

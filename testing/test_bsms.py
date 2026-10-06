@@ -903,10 +903,10 @@ def test_signer_round2(refuse, way, encryption_type, M_N, addr_fmt, clear_minisc
     "0" * 31,
     "0" * 33,
 ])
-@pytest.mark.parametrize("way", ["sd", "nfc", "vdisk", "manual"])
+@pytest.mark.parametrize("way", ["sd", "nfc", "vdisk", "manual", "manual_hex"])
 def test_invalid_token_signer_round1(token, way, pick_menu_item, cap_story, need_keypress,
                                      nfc_write_text, microsd_path, virtdisk_path, goto_home,
-                                     press_select, is_q1):
+                                     press_select, is_q1, enter_text):
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Multisig/Miniscript')
@@ -919,7 +919,19 @@ def test_invalid_token_signer_round1(token, way, pick_menu_item, cap_story, need
     pick_menu_item('Round 1')
     time.sleep(0.1)
     title, story = cap_story()
-    if way == "manual":
+    if way == "manual_hex":
+        need_keypress("2")  # manual
+        need_keypress("1")  # hexadecimal
+        if is_q1:
+            enter_text(token.upper())
+        else:
+            for pos, digit in enumerate(token):
+                if pos:
+                    need_keypress("9")  # next hex digit starts at zero
+                for _ in range(int(digit, 16)):
+                    need_keypress("5")  # up
+            press_select()
+    elif way == "manual":
         need_keypress("2")  # manual
         need_keypress("2")  # decimal
         for num in str(int(token, 16)):

@@ -53,8 +53,8 @@ def test_codex32_signing_matches_xprv(value, style, finalize, set_master_key,
 
     # Establish the signing result using the equivalent ordinary XPRV wallet.
     set_master_key(node.hwif(as_private=True))
-    psbt = fake_txn(2, 2, master_xpub=node.hwif(), segwit_in=style != 'p2pkh',
-                    wrapped=style == 'p2wpkh-p2sh', outstyles=[style], change_outputs=[1])
+    psbt = fake_txn(2, [[style], [style, None, True]],
+                    master_xpub=node.hwif(), addr_fmt=style)
     _, expected = try_sign(psbt, finalize=finalize)
     if finalize:
         txn = CTransaction()
