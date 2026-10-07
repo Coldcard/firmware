@@ -60,6 +60,15 @@ def import_miniscript(request, is_q1, need_keypress, offer_minsc_import, press_c
             press_nfc = request.getfixturevalue('press_nfc')
             pick_menu_item = request.getfixturevalue('pick_menu_item')
 
+            # Write before the picker opens: the device scans the card when
+            # Import is chosen, so a later write leaves the picker empty.
+            if way in ("sd", "vdisk") and not fname:
+                path_f = request.getfixturevalue(
+                    "microsd_path" if way == "sd" else "virtdisk_path")
+                fname = (name or "ms_wal") + ".txt"
+                with open(path_f(fname), "w") as f:
+                    f.write(config)
+
             goto_home()
             pick_menu_item("Settings")
             pick_menu_item("Multisig/Miniscript")
@@ -101,14 +110,6 @@ def import_miniscript(request, is_q1, need_keypress, offer_minsc_import, press_c
 
                 time.sleep(1)
                 return cap_story()
-
-            if not fname:
-                microsd_path = request.getfixturevalue("microsd_path")
-                virtdisk_path = request.getfixturevalue("virtdisk_path")
-                path_f = microsd_path if way == "sd" else virtdisk_path
-                fname = (name or "ms_wal") + ".txt"
-                with open(path_f(fname), "w") as f:
-                    f.write(config)
 
             if "Press (1) to import miniscript wallet file from SD Card" in story:
                 # in case Vdisk or NFC is enabled
