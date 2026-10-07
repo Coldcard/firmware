@@ -2027,7 +2027,7 @@ async def _ready2sign(intro="", probe=True, miniscript_wallet=None):
             if NFC and picked == KEY_NFC:
                 await NFC.start_psbt_rx(miniscript_wallet)
             if picked == KEY_QR:
-                await _scan_any_qr(miniscript_wallet=miniscript_wallet)
+                await _scan_any_qr(miniscript_wallet=miniscript_wallet, expect_type='psbt')
 
             return
 
@@ -2456,12 +2456,12 @@ async def scan_any_qr(menu, label, item):
     expect_secret, tmp = item.arg
     await _scan_any_qr(expect_secret, tmp)
 
-async def _scan_any_qr(expect_secret=False, tmp=False, miniscript_wallet=None):
+async def _scan_any_qr(expect_secret=False, tmp=False, miniscript_wallet=None, expect_type=None):
     from ux_q1 import QRScannerInteraction
     x = QRScannerInteraction()
     try:
         await x.scan_anything(expect_secret=expect_secret, tmp=tmp,
-                              miniscript_wallet=miniscript_wallet)
+                              miniscript_wallet=miniscript_wallet, expect_type=expect_type)
     except Exception as e:
         await ux_show_story(msg="Failed to import from QR.\n\n%s\n%s" % (e, problem_file_line(e)),
                             title="ERROR")

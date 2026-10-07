@@ -1338,6 +1338,55 @@ def test_bip39_pw_signing_xfp_ux(pick_menu_item, press_select, cap_story, enter_
     reset_seed_words()  # for subsequent tests
 
 
+@pytest.mark.parametrize('context', ['PSBT', 'Key Teleport'])
+def test_context_qr_rejects_secrets(context, only_q1, reset_seed_words, microsd_wipe,
+                                  goto_home, pick_menu_item, need_keypress, scan_a_qr,
+                                  sim_exec, cap_screen, cap_story, fake_txn, press_cancel,
+                                  settings_set, settings_remove):
+    from base64 import b64encode
+
+    reset_seed_words()
+    microsd_wipe()
+    snapshot = 'from pincodes import pa; RV.write(repr((bytes(pa.fetch(bypass_tmp=True)), pa.tmp_value)))'
+    before = sim_exec(snapshot)
+    goto_home()
+    if context == 'PSBT':
+        pick_menu_item('Ready To Sign')
+    else:
+        settings_set('ktrx', '01' * 32)
+        pick_menu_item('Advanced/Tools')
+        pick_menu_item('Key Teleport (start)')
+        assert cap_story()[0] == 'Reuse Pubkey?'
+    need_keypress(KEY_QR)
+
+    words = ' '.join(['abandon'] * 11 + ['about'])
+    xprv = BIP32Node.from_master_secret(bytes(32), netcode='XTN').hwif(as_private=True)
+    for secret in (words, xprv):
+        scan_a_qr(secret)
+        time.sleep(1)
+        assert sim_exec(snapshot) == before
+        assert 'Expected ' + context in cap_screen()
+
+    if context == 'PSBT':
+        qr = b64encode(fake_txn(1, 1)).decode()
+        expected = 'OK TO SEND'
+    else:
+        qr = sim_exec('from teleport import generate_rx_code, short_bbqr; import ngu; '
+                      'RV.write(short_bbqr("R", generate_rx_code(ngu.secp256k1.keypair())[1]))')
+        expected = 'Teleport Password (number)'
+    scan_a_qr(qr)
+    for _ in range(30):
+        if expected in cap_screen():
+            break
+        time.sleep(.1)
+    else:
+        pytest.fail('Accepted QR did not reach ' + expected)
+    press_cancel()
+    assert sim_exec(snapshot) == before
+    if context == 'Key Teleport':
+        settings_remove('ktrx')
+
+
 def test_q1_seed_word_entry_bug(word_menu_entry, unit_test, pick_menu_item,
                                 is_q1, do_keypresses, press_select, expect_ftux):
     # internal/issues/750
