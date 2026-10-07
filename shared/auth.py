@@ -1672,7 +1672,9 @@ Proposed firmware is a DOWNGRADE from the version already installed. It might co
             ch = await ux_show_story(msg, title='WARNING' if warnings else None)
 
             if ch == 'y':
-                assert glob.PSRAM.psram_write_count == self.psram_write_count
+                if glob.PSRAM.psram_write_count != self.psram_write_count:
+                    # staged bytes changed since approval prompt was shown
+                    return await self.failure("Firmware modified")
 
                 # Accepted:
                 # - write final file header, so bootloader will see it

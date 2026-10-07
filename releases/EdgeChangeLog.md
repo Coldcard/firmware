@@ -19,6 +19,9 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 - Enhancement: Warn before installing firmware signed by an external contributor
   or downgrading from the currently installed firmware. Thanks to Huzaifa Jawaid for suggestion.
 
+- Bugfix: Abort a pending firmware upgrade if its staged image is overwritten before
+  approval. Thanks to Huzaifa Jawaid.
+
 - Enhancement: Support per-input required height and time locktimes in PSBTv2 transactions.
 - New Feature: Added USB ncry v3 authenticated encryption with direction-separated keys and replay protection
 - Enhancement: Warn when a transaction's block-height `nLockTime` is more than
