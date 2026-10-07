@@ -22,6 +22,9 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 - Bugfix: Abort a pending firmware upgrade if its staged image is overwritten before
   approval. Thanks to Huzaifa Jawaid.
 
+- Enhancement: Optionally show Seed Vault names for temporary seed fingerprints
+  at the top of the home menu.
+
 - Enhancement: Support per-input required height and time locktimes in PSBTv2 transactions.
 - New Feature: Added USB ncry v3 authenticated encryption with direction-separated keys and replay protection
 - Enhancement: Warn when a transaction's block-height `nLockTime` is more than
