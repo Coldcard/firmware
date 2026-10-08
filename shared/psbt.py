@@ -2507,7 +2507,9 @@ class psbtObject(psbtProxy, SilentPaymentsMixin):
                                       "%d input(s) provided unverified witness UTXO." %
                                       unverified_witness_utxo))
 
-        if presigned_inputs == self.num_inputs:
+        if presigned_inputs == self.num_inputs and not self.has_silent_payment_outputs():
+            # Silent Payments: a completely signed PSBT is a no-op (a redundant signing
+            # round in a multi-party flow); SP fields are still verified before export.
             # Maybe wrong f cases? Maybe they want to add their
             # own signature, even tho N of M is satisfied?!
             raise FatalPSBTIssue('Transaction looks completely signed already?')

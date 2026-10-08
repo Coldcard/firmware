@@ -620,10 +620,9 @@ def test_sp_single_signer_resign_idempotent(dev, fake_txn, start_sign, end_sign)
     DLEQ proof either.
 
     Note: a real single-key, single-input PSBT is fully signed after the first
-    pass, and firmware refuses to re-sign a completely-signed transaction
-    (unrelated pre-existing guard in psbt.py, "Transaction looks completely
-    signed already?"). To exercise the second signing pass at all, we clear the
-    signature before feeding the PSBT back. This leaves the already-computed
+    pass, and firmware treats a completely-signed SP transaction as a no-op
+    (see test_sp_fully_signed_returned_unchanged). To exercise the second
+    signing pass at all, we clear the signature before feeding the PSBT back. This leaves the already-computed
     SP fields in place (as a second signer merging back a partially-signed PSBT
     would see them) while making the input signable again.
     """
@@ -649,6 +648,45 @@ def test_sp_single_signer_resign_idempotent(dev, fake_txn, start_sign, end_sign)
 
     assert rp.sp_global_ecdh_shares[SCAN_KEY] == orig_share
     assert rp.sp_global_dleq_proofs[SCAN_KEY] == orig_proof
+
+
+def _sign_single_signer_sp(fake_txn, start_sign, end_sign, xp):
+    def sp_hacker(psbt):
+        _add_sp_outputs(psbt, [(0, SCAN_KEY, SPEND_KEY_B)])
+
+    psbt_bytes = fake_txn(1, 1, xp, addr_fmt="p2wpkh", psbt_v2=True, psbt_hacker=sp_hacker)
+    start_sign(psbt_bytes)
+    time.sleep(SIMULATOR_DELAY)
+    return end_sign(accept=True, finalize=False)
+
+
+def test_sp_fully_signed_returned_unchanged(dev, fake_txn, start_sign, end_sign):
+    """A completely signed SP PSBT is a no-op: SP fields are re-verified, nothing is
+    signed, and the PSBT comes back unchanged (as a redundant signing round expects)."""
+    signed = _sign_single_signer_sp(fake_txn, start_sign, end_sign, dev.master_xpub)
+
+    start_sign(signed)
+    time.sleep(SIMULATOR_DELAY)
+    resigned = end_sign(accept=True, finalize=False)
+
+    assert resigned == signed
+
+
+def test_sp_fully_signed_tampered_script_rejected(dev, fake_txn, start_sign, end_sign):
+    """The no-op path still verifies the SP output script against the shares."""
+    signed = _sign_single_signer_sp(fake_txn, start_sign, end_sign, dev.master_xpub)
+
+    tp = BasicPSBT().parse(signed)
+    sp_out = [o for o in tp.outputs if o.sp_v0_info][0]
+    script = bytearray(sp_out.script)
+    script[-1] ^= 0x01
+    sp_out.script = bytes(script)
+
+    start_sign(tp.as_bytes())
+    time.sleep(SIMULATOR_DELAY)
+    with pytest.raises(CCProtoError) as ee:
+        end_sign(accept=True, finalize=False)
+    assert 'output script mismatch' in ee.value.args[0]
 
 
 # ---------------------------------------------------------------------------
