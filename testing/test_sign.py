@@ -29,9 +29,97 @@ from txn import *
 from ctransaction import CTransaction, CTxOut, CTxIn, COutPoint
 from ckcc_protocol.constants import STXN_VISUALIZE, STXN_SIGNED
 from charcodes import KEY_QR, KEY_RIGHT, KEY_LEFT
+from test_codex32 import (SHARES, IMPORT_SHARES, Share, native_encoding,
+                         bip32_node_from_codex32_share)
 
 
 SEQUENCE_LOCKTIME_TYPE_FLAG = (1 << 22)
+
+
+@pytest.mark.parametrize('value', [
+    pytest.param(SHARES[0], id='ms1-128'),
+    pytest.param(SHARES[1], id='ms1-256'),
+    pytest.param(IMPORT_SHARES[11], id='ms1-512'),
+    pytest.param(IMPORT_SHARES[7], id='cx1'),
+])
+@pytest.mark.parametrize('style', ['p2pkh', 'p2wpkh', 'p2wpkh-p2sh', 'p2tr'])
+@pytest.mark.parametrize('finalize', [False, True])
+def test_codex32_signing_matches_xprv(value, style, finalize, set_master_key,
+                                    set_encoded_secret, fake_txn, try_sign, dev, sim_exec):
+    share = Share.parse(value)
+    assert share.to_seed_and_pad()[1]  # Include otherwise-lost padding bits.
+    node = bip32_node_from_codex32_share(share)
+    encoded = native_encoding(value)
+
+    # Establish the signing result using the equivalent ordinary XPRV wallet.
+    set_master_key(node.hwif(as_private=True))
+    psbt = fake_txn(2, [[style], [style, None, True]],
+                    master_xpub=node.hwif(), addr_fmt=style)
+    _, expected = try_sign(psbt, finalize=finalize)
+    if finalize:
+        txn = CTransaction()
+        txn.deserialize(BytesIO(expected))
+        assert len(txn.vin) == 2
+        if style == 'p2pkh':
+            assert all(inp.scriptSig for inp in txn.vin)
+        else:
+            assert len(txn.wit.vtxinwit) == 2
+            witness_items = 1 if style == 'p2tr' else 2
+            assert all(len(wit.scriptWitness.stack) == witness_items for wit in txn.wit.vtxinwit)
+    else:
+        signed = BasicPSBT().parse(expected)
+        assert len(signed.inputs) == 2
+        for i, inp in enumerate(signed.inputs):
+            if style == 'p2tr':
+                assert len(inp.taproot_key_sig) == 64
+            else:
+                assert set(inp.part_sigs) == {node.subkey_for_path('0/%d' % i).sec()}
+
+    # Reuse identical PSBT bytes for the Codex32 wallet.
+    set_encoded_secret(encoded)
+    assert dev.send_recv(CCProtocolPacker.get_xpub()) == node.hwif()
+    _, actual = try_sign(psbt, finalize=finalize)
+    if style == 'p2tr':
+        from sighash import taproot_sighash
+        from pysecp256k1.extrakeys import xonly_pubkey_parse
+        from pysecp256k1.schnorrsig import schnorrsig_verify
+
+        original = BasicPSBT().parse(psbt)
+        prevouts = []
+        for inp in original.inputs:
+            prevout = CTxOut()
+            prevout.deserialize(BytesIO(inp.witness_utxo))
+            prevouts.append((prevout.nValue, prevout.scriptPubKey))
+
+        # Schnorr uses fresh randomness: verify both signatures, then compare
+        # everything except the signature bytes.
+        unsigned_results = []
+        for result in (expected, actual):
+            if finalize:
+                tx = CTransaction()
+                tx.deserialize(BytesIO(result))
+                assert len(tx.wit.vtxinwit) == 2
+                assert all(len(w.scriptWitness.stack) == 1 for w in tx.wit.vtxinwit)
+                signatures = [w.scriptWitness.stack[0] for w in tx.wit.vtxinwit]
+                unsigned_results.append(tx.serialize_without_witness())
+            else:
+                signed = BasicPSBT().parse(result)
+                tx = signed.parsed_txn
+                signatures = [inp.taproot_key_sig for inp in signed.inputs]
+                for inp in signed.inputs:
+                    inp.taproot_key_sig = None
+                unsigned_results.append(signed.as_bytes())
+            assert len(signatures) == 2
+            for i, sig in enumerate(signatures):
+                assert len(sig) == 64
+                digest = taproot_sighash(tx, i, prevouts)
+                pubkey = xonly_pubkey_parse(prevouts[i][1][2:])
+                assert schnorrsig_verify(sig, digest, pubkey)
+        assert unsigned_results[0] == unsigned_results[1]
+    else:
+        assert actual == expected
+    assert sim_exec('from utils import B2A; RV.write(B2A(pa.fetch()))') == encoded.hex()
+    assert encoded[65:] == bytes(7)
 
 
 @pytest.mark.parametrize('finalize', [ False, True ])

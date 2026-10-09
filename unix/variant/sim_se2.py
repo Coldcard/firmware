@@ -9,6 +9,9 @@ from errno import ENOENT
 # these flags are masked-out from mpy so even it can't tell they happened
 TC_HIDDEN_MASK = const(0xf800)
 
+# Keep simulated SE2 state separate from pre-login and wallet settings.
+SE2_SETTINGS_KEY = b'\x02' * 32
+
 class SecondSecureElement:
     def __init__(self):
         # restore state, or reconstruct some guesses
@@ -49,7 +52,8 @@ class SecondSecureElement:
     def save(self):
         from nvstore import SettingsObject
 
-        s = SettingsObject()
+        s = SettingsObject(nvram_key=SE2_SETTINGS_KEY)
+        s.load()
         s.set('_se2', [b2a_base64(i) for i in self.state.values()])
         s.save()
         print("saved SE2 data: " + ', '.join(str(i) for i in self.state.keys()))
@@ -68,7 +72,9 @@ class SecondSecureElement:
         # merging default values as they contain useful nfc,vidsk info
         dv = obj.default_values()
         obj.current.update(dv)
-        s = obj.get('_se2', None) or []
+        se2 = SettingsObject(nvram_key=SE2_SETTINGS_KEY)
+        se2.load()
+        s = se2.get('_se2', None) or []
 
         for record in s:
             b = a2b_base64(record)

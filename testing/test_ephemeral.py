@@ -11,6 +11,10 @@ from txn import fake_txn
 from bip32 import BIP32Node
 from helpers import xfp2str, a2b_hex
 from charcodes import KEY_CLEAR, KEY_NFC, KEY_QR
+from mnemonic import Mnemonic
+from test_codex32 import (CW_SHARES, Share, native_encoding,
+                         bip32_node_from_codex32_share, import_codex32_ui,
+                         goto_codex32_menu, enter_bech32, active_secret)
 
 
 WORDLISTS = {
@@ -96,7 +100,7 @@ def get_seed_value_ux(goto_home, pick_menu_item, need_keypress, cap_story,
         pick_menu_item("Advanced/Tools")
         pick_menu_item("Danger Zone")
         pick_menu_item("Seed Functions")
-        pick_menu_item('View Seed Words')
+        pick_menu_item('View Secret')
         time.sleep(.1)
         title, body = cap_story()
         assert ('Are you SURE' in body) or ('Are you SURE' in title)
@@ -842,6 +846,48 @@ def test_ephemeral_seed_import_xprv(way, testnet, reset_seed_words, goto_eph_see
         seed_vault_delete(xfp, not preserve_settings)
     else:
         restore_main_seed(preserve_settings)
+
+
+@pytest.mark.parametrize('value', CW_SHARES, ids=['cw1-128', 'cw1-192', 'cw1-256'])
+@pytest.mark.parametrize('seed_vault', [False, True])
+def test_ephemeral_seed_import_cw1(value, seed_vault, reset_seed_words,
+                                  seed_vault_enable, import_codex32_ui,
+                                  confirm_tmp_seed, verify_ephemeral_secret_ui,
+                                  active_secret, settings_set, master_settings_get,
+                                  restore_main_seed, seed_vault_delete,
+                                  goto_home, pick_menu_item, cap_menu):
+    reset_seed_words()
+    settings_set('seeds', [])
+    seed_vault_enable(seed_vault)
+    share = Share.parse(value)
+    mnemonic = Mnemonic('english').to_mnemonic(share.to_seed_and_pad()[0]).split()
+    node = bip32_node_from_codex32_share(share)
+    expected_xfp = node.fingerprint().hex().upper()
+    encoded = native_encoding(value)
+
+    import_codex32_ui('sd', value, tmp=True, seed_vault=seed_vault)
+    confirm_tmp_seed(seedvault=seed_vault, expect_xfp=expected_xfp)
+    xfp = verify_ephemeral_secret_ui(mnemonic=mnemonic, xpub=node.hwif(),
+                                     expected_xfp=expected_xfp, seed_vault=seed_vault)
+    assert active_secret() == encoded.hex()
+
+    if seed_vault:
+        saved = master_settings_get('seeds')
+        assert len(saved) == 1
+        assert saved[0][0] == xfp
+        assert saved[0][1] == encoded.hex().rstrip('0')
+        restore_main_seed(seed_vault=True)
+        goto_home()
+        pick_menu_item('Seed Vault')
+        pick_menu_item(next(item for item in cap_menu() if xfp in item))
+        pick_menu_item('Use This Seed')
+        confirm_tmp_seed(expect_xfp=expected_xfp)
+        verify_ephemeral_secret_ui(mnemonic=mnemonic, xpub=node.hwif(),
+                                   expected_xfp=expected_xfp, seed_vault=True)
+        assert active_secret() == encoded.hex()
+        seed_vault_delete(xfp)
+    else:
+        restore_main_seed()
 
 
 @pytest.mark.parametrize("seed_vault", [True, False])

@@ -68,6 +68,15 @@ def decode_secret(got):
 
         return 'xprv', got
 
+    codex = got.strip().replace(' ', '')
+    if codex[:3].lower() in ('ms1', 'cx1', 'cw1'):
+        from codex32 import Share
+        try:
+            Share.parse(codex)
+        except Exception:
+            raise ValueError('corrupt Codex32?')
+        return 'codex32', codex.lower()
+
     if len(got) in (51, 52):
         try:
             from wif import decode_wif

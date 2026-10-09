@@ -12,7 +12,7 @@ from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 
 from public_constants import AF_P2WSH, AF_P2WSH_P2SH, AF_CLASSIC
-from utils import xfp2str, problem_file_line
+from utils import xfp2str, problem_file_line, HEX_DIGITS
 from menu import MenuSystem, MenuItem
 from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_show_story, ux_enter_number, restore_menu, ux_input_text
@@ -814,7 +814,7 @@ async def bsms_signer_round1(*a):
             escape = "12"
             ch = await ux_show_story(prompt, escape=escape)
             if ch == "1":
-                token_hex = await ux_input_text("", hex_only=True, scan_ok=True,
+                token_hex = await ux_input_text("", charset=HEX_DIGITS, scan_ok=True,
                                                 prompt="Hex Token")
             elif ch == "2":
                 if version.has_qwerty:

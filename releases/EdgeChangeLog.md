@@ -13,18 +13,19 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
+- New Feature: Codex32 (BIP-93) secrets and Shamir secret sharing. Generate or import Codex32
+  wallets, split the active wallet into two to nine Shamir shares with **Shamir Split**, and
+  restore it with **Shamir Recover**. Word wallets split as `cw1`, raw master seeds as `ms1`,
+  and extended-key wallets as `cx1`. CW1 and CX1 are COLDCARD extensions that require
+  explicit support in recovery software.
 - Bugfix: Clear the Set Nickname checkmark when the nickname is removed, including
   empty nicknames saved by earlier firmware. Thanks to [@bonitoman](https://github.com/bonitoman).
-
 - Enhancement: Warn before installing firmware signed by an external contributor
   or downgrading from the currently installed firmware. Thanks to Huzaifa Jawaid for suggestion.
-
 - Bugfix: Abort a pending firmware upgrade if its staged image is overwritten before
   approval. Thanks to Huzaifa Jawaid.
-
 - Enhancement: Optionally show Seed Vault names for temporary seed fingerprints
   at the top of the home menu.
-
 - Enhancement: Support per-input required height and time locktimes in PSBTv2 transactions.
 - New Feature: Added USB ncry v3 authenticated encryption with direction-separated keys and replay protection
 - Enhancement: Warn when a transaction's block-height `nLockTime` is more than

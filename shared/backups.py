@@ -90,6 +90,8 @@ def render_backup_contents():
         if k == 'bkpw': continue        # confusing/circular
         if k == 'sd2fa': continue       # do NOT backup SD 2FA (card can be lost or damaged)
         if k == 'words': continue       # words length is recalculated from secret
+        if k == 'c32': continue         # recalculated from secret, like words
+        if k == 'c32_shares': continue  # local recovery state, possibly for another wallet
         if k == 'ccc': continue         # not supported, security issue
         if k == 'ktrx': continue        # not useful after the fact
         if k == 'lfr': continue         # temporary error msg value
@@ -202,6 +204,16 @@ def restore_from_dict_ll(vals, raw):
         if k == 'ccc':
             # CCC feature cannot be backed-up nor restored for security reasons
             # (would allow replay attacks)
+            continue
+
+        if k == 'c32':
+            # recalculated from raw_secret by pa.new_main_secret above; a
+            # restored value could be stale or crafted (like words/bkpw)
+            continue
+
+        if k == 'c32_shares':
+            # Pending recovery shares must not travel with wallet backups,
+            # including older or crafted files which contain this field.
             continue
 
         if k == 'tp':

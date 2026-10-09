@@ -1623,8 +1623,10 @@ def test_reject_oversized_airgapped_xpub_qr(goto_home, pick_menu_item, need_keyp
     for part in parts:
         scan_a_qr(part)
 
-    time.sleep(.5)
-    assert 'Multisig export is too large' in cap_screen()
+    deadline = time.monotonic() + 10
+    while 'Multisig export is too large' not in cap_screen():
+        assert time.monotonic() < deadline, 'Timed out waiting for oversized export rejection'
+        time.sleep(.1)
 
     press_select()
 

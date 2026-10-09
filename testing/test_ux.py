@@ -981,7 +981,7 @@ def test_seed_import_tapsigner(way, testnet, cap_menu, pick_menu_item, goto_home
 def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_keypress,
                    sim_exec, cap_menu, get_secrets, cap_screen_qr, set_bip39_pw,
                    set_encoded_secret, qr_quality_check, reset_seed_words,
-                   press_select, is_q1, seed_story_to_words, is_headless):
+                   press_select, is_q1, seed_story_to_words, is_headless, load_shared_mod):
 
     reset_seed_words()
     if mode == 'words':
@@ -1012,13 +1012,12 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
     pick_menu_item('Advanced/Tools')
     pick_menu_item('Danger Zone')
     pick_menu_item('Seed Functions')
-    pick_menu_item('View Seed Words')
+    pick_menu_item('View Secret')
     time.sleep(.01)
     title, body = cap_story()
     where = title if is_q1 else body
     assert 'Are you SURE' in where
-    assert 'secret seed words' in body
-    assert 'or extended private key' in body
+    assert "wallet's secret" in body
     assert 'can control all funds' in body
     press_select()      # skip warning
     time.sleep(0.01)
@@ -1042,6 +1041,9 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
     else:
         assert expect in body
         qr_expect = expect
+        if mode == 'ms':
+            Share = load_shared_mod('codex32', '../shared/codex32.py').Share
+            qr_expect = Share.from_seed(bytes.fromhex(expect), 'ms', 'seed', 's', 0).to_string().upper()
         if b39_word:
             assert body.startswith("BIP-39 Passphrase in effect\n\n")
             assert b39_word not in body
@@ -1666,7 +1668,7 @@ def test_q1_24_8char_words(set_seed_words, is_q1, goto_home, pick_menu_item, pre
     pick_menu_item("Advanced/Tools")
     pick_menu_item("Danger Zone")
     pick_menu_item("Seed Functions")
-    pick_menu_item('View Seed Words')
+    pick_menu_item('View Secret')
     time.sleep(.01)
     press_select()  # skip warning
     time.sleep(0.01)
