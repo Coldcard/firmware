@@ -58,7 +58,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 5.6.x - 2026-0x-xx
 
-- tbd
+- Bugfix: Shorten the Shamir Split share-count prompt on Mk4/Mk5 to fit the screen.
 
 
 # Q Specific Changes
