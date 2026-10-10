@@ -58,6 +58,7 @@ class ChainsBase:
     curve = 'secp256k1'
     menu_name = None        # use 'name' if this isn't defined
     ccc_min_block = 0
+    sp_hrp = 'sp'           # BIP-352 Silent Payment address HRP (default mainnet)
 
     # b44_cointype comes from
     #    <https://github.com/satoshilabs/slips/blob/master/slip-0044.md>
@@ -325,6 +326,7 @@ class BitcoinTestnet(ChainsBase):
     }
 
     bech32_hrp = 'tb'
+    sp_hrp = 'tsp'  # BIP-352 Silent Payment testnet HRP
 
     b58_addr    = bytes([111])
     b58_script  = bytes([196])
@@ -337,6 +339,7 @@ class BitcoinRegtest(BitcoinTestnet):
     ctype = 'XRT'
     name = 'Bitcoin Regtest'
     bech32_hrp = 'bcrt'
+    sp_hrp = 'tsp'  # BIP-352 Silent Payment regtest HRP
 
 
 def get_chain(short_name):
