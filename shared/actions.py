@@ -2733,7 +2733,7 @@ async def show_shamir_share(value, uid, intro=None, ephemeral=None):
                 return await import_codex32_as_secret(value, ephemeral=ephemeral)
 
         elif choice == KEY_QR:
-            await show_qr_code(value, is_alnum=True, msg=name, is_secret=True)
+            await show_qr_code(value, is_alnum=True, msg='Share %s' % index, is_secret=True)
 
         elif choice == KEY_NFC:
             await NFC.share_text(value, prompt=name, is_secret=True)

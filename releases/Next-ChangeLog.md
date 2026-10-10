@@ -58,7 +58,7 @@ This lists the new changes that have not yet been published in a normal release.
 
 ## 5.6.x - 2026-0x-xx
 
-- tbd
+- Bugfix: Fix awkwardly wrapped share labels when displaying Codex32 QR codes on Mk4 and Mk5.
 
 
 # Q Specific Changes
