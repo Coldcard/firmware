@@ -2801,7 +2801,8 @@ async def codex32_shamir_split(*a):
     # BIP-93 permits schemes where:
     #   2 ≤ k ≤ 9
     #   k ≤ n ≤ 31
-    count = await ux_enter_number('Number of shares (2-9):', 9, can_cancel=True)
+    count = await ux_enter_number('%s shares (2-9):' % ('Number of' if version.has_qwerty else 'Num'),
+                                  9, can_cancel=True)
     if count is None: return  # canceled
 
     if count < 2:
