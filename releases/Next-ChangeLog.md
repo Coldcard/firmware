@@ -4,6 +4,9 @@ This lists the new changes that have not yet been published in a normal release.
 
 # Shared Improvements - Both Mk and Q
 
+- Change: Restrict the Codex32 checksum calculator to MS1 shares and warn that
+  completing a checksum locks in transcription errors.
+
 - Enhancement: Support per-input required height and time locktimes in PSBTv2 transactions.
 
 - New Feature: Added USB ncry v3 authenticated encryption with direction-separated keys and replay protection
