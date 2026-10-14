@@ -58,6 +58,7 @@ HSM_WHITELIST = frozenset({
     'stok', 'smok',             # completion check: sign txn or msg
     'xpub',                     # quick status checks
     'show', 'msas',             # limited by HSM policy
+    'slp9',                     # SLIP-19 ownership proof; limited by slip19_paths policy
     'user',                     # auth HSM user, other user cmds not allowed
     'gslr',                     # read storage locker; hsm mode only, limited usage
 })
@@ -573,6 +574,17 @@ class USBHandler:
             sign_msg(msg, subpath, addr_fmt)
             return None
 
+        if cmd == 'slp9':
+            # SLIP-19 ownership proof, for coinjoin remote signing (Wasabi WabiSabi).
+            # - under HSM, the policy is the consent and the proof comes back right away
+            # - otherwise the user approves on-screen, and the host collects it with 'slok'
+            addr_fmt, flags, len_subpath, len_commit = unpack_from('<IIII', args)
+            assert len(args) == (16 + len_subpath + len_commit), 'badlen'
+
+            from slip19 import usb_ownership_proof
+            return usb_ownership_proof(args[16:16+len_subpath], addr_fmt, flags,
+                                       args[16+len_subpath:])
+
         if cmd == 'show':
             # simple cases, older code: text subpath
             from auth import usb_show_address
@@ -703,7 +715,7 @@ class USBHandler:
                              input_method="usb", miniscript_wallet=w)
             return None
 
-        if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok':
+        if cmd in ('stok', 'bkok', 'smok', 'pwok', 'slok'):
             # Have we finished (whatever) the transaction,
             # which needed user approval? If so, provide result.
             from auth import UserAuthorizedAction
@@ -711,6 +723,11 @@ class USBHandler:
             req = UserAuthorizedAction.active_request
             if not req:
                 return b'err_No active request'
+
+            if getattr(req, 'is_slip19', False) != (cmd == 'slok'):
+                # an ownership proof is collected by 'slok' and nothing else, so neither poll
+                # can consume the other's result
+                return b'err_Wrong completion command'
 
             if req.refused:
                 UserAuthorizedAction.cleanup()
@@ -730,6 +747,11 @@ class USBHandler:
                 xpub = req.result
                 UserAuthorizedAction.cleanup()
                 return b'asci' + bytes(xpub, 'ascii')
+            elif cmd == 'slok':
+                # SLIP-19 ownership proof approved on-screen: hand over the serialized proof
+                proof = req.result
+                UserAuthorizedAction.cleanup()
+                return b'biny' + proof
             elif cmd == 'smok':
                 # signed message done: just give them the signature
                 addr, sig = req.address, req.result
