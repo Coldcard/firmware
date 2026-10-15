@@ -817,6 +817,15 @@ class psbtInputProxy(psbtProxy):
             # - okay if fully signed
             # - okay if payjoin or other multi-signer (not multisig) txn
             self.required_key = None
+            # Track the script type of already-signed/foreign inputs, so
+            # finalize() serializes them with witness vs. scriptSig placement.
+            if addr_is_segwit:
+                self.is_segwit = True
+            elif self.addr_fmt == AF_P2SH and self.redeem_script:
+                redeem_script = self.get(self.redeem_script)
+                if is_wrapped_p2wpkh_redeem(redeem_script) or \
+                        is_wrapped_p2wsh_redeem(redeem_script):
+                    self.is_segwit = True
             return
 
         self.is_multisig = False
