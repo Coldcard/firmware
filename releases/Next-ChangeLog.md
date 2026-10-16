@@ -10,6 +10,11 @@ your addition and anything else already in this file.**
 - Change: Restrict the Codex32 checksum calculator to MS1 shares and warn that
   completing a checksum locks in transcription errors.
 
+- Bugfix: Fix NameError crash in psbtObject.input_witness_iter() when the PSBT's
+  global unsigned transaction uses witness serialization, so finalize() can
+  complete for such PSBTs. Reported by iblitzc0de.
+
+
 
 # Mk Specific Changes
 
