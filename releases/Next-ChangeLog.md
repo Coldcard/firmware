@@ -10,6 +10,10 @@ your addition and anything else already in this file.**
 - Change: Restrict the Codex32 checksum calculator to MS1 shares and warn that
   completing a checksum locks in transcription errors.
 
+- Enhancement: Show the dice-only entropy warning (DICE_ONLY_WARNING) before
+  the paper-wallet "Use Dice" flow as well, for consistency with the seed and
+  Codex32 dice flows. Suggested by iblitzc0de.
+
 
 # Mk Specific Changes
 
