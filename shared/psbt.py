@@ -1327,8 +1327,9 @@ class psbtObject(psbtProxy):
                 yield in_idx, CTxInWitness()
             return
 
+        fd = self.fd
         fd.seek(self.wit_start)
-        for idx in range(num_in):
+        for idx in range(self.num_inputs):
 
             wit = CTxInWitness()
             wit.deserialize(fd)
