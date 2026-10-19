@@ -2298,4 +2298,45 @@ def test_import_musig_from_b388_policy(der, microsd_path, garbage_collector, cle
     assert "/**" not in contents["desc"]
     assert "/<0;1>/*" in contents["desc"]
 
+
+@pytest.mark.bitcoind
+def test_musig_internal_key_single_key_leaf(use_regtest, clear_miniscript, build_musig_wallet,
+                                            start_sign, end_sign, cap_story):
+    # taproot internal key is a musig() with CC in it, CC alone on a single-key leaf
+    # PSBT spends via that leaf and has no MuSig2 field (no session): CC must sign the leaf
+    use_regtest()
+    clear_miniscript()
+    name = "musig_ik_leaf"
+    wo, signers, desc = build_musig_wallet(name, 2,
+                                           tapscript="tr(musig($0,$1)/<0;1>/*,pk($0/<2;3>/*))")
+
+    psbt_resp = wo.walletcreatefundedpsbt([], [{wo.getnewaddress("", "bech32m"): 1}], 0,
+                                          {"fee_rate": 2, "change_type": "bech32m"})
+    po = BasicPSBT().parse(psbt_resp.get("psbt"))
+    for inp in po.inputs:
+        # drop the MuSig2 fields: only the leaf is signed
+        assert inp.musig_pubkeys
+        inp.musig_pubkeys = {}
+        assert not inp.musig_pubnonces
+        assert not inp.musig_part_sigs
+
+    start_sign(po.as_bytes())
+    title, story = cap_story()
+    assert "Consolidating" in story
+    assert f"Wallet: {name}" in story
+    res_psbt = end_sign()
+
+    po = BasicPSBT().parse(res_psbt)
+    for inp in po.inputs:
+        assert not inp.musig_pubnonces
+        assert not inp.musig_part_sigs
+        assert inp.taproot_key_sig is None
+        # signature for the pk(CC) leaf
+        assert len(inp.taproot_script_sigs) == 1
+
+    res = wo.finalizepsbt(po.as_b64_str())
+    assert res["complete"]
+    res = wo.testmempoolaccept([res["hex"]])
+    assert res[0]["allowed"]
+
 # EOF
