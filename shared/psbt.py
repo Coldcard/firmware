@@ -2712,14 +2712,16 @@ class psbtObject(psbtProxy):
     def musig_process_input(self, session, inp_idx, inp, keypair, agg_k, der_agg_k,
                             digest, leaf_hash=b""):
 
-        assert session  # needed
-        session_rand, round1 = session
         my_participant_key = keypair.pubkey().to_bytes()
         musig_pubkeys = inp.get_musig_pubkeys()
         cosigners = musig_pubkeys.get(agg_k, None)
 
         if (cosigners is None) or (my_participant_key not in cosigners):
             return
+
+        # cosigners listed in PSBT, so there is a session
+        assert session  # needed
+        session_rand, round1 = session
 
         musig_partial_sigs = inp.get_musig_part_sigs()
         musig_pubnonces = inp.get_musig_pubnonces()
