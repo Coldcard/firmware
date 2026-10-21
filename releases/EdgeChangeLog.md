@@ -16,6 +16,8 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 - Bugfix: Reject descriptors containing extended public keys with the same public key
   but conflicting chain codes or other xpub fields, preventing incorrect Taproot
   addresses. Thanks to [@pythcoiner](https://github.com/pythcoiner).
+- Bugfix: Preserve correct scripts and addresses when the same key appears in both
+  `pk()` and `pkh()` Taproot leaves.
 - Bugfix: Reject duplicate public keys in BIP-388 policy key lists, as required by
   the specification.
 - New Feature: Codex32 (BIP-93) secrets and Shamir secret sharing. Generate or import Codex32

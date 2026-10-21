@@ -82,6 +82,34 @@ for left in variants:
         assert hash(left) == hash(right)
         assert len({left, right}) == 1
 
+# Cached derivation must preserve pk/pkh serialization in either leaf order,
+# including when the same key is also the internal key.
+# Valid but uncommon reuse: tr(A,{pk(B),pkh(B)}) with the same suffix on B.
+# A shared derived node is fine; replacing KeyHash with ExtendedKey (or the
+# reverse) changes the script. This is separate from the chain-code conflict.
+for internal in (a, b):
+    for first, second in (("pk", "pkh"), ("pkh", "pk")):
+        desc = Descriptor.from_string("tr(%s,{%s(%s),{%s(%s),%s(%s)}})" %
+                                      (internal, first, b, second, b, second, b))
+        for change in (False, True):
+            for index in (0, 7):
+                cached = desc.derive(None, change=change).derive(index)
+                independent = Descriptor(
+                    key=desc.key.derive(None, change=change).derive(index),
+                    tapscript=desc.tapscript.derive(None, None, change=change).derive(index, None),
+                    addr_fmt=desc.addr_fmt,
+                )
+                cached_leaves = list(cached.tapscript.iter_leaves())
+                independent_leaves = list(independent.tapscript.iter_leaves())
+                for actual, expected in zip(cached_leaves, independent_leaves):
+                    assert actual.compile() == expected.compile()
+                    assert type(actual.keys[0]) is type(expected.keys[0])
+                    # Both expression types reuse the same derived HD node.
+                    assert actual.keys[0].node is cached_leaves[0].keys[0].node
+                assert cached.script_pubkey() == independent.script_pubkey()
+                assert chains.current_chain().render_address(cached.script_pubkey()) == \
+                    chains.current_chain().render_address(independent.script_pubkey())
+
 from desc_utils import bip388_validate_policy, bip388_wallet_policy_to_descriptor
 
 # BIP-388 key vectors require distinct public keys, even when xpubs differ.
