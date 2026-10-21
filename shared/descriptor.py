@@ -195,7 +195,11 @@ class Descriptor:
         # - only same origin keys
         keys_info = OrderedDict()
 
-        for k in self.keys:
+        keys = [self.key] if self.tapscript else self.keys
+        if self.tapscript:
+            for leaf in self.tapscript.iter_leaves():
+                keys.extend(leaf.keys)
+        for k in keys:
             ks = k.keys if isinstance(k, MusigKey) else [k]
 
             for kk in ks:
@@ -222,22 +226,42 @@ class Descriptor:
         return 25 # OP_DUP OP_HASH160 <20:pkh> OP_EQUALVERIFY OP_CHECKSIG
 
     def xfp_paths(self, skip_unspend_ik=False):
+        # Origins for a validated wallet descriptor, before address derivation.
         res = []
-        for k in self.keys:
+        seen = set()
+        deferred = []
+
+        keys = [self.key] if self.tapscript else self.keys
+        if self.tapscript:
+            for leaf in self.tapscript.iter_leaves():
+                keys.extend(leaf.keys)
+
+        for k in keys:
             if self.is_taproot and k.is_provably_unspendable and skip_unspend_ik:
                 continue
 
-            if isinstance(k, MusigKey):
-                agg_k = [swab32(k.node.my_fp())]
-                # even if dupes - add
-                res.append(agg_k)
+            duplicate = self.is_taproot and k in seen
+            seen.add(k)
+            is_musig = isinstance(k, MusigKey)
 
+            if not duplicate:
+                if is_musig:
+                    res.append([swab32(k.node.my_fp())])
+                else:
+                    res.append(k.origin.psbt_derivation())
+
+            if is_musig:
+                # Defer participants of duplicate aggregates until all normal
+                # entries are collected: a later key may supply their origin.
+                target = deferred if duplicate else res
                 for kk in k.keys:
                     psbt_der = kk.origin.psbt_derivation()
-                    if psbt_der not in res:
-                        res.append(psbt_der)
-            else:
-                res.append(k.origin.psbt_derivation())
+                    if psbt_der not in target:
+                        target.append(psbt_der)
+
+        for psbt_der in deferred:
+            if psbt_der not in res:
+                res.append(psbt_der)
 
         return res
 

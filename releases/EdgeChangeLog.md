@@ -18,6 +18,8 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
   addresses. Thanks to [@pythcoiner](https://github.com/pythcoiner).
 - Bugfix: Preserve correct scripts and addresses when the same key appears in both
   `pk()` and `pkh()` Taproot leaves.
+- Bugfix: Preserve MuSig participant information in policy exports and wallet matching
+  when the aggregate key also appears as an ordinary xpub.
 - Bugfix: Reject duplicate public keys in BIP-388 policy key lists, as required by
   the specification.
 - New Feature: Codex32 (BIP-93) secrets and Shamir secret sharing. Generate or import Codex32

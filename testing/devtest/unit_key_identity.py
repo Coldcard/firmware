@@ -110,7 +110,48 @@ for internal in (a, b):
                 assert chains.current_chain().render_address(cached.script_pubkey()) == \
                     chains.current_chain().render_address(independent.script_pubkey())
 
+# Metadata must retain an explicit MuSig expression even when its ordinary
+# aggregate xpub is the same signer. Repeated leaves must not add extra paths.
+# Constructed corner case: tr(X,pk(musig(A,B))) with matching suffixes, where X
+# is the full synthetic aggregate xpub of musig(A,B). Deduplication can retain
+# X and hide A/B from policy conversion and path metadata. Ordinary MuSig
+# descriptors do not need this mixed representation.
 from desc_utils import bip388_validate_policy, bip388_wallet_policy_to_descriptor
+from utils import swab32
+for first, second in ((xpub, musig.to_string()), (musig.to_string(), xpub)):
+    for wrapper in ("pk", "pkh"):
+        for text in (
+            "tr(%s,%s(%s))" % (first, wrapper, second),
+            "tr(%s,{pk(%s),%s(%s)})" % (a + "/<2;3>/*", first, wrapper, second),
+            "tr(%s,{%s(%s),%s(%s)})" % (first, wrapper, second, wrapper, second),
+        ):
+            desc = Descriptor.from_string(text)
+            paths = desc.xfp_paths()
+            expected_paths = [[swab32(musig.node.my_fp())],
+                              ka.origin.psbt_derivation(), kb.origin.psbt_derivation()]
+            assert len(paths) == len(expected_paths), (text, paths)
+            for path in expected_paths:
+                assert path in paths, (text, paths)
+            template, info = desc.bip388_wallet_policy()
+            assert len(info) == 3, (text, info)
+            assert "pub" not in template, template
+            bip388_validate_policy(template.encode(), info)
+            restored = Descriptor.from_string(bip388_wallet_policy_to_descriptor(template, info))
+            assert restored.to_string() == desc.to_string()
+            assert restored.xfp_paths() == paths
+            for change in (False, True):
+                for index in (0, 7):
+                    assert restored.derive(None, change=change).derive(index).script_pubkey() == \
+                        desc.derive(None, change=change).derive(index).script_pubkey()
+
+# Distinct suffixes still contribute separate entries, even with the same XFP.
+desc = Descriptor.from_string("tr(%s,{pk(%s),pk(%s)})" %
+                              (xpub, musig.to_string(),
+                               musig.to_string().replace("<0;1>", "<2;3>")))
+paths = desc.xfp_paths()
+assert paths.count([swab32(musig.node.my_fp())]) == 2
+assert paths.count(ka.origin.psbt_derivation()) == 1
+assert paths.count(kb.origin.psbt_derivation()) == 1
 
 # BIP-388 key vectors require distinct public keys, even when xpubs differ.
 # Malformed policy input: [A, A] or [A, A_alt] with the same public key in both
