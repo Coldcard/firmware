@@ -483,4 +483,9 @@ def test_musig(sim_execfile):
     res = sim_execfile('devtest/unit_musig.py')
     assert res == ""
 
+def test_key_identity(sim_execfile, use_testnet):
+    use_testnet()
+    res = sim_execfile('devtest/unit_key_identity.py')
+    assert res == ""
+
 # EOF

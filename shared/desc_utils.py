@@ -157,6 +157,9 @@ class KeyDerivationInfo:
         else:
             self.multi_path_index = None
 
+    def __eq__(self, other):
+        return isinstance(other, KeyDerivationInfo) and self.indexes == other.indexes
+
     def __hash__(self):
         return hash(self.indexes)
 
@@ -261,7 +264,10 @@ class ExtendedKey:
         self.chain_type = chain_type
 
     def __eq__(self, other):
-        return hash(self) == hash(other)
+        # An xpub of a MuSig aggregate still names the same signing key.
+        return (isinstance(other, (ExtendedKey, MusigKey))
+                and self.node.pubkey() == other.node.pubkey()
+                and self.derivation == other.derivation)
 
     def __hash__(self):
         return hash(self.node.pubkey()) + hash(self.derivation)
@@ -465,7 +471,9 @@ class MusigKey:
         return 33  # length + <32:xonly>
 
     def __eq__(self, other):
-        return hash(self) == hash(other)
+        return (isinstance(other, (ExtendedKey, MusigKey))
+                and self.node.pubkey() == other.node.pubkey()
+                and self.derivation == other.derivation)
 
     def __hash__(self):
         return hash(self.node.pubkey()) + hash(self.derivation)
@@ -609,3 +617,5 @@ def bip388_validate_policy(desc_tmplt, keys_info):
 
     assert len(r) == len(keys_info), "Invalid policy"
     assert r == list(range(len(r))), "Out of order"
+    assert len({ExtendedKey.from_string(k).node.pubkey() for k in keys_info}) == \
+        len(keys_info), "Duplicate policy key"

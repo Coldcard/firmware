@@ -13,6 +13,11 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
+- Bugfix: Reject descriptors containing extended public keys with the same public key
+  but conflicting chain codes or other xpub fields, preventing incorrect Taproot
+  addresses. Thanks to [@pythcoiner](https://github.com/pythcoiner).
+- Bugfix: Reject duplicate public keys in BIP-388 policy key lists, as required by
+  the specification.
 - New Feature: Codex32 (BIP-93) secrets and Shamir secret sharing. Generate or import Codex32
   wallets, split the active wallet into two to nine Shamir shares with **Shamir Split**, and
   restore it with **Shamir Recover**. Word wallets split as `cw1`, raw master seeds as `ms1`,
