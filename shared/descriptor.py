@@ -120,10 +120,11 @@ class Descriptor:
         # should only be run once while importing wallet
         from glob import settings
 
-        c = 0
         has_mine = 0
         err_top_B = "Top level miniscript should be 'B'"
         limit = max_signers(self.addr_fmt)
+        my_xfp = settings.get('xfp', 0)
+        keys = [self.key] if self.tapscript else self.keys
 
         if self.tapscript:
             assert self.key  # internal key (would fail during parse)
@@ -134,7 +135,9 @@ class Descriptor:
                 l.is_sane(taproot=True)
                 # cannot have same keys in single miniscript
                 # provably unspendable taproot internal key is not covered here
-                assert len(l.keys) == len(set(l.keys)), "Insane"
+                leaf_keys = l.keys
+                assert len(leaf_keys) == len(set(leaf_keys)), "Insane"
+                keys.extend(leaf_keys)
 
         elif self.miniscript:
             assert self.key is None
@@ -144,15 +147,38 @@ class Descriptor:
             # cannot have same keys in single miniscript
             assert len(self.miniscript.keys) == len(set(self.miniscript.keys)), "Insane"
 
-        my_xfp = settings.get('xfp', 0)
+        xpubs = {}
+        signers = {}
         ext_nums = set()
         int_nums = set()
-        for k in self.keys:
+        # Validate every occurrence before self.keys deduplicates them.
+        for k in keys:
             has_mine += k.validate(my_xfp, disable_checks)
+
+            # Check signing nodes too: a MuSig aggregate may also appear as
+            # an ordinary xpub with the same signer/path identity.
+            if self.is_taproot:
+                if k in signers:
+                    chain = chains.current_chain()
+                    assert chain.serialize_public(signers[k].node) == \
+                        chain.serialize_public(k.node), "Conflicting signer key"
+                else:
+                    signers[k] = k
+
+            # Ordinary keys and MuSig participants must use consistent xpubs
+            # even when they have different derivation suffixes.
+            ks = k.keys if isinstance(k, MusigKey) else [k]
+            for kk in ks:
+                pubkey = kk.node.pubkey()
+                xpub = kk.extended_public_key()
+                if pubkey in xpubs:
+                    assert xpubs[pubkey] == xpub, "Conflicting signer key"
+                else:
+                    xpubs[pubkey] = xpub
+
             ext, int = k.derivation.get_ext_int()
             ext_nums.add(ext)
             int_nums.add(int)
-            c += 1
 
         if not self.tapscript and not self.is_basic_multisig:
             # this is non-taproot Miniscript
@@ -160,7 +186,7 @@ class Descriptor:
             assert self.addr_fmt != AF_P2SH, "Miniscript in legacy P2SH not allowed"
 
         assert ext_nums.isdisjoint(int_nums), "Non-disjoint multipath"
-        assert c <= limit, "max signers"
+        assert len(self.keys) <= limit, "max signers"
 
         assert has_mine > 0, 'My key %s missing in descriptor.' % xfp2str(my_xfp).upper()
 

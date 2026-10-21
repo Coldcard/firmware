@@ -1482,6 +1482,33 @@ def test_duplicate_musig_in_tapleaf(get_cc_key, offer_minsc_import):
     assert e.value.args[0] == "Coldcard Error: Insane"
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("wrapper", ["pk", "pkh"])
+def test_duplicate_musig_aggregate_xpub(reverse, wrapper, get_cc_key, sim_exec,
+                                      offer_minsc_import, goto_home, use_testnet):
+    # Constructed mixed representation: X is the synthetic xpub of musig(A,B).
+    # Unlike reuse across Taproot leaves, placing both in one leaf with the same
+    # suffix duplicates the signing key and must fail the Miniscript sanity check.
+    from ckcc_protocol.protocol import CCProtoError
+    use_testnet()
+    goto_home()
+    path = "99h/1h/0h"
+    cc_key = get_cc_key(path).replace("/<0;1>/*", "")
+    musig = f"musig({cc_key},{random_keys(1, path=path)[0]})"
+    xpub = sim_exec("import chains; from desc_utils import MusigKey; "
+                    f"RV.write(chains.current_chain().serialize_public("
+                    f"MusigKey.from_string({musig!r}).node))")
+    assert xpub.startswith("tpub"), xpub
+    # Same derived signing key, expressed once as an xpub and once as MuSig.
+    keys = [xpub + "/<0;1>/*", musig + "/<0;1>/*"]
+    if reverse:
+        keys.reverse()
+    desc = (f"tr({ranged_unspendable_internal_key()},"
+            f"and_v(v:pk({keys[0]}),{wrapper}({keys[1]})))")
+    with pytest.raises(CCProtoError, match="Insane"):
+        offer_minsc_import(desc)
+
+
 def test_unspendable_key_in_musig(get_cc_key, offer_minsc_import):
     path = "199h/1h/3h"
     cc_key = get_cc_key(path).replace("/<0;1>/*", "")
