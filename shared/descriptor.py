@@ -192,17 +192,10 @@ class Descriptor:
         # Convert a validated descriptor to a BIP-388 template and key info.
         keys_info = OrderedDict()
 
-        keys = [self.key] if self.tapscript else self.keys
-        if self.tapscript:
-            for leaf in self.tapscript.iter_leaves():
-                keys.extend(leaf.keys)
-        for k in keys:
-            ks = k.keys if isinstance(k, MusigKey) else [k]
-
-            for kk in ks:
-                pk = kk.node.pubkey()
-                if pk not in keys_info:
-                    keys_info[pk] = kk.to_string(external=False, internal=False)
+        for k in self.iter_signer_keys():
+            pk = k.node.pubkey()
+            if pk not in keys_info:
+                keys_info[pk] = k.to_string(external=False, internal=False)
 
         desc_tmplt = self.to_string(checksum=False).replace("/<0;1>/*", "/**")
 
@@ -211,6 +204,22 @@ class Descriptor:
             desc_tmplt = desc_tmplt.replace(k_str, '@%d' % i)
 
         return desc_tmplt, keys_info
+
+    def iter_signer_keys(self):
+        # Every signer occurrence, internal key first, without deduplication.
+        # Expand MuSig expressions into participants, excluding aggregates.
+        keys = [self.key] if self.key else []
+        if self.tapscript:
+            for leaf in self.tapscript.iter_leaves():
+                keys.extend(leaf.keys)
+        elif self.miniscript:
+            keys.extend(self.miniscript.keys)
+
+        for k in keys:
+            if isinstance(k, MusigKey):
+                yield from k.keys
+            else:
+                yield k
 
     @property
     def script_len(self):
