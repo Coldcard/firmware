@@ -13,6 +13,19 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
+- Bugfix: Reject conflicting xpub data between a MuSig aggregate and its ordinary
+  xpub representation even when derivation suffixes differ, and reject conflicting
+  key origins before wallet policy conversion. Thanks to
+  [@pythcoiner](https://github.com/pythcoiner).
+- Bugfix: Reject descriptors containing extended public keys with the same public key
+  but conflicting chain codes or other xpub fields, preventing incorrect Taproot
+  addresses. Thanks to [@pythcoiner](https://github.com/pythcoiner).
+- Bugfix: Preserve correct scripts and addresses when the same key appears in both
+  `pk()` and `pkh()` Taproot leaves.
+- Bugfix: Preserve MuSig participant information in policy exports and wallet matching
+  when the aggregate key also appears as an ordinary xpub.
+- Bugfix: Reject duplicate public keys in BIP-388 policy key lists, as required by
+  the specification.
 - New Feature: Codex32 (BIP-93) secrets and Shamir secret sharing. Generate or import Codex32
   wallets, split the active wallet into two to nine Shamir shares with **Shamir Split**, and
   restore it with **Shamir Recover**. Word wallets split as `cw1`, raw master seeds as `ms1`,
@@ -81,6 +94,9 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 - all of the above
 - synced with master up to and including `1.5.2Q`
+- Bugfix: Fix Key Teleport failing to find MuSig participants when an equivalent
+  ordinary aggregate xpub hides the MuSig expression in the cached key list.
+  Thanks to [@pythcoiner](https://github.com/pythcoiner).
 - Bugfix: Prevent unintended master seed replacement when scanning seed words
   or an extended private key from Ready To Sign or the Key Teleport retry screen.
 

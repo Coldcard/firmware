@@ -145,6 +145,11 @@ class Miniscript:
     def key_derive(key, idx, key_map=None, change=False):
         if key_map and key in key_map:
             kd = key_map[key]
+            if type(kd) is not type(key):
+                kd = type(key)(
+                    kd.node, kd.origin, kd.derivation,
+                    taproot=kd.taproot, chain_type=kd.chain_type,
+                )
         else:
             kd = key.derive(idx, change=change)
         return kd

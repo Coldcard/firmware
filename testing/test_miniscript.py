@@ -1334,6 +1334,75 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
     assert txn_id
 
 
+# Malformed-input edge cases: repeated keys can carry a bad origin, wrong
+# network, or conflicting chain code. Deduplication must not hide the occurrence
+# that should fail validation, including a participant inside repeated MuSig.
+# Identical raw occurrences remain valid; duplicate policy key-list entries do not.
+@pytest.mark.parametrize("template", [
+    "tr(@0/**,{pk(@1/<2;3>/*),pk(@2/**)})",
+    "tr(@0/<2;3>/*,{pk(@1/**),pk(@2/**)})",
+    "tr(musig(@0,@1)/**,pk(musig(@0,@2)/**))",
+    "tr(@0/<2;3>/*,{pk(musig(@0,@1)/**),pk(musig(@0,@2)/**)})",
+])
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("policy", [False, True])
+@pytest.mark.parametrize("conflict, error", [
+    (None, None),
+    ("origin", "master xfp mismatch"),
+    ("network", "wrong chain"),
+    ("chain_code", "Conflicting signer key"),
+    ("matching_origin", None),
+    ("origin_path", "Conflicting key origin"),
+    ("origin_fingerprint", "Conflicting key origin"),
+])
+def test_validate_repeated_keys(template, reverse, policy, conflict, error, get_cc_key,
+                                offer_minsc_import, goto_home, press_cancel, use_testnet):
+    from ckcc_protocol.protocol import CCProtoError
+    use_testnet()
+    goto_home()
+    seed = b"\x42" * 32
+    a = BIP32Node.from_master_secret(seed).hwif()
+    b = a
+    if conflict == "origin":
+        b = "[12345678]" + a
+    elif conflict == "network":
+        b = BIP32Node.from_master_secret(seed, netcode="BTC").hwif()
+    elif conflict == "chain_code":
+        node = BIP32Node.from_hwif(a)
+        node.node.chain_code = b"\x02" * 32
+        b = node.hwif()
+    elif conflict in ("matching_origin", "origin_path", "origin_fingerprint"):
+        # Depth two lets both origins pass individual-key validation, so import
+        # must check consistency between occurrences of the same foreign xpub.
+        root = BIP32Node.from_master_secret(seed)
+        xfp = root.fingerprint().hex()
+        xpub = root.subkey_for_path("7/8").hwif()
+        a = f"[{xfp}/7/8]{xpub}"
+        origin = (f"{xfp}/9/10" if conflict == "origin_path" else
+                  "00000000/7/8" if conflict == "origin_fingerprint" else f"{xfp}/7/8")
+        b = f"[{origin}]{xpub}"
+    if reverse:
+        a, b = b, a
+    me = get_cc_key("86h/1h/0h").replace("/<0;1>/*", "")
+    keys_info = [a, me, b] if template.startswith("tr(@0/**,") else [me, a, b]
+    if policy:
+        config = json.dumps(dict(name="key-validation", desc_template=template,
+                                 keys_info=keys_info))
+    else:
+        config = template.replace("/**", "/<0;1>/*")
+        for i, key in enumerate(keys_info):
+            config = config.replace(f"@{i}", key)
+    if policy:
+        error = "Duplicate policy key"
+    if error:
+        with pytest.raises(CCProtoError, match=error):
+            offer_minsc_import(config)
+    else:
+        _, story = offer_minsc_import(config)
+        assert "Create new miniscript wallet?" in story
+        press_cancel()
+
+
 @pytest.mark.parametrize("desc", [
     "tr(unspend(),{{sortedmulti_a(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*),sortedmulti_a(2,[0f056943/48h/1h/0h/3h]tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)},sortedmulti_a(2,[b7fe820c/48h/1h/0h/3h]tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/<0;1>/*,[30afbe54/48h/1h/0h/3h]tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/<0;1>/*)})",
     "tr(unspend(),{sortedmulti_a(2,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*),{sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[b7fe820c/48'/1'/0'/3']tpubDFdQ1sNV53TbogAMPEd2egY5NXfbdKD1Mnr2iBrJrcwRHJbKC7tuuUMHT8SSHJ2VEKdCf5WYBMfevvWCnyJV53gYUT2wFyxEV8SuUTedBp7/0/*),sortedmulti_a(2,[0f056943/48'/1'/0'/3']tpubDF2rnouQaaYrY6CUWTapYkeFEs3h3qrzL4M52ZGoPeU9dkarJMtrw6VF1zJRGuGuAFxYS3kXtavfAwQPTQkU5dyNYpbgxcpftrR8H3U85Ez/0/*,[30afbe54/48'/1'/0'/3']tpubDFLVv7cuiLjn3QcsCend5kn3yw5sx6Czazy7hZvdGX61v8pkU95k2Byz9M5jnabzeUg7qWtHYLeKQyCWWAHhUmQQMeZ4Dee2CfGR2TsZqrN/0/*)}})",
@@ -1669,6 +1738,68 @@ def test_same_key_change_based_minisc(goto_home, pick_menu_item, cap_story,
 
     # check addresses
     address_explorer_check("sd", af, wo, "mini-change")
+
+
+# Original reported bug: tr(A/<0;1>/*,{pk(M/<2;3>/*),pk(B/<0;1>/*)}), where
+# A and B are unspendable xpubs with the same public key but different chain codes.
+# Import previously accepted this unusual input and derived the wrong address.
+# Reject conflicting xpubs, also covering other serialized fields and different
+# suffixes. Controls keep valid reuse of the same full xpub with different suffixes.
+@pytest.mark.parametrize("template", [
+    "tr(@A,{pk(@ME),pk(@B)})",
+    "tr(@ME,{pk(@A),pk(@B)})",
+])
+@pytest.mark.parametrize("policy", [False, True])
+@pytest.mark.parametrize("conflict, branch", [
+    (None, 0), (None, 4),
+    ("chain_code", 0), ("depth", 0), ("parent", 0), ("child", 0),
+    ("chain_code", 4), ("depth", 4), ("parent", 4), ("child", 4),
+])
+def test_signer_key_identity(template, branch, policy, conflict, get_cc_key, offer_minsc_import,
+                             goto_home, press_cancel, use_testnet):
+    from ckcc_protocol.protocol import CCProtoError
+    use_testnet()
+    goto_home()
+    a = ranged_unspendable_internal_key(subderiv="")
+    if conflict == "parent":
+        node = BIP32Node.from_hwif(a)
+        node.node.depth = 2  # the host helper forces the root parent fingerprint to zero
+        a = node.hwif()
+    b = BIP32Node.from_hwif(a)
+    if conflict == "chain_code":
+        b.node.chain_code = b"\x02" * 32
+    elif conflict == "depth":
+        b.node.depth = 2
+    elif conflict == "parent":
+        b.node.parsed_parent_fingerprint = b"\x12\x34\x56\x78"
+    elif conflict == "child":
+        b.node.index = 7
+    b = b.hwif()
+    if conflict:
+        assert a != b
+    a += "/<0;1>/*"
+    b += f"/<{branch};{branch + 1}>/*"
+    me = get_cc_key("86h/1h/0h", subderiv="/<2;3>/*")
+    desc = template.replace("@A", a).replace("@B", b).replace("@ME", me)
+    if policy:
+        # Deliberately create separate entries for A/B: invalid under BIP-388
+        # even when their full xpubs match, since their public keys are identical.
+        keys = sorted([(template.index(tag), tag, k) for tag, k
+                       in (("@A", a), ("@B", b), ("@ME", me))])
+        keys_info = []
+        for i, (_, tag, k) in enumerate(keys):
+            base, suffix = k.rsplit("/<", 1)
+            keys_info.append(base)
+            template = template.replace(tag, f"@{i}/<{suffix}")
+        desc = json.dumps(dict(name="key-identity", desc_template=template, keys_info=keys_info))
+    if policy or conflict:
+        error = "Duplicate policy key" if policy else "Conflicting signer key"
+        with pytest.raises(CCProtoError, match=error):
+            offer_minsc_import(desc)
+    else:
+        _, story = offer_minsc_import(desc)
+        assert "Create new miniscript wallet?" in story
+        press_cancel()
 
 
 @pytest.mark.parametrize("desc", [

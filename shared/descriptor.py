@@ -120,10 +120,11 @@ class Descriptor:
         # should only be run once while importing wallet
         from glob import settings
 
-        c = 0
         has_mine = 0
         err_top_B = "Top level miniscript should be 'B'"
         limit = max_signers(self.addr_fmt)
+        my_xfp = settings.get('xfp', 0)
+        keys = [self.key] if self.key else []
 
         if self.tapscript:
             assert self.key  # internal key (would fail during parse)
@@ -134,7 +135,9 @@ class Descriptor:
                 l.is_sane(taproot=True)
                 # cannot have same keys in single miniscript
                 # provably unspendable taproot internal key is not covered here
-                assert len(l.keys) == len(set(l.keys)), "Insane"
+                leaf_keys = l.keys
+                assert len(leaf_keys) == len(set(leaf_keys)), "Insane"
+                keys.extend(leaf_keys)
 
         elif self.miniscript:
             assert self.key is None
@@ -142,17 +145,38 @@ class Descriptor:
             self.miniscript.verify()
             self.miniscript.is_sane(taproot=False)
             # cannot have same keys in single miniscript
-            assert len(self.miniscript.keys) == len(set(self.miniscript.keys)), "Insane"
+            keys = self.miniscript.keys
+            assert len(keys) == len(set(keys)), "Insane"
 
-        my_xfp = settings.get('xfp', 0)
+        xpubs = {}
+        origins = {}
         ext_nums = set()
         int_nums = set()
-        for k in self.keys:
+        # Validate every occurrence before self.keys deduplicates them.
+        for k in keys:
             has_mine += k.validate(my_xfp, disable_checks)
             ext, int = k.derivation.get_ext_int()
             ext_nums.add(ext)
             int_nums.add(int)
-            c += 1
+
+            # Check ordinary keys, MuSig aggregates and their participants by
+            # public key, independently of their derivation suffixes.
+            ks = [k] + k.keys if isinstance(k, MusigKey) else [k]
+            for kk in ks:
+                pubkey = kk.node.pubkey()
+                xpub = chains.current_chain().serialize_public(kk.node)
+                if pubkey in xpubs:
+                    assert xpubs[pubkey] == xpub, "Conflicting signer key"
+                else:
+                    xpubs[pubkey] = xpub
+
+                # MuSig aggregates have no origin; ordinary keys and their
+                # occurrences as participants must agree on signer paths.
+                if isinstance(kk, ExtendedKey):
+                    if pubkey in origins:
+                        assert origins[pubkey] == kk.origin, "Conflicting key origin"
+                    else:
+                        origins[pubkey] = kk.origin
 
         if not self.tapscript and not self.is_basic_multisig:
             # this is non-taproot Miniscript
@@ -160,22 +184,18 @@ class Descriptor:
             assert self.addr_fmt != AF_P2SH, "Miniscript in legacy P2SH not allowed"
 
         assert ext_nums.isdisjoint(int_nums), "Non-disjoint multipath"
-        assert c <= limit, "max signers"
+        assert len(self.keys) <= limit, "max signers"
 
         assert has_mine > 0, 'My key %s missing in descriptor.' % xfp2str(my_xfp).upper()
 
     def bip388_wallet_policy(self):
-        # Return compact descriptor (BIP-388 style) template and key info
-        # - only same origin keys
+        # Convert a validated descriptor to a BIP-388 template and key info.
         keys_info = OrderedDict()
 
-        for k in self.keys:
-            ks = k.keys if isinstance(k, MusigKey) else [k]
-
-            for kk in ks:
-                pk = kk.node.pubkey()
-                if pk not in keys_info:
-                    keys_info[pk] = kk.to_string(external=False, internal=False)
+        for k in self.iter_signer_keys():
+            pk = k.node.pubkey()
+            if pk not in keys_info:
+                keys_info[pk] = k.to_string(external=False, internal=False)
 
         desc_tmplt = self.to_string(checksum=False).replace("/<0;1>/*", "/**")
 
@@ -184,6 +204,22 @@ class Descriptor:
             desc_tmplt = desc_tmplt.replace(k_str, '@%d' % i)
 
         return desc_tmplt, keys_info
+
+    def iter_signer_keys(self):
+        # Every signer occurrence, internal key first, without deduplication.
+        # Expand MuSig expressions into participants, excluding aggregates.
+        keys = [self.key] if self.key else []
+        if self.tapscript:
+            for leaf in self.tapscript.iter_leaves():
+                keys.extend(leaf.keys)
+        elif self.miniscript:
+            keys.extend(self.miniscript.keys)
+
+        for k in keys:
+            if isinstance(k, MusigKey):
+                yield from k.keys
+            else:
+                yield k
 
     @property
     def script_len(self):
@@ -196,22 +232,42 @@ class Descriptor:
         return 25 # OP_DUP OP_HASH160 <20:pkh> OP_EQUALVERIFY OP_CHECKSIG
 
     def xfp_paths(self, skip_unspend_ik=False):
+        # Origins for a validated wallet descriptor, before address derivation.
         res = []
-        for k in self.keys:
+        seen = set()
+        deferred = []
+
+        keys = [self.key] if self.tapscript else self.keys
+        if self.tapscript:
+            for leaf in self.tapscript.iter_leaves():
+                keys.extend(leaf.keys)
+
+        for k in keys:
             if self.is_taproot and k.is_provably_unspendable and skip_unspend_ik:
                 continue
 
-            if isinstance(k, MusigKey):
-                agg_k = [swab32(k.node.my_fp())]
-                # even if dupes - add
-                res.append(agg_k)
+            duplicate = self.is_taproot and k in seen
+            seen.add(k)
+            is_musig = isinstance(k, MusigKey)
 
+            if not duplicate:
+                if is_musig:
+                    res.append([swab32(k.node.my_fp())])
+                else:
+                    res.append(k.origin.psbt_derivation())
+
+            if is_musig:
+                # Defer participants of duplicate aggregates until all normal
+                # entries are collected: a later key may supply their origin.
+                target = deferred if duplicate else res
                 for kk in k.keys:
                     psbt_der = kk.origin.psbt_derivation()
-                    if psbt_der not in res:
-                        res.append(psbt_der)
-            else:
-                res.append(k.origin.psbt_derivation())
+                    if psbt_der not in target:
+                        target.append(psbt_der)
+
+        for psbt_der in deferred:
+            if psbt_der not in res:
+                res.append(psbt_der)
 
         return res
 
