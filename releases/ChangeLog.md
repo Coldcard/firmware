@@ -34,6 +34,8 @@ This lists the changes in the most recent firmware, for each hardware platform.
 - Bugfix: Harden PSBTv2 parsing by rejecting key data on singleton fields,
   malformed global input/output count encodings, and files missing the required
   global version.
+- Bugfix: Correct finalization of presigned segwit inputs. Thanks to Nabeel-javed.
+- Bugfix: Return a signed PSBT instead of an invalid transaction when some inputs cannot be finalized.
 
 
 # Mk Specific Changes
