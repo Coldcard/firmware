@@ -1346,8 +1346,16 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
 ])
 @pytest.mark.parametrize("reverse", [False, True])
 @pytest.mark.parametrize("policy", [False, True])
-@pytest.mark.parametrize("conflict", [None, "origin", "network", "chain_code"])
-def test_validate_repeated_keys(template, reverse, policy, conflict, get_cc_key,
+@pytest.mark.parametrize("conflict, error", [
+    (None, None),
+    ("origin", "master xfp mismatch"),
+    ("network", "wrong chain"),
+    ("chain_code", "Conflicting signer key"),
+    ("matching_origin", None),
+    ("origin_path", "Conflicting key origin"),
+    ("origin_fingerprint", "Conflicting key origin"),
+])
+def test_validate_repeated_keys(template, reverse, policy, conflict, error, get_cc_key,
                                 offer_minsc_import, goto_home, press_cancel, use_testnet):
     from ckcc_protocol.protocol import CCProtoError
     use_testnet()
@@ -1363,6 +1371,16 @@ def test_validate_repeated_keys(template, reverse, policy, conflict, get_cc_key,
         node = BIP32Node.from_hwif(a)
         node.node.chain_code = b"\x02" * 32
         b = node.hwif()
+    elif conflict in ("matching_origin", "origin_path", "origin_fingerprint"):
+        # Depth two lets both origins pass individual-key validation, so import
+        # must check consistency between occurrences of the same foreign xpub.
+        root = BIP32Node.from_master_secret(seed)
+        xfp = root.fingerprint().hex()
+        xpub = root.subkey_for_path("7/8").hwif()
+        a = f"[{xfp}/7/8]{xpub}"
+        origin = (f"{xfp}/9/10" if conflict == "origin_path" else
+                  "00000000/7/8" if conflict == "origin_fingerprint" else f"{xfp}/7/8")
+        b = f"[{origin}]{xpub}"
     if reverse:
         a, b = b, a
     me = get_cc_key("86h/1h/0h").replace("/<0;1>/*", "")
@@ -1374,10 +1392,9 @@ def test_validate_repeated_keys(template, reverse, policy, conflict, get_cc_key,
         config = template.replace("/**", "/<0;1>/*")
         for i, key in enumerate(keys_info):
             config = config.replace(f"@{i}", key)
-    if policy or conflict:
-        error = ("Duplicate policy key" if policy else
-                 "master xfp mismatch" if conflict == "origin" else
-                 "wrong chain" if conflict == "network" else "Conflicting signer key")
+    if policy:
+        error = "Duplicate policy key"
+    if error:
         with pytest.raises(CCProtoError, match=error):
             offer_minsc_import(config)
     else:
