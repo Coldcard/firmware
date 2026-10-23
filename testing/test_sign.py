@@ -1013,7 +1013,7 @@ def test_sign_wutxo(start_sign, set_seed_words, end_sign, cap_story, sim_exec, s
         assert 'Network fee 0.00000500 XTN' in story
 
         # check we understood it right
-        ex = dict(  had_witness=False, num_inputs=1, num_outputs=1, sw_inputs=[None],
+        ex = dict(  had_witness=False, num_inputs=1, num_outputs=1, sw_inputs=[False],
                     miner_fee=500, warnings_expected=0,
                     lock_time=1442308, total_value_out=99500,
                     total_value_in=100000)
@@ -4060,16 +4060,21 @@ def test_mk4_done_signing_infinite_loop(goto_home, try_sign, fake_txn, enable_hw
 
 
 @pytest.mark.bitcoind
-def test_finalize_with_foreign_inputs(bitcoind, bitcoind_d_sim_watch, start_sign, end_sign,
-                                      cap_story, try_sign_microsd):
+@pytest.mark.parametrize('foreign_type', ['p2pkh', 'p2wpkh', 'p2sh-p2wpkh'])
+@pytest.mark.parametrize('include_paths', [True, False, 'claimed_ours'])
+def test_finalize_with_foreign_inputs(foreign_type, include_paths, bitcoind,
+                                      bitcoind_d_sim_watch, start_sign, end_sign,
+                                      cap_story, try_sign, try_sign_microsd, use_regtest):
     # foreign inputs that have partial sigs filled
     # we still do not care about final_scriptsig & final_scriptwitness PSBT fields
+    use_regtest()
     dest_address = bitcoind.supply_wallet.getnewaddress()
     alice = bitcoind.create_wallet(wallet_name="alice")
     bob = bitcoind.create_wallet(wallet_name="bob")
     cc = bitcoind_d_sim_watch
-    alice_addr = alice.getnewaddress()
-    bob_addr = bob.getnewaddress()
+    foreign_af = {'p2pkh': 'legacy', 'p2wpkh': 'bech32', 'p2sh-p2wpkh': 'p2sh-segwit'}[foreign_type]
+    alice_addr = alice.getnewaddress('', foreign_af)
+    bob_addr = bob.getnewaddress('', foreign_af)
     cc_addr = cc.getnewaddress()
     # fund all addresses
     for addr in (alice_addr, bob_addr, cc_addr):
@@ -4094,18 +4099,23 @@ def test_finalize_with_foreign_inputs(bitcoind, bitcoind_d_sim_watch, start_sign
     # join PSBTs to one
     the_psbt = bitcoind.supply_wallet.joinpsbts(psbt_list)
 
-    # bitcoin core would just fill finalscriptwitness, we need partial signatures
-    # just add dummy signatures and remove
+    # keep real partial signatures; Coldcard has to place them itself
+    for wallet in (alice, bob):
+        the_psbt = wallet.walletprocesspsbt(the_psbt, True, 'ALL', True, False)['psbt']
     pp = BasicPSBT().parse(base64.b64decode(the_psbt))
-    for i in pp.inputs:
-        assert len(i.bip32_paths) == 1  # single sigs
-        der = list(i.bip32_paths.values())[0]
-        if der[:4].hex().upper() == xfp2str(simulator_fixed_xfp):
-            # our key
+    foreign_inputs = {}
+    for idx, inp in enumerate(pp.inputs):
+        if any(path[:4].hex().upper() == xfp2str(simulator_fixed_xfp)
+               for path in inp.bip32_paths.values()):
             continue
-        pubkey = list(i.bip32_paths.keys())[0]
-        assert not i.part_sigs  # empty
-        i.part_sigs[pubkey] = os.urandom(71)  # dummy sig
+        foreign_inputs[idx] = inp
+        if not include_paths:
+            inp.bip32_paths.clear()
+        elif include_paths == 'claimed_ours':
+            # ownership claims are not what makes an input finalizable
+            inp.bip32_paths = {pk: struct.pack('<I', simulator_fixed_xfp) + path[4:]
+                               for pk, path in inp.bip32_paths.items()}
+    assert len(foreign_inputs) == 2
 
     # USB works and our signature is added (but only if we do not finalize)
     psbt = pp.as_bytes()
@@ -4115,10 +4125,317 @@ def test_finalize_with_foreign_inputs(bitcoind, bitcoind_d_sim_watch, start_sign
     for i in BasicPSBT().parse(signed).inputs:
         assert i.part_sigs
 
-    try_sign_microsd(psbt, finalize=True, accept=True)
+    start_sign(psbt, finalize=True)
+    usb_txn = end_sign(accept=True, finalize=True)
+    _, sd_txn, _ = try_sign_microsd(psbt, finalize=True, accept=True)
     title, story = cap_story()
     assert title == "PSBT Signed"
     assert "Finalized transaction (ready for broadcast)" in story
+
+    for raw in (usb_txn, sd_txn):
+        txn = CTransaction()
+        txn.deserialize(BytesIO(raw))
+        for idx, inp in foreign_inputs.items():
+            pubkey, sig = next(iter(inp.part_sigs.items()))
+            if foreign_type == 'p2pkh':
+                assert txn.vin[idx].scriptSig == bytes([len(sig)]) + sig + bytes([len(pubkey)]) + pubkey
+                assert not txn.wit.vtxinwit or not txn.wit.vtxinwit[idx].scriptWitness.stack
+            else:
+                redeem = inp.redeem_script
+                assert txn.vin[idx].scriptSig == (bytes([len(redeem)]) + redeem if redeem else b'')
+                assert txn.wit.vtxinwit[idx].scriptWitness.stack == [sig, pubkey]
+        result, = bitcoind.rpc.testmempoolaccept([raw.hex()])
+        assert result['allowed'], result
+
+    if foreign_type == 'p2sh-p2wpkh':
+        # a redeem script the UTXO does not commit to cannot be finalized,
+        # but it is not ours to reject either
+        bad = BasicPSBT().parse(psbt)
+        idx = next(iter(foreign_inputs))
+        redeem = bad.inputs[idx].redeem_script
+        bad.inputs[idx].redeem_script = redeem[:-1] + bytes([redeem[-1] ^ 1])
+        raw = bad.as_bytes()
+        _, signed = try_sign(raw)
+        assert BasicPSBT().parse(signed).inputs[idx].part_sigs
+        with pytest.raises(CCProtoError, match='PSBT output failed'):
+            try_sign(raw, finalize=True)
+
+
+@pytest.mark.parametrize('include_paths', [True, False, 'claimed_ours'])
+def test_presigned_bad_redeem(include_paths, fake_txn, try_sign, try_sign_microsd):
+    node = BIP32Node.from_master_secret(bytes(range(32)))
+    foreign = BasicPSBT().parse(fake_txn(1, 1, master_xpub=node.hwif(),
+        segwit_in=True, wrapped=True, psbt_v2=True)).inputs[0]
+    pubkey = next(iter(foreign.bip32_paths))
+    foreign.part_sigs = {pubkey: b'\x30' + bytes(70)}
+    redeem = foreign.redeem_script
+    foreign.redeem_script = redeem[:-1] + bytes([redeem[-1] ^ 1])
+    if not include_paths:
+        foreign.bip32_paths.clear()
+    elif include_paths == 'claimed_ours':
+        path = foreign.bip32_paths[pubkey]
+        foreign.bip32_paths[pubkey] = struct.pack('<I', simulator_fixed_xfp) + path[4:]
+
+    psbt = BasicPSBT().parse(fake_txn(2, 1, segwit_in=True, psbt_v2=True))
+    psbt.inputs[0] = foreign
+    raw = psbt.as_bytes()
+    _, signed = try_sign(raw)
+    signed = BasicPSBT().parse(signed)
+    assert signed.inputs[0] == foreign
+    assert signed.inputs[1].part_sigs
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(raw, finalize=True)
+    _, signed, txid = try_sign_microsd(raw)
+    assert txid is None
+    signed = BasicPSBT().parse(signed)
+    assert signed.inputs[0] == foreign
+    assert signed.inputs[1].part_sigs
+
+
+@pytest.mark.parametrize('style', ['p2wpkh', 'p2wsh', 'p2tr'])
+def test_foreign_segwit_signing(style, fake_txn, try_sign, cap_story):
+    # recognizing a foreign witness program must not make it finalizable
+    psbt = BasicPSBT().parse(fake_txn(2, 1, segwit_in=True))
+    foreign = psbt.inputs[0]
+    foreign.bip32_paths.clear()
+    foreign.witness_utxo = CTxOut(100000000, fake_dest_addr(style)).serialize()
+    if style == 'p2tr':
+        # opaque foreign signature data must survive PSBT round-tripping
+        foreign.taproot_key_sig = bytes(64)
+
+    raw = psbt.as_bytes()
+    _, signed = try_sign(raw)
+    signed = BasicPSBT().parse(signed)
+    assert signed.inputs[0] == foreign
+    assert signed.inputs[1].part_sigs
+
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(raw, finalize=True)
+    _, story = cap_story()
+    assert 'No signature on input #0' in story
+
+
+@pytest.mark.parametrize('style', ['p2pk', 'p2pkh', 'p2wpkh', 'p2sh-p2wpkh'])
+@pytest.mark.parametrize('problem', ['utxo', 'signature', 'extra_signature',
+                                     'wrong_pubkey', 'forged_xfp'])
+def test_presigned_singlesig_finalization_data(style, problem, fake_txn, try_sign,
+                                               try_sign_microsd):
+    # missing, ambiguous or mismatched signature data leaves the input in PSBT form
+    node = BIP32Node.from_master_secret(bytes(range(32)))
+    foreign = BasicPSBT().parse(fake_txn(1, 1, master_xpub=node.hwif(), psbt_v2=True,
+        p2pk_in=style == 'p2pk', segwit_in=style in ('p2wpkh', 'p2sh-p2wpkh'),
+        wrapped=style == 'p2sh-p2wpkh')).inputs[0]
+    pubkey = next(iter(foreign.bip32_paths))
+    foreign.part_sigs = {pubkey: b'\x30' + bytes(70)}
+    foreign.bip32_paths.clear()
+    if problem == 'utxo':
+        foreign.utxo = foreign.witness_utxo = None
+    elif problem == 'signature':
+        foreign.part_sigs.clear()
+    else:
+        other = node.subkey_for_path('1/0').sec()
+        foreign.part_sigs[other] = b'\x30' + bytes(70)
+        if problem in ('wrong_pubkey', 'forged_xfp'):
+            del foreign.part_sigs[pubkey]
+        if problem == 'forged_xfp':
+            # claiming our fingerprint must not make the mismatch finalizable
+            foreign.bip32_paths = {other: struct.pack('<III', simulator_fixed_xfp, 0, 0)}
+
+    psbt = BasicPSBT().parse(fake_txn(2, 1, segwit_in=True, psbt_v2=True))
+    psbt.inputs[0] = foreign
+    raw = psbt.as_bytes()
+
+    _, signed = try_sign(raw)
+    assert BasicPSBT().parse(signed).inputs[0] == foreign
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(raw, finalize=True)
+    _, signed, txid = try_sign_microsd(raw)
+    assert txid is None
+    signed = BasicPSBT().parse(signed)
+    assert signed.inputs[0] == foreign
+    assert signed.inputs[1].part_sigs
+
+
+@pytest.mark.parametrize('wrapped', [False, True])
+@pytest.mark.parametrize('encoding', ['uncompressed', 'bad_prefix'])
+def test_presigned_segwit_unsupported_pubkey(wrapped, encoding, fake_txn, try_sign,
+                                             try_sign_microsd):
+    # v0 witness programs only commit to compressed keys; anything else stays a PSBT
+    node = BIP32Node.from_master_secret(bytes(range(32)))
+    pubkey = node.sec(compressed=False) if encoding == 'uncompressed' else b'\x04' + node.sec()[1:]
+    psbt = BasicPSBT().parse(fake_txn(2, 1, segwit_in=True, psbt_v2=True))
+    inp = psbt.inputs[0]
+    script = b'\x00\x14' + hash160(pubkey)
+    if wrapped:
+        inp.redeem_script = script
+        script = b'\xa9\x14' + hash160(script) + b'\x87'
+    utxo = CTxOut()
+    utxo.deserialize(BytesIO(inp.witness_utxo))
+    utxo.scriptPubKey = script
+    inp.witness_utxo = utxo.serialize()
+    inp.bip32_paths.clear()
+    inp.part_sigs = {pubkey: b'\x30' + bytes(70)}
+    raw = psbt.as_bytes()
+
+    _, signed = try_sign(raw)
+    assert BasicPSBT().parse(signed).inputs[0] == inp
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(raw, finalize=True)
+    _, signed, txid = try_sign_microsd(raw)
+    assert txid is None
+    assert BasicPSBT().parse(signed).inputs[0] == inp
+
+
+def test_presigned_nested_missing_redeem(fake_txn, try_sign, try_sign_microsd):
+    # without the redeem script we cannot tell what the scriptSig must hold
+    psbt = BasicPSBT().parse(fake_txn(2, 1, segwit_in=True, wrapped=True))
+    inp = psbt.inputs[0]
+    pubkey = next(iter(inp.bip32_paths))
+    inp.part_sigs = {pubkey: b'\x30' + bytes(70)}
+    inp.redeem_script = None
+    raw = psbt.as_bytes()
+
+    _, signed = try_sign(raw)
+    assert BasicPSBT().parse(signed).inputs[0] == inp
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(raw, finalize=True)
+    _, signed, txid = try_sign_microsd(raw)
+    assert txid is None
+    assert BasicPSBT().parse(signed).inputs[0] == inp
+
+
+def test_foreign_p2wsh_script_mismatch(fake_txn, try_sign, try_sign_microsd, cap_story):
+    # a witness script that does not hash to the witness program is never
+    # finalized: script-to-wallet validation is what would have caught it
+    psbt = BasicPSBT().parse(fake_txn(2, 1, segwit_in=True, psbt_v2=True))
+    inp = psbt.inputs[0]
+    pubkey = next(iter(inp.bip32_paths))
+    inp.bip32_paths.clear()
+    inp.witness_script = bytes(range(34))
+    inp.part_sigs = {pubkey: b'\x30' + bytes(70)}
+
+    utxo = CTxOut()
+    utxo.deserialize(BytesIO(inp.witness_utxo))
+    utxo.scriptPubKey = b'\x00\x20' + bytes(32)       # not sha256(witness_script)
+    inp.witness_utxo = utxo.serialize()
+    raw = psbt.as_bytes()
+
+    _, signed = try_sign(raw)
+    signed = BasicPSBT().parse(signed)
+    assert signed.inputs[0] == inp
+    assert signed.inputs[1].part_sigs
+
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(raw, finalize=True)
+    _, story = cap_story()
+    assert 'Incomplete signature set on input #0' in story
+
+    _, signed, txid = try_sign_microsd(raw)
+    assert txid is None
+    assert BasicPSBT().parse(signed).inputs[0] == inp
+
+
+def test_finalize_mixed_foreign_inputs(fake_txn, try_sign, try_sign_microsd, cap_story):
+    # one unusable foreign input blocks the whole transaction, even beside
+    # a foreign input that is perfectly finalizable on its own
+    _, signed = try_sign(fake_txn(3, 1, segwit_in=True))
+    psbt = BasicPSBT().parse(signed)
+    good, bad, ours = psbt.inputs
+
+    good.bip32_paths.clear()                # signature matches its script
+
+    sig, = bad.part_sigs.values()
+    bad.part_sigs = {b'\x02' + bytes(32): sig}   # key cannot hash to the script
+    bad.bip32_paths.clear()
+
+    ours.part_sigs.clear()
+    raw = psbt.as_bytes()
+
+    _, out = try_sign(raw)
+    out = BasicPSBT().parse(out)
+    assert out.inputs[0] == good
+    assert out.inputs[1] == bad
+    assert out.inputs[2].part_sigs
+
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(raw, finalize=True)
+    _, story = cap_story()
+    assert 'No signature on input #1' in story
+
+    _, out, txid = try_sign_microsd(raw)
+    assert txid is None
+
+
+@pytest.mark.parametrize('style', ['bad_p2sh_p2wsh', 'unknown_spk', 'op_return'])
+def test_foreign_unclassifiable_input(style, fake_txn, try_sign, try_sign_microsd, cap_story):
+    # analyze_input() cannot work out what these are, so they can never be
+    # finalized; our own input is still signed and comes back as a PSBT
+    psbt = BasicPSBT().parse(fake_txn(2, 1, segwit_in=True, psbt_v2=True))
+    inp = psbt.inputs[0]
+    inp.bip32_paths.clear()
+
+    if style == 'bad_p2sh_p2wsh':
+        # redeem script must be the witness program of the witness script
+        inp.witness_script = bytes(range(34))
+        inp.redeem_script = b'\x00\x20' + bytes(32)
+        spk = b'\xa9\x14' + hash160(inp.redeem_script) + b'\x87'
+    elif style == 'unknown_spk':
+        spk = b'\x51\x52\x53'
+    else:
+        spk = b'\x6a\x04test'
+
+    utxo = CTxOut()
+    utxo.deserialize(BytesIO(inp.witness_utxo))
+    utxo.scriptPubKey = spk
+    inp.witness_utxo = utxo.serialize()
+    raw = psbt.as_bytes()
+
+    _, signed = try_sign(raw)
+    signed = BasicPSBT().parse(signed)
+    assert signed.inputs[0] == inp
+    assert signed.inputs[1].part_sigs
+
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(raw, finalize=True)
+    _, story = cap_story()
+    assert 'No signature on input #0' in story
+
+    _, signed, txid = try_sign_microsd(raw)
+    assert txid is None
+    assert BasicPSBT().parse(signed).inputs[0] == inp
+
+
+@pytest.mark.parametrize('style', ['p2pkh', 'p2wpkh', 'p2sh-p2wpkh', 'p2pk',
+                                   'p2pk-uncompressed'])
+def test_finalize_own_presigned_input(style, fake_txn, try_sign):
+    # second pass over a PSBT we signed before: our earlier signature is in
+    # part_sigs now, and finalization must still place it correctly
+    # - p2pk-uncompressed: the compressed-key rule applies to segwit only
+    kws = {'p2pkh': {},
+           'p2wpkh': dict(segwit_in=True),
+           'p2sh-p2wpkh': dict(segwit_in=True, wrapped=True),
+           'p2pk': dict(p2pk_in='compressed'),
+           'p2pk-uncompressed': dict(p2pk_in='uncompressed')}[style]
+    _, signed = try_sign(fake_txn(2, 1, **kws))
+
+    psbt = BasicPSBT().parse(signed)
+    assert all(len(i.part_sigs) == 1 for i in psbt.inputs)
+    pubkey, sig = next(iter(psbt.inputs[0].part_sigs.items()))
+    redeem_script = psbt.inputs[0].redeem_script
+    psbt.inputs[1].part_sigs.clear()
+
+    _, txn = try_sign(psbt.as_bytes(), finalize=True)
+    tx = CTransaction()
+    tx.deserialize(BytesIO(txn))
+    if style.startswith('p2pk-') or style == 'p2pk':
+        # pubkey is already in the scriptPubKey, so scriptSig is just the sig
+        assert tx.vin[0].scriptSig == bytes([len(sig)]) + sig
+    elif kws.get('segwit_in'):
+        expect = bytes([len(redeem_script)]) + redeem_script if kws.get('wrapped') else b''
+        assert tx.vin[0].scriptSig == expect
+        assert tx.wit.vtxinwit[0].scriptWitness.stack == [sig, pubkey]
+    else:
+        assert tx.vin[0].scriptSig == bytes([len(sig)]) + sig + bytes([len(pubkey)]) + pubkey
 
 
 @pytest.mark.parametrize("psbt_v2", [False, True])
