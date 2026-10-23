@@ -7,7 +7,7 @@ import ngu, ujson, uio, chains, ure, version, stash
 from binascii import hexlify as b2a_hex
 from serializations import ser_string
 from desc_utils import (bip388_wallet_policy_to_descriptor, append_checksum, bip388_validate_policy,
-                        ExtendedKey, MusigKey)
+                        ExtendedKey)
 from public_constants import AF_P2TR, AF_P2WSH, AF_CLASSIC, AF_P2SH, AF_P2WSH_P2SH
 from menu import MenuSystem, MenuItem, start_chooser
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, OK, X, ux_enter_bip32_index
@@ -826,13 +826,11 @@ class MiniScriptWallet(WalletABC):
         # return list of XPUB's which match xfp
         res = []
         desc = self.to_descriptor()
-        for key in desc.keys:
-            ks = key.keys if isinstance(key, MusigKey) else [key]
-            for k in ks:
-                if k.origin and k.origin.cc_fp == xfp:
-                    res.append(k)
-                elif swab32(k.node.my_fp()) == xfp:
-                    res.append(k)
+        for k in desc.iter_signer_keys():
+            if k.origin and k.origin.cc_fp == xfp:
+                res.append(k)
+            elif swab32(k.node.my_fp()) == xfp:
+                res.append(k)
 
         assert res, "missing xfp %s" % xfp2str(xfp)
         # returned is list of keys with corresponding master xfp
@@ -884,18 +882,16 @@ class MiniScriptWallet(WalletABC):
         for msc in cls.iter_wallets():
             kp = msc.kt_my_keypair(ri)
 
-            for key in msc.to_descriptor().keys:
-                ks = key.keys if isinstance(key, MusigKey) else [key]
-                for k in ks:
-                    if not k.origin: continue
-                    if k.origin.cc_fp == my_xfp:
-                        continue
-                    kk = k.derive(KT_RXPUBKEY_DERIV).derive(ri)
-                    his_pubkey = kk.node.pubkey()
-                    # if implied session key decodes the checksum, it is right
-                    ses_key, body = decode_step1(kp, his_pubkey, payload[4:])
-                    if ses_key:
-                        return ses_key, body, kk.origin.cc_fp
+            for k in msc.to_descriptor().iter_signer_keys():
+                if not k.origin: continue
+                if k.origin.cc_fp == my_xfp:
+                    continue
+                kk = k.derive(KT_RXPUBKEY_DERIV).derive(ri)
+                his_pubkey = kk.node.pubkey()
+                # if implied session key decodes the checksum, it is right
+                ses_key, body = decode_step1(kp, his_pubkey, payload[4:])
+                if ses_key:
+                    return ses_key, body, kk.origin.cc_fp
 
         return None, None, None
 

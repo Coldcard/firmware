@@ -94,6 +94,9 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 - all of the above
 - synced with master up to and including `1.5.2Q`
+- Bugfix: Fix Key Teleport failing to find MuSig participants when an equivalent
+  ordinary aggregate xpub hides the MuSig expression in the cached key list.
+  Thanks to [@pythcoiner](https://github.com/pythcoiner).
 - Bugfix: Prevent unintended master seed replacement when scanning seed words
   or an extended private key from Ready To Sign or the Key Teleport retry screen.
 
