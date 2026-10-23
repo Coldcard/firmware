@@ -13,6 +13,10 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
+- Bugfix: Reject conflicting xpub data between a MuSig aggregate and its ordinary
+  xpub representation even when derivation suffixes differ, and reject conflicting
+  key origins before wallet policy conversion. Thanks to
+  [@pythcoiner](https://github.com/pythcoiner).
 - Bugfix: Reject descriptors containing extended public keys with the same public key
   but conflicting chain codes or other xpub fields, preventing incorrect Taproot
   addresses. Thanks to [@pythcoiner](https://github.com/pythcoiner).

@@ -218,15 +218,17 @@ bad_node.from_chaincode_pubkey(b"\x03" * 32, agg.node.pubkey())
 bad_xpub = chains.current_key_chain().serialize_public(bad_node)
 assert bad_xpub != agg_xpub
 
-for conflict in (False, True):
-    ordinary = (bad_xpub if conflict else agg_xpub) + "/<0;1>/*"
+for conflict, suffix in ((False, "/<0;1>/*"), (True, "/<0;1>/*"),
+                         (False, "/<2;3>/*"), (True, "/<2;3>/*")):
+    ordinary = (bad_xpub if conflict else agg_xpub) + suffix
+    num_keys = 1 if suffix == "/<0;1>/*" else 2
     for first, second in ((ordinary, agg.to_string()), (agg.to_string(), ordinary)):
         for wrapper in ("pk", "pkh"):
             for cached in (False, True):
                 for disable_checks in (False, True):
                     desc = Descriptor.from_string("tr(%s,%s(%s))" % (first, wrapper, second))
                     if cached:
-                        assert len(desc.keys) == 1
+                        assert len(desc.keys) == num_keys
                     if conflict:
                         try:
                             desc.validate(disable_checks=disable_checks)
@@ -236,4 +238,4 @@ for conflict in (False, True):
                             assert False, "conflicting aggregate xpub passed validation"
                     else:
                         desc.validate(disable_checks=disable_checks)
-                        assert len(desc.keys) == 1
+                        assert len(desc.keys) == num_keys
