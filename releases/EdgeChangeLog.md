@@ -65,6 +65,9 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
   malformed global input/output count encodings, and files missing the required
   global version.
 - Bugfix: Preserve Taproot context while deriving Miniscript policies.
+- Bugfix: Correct finalization of presigned segwit inputs. Thanks to Nabeel-javed.
+- Bugfix: Keep a signed PSBT when an input lacks a supported, validated script and
+  usable signature set, including incomplete taproot, tapscript and MuSig2 spends.
 
 
 # Mk4 Specific Changes

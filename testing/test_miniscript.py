@@ -2887,6 +2887,64 @@ def test_big_boy(use_regtest, clear_miniscript, bitcoin_core_signer, get_cc_key,
     assert len(unspent) == 11
 
 
+@pytest.mark.bitcoind
+@pytest.mark.parametrize('taproot', [False, True])
+@pytest.mark.parametrize('policy', [False, True])
+def test_presigned_script_satisfaction(taproot, policy, use_regtest, clear_miniscript,
+        get_cc_key, offer_minsc_import, press_select, create_core_wallet, bitcoind,
+        try_sign, try_sign_microsd):
+    # A complete signature set is not a general miniscript/tapscript satisfaction.
+    # Preserve presigned input 0, sign input 1, and let Core construct the witnesses.
+    from ckcc_protocol.protocol import CCProtoError
+    use_regtest()
+    clear_miniscript()
+    keys = [get_cc_key('99h/0h/0h').replace('/<0;1>/*', '')]
+    script = 'and_v(v:pk(@0/<0;1>/*),after(1))'
+    if taproot:
+        keys.insert(0, ranged_unspendable_internal_key(subderiv=''))
+        template = f'tr(@0/<0;1>/*,{script.replace("@0", "@1")})'
+    else:
+        template = f'wsh({script})'
+    name = 'presigned-script'
+    if policy:
+        config = dict(name=name, desc_template=template, keys_info=keys)
+    else:
+        desc = template
+        for idx, key in enumerate(keys):
+            desc = desc.replace(f'@{idx}', key)
+        config = dict(name=name, desc=desc)
+    _, story = offer_minsc_import(json.dumps(config))
+    assert 'Create new miniscript wallet?' in story
+    press_select()
+    af = 'bech32m' if taproot else 'bech32'
+    wo = create_core_wallet(name, af, funded=2)
+    inputs = [dict(txid=u['txid'], vout=u['vout'], sequence=0xfffffffd)
+              for u in wo.listunspent()]
+    raw = base64.b64decode(wo.walletcreatefundedpsbt(inputs,
+        [{wo.getnewaddress('', af): 48}], 1, {'fee_rate': 2, 'change_type': af})['psbt'])
+    _, signed = try_sign(raw)
+    po = BasicPSBT().parse(signed)
+    assert len(po.inputs) == 2
+    if taproot:
+        assert all(i.taproot_script_sigs and not i.taproot_key_sig for i in po.inputs)
+        po.inputs[1].taproot_script_sigs.clear()
+    else:
+        assert all(i.part_sigs for i in po.inputs)
+        po.inputs[1].part_sigs.clear()
+    raw = po.as_bytes()
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(raw, finalize=True)
+    _, signed, txid = try_sign_microsd(raw)
+    assert txid is None
+    result = BasicPSBT().parse(signed)
+    assert result.inputs[0] == po.inputs[0]
+    assert result.inputs[1].taproot_script_sigs if taproot else result.inputs[1].part_sigs
+    final = wo.finalizepsbt(result.as_b64_str())
+    assert final['complete']
+    accepted, = bitcoind.rpc.testmempoolaccept([final['hex']])
+    assert accepted['allowed'], accepted
+
+
 @pytest.mark.parametrize("af", ["bech32", "bech32m"])
 def test_single_key_miniscript(af, settings_set, clear_miniscript, goto_home, get_cc_key,
                                garbage_collector, microsd_path, bitcoind, import_miniscript,

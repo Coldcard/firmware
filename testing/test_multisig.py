@@ -4017,4 +4017,337 @@ def test_import_multiple_similar_from_psbt(M_N, clear_miniscript, fake_ms_txn, i
 
     press_cancel()
 
+
+@pytest.mark.parametrize('addr_fmt', ['p2sh', 'p2wsh', 'p2sh-p2wsh'])
+@pytest.mark.parametrize('M,N', [(1, 1), (1, 2), (2, 3)])
+@pytest.mark.parametrize('include_paths', [True, False, 'claimed_ours'])
+def test_foreign_multisig_not_finalized(addr_fmt, M, N, include_paths, make_multisig,
+                                       fake_ms_txn, fake_txn, try_sign, try_sign_microsd,
+                                       clear_miniscript):
+    clear_miniscript()
+    # Remove Coldcard's key; the remaining wallet is entirely foreign.
+    keys = make_multisig(M, N + 1)[:-1]
+    foreign = BasicPSBT().parse(fake_ms_txn(1, 1, M, keys, inp_addr_fmt=addr_fmt,
+                                           psbt_v2=True)).inputs[0]
+    # Signature contents are irrelevant: unsupported finalization must be rejected.
+    foreign.part_sigs = {pk: b'\x30' + bytes(70)
+                         for pk in list(foreign.bip32_paths)[:M]}
+    if not include_paths:
+        foreign.bip32_paths.clear()
+    elif include_paths == 'claimed_ours':
+        foreign.bip32_paths = {pk: struct.pack('<I', simulator_fixed_xfp) + path[4:]
+                              for pk, path in foreign.bip32_paths.items()}
+
+    psbt = BasicPSBT().parse(fake_txn(2, 1, addr_fmt="p2wpkh", psbt_v2=True))
+    psbt.inputs[0] = foreign
+    raw = psbt.as_bytes()
+
+    _, signed = try_sign(raw)
+    signed = BasicPSBT().parse(signed)
+    assert signed.inputs[0] == foreign
+    assert signed.inputs[1].part_sigs
+
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(raw, finalize=True)
+
+    # Automatic microSD finalization must leave this as a partially signed PSBT.
+    _, signed, txid = try_sign_microsd(raw, finalize=False)
+    assert txid is None
+    signed = BasicPSBT().parse(signed)
+    assert signed.inputs[0] == foreign
+    assert signed.inputs[1].part_sigs
+
+
+@pytest.mark.parametrize('problem', ['foreign_threshold', 'presigned_count'])
+def test_multisig_incomplete_inputs(problem, clear_miniscript, import_ms_wallet, make_multisig,
+                                    fake_ms_txn, try_sign, try_sign_microsd):
+    clear_miniscript()
+    N = 3 if problem == 'foreign_threshold' else 2
+    keys = import_ms_wallet(2, N, addr_fmt='p2sh-p2wsh', accept=True)
+    psbt = BasicPSBT().parse(fake_ms_txn(3, 1, 2, keys, inp_addr_fmt="p2sh-p2wsh",
+                                       psbt_v2=True))
+    sig = b'\x30' + bytes(70)
+    for inp in psbt.inputs[1:]:
+        pk = next(pk for pk, path in inp.bip32_paths.items()
+                  if path[:4] != struct.pack('<I', simulator_fixed_xfp))
+        inp.part_sigs[pk] = sig
+
+    if problem == 'foreign_threshold':
+        # Two signatures must not satisfy a foreign 3-of-4 via our active 2-of-3 wallet.
+        foreign_keys = make_multisig(3, 5)[:-1]
+        psbt.inputs[0] = BasicPSBT().parse(fake_ms_txn(1, 1, 3, foreign_keys,
+            inp_addr_fmt="p2sh-p2wsh", psbt_v2=True)).inputs[0]
+        inp = psbt.inputs[0]
+        inp.part_sigs = {pk: sig for pk in list(inp.bip32_paths)[:2]}
+        inp.bip32_paths.clear()
+    else:
+        # Input 0 is presigned, input 1 completes here, input 2 still needs a cosigner.
+        inp = psbt.inputs[0]
+        inp.part_sigs = {pk: sig for pk in inp.bip32_paths}
+        psbt.inputs[2].part_sigs.clear()
+
+    raw = psbt.as_bytes()
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(raw, finalize=True)
+    _, signed, txid = try_sign_microsd(raw)
+    assert txid is None
+    signed = BasicPSBT().parse(signed)
+    assert signed.inputs[0] == psbt.inputs[0]
+    assert len(signed.inputs[1].part_sigs) == 2
+    assert len(signed.inputs[2].part_sigs) == (2 if problem == 'foreign_threshold' else 1)
+
+
+@pytest.mark.parametrize('bip67', [False, True])
+@pytest.mark.parametrize('all_signed', [False, True])
+@pytest.mark.parametrize('addr_fmt', ['p2wsh', 'p2sh-p2wsh'])
+def test_finalize_presigned_own_multisig(all_signed, addr_fmt, bip67, clear_miniscript, import_ms_wallet,
+                                         fake_ms_txn, try_sign, try_sign_microsd):
+    # input0 arrives completely signed by the other cosigners of our own
+    # registered wallet, input1 is completed here: both must finalize, even
+    # though we add no signature of our own to input0
+    clear_miniscript()
+    keys = import_ms_wallet(2, 3, addr_fmt=addr_fmt, accept=True, bip67=bip67)
+    psbt = BasicPSBT().parse(fake_ms_txn(2, 1, 2, keys, inp_addr_fmt=addr_fmt,
+                                         psbt_v2=True, bip67=bip67))
+    sig = b'\x30' + bytes(70)
+    our_xfp = struct.pack('<I', simulator_fixed_xfp)
+
+    foreign0 = [pk for pk, path in psbt.inputs[0].bip32_paths.items()
+                if path[:4] != our_xfp]
+    psbt.inputs[0].part_sigs = {pk: b'\x30' + pk + bytes(37) for pk in foreign0}
+    if all_signed:
+        # all three pubkeys carry a signature (one is ours from an earlier pass)
+        # -> input is fully_signed already at parse time
+        our0 = next(pk for pk in psbt.inputs[0].bip32_paths if pk not in foreign0)
+        psbt.inputs[0].part_sigs[our0] = sig
+
+    fk1 = next(pk for pk, path in psbt.inputs[1].bip32_paths.items()
+               if path[:4] != our_xfp)
+    psbt.inputs[1].part_sigs = {fk1: sig}
+
+    raw = psbt.as_bytes()
+    _, txn = try_sign(raw, finalize=True)
+    tx = CTransaction()
+    tx.deserialize(BytesIO(txn))
+    for i, inp in enumerate(psbt.inputs):
+        redeem = inp.redeem_script
+        assert tx.vin[i].scriptSig == (bytes([len(redeem)]) + redeem if redeem else b'')
+        stack = tx.wit.vtxinwit[i].scriptWitness.stack
+        assert stack[0] == b''
+        assert stack[-1] == inp.witness_script
+        assert len(stack) == 1 + 2 + 1     # dummy + M sigs + witness script
+        if i == 0:
+            script = inp.witness_script
+            keys_in_order = [script[pos+1:pos+34] for pos in range(1, len(script)-2, 34)]
+            assert stack[1:-1] == [inp.part_sigs[pk] for pk in keys_in_order
+                                   if pk in inp.part_sigs][:2]
+
+    # microSD flow must finalize automatically too
+    _, txn_sd, txid = try_sign_microsd(raw, finalize=True)
+    assert txid is not None
+    assert txn_sd == txn
+
+
+@pytest.mark.parametrize('presigned_first', [True, False])
+@pytest.mark.parametrize('all_signed', [False, True])
+def test_presigned_other_wallet(all_signed, presigned_first, clear_miniscript, import_ms_wallet,
+                                 fake_ms_txn, try_sign, try_sign_microsd):
+    # A completed input must not choose the wallet used to sign another input.
+    clear_miniscript()
+    keys_a = import_ms_wallet(2, 3, name='presigned', unique=1,
+                              addr_fmt='p2sh-p2wsh', accept=True)
+    keys_b = import_ms_wallet(2, 3, name='signing', unique=2,
+                              addr_fmt='p2sh-p2wsh', accept=True)
+    presigned = BasicPSBT().parse(fake_ms_txn(1, 1, 2, keys_a,
+        inp_addr_fmt="p2sh-p2wsh", psbt_v2=True)).inputs[0]
+    our_xfp = struct.pack('<I', simulator_fixed_xfp)
+    sig = b'\x30' + bytes(70)
+    presigned.part_sigs = {pk: sig for pk, path in presigned.bip32_paths.items()
+                           if all_signed or path[:4] != our_xfp}
+
+    psbt = BasicPSBT().parse(fake_ms_txn(2, 1, 2, keys_b,
+        inp_addr_fmt="p2sh-p2wsh", psbt_v2=True))
+    idx = 0 if presigned_first else 1
+    presigned.my_index = idx
+    psbt.inputs[idx] = presigned
+    signing = psbt.inputs[1 - idx]
+    pk = next(pk for pk, path in signing.bip32_paths.items() if path[:4] != our_xfp)
+    signing.part_sigs = {pk: sig}
+    assert not psbt.xpubs
+    raw = psbt.as_bytes()
+
+    _, signed = try_sign(raw)
+    signed = BasicPSBT().parse(signed)
+    assert signed.inputs[idx] == presigned
+    assert len(signed.inputs[1 - idx].part_sigs) == 2
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(raw, finalize=True)
+    _, signed, txid = try_sign_microsd(raw)
+    assert txid is None
+    signed = BasicPSBT().parse(signed)
+    assert signed.inputs[idx] == presigned
+    assert len(signed.inputs[1 - idx].part_sigs) == 2
+
+
+@pytest.mark.parametrize('all_signed', [False, True])
+@pytest.mark.parametrize('multisig_payment', [False, True])
+def test_presigned_multisig_with_singlesig(all_signed, multisig_payment, clear_miniscript,
+        import_ms_wallet, fake_ms_txn, fake_txn, start_sign, end_sign, cap_story,
+        sim_exec, try_sign, try_sign_microsd):
+    clear_miniscript()
+    keys = import_ms_wallet(2, 3, name='presigned', unique=1,
+                            addr_fmt='p2sh-p2wsh', accept=True)
+    presigned = BasicPSBT().parse(fake_ms_txn(1, 1, 2, keys,
+        inp_addr_fmt="p2sh-p2wsh", psbt_v2=True)).inputs[0]
+    our_xfp = struct.pack('<I', simulator_fixed_xfp)
+    presigned.part_sigs = {pk: b'\x30' + bytes(70)
+                           for pk, path in presigned.bip32_paths.items()
+                           if all_signed or path[:4] != our_xfp}
+    psbt = BasicPSBT().parse(fake_txn(2, 1, addr_fmt="p2wpkh", psbt_v2=True))
+    psbt.inputs[0] = presigned
+    if multisig_payment:
+        # A payment to another registered wallet must not be checked as change
+        # for the wallet of the presigned input.
+        dest_keys = import_ms_wallet(2, 3, name='destination', unique=2,
+                                     addr_fmt='p2sh-p2wsh', accept=True)
+        payment = BasicPSBT().parse(fake_ms_txn(2, 1, 2, dest_keys,
+            inp_addr_fmt="p2sh-p2wsh", change_outputs=[0], psbt_v2=True))
+        psbt.outputs[0] = payment.outputs[0]
+    assert not psbt.xpubs
+    raw = psbt.as_bytes()
+
+    start_sign(raw)
+    title, story = cap_story()
+    assert title == 'OK TO SEND?', story
+    # Exercise the policy check against the actual parsed transaction before
+    # approval: only singlesig needs signing, so a multisig-only rule must fail.
+    assert sim_exec("""
+from auth import UserAuthorizedAction
+from hsm import ApprovalRule
+from chains import current_chain
+p = UserAuthorizedAction.active_request.psbt
+try:
+    ApprovalRule({'wallet': 'presigned'}, 0).matches_transaction(
+        p, {}, 0, False, current_chain())
+except AssertionError as exc:
+    RV.write(str(exc))
+else:
+    RV.write('accepted')
+""") == 'singlesig only'
+    assert sim_exec("""
+from auth import UserAuthorizedAction
+from hsm import ApprovalRule
+from chains import current_chain
+p = UserAuthorizedAction.active_request.psbt
+assert p.active_miniscript is None
+assert not p.outputs[0].is_change
+assert ApprovalRule({'wallet': '1'}, 0).matches_transaction(p, {}, 0, False, current_chain())
+RV.write('ok')
+""") == 'ok'
+    signed = BasicPSBT().parse(end_sign())
+    assert signed.inputs[0] == presigned
+    assert signed.inputs[1].part_sigs
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(raw, finalize=True)
+    _, signed, txid = try_sign_microsd(raw)
+    assert txid is None
+    signed = BasicPSBT().parse(signed)
+    assert signed.inputs[0] == presigned
+    assert signed.inputs[1].part_sigs
+
+
+@pytest.mark.parametrize('signature_count', [1, 2, 3])
+def test_multisig_missing_witness_script(signature_count, clear_miniscript, import_ms_wallet,
+                                         fake_ms_txn, try_sign, try_sign_microsd):
+    clear_miniscript()
+    keys = import_ms_wallet(2, 3, addr_fmt='p2wsh', accept=True)
+    psbt = BasicPSBT().parse(fake_ms_txn(2, 1, 2, keys, inp_addr_fmt="p2wsh",
+                                       psbt_v2=True))
+    our_xfp = struct.pack('<I', simulator_fixed_xfp)
+    for idx, inp in enumerate(psbt.inputs):
+        # Put our key last so the one-signature case still needs us to sign.
+        pubkeys = sorted(inp.bip32_paths,
+                         key=lambda pk: inp.bip32_paths[pk][:4] == our_xfp)
+        count = signature_count if idx == 0 else 1
+        inp.part_sigs = {pk: b'\x30' + bytes(70) for pk in pubkeys[:count]}
+
+    inp = psbt.inputs[0]
+    inp.redeem_script = inp.witness_script
+    inp.witness_script = None
+    raw = psbt.as_bytes()
+
+    if signature_count == 1:
+        # Inputs needing our signature must still provide the witness script.
+        with pytest.raises(CCProtoError, match='Need witness script for input #0'):
+            try_sign(raw)
+        return
+
+    # A presigned input with its script in the wrong field must stay a PSBT.
+    _, signed = try_sign(raw)
+    signed = BasicPSBT().parse(signed)
+    assert signed.inputs[0] == inp
+    assert len(signed.inputs[1].part_sigs) == 2
+    _, signed, txid = try_sign_microsd(raw)
+    assert txid is None
+    signed = BasicPSBT().parse(signed)
+    assert signed.inputs[0] == inp
+    assert len(signed.inputs[1].part_sigs) == 2
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(raw, finalize=True)
+
+
+@pytest.mark.parametrize('addr_fmt', ['p2wsh', 'p2sh'])
+@pytest.mark.parametrize('problem', ['extra_key', 'wrong_key', 'script', 'wrong_field', 'short_path'])
+def test_presigned_multisig_unusable_data(problem, addr_fmt, clear_miniscript, import_ms_wallet,
+        fake_ms_txn, try_sign, try_sign_microsd):
+    clear_miniscript()
+    keys = import_ms_wallet(2, 3, addr_fmt=addr_fmt, accept=True)
+    po = BasicPSBT().parse(fake_ms_txn(2, 1, 2, keys, inp_addr_fmt=addr_fmt, psbt_v2=True))
+    sig = b'\x30' + bytes(70)
+    for idx, inp in enumerate(po.inputs):
+        foreign = [pk for pk, path in inp.bip32_paths.items()
+                   if path[:4] != struct.pack('<I', simulator_fixed_xfp)]
+        inp.part_sigs = {pk: sig for pk in foreign[:2-idx]}
+    inp = po.inputs[0]
+    if problem in ('extra_key', 'wrong_key'):
+        if problem == 'wrong_key':
+            del inp.part_sigs[next(iter(inp.part_sigs))]
+        inp.part_sigs[BIP32Node.from_master_secret(bytes(range(32))).sec()] = sig
+    elif problem in ('script', 'wrong_field'):
+        field = 'witness_script' if addr_fmt == 'p2wsh' else 'redeem_script'
+        script = getattr(inp, field)
+        if problem == 'script':
+            setattr(inp, field, script[:-2] + b'\x52\xae')
+        else:
+            setattr(inp, 'redeem_script' if addr_fmt == 'p2wsh' else 'witness_script', script)
+            setattr(inp, field, None)
+    else:
+        pk = next(iter(inp.bip32_paths))
+        inp.bip32_paths[pk] = inp.bip32_paths[pk][:-4]
+    raw = po.as_bytes()
+    _, signed = try_sign(raw)
+    assert BasicPSBT().parse(signed).inputs[0] == inp
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(raw, finalize=True)
+    _, signed, txid = try_sign_microsd(raw)
+    assert txid is None
+    result = BasicPSBT().parse(signed)
+    assert result.inputs[0] == inp
+    assert len(result.inputs[1].part_sigs) == 2
+
+
+@pytest.mark.parametrize('addr_fmt', ['p2wsh', 'p2sh'])
+def test_signing_multisig_script_commitment(addr_fmt, clear_miniscript, import_ms_wallet,
+                                            fake_ms_txn, try_sign):
+    clear_miniscript()
+    keys = import_ms_wallet(2, 3, addr_fmt=addr_fmt, accept=True)
+    po = BasicPSBT().parse(fake_ms_txn(1, 1, 2, keys, inp_addr_fmt=addr_fmt))
+    inp = po.inputs[0]
+    field = 'witness_script' if addr_fmt == 'p2wsh' else 'redeem_script'
+    script = getattr(inp, field)
+    # The registered wallet still matches the UTXO, but this is a different script.
+    setattr(inp, field, script[:3] + bytes([script[3] ^ 1]) + script[4:])
+    with pytest.raises(CCProtoError, match='spk mismatch'):
+        try_sign(po.as_bytes())
+
 # EOF

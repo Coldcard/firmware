@@ -737,6 +737,49 @@ def test_resign_musig_psbt_sig(use_regtest, clear_miniscript, build_musig_wallet
 
 
 @pytest.mark.bitcoind
+@pytest.mark.parametrize('tapscript', [False, True])
+def test_musig_finalization_rounds(tapscript, use_regtest, clear_miniscript,
+        build_musig_wallet, try_sign, try_sign_microsd, bitcoind,
+        reset_musig_session_cache, usb_miniscript_policy, offer_minsc_import, press_select, sim_exec):
+    # Reimport as BIP-388, then exercise nonce-only, partial, and aggregate results.
+    from ckcc_protocol.protocol import CCProtoError
+    use_regtest()
+    clear_miniscript()
+    desc = 'tr($H,pk(musig($0,$1)/<0;1>/*))' if tapscript else False
+    wo, signers, _ = build_musig_wallet('round-finalization', 2, tapscript=desc,
+                                       musig_subder='/<0;1>/*')
+    policy = usb_miniscript_policy('round-finalization')
+    clear_miniscript()
+    _, story = offer_minsc_import(json.dumps(policy))
+    assert 'Create new miniscript wallet?' in story
+    press_select()
+    initial = wo.walletcreatefundedpsbt([], [{wo.getnewaddress('', 'bech32m'): 5}], 0,
+                                       {'fee_rate': 2, 'change_type': 'bech32m'})['psbt']
+    # USB cannot emit a transaction during nonce generation.
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(base64.b64decode(initial), finalize=True)
+    # The failed export has no nonce PSBT to carry into round two; restart it.
+    sim_exec("import psbt; psbt.MUSIG_SESSION_CACHE.clear()")
+    _, nonce_psbt = try_sign(base64.b64decode(initial))
+    po = BasicPSBT().parse(nonce_psbt)
+    assert po.inputs[0].musig_pubnonces
+    assert not po.inputs[0].musig_part_sigs
+    core_nonce = signers[0].walletprocesspsbt(po.as_b64_str(), True, 'DEFAULT', True, False)['psbt']
+    _, partial, txid = try_sign_microsd(base64.b64decode(core_nonce))
+    assert txid is None
+    po = BasicPSBT().parse(partial)
+    assert len(po.inputs[0].musig_part_sigs) == 1
+    assert not po.inputs[0].taproot_key_sig
+    # Core completes the aggregation. Re-signing a new input is covered separately;
+    # here Core also verifies that the partial signature exported above is usable.
+    complete = signers[0].walletprocesspsbt(po.as_b64_str(), True, 'DEFAULT', True, False)['psbt']
+    final = wo.finalizepsbt(complete)
+    assert final['complete']
+    accepted, = bitcoind.rpc.testmempoolaccept([final['hex']])
+    assert accepted['allowed'], accepted
+
+
+@pytest.mark.bitcoind
 def test_musig_incomplete_rounds(use_regtest, clear_miniscript, build_musig_wallet,
                                   start_sign, end_sign, reset_musig_session_cache):
     use_regtest()
