@@ -3988,9 +3988,9 @@ def test_txout_explorer(chain, data, fake_txn, start_sign, settings_set, txout_e
 @pytest.mark.parametrize("chain", ["BTC", "XTN"])
 @pytest.mark.parametrize("addr_fmt", ["p2tr", "p2wpkh", "p2pkh", "p2wpkh-p2sh"])
 def test_txin_explorer(chain, addr_fmt, fake_txn, start_sign, settings_set, txin_explorer,
-                       cap_story, pytestconfig):
+                       cap_story, pytestconfig, settings_get, use_testnet):
     # TODO This test MUST be run with --psbt2 flag on and off
-    settings_set("chain", chain)
+    use_testnet(chain == "XTN")
     num_ins = 3
 
     if addr_fmt == "p2wpkh":
@@ -4010,8 +4010,14 @@ def test_txin_explorer(chain, addr_fmt, fake_txn, start_sign, settings_set, txin
                     psbt_v2=pytestconfig.getoption('psbt2'),
                     sequences=[seq], sighashes=[sh])
 
-    start_sign(psbt)
-    txin_explorer(num_ins, [(addr_fmt, 100_000_000, 1, chain, False, sh, seq)])
+    # This tests the explorer, including deliberately unusual sighashes.
+    old_check = settings_get("sighshchk", 0)
+    settings_set("sighshchk", 1)
+    try:
+        start_sign(psbt)
+        txin_explorer(num_ins, [(addr_fmt, 100_000_000, 1, chain, False, sh, seq)])
+    finally:
+        settings_set("sighshchk", old_check)
 
 @pytest.mark.parametrize("finalize", [True, False])
 @pytest.mark.parametrize("data", [
@@ -4023,7 +4029,8 @@ def test_txin_explorer(chain, addr_fmt, fake_txn, start_sign, settings_set, txin
 ])
 def test_txout_explorer_op_return(finalize, data, fake_txn, start_sign, cap_story, is_q1,
                                   need_keypress, press_cancel, press_select, end_sign,
-                                  cap_screen_qr, cap_screen, pick_menu_item):
+                                  cap_screen_qr, cap_screen, pick_menu_item, use_testnet):
+    use_testnet()
     outputs = [["p2tr", 50000, not i] for i in range(20)]
     outputs += [["op_return", am, None, d] for am, d in data]
     out_val = sum(o[1] for o in outputs)
