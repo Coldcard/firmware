@@ -21,7 +21,7 @@ from hmac import HMAC
 from onetimepass import get_hotp
 from objstruct import ObjectStruct as DICT
 from txn import render_address, fake_txn
-from psbt import ser_prop_key
+from psbt import BasicPSBT, ser_prop_key
 from helpers import prandom, xfp2str
 from msg import sign_message
 from bip32 import PrivateKey, BIP32Node
@@ -546,22 +546,32 @@ def test_simple_limit(dev, amount, over, start_hsm, fake_txn, attempt_psbt, twea
         tweak_rule(0, dict(max_amount=int(amount+over)))
         attempt_psbt(psbt)
 
-def test_named_wallets(dev, start_hsm, tweak_rule, import_ms_wallet, hsm_status,
+@pytest.mark.parametrize('M', [3, 4])
+def test_named_wallets(M, dev, start_hsm, tweak_rule, import_ms_wallet, hsm_status,
                        attempt_psbt, fake_txn, fake_ms_txn, amount=5E6):
-    wname = 'Myself-4'
-    M = 4
+    wname = 'Myself-%d-of-4' % M
 
     stat = hsm_status()
     assert not stat.active
 
-    keys = import_ms_wallet(M,M, name=wname, accept=True)
+    keys = import_ms_wallet(M, 4, name=wname, accept=True)
     time.sleep(.2)
 
     stat = hsm_status()
     assert wname in stat.wallets
 
+    # A presigned multisig input must not select the wallet for singlesig signing.
+    mixed = BasicPSBT().parse(fake_txn(2, 1, addr_fmt='p2wpkh', psbt_v2=True))
+    presigned = BasicPSBT().parse(fake_ms_txn(1, 1, M, keys, psbt_v2=True)).inputs[0]
+    our_xfp = struct.pack('<I', dev.master_fingerprint)
+    presigned.part_sigs = {pk: b'\x30' + bytes(70)
+                          for pk, path in presigned.bip32_paths.items()
+                          if M == 4 or path[:4] != our_xfp}
+    mixed.inputs[0] = presigned
+    mixed = mixed.as_bytes()
+
     # policy: only allow multisig w/ that name
-    policy = DICT(rules=[dict(wallet=wname)])
+    policy = DICT(warnings_ok=True, rules=[dict(wallet=wname)])
 
     stat = start_hsm(policy)
     assert 'Any amount from miniscript wallet' in stat.summary
@@ -573,6 +583,7 @@ def test_named_wallets(dev, start_hsm, tweak_rule, import_ms_wallet, hsm_status,
     psbt = fake_txn(1, [["p2tr", int(amount)],["p2wpkh", int(1E8-amount), True]],
                     dev.master_xpub, fee=0)
     attempt_psbt(psbt, "singlesig only")
+    attempt_psbt(mixed, "singlesig only")
 
     # but txn w/ multisig wallet should work
     psbt = fake_ms_txn(1, 2, M, keys, fee=0, outvals=[amount, 1E8-amount], outstyles=['p2wsh'],
@@ -582,6 +593,7 @@ def test_named_wallets(dev, start_hsm, tweak_rule, import_ms_wallet, hsm_status,
     # check ms txn not accepted when rule spec's a single signer
     tweak_rule(0, dict(wallet='1'))
     attempt_psbt(psbt, 'wrong miniscript wallet')
+    attempt_psbt(mixed)
 
 @pytest.mark.bitcoind
 def test_named_wallets_miniscript(dev, start_hsm, tweak_rule,

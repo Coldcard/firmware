@@ -1576,8 +1576,16 @@ def test_unrelated_wif_does_not_allow_presigned_foreign_psbt(fake_txn, settings_
 
 
 @pytest.mark.bitcoind
-@pytest.mark.parametrize('mode', ["Classic P2PKH", "Segwit P2WPKH", "P2SH-Segwit"])
-def test_spend_paper_wallet_addr_only(mode, bitcoind, settings_remove, import_wif_to_store,
+@pytest.mark.parametrize('mode,psbt_v2,with_redeem_script', [
+    ("Classic P2PKH", False, False),
+    ("Segwit P2WPKH", False, False),
+    ("P2SH-Segwit", False, False),
+    ("P2SH-Segwit", False, True),
+    ("P2SH-Segwit", True, False),
+    ("P2SH-Segwit", True, True),
+])
+def test_spend_paper_wallet_addr_only(mode, psbt_v2, with_redeem_script,
+                                      bitcoind, settings_remove, import_wif_to_store,
                                       start_sign, end_sign, cap_story, use_regtest,
                                       pick_menu_item, goto_home, cap_menu, need_keypress,
                                       load_export):
@@ -1634,6 +1642,9 @@ def test_spend_paper_wallet_addr_only(mode, bitcoind, settings_remove, import_wi
     po = BasicPSBT().parse(psbt_bytes)
     for i, inp in enumerate(po.inputs):
         assert not inp.bip32_paths
+        if mode == "P2SH-Segwit":
+            inp.redeem_script = b'\x00\x14' + hash160(bytes.fromhex(pubkey_hex)) if with_redeem_script else None
+    psbt_bytes = po.to_v2() if psbt_v2 else po.to_v0()
 
     start_sign(psbt_bytes, finalize=True)
     time.sleep(.1)
