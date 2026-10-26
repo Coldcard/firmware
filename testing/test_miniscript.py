@@ -3022,7 +3022,8 @@ def test_big_boy(use_regtest, clear_miniscript, bitcoin_core_signer, get_cc_key,
 def test_single_key_miniscript(af, settings_set, clear_miniscript, goto_home, get_cc_key,
                                garbage_collector, microsd_path, bitcoind, import_miniscript,
                                press_select, cap_menu, pick_menu_item, load_export, cap_story,
-                               start_sign, end_sign, create_core_wallet):
+                               start_sign, end_sign, create_core_wallet, try_sign, try_sign_microsd):
+    from ckcc_protocol.protocol import CCProtoError
     sequence = 10
     goto_home()
     clear_miniscript()
@@ -3109,7 +3110,22 @@ def test_single_key_miniscript(af, settings_set, clear_miniscript, goto_home, ge
     assert title == "OK TO SEND?"
     assert "Consolidating" in story
     final_psbt = end_sign(True)
-    final_psbt = base64.b64encode(final_psbt).decode()
+
+    # Presigned miniscript inputs still need the host to construct their witnesses.
+    po = BasicPSBT().parse(final_psbt)
+    sig_field = 'taproot_script_sigs' if af == 'bech32m' else 'part_sigs'
+    assert all(getattr(i, sig_field) for i in po.inputs)
+    assert not any(i.taproot_key_sig for i in po.inputs)
+    getattr(po.inputs[0], sig_field).clear()
+    raw = po.as_bytes()
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(raw, finalize=True)
+    _, final_psbt, txid = try_sign_microsd(raw)
+    assert txid is None
+    result = BasicPSBT().parse(final_psbt)
+    assert result.inputs[1:] == po.inputs[1:]
+    assert getattr(result.inputs[0], sig_field)
+    final_psbt = result.as_b64_str()
 
     res = wo.finalizepsbt(final_psbt)
     assert res["complete"]

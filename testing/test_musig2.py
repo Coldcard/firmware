@@ -737,14 +737,23 @@ def test_resign_musig_psbt_sig(use_regtest, clear_miniscript, build_musig_wallet
 
 
 @pytest.mark.bitcoind
-def test_musig_incomplete_rounds(use_regtest, clear_miniscript, build_musig_wallet,
-                                  start_sign, end_sign, reset_musig_session_cache):
+@pytest.mark.parametrize('tapscript', [False, True])
+def test_musig_incomplete_rounds(tapscript, use_regtest, clear_miniscript, build_musig_wallet,
+                                  start_sign, end_sign, reset_musig_session_cache,
+                                  try_sign, try_sign_microsd, sim_exec):
+    from ckcc_protocol.protocol import CCProtoError
     use_regtest()
     clear_miniscript()
-    wo, signers, _ = build_musig_wallet("musig_incomplete", 3)
+    desc = 'tr($H,pk(musig($0,$1,$2)/<0;1>/*))' if tapscript else False
+    wo, signers, _ = build_musig_wallet("musig_incomplete", 3, tapscript=desc)
     empty_psbt = wo.walletcreatefundedpsbt(
         [], [{wo.getnewaddress("", "bech32m"): 5}], 0,
         {"fee_rate": 2, "change_type": "bech32m"})["psbt"]
+
+    with pytest.raises(CCProtoError, match='PSBT output failed'):
+        try_sign(base64.b64decode(empty_psbt), finalize=True)
+    # Failed finalization did not export the nonce PSBT; restart the session.
+    sim_exec("import psbt; psbt.MUSIG_SESSION_CACHE.clear()")
 
     # One participant nonce is missing: do not produce our partial signature.
     start_sign(base64.b64decode(empty_psbt))
@@ -760,8 +769,9 @@ def test_musig_incomplete_rounds(use_regtest, clear_miniscript, build_musig_wall
     # Supplying the withheld nonce must resume the same signing round.
     full_nonce_psbt = signers[1].walletprocesspsbt(
         po.as_b64_str(), True, "DEFAULT", True, False)["psbt"]
-    start_sign(base64.b64decode(full_nonce_psbt))
-    po = BasicPSBT().parse(end_sign())
+    _, partial, txid = try_sign_microsd(base64.b64decode(full_nonce_psbt))
+    assert txid is None
+    po = BasicPSBT().parse(partial)
     assert len(po.inputs[0].musig_pubnonces) == 3
     assert len(po.inputs[0].musig_part_sigs) == 1
     assert po.inputs[0].taproot_key_sig is None
@@ -776,6 +786,12 @@ def test_musig_incomplete_rounds(use_regtest, clear_miniscript, build_musig_wall
     assert len(po.inputs[0].musig_part_sigs) == 2
     assert po.inputs[0].taproot_key_sig is None
     assert not wo.finalizepsbt(po.as_b64_str())["complete"]
+
+    complete = signers[1].walletprocesspsbt(po.as_b64_str(), True, 'DEFAULT', True, False)['psbt']
+    final = wo.finalizepsbt(complete)
+    assert final['complete']
+    accepted, = wo.testmempoolaccept([final['hex']])
+    assert accepted['allowed'], accepted
 
 
 @pytest.mark.bitcoind
