@@ -19,6 +19,11 @@ your addition and anything else already in this file.**
 
 - Bugfix: Shorten the Shamir Split share-count prompt on Mk4/Mk5 to fit the screen.
 
+- Bugfix: HSM `min_pct_self_transfer` and `EQ_NUM_OWN_INS_OUTS` rules counted
+  outputs as ours based on host-supplied PSBT key-path metadata, so a foreign
+  output with forged derivation info could satisfy self-transfer requirements.
+  Only outputs verified as change are counted now. Thanks to Swaplane for the report.
+
 
 
 # Q Specific Changes
