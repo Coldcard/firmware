@@ -372,12 +372,14 @@ class ApprovalRule:
             assert self.spent_so_far + total_out <= self.per_period, 'would exceed period spending'
 
         # check the self-transfer percentage
+        # - count only outputs verified to be ours (is_change); sp_idxs reflects
+        #   host-supplied key metadata and cannot be trusted for accounting
         if self.min_pct_self_transfer:
             own_in_value = sum([i.amount for i in psbt.inputs if i.sp_idxs])
             own_out_value = 0
             for idx, txo in psbt.output_iter():
                 o = psbt.outputs[idx]
-                if o.sp_idxs:
+                if o.is_change:
                     own_out_value += txo.nValue
             percentage = (float(own_out_value) / own_in_value) * 100.0
             assert percentage >= self.min_pct_self_transfer, 'does not meet self transfer threshold, expected: %.2f, actual: %.2f' % (self.min_pct_self_transfer, percentage)
@@ -389,7 +391,7 @@ class ApprovalRule:
 
         if "EQ_NUM_OWN_INS_OUTS" in self.patterns:
             own_ins = sum([1 for i in psbt.inputs if i.sp_idxs])
-            own_outs = sum([1 for o in psbt.outputs if o.sp_idxs])
+            own_outs = sum([1 for o in psbt.outputs if o.is_change])
             assert own_ins == own_outs, 'unequal number of own inputs and outputs'
 
         if "EQ_OUT_AMOUNTS" in self.patterns:

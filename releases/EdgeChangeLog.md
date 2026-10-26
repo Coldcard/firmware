@@ -52,6 +52,10 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
   proceeding to approval.
 - Bugfix: Reject foreign inputs from BIP-322 Proof of Reserves, including inputs
   disguised with forged key-path metadata or partial signatures.
+- Bugfix: HSM `min_pct_self_transfer` and `EQ_NUM_OWN_INS_OUTS` rules counted
+  outputs as ours based on host-supplied PSBT key-path metadata, so a foreign
+  output with forged derivation info could satisfy self-transfer requirements.
+  Only outputs verified as change are counted now. Thanks to Swaplane for the report.
 - Bugfix: Add a block-height reset to Single-Signer Spending Policy's
   **Last Violation** screen after policy bypass, matching CCC.
 - Enhancement: Retain up to 128 UTXO cache entries across restarts.
