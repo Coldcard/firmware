@@ -29,7 +29,8 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 - Bugfix: Fixed signing single-key Taproot leaf spends in wallets with a MuSig2
   internal key. Thanks to pythcoiner for the report and fix.
-
+- Bugfix: Fix Address Explorer CSV exports for MuSig wallets, including participant
+  derivation paths when an aggregate xpub is also present.
 - New Feature: Codex32 (BIP-93) secrets and Shamir secret sharing. Generate or import Codex32
   wallets, split the active wallet into two to nine Shamir shares with **Shamir Split**, and
   restore it with **Shamir Recover**. Word wallets split as `cw1`, raw master seeds as `ms1`,
