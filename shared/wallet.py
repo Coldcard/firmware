@@ -7,7 +7,7 @@ import ngu, ujson, uio, chains, ure, version, stash
 from binascii import hexlify as b2a_hex
 from serializations import ser_string
 from desc_utils import (bip388_wallet_policy_to_descriptor, append_checksum, bip388_validate_policy,
-                        ExtendedKey)
+                        ExtendedKey, MusigKey)
 from public_constants import AF_P2TR, AF_P2WSH, AF_CLASSIC, AF_P2SH, AF_P2WSH_P2SH
 from menu import MenuSystem, MenuItem, start_chooser
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, OK, X, ux_enter_bip32_index
@@ -675,9 +675,22 @@ class MiniScriptWallet(WalletABC):
             addr = ch.render_address(d.script_pubkey(compiled_scr=scr))
             ders = script = None
             if scripts:
-                ders = ""
-                for k in d.keys:
-                    ders += "[%s]; " % str(k.origin)
+                origins = []
+                keys = [d.key] if d.tapscript else d.keys
+                if d.tapscript:
+                    for leaf in d.tapscript.iter_leaves():
+                        keys.extend(leaf.keys)
+
+                for k in keys:
+                    if isinstance(k, MusigKey):
+                        participants = ",".join("[%s]" % str(kk.origin) for kk in k.keys)
+                        derivation = "/".join(str(i) for i in k.origin.derivation)
+                        origin = "musig(%s)/%s" % (participants, derivation)
+                    else:
+                        origin = "[%s]" % str(k.origin)
+                    if origin not in origins:
+                        origins.append(origin)
+                ders = "; ".join(origins) + "; "
 
                 if d.tapscript:
                     # DFS ordered list of scripts
@@ -685,7 +698,7 @@ class MiniScriptWallet(WalletABC):
                     for leaf_ver, scr, _ in d.tapscript._processed_tree:
                         script += b2a_hex(chains.tapscript_serialize(scr, leaf_ver)).decode() + "; "
                 else:
-                    script = b2a_hex(ser_string(scr)).decode()
+                    script = b2a_hex(ser_string(scr or b"")).decode()
 
             yield idx, addr, ders, script
 

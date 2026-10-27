@@ -2,11 +2,11 @@
 #
 # Test the address explorer.
 #
-# Only single-sig here. Multisig cases are in test_multisig.py.
+# Single-sig and MuSig cases here. Other multisig cases are in test_multisig.py.
 #
-import pytest, time, io, csv, bech32
+import pytest, time, io, csv, bech32, json
 from ckcc_protocol.constants import *
-from bip32 import BIP32Node
+from bip32 import BIP32Node, random_keys
 from base58 import decode_base58_checksum
 from helpers import detruncate_address, hash160, addr_from_display_format
 from charcodes import KEY_QR, KEY_LEFT, KEY_RIGHT
@@ -696,5 +696,41 @@ def test_change_start_idx_cancel(goto_address_explorer, pick_menu_item, press_ca
     time.sleep(.2)
     assert 'Start Idx: 0' in cap_menu()
     settings_remove('aei')
+
+
+def test_musig_csv(use_testnet, clear_miniscript, get_cc_key, offer_minsc_import,
+                   press_select, settings_set, goto_home, pick_menu_item,
+                   need_keypress, load_export):
+    use_testnet()
+    clear_miniscript()
+    cc_key = get_cc_key("86h/1h/0h").replace("/<0;1>/*", "")
+    foreign_key = random_keys(1, path="86h/1h/0h")[0]
+    musig = f"musig({cc_key},{foreign_key})/<0;1>/*"
+    desc = f"tr({musig})"
+    _, story = offer_minsc_import(json.dumps(dict(name="musig-csv", desc=desc)))
+    assert "Create new miniscript wallet?" in story
+    press_select()
+
+    settings_set("aemscsv", True)
+    goto_home()
+    pick_menu_item("Address Explorer")
+    need_keypress("4")
+    pick_menu_item("musig-csv")
+
+    origins = [k[1:].split("]")[0] for k in (cc_key, foreign_key)]
+    expected_derivations = "musig(%s)/" % ",".join(f"[{origin}]" for origin in origins)
+    for change in (False, True):
+        if change:
+            need_keypress("0")
+        contents = load_export("sd", label="Address summary", is_json=False)
+        rows = list(csv.DictReader(io.StringIO(contents)))
+        assert len(rows) == 250
+        for index in (0, 7):
+            row = rows[index]
+            assert row["Index"] == str(index)
+            assert row["Script"] == "00"
+            expected = f"{expected_derivations}{int(change)}/{index}; "
+            assert row["Derivations"] == expected
+        press_select()
 
 # EOF
