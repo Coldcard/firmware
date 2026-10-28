@@ -24,7 +24,7 @@ from txn import render_address, fake_txn
 from psbt import ser_prop_key
 from helpers import prandom, xfp2str
 from msg import sign_message
-from bip32 import PrivateKey
+from bip32 import PrivateKey, BIP32Node
 from ckcc_protocol.constants import *
 from ckcc_protocol.protocol import CCProtocolPacker
 from ckcc_protocol.protocol import CCUserRefused, CCProtoError
@@ -1471,6 +1471,28 @@ def test_min_pct_self_transfer(dev, start_hsm, fake_txn, attempt_psbt):
 
     psbt = fake_txn([["p2sh-p2wpkh", None, 1000]], [["p2tr", 1], ["p2sh-p2wpkh", 999, True]], fee = 0)
     attempt_psbt(psbt) # exceeding the threshold
+
+def test_forged_output_metadata_not_self_transfer(dev, start_hsm, change_hsm, fake_txn, attempt_psbt):
+    # foreign P2TR output carrying forged derivation metadata that claims our XFP
+    # must not count toward self-transfer accounting (nor as an "own" output);
+    # multiple keys on the output make change validation give up without setting
+    # is_change, but raw XFP matching still flags it via sp_idxs
+    node = BIP32Node.from_wallet_key(dev.master_xpub)
+    mfp = node.fingerprint()
+
+    def forge(psbt):
+        for i in range(2):
+            pk = node.subkey_for_path('9/%d' % i).sec()[1:]
+            psbt.outputs[0].taproot_bip32_paths[pk] = b'\x00' + mfp + struct.pack('<III', 12, 34, i)
+
+    psbt = fake_txn([["p2wpkh", None, 100000]], [["p2tr", 99000]],
+                    dev.master_xpub, fee=1000, psbt_hacker=forge)
+
+    start_hsm(DICT(rules=[dict(min_pct_self_transfer=75.0)]))
+    attempt_psbt(psbt, 'does not meet self transfer threshold, expected: 75.00, actual: 0.00')
+
+    change_hsm(DICT(rules=[dict(patterns=['EQ_NUM_OWN_INS_OUTS'])]))
+    attempt_psbt(psbt, 'unequal number of own inputs and outputs')
 
 @pytest.mark.parametrize('pattern', ['EQ_NUM_INS_OUTS', 'EQ_NUM_OWN_INS_OUTS', 'EQ_OUT_AMOUNTS'] )
 def test_patterns(pattern, dev, start_hsm, fake_txn, attempt_psbt):
