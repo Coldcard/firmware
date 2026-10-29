@@ -6,6 +6,7 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from desc_utils import musig_synthetic_node, ExtendedKey, MusigKey
 from descriptor import Descriptor
+from miniscript import Miniscript
 from utils import xfp2str, swab32
 from psbt import make_musig_session_id
 from public_constants import AF_P2TR
@@ -138,5 +139,63 @@ for text, expected_keys in csv_cases:
             _, _, derivations, _ = next(
                 wallet.yield_addresses(index, 1, change_idx=change, scripts=True))
             assert derivations == expected, (text, change, index, derivations, expected)
+
+# CSV scripts preserve leaf contents and branching, including both asymmetric trees.
+internal = "musig(%s,%s,%s)" % (participant_a, participant_b, participant_c)
+tree_cases = [
+    ("pk(%s)" % musig, "%s", [musig]),
+    ("{pk(%s),{pk(%s),pk(%s)}}" % (musig, musig_ac, musig_bc),
+     "{%s,{%s,%s}}", [musig, musig_ac, musig_bc]),
+    ("{{pk(%s),pk(%s)},pk(%s)}" % (musig, musig_ac, musig_bc),
+     "{{%s,%s},%s}", [musig, musig_ac, musig_bc]),
+]
+old_csv_setting = settings.get("aemscsv", False)
+settings.set("aemscsv", True)
+try:
+    for tree_text, tree_format, leaf_keys in tree_cases:
+        desc = Descriptor.from_string("tr(%s,%s)" % (internal, tree_text))
+        wallet = MiniScriptWallet("CSV tree", None, None, desc.addr_fmt, desc=desc)
+        for change in (False, True):
+            for index in (0, 7):
+                expected_leaves = []
+                for key_text in leaf_keys:
+                    key = MusigKey.from_string(key_text).derive(None, change=change).derive(index)
+                    # Leaf version c0, length 34, PUSH32 <x-only key> CHECKSIG.
+                    expected_leaves.append("c02220" + b2a_hex(key.key_bytes()).decode() + "ac")
+                expected = tree_format % tuple(expected_leaves)
+                rows = list(wallet.generate_address_csv(index, 1, change))
+                assert len(rows) == 2
+                assert rows[0] == '"Index","Payment Address","Script","Derivations"\n'
+                assert rows[1].split('","')[1] == expected, rows[1]
+
+                # Export requires address calculation to populate the cache,
+                # and never recompiles a leaf when rendering that cached tree.
+                d = desc.derive(None, change=change).derive(index)
+                assert d.tapscript._processed_tree is None
+                compiled = []
+                original_compile = Miniscript.compile
+
+                def counted_compile(self):
+                    compiled.append(self)
+                    return original_compile(self)
+
+                Miniscript.compile = counted_compile
+                try:
+                    try:
+                        d.tapscript.script_tree()
+                    except AssertionError:
+                        pass
+                    else:
+                        assert False, "script_tree accepted an unpopulated cache"
+                    assert not compiled
+                    script_pubkey = d.script_pubkey()
+                    assert d.tapscript.script_tree() == expected
+                    assert d.tapscript.script_tree() == expected
+                    assert d.script_pubkey() == script_pubkey
+                    assert compiled == list(d.tapscript.iter_leaves())
+                finally:
+                    Miniscript.compile = original_compile
+finally:
+    settings.set("aemscsv", old_csv_setting)
 
 # EOF
