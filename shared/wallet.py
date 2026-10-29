@@ -693,10 +693,7 @@ class MiniScriptWallet(WalletABC):
                 ders = "; ".join(origins) + "; "
 
                 if d.tapscript:
-                    # DFS ordered list of scripts
-                    script = ""
-                    for leaf_ver, scr, _ in d.tapscript._processed_tree:
-                        script += b2a_hex(chains.tapscript_serialize(scr, leaf_ver)).decode() + "; "
+                    script = d.tapscript.script_tree()
                 else:
                     script = b2a_hex(ser_string(scr or b"")).decode()
 
