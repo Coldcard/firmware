@@ -3,6 +3,7 @@
 # Changes (c) Copyright 2023 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 import ngu, chains
+from binascii import hexlify as b2a_hex
 from io import BytesIO
 from collections import OrderedDict
 from utils import xfp2str, swab32, max_signers
@@ -60,13 +61,19 @@ class Tapscript:
         h = ngu.hash.sha256t(TAP_BRANCH_H, left_h + right_h, True)
         return left + right, h
 
-    # UNUSED - using above proces tree cached result to dump scripts to CSV
-    # def script_tree(self):
-    #     if isinstance(self.tree, Miniscript):
-    #         return b2a_hex(chains.tapscript_serialize(self.tree.compile())).decode()
-    #
-    #     l, r = self.tree
-    #     return "{" + l.script_tree() + "," +r.script_tree() + "}"
+    def script_tree(self, leaves=None):
+        if leaves is None:
+            # Only called after script_pubkey() in yield_addresses(): use cached scripts.
+            assert self._processed_tree
+            leaves = iter(self._processed_tree)
+
+        if isinstance(self.tree, Miniscript):
+            leaf_ver, scr, _ = next(leaves)
+            return b2a_hex(chains.tapscript_serialize(scr, leaf_ver)).decode()
+
+        # Follow the original tree, consuming cached scripts in DFS order.
+        l, r = self.tree
+        return "{" + l.script_tree(leaves) + "," + r.script_tree(leaves) + "}"
 
     @classmethod
     def read_from(cls, s):

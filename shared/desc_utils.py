@@ -461,11 +461,12 @@ class ExtendedKey:
 
 
 class MusigKey:
-    def __init__(self, keys, der=None, node=None):
+    def __init__(self, keys, der=None, node=None, origin=None):
         assert len(keys) <= MAX_MUSIG_PARTICIPANTS, "too many musig keys"
         self.keys = keys
         self.derivation = der or KeyDerivationInfo()
         self._node = node
+        self._origin = origin
 
     def __len__(self):
         return 33  # length + <32:xonly>
@@ -490,6 +491,13 @@ class MusigKey:
         if self._node is None:
             self._node = musig_synthetic_node(self.aggregate_pubkey().to_bytes())
         return self._node
+
+    @property
+    def origin(self):
+        if self._origin is None:
+            cc_fp = swab32(self.node.my_fp())
+            self._origin = KeyOriginInfo(ustruct.pack('<I', cc_fp), [], cc_fp)
+        return self._origin
 
     def validate(self, my_xfp, disable_checks=False):
         has_mine = 0
@@ -520,9 +528,11 @@ class MusigKey:
         idx = self.derivation.der_index(idx, change)
         new_node = self.node.copy()
         new_node.derive(idx, False)
+        origin = KeyOriginInfo(self.origin.fingerprint, self.origin.derivation + [idx],
+                               self.origin.cc_fp)
 
         return type(self)(self.keys, KeyDerivationInfo(self.derivation.indexes[1:]),
-                          node=new_node)
+                          node=new_node, origin=origin)
 
     @property
     def is_provably_unspendable(self):
