@@ -33,7 +33,9 @@ def do_usb_command(cmd, args):
 
         if cmd == 'EXEC':
             RV = uio.BytesIO()
-            exec(str(args, 'utf8'), None, dict(RV=RV))
+            ns = globals().copy()
+            ns['RV'] = RV
+            exec(str(args, 'utf8'), ns)
             return b'biny' + RV.getvalue()
 
     except BaseException as exc:

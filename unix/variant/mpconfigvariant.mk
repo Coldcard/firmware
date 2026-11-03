@@ -44,6 +44,7 @@ FROZEN_MANIFEST += $(CC_TOP)/unix/variant/manifest.py
 NGU_NEEDS_CIFRA  = 1
 NGU_INCL_SCHNORR = 1
 NGU_INCL_MUSIG   = 1
+NGU_INCL_SILENTPAYMENTS = 1
 
 USER_C_MODULES = $(CC_TOP)/external/c-modules
 

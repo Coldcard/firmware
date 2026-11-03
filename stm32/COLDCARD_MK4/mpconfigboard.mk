@@ -23,6 +23,7 @@ NGU_NEEDS_CIFRA  = 1
 # Include libngu secp256k1 features required by Edge
 NGU_INCL_SCHNORR = 1
 NGU_INCL_MUSIG   = 1
+NGU_INCL_SILENTPAYMENTS = 1
 USER_C_MODULES = boards/$(BOARD)/c-modules
 
 # the bulk of the COLDCARD-specific code
