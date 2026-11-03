@@ -468,6 +468,7 @@ def main():
             num_proc *= 2
 
         procs = []
+        any_failed = False
         while True:
             # create as many processes as allowed by --num-proc (default=14)
             if q and (len(procs) < num_proc):
@@ -545,6 +546,8 @@ def main():
                 else:
                     # done
                     p.communicate()
+                    if not is_ok(p.returncode):
+                        any_failed = True
                     out_fd.close()
                     sim.stop()
                     del procs[i]
@@ -554,7 +557,7 @@ def main():
 
         # multiprocess done
         print(f"\n\nelapsed: {str(timedelta(seconds=time.time()-start_time))}")
-        return
+        return int(any_failed)
 
     result = []
     for arguments in module_args:
@@ -633,7 +636,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
     # sim = ColdcardSimulator(args=["--eff", "--segregate"])
     # sim.start()
     # import pdb;pdb.set_trace()
