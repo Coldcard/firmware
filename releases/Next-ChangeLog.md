@@ -7,6 +7,9 @@ This lists the new changes that have not yet been published in a normal release.
 - Change: Restrict the Codex32 checksum calculator to MS1 shares and warn that
   completing a checksum locks in transcription errors.
 
+- Bugfix: Show outputs to segwit v1+ witness programs other than 32 bytes long
+  as their bech32m address, rather than as a raw script.
+
 - Enhancement: Support per-input required height and time locktimes in PSBTv2 transactions.
 
 - New Feature: Added USB ncry v3 authenticated encryption with direction-separated keys and replay protection
@@ -59,6 +62,7 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Correct finalization of presigned segwit inputs. Thanks to Nabeel-javed.
 - Bugfix: Keep a signed PSBT when an input lacks a supported, validated script and
   usable signature set, including incomplete taproot, tapscript and MuSig2 spends.
+
 
 # Mk Specific Changes
 
