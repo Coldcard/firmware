@@ -515,6 +515,8 @@ def main():
                                 mn, "--sim-socket", sim.socket]
                     if args.psbt2:
                         cmd_list.append("--psbt2")
+                    if args.pytest_k:
+                        k = f"({k}) and ({args.pytest_k})" if k else args.pytest_k
                     if k:
                         cmd_list.extend(["-k", k])
                     env = dict(os.environ, CKCC_DEFAULT_TIMEOUT="10000")
