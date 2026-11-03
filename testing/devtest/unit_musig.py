@@ -175,7 +175,7 @@ try:
                 compiled = []
                 original_compile = Miniscript.compile
 
-                def counted_compile(self):
+                def counted_compile(self, compiled=compiled, original_compile=original_compile):
                     compiled.append(self)
                     return original_compile(self)
 
