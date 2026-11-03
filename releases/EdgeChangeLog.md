@@ -13,6 +13,21 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
+- New Feature: Codex32 (BIP-93) secrets and Shamir secret sharing. Generate or import Codex32
+  wallets, split the active wallet into two to nine Shamir shares with **Shamir Split**, and
+  restore it with **Shamir Recover**. Word wallets split as `cw1`, raw master seeds as `ms1`,
+  and extended-key wallets as `cx1`. CW1 and CX1 are COLDCARD extensions that require
+  explicit support in recovery software.
+- New Feature: Added USB ncry v3 authenticated encryption with direction-separated keys and replay protection
+- Enhancement: Restore Taproot script tree structure in Address Explorer CSV exports.
+- Enhancement: Warn before installing firmware signed by an external contributor
+  or downgrading from the currently installed firmware. Thanks to Huzaifa Jawaid for suggestion.
+- Enhancement: Optionally show Seed Vault names for temporary seed fingerprints
+  at the top of the home menu.
+- Enhancement: Support per-input required height and time locktimes in PSBTv2 transactions.
+- Enhancement: Warn when a transaction's block-height `nLockTime` is more than
+  ten years beyond the Bitcoin block height known to the firmware.
+- Enhancement: Retain up to 128 UTXO cache entries across restarts.
 - Bugfix: Show outputs to segwit v1+ witness programs other than 32 bytes long
   as their bech32m address, rather than as a raw script.
 
@@ -29,29 +44,14 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
   when the aggregate key also appears as an ordinary xpub.
 - Bugfix: Reject duplicate public keys in BIP-388 policy key lists, as required by
   the specification.
-
 - Bugfix: Fixed signing single-key Taproot leaf spends in wallets with a MuSig2
   internal key. Thanks to pythcoiner for the report and fix.
 - Bugfix: Fix Address Explorer CSV exports for MuSig wallets, including participant
   derivation paths when an aggregate xpub is also present.
-- Change: Restore Taproot script tree structure in Address Explorer CSV exports.
-- New Feature: Codex32 (BIP-93) secrets and Shamir secret sharing. Generate or import Codex32
-  wallets, split the active wallet into two to nine Shamir shares with **Shamir Split**, and
-  restore it with **Shamir Recover**. Word wallets split as `cw1`, raw master seeds as `ms1`,
-  and extended-key wallets as `cx1`. CW1 and CX1 are COLDCARD extensions that require
-  explicit support in recovery software.
 - Bugfix: Clear the Set Nickname checkmark when the nickname is removed, including
   empty nicknames saved by earlier firmware. Thanks to [@bonitoman](https://github.com/bonitoman).
-- Enhancement: Warn before installing firmware signed by an external contributor
-  or downgrading from the currently installed firmware. Thanks to Huzaifa Jawaid for suggestion.
 - Bugfix: Abort a pending firmware upgrade if its staged image is overwritten before
   approval. Thanks to Huzaifa Jawaid.
-- Enhancement: Optionally show Seed Vault names for temporary seed fingerprints
-  at the top of the home menu.
-- Enhancement: Support per-input required height and time locktimes in PSBTv2 transactions.
-- New Feature: Added USB ncry v3 authenticated encryption with direction-separated keys and replay protection
-- Enhancement: Warn when a transaction's block-height `nLockTime` is more than
-  ten years beyond the Bitcoin block height known to the firmware.
 - Bugfix: Reject malformed PSBTs containing P2SH-P2WSH inputs with a missing or
   incorrect redeem script, preventing transactions with an unknown fee from
   proceeding to approval.
@@ -63,7 +63,6 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
   Only outputs verified as change are counted now. Thanks to Swaplane for the report.
 - Bugfix: Add a block-height reset to Single-Signer Spending Policy's
   **Last Violation** screen after policy bypass, matching CCC.
-- Enhancement: Retain up to 128 UTXO cache entries across restarts.
 - Bugfix: Cancelled PSBTs no longer persist claimed input amounts to the UTXO
   cache; amounts are committed only after signing, for inputs actually signed.
 - Bugfix: Cache single-sig segwit change amounts at finalize, so understated
@@ -101,7 +100,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 ## 6.6.2X - 2026-0x-xx
 
 - all of the above
-- synced with master up to and including `5.6.2`
+- synced with master up to and including `5.6.3`
 
 
 # Q Specific Changes
@@ -109,7 +108,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 ## 6.6.2QX - 2026-0x-xx
 
 - all of the above
-- synced with master up to and including `1.5.2Q`
+- synced with master up to and including `1.5.3Q`
 - Bugfix: Fix Key Teleport failing to find MuSig participants when an equivalent
   ordinary aggregate xpub hides the MuSig expression in the cached key list.
   Thanks to [@pythcoiner](https://github.com/pythcoiner).
