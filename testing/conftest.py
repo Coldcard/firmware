@@ -931,10 +931,14 @@ def settings_path(simulator, sim_root_dir):
     return doit
 
 @pytest.fixture
-def settings_slots(settings_path):
+def settings_slots(settings_path, sim_exec):
     def doit():
+        # Sample between saves, never between writing a new slot and removing the old one.
+        files = json.loads(sim_exec('from glob import settings; import os, ujson, nvstore; '
+                                   'settings.save_if_dirty(); '
+                                   'RV.write(ujson.dumps(os.listdir(nvstore.MK4_WORKDIR)))'))
         return [settings_path(fn)
-                for fn in os.listdir(settings_path(""))
+                for fn in files
                 if fn.endswith(".aes")]
     return doit
 
