@@ -292,6 +292,25 @@ def test_op_return_decode(script_hex, expect, sim_exec):
     assert rv == repr(expect)
 
 
+@pytest.mark.parametrize('script_hex, ok', [
+    ('5120' + '11'*32, True),       # v1, 32 bytes (P2TR)
+    ('5210' + '22'*16, True),       # v2, 16 bytes
+    ('6002' + '3333', True),        # v16, 2 bytes
+    ('5128' + '44'*40, True),       # v1, 40 bytes
+    ('5101' + '55', False),         # program too short
+    ('5129' + '66'*41, False),      # program too long
+    ('5220' + '77'*31, False),      # push longer than the script
+])
+def test_render_future_segwit(script_hex, ok, sim_exec):
+    import bech32
+    spk = bytes.fromhex(script_hex)
+    cmd = ('from chains import BitcoinMain; from ubinascii import unhexlify\n'
+           'try: RV.write(BitcoinMain.render_address(unhexlify(%r)))\n'
+           'except ValueError: RV.write("ValueError")' % script_hex)
+    rv = sim_exec(cmd)
+    assert rv == (bech32.encode('bc', spk[0] - 0x50, spk[2:]) if ok else 'ValueError')
+
+
 @pytest.mark.parametrize('patterns, paths, answers', [
     (["m"], ("m", "m/2", "*", "any"), [True, False, False, False]),
     (["any"], ("m", "m/2", "*", "1/2/3/4/5/6h/55h"), [True]*4),
