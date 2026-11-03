@@ -1030,7 +1030,8 @@ def test_key_expression_export(chain, addr_fmt, acct_num, goto_home, settings_se
     "m/45h",
 ])
 def test_custom_key_expression_export(path, goto_home, pick_menu_item, cap_menu, need_keypress,
-                                      press_select, load_export, use_testnet, dev, cap_story, is_q1):
+                                      press_select, load_export, use_testnet, dev, cap_story, is_q1,
+                                      wait_for_story):
     use_testnet()
     goto_home()
     pick_menu_item("Advanced/Tools")
@@ -1068,8 +1069,7 @@ def test_custom_key_expression_export(path, goto_home, pick_menu_item, cap_menu,
     m = cap_menu()
     pick_menu_item(m[2 if part[-1] == "h" else 3])
 
-    time.sleep(.25)
-    title, story = cap_story()
+    title, story = wait_for_story("to save Key Expression")
     idx = 0 if is_q1 else 1
     story_key_exp = story.split("\n\n")[idx]
 
