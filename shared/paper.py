@@ -7,7 +7,7 @@ import ujson
 from ubinascii import hexlify as b2a_hex
 from utils import imported
 from public_constants import AF_CLASSIC, AF_P2WPKH
-from ux import ux_show_story, ux_dramatic_pause
+from ux import ux_show_story, ux_dramatic_pause, OK, X
 from files import CardSlot, CardMissingError, needs_microsd
 from actions import file_picker
 from menu import MenuSystem, MenuItem
@@ -192,6 +192,12 @@ class PaperWalletMaker:
         # Use lots of (D6) dice rolls to create privkey entropy.
         privkey = b''
         with imported('seed') as seed:
+            # Same warning as new_from_dice()/make_new_codex32_wallet(): the
+            # rolls are the only entropy source and the hash shown while
+            # rolling is secret.
+            prompt = '\n\nPress %s to continue, %s to exit.' % (OK, X)
+            if await ux_show_story(seed.DICE_ONLY_WARNING + prompt, title='WARNING') == 'x':
+                return
             count, privkey = await seed.add_dice_rolls(0, privkey, True, enforce=True)
             if count == 0: return
 

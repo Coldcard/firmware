@@ -155,6 +155,14 @@ def test_dice_generate_failure_num_attempts(rolls, dev, cap_menu, pick_menu_item
     time.sleep(0.1)
     pick_menu_item('Use Dice')
 
+    # dice-only entropy warning (must be acknowledged before rolling)
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == 'WARNING'
+    assert 'only source of randomness' in story
+    press_select()
+
+
     for ch in rolls:
         time.sleep(0.01)
         need_keypress(ch)
@@ -166,6 +174,40 @@ def test_dice_generate_failure_num_attempts(rolls, dev, cap_menu, pick_menu_item
     assert 'For 256-bit security you need at least 99 rolls' in story
     assert f'Press {OK} to add more dice rolls. {X} to exit' in story
     press_cancel()
+
+def test_dice_warning_shown_and_cancel(dev, cap_menu, pick_menu_item, goto_home,
+                                       cap_story, need_keypress, microsd_path,
+                                       press_select, press_cancel):
+    # the paper-wallet dice flow must show DICE_ONLY_WARNING before any rolls,
+    # same as the seed-generation dice flows; cancelling at the warning must
+    # abort without starting dice entry.
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    try:
+        pick_menu_item('Paper Wallets')
+    except:
+        raise pytest.skip('Feature absent')
+
+    time.sleep(0.1)
+    title, story = cap_story()
+
+    assert 'pick a random' in story
+    assert 'MANY RISKS' in story
+
+    press_select()
+
+    time.sleep(0.1)
+    pick_menu_item('Use Dice')
+
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == 'WARNING'
+    assert 'only source of randomness' in story
+    assert 'SECRET' in story
+
+    # cancel at the warning: no dice entry should start
+    press_cancel()
+    time.sleep(0.2)
 
 @pytest.mark.parametrize('rolls', ['123'*34, "1"*99, "64"*50])
 def test_dice_generate_failure_distribution(rolls, dev, cap_menu, pick_menu_item,
@@ -190,6 +232,14 @@ def test_dice_generate_failure_distribution(rolls, dev, cap_menu, pick_menu_item
 
     time.sleep(0.1)
     pick_menu_item('Use Dice')
+
+    # dice-only entropy warning (must be acknowledged before rolling)
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == 'WARNING'
+    assert 'only source of randomness' in story
+    press_select()
+
 
     for ch in rolls:
         time.sleep(0.01)
@@ -232,6 +282,14 @@ def test_dice_generate(rolls, testnet, dev, cap_menu, pick_menu_item, goto_home,
 
     time.sleep(0.1)
     pick_menu_item('Use Dice')
+
+    # dice-only entropy warning (must be acknowledged before rolling)
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == 'WARNING'
+    assert 'only source of randomness' in story
+    press_select()
+
 
     for ch in rolls:
         time.sleep(0.01)
