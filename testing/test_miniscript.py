@@ -3619,7 +3619,7 @@ def test_bip388_policies(desc, way, offer_minsc_import, press_select, pick_menu_
                          clear_miniscript, microsd_path, virtdisk_path, garbage_collector,
                          need_keypress, cap_story, load_export, press_cancel, usb_miniscript_get,
                          skip_if_useless_way, scan_a_qr, press_nfc, nfc_write_text,
-                         usb_miniscript_policy):
+                         usb_miniscript_policy, wait_for_story):
 
     skip_if_useless_way(way)
     clear_miniscript()
@@ -3678,7 +3678,7 @@ def test_bip388_policies(desc, way, offer_minsc_import, press_select, pick_menu_
             scan_a_qr(p)
             time.sleep(1)  # just so we can watch
 
-        title, story = cap_story()
+        title, story = wait_for_story("Duplicate wallet. Wallet 'msc1' is the same.")
         assert "Duplicate wallet. Wallet 'msc1' is the same." in story
         assert "b388_reimport" in story
         press_cancel()
@@ -3736,8 +3736,7 @@ def test_bip388_policies(desc, way, offer_minsc_import, press_select, pick_menu_
         pick_menu_item(fname)
 
 
-    time.sleep(.1)
-    title, story = cap_story()
+    title, story = wait_for_story("Create new miniscript wallet?")
     assert "Duplicate wallet" not in story
     assert "Create new miniscript wallet?" in story
     assert "b388_reimport" in story
