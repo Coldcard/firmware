@@ -265,7 +265,7 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
                      press_select, cap_story, word_menu_entry, confirm_tmp_seed, enter_complex,
                      verify_ephemeral_secret_ui, scan_a_qr, tapsigner_encrypted_backup, press_cancel,
                      need_keypress, enter_hex, open_microsd, microsd_path, go_to_passphrase,
-                     garbage_collector):
+                     garbage_collector, wait_for_story):
     '''
     - can import and use a key for signing
     - NOT offered chance to save into seedvault
@@ -307,7 +307,7 @@ def test_h_tempseeds(mode, set_hobble, pick_menu_item, cap_menu, settings_set, i
         pick_menu_item("Import from QR Scan")
         val = ' '.join(words.split()).upper()
         scan_a_qr(val)
-        time.sleep(0.2)
+        wait_for_story("New temporary master key is in effect now.")
 
     elif mode == 'tapsigner':
         # like test_ephemeral_seed_import_tapsigner()
