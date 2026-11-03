@@ -640,7 +640,7 @@ def test_bitcoind_descriptor_address(addr_fmt, acct_num, bitcoind, goto_home, pi
 ])
 def test_pick_addr_fmt_menu_default(prefix, label, goto_address_explorer, is_q1, sim_exec,
                                     pick_menu_item, need_keypress, press_select, cap_screen,
-                                    cap_story, use_testnet):
+                                    cap_story, use_testnet, cap_menu):
     # PickAddrFmtMenu must pre-select the natural address format for common BIP paths
     use_testnet()
     goto_address_explorer()
@@ -650,7 +650,10 @@ def test_pick_addr_fmt_menu_default(prefix, label, goto_address_explorer, is_q1,
     press_select()
     path_to_pick = prefix + "/0h" if is_q1 else "⋯/0h"
     pick_menu_item(path_to_pick)
-    time.sleep(.2)
+    for _ in range(25):
+        if label in cap_menu():
+            break
+        time.sleep(.2)
     # currently sitting at address format choice menu
     cur_label = sim_exec(
         'from ux import the_ux; top = the_ux.top_of_stack();'
