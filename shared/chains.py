@@ -258,7 +258,8 @@ class ChainsBase:
             return ngu.codecs.segwit_encode(cls.bech32_hrp, script[0], script[2:])
 
         # segwit v1 (P2TR) and later segwit version
-        if ll == 34 and (OP_1 <= script[0] <= OP_16) and script[1] == 0x20:
+        # - BIP-141 allows a 2 to 40 byte program for any of them
+        if 4 <= ll <= 42 and (OP_1 <= script[0] <= OP_16) and script[1] == ll - 2:
             return ngu.codecs.segwit_encode(cls.bech32_hrp, script[0] - 80, script[2:])
 
         raise ValueError('Unknown payment script', repr(script))

@@ -10,6 +10,9 @@ your addition and anything else already in this file.**
 - Change: Restrict the Codex32 checksum calculator to MS1 shares and warn that
   completing a checksum locks in transcription errors.
 
+- Bugfix: Show outputs to segwit v1+ witness programs other than 32 bytes long
+  as their bech32m address, rather than as a raw script.
+
 
 # Mk Specific Changes
 
