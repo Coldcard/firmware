@@ -11,7 +11,7 @@ from chains import NLOCK_IS_TIME
 from uhashlib import sha256
 from uio import BytesIO
 from sffile import SizerFile
-from multisig import MultisigWallet, disassemble_multisig_mn
+from multisig import MultisigWallet, disassemble_multisig_mn, disassemble_multisig
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160
 from serializations import CTransaction, CTxIn, CTxInWitness, CTxOut, ser_string, COutPoint
@@ -600,7 +600,8 @@ class psbtInputProxy(psbtProxy):
 
     blank_flds = (
         'unknown', 'utxo', 'witness_utxo', 'sighash', 'redeem_script', 'witness_script',
-        'fully_signed', 'is_segwit', 'is_multisig', 'is_p2sh', 'num_our_keys',
+        'fully_signed', 'script_validated', 'is_segwit', 'is_multisig',
+        'is_p2sh', 'num_our_keys',
         'required_key', 'scriptSig', 'amount', 'scriptCode', 'previous_txid',
         'prevout_idx', 'sequence', 'req_time', 'req_height', 'addr_fmt',
         'wif_redeem_script',
@@ -786,15 +787,29 @@ class psbtInputProxy(psbtProxy):
         return (is_wrapped_p2wpkh_redeem(redeem_script) or is_wrapped_p2wsh_redeem(redeem_script)) \
             and hash160(redeem_script) == addr_or_pubkey
 
-    def determine_my_signing_key(self, my_idx, utxo, my_xfp, psbt, cosign_xfp=None):
-        # See what it takes to sign this particular input
-        # - type of script
-        # - which pubkey needed
-        # - scriptSig value
-        # - also validates redeem_script when present
+    def redeem_or_witness_script(self):
+        # the script a p2sh/p2wsh input actually spends, as bytes
+        # - only meaningful once analyze_input() has run the WIF-store match,
+        #   which is what sets wif_redeem_script when the PSBT omits the script
+        if self.wif_redeem_script:
+            return self.wif_redeem_script
+        ks = self.witness_script or self.redeem_script
+        return self.get(ks) if ks else None
+
+    def analyze_input(self, utxo, psbt):
+        # Work out what is being spent here, from the UTXO and the scripts provided.
+        # - runs for every input, including those we will not be signing, because
+        #   finalization needs to know the script type to place signatures
+        # - scripts we cannot make sense of are classified as such, not raised over:
+        #   they simply cannot be finalized, and determine_my_signing_key()
+        #   complains if the input is ours (a WIF-store redeem script conflict
+        #   on our own input still asserts)
+        # - returns the pubkey/hash the scriptPubKey commits to, and our subpaths
 
         self.amount = utxo.nValue
-        self.addr_fmt, addr_or_pubkey, addr_is_segwit = utxo.get_address()
+        self.addr_fmt, addr_or_pubkey, self.is_segwit = utxo.get_address()
+        self.is_multisig = False
+        self.is_p2sh = False
 
         subpaths = dict(self.subpaths or {})  # shallow copy
 
@@ -812,19 +827,106 @@ class psbtInputProxy(psbtProxy):
                     if self.redeem_script:
                         assert self.get(self.redeem_script) == self.wif_redeem_script
 
-        if not subpaths or self.fully_signed or (not self.num_our_keys):
-            # without xfp+path we will not be able to sign this input
+        if self.addr_fmt in [AF_P2SH, AF_P2WSH]:
+            # multisig input, or single-sig segwit wrapped in p2sh
+            self.is_p2sh = True
+
+            redeem_script = self.redeem_or_witness_script()
+            if not redeem_script:
+                # nothing to tell us what this script is
+                return addr_or_pubkey, subpaths
+
+            if self.addr_fmt == AF_P2SH and self.witness_script:
+                expect = b'\x00\x20' + ngu.hash.sha256s(self.get(self.witness_script))
+                if not self.redeem_script or self.get(self.redeem_script) != expect:
+                    # redeem script is the only proof the UTXO is really segwit;
+                    # without it the input amount (and fee) cannot be verified
+                    return addr_or_pubkey, subpaths
+
+            if not self.is_segwit and is_wrapped_p2wpkh_redeem(redeem_script) \
+                    and hash160(redeem_script) == addr_or_pubkey:
+                # segwit p2pkh wrapped in p2sh: exactly one key, not multisig.
+                # psbt creator tells us the key by providing exactly one subpath.
+                self.addr_fmt = AF_P2WPKH_P2SH
+                self.is_segwit = True
+                addr_or_pubkey = redeem_script[2:22]
+            else:
+                self.is_multisig = True
+
+            if self.witness_script and not self.is_segwit and self.is_multisig:
+                # bugfix
+                self.addr_fmt = AF_P2WSH_P2SH
+                self.is_segwit = True
+
+        if self.addr_fmt in [AF_CLASSIC, AF_BARE_PK, AF_P2WPKH, AF_P2WPKH_P2SH] \
+                and len(self.part_sigs) == 1:
+            # signature supplied by someone else: it can only be finalized if the
+            # key it claims is the one this script commits to. Key origins and
+            # signature counts are not proof of anything.
+            pubkey, = self.part_sigs
+            target = pubkey if self.addr_fmt == AF_BARE_PK else hash160(pubkey)
+            if target == addr_or_pubkey and not (self.is_segwit and (
+                        len(pubkey) != 33 or pubkey[0] not in (2, 3))):
+                # v0 witness programs only ever commit to compressed keys
+                self.script_validated = True
+
+        return addr_or_pubkey, subpaths
+
+    def validate_multisig_script(self, my_idx, psbt, utxo, subpaths, M, N):
+        # Find the wallet this multisig input belongs to (or check consistency
+        # with the wallet already selected), and prove the script matches both
+        # the wallet and the UTXO being spent.
+        xfp_paths = list(subpaths.values())
+        xfp_paths.sort()
+
+        try:
+            # only search wallets with correct script type (aka address format)
+            if not psbt.active_multisig:
+                # search for multisig wallet
+                wal = MultisigWallet.find_match(M, N, xfp_paths, [self.addr_fmt])
+                if not wal:
+                    raise FatalPSBTIssue('Unknown multisig wallet')
+            else:
+                # check consistent w/ already selected wallet
+                wal = psbt.active_multisig
+                wal.assert_matching(M, N, xfp_paths, self.addr_fmt)
+
+            # validate redeem script, by disassembling it and checking all pubkeys
+            wal.validate_script(self.scriptSig, subpaths=subpaths)
+            target_spk, _ = chains.current_chain().script_pubkey(self.addr_fmt,
+                                                                 script=self.scriptSig)
+            assert target_spk == utxo.scriptPubKey, "spk mismatch"
+            psbt.active_multisig = wal
+        except FatalPSBTIssue:
+            raise
+        except BaseException as exc:
+            # sys.print_exception(exc)
+            raise FatalPSBTIssue('Input #%d: %s' % (my_idx, exc))
+
+    def determine_my_signing_key(self, my_idx, utxo, addr_or_pubkey, subpaths, my_xfp,
+                                 psbt, cosign_xfp=None):
+        # See what it takes to sign this particular input
+        # - which pubkey needed
+        # - scriptCode value
+        # - also finds appropriate multisig wallet to be used
+        # - analyze_input() has already worked out the type of script
+
+        # required_key is left unset (reads as None) for anything we do not sign
+        if not self.num_our_keys:
+            # without a key of ours we will not be able to sign this input
             # - okay if fully signed
             # - okay if payjoin or other multi-signer (not multisig) txn
-            self.required_key = None
+            # - num_our_keys is unset unless subpaths holds a key of ours
+            return
+        if self.fully_signed:
+            # nothing to sign; singlesig finalization eligibility was checked
+            # in analyze_input(). Multisig validation runs after signing inputs
+            # have selected their wallet.
             return
 
-        self.is_multisig = False
-        self.is_p2sh = False
         which_key = None
 
         if self.addr_fmt == OP_RETURN:
-            self.required_key = None
             return
         if self.addr_fmt == AF_P2TR:
             raise FatalPSBTIssue("Install EDGE firmware to spend taproot.")
@@ -833,69 +935,37 @@ class psbtInputProxy(psbtProxy):
             # enough to allow the user to authorize the spend, so fail hard.
             raise FatalPSBTIssue('Unhandled scriptPubKey: ' + b2a_hex(addr_or_pubkey).decode())
 
-        if addr_is_segwit and not self.is_segwit:
-            self.is_segwit = True
+        if self.is_p2sh and not (self.is_multisig or self.addr_fmt == AF_P2WPKH_P2SH):
+            # analyze_input() could not work out what this script is
+            if not (self.witness_script or self.redeem_script):
+                raise FatalPSBTIssue("Missing redeem/witness script for input #%d" % my_idx)
+            raise FatalPSBTIssue('Missing/bad redeem script for input #%d' % my_idx)
 
-        if self.addr_fmt in [AF_P2SH, AF_P2WSH]:
-            # multisig input
-            self.is_p2sh = True
+        # the subscript that legacy sighashing signs over
+        self.scriptSig = self.redeem_or_witness_script() if self.is_p2sh else utxo.scriptPubKey
 
-            # we must have the redeem script already (else fail)
-            if self.wif_redeem_script:
-                redeem_script = self.wif_redeem_script
-            else:
-                ks = self.witness_script or self.redeem_script
-                if not ks:
-                    raise FatalPSBTIssue("Missing redeem/witness script for input #%d" % my_idx)
+        if self.is_multisig:
+            which_key = set()
+            for pubkey, path in subpaths.items():
+                if self.part_sigs and (pubkey in self.part_sigs):
+                    # pubkey has already signed, so ignore
+                    continue
 
-                redeem_script = self.get(ks)
+                if path[0] in (my_xfp, cosign_xfp):
+                    # slight chance of dup xfps, so handle
+                    which_key.add(pubkey)
 
-            if self.addr_fmt == AF_P2SH and self.witness_script:
-                expect = b'\x00\x20' + ngu.hash.sha256s(self.get(self.witness_script))
-                if not self.redeem_script or self.get(self.redeem_script) != expect:
-                    # redeem script is the only proof the UTXO is really segwit;
-                    # without it the input amount (and fee) cannot be verified
-                    raise FatalPSBTIssue('Missing/bad redeem script for input #%d' % my_idx)
+                elif pubkey in psbt.wif_store:
+                    which_key.add(pubkey)
 
-            self.scriptSig = redeem_script
-
-            if not addr_is_segwit and is_wrapped_p2wpkh_redeem(redeem_script):
-                # segwit p2pkh wrapped in p2sh: exactly one key, not multisig.
-                # psbt creator tells us the key by providing exactly one subpath.
-                self.addr_fmt = AF_P2WPKH_P2SH
-                addr = redeem_script[2:22]
-                self.is_segwit = True
-
-                assert len(subpaths) == 1, "p2sh-p2wpkh needs one key"
-                which_key, = subpaths.keys()
-            else:
-                self.is_multisig = True
-
-                which_key = set()
-                for pubkey, path in subpaths.items():
-                    if self.part_sigs and (pubkey in self.part_sigs):
-                        # pubkey has already signed, so ignore
-                        continue
-
-                    if path[0] in (my_xfp, cosign_xfp):
-                        # slight chance of dup xfps, so handle
-                        which_key.add(pubkey)
-
-                    elif pubkey in psbt.wif_store:
-                        which_key.add(pubkey)
-
-            if self.witness_script and not self.is_segwit and self.is_multisig:
-                # bugfix
-                self.addr_fmt = AF_P2WSH_P2SH
-                self.is_segwit = True
+        elif self.addr_fmt == AF_P2WPKH_P2SH:
+            assert len(subpaths) == 1, "p2sh-p2wpkh needs one key"
+            which_key, = subpaths.keys()
 
         elif self.addr_fmt in [AF_CLASSIC, AF_P2WPKH]:
             # input is hash160 of a single public key
-            self.scriptSig = utxo.scriptPubKey
-            addr = addr_or_pubkey
-
             for pubkey in subpaths:
-                if hash160(pubkey) == addr:
+                if hash160(pubkey) == addr_or_pubkey:
                     which_key = pubkey
                     break
             else:
@@ -904,7 +974,6 @@ class psbtInputProxy(psbtProxy):
 
         elif self.addr_fmt == AF_BARE_PK:
             # input is single public key (less common)
-            self.scriptSig = utxo.scriptPubKey
             assert len(addr_or_pubkey) in (33, 65)   # compressed or uncompressed
 
             if addr_or_pubkey in subpaths:
@@ -915,45 +984,26 @@ class psbtInputProxy(psbtProxy):
 
         else:
             # we don't know how to "solve" this type of input
-            pass
+            return
 
         if self.is_multisig:
-            # We will be signing this input, so 
+            # We will be signing this input, so
             # - find which wallet it is or
             # - check it's the right M/N to match redeem script
             # - which_key can be empty set, meaning all is already signed
 
-            #print("redeem: %s" % b2a_hex(redeem_script))
-            M, N = disassemble_multisig_mn(redeem_script)
+            #print("redeem: %s" % b2a_hex(self.scriptSig))
+            try:
+                M, N = disassemble_multisig_mn(self.scriptSig)
+            except AssertionError:
+                raise FatalPSBTIssue('Input #%d: not a multisig script' % my_idx)
 
             if len(self.part_sigs) >= M:
+                # enough signatures already: validate after signing inputs select the wallet
                 self.fully_signed = True
                 return
 
-            xfp_paths = list(subpaths.values())
-            xfp_paths.sort()
-
-            # only search wallets with correct script type (aka address format)
-            if not psbt.active_multisig:
-                # search for multisig wallet
-                wal = MultisigWallet.find_match(M, N, xfp_paths, [self.addr_fmt])
-                if not wal:
-                    raise FatalPSBTIssue('Unknown multisig wallet')
-
-                psbt.active_multisig = wal
-            else:
-                # check consistent w/ already selected wallet
-                psbt.active_multisig.assert_matching(M, N, xfp_paths, self.addr_fmt)
-
-            # validate redeem script, by disassembling it and checking all pubkeys
-            try:
-                psbt.active_multisig.validate_script(redeem_script, subpaths=subpaths)
-                target_spk, _ = chains.current_chain().script_pubkey(self.addr_fmt,
-                                                                     script=redeem_script)
-                assert target_spk == utxo.scriptPubKey, "spk mismatch"
-            except BaseException as exc:
-                # sys.print_exception(exc)
-                raise FatalPSBTIssue('Input #%d: %s' % (my_idx, exc))
+            self.validate_multisig_script(my_idx, psbt, utxo, subpaths, M, N)
 
         if not which_key and DEBUG:
             print("no key: input #%d: type=%s segwit=%d a_or_pk=%s scriptPubKey=%s" % (
@@ -961,6 +1011,7 @@ class psbtInputProxy(psbtProxy):
                     b2a_hex(addr_or_pubkey), b2a_hex(utxo.scriptPubKey)))
 
         self.required_key = which_key
+        self.script_validated = True
 
         if self.is_segwit:
             if self.addr_fmt in [AF_P2WPKH, AF_P2WPKH_P2SH]:
@@ -973,7 +1024,7 @@ class psbtInputProxy(psbtProxy):
                 # Also need this scriptCode for native segwit p2pkh
                 #
                 assert not self.is_multisig
-                self.scriptCode = b'\x19\x76\xa9\x14' + addr + b'\x88\xac'
+                self.scriptCode = b'\x19\x76\xa9\x14' + addr_or_pubkey + b'\x88\xac'
             elif not self.scriptCode:
                 # Segwit P2SH. We need the witness script to be provided.
                 if not self.witness_script:
@@ -1944,11 +1995,13 @@ class psbtObject(psbtProxy):
             if not inp.utxo and not inp.witness_utxo_is_provably_segwit(utxo):
                 unverified_witness_utxo.append(i)
 
-            # Look at what kind of input this will be, and therefore what
-            # type of signing will be required, and which key we need.
+            # Work out what kind of input this is, for every input, and then
+            # what signing will take and which key we need, for ours.
             # - also validates redeem_script when present
             # - also finds appropriate multisig wallet to be used
-            inp.determine_my_signing_key(i, utxo, self.my_xfp, self, cosign_xfp)
+            addr_or_pubkey, subpaths = inp.analyze_input(utxo, self)
+            inp.determine_my_signing_key(i, utxo, addr_or_pubkey, subpaths,
+                                         self.my_xfp, self, cosign_xfp)
 
             if self.por322 and i and not inp.required_key:
                 # every POR input past to_spend must be one we will actually sign;
@@ -1989,6 +2042,26 @@ class psbtObject(psbtProxy):
                     raise FatalPSBTIssue("i0: invalid BIP-322 'to_spend': %s" % e)
 
             del utxo
+
+        # Presigned inputs may only validate against an already selected wallet.
+        # Unsupported scripts stay unfinalizable without preventing PSBT signing.
+        if self.presigned_inputs and self.active_multisig:
+            for i, txi in self.input_iter():
+                inp = self.inputs[i]
+                if i not in self.presigned_inputs or not inp.is_multisig or not inp.num_our_keys:
+                    continue
+                # Segwit multisig finalization requires the witness-script field.
+                if inp.is_segwit and not inp.witness_script:
+                    continue
+                inp.scriptSig = inp.redeem_or_witness_script()
+                try:
+                    M, N = disassemble_multisig_mn(inp.scriptSig)
+                    inp.validate_multisig_script(i, self, inp.get_utxo(txi.prevout.n),
+                                                  inp.subpaths, M, N)
+                    inp.script_validated = True
+                except (AssertionError, FatalPSBTIssue):
+                    # malformed scripts or another wallet: leave finalization to the host
+                    pass
 
         # XXX scan witness data provided, and consider those ins signed if not multisig?
 
@@ -2531,30 +2604,31 @@ class psbtObject(psbtProxy):
         return ngu.hash.sha256s(rv.digest())
 
     def multi_input_complete(self, inp):
-        # raises if input is not multisig or no active_multisig loaded
+        # raises if input is not multisig
         assert inp.is_multisig
-        if (len(inp.added_sigs) + len(inp.part_sigs)) >= self.active_multisig.M:
-            return True
+        if not inp.script_validated or not self.active_multisig:
+            # script was never checked against a wallet we know, so our
+            # threshold says nothing about this input
+            return False
+        return len(self.multisig_signatures(inp)) == self.active_multisig.M
 
     def is_complete(self):
         # Are all the inputs (now) signed?
+        # - exactly what finalize() needs, asked once per input
 
-        # some might have been given as signed
-        signed = len(self.presigned_inputs)
-
-        # plus we added some signatures
         for inp in self.inputs:
-            if inp.is_multisig and self.active_multisig:
-                if self.multi_input_complete(inp):
-                    signed += 1
+            if inp.is_multisig:
+                if not self.multi_input_complete(inp):
+                    return False
 
-            elif inp.added_sigs:
-                signed += 1
+            elif not self.singlesig_signature(inp):
+                return False
 
-        return signed == self.num_inputs
+        return True
 
     def multisig_signatures(self, inp):
         assert self.active_multisig
+        M, N, pubkeys = disassemble_multisig(inp.redeem_or_witness_script())
         # collect all signatures into one place
         # both we added & those already in part_sigs
         all_sigs = {}
@@ -2562,35 +2636,21 @@ class psbtObject(psbtProxy):
         for pk, get_data in inp.part_sigs.items():
             all_sigs[pk] = self.get(get_data)
 
-        if self.active_multisig.bip67:
-            # BIP-67 easy just sort by public keys
-            sigs = [sig for pk, sig in sorted(all_sigs.items())]
-        else:
-            # need to respect the order of keys in actual descriptor
-            sigs = []
-            for xfp, _, _ in self.active_multisig.xpubs:
-                for pk, pth in inp.subpaths.items():
-                    # if xfp matches but pk not in all_sigs -> signer haven't signed
-                    # it is ok in threshold multisig - just skip
-                    if (xfp == pth[0]) and (pk in all_sigs):
-                        sigs.append(all_sigs[pk])
-                        break
-
-        # save space and only provide necessary amount of signatures (smaller tx, less fees)
-        sigs = sigs[:self.active_multisig.M]
-        return sigs
+        # Ignore unrelated keys and preserve the validated script's key order.
+        return [all_sigs[pk] for pk in pubkeys if pk in all_sigs][:M]
 
     def singlesig_signature(self, inp):
-        # return signature that we added
-        # or one signature from partial sigs if input is fully sign
-        # (i.e. len(part_sigs)>=len(subpaths))
+        # return signature that we added, or the one supplied for an input
+        # whose script analyze_input() matched to the signing key
+        if not inp.script_validated:
+            return None
+
         ssig = None
         if inp.added_sigs:
             # we have added signature to this single sig input
             assert len(inp.added_sigs) == 1
             ssig = list(inp.added_sigs.items())[0]
-        elif inp.part_sigs and inp.fully_signed:
-            assert len(inp.part_sigs) == 1
+        elif len(inp.part_sigs) == 1:
             rv = list(inp.part_sigs.items())[0]
             ssig = rv[0], self.get(rv[1])
 
@@ -2653,7 +2713,7 @@ class psbtObject(psbtProxy):
 
                 elif inp.is_p2sh:
                     # singlesig (p2sh) segwit still requires the script here.
-                    txi.scriptSig = ser_string(inp.scriptSig)
+                    txi.scriptSig = ser_string(inp.redeem_or_witness_script())
                 else:
                     # major win for segwit (p2pkh): no redeem script bloat anymore
                     txi.scriptSig = b''
