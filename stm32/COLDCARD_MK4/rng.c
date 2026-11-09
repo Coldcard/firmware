@@ -43,6 +43,7 @@
 #endif
 
 void random_buffer(uint8_t *p, size_t count);
+extern void __fatal_error(const char *msg);     // NORETURN, ports/stm32/main.c
 
 static void rng_init(void) {
     if (!(RNG->CR & RNG_CR_RNGEN)) {
@@ -157,6 +158,10 @@ static uint32_t rng_get_or_fault(void)
     }
 
     // Persistent hardware failure: never return suspect randomness.
+    if (rng_count_active) {
+        // called from rng_selftest(): no VM, heap or nlr handler yet
+        __fatal_error("rng: hw fault");
+    }
     mp_raise_OSError(MP_EFAULT);
     return last_value;
 }
@@ -175,16 +180,14 @@ uint32_t rng_get(void)
 // enforced per-call by rng_get_or_fault(); here we only check linkage.
 // Runs before the Python VM exists, so failure is fatal.
 //
-extern void __fatal_error(const char *msg);     // NORETURN, ports/stm32/main.c
-
 void rng_selftest(void)
 {
     rng_init();
 
-    // Wait at register level for the first word: proves entropy is flowing,
-    // and guarantees the rng_get() calls below find DRDY set and can never
-    // reach their mp_raise() timeout path (no VM/nlr handler installed
-    // yet, so an exception here would be an uncontrolled crash).
+    // Wait at register level for the first word: proves entropy is flowing.
+    // While rng_count_active is set, a persistent fault in the rng_get()
+    // calls below ends in __fatal_error() rather than mp_raise(), since no
+    // VM/nlr handler is installed yet.
     uint32_t start = HAL_GetTick();
     while(!(RNG->SR & RNG_SR_DRDY)) {
         if(HAL_GetTick() - start >= RNG_TIMEOUT_MS) {
