@@ -13,6 +13,9 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
+- Bugfix: Show outputs to segwit v1+ witness programs other than 32 bytes long
+  as their bech32m address, rather than as a raw script.
+
 - Bugfix: Reject conflicting xpub data between a MuSig aggregate and its ordinary
   xpub representation even when derivation suffixes differ, and reject conflicting
   key origins before wallet policy conversion. Thanks to
