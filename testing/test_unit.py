@@ -15,6 +15,9 @@ def test_remote_exec(sim_exec):
 def test_codecs(sim_execfile):
     assert sim_execfile('devtest/segwit_addr.py') == ''
 
+def test_bip350(sim_execfile):
+    assert sim_execfile('devtest/bip350.py') == ''
+
 def test_b58decode_rejects_overlong_decoded_size(sim_exec):
     result = sim_exec("""\
 import ngu
@@ -309,6 +312,21 @@ def test_render_future_segwit(script_hex, ok, sim_exec):
            'except ValueError: RV.write("ValueError")' % script_hex)
     rv = sim_exec(cmd)
     assert rv == (bech32.encode('bc', spk[0] - 0x50, spk[2:]) if ok else 'ValueError')
+
+
+@pytest.mark.parametrize('script', [
+    b'',                              # empty script
+    b'\x51',                          # missing push length
+    b'\x52\x02' + b'\x11'*3,          # trailing byte after program
+    b'\x51\x4c\x02\x4e\x73',        # PUSHDATA1 instead of direct push
+    b'\x61\x02\x4e\x73',            # opcode beyond OP_16
+    b'\x00\x02\x4e\x73',            # invalid v0 program length
+])
+def test_render_invalid_witness_script(script, sim_exec):
+    rv = sim_exec('from chains import BitcoinMain\n'
+                  'try: BitcoinMain.render_address(%r)\n'
+                  'except ValueError: RV.write("rejected")' % script)
+    assert rv == 'rejected'
 
 
 @pytest.mark.parametrize('patterns, paths, answers', [

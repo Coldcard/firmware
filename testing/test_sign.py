@@ -2727,6 +2727,76 @@ def test_send2taproot_addresss(fake_txn , start_sign, end_sign, cap_story, use_t
     signed = end_sign(accept=True, finalize=False)
     assert signed
 
+@pytest.mark.parametrize('testnet', [False, True])
+@pytest.mark.parametrize('psbt_v2', [False, True])
+@pytest.mark.parametrize('with_bip32_path', [False, True])
+@pytest.mark.parametrize('anchor_value', [0, 240])
+def test_sign_p2a_output(testnet, psbt_v2, with_bip32_path, anchor_value, fake_txn,
+                         start_sign, end_sign, cap_story, use_testnet):
+    # An actual P2A output, not the zero-value P2WPKH in test_txn_v3_eph_anchor.
+    use_testnet(testnet)
+    anchor = bytes.fromhex('51024e73')
+    address = 'tb1pfees9rn5nz' if testnet else 'bc1pfeessrawgf'
+    # Ephemeral dust uses a zero-fee parent; a later child funds the package.
+    fee = 0 if anchor_value == 0 else 10000
+
+    def add_anchor(psbt):
+        # Host-supplied key paths must not make the anchor look like change.
+        psbt.outputs[1].bip32_paths = psbt.outputs[0].bip32_paths.copy() if with_bip32_path else {}
+        if psbt.version == 2:
+            psbt.txn_version = 3
+            psbt.outputs[1].script = anchor
+        else:
+            tx = CTransaction()
+            tx.deserialize(BytesIO(psbt.txn))
+            tx.nVersion = 3
+            tx.vout[1].scriptPubKey = anchor
+            psbt.txn = tx.serialize()
+
+    raw = fake_txn(1, 2, segwit_in=True, psbt_v2=psbt_v2,
+                   outstyles=['p2wpkh', 'p2pkh'], change_outputs=[0],
+                   fee=fee, outvals=[100000000 - fee - anchor_value, anchor_value],
+                   psbt_hacker=add_anchor)
+    original = BasicPSBT().parse(raw)
+    if psbt_v2:
+        original.to_v0()
+    start_sign(raw, finalize=True)
+    title, story = cap_story()
+    assert title == 'OK TO SEND?'
+    assert address in story
+    assert 'to script' not in story
+    assert 'Sending to 1 not well understood script(s).' in story
+    assert 'Change back' in story
+    assert 'Consolidating' not in story
+    assert ('Non-standard zero value output(s).' in story) == (anchor_value == 0)
+
+    result = end_sign(accept=True, finalize=True)
+    tx = CTransaction()
+    tx.deserialize(BytesIO(result))
+    signature, pubkey = tx.wit.vtxinwit[0].scriptWitness.stack
+
+    assert tx.nVersion == 3
+    assert tx.serialize_without_witness() == original.txn
+    assert (tx.vout[1].nValue, tx.vout[1].scriptPubKey) == (anchor_value, anchor)
+    # Independently verify the funding input's BIP-143 signature, which commits
+    # to the P2A script and value as well as the change output.
+    from ctransaction import hash256
+    from pysecp256k1 import ec_pubkey_parse, ecdsa_signature_parse_der, ecdsa_verify
+    utxo = CTxOut()
+    utxo.deserialize(BytesIO(original.inputs[0].witness_utxo))
+    assert hash160(pubkey) == utxo.scriptPubKey[2:]
+    script_code = b'\x19\x76\xa9\x14' + utxo.scriptPubKey[2:] + b'\x88\xac'
+    assert signature[-1] == 1  # SIGHASH_ALL
+    digest = hash256(struct.pack('<i', tx.nVersion)
+                     + hash256(b''.join(i.prevout.serialize() for i in tx.vin))
+                     + hash256(b''.join(struct.pack('<I', i.nSequence) for i in tx.vin))
+                     + tx.vin[0].prevout.serialize() + script_code
+                     + struct.pack('<qI', utxo.nValue, tx.vin[0].nSequence)
+                     + hash256(b''.join(o.serialize() for o in tx.vout))
+                     + struct.pack('<II', tx.nLockTime, 1))
+    assert ecdsa_verify(ecdsa_signature_parse_der(signature[:-1]), ec_pubkey_parse(pubkey), digest)
+
+
 def test_sign_taproot_input(fake_txn, start_sign, end_sign, cap_story):
     psbt = fake_txn(1, 2, taproot_in=True)
     start_sign(psbt)
