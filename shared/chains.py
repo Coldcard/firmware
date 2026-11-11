@@ -250,8 +250,9 @@ class ChainsBase:
         if ll in (22, 34) and script[0] == 0 and script[1] in (0x14, 0x20) and (ll-2) == script[1]:
             return ngu.codecs.segwit_encode(cls.bech32_hrp, script[0], script[2:])
 
-        # segwit v1 (P2TR) and later segwit version
-        # - BIP-141 allows a 2 to 40 byte program for any of them
+        # segwit v1 (P2TR, P2A) and future witness versions through v16
+        # - BIP-141 allows witness programs of 2 to 40 bytes
+        # - BIP-350 requires Bech32m encoding for witness versions 1 through 16
         if 4 <= ll <= 42 and (OP_1 <= script[0] <= OP_16) and script[1] == ll - 2:
             return ngu.codecs.segwit_encode(cls.bech32_hrp, script[0] - 80, script[2:])
 

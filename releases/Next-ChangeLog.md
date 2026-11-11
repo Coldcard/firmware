@@ -63,7 +63,6 @@ This lists the new changes that have not yet been published in a normal release.
 - Bugfix: Keep a signed PSBT when an input lacks a supported, validated script and
   usable signature set, including incomplete taproot, tapscript and MuSig2 spends.
 
-
 # Mk Specific Changes
 
 ## 5.6.x - 2026-0x-xx
