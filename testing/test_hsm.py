@@ -736,6 +736,35 @@ def test_whitelist_single(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, wi
         tweak_rule(0, dict(whitelist=[dest, junk]))
         attempt_psbt(psbt)
 
+@pytest.mark.parametrize('script', [bytes.fromhex('51024e73'), b'\x52\x10' + b'\x22'*16])
+def test_whitelist_future_segwit(script, quick_start_hsm, tweak_rule, tweak_hsm_attr,
+                                attempt_psbt, fake_txn, use_testnet):
+    import bech32
+    use_testnet()
+    address = bech32.encode('tb', script[0] - 0x50, script[2:])
+    # No zero-value bypass: the output must match the whitelist itself.
+    quick_start_hsm(DICT(warnings_ok=True, rules=[dict(whitelist=[address])]))
+    def hack(psbt):
+        from ctransaction import CTransaction
+        from io import BytesIO
+        tx = CTransaction()
+        tx.deserialize(BytesIO(psbt.txn))
+        tx.vout[0].scriptPubKey = script
+        psbt.txn = tx.serialize()
+
+    raw = fake_txn([['p2wpkh']],
+                   [['p2pkh', 240], ['p2wpkh', 100000000 - 10000 - 240, True]],
+                   psbt_v2=False, fee=10000, psbt_hacker=hack)
+    attempt_psbt(raw)
+    tweak_hsm_attr('warnings_ok', False)
+    attempt_psbt(raw, 'has 1 warning(s)')
+    tweak_hsm_attr('warnings_ok', True)
+
+    other = script[:-1] + bytes([script[-1] ^ 1])
+    tweak_rule(0, dict(whitelist=[bech32.encode('tb', other[0] - 0x50, other[2:])]))
+    attempt_psbt(raw, 'non-whitelisted')
+
+
 def test_whitelist_multi(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, amount=5E6):
     # sending to one whitelisted, and one non, etc.
     junk = EXAMPLE_ADDRS[0]
