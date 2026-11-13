@@ -51,6 +51,10 @@ def psram_wipe(offset, length):
     for pos in range(offset, offset+length, 256):
         PSRAM.write(pos, z)
 
+SP_EXPORT_NOTE = '''\
+Silent Payment output detected - finalize signed PSBT on wallet coordinator to broadcast.
+Direct broadcast requires opt-in via Danger Zone > SP Final Export.'''
+
 class UserAuthorizedAction:
     active_request = None
 
@@ -416,6 +420,44 @@ class ApproveTransaction(UserAuthorizedAction):
 
             ccc_c_xfp = CCCFeature.get_xfp()  # can be None
             args = self.psbt.consider_inputs(cosign_xfp=ccc_c_xfp)
+
+            # Silent Payments: Validate and pre-process Silent Payments outputs to make preview useful
+            with stash.SensitiveValues() as sv:
+                if self.psbt.has_silent_payment_inputs():
+                    self.psbt.validate_silent_payment_inputs(sv)
+
+                if self.psbt.has_silent_payment_outputs():
+                    if not self.psbt.process_silent_payment_outputs(sv):
+                        # Coverage incomplete: shares computed but waiting on other signers
+                        # Skip normal approval flow — prompt user to contribute shares, then save
+                        ch = await ux_show_story(
+                            "Silent payment ECDH shares will be added to this transaction.\n\n"
+                            "Other signers must contribute their shares before signing can proceed.\n\n"
+                            "Press %s to contribute shares. %s to abort." % (OK, X),
+                            title="CONTRIBUTE SHARES?"
+                        )
+                        if ch != 'y':
+                            self.refused = True
+                            await ux_dramatic_pause("Refused.", 1)
+                            del args, self.psbt
+                            self.done()
+                            return
+
+                        # Handle nonce generation for MuSig2 + SP inputs
+                        if self.psbt.has_musig_sp_inputs():
+                            self.psbt.consider_outputs(*args, cosign_xfp=ccc_c_xfp)
+                            del args
+                            if self.psbt.session:
+                                self.psbt.session.update(pack('<I', self.psbt.lock_time))
+
+                            self.psbt.sign_it()  # generates nonces
+
+                        await done_signing(self.psbt, self, self.input_method,
+                                        self.filename, self.output_encoder,
+                                        finalize=False)
+                        self.done()
+                        return
+
             self.psbt.consider_outputs(*args, cosign_xfp=ccc_c_xfp)
             del args  # not needed anymore
             # we can properly assess sighash only after we know
@@ -732,6 +774,8 @@ class ApproveTransaction(UserAuthorizedAction):
                 total_change += tx_out.nValue
                 if len(largest_change) < MAX_VISIBLE_CHANGE:
                     _, addr = self.render_output(tx_out)
+                    if outp.sp_v0_info:
+                        addr += '\n' + self.psbt.render_silent_payment_output_string(outp)
                     largest_change.append((tx_out.nValue, addr))
                     if len(largest_change) == MAX_VISIBLE_CHANGE:
                         largest_change = sorted(largest_change, key=lambda x: x[0], reverse=True)
@@ -740,6 +784,8 @@ class ApproveTransaction(UserAuthorizedAction):
             else:
                 if len(largest_outs) < MAX_VISIBLE_OUTPUTS:
                     rendered, _ = self.render_output(tx_out)
+                    if outp.sp_v0_info:
+                        rendered += self.psbt.render_silent_payment_output_string(outp)
                     largest_outs.append((tx_out.nValue, rendered))
                     if len(largest_outs) == MAX_VISIBLE_OUTPUTS:
                         # descending sort from the biggest value to lowest (sort on out.nValue)
@@ -757,9 +803,14 @@ class ApproveTransaction(UserAuthorizedAction):
                 continue        # too small
 
             largest.pop(-1)
-
             rendered, dest = self.render_output(tx_out)
-            largest.insert(keep, (here, dest if outp.is_change else rendered))
+            if outp.is_change:
+                if outp.sp_v0_info:
+                    dest += '\n' + self.psbt.render_silent_payment_output_string(outp)
+                ret = (here, dest)
+            else:
+                ret = (here, rendered)
+            largest.insert(keep, ret)
 
         # foreign outputs (soon to be other people's coins)
         visible_out_sum = 0
@@ -838,6 +889,7 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
     # User authorized PSBT for signing, and we added signatures.
     # - allow PushTX if enabled (first thing)
     # - can save final TXN out to SD card/VirtDisk, share by NFC, QR.
+    # - silent payments should discourage save final txn by default
 
     from glob import PSRAM, hsm_active
     from sffile import SFFile
@@ -849,9 +901,15 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
     base_title = "PSBT " + ("Signed" if psbt.sig_added else "Updated")
 
     is_complete = psbt.is_complete()
+    sp_export_hint = None
     if finalize is not None:
         # USB case - user can choose whether to attempt finalization
         is_complete = finalize
+    elif is_complete and psbt.has_silent_payment_outputs():
+        from glob import settings
+        if not settings.get('spfin', False):
+            is_complete = False
+            sp_export_hint = SP_EXPORT_NOTE
 
     if psbt.por322:
         # network txn strips PSBT BIP-32 with paths with pubkey required for verification
@@ -865,7 +923,10 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
             noun = "Finalized TX ready for broadcast"
         else:
             psbt.serialize(psram)
-            noun = "Signed BIP-322 PSBT" if psbt.por322 else "Partly Signed PSBT"
+            # not finalizing: either genuinely partial (needs more sigs) or an SP tx we
+            # kept as PSBT on purpose - only the latter (sp_export_hint) is fully signed.
+            noun = ("Signed BIP-322 PSBT" if psbt.por322 else
+                    "Signed PSBT" if sp_export_hint else "Partly Signed PSBT")
             txid = None
 
         data_len = psram.tell()
@@ -984,13 +1045,14 @@ async def done_signing(psbt, tx_req, input_method=None, filename=None,
             # typical case: save to SD card, show filenames we used
             assert isinstance(ch, dict)
             msg = await _save_to_disk(psbt, txid, ch, is_complete, data_len,
-                                      output_encoder, filename)
+                                      output_encoder, filename, sp_export_hint)
 
         input_method = None
         first_time = False
         title = base_title
 
-async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_encoder, filename=None):
+async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_encoder,
+                        filename=None, sp_note=None):
     # Saving a PSBT from PSRAM to something disk-like.
     # - handle save-to-SD/VirtDisk cases. With re-attempt when no card, etc.
     assert isinstance(save_options, dict)       # from import_export_prompt
@@ -1010,10 +1072,10 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
 
     if match:
         prefix = base[:-len(match.group(0))]
-        suffix = '-signed' if is_complete else '-part-%d' % (int(match.group(1)) + 1)
+        suffix = '-signed' if (is_complete or sp_note) else '-part-%d' % (int(match.group(1)) + 1)
     else:
         prefix = base if is_complete else base.replace('-part', '')
-        suffix = '-signed' if is_complete else '-part'
+        suffix = '-signed' if (is_complete or sp_note) else '-part'
 
     target_fname = prefix + suffix + '.psbt'
 
@@ -1110,7 +1172,7 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
     # Done, show the filenames we used.
     if out_fn:
         msg = "Updated PSBT is:\n\n%s" % out_fn
-        if out2_fn:
+        if out2_fn or sp_note:
             msg += '\n\n'
     else:
         # del_after is probably set
@@ -1118,6 +1180,9 @@ async def _save_to_disk(psbt, txid, save_options, is_complete, data_len, output_
 
     if out2_fn:
         msg += 'Finalized transaction (ready for broadcast):\n\n%s' % out2_fn
+    elif sp_note:
+        # in place of the finalized-txn line: explain why it was not produced
+        msg += sp_note
 
     return msg
 
@@ -1824,6 +1889,8 @@ class TXOutExplorer(TXExplorer):
             outp = self.user_auth_action.psbt.outputs[idx]
             item = "Output %d%s:\n\n" % (idx, " (change)" if outp.is_change else "")
             msg, addr_or_script = self.user_auth_action.render_output(out)
+            if outp.sp_v0_info:
+                msg += self.user_auth_action.psbt.render_silent_payment_output_string(outp)
             item += msg
             qr_items.append(addr_or_script)
             if outp.is_change:

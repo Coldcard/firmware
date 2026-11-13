@@ -26,6 +26,9 @@ PSBT_GLOBAL_INPUT_COUNT             = 0x04
 PSBT_GLOBAL_OUTPUT_COUNT            = 0x05
 PSBT_GLOBAL_TX_MODIFIABLE           = 0x06
 PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE  = 0x09
+# BIP-375 Silent Payments
+PSBT_GLOBAL_SP_ECDH_SHARE           = 0x07
+PSBT_GLOBAL_SP_DLEQ                 = 0x08
 
 # INPUTS ===
 PSBT_IN_NON_WITNESS_UTXO 	        = 0x00
@@ -59,6 +62,15 @@ PSBT_IN_TAP_MERKLE_ROOT             = 0x18
 PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS  = 0x1a
 PSBT_IN_MUSIG2_PUB_NONCE            = 0x1b
 PSBT_IN_MUSIG2_PARTIAL_SIG          = 0x1c
+# BIP-375 Silent Payments
+PSBT_IN_SP_ECDH_SHARE               = 0x1d
+PSBT_IN_SP_DLEQ                     = 0x1e
+# BIP-376 Silent Payments
+PSBT_IN_SP_SPEND_BIP32_DERIVATION   = 0x1f
+PSBT_IN_SP_TWEAK                    = 0x20
+# BIP-375 MuSig2 Silent Payments
+PSBT_IN_SP_PARTIAL_ECDH_SHARE   = 0x21
+PSBT_IN_SP_PARTIAL_DLEQ         = 0x22
 
 # OUTPUTS ===
 PSBT_OUT_REDEEM_SCRIPT 	            = 0x00
@@ -72,6 +84,9 @@ PSBT_OUT_TAP_INTERNAL_KEY           = 0x05
 PSBT_OUT_TAP_TREE                   = 0x06
 PSBT_OUT_TAP_BIP32_DERIVATION       = 0x07
 PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS = 0x08
+# BIP-375 Silent Payments
+PSBT_OUT_SP_V0_INFO                 = 0x09
+PSBT_OUT_SP_V0_LABEL                = 0x0a
 
 PSBT_PROP_CK_ID = b"COINKITE"
 
@@ -142,6 +157,12 @@ class BasicPSBTInput(PSBTSection):
         self.musig_pubkeys = {}
         self.musig_pubnonces = {}
         self.musig_part_sigs = {}
+        self.sp_partial_ecdh_shares = {}
+        self.sp_partial_dleq_proofs = {}
+        self.sp_ecdh_shares = {}
+        self.sp_dleq_proofs = {}
+        self.sp_tweak = None
+        self.sp_spend_bip32_derivation = {}
         self.others = {}
         self.unknown = {}
 
@@ -172,6 +193,12 @@ class BasicPSBTInput(PSBTSection):
              a.musig_pubkeys == b.musig_pubkeys and \
              a.musig_pubnonces == b.musig_pubnonces and \
              a.musig_part_sigs == b.musig_part_sigs and \
+             a.sp_partial_ecdh_shares == b.sp_partial_ecdh_shares and \
+             a.sp_partial_dleq_proofs == b.sp_partial_dleq_proofs and \
+             a.sp_ecdh_shares == b.sp_ecdh_shares and \
+             a.sp_dleq_proofs == b.sp_dleq_proofs and \
+             a.sp_tweak == b.sp_tweak and \
+             a.sp_spend_bip32_derivation == b.sp_spend_bip32_derivation and \
              a.unknown == b.unknown
         if rv:
             # NOTE: equality test on signatures requires parsing DER stupidness
@@ -261,6 +288,26 @@ class BasicPSBTInput(PSBTSection):
             aggregate_key = key[33:66]
             tapleaf_h = key[66:]
             self.musig_part_sigs[(participant_key, aggregate_key, tapleaf_h)] = val
+        elif kt == PSBT_IN_SP_PARTIAL_ECDH_SHARE:
+            assert len(key) == 66  # scan key (33) + participant pubkey (33)
+            assert len(val) == 33
+            scan_key = key[:33]
+            participant_key = key[33:66]
+            self.sp_partial_ecdh_shares[(scan_key, participant_key)] = val
+        elif kt == PSBT_IN_SP_PARTIAL_DLEQ:
+            assert len(key) == 66  # scan key (33) + participant pubkey (33)
+            assert len(val) == 64
+            scan_key = key[:33]
+            participant_key = key[33:66]
+            self.sp_partial_dleq_proofs[(scan_key, participant_key)] = val
+        elif kt == PSBT_IN_SP_ECDH_SHARE:
+            self.sp_ecdh_shares[key] = val
+        elif kt == PSBT_IN_SP_DLEQ:
+            self.sp_dleq_proofs[key] = val
+        elif kt == PSBT_IN_SP_TWEAK:
+            self.sp_tweak = val
+        elif kt == PSBT_IN_SP_SPEND_BIP32_DERIVATION:
+            self.sp_spend_bip32_derivation[key] = val
         else:
             self.unknown[bytes([kt]) + key] = val
 
@@ -319,6 +366,24 @@ class BasicPSBTInput(PSBTSection):
         if self.musig_pubkeys:
             for agg_k, pk_lst in self.musig_pubkeys.items():
                 wr(PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS, b"".join(pk_lst), agg_k)
+        if self.sp_ecdh_shares:
+            for k, v in self.sp_ecdh_shares.items():
+                wr(PSBT_IN_SP_ECDH_SHARE, v, k)
+        if self.sp_dleq_proofs:
+            for k, v in self.sp_dleq_proofs.items():
+                wr(PSBT_IN_SP_DLEQ, v, k)
+        if self.sp_tweak is not None:
+            wr(PSBT_IN_SP_TWEAK, self.sp_tweak)
+        if self.sp_spend_bip32_derivation:
+            for k, v in self.sp_spend_bip32_derivation.items():
+                wr(PSBT_IN_SP_SPEND_BIP32_DERIVATION, v, k)
+
+        if self.sp_partial_ecdh_shares:
+            for (sk, pk), share in self.sp_partial_ecdh_shares.items():
+                wr(PSBT_IN_SP_PARTIAL_ECDH_SHARE, share, sk + pk)
+        if self.sp_partial_dleq_proofs:
+            for (sk, pk), proof in self.sp_partial_dleq_proofs.items():
+                wr(PSBT_IN_SP_PARTIAL_DLEQ, proof, sk + pk)
 
         if self.musig_pubnonces:
             for (pk, ak, lh), pubnonce in self.musig_pubnonces.items():
@@ -350,6 +415,8 @@ class BasicPSBTOutput(PSBTSection):
         self.taproot_tree = None
         self.script = None  # v2
         self.amount = None  # v2
+        self.sp_v0_info = None
+        self.sp_v0_label = None
         self.proprietary = {}
         self.musig_pubkeys = {}
         self.unknown = {}
@@ -366,6 +433,8 @@ class BasicPSBTOutput(PSBTSection):
             a.proprietary == b.proprietary and \
             a.taproot_tree == b.taproot_tree and \
             a.musig_pubkeys == b.musig_pubkeys and \
+            a.sp_v0_info == b.sp_v0_info and \
+            a.sp_v0_label == b.sp_v0_label and \
             a.unknown == b.unknown
 
     def parse_kv(self, kt, key, val):
@@ -405,6 +474,10 @@ class BasicPSBTOutput(PSBTSection):
             for i in range(0, len(val), 33):
                 pk_list.append(val[i:i + 33])
             self.musig_pubkeys[key] = pk_list
+        elif kt == PSBT_OUT_SP_V0_INFO:
+            self.sp_v0_info = val
+        elif kt == PSBT_OUT_SP_V0_LABEL:
+            self.sp_v0_label = val
         elif kt == PSBT_GLOBAL_PROPRIETARY:
             self.proprietary[key] = val
         else:
@@ -436,6 +509,10 @@ class BasicPSBTOutput(PSBTSection):
         if self.musig_pubkeys:
             for agg_k, pk_lst in self.musig_pubkeys.items():
                 wr(PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS, b"".join(pk_lst), agg_k)
+        if self.sp_v0_info is not None:
+            wr(PSBT_OUT_SP_V0_INFO, self.sp_v0_info)
+        if self.sp_v0_label is not None:
+            wr(PSBT_OUT_SP_V0_LABEL, self.sp_v0_label)
 
         for k in self.proprietary:
             wr(PSBT_GLOBAL_PROPRIETARY, self.proprietary[k], k)
@@ -465,6 +542,8 @@ class BasicPSBT:
         self.txn_modifiable = None
         self.fallback_locktime = None
         self.bip322_msg = None
+        self.sp_global_ecdh_shares = {}
+        self.sp_global_dleq_proofs = {}
         self.unknown = {}
         self.parsed_txn = None
 
@@ -481,6 +560,8 @@ class BasicPSBT:
             all(a.inputs[i] == b.inputs[i] for i in range(len(a.inputs))) and \
             all(a.outputs[i] == b.outputs[i] for i in range(len(a.outputs))) and \
             sorted(a.xpubs) == sorted(b.xpubs) and \
+            a.sp_global_ecdh_shares == b.sp_global_ecdh_shares and \
+            a.sp_global_dleq_proofs == b.sp_global_dleq_proofs and \
             a.unknown == b.unknown
 
     def is_v2(self):
@@ -551,6 +632,10 @@ class BasicPSBT:
                     self.txn_modifiable = val[0]
                 elif kt == PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE:
                     self.bip322_msg = val
+                elif kt == PSBT_GLOBAL_SP_ECDH_SHARE:
+                    self.sp_global_ecdh_shares[key[1:]] = val
+                elif kt == PSBT_GLOBAL_SP_DLEQ:
+                    self.sp_global_dleq_proofs[key[1:]] = val
                 else:
                     self.unknown[key] = val
 
@@ -608,6 +693,13 @@ class BasicPSBT:
 
             if self.txn_modifiable is not None:
                 wr(PSBT_GLOBAL_TX_MODIFIABLE, bytes([self.txn_modifiable]))
+
+        if self.sp_global_ecdh_shares:
+            for k, v in self.sp_global_ecdh_shares.items():
+                wr(PSBT_GLOBAL_SP_ECDH_SHARE, v, k)
+        if self.sp_global_dleq_proofs:
+            for k, v in self.sp_global_dleq_proofs.items():
+                wr(PSBT_GLOBAL_SP_DLEQ, v, k)
 
         if self.version is not None:
             wr(PSBT_GLOBAL_VERSION, struct.pack('<I', self.version))
