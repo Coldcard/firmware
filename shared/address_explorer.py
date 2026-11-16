@@ -382,6 +382,7 @@ Press (3) if you really understand and accept these risks.
                                         change=change if allow_change else None, **choice)
 
                 # continue on same screen in case they want to write to multiple cards
+                continue
 
             elif choice == KEY_QR:
                 from ux import show_qr_codes
