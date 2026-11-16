@@ -13,6 +13,9 @@ your addition and anything else already in this file.**
 - Bugfix: Show outputs to segwit v1+ witness programs other than 32 bytes long
   as their bech32m address, rather than as a raw script.
 
+- Bugfix: Avoid recalculating the displayed addresses when returning from file
+  export in Address Explorer, eliminating the unnecessary "Wait..." delay.
+
 
 # Mk Specific Changes
 
