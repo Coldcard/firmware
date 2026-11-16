@@ -48,7 +48,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 - Bugfix: Reject duplicate public keys in BIP-388 policy key lists, as required by
   the specification.
 - Bugfix: Fixed signing single-key Taproot leaf spends in wallets with a MuSig2
-  internal key. Thanks to pythcoiner for the report and fix.
+  internal key. Thanks to [@pythcoiner](https://github.com/pythcoiner) for the report and fix.
 - Bugfix: Fix Address Explorer CSV exports for MuSig wallets, including participant
   derivation paths when an aggregate xpub is also present.
 - Bugfix: Clear the Set Nickname checkmark when the nickname is removed, including
@@ -101,7 +101,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Mk4 Specific Changes
 
-## 6.6.2X - 2026-0x-xx
+## 6.6.2X - 2026-11-17
 
 - all of the above
 - synced with master up to and including `5.6.3`
@@ -109,7 +109,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Q Specific Changes
 
-## 6.6.2QX - 2026-0x-xx
+## 6.6.2QX - 2026-11-17
 
 - all of the above
 - synced with master up to and including `1.5.3Q`
