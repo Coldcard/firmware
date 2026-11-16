@@ -96,7 +96,8 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 - Bugfix: Correct finalization of presigned segwit inputs. Thanks to Nabeel-javed.
 - Bugfix: Keep a signed PSBT when an input lacks a supported, validated script and
   usable signature set, including incomplete taproot, tapscript and MuSig2 spends.
-
+- Bugfix: Avoid recalculating the displayed addresses when returning from file
+  export in Address Explorer, eliminating the unnecessary "Wait..." delay.
 
 # Mk4 Specific Changes
 
