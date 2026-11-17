@@ -2986,7 +2986,7 @@ async def codex32_derive_shares(*a):
 
     used = {s.index for s in shares}
     first = shares[0]
-    items = [MenuItem('%d required [%s]' % (first.threshold, first.uid.upper()))]
+    items = [MenuItem('Set [%s]' % first.uid.upper())]
     items.extend(MenuItem("Share '%s'" % index.upper(), f=derive, arg=index)
                  for index in IDX_ORDER[1:10] if index not in used)
     submenu = MenuSystem(items)

@@ -1698,7 +1698,7 @@ def test_derive_codex32_shares(hrp, size, state, threshold, reset_seed_words, un
 
     assert master_settings_get('c32_shares') == []
     menu = cap_menu()
-    assert menu[0] == '%d required [NAME]' % threshold
+    assert menu[0] == 'Set [NAME]'
     assert menu[1:] == ["Share '%s'" % idx for idx in output_indices]
     secret = generate_share(shares, SECRET).to_string()
     for index in output_indices[:2]:
