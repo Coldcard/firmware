@@ -1503,7 +1503,7 @@ async def codex32_calculate_checksum(_1, _2, item):
         value = await import_codex32_share(
             intro='Enter the MS1 header and payload without its checksum. '
                   'Spaces between groups are allowed.',
-            title='Calculate Checksum' if version.has_qwerty else 'Calc Checksum',
+            title='Calculate Checksum' if version.has_qwerty else 'Calc Csum',
             input_value=value)
         if not value: break
         try:
