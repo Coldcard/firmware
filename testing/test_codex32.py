@@ -480,6 +480,7 @@ def test_calculate_checksum_cancel(stage, goto_codex32_menu, pick_menu_item,
     assert cap_story()[0] == 'WARNING'
     if stage != 'warning':
         press_select()
+        assert cap_story()[0] == ('Calculate Checksum' if is_q1 else 'Calc Csum')
     if stage == 'editor':
         need_keypress('0')
         time.sleep(.2)
