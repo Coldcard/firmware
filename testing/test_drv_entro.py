@@ -17,8 +17,8 @@ EXAMPLE_XPRV = '011b67969d1ec69bdfeeae43213da8460ba34b92d0788c8f7bfcfa44906e8a58
 @pytest.fixture
 def derive_bip85_secret(goto_home, press_select, pick_menu_item, cap_story, enter_text,
                         set_encoded_secret, set_seed_words, settings_set, is_q1,
-                        seed_story_to_words):
-    def doit(mode, index, expect=None, entropy=None, sim_sec=None, chain="BTC"):
+                        seed_story_to_words, press_delete):
+    def doit(mode, index, expect=None, entropy=None, sim_sec=None, chain="BTC", pwd_len=21):
         if sim_sec:
             if len(sim_sec.split(" ")) in (12,18,24):
                 set_seed_words(sim_sec)
@@ -49,6 +49,14 @@ def derive_bip85_secret(goto_home, press_select, pick_menu_item, cap_story, ente
 
         time.sleep(0.1)
         pick_menu_item(mode)
+
+        if mode == 'Passwords':
+            if pwd_len == 21:
+                press_select()
+            else:
+                press_delete()
+                press_delete()
+                enter_text(str(pwd_len))
 
         enter_text(str(index) if index is not None else '')
 
@@ -109,7 +117,7 @@ def derive_bip85_secret(goto_home, press_select, pick_menu_item, cap_story, ente
 
         elif 'Passwords' == mode:
             assert "Password:" in story
-            assert f"m/83696968h/707764h/21h/{index}h" in story
+            assert f"m/83696968h/707764h/{pwd_len}h/{index}h" in story
             if expect:
                 assert expect in story
             assert "(6) to type pw over USB" in story
@@ -120,6 +128,92 @@ def derive_bip85_secret(goto_home, press_select, pick_menu_item, cap_story, ente
         return can_import, story
 
     return doit
+
+
+def reference_password(length, index):
+    from base64 import b64encode
+    from bip32 import hmac_sha512
+
+    root = BIP32Node.from_hwif('xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb')
+    child = root.subkey_for_path(f"83696968'/707764'/{length}'/{index}'")
+    entropy = hmac_sha512(b'bip-entropy-from-k', bytes(child.node.private_key))
+    return b64encode(entropy).decode()[:length]
+
+
+def test_password_lengths(sim_exec, set_encoded_secret):
+    set_encoded_secret(a2b_hex(EXAMPLE_XPRV))
+    for length in range(21, 87):
+        got = sim_exec(f"""
+from drv_entro import bip85_derive, bip85_pwd
+secret, _, _, path = bip85_derive(7, 0, {length})
+assert path == 'm/83696968h/707764h/{length}h/0h'
+RV.write(bip85_pwd(secret, {length}))
+""")
+        assert got == reference_password(length, 0)
+        assert len(got) == length
+        assert re.fullmatch(r'[A-Za-z0-9+/]+', got)
+
+    for length in (0, 20, 87):
+        assert 'AssertionError' in sim_exec(
+            f'from drv_entro import bip85_derive\nbip85_derive(7, 0, {length})')
+
+
+@pytest.mark.parametrize('length', [21, 22, 32, 64, 85, 86])
+def test_password_length_exports(length, derive_bip85_secret, need_keypress, cap_story,
+                                load_export_and_verify_signature, press_select, press_cancel,
+                                press_nfc, nfc_read_text):
+    expected = reference_password(length, 7)
+    _, story = derive_bip85_secret('Passwords', 7, expect=expected,
+                                  sim_sec=EXAMPLE_XPRV, pwd_len=length)
+    assert story.split('\n\n')[0] == 'Password:\n' + expected
+    need_keypress('1')
+    _, saved = cap_story()
+    contents, _, _ = load_export_and_verify_signature(saved, 'sd', fpattern='drv', label=None)
+    assert expected in contents
+    assert f'm/83696968h/707764h/{length}h/7h' in contents
+    press_select()
+    press_nfc()
+    time.sleep(.2)  # wait for the asynchronous NFC write before reading the tag
+    assert nfc_read_text() == expected
+    press_cancel()
+    press_cancel()
+
+
+@pytest.mark.qrcode
+@pytest.mark.parametrize('length', [21, 86])
+def test_password_length_qr(length, derive_bip85_secret, need_keypress, cap_screen_qr,
+                            press_cancel, is_q1):
+    expected = reference_password(length, 7)
+    derive_bip85_secret('Passwords', 7, sim_sec=EXAMPLE_XPRV, pwd_len=length)
+    need_keypress(KEY_QR if is_q1 else '4')
+    assert cap_screen_qr().decode('ascii') == expected
+    press_cancel()
+    press_cancel()
+
+
+@pytest.mark.parametrize('invalid', [0, 20, 87, 99])
+def test_password_length_invalid(invalid, goto_home, pick_menu_item, press_select,
+                                 enter_number, press_delete, press_cancel, cap_story,
+                                 cap_screen, cap_menu, is_q1):
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('Derive Seeds (BIP-85)' if is_q1 else 'Derive Seed B85')
+    press_select()
+    pick_menu_item('Passwords')
+    time.sleep(.1)
+    assert '21-86' in cap_screen()
+    press_delete()
+    press_delete()
+    enter_number(invalid)
+    time.sleep(.1)
+    assert 'between 21 and 86' in cap_story()[1]
+    press_select()
+    time.sleep(.1)
+    assert '21-86' in cap_screen()
+    press_delete()
+    press_delete()
+    press_cancel()
+    assert 'Passwords' in cap_menu()
 
 
 def test_bip39_passphrase_warning(set_bip39_pw, goto_home, pick_menu_item, cap_story,
@@ -353,7 +447,9 @@ def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr, seed_sto
 
 
 def test_type_passwords(dev, cap_menu, pick_menu_item, goto_home, OK,
-                        cap_story, press_select, cap_screen, enter_text):
+                        cap_story, press_select, cap_screen, enter_text, press_delete,
+                        set_encoded_secret, press_cancel):
+    set_encoded_secret(a2b_hex(EXAMPLE_XPRV))
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Keyboard EMU')
@@ -368,21 +464,49 @@ def test_type_passwords(dev, cap_menu, pick_menu_item, goto_home, OK,
     assert "Type Passwords" in menu
     pick_menu_item("Type Passwords")
     time.sleep(0.1)
-    # here we accessed index loop and can derive
-    for index in [0, 10, 100, 1000, 9999]:
-        time.sleep(0.5)
-        enter_text(str(index))
-        time.sleep(1)
-        _, story = cap_story()
-        assert f"Place mouse at required password prompt, then press {OK} to send keystrokes." in story
-        split_story = story.split("\n\n")
-        _, pwd = split_story[1].split("\n")
-        _, path = split_story[2].split("\n")
-        assert path == f"m/83696968h/707764h/21h/{index}h"
-        assert len(pwd) == 21
-        assert "=" not in pwd
-        press_select()  # does nothing on simulator
-        time.sleep(0.2)
+    press_delete()
+    press_delete()
+    press_cancel()
+    time.sleep(.2)  # allow normal USB mode to restart after leaving keyboard emulation
+    assert "Type Passwords" in cap_menu()
+
+    pick_menu_item("Type Passwords")
+    time.sleep(0.1)
+    # Reuse each length across indexes, then change length without leaving this session.
+    for length, indexes in [(21, [0, 10]), (22, [100]), (32, [1000]), (85, [9999]),
+                            (86, [9999, 9999]), (21, [9999])]:
+        assert '21-86' in cap_screen()
+        if length == 21:
+            press_select()
+        else:
+            press_delete()
+            press_delete()
+            enter_text(str(length))
+        for index in indexes:
+            time.sleep(0.5)
+            assert 'Password Index?' in cap_screen()
+            enter_text(str(index))
+            time.sleep(1)
+            _, story = cap_story()
+            assert f"Place mouse at required password prompt, then press {OK} to send keystrokes." in story
+            split_story = story.split("\n\n")
+            _, pwd = split_story[1].split("\n")
+            _, path = split_story[2].split("\n")
+            assert path == f"m/83696968h/707764h/{length}h/{index}h"
+            assert pwd == reference_password(length, index)
+            assert len(pwd) == length
+            assert "=" not in pwd
+            press_select()  # does nothing on simulator
+            time.sleep(0.2)
+        press_cancel()
+        time.sleep(0.1)
+        assert '21-86' in cap_screen()
+
+    press_delete()
+    press_delete()
+    press_cancel()
+    time.sleep(.2)
+    assert "Type Passwords" in cap_menu()
 
     # exit Enter Password menu
     goto_home()
