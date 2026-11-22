@@ -217,10 +217,15 @@ def build_password(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
             need_keypress(key_pw)
             time.sleep(0.1)
             if key_pw == KEY_F5:       # bip-85
+                enter_text(KEY_CLEAR + '86')
                 enter_text('34')
                 time.sleep(0.1)
             n_pw = ''.join(cap_text_box()).strip()
             assert n_pw and len(n_pw) > 10
+            if key_pw == KEY_F5:
+                assert len(n_pw) == 86
+            elif key_pw == KEY_F3:
+                assert len(n_pw) == 21
             need_keypress(KEY_ENTER)
         else:
             enter_text(n_pw)

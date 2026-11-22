@@ -7,6 +7,9 @@ your addition and anything else already in this file.**
 
 # Shared Improvements - Both Mk and Q
 
+- Enhancement: Choose BIP-85 Base64 password lengths from 21 to 86 characters.
+  The default remains 21 characters, preserving existing passwords.
+
 - Bugfix: Restore Backup now verifies whether a seed write succeeded after a bootloader
   AE_FAIL before aborting, avoiding a half-restored device with seed written but settings
   missing.

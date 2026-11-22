@@ -18,21 +18,22 @@ keystrokes needed to type the password.
 
 1. To enable "Type Passwords" feature, connect your Coldcard to host PC with USB cable (check requirements) and go to Settings -> Keyboard EMU -> Enable.
 2. Go back to top menu and "Type Passwords" option will be shown below "Address Explorer".
-3. When it is time to enter a secret password, select "Type Passwords" from the main menu. After 
-an information screen, the USB emulation will be switch to keyboard emulation
-and `Switching...` shown on the screen.
-4. Choose "Password index" (BIP-85 index) and press OK to generate that password.
-5. It takes a moment to generate the password, and then you can scroll down to check BIP-85 path used and double-check password to be typed.
-6. To send keystrokes, place mouse at required password prompt and press OK. This will send desired keystrokes plus hit enter at the end.
-6. You are back at step 4, and can continue to generate passwords or you can press X
-to exit. Exiting from "Type Passwords" will cause Coldcard to turn off keyboard emulation and enable normal USB mode if it was enabled before. Otherwise, USB stays disabled.
+3. Select "Type Passwords" from the main menu. USB switches to keyboard emulation and `Switching...` is shown on screen. 
+4. Choose a password length from 21 to 86 characters (default 21).
+5. Choose "Password index" (BIP-85 index).
+6. It takes a moment to generate the password, and then you can scroll down to check BIP-85 path used and double-check password to be typed.
+7. To send keystrokes, place mouse at required password prompt and press OK. This will send desired keystrokes plus hit enter at the end.
+8. You are back at step 4 and can continue to generate passwords.
+
+Cancel the length prompt to exit "Type Passwords". This turns off keyboard emulation and enables normal USB mode if it was enabled before. Otherwise, USB stays disabled.
 
 ## View BIP-85 passwords
 
 1. Go to Advanced/Tools -> Derive Seed B85 -> Passwords
-2. Choose "Password/Index number" (BIP-85 index) and press OK to generate password.
-3. Screen shows generated password, path, and entropy from which password was derived
-4. A few different options are available at this point (on Mk; on Q the NFC and
+2. Choose a password length from 21 to 86 characters (default 21 → ~126 bits) 
+3. Choose "Password/Index number" (BIP-85 index).
+4. Screen shows generated password, path, and entropy from which password was derived
+5. A few different options are available at this point (on Mk; on Q the NFC and
    QR buttons are used instead of (3)/(4)):
    1. press (1) to save password backup file on MicroSD card (cleartext!)
    2. press (2) to save to Virtual Disk (only when available)
@@ -72,14 +73,17 @@ However, BIP-85 won't be respected in this case.
 
 ## Coldcard Specifics
 
-Check [BIP-85](https://github.com/scgbckbone/bips/blob/passwords/bip-0085.mediawiki)
-for complete specification of the new addition to BIP-85.
+Check [BIP-85](https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki#pwd-base64)
+for the complete specification.
 
-Coldcard does not allow you to specify password length - we always
-use length of **21**. Passwords of this length generated according
-to BIP will have approximately 126 bits of entropy. This is on par
-with bitcoin security model and therefore all passwords the Coldcard
-will generate are considered very strong.
+Coldcard supports password lengths from **21 to 86** characters, including
+the BIP-85 picker in Secure Notes on Q. The default remains **21**, preserving
+existing passwords with approximately 126 bits of entropy.
+
+Length is part of the derivation path: changing it produces a different password,
+not a longer or shorter version of the same password. Record both the length and
+index to reproduce a password using the same source wallet (including any BIP-39
+passphrase). The path shown on screen and in file exports includes both values.
 
 ## Examples
 

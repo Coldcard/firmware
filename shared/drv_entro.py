@@ -54,7 +54,7 @@ still backed-up.''')
     m = MenuSystem([MenuItem(c, f=drv_entro_step2) for c in choices])
     the_ux.push(m)
 
-def bip85_derive(picked, index):
+def bip85_derive(picked, index, pwd_len=BIP85_PWD_LEN):
     # implement the core step of BIP85 from our master secret
     path = "m/83696968h/"
     if picked in (0,1,2):
@@ -78,10 +78,10 @@ def bip85_derive(picked, index):
         path += "128169h/%dh/%dh" % (width, index)
         s_mode = 'hex'
     elif picked == 7:
+        assert 21 <= pwd_len <= 86
         width = 64
-        # hardcoded width for now
         # b"pwd".hex() --> 707764
-        path += "707764h/%dh/%dh" % (BIP85_PWD_LEN, index)
+        path += "707764h/%dh/%dh" % (pwd_len, index)
         s_mode = 'pw'
     else:
         raise ValueError(picked)
@@ -98,7 +98,7 @@ def bip85_derive(picked, index):
     return new_secret, width, s_mode, path
 
 
-def bip85_pwd(secret):
+def bip85_pwd(secret, pwd_len=BIP85_PWD_LEN):
     # Convert raw secret (64 bytes) into type-able password text.
 
     # See BIP85 specification.
@@ -106,15 +106,25 @@ def bip85_pwd(secret):
     #
     # Base64 encode whole 64 bytes of entropy.
     # Slice pwd_len from base64 encoded string [0:pwd_len]
-    # we use hardcoded pwd_len=21, which has cca 126 bits of entropy
+    # default pwd_len=21 preserves existing passwords
 
     # python bas64 puts newline at the end - strip
     assert len(secret) == 64
     secret_b64 = b2a_base64(secret).decode().strip()
-    return secret_b64[:BIP85_PWD_LEN]
+    return secret_b64[:pwd_len]
+
+async def pick_bip85_pwd_len():
+    from ux import ux_enter_number
+
+    while True:
+        # Allow invalid two-digit values so they can be rejected, not silently clamped.
+        length = await ux_enter_number('Length (21-86)?', 99, value=BIP85_PWD_LEN)
+        if length is None or 21 <= length <= 86:
+            return length
+        await ux_show_story('Password length must be between 21 and 86 characters.')
 
 async def pick_bip85_password():
-    # ask for index and then return the pw (see notes.py)
+    # ask for length and index, then return the pw (see notes.py)
     return await drv_entro_step2(None, 7, None, just_pick=True)
 
 async def drv_entro_step2(_1, picked, _2, just_pick=False):
@@ -122,15 +132,20 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
     from files import CardSlot, CardMissingError, needs_microsd
     from ux import ux_render_words, export_prompt_builder, import_export_prompt_decode
 
+    pwd_len = BIP85_PWD_LEN
+    if picked == 7:
+        pwd_len = await pick_bip85_pwd_len()
+        if pwd_len is None: return
+
     msg = "Password Index?" if picked == 7 else "Index Number?"
     index = await ux_enter_bip32_index(msg, unlimited=settings.get("b85max", False))
     if index is None: return
 
     dis.fullscreen("Working...")
-    new_secret, width, s_mode, path = bip85_derive(picked, index)
+    new_secret, width, s_mode, path = bip85_derive(picked, index, pwd_len)
 
     if just_pick:
-        return bip85_pwd(new_secret)
+        return bip85_pwd(new_secret, pwd_len)
 
     # Reveal to user!
     encoded = None
@@ -140,7 +155,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
     node = None
 
     if s_mode == "pw":
-        pw = bip85_pwd(new_secret)
+        pw = bip85_pwd(new_secret, pwd_len)
         qr = pw
         msg = 'Password:\n' + pw
 
@@ -282,28 +297,33 @@ async def password_entry(*args, **kwargs):
     from glob import dis
     from usb import EmulatedKeyboard
 
-    # cache of length of 1
-    # (index, path, password)
-    cache = tuple()
-
     with EmulatedKeyboard() as kbd:
         if await kbd.connect(): return
 
         while True:
-            the_ux.pop()
-            index = await ux_enter_bip32_index("Password Index?")
-            if index is None:
+            pwd_len = await pick_bip85_pwd_len()
+            if pwd_len is None:
                 break
 
-            if cache and index == cache[0]:
-                path, pw = cache[1:]
-            else:
-                dis.fullscreen("Working...")
-                new_secret, _, _, path = bip85_derive(7, index)
-                pw = bip85_pwd(new_secret)
-                cache = (index, path, pw)
+            # Cache one password, cleared whenever a length is selected.
+            # (index, path, password)
+            cache = tuple()
 
-            await send_keystrokes(kbd, pw, path)
+            while True:
+                the_ux.pop()
+                index = await ux_enter_bip32_index("Password Index?")
+                if index is None:
+                    break
+
+                if cache and index == cache[0]:
+                    path, pw = cache[1:]
+                else:
+                    dis.fullscreen("Working...")
+                    new_secret, _, _, path = bip85_derive(7, index, pwd_len)
+                    pw = bip85_pwd(new_secret, pwd_len)
+                    cache = (index, path, pw)
+
+                await send_keystrokes(kbd, pw, path)
 
     the_ux.pop()        # WHY?
 
