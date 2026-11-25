@@ -13,7 +13,7 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
-- tbd
+- Bugfix: Reject uncompressed WIF Store pubkeys in SegWit inputs with derivation paths.
 
 # Mk4 Specific Changes
 

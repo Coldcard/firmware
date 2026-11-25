@@ -801,7 +801,8 @@ def test_wif_store_other_serialization_not_owned(compressed, is_q1, goto_home, p
 
 
 @pytest.mark.parametrize("addr_fmt", ["p2wpkh", "p2sh-p2wpkh", "p2tr"])
-def test_uncompressed_wif_not_owned_by_segwit(addr_fmt, fake_txn, start_sign, cap_story,
+@pytest.mark.parametrize("with_paths", [False, True])
+def test_uncompressed_wif_not_owned_by_segwit(addr_fmt, with_paths, fake_txn, start_sign, cap_story,
                                               settings_remove, import_wif_to_store):
     settings_remove("wifs")
 
@@ -811,14 +812,20 @@ def test_uncompressed_wif_not_owned_by_segwit(addr_fmt, fake_txn, start_sign, ca
 
     if addr_fmt == "p2tr":
         po.inputs[0].taproot_internal_key, = po.inputs[0].taproot_bip32_paths.keys()
-        po.inputs[0].taproot_bip32_paths = {}
+        if not with_paths:
+            po.inputs[0].taproot_bip32_paths = {}
     else:
-        pubkey_hash = hash160(n.node.public_key.sec(compressed=False))
+        pubkey = n.node.public_key.sec(compressed=False)
+        pubkey_hash = hash160(pubkey)
         redeem_script = b'\x00\x14' + pubkey_hash
         wrapped = addr_fmt == "p2sh-p2wpkh"
         script = (b'\xa9\x14' + hash160(redeem_script) + b'\x87') if wrapped else redeem_script
 
-        po.inputs[0].bip32_paths = {}
+        if with_paths:
+            path, = po.inputs[0].bip32_paths.values()
+            po.inputs[0].bip32_paths = {pubkey: path}
+        else:
+            po.inputs[0].bip32_paths = {}
         po.inputs[0].witness_utxo = CTxOut(100_000_000, script).serialize()
         po.inputs[0].redeem_script = redeem_script if wrapped else None
 
@@ -827,7 +834,10 @@ def test_uncompressed_wif_not_owned_by_segwit(addr_fmt, fake_txn, start_sign, ca
     start_sign(po.as_bytes(), finalize=True)
     title, story = cap_story()
     assert title == "Failure"
-    assert "None of the keys involved in this transaction belong to this Coldcard" in story
+    if with_paths and addr_fmt != "p2tr":
+        assert "uncompressed pubkey in SegWit" in story
+    else:
+        assert "None of the keys involved in this transaction belong to this Coldcard" in story
 
 
 @pytest.mark.parametrize("num_ins", [1, 5])
