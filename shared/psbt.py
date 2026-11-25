@@ -40,6 +40,10 @@ TX_VER_ERR = "bad txn version"
 NO_KEY_ERR = "None of the keys involved in this transaction belong to this Coldcard"
 MAX_FUTURE_BLOCKS = const(10 * 365 * 144)       # 10 years
 
+
+def is_compressed_pubkey(pk):
+    return len(pk) == 33 and pk[0] in (0x02, 0x03)
+
 # single sha256 of b'BIP0322-signed-message'
 BIP322_TAG_HASH = b'te\x84\xa1\x87/\xa1\x00AUN\xff\xa08\xd6\x12IB\xddy\xb4\xe5\x8aL\xda\x18N\x13\xdb\xe6,I'
 
@@ -865,8 +869,8 @@ class psbtInputProxy(psbtProxy):
             # signature counts are not proof of anything.
             pubkey, = self.part_sigs
             target = pubkey if self.addr_fmt == AF_BARE_PK else hash160(pubkey)
-            if target == addr_or_pubkey and not (self.is_segwit and (
-                        len(pubkey) != 33 or pubkey[0] not in (2, 3))):
+            pubkey_valid = is_compressed_pubkey(pubkey) if self.is_segwit else True
+            if target == addr_or_pubkey and pubkey_valid:
                 # v0 witness programs only ever commit to compressed keys
                 self.script_validated = True
 
@@ -1015,6 +1019,12 @@ class psbtInputProxy(psbtProxy):
 
         if self.is_segwit:
             if self.addr_fmt in [AF_P2WPKH, AF_P2WPKH_P2SH]:
+                # WIF Store's compressed-key check only runs for pathless inputs,
+                # so enforce it here when derivation paths are present.
+                for pubkey in subpaths:
+                    if not is_compressed_pubkey(pubkey):
+                        raise FatalPSBTIssue('Input #%d: uncompressed pubkey in SegWit' % my_idx)
+
                 # This comment from <https://bitcoincore.org/en/segwit_wallet_dev/>:
                 #
                 #   Please note that for a P2SH-P2WPKH, the scriptCode is always 26
@@ -2773,7 +2783,7 @@ class psbtObject(psbtProxy):
                         wit.scriptWitness.stack = [b""] + sigs + [self.get(inp.witness_script)]
                     else:
                         pubkey, der_sig = self.singlesig_signature(inp)
-                        assert pubkey[0] in {0x02, 0x03} and len(pubkey) == 33, "bad v0 pubkey"
+                        assert is_compressed_pubkey(pubkey), "bad v0 pubkey"
                         wit.scriptWitness.stack = [der_sig, pubkey]
 
                 fd.write(wit.serialize())
