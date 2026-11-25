@@ -53,6 +53,10 @@ TX_VER_ERR = "bad txn version"
 NO_KEY_ERR = "None of the keys involved in this transaction belong to this Coldcard"
 MAX_FUTURE_BLOCKS = const(10 * 365 * 144)
 
+
+def is_compressed_pubkey(pk):
+    return len(pk) == 33 and pk[0] in (0x02, 0x03)
+
 def build_bip322_to_spend(msg_hash, message_challenge):
     to_spend = CTransaction()
     to_spend.nVersion = 0
@@ -1025,8 +1029,9 @@ class psbtInputProxy(psbtProxy):
                 and len(self.part_sigs or []) == 1:
             pubkey = self.get(self.part_sigs[0][0])
             target = pubkey if self.af == AF_BARE_PK else hash160(pubkey)
-            if target == addr_or_pubkey and not (self.is_segwit and (
-                        len(pubkey) != 33 or pubkey[0] not in (2, 3))):
+            pubkey_valid = is_compressed_pubkey(pubkey) if self.is_segwit else True
+
+            if target == addr_or_pubkey and pubkey_valid:
                 self.script_validated = True
 
         return addr_or_pubkey
@@ -1079,6 +1084,10 @@ class psbtInputProxy(psbtProxy):
             # P2PKH & P2WPKH
             # input is hash160 of a single public key
             for i, pubkey in enumerate(parsed_subpaths):
+                # WIF Store's compressed-key check only runs for pathless inputs,
+                # so enforce it here when derivation paths are present.
+                if self.is_segwit and not is_compressed_pubkey(pubkey):
+                    raise FatalPSBTIssue('Input #%d: uncompressed pubkey in SegWit' % my_idx)
                 if hash160(pubkey) == addr_or_pubkey:
                     assert i == self.sp_idxs[0]
                     break
@@ -3836,7 +3845,7 @@ class psbtObject(psbtProxy):
                     else:
                         # segwit v0
                         pubkey, der_sig = self.singlesig_signature(inp)
-                        assert pubkey[0] in {0x02, 0x03} and len(pubkey) == 33, "bad v0 pubkey"
+                        assert is_compressed_pubkey(pubkey), "bad v0 pubkey"
                         wit.scriptWitness.stack = [der_sig, pubkey]
 
                 fd.write(wit.serialize())
