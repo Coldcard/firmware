@@ -13,112 +13,20 @@ This lists the changes in the most recent EDGE firmware, for each hardware platf
 
 # Shared Improvements - Both Mk4 and Q
 
-- New Feature: Codex32 (BIP-93) secrets and Shamir secret sharing. Generate or import Codex32
-  wallets, split the active wallet into two to nine Shamir shares with **Shamir Split**, and
-  restore it with **Shamir Recover**. Word wallets split as `cw1`, raw master seeds as `ms1`,
-  and extended-key wallets as `cx1`. CW1 and CX1 are COLDCARD extensions that require
-  explicit support in recovery software.
-- New Feature: Added USB ncry v3 authenticated encryption with direction-separated keys and replay protection
-- Enhancement: Restore Taproot script tree structure in Address Explorer CSV exports.
-- Enhancement: Warn before installing firmware signed by an external contributor
-  or downgrading from the currently installed firmware. Thanks to Huzaifa Jawaid for suggestion.
-- Enhancement: Optionally show Seed Vault names for temporary seed fingerprints
-  at the top of the home menu.
-- Enhancement: Support per-input required height and time locktimes in PSBTv2 transactions.
-- Enhancement: Warn when a transaction's block-height `nLockTime` is more than
-  ten years beyond the Bitcoin block height known to the firmware.
-- Enhancement: Retain up to 128 UTXO cache entries across restarts.
-- Bugfix: Restore Backup now verifies whether a seed write succeeded after a bootloader
-  AE_FAIL before aborting, avoiding a half-restored device with seed written but settings
-  missing.
-- Bugfix: Show outputs to segwit v1+ witness programs other than 32 bytes long
-  as their bech32m address, rather than as a raw script.
-
-- Bugfix: Reject conflicting xpub data between a MuSig aggregate and its ordinary
-  xpub representation even when derivation suffixes differ, and reject conflicting
-  key origins before wallet policy conversion. Thanks to
-  [@pythcoiner](https://github.com/pythcoiner).
-- Bugfix: Reject descriptors containing extended public keys with the same public key
-  but conflicting chain codes or other xpub fields, preventing incorrect Taproot
-  addresses. Thanks to [@pythcoiner](https://github.com/pythcoiner).
-- Bugfix: Preserve correct scripts and addresses when the same key appears in both
-  `pk()` and `pkh()` Taproot leaves.
-- Bugfix: Preserve MuSig participant information in policy exports and wallet matching
-  when the aggregate key also appears as an ordinary xpub.
-- Bugfix: Reject duplicate public keys in BIP-388 policy key lists, as required by
-  the specification.
-- Bugfix: Fixed signing single-key Taproot leaf spends in wallets with a MuSig2
-  internal key. Thanks to [@pythcoiner](https://github.com/pythcoiner) for the report and fix.
-- Bugfix: Fix Address Explorer CSV exports for MuSig wallets, including participant
-  derivation paths when an aggregate xpub is also present.
-- Bugfix: Clear the Set Nickname checkmark when the nickname is removed, including
-  empty nicknames saved by earlier firmware. Thanks to [@bonitoman](https://github.com/bonitoman).
-- Bugfix: Abort a pending firmware upgrade if its staged image is overwritten before
-  approval. Thanks to Huzaifa Jawaid.
-- Bugfix: Reject malformed PSBTs containing P2SH-P2WSH inputs with a missing or
-  incorrect redeem script, preventing transactions with an unknown fee from
-  proceeding to approval.
-- Bugfix: Reject foreign inputs from BIP-322 Proof of Reserves, including inputs
-  disguised with forged key-path metadata or partial signatures.
-- Bugfix: HSM `min_pct_self_transfer` and `EQ_NUM_OWN_INS_OUTS` rules counted
-  outputs as ours based on host-supplied PSBT key-path metadata, so a foreign
-  output with forged derivation info could satisfy self-transfer requirements.
-  Only outputs verified as change are counted now. Thanks to Swaplane for the report.
-- Bugfix: Add a block-height reset to Single-Signer Spending Policy's
-  **Last Violation** screen after policy bypass, matching CCC.
-- Bugfix: Cancelled PSBTs no longer persist claimed input amounts to the UTXO
-  cache; amounts are committed only after signing, for inputs actually signed.
-- Bugfix: Cache single-sig segwit change amounts at finalize, so understated
-  input amounts are caught instead of silently trusted.
-- Bugfix: Reject PSBTv2 transactions with an out-of-range transaction version, matching
-  the PSBTv0 parser. Previously a v2 PSBT with an invalid `nVersion` could be approved
-  and signed, producing a transaction the network will not relay.
-- Bugfix: Reject non-ASCII BIP-39 passphrases (USB, saved-passphrase recall, and
-  note/password lanes) instead of silently deriving a wallet incompatible with
-  BIP-39-normalizing software.
-- Bugfix: In Delta Mode, wipe the seed if anyone tries to view or activate a duress
-  wallet's secret from the Trick PINs menu, instead of revealing it. Browsing the menu
-  itself still works, so Delta Mode continues to look like normal operation.
-- Bugfix: Reject firmware images that extend past the world-checksum-covered
-  flash region.
-- Bugfix: Reject PSRAM virtual-disk files whose FAT metadata is inconsistent with the
-  declared file size (oversized cluster chains, oversized fragment counts, spurious
-  trailing fragments, final remainders exceeding the final fragment's capacity, or
-  filesystems with more than one sector per cluster), fixing an integer underflow in
-  `psram_copy_file`/`psram_mmap_file` that allowed out-of-bounds PSRAM writes, reads,
-  and mappings from a compromised USB host.
-- Bugfix: Fix device crash when message-signing input is valid JSON but not an
-  object (NFC / QR / SD `.json` file). Thanks to [@Amiga500](https://github.com/Amiga500).
-- Bugfix: Harden PSBTv2 parsing by rejecting key data on singleton fields,
-  malformed global input/output count encodings, and files missing the required
-  global version.
-- Bugfix: Preserve Taproot context while deriving Miniscript policies.
-- Bugfix: Correct finalization of presigned segwit inputs. Thanks to Nabeel-javed.
-- Bugfix: Keep a signed PSBT when an input lacks a supported, validated script and
-  usable signature set, including incomplete taproot, tapscript and MuSig2 spends.
-- Bugfix: Avoid recalculating the displayed addresses when returning from file
-  export in Address Explorer, eliminating the unnecessary "Wait..." delay.
+- tbd
 
 # Mk4 Specific Changes
 
-## 6.6.2X - 2026-11-17
+## 6.6.3X - 2026-0x-xx
 
-- all of the above
-- synced with master up to and including `5.6.3`
+- tbd
 
 
 # Q Specific Changes
 
-## 6.6.2QX - 2026-11-17
+## 6.6.3QX - 2026-0x-xx
 
-- all of the above
-- synced with master up to and including `1.5.3Q`
-- Bugfix: Fix Key Teleport failing to find MuSig participants when an equivalent
-  ordinary aggregate xpub hides the MuSig expression in the cached key list.
-  Thanks to [@pythcoiner](https://github.com/pythcoiner).
-- Bugfix: Prevent unintended master seed replacement when scanning seed words
-  or an extended private key from Ready To Sign or the Key Teleport retry screen.
-
+- tbd
 
 
 # Release History
