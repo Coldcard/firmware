@@ -136,6 +136,7 @@ class NotesMenu(MenuSystem):
             rv.extend(news)
 
             rv.append(MenuItem('Export All', f=cls.export_all))
+            rv.append(MenuItem('Delete All', f=cls.delete_all))
 
             if cnt >= 2:
                 rv.append(MenuItem('Sort By Title', f=cls.sort_titles))
@@ -180,6 +181,24 @@ class NotesMenu(MenuSystem):
     @classmethod
     async def export_all(cls, *a):
         await start_export(NoteContent.get_all())
+
+    @classmethod
+    async def delete_all(cls, menu, *a):
+        cnt = NoteContent.count()
+
+        if not await ux_confirm("Delete all secure notes and passwords?"):
+            return
+
+        if not await ux_confirm(
+                "All %d saved notes/passwords will be permanently lost unless you have "
+                "a backup." % cnt, confirm_key='4'):
+            return
+
+        settings.put('notes', [])
+        settings.save()
+        menu.update_contents()
+
+        await ux_dramatic_pause('Deleted.', 3)
 
     @classmethod
     async def sort_titles(cls, menu, _, item):
