@@ -238,6 +238,7 @@
     New Note
     New Password
     Export All
+    Delete All
     Sort By Title
     Import
   Type Passwords [MAYBE]
@@ -355,6 +356,7 @@
       New Note
       New Password
       Export All
+      Delete All
       Sort By Title
       Import
     Derive Seeds (BIP-85)
@@ -759,4 +761,3 @@
     File Share
     Push Transaction [IF PUSHTX ENABLED]
 ---
-

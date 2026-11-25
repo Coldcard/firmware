@@ -588,6 +588,49 @@ def test_qr_export_revokes_download_lease(remote_backup_lease, settings_set, set
     press_select()
 
 
+def test_delete_all_notes_passwords(settings_set, settings_get, need_some_notes,
+                                    need_some_passwords, goto_notes, cap_menu,
+                                    pick_menu_item, cap_story, press_select,
+                                    need_keypress):
+    settings_set('notes', [])
+    need_some_notes()
+    notes = need_some_passwords()
+    assert len(notes) == 3
+
+    goto_notes()
+    assert 'Delete All' in cap_menu()
+
+    pick_menu_item('Delete All')
+    title, story = cap_story()
+    assert 'SURE' in title
+    assert 'Delete all secure notes and passwords?' in story
+    press_select()
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert 'SURE' in title
+    assert 'All 3 saved notes/passwords will be permanently lost unless you have' in story
+    assert 'a backup.' in story
+    assert 'Press (4)' in story
+
+    press_select()
+    time.sleep(.1)
+    assert settings_get('notes') == notes
+
+    pick_menu_item('Delete All')
+    press_select()
+    time.sleep(.1)
+    need_keypress('4')
+    time.sleep(.2)
+
+    assert settings_get('notes') == []
+
+    time.sleep(3)
+    m = cap_menu()
+    assert 'Delete All' not in m
+    assert 'Disable Feature' in m
+
+
 def test_sort_by_title(goto_notes, pick_menu_item, cap_story, need_keypress, settings_get,
                     settings_set, build_note, cap_menu, build_password):
 

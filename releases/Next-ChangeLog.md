@@ -40,5 +40,5 @@ your addition and anything else already in this file.**
 
 ## 1.5.?Q - 2026-10-??
 
-- tbd
+- Enhancement: `Delete All` Secure Notes & Passwords
 
