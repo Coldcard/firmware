@@ -175,4 +175,57 @@ class XORQRDisplaySingle(QRDisplaySingle):
         if len(self.addrs) > 1:
             return chr(65+int(self.start_n + self.idx))
 
+
+class QRDisplayGrid(QRDisplaySingle):
+    # Show one SeedQR grid section at a time for manual transcription.
+
+    def __init__(self, data, is_alnum):
+        super().__init__([data], is_alnum)
+        self.grid_pos = 0
+
+    def redraw(self):
+        from glob import dis
+
+        if not self.qr_data:
+            dis.busy_bar(True)
+            self.calc_qr(self.addrs[0])
+            dis.busy_bar(False)
+
+        dis.draw_qr_grid(self.qr_data, self.grid_pos)
+
+    async def interact_bare(self):
+        from glob import dis
+        from utils import qr_grid_parts
+
+        self.redraw()
+        parts = qr_grid_parts(self.qr_data.width())
+        last = (parts * parts) - 1
+
+        while 1:
+            ch = await ux_wait_keyup(flush=True)
+            was = self.grid_pos
+
+            if ch in 'xy0'+KEY_ENTER+KEY_CANCEL:
+                break
+            elif ch in '7'+KEY_LEFT and (was % parts):
+                self.grid_pos -= 1
+            elif ch in '9'+KEY_RIGHT and (was % parts) != parts - 1:
+                self.grid_pos += 1
+            elif ch in '5'+KEY_UP and was >= parts:
+                self.grid_pos -= parts
+            elif ch in '8'+KEY_DOWN and was < parts * (parts - 1):
+                self.grid_pos += parts
+            elif ch == KEY_HOME:
+                self.grid_pos = 0
+            elif ch == KEY_END:
+                self.grid_pos = last
+            else:
+                continue
+
+            if self.grid_pos != was:
+                self.redraw()
+
+        if dis.has_lcd:
+            dis.real_clear()
+
 # EOF

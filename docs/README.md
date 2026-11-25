@@ -14,6 +14,7 @@ wants to understand why it's safe to put your moneys into Coldcard.
 - [`usb-ncry-v3.md`](usb-ncry-v3.md) Details of USB ncry v3 encrypted sessions and MITM-check best practices.
 - [`temporary-seeds.md`](temporary-seeds.md) Temporary (ephemeral) seeds and the Seed Vault.
 - [`codex32.md`](codex32.md) Creating, importing, splitting, and recovering Codex32 secrets.
+- [`seedqr.md`](seedqr.md) SeedQR export and manual transcription grid sections.
 - [`seed-xor.md`](seed-xor.md) More about _Seed XOR_ feature, including fully worked Seed XOR example, and useful XOR lookup chart.
 - [`key-teleport.md`](key-teleport.md) Key Teleport: encrypted transfer of seeds and secrets between Q devices.
 - [`spending-policy.md`](spending-policy.md) Spending policy: autonomous signing with configurable limits.

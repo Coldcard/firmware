@@ -1097,6 +1097,128 @@ def test_show_seed_qr(data, goto_home, pick_menu_item, cap_story, press_select,
 
     press_select()  # clear screen
 
+def _seed_qr_grid_bounds(w, pos):
+    parts = 6 if w == 29 else 5
+    row = pos // parts
+    col = pos % parts
+    x0 = ((w * col) + parts - 1) // parts
+    x1 = ((w * (col + 1)) + parts - 1) // parts
+    y0 = ((w * row) + parts - 1) // parts
+    y1 = ((w * (row + 1)) + parts - 1) // parts
+    return row, col, x0, y0, x1 - x0, y1 - y0
+
+def _seed_qr_grid_size(cw, ch, max_w, max_h):
+    box = min((max_w - 1) // cw, (max_h - 1) // ch)
+    return box, (cw * box) + 1, (ch * box) + 1
+
+def _read_seed_qr_grid_part(img, is_q1, qr_w, pos):
+    _, _, x0, y0, cw, ch = _seed_qr_grid_bounds(qr_w, pos)
+
+    if is_q1:
+        box, bw, bh = _seed_qr_grid_size(cw, ch, 320, 220 - 22)
+        x = (320 - bw) // 2
+        y = 15 + 22 + ((220 - 22 - bh) // 2)
+    else:
+        box, bw, bh = _seed_qr_grid_size(cw, ch, 128, 64)
+        x = (128 - bw) // 2
+        y = (64 - bh) // 2
+
+    img = img.convert('L')
+    pix = img.load()
+    mark = box - 1
+    rv = []
+    for yy in range(ch):
+        row = []
+        for xx in range(cw):
+            sx = x + (xx * box) + 1 + (mark // 2)
+            sy = y + (yy * box) + 1 + (mark // 2)
+            row.append(pix[sx, sy] < 128)
+        rv.append(row)
+
+    return x0, y0, rv
+
+def _decode_seed_qr_matrix(matrix):
+    try:
+        import zbar
+    except ImportError:
+        raise pytest.skip('need zbar-py module')
+
+    import numpy
+    from PIL import Image
+
+    w = len(matrix)
+    img = Image.new('L', (w + 8, w + 8), 255)
+    pix = img.load()
+    for y, row in enumerate(matrix):
+        for x, is_black in enumerate(row):
+            if is_black:
+                pix[x + 4, y + 4] = 0
+
+    img = img.resize(((w + 8) * 12, (w + 8) * 12), Image.NEAREST)
+    np = numpy.array(img.getdata(), 'uint8').reshape(img.height, img.width)
+
+    scanner = zbar.Scanner()
+    for sym, value, *_ in scanner.scan(np):
+        assert sym == 'QR-Code'
+        return value.decode('ascii')
+
+    raise RuntimeError('rebuilt SeedQR not found')
+
+@pytest.mark.qrcode
+@pytest.mark.parametrize("words", [
+    "vacuum bridge buddy supreme exclude milk consider tail expand wasp pattern nuclear",
+    simulator_fixed_words,
+])
+def test_show_seed_qr_parts_reassemble(words, goto_home, pick_menu_item, cap_story,
+                                       need_keypress, set_seed_words, cap_image,
+                                       cap_screen, press_right, press_left,
+                                       press_down, press_cancel, is_q1):
+    set_seed_words(words)
+    qr_w = 25 if len(words.split()) == 12 else 29
+    parts = 6 if qr_w == 29 else 5
+    expect = ''.join('%04d' % wordlist.index(w) for w in words.split())
+    matrix = [[None for _ in range(qr_w)] for _ in range(qr_w)]
+
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('Danger Zone')
+    pick_menu_item('Seed Functions')
+    pick_menu_item('Export SeedQR')
+
+    time.sleep(.01)
+    title, body = cap_story()
+    where = title if is_q1 else body
+    assert 'Are you SURE' in where
+    assert 'manual transcription onto paper or metal' in body
+    need_keypress('1')
+    time.sleep(.05)
+
+    for r in range(parts):
+        for c in range(parts):
+            pos = (r * parts) + c
+            label = "%c%d" % (65 + r, c + 1)
+            assert label in cap_screen()
+
+            x0, y0, part = _read_seed_qr_grid_part(cap_image(), is_q1, qr_w, pos)
+            for yy, row in enumerate(part):
+                for xx, is_black in enumerate(row):
+                    assert matrix[y0 + yy][x0 + xx] is None
+                    matrix[y0 + yy][x0 + xx] = is_black
+
+            if c != parts - 1:
+                press_right()
+                time.sleep(.01)
+
+        if r != parts - 1:
+            press_down()
+            for _ in range(parts - 1):
+                press_left()
+            time.sleep(.01)
+
+    assert all(i is not None for row in matrix for i in row)
+    assert _decode_seed_qr_matrix(matrix) == expect
+    press_cancel()
+
 def test_destroy_seed(goto_home, pick_menu_item, cap_story, press_select,
                       sim_exec, cap_menu, get_secrets, is_q1):
     # Check UX of destroying seeds, rarely used?

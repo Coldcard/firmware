@@ -20,6 +20,8 @@ your addition and anything else already in this file.**
 - Bugfix: Avoid recalculating the displayed addresses when returning from file
   export in Address Explorer, eliminating the unnecessary "Wait..." delay.
 
+- New Feature: SeedQR grid-section view for paper/metal transcription.
+  Advanced/Tools → Danger Zone → Seed Functions → Export SeedQR → press (1) for QR sections.
 
 # Mk Specific Changes
 

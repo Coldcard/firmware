@@ -5,7 +5,7 @@
 import machine, uzlib, utime, array
 from graphics_q1 import Graphics
 from st7788 import ST7788
-from utils import xfp2str, word_wrap, chunk_address
+from utils import xfp2str, word_wrap, chunk_address, qr_grid_bounds, qr_grid_size
 from ucollections import namedtuple
 from charcodes import OUT_CTRL_TITLE, OUT_CTRL_ADDRESS
 
@@ -742,6 +742,27 @@ class Display:
             self.draw_qr_idx_hint(idx_hint)
 
         self.show()
+
+    def draw_qr_grid(self, qr_data, pos):
+        self.real_clear()
+
+        row, col, x0, y0, cw, ch = qr_grid_bounds(qr_data.width(), pos)
+
+        box, bw, bh = qr_grid_size(cw, ch, WIDTH, ACTIVE_H - CELL_H)
+        x = (WIDTH - bw) // 2
+        y = TOP_MARGIN + CELL_H + ((ACTIVE_H - CELL_H - bh) // 2)
+
+        self.dis.fill_rect(x, y, bw, bh, COL_WHITE)
+        mark = box - 1
+        for yy in range(ch):
+            for xx in range(cw):
+                if qr_data.get(x0 + xx, y0 + yy):
+                    self.dis.fill_rect(x + (xx * box) + 1, y + (yy * box) + 1,
+                                       mark, mark, COL_BLACK)
+
+        self.mark_correct(x, y, bw, bh)
+        self.text(None, 0, "%c%d" % (65 + row, col + 1))
+        self.show(max_bright=True)
 
     def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, partial_bar=None,
                         is_addr=False, force_msg=False, side_msg=None):
