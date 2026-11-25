@@ -7,6 +7,7 @@ your addition and anything else already in this file.**
 
 # Shared Improvements - Both Mk and Q
 
+- New Feature: Allow uncompressed WIF keys in WIF Store
 - Bugfix: Restore Backup now verifies whether a seed write succeeded after a bootloader
   AE_FAIL before aborting, avoiding a half-restored device with seed written but settings
   missing.
@@ -19,7 +20,6 @@ your addition and anything else already in this file.**
 
 - Bugfix: Avoid recalculating the displayed addresses when returning from file
   export in Address Explorer, eliminating the unnecessary "Wait..." delay.
-
 
 # Mk Specific Changes
 
