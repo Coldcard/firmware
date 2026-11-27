@@ -260,10 +260,7 @@ class Builder(object):
 
             aes = ngu.aes.CBC(False, key, self.iv)
 
-            out = b''
-            for blk in range(0, len(body), 16):
-                out += aes.cipher(body[blk:blk+16])
-
+            out = aes.cipher(body)
             aes.blank()
 
             # trim padding, check CRC
