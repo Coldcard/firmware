@@ -451,11 +451,15 @@ class OwnershipCache:
         settings.set('accts', ex)
                 
     @classmethod
-    def wipe_all(cls):
+    def wipe_all(cls, include_accounts=False):
         # clear all cached addresses. will affect other seeds in vault
         for fn in os.listdir():
             if fn.endswith('.own'):
                 os.remove(fn)
+
+        if include_accounts:
+            settings.remove_key('accts')
+            settings.save()
 
 # singleton, but also only created as needed; holds no state.
 OWNERSHIP = OwnershipCache()

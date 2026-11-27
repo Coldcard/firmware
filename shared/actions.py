@@ -2441,11 +2441,22 @@ async def wipe_hsm_policy(*A):
     goto_top_menu()
 
 async def wipe_address_cache(*a):
-    ok = await ux_confirm('''Clear cached addresses used in ownership search. Harmless to erase, just costs time.''')
-    if not ok: return
+    accts = settings.get('accts')
+    msg = ("Clear cached addresses used in ownership search. Harmless to erase, just costs time."
+           "\n\nPress %s to clear cached addresses%s.") % (OK, " only" if accts else "")
+
+    if accts:
+        msg += ('Press (1) to also forget remembered account numbers.'
+                ' Press (2) to show remembered account numbers.')
+
+    ch = await ux_show_story(msg, title="Clear Cache", escape='12' if accts else None)
+    if ch == '2':
+        await ux_show_story(str(accts))
+        return
+    if ch not in "1y": return
 
     from ownership import OWNERSHIP
-    OWNERSHIP.wipe_all()
+    OWNERSHIP.wipe_all(ch == '1')
 
     await ux_dramatic_pause("Cleared.", 3)
 
